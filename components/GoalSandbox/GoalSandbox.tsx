@@ -122,6 +122,18 @@ export const GoalSandbox: React.FC = () => {
     // Persistent Cast Management
     const [sceneCast, setSceneCast] = useState<Set<string>>(new Set());
 
+    const persistActorPositions = useCallback(() => {
+        if (!worldState) return;
+        setActorPositions(prev => {
+            const next = { ...prev };
+            worldState.agents.forEach(a => {
+                const pos = (a as any).position;
+                if (pos) next[a.entityId] = pos;
+            });
+            return next;
+        });
+    }, [worldState]);
+
     // Ensure selectedAgent is valid
     useEffect(() => {
         if (allCharacters.length === 0) return;
@@ -153,26 +165,10 @@ export const GoalSandbox: React.FC = () => {
                 return next;
             });
             setSelectedAgentId(id);
-            if (worldState) {
-                 const char = allCharacters.find(c => c.entityId === id);
-                 if (char) {
-                    const temp = createInitialWorld(Date.now(), [char], activeScenarioId);
-                    if (temp && temp.agents[0]) {
-                        const newAgent = temp.agents[0];
-                        // Default placement logic
-                        if (actorPositions[id]) {
-                            (newAgent as any).position = actorPositions[id];
-                        } else {
-                            (newAgent as any).position = { x: 5, y: 5 };
-                        }
-                        setWorldState(prev => prev ? { ...prev, agents: [...prev.agents, newAgent] } : null);
-                    }
-                 }
-            } else {
-                 setWorldState(null);
-            }
+            persistActorPositions();
+            setWorldState(null);
         }
-    }, [worldState, allCharacters, activeScenarioId, actorPositions]);
+    }, [worldState, persistActorPositions]);
 
     // Initialize World
     useEffect(() => {
@@ -190,23 +186,28 @@ export const GoalSandbox: React.FC = () => {
                 if (w) {
                     w.groupGoalId = undefined;
                     w.locations = [getSelectedLocationEntity(), ...allLocations];
+                    const nextPositions = { ...actorPositions };
                     
                     // Placement: if no position, scatter slightly
                     w.agents.forEach((a, i) => {
                         if (actorPositions[a.entityId]) {
                             (a as any).position = actorPositions[a.entityId];
+                            nextPositions[a.entityId] = actorPositions[a.entityId];
                         } else {
                             const offsetX = (i % 3) * 2;
                             const offsetY = Math.floor(i / 3) * 2;
-                            (a as any).position = { x: 5 + offsetX, y: 5 + offsetY };
+                            const pos = { x: 5 + offsetX, y: 5 + offsetY };
+                            (a as any).position = pos;
+                            nextPositions[a.entityId] = pos;
                         }
                     });
                     
+                    setActorPositions(nextPositions);
                     setWorldState(w);
                 }
             }
         }
-    }, [worldState, allCharacters, selectedAgentId, sceneCast, actorPositions, activeScenarioId]);
+    }, [worldState, allCharacters, selectedAgentId, sceneCast, actorPositions, activeScenarioId, getSelectedLocationEntity]);
 
     const nearbyActors = useMemo<LocalActorRef[]>(() => {
         if (!worldState) return [];
@@ -230,50 +231,10 @@ export const GoalSandbox: React.FC = () => {
     }, [worldState, selectedAgentId]);
 
     const handleNearbyActorsChange = (newActors: LocalActorRef[]) => {
-        const currentIds = new Set(worldState?.agents.map(a => a.entityId) || []);
-        const addedRef = newActors.find(a => !currentIds.has(a.id));
-        
-        if (addedRef) {
-             setSceneCast(prev => new Set(prev).add(addedRef.id));
-             
-             if (worldState) {
-                 const char = allCharacters.find(c => c.entityId === addedRef.id);
-                 if (char) {
-                     const temp = createInitialWorld(Date.now(), [char], activeScenarioId);
-                     if (temp && temp.agents[0]) {
-                         const newAgent = temp.agents[0];
-                         if (actorPositions[addedRef.id]) {
-                             (newAgent as any).position = actorPositions[addedRef.id];
-                         } else {
-                             (newAgent as any).position = { x: 6, y: 6 }; // Default nearby
-                         }
-                         setWorldState(prev => prev ? {
-                             ...prev,
-                             agents: [...prev.agents, newAgent]
-                         } : null);
-                     }
-                 }
-             }
-        }
-        
         const newIds = new Set(newActors.map(a => a.id));
-        if (worldState) {
-            const removedIds = worldState.agents
-                .filter(a => a.entityId !== selectedAgentId && !newIds.has(a.entityId))
-                .map(a => a.entityId);
-                
-            if (removedIds.length > 0) {
-                 setSceneCast(prev => {
-                     const next = new Set(prev);
-                     removedIds.forEach(id => next.delete(id));
-                     return next;
-                 });
-                 setWorldState(prev => prev ? {
-                     ...prev,
-                     agents: prev.agents.filter(a => !removedIds.includes(a.entityId))
-                 } : null);
-            }
-        }
+        setSceneCast(newIds);
+        persistActorPositions();
+        setWorldState(null);
     };
     
     // Scene Preset Loader
