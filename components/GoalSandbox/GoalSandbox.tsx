@@ -107,6 +107,7 @@ export const GoalSandbox: React.FC = () => {
         ensureMapCells({ id: 'sandbox', width: 12, height: 12, cells: [], defaultWalkable: true, defaultDanger: 0, defaultCover: 0 })
     );
     const [actorPositions, setActorPositions] = useState<Record<string, {x: number, y: number}>>({});
+    const [rebuildNonce, setRebuildNonce] = useState(0);
     
     const [locationMode, setLocationMode] = useState<'preset' | 'custom'>('preset');
     const [selectedLocationId, setSelectedLocationId] = useState<string>('');
@@ -134,6 +135,10 @@ export const GoalSandbox: React.FC = () => {
 
     // Optional per-scene dyad configs (A->B perception weights), typically from ScenePreset
     const [runtimeDyadConfigs, setRuntimeDyadConfigs] = useState<Record<string, DyadConfigForA> | null>(null);
+    const forceRebuildWorld = useCallback(() => {
+        setWorldState(null);
+        setRebuildNonce(n => n + 1);
+    }, []);
 
     const persistActorPositions = useCallback(() => {
         if (!worldState) return;
@@ -311,7 +316,7 @@ export const GoalSandbox: React.FC = () => {
                 }
             }
         }
-    }, [worldState, allCharacters, selectedAgentId, sceneCast, actorPositions, activeScenarioId, runtimeDyadConfigs, getSelectedLocationEntity, getActiveLocationId, ensureCompleteInitialRelations]);
+    }, [worldState, allCharacters, selectedAgentId, sceneCast, actorPositions, activeScenarioId, runtimeDyadConfigs, getSelectedLocationEntity, getActiveLocationId, ensureCompleteInitialRelations, rebuildNonce]);
 
     useEffect(() => {
         if (!worldState) return;
@@ -358,15 +363,9 @@ export const GoalSandbox: React.FC = () => {
     }, [sceneCast, selectedAgentId, allCharacters, worldState, actorPositions]);
 
     const handleNearbyActorsChange = (newActors: LocalActorRef[]) => {
-        // 1) Update cast (excluding active)
-        const newIds = new Set(newActors.map(a => a.id));
-        setSceneCast(newIds);
-
-        // 2) Persist positions
+        setSceneCast(new Set(newActors.map(a => a.id)));
         persistActorPositions();
-
-        // 3) Always rebuild world from canonical cast + selected agent
-        setWorldState(null);
+        forceRebuildWorld();
     };
     
     // Scene Preset Loader
@@ -380,26 +379,13 @@ export const GoalSandbox: React.FC = () => {
             .filter(Boolean) as string[];
 
         const fallbackId = allCharacters[0]?.entityId || '';
-        const nextSelected = resolvedChars[0] || resolveCharacterId(scene.characters[0]) || fallbackId;
-        const nextCast = new Set<string>(resolvedChars.length ? resolvedChars : (nextSelected ? [nextSelected] : []));
+        const nextSelected =
+            resolvedChars[0] || resolveCharacterId(scene.characters[0]) || fallbackId;
+
+        const nextCast = new Set<string>(resolvedChars.filter(id => id !== nextSelected));
 
         setSelectedAgentId(nextSelected);
-        setSceneCast(nextCast); 
-        setNearbyActorsUi(
-          Array.from(nextCast)
-            .filter(id => id !== nextSelected)
-            .map(id => {
-              const c = allCharacters.find(x => x.entityId === id);
-              return {
-                id,
-                label: c?.title || id,
-                kind: 'neutral',
-                role: c?.roles?.global?.[0] || 'observer',
-                distance: 10,
-                threatLevel: 0,
-              } as LocalActorRef;
-            })
-        );
+        setSceneCast(nextCast);
         
         if (scene.configs) {
             Object.entries(scene.configs).forEach(([id, cfg]) => {
@@ -422,7 +408,7 @@ export const GoalSandbox: React.FC = () => {
         
         setActorPositions({});
 
-        setWorldState(null); // Trigger full rebuild
+        forceRebuildWorld(); // Trigger full rebuild
     };
 
     useEffect(() => {
