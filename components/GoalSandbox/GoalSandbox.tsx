@@ -225,6 +225,22 @@ export const GoalSandbox: React.FC = () => {
         }
     }, [worldState, persistActorPositions]);
 
+    const resolveCharacterId = useCallback((rawId: string): string | null => {
+        if (!rawId) return null;
+
+        const exact = allCharacters.find(c => c.entityId === rawId);
+        if (exact) return exact.entityId;
+
+        const prefixed = `character-${rawId}`;
+        const pref = allCharacters.find(c => c.entityId === prefixed);
+        if (pref) return pref.entityId;
+
+        const loose = allCharacters.find(c =>
+            c.entityId.endsWith(rawId) || c.entityId.includes(rawId)
+        );
+        return loose ? loose.entityId : null;
+    }, [allCharacters]);
+
     // Initialize World
     useEffect(() => {
         if (!worldState && selectedAgentId) {
@@ -274,6 +290,16 @@ export const GoalSandbox: React.FC = () => {
             }
         }
     }, [worldState, allCharacters, selectedAgentId, sceneCast, actorPositions, activeScenarioId, runtimeDyadConfigs, getSelectedLocationEntity, getActiveLocationId, ensureCompleteInitialRelations]);
+
+    useEffect(() => {
+        if (!worldState) return;
+        if (!selectedAgentId) return;
+        const exists = worldState.agents.some(a => a.entityId === selectedAgentId);
+        if (!exists) {
+            const next = worldState.agents[0]?.entityId || allCharacters[0]?.entityId || '';
+            if (next) setSelectedAgentId(next);
+        }
+    }, [worldState, selectedAgentId, allCharacters]);
 
     const nearbyActors = useMemo<LocalActorRef[]>(() => {
         if (!worldState) return [];
@@ -341,36 +367,43 @@ export const GoalSandbox: React.FC = () => {
     
     // Scene Preset Loader
     const handleLoadScene = (scene: ScenePreset) => {
+        if (!scene?.characters?.length) return;
+
         setRuntimeDyadConfigs((scene as any).configs || null);
-        if (scene.characters.length > 0) {
-            setSelectedAgentId(scene.characters[0]);
-            setSceneCast(new Set(scene.characters)); 
-            
-            // Apply Dyad Configs
-            if (scene.configs) {
-                Object.entries(scene.configs).forEach(([id, cfg]) => {
-                    setDyadConfigFor(id, cfg);
-                });
-            }
 
-            if (scene.locationId) {
-                setSelectedLocationId(scene.locationId);
-                setLocationMode('preset');
-            }
-            
-            if (scene.suggestedScenarioId) {
-                 setActiveScenarioId(scene.suggestedScenarioId);
-            }
-            
-            // Set Scene Control using the Engine Preset ID
-            const enginePreset = scene.enginePresetId || 'safe_hub';
-            setSceneControl({ presetId: enginePreset, metrics: {}, norms: {} });
-            
-            // Reset Positions
-            setActorPositions({});
+        const resolvedChars = scene.characters
+            .map(id => resolveCharacterId(id))
+            .filter(Boolean) as string[];
 
-            setWorldState(null); // Trigger full rebuild
+        const fallbackId = allCharacters[0]?.entityId || '';
+        const nextSelected = resolvedChars[0] || resolveCharacterId(scene.characters[0]) || fallbackId;
+        const nextCast = new Set<string>(resolvedChars.length ? resolvedChars : (nextSelected ? [nextSelected] : []));
+
+        setSelectedAgentId(nextSelected);
+        setSceneCast(nextCast); 
+        
+        if (scene.configs) {
+            Object.entries(scene.configs).forEach(([id, cfg]) => {
+                const rid = resolveCharacterId(id);
+                if (rid) setDyadConfigFor(rid, cfg);
+            });
         }
+
+        if (scene.locationId) {
+            setSelectedLocationId(scene.locationId);
+            setLocationMode('preset');
+        }
+        
+        if (scene.suggestedScenarioId) {
+             setActiveScenarioId(scene.suggestedScenarioId);
+        }
+        
+        const enginePreset = scene.enginePresetId || 'safe_hub';
+        setSceneControl({ presetId: enginePreset, metrics: {}, norms: {} });
+        
+        setActorPositions({});
+
+        setWorldState(null); // Trigger full rebuild
     };
 
     const activeMap = useMemo(() => {
