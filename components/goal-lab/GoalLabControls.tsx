@@ -57,6 +57,10 @@ interface Props {
   sceneControl?: any;
   onSceneControlChange?: (ctrl: any) => void;
   scenePresets?: any[];
+
+  // Perspective (who is the observer)
+  perspectiveAgentId?: string | null;
+  onSelectPerspective?: (id: string) => void;
 }
 
 export const GoalLabControls: React.FC<Props> = ({
@@ -75,7 +79,8 @@ export const GoalLabControls: React.FC<Props> = ({
   participantIds,
   onAddParticipant,
   onRemoveParticipant,
-  sceneControl, onSceneControlChange, scenePresets
+  sceneControl, onSceneControlChange, scenePresets,
+  perspectiveAgentId, onSelectPerspective
 }) => {
   
   const [selectedActorToAdd, setSelectedActorToAdd] = React.useState<string>('');
@@ -525,6 +530,27 @@ export const GoalLabControls: React.FC<Props> = ({
                 <h3 className="text-[10px] font-bold text-canon-text-light uppercase tracking-wider">Scene Participants</h3>
             </div>
             
+            <div className="mb-3 p-2 rounded border border-canon-border/30 bg-canon-bg">
+              <div className="text-[11px] font-bold mb-2">Perspective (для кого считаем)</div>
+
+              <div className="flex flex-wrap gap-1">
+                {(participantIds || []).map(id => (
+                  <button
+                    key={id}
+                    className={`px-2 py-1 rounded text-[10px] border ${
+                      id === perspectiveAgentId
+                        ? 'bg-canon-accent/15 border-canon-accent'
+                        : 'bg-canon-bg border-canon-border/40'
+                    }`}
+                    onClick={() => onSelectPerspective?.(id)}
+                    type="button"
+                  >
+                    {id === perspectiveAgentId ? '● ' : ''}{id}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <div className="flex gap-2 mb-3">
                 <select 
                     className="flex-1 bg-canon-bg border border-canon-border rounded px-2 py-1 text-[10px]"

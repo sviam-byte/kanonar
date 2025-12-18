@@ -41,6 +41,8 @@ interface Props {
   contextualMind?: ContextualMindReport | null;
   atomDiff?: AtomDiff[];
   snapshotV1?: GoalLabSnapshotV1 | null;
+  perspectiveAgentId?: string | null;
+  tomRows?: Array<{ me: string; other: string; dyad: any }> | null;
 }
 
 interface AtomStyle {
@@ -329,6 +331,8 @@ export const GoalLabResults: React.FC<Props> = ({
   tom,
   atomDiff,
   snapshotV1,
+  perspectiveAgentId,
+  tomRows,
 }) => {
     const [selectedGoalId, setSelectedGoalId] = useState<string | null>(null);
     const [isPreviewOpen, setPreviewOpen] = useState(false);
@@ -413,6 +417,12 @@ export const GoalLabResults: React.FC<Props> = ({
 
     return (
         <div className="flex flex-col h-full overflow-hidden bg-canon-bg-light border border-canon-border rounded-lg shadow-xl">
+            {perspectiveAgentId && (
+                <div className="bg-canon-bg border-b border-canon-border/60 p-3">
+                    <div className="text-xs font-bold text-canon-text uppercase tracking-wider">Perspective</div>
+                    <div className="text-sm text-canon-text-light">{perspectiveAgentId}</div>
+                </div>
+            )}
             {context && (
                 <div className="bg-canon-bg border-b border-canon-border/60 p-3">
                     <div className="text-xs font-bold text-canon-text uppercase tracking-wider">Фокус</div>
@@ -437,6 +447,22 @@ export const GoalLabResults: React.FC<Props> = ({
             <div className="bg-black/30 border-b border-canon-border/50 shrink-0">
                 <ContextRibbon atoms={currentAtoms} />
             </div>
+
+            {tomRows && tomRows.length > 0 && (
+                <div className="bg-canon-bg border-b border-canon-border/30 p-2 shrink-0">
+                    <div className="text-[11px] font-bold mb-2">ToM (X думает про Y)</div>
+                    <div className="flex flex-col gap-1">
+                        {tomRows.map(r => (
+                            <div key={`${r.me}__${r.other}`} className="text-[10px] border border-canon-border/30 rounded p-1">
+                                <div className="font-semibold">{r.me} → {r.other}</div>
+                                <div className="opacity-80">
+                                    trust: {String((r.dyad as any)?.trust ?? '—')} · threat: {String((r.dyad as any)?.threat ?? '—')} · intent: {String((r.dyad as any)?.intent ?? '—')}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
 
             {goalPreview?.goals?.length ? (
                 <div className="bg-canon-bg border-b border-canon-border/30 p-2 shrink-0">
