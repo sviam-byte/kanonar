@@ -179,7 +179,6 @@ export const GoalLabControls: React.FC<Props> = ({
       if (participantIds) {
           // If we have world state participants, show them.
           return participantIds
-              .filter(id => id !== selectedAgentId)
               .map(id => {
                   const char = allCharacters.find(c => c.entityId === id);
                   return { id, label: char?.title || id };
@@ -190,10 +189,14 @@ export const GoalLabControls: React.FC<Props> = ({
 
   // Main agent dropdown: Show everyone available in library or restricted to current scene
   const activeAgentOptions = React.useMemo(() => {
-      return allCharacters.map(c => ({
-          ...c,
-          inScene: participantIds?.includes(c.entityId) ?? false
-      })).sort((a,b) => (b.inScene === a.inScene) ? 0 : b.inScene ? 1 : -1);
+      if (participantIds && participantIds.length > 0) {
+          const set = new Set(participantIds);
+          return allCharacters
+              .filter(c => set.has(c.entityId))
+              .map(c => ({ ...c, inScene: true }));
+      }
+      // fallback: if no participantIds provided, keep old behavior
+      return allCharacters.map(c => ({ ...c, inScene: false }));
   }, [allCharacters, participantIds]);
   
   // Add Character Dropdown: exclude those already in scene
@@ -528,13 +531,21 @@ export const GoalLabControls: React.FC<Props> = ({
             
             <div className="space-y-1">
                  {activeSceneActors.map((actor) => (
-                     <div key={actor.id} className="flex items-center gap-2 bg-canon-bg border border-canon-border/30 p-1 rounded text-[10px]">
-                         <button 
+                     <div
+                       key={actor.id}
+                       className={`flex items-center gap-2 p-1 rounded text-[10px] border ${
+                         actor.id === selectedAgentId
+                           ? 'bg-canon-accent/15 border-canon-accent'
+                           : 'bg-canon-bg border-canon-border/30'
+                       }`}
+                     >
+                         <button
                            className="flex-1 truncate text-left hover:underline"
                            onClick={() => onSelectAgent(actor.id)}
                            title="Switch active agent"
                          >
                            {actor.label}
+                           {actor.id === selectedAgentId ? '  •  FOCUS' : ''}
                          </button>
                          <button 
                             type="button"

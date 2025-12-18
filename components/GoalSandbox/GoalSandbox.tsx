@@ -151,8 +151,8 @@ export const GoalSandbox: React.FC = () => {
 
   const [atomDiff, setAtomDiff] = useState<AtomDiff[]>([]);
 
-  // Persistent Cast Management: stores "additional actors" (NOT including selectedAgent)
-  const [sceneCast, setSceneCast] = useState<Set<string>>(new Set());
+  // Persistent Scene Participants: stores ALL actors in the scene (including selectedAgentId)
+  const [sceneParticipants, setSceneParticipants] = useState<Set<string>>(() => new Set());
 
   // Optional per-scene dyad configs (A->B perception weights), typically from ScenePreset
   const [runtimeDyadConfigs, setRuntimeDyadConfigs] = useState<Record<string, DyadConfigForA> | null>(
@@ -187,6 +187,15 @@ export const GoalSandbox: React.FC = () => {
       setSelectedAgentId(allCharacters[0].entityId);
     }
   }, [allCharacters, selectedAgentId]);
+
+  useEffect(() => {
+    if (!selectedAgentId) return;
+    setSceneParticipants(prev => {
+      const next = new Set(prev);
+      next.add(selectedAgentId);
+      return next;
+    });
+  }, [selectedAgentId]);
 
   const getActiveLocationId = useCallback(() => {
     if (locationMode === 'preset' && selectedLocationId) return selectedLocationId;
@@ -264,24 +273,27 @@ export const GoalSandbox: React.FC = () => {
 
   const participantIds = useMemo(() => {
     if (!worldState) {
-      const ids = new Set(sceneCast);
+      const ids = new Set(sceneParticipants);
       if (selectedAgentId) ids.add(selectedAgentId);
       return Array.from(ids);
     }
     return worldState.agents.map(a => a.entityId);
-  }, [sceneCast, selectedAgentId, worldState]);
+  }, [sceneParticipants, selectedAgentId, worldState]);
 
   const handleSelectAgent = useCallback(
     (id: string) => {
+      if (!id) return;
+
+      // If already in the current world, just focus it (do NOT mutate cast)
       if (worldState && worldState.agents.some(a => a.entityId === id)) {
         setSelectedAgentId(id);
         return;
       }
 
-      setSceneCast(prev => {
+      // Ensure the focused agent is part of the scene participants
+      setSceneParticipants(prev => {
         const next = new Set(prev);
-        // keep invariant: sceneCast does NOT include selectedAgentId
-        if (id !== selectedAgentId) next.add(id);
+        next.add(id);
         return next;
       });
 
@@ -289,7 +301,7 @@ export const GoalSandbox: React.FC = () => {
       persistActorPositions();
       forceRebuildWorld();
     },
-    [worldState, persistActorPositions, forceRebuildWorld, selectedAgentId]
+    [worldState, persistActorPositions, forceRebuildWorld]
   );
 
   const resolveCharacterId = useCallback(
@@ -314,11 +326,11 @@ export const GoalSandbox: React.FC = () => {
     if (!worldState && selectedAgentId) {
       const subject = allCharacters.find(c => c.entityId === selectedAgentId);
 
-      // participants = selected + sceneCast (additional)
-      const castIds = new Set(sceneCast);
-      castIds.add(selectedAgentId);
+      // participants = ALL scene participants (plus ensure selectedAgentId)
+      const ids = new Set(sceneParticipants);
+      if (selectedAgentId) ids.add(selectedAgentId);
 
-      const participants = Array.from(castIds)
+      const participants = Array.from(ids)
         .map(id => allCharacters.find(c => c.entityId === id))
         .filter(Boolean) as CharacterEntity[];
 
@@ -367,7 +379,7 @@ export const GoalSandbox: React.FC = () => {
     worldState,
     allCharacters,
     selectedAgentId,
-    sceneCast,
+    sceneParticipants,
     actorPositions,
     activeScenarioId,
     runtimeDyadConfigs,
@@ -388,7 +400,7 @@ export const GoalSandbox: React.FC = () => {
   }, [worldState, selectedAgentId, allCharacters]);
 
   const nearbyActors = useMemo<LocalActorRef[]>(() => {
-    const ids = Array.from(sceneCast).filter(id => id !== selectedAgentId);
+    const ids = Array.from(sceneParticipants).filter(id => id !== selectedAgentId);
 
     const mePos =
       (worldState?.agents.find(a => a.entityId === selectedAgentId) as any)?.position ||
@@ -419,12 +431,12 @@ export const GoalSandbox: React.FC = () => {
         } as LocalActorRef;
       })
       .filter(Boolean) as LocalActorRef[];
-  }, [sceneCast, selectedAgentId, allCharacters, worldState, actorPositions]);
+  }, [sceneParticipants, selectedAgentId, allCharacters, worldState, actorPositions]);
 
   const handleNearbyActorsChange = (newActors: LocalActorRef[]) => {
-    // keep invariant: sceneCast excludes selectedAgentId
-    const next = new Set(newActors.map(a => a.id).filter(id => id !== selectedAgentId));
-    setSceneCast(next);
+    const next = new Set<string>(newActors.map(a => a.id));
+    if (selectedAgentId) next.add(selectedAgentId); // always keep focus inside the scene
+    setSceneParticipants(next);
     persistActorPositions();
     forceRebuildWorld();
   };
@@ -442,11 +454,11 @@ export const GoalSandbox: React.FC = () => {
     const fallbackId = allCharacters[0]?.entityId || '';
     const nextSelected = resolvedChars[0] || resolveCharacterId(scene.characters[0]) || fallbackId;
 
-    // sceneCast = everyone except selected
-    const nextCast = new Set<string>(resolvedChars.filter(id => id !== nextSelected));
+    const nextParticipants = new Set<string>(resolvedChars);
+    if (nextSelected) nextParticipants.add(nextSelected);
 
+    setSceneParticipants(nextParticipants);
     setSelectedAgentId(nextSelected);
-    setSceneCast(nextCast);
 
     if ((scene as any).configs) {
       Object.entries((scene as any).configs).forEach(([id, cfg]) => {
