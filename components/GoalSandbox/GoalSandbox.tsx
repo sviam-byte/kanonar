@@ -107,7 +107,6 @@ export const GoalSandbox: React.FC = () => {
         ensureMapCells({ id: 'sandbox', width: 12, height: 12, cells: [], defaultWalkable: true, defaultDanger: 0, defaultCover: 0 })
     );
     const [actorPositions, setActorPositions] = useState<Record<string, {x: number, y: number}>>({});
-    const [nearbyActorsUi, setNearbyActorsUi] = useState<LocalActorRef[]>([]);
     
     const [locationMode, setLocationMode] = useState<'preset' | 'custom'>('preset');
     const [selectedLocationId, setSelectedLocationId] = useState<string>('');
@@ -324,45 +323,49 @@ export const GoalSandbox: React.FC = () => {
         }
     }, [worldState, selectedAgentId, allCharacters]);
 
-    useEffect(() => {
-        if (!worldState) return;
+    const nearbyActors = useMemo<LocalActorRef[]>(() => {
+        const ids = Array.from(sceneCast).filter(id => id !== selectedAgentId);
 
-        const me = worldState.agents.find(a => a.entityId === selectedAgentId) as any;
-        const myPos = me?.position || { x: 0, y: 0 };
+        const mePos =
+            (worldState?.agents.find(a => a.entityId === selectedAgentId) as any)?.position
+            || actorPositions[selectedAgentId]
+            || { x: 0, y: 0 };
 
-        const next = worldState.agents
-            .filter(a => a.entityId !== selectedAgentId)
-            .map(a => {
-                const otherPos = (a as any).position || { x: 0, y: 0 };
-                const dist = Math.hypot(myPos.x - otherPos.x, myPos.y - otherPos.y);
+        return ids
+            .map(id => {
+                const char = allCharacters.find(c => c.entityId === id);
+                if (!char) return null;
+
+                const agentPos =
+                    (worldState?.agents.find(a => a.entityId === id) as any)?.position
+                    || actorPositions[id]
+                    || { x: 6, y: 6 };
+
+                const dist = Math.hypot(mePos.x - agentPos.x, mePos.y - agentPos.y);
+
+                const roleFromWorld = (worldState?.agents.find(a => a.entityId === id) as any)?.effectiveRole;
 
                 return {
-                    id: a.entityId,
-                    label: a.title,
+                    id,
+                    label: char.title,
                     kind: 'neutral',
-                    role: (a as any).effectiveRole || 'observer',
+                    role: roleFromWorld || char.roles?.global?.[0] || 'observer',
                     distance: dist,
-                    threatLevel: 0,
+                    threatLevel: 0
                 } as LocalActorRef;
-            });
-
-        setNearbyActorsUi(next);
-    }, [worldState, selectedAgentId]);
-
-    const nearbyActors = nearbyActorsUi;
+            })
+            .filter(Boolean) as LocalActorRef[];
+    }, [sceneCast, selectedAgentId, allCharacters, worldState, actorPositions]);
 
     const handleNearbyActorsChange = (newActors: LocalActorRef[]) => {
-        // 1) UI source of truth
-        setNearbyActorsUi(newActors);
-
-        // 2) Update cast (excluding active)
+        // 1) Update cast (excluding active)
         const newIds = new Set(newActors.map(a => a.id));
         setSceneCast(newIds);
 
-        // 3) Persist positions
+        // 2) Persist positions
         persistActorPositions();
 
-        // 4) Always rebuild world from canonical cast + selected agent
+        // 3) Always rebuild world from canonical cast + selected agent
         setWorldState(null);
     };
     

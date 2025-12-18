@@ -6,7 +6,7 @@ import { useSandbox } from '../contexts/SandboxContext';
 import { useAccess } from '../contexts/AccessContext';
 import { Branch } from '../types';
 
-const PATCH_REVISION = '6';
+const PATCH_REVISION = '7';
 
 const NavDropdown: React.FC<{ label: string; active: boolean; colorClass?: string; children: React.ReactNode }> = ({ label, active, colorClass = "text-canon-text", children }) => {
     const [isOpen, setIsOpen] = useState(false);
