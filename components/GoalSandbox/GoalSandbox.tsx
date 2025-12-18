@@ -84,6 +84,7 @@ const dedupeAtomsById = (arr: ContextAtom[]) => {
 
 export const GoalSandbox: React.FC = () => {
     const { characters: sandboxCharacters, setDyadConfigFor } = useSandbox();
+    const [fatalError, setFatalError] = useState<string | null>(null);
     
     const allCharacters = useMemo(() => {
         const base = (getEntitiesByType(EntityType.Character) as CharacterEntity[]).concat(getEntitiesByType(EntityType.Essence) as CharacterEntity[]);
@@ -415,25 +416,32 @@ export const GoalSandbox: React.FC = () => {
     };
 
     const glCtx = useMemo(() => {
-        if (!worldState) return null;
-        const agent = worldState.agents.find(a => a.entityId === selectedAgentId);
-        if (!agent) return null;
+        try {
+            if (!worldState) return null;
+            const agent = worldState.agents.find(a => a.entityId === selectedAgentId);
+            if (!agent) return null;
 
-        const activeEvents = eventRegistry.getAll().filter(e => selectedEventIds.has(e.id));
-        const loc = getSelectedLocationEntity();
+            const activeEvents = eventRegistry.getAll().filter(e => selectedEventIds.has(e.id));
+            const loc = getSelectedLocationEntity();
 
-        return buildGoalLabContext(worldState, selectedAgentId, {
-            snapshotOptions: {
-                activeEvents,
-                overrideLocation: loc,
-                manualAtoms,
-                gridMap: activeMap,
-                atomOverridesLayer, 
-                overrideEvents: injectedEvents,
-                sceneControl
-            },
-            timeOverride: worldState.tick
-        });
+            setFatalError(null);
+            return buildGoalLabContext(worldState, selectedAgentId, {
+                snapshotOptions: {
+                    activeEvents,
+                    overrideLocation: loc,
+                    manualAtoms,
+                    gridMap: activeMap,
+                    atomOverridesLayer, 
+                    overrideEvents: injectedEvents,
+                    sceneControl
+                },
+                timeOverride: worldState.tick
+            });
+        } catch (err: any) {
+            console.error(err);
+            setFatalError(err?.message || 'Unknown Goal Lab error');
+            return null;
+        }
     }, [worldState, selectedAgentId, manualAtoms, selectedEventIds, activeMap, atomOverridesLayer, injectedEvents, sceneControl, getSelectedLocationEntity]);
 
     const pipelineFrame = useMemo(() => {
@@ -535,6 +543,12 @@ export const GoalSandbox: React.FC = () => {
 
                 <div className="col-span-9 flex flex-col min-h-0 overflow-y-auto custom-scrollbar p-6 space-y-6">
                     <div className="grid grid-cols-1 gap-6">
+                        {fatalError && (
+                            <div className="bg-red-900/40 border border-red-500/60 text-red-200 p-4 rounded">
+                                <div className="font-bold text-sm mb-1">Goal Lab error</div>
+                                <div className="text-xs font-mono whitespace-pre-wrap opacity-80">{fatalError}</div>
+                            </div>
+                        )}
                         <GoalLabResults 
                             context={snapshot} 
                             goalScores={goals} 
