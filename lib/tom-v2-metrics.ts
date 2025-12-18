@@ -1,7 +1,7 @@
 
 // lib/tom/v2-metrics.ts
 
-import { CharacterEntity, ToMV2DashboardMetrics, V42Metrics, ToMDashboardMetrics } from '../../types';
+import { CharacterEntity, ToMV2DashboardMetrics, V42Metrics, ToMDashboardMetrics } from '../types';
 import { calculateLatentsAndQuickStates } from './metrics'; // Needed to get quickStates for phys
 import { flattenObject } from './param-utils';
 

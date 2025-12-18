@@ -1,5 +1,5 @@
 
-import { AgentContextFrame } from "./frame/types";
+import { AgentContextFrame } from "../frame/types";
 import { ContextAtom, ContextAtomKind } from "../v2/types";
 import { WorldState } from "../../../types";
 import { getLocationForAgent, getLocationMapCell, getLocalMapMetrics } from "../../world/locations";

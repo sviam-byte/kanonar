@@ -2,7 +2,6 @@
 import React, { useMemo } from 'react';
 import { useBranch } from '../contexts/BranchContext';
 import { Branch, AnyEntity, MassNetworkEI, MassNodeId } from '../types';
-import { useMassSimulationEI } from '../hooks/useMassSimulationEI'; // Ensure hook name matches logic below or inline
 import { useSandbox } from '../contexts/SandboxContext';
 import { buildDefaultMassNetworkEI } from '../lib/mass/build_ei';
 import { computeMassInputsFromMembership, MicroToMesoConfigEI } from '../lib/mass/membership';
