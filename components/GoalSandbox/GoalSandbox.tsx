@@ -2,7 +2,7 @@
 // components/GoalSandbox/GoalSandbox.tsx
 
 import React, { useMemo, useState, useEffect, useCallback, useRef } from 'react';
-import { CharacterEntity, EntityType, LocationMap, AffectState, LocationEntity, Branch, LocalActorRef, WorldState, AgentState } from '../../types';
+import { EntityType, Branch, type CharacterEntity, type LocationMap, type AffectState, type LocationEntity, type LocalActorRef, type WorldState, type AgentState } from '../../types';
 import { useSandbox } from '../../contexts/SandboxContext';
 import { getEntitiesByType, getEntityById } from '../../data';
 import { createInitialWorld } from '../../lib/world/initializer';
@@ -88,7 +88,9 @@ export const GoalSandbox: React.FC = () => {
     const [fatalError, setFatalError] = useState<string | null>(null);
     
     const allCharacters = useMemo(() => {
-        const base = (getEntitiesByType(EntityType.Character) as CharacterEntity[]).concat(getEntitiesByType(EntityType.Essence) as CharacterEntity[]);
+        const base =
+          (getEntitiesByType(EntityType.Character) as CharacterEntity[])
+            .concat(getEntitiesByType(EntityType.Essence) as CharacterEntity[]);
         const map = new Map<string, CharacterEntity>();
         [...base, ...sandboxCharacters].forEach(c => map.set(c.entityId, c));
         return Array.from(map.values());
