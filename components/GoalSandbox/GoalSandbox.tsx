@@ -98,6 +98,7 @@ export const GoalSandbox: React.FC = () => {
     
     // Core World State
     const [worldState, setWorldState] = useState<WorldState | null>(null);
+    const [rebuildNonce, setRebuildNonce] = useState(0);
     
     // Scene Management
     const [map, setMap] = useState<LocationMap>({ id: 'sandbox', width: 12, height: 12, cells: [] });
@@ -289,7 +290,7 @@ export const GoalSandbox: React.FC = () => {
                 }
             }
         }
-    }, [worldState, allCharacters, selectedAgentId, sceneCast, actorPositions, activeScenarioId, runtimeDyadConfigs, getSelectedLocationEntity, getActiveLocationId, ensureCompleteInitialRelations]);
+    }, [worldState, allCharacters, selectedAgentId, sceneCast, actorPositions, activeScenarioId, runtimeDyadConfigs, getSelectedLocationEntity, getActiveLocationId, ensureCompleteInitialRelations, rebuildNonce]);
 
     useEffect(() => {
         if (!worldState) return;
@@ -302,67 +303,46 @@ export const GoalSandbox: React.FC = () => {
     }, [worldState, selectedAgentId, allCharacters]);
 
     const nearbyActors = useMemo<LocalActorRef[]>(() => {
-        if (!worldState) return [];
-        return worldState.agents
-            .filter(a => a.entityId !== selectedAgentId)
-            .map(a => {
-                // Calculate actual distance
-                const myPos = (worldState.agents.find(me => me.entityId === selectedAgentId) as any)?.position || {x:0,y:0};
-                const otherPos = (a as any).position || {x:0,y:0};
-                const dist = Math.sqrt(Math.pow(myPos.x - otherPos.x, 2) + Math.pow(myPos.y - otherPos.y, 2));
+        const ids = Array.from(sceneCast).filter(id => id !== selectedAgentId);
+
+        const mePos =
+            (worldState?.agents.find(a => a.entityId === selectedAgentId) as any)?.position
+            || actorPositions[selectedAgentId]
+            || { x: 0, y: 0 };
+
+        return ids
+            .map(id => {
+                const char = allCharacters.find(c => c.entityId === id);
+                if (!char) return null;
+
+                const pos =
+                    (worldState?.agents.find(a => a.entityId === id) as any)?.position
+                    || actorPositions[id]
+                    || { x: 6, y: 6 };
+
+                const dist = Math.hypot(mePos.x - pos.x, mePos.y - pos.y);
 
                 return {
-                    id: a.entityId,
-                    label: a.title,
+                    id,
+                    label: char.title,
                     kind: 'neutral',
-                    role: a.effectiveRole || 'observer',
+                    role: char.roles?.global?.[0] || 'observer',
                     distance: dist,
                     threatLevel: 0
-                };
-            });
-    }, [worldState, selectedAgentId]);
+                } as LocalActorRef;
+            })
+            .filter(Boolean) as LocalActorRef[];
+    }, [sceneCast, selectedAgentId, allCharacters, worldState, actorPositions]);
+
+    const forceRebuildWorld = useCallback(() => {
+        setWorldState(null);
+        setRebuildNonce(n => n + 1);
+    }, []);
 
     const handleNearbyActorsChange = (newActors: LocalActorRef[]) => {
-        const currentIds = new Set(worldState?.agents.map(a => a.entityId) || []);
-        const addedRef = newActors.find(a => !currentIds.has(a.id));
-
-        if (addedRef && worldState) {
-            const char = allCharacters.find(c => c.entityId === addedRef.id);
-            if (char) {
-                const temp = createInitialWorld(Date.now(), [char], activeScenarioId);
-                if (temp && temp.agents[0]) {
-                    const newAgent = temp.agents[0];
-                    if (actorPositions[addedRef.id]) {
-                        (newAgent as any).position = actorPositions[addedRef.id];
-                    } else {
-                        (newAgent as any).position = { x: 6, y: 6 };
-                    }
-                    setWorldState(prev => {
-                        if (!prev) return null;
-                        return refreshWorldDerived(prev, [...prev.agents, newAgent]);
-                    });
-                }
-            }
-        }
-
-        const newIds = new Set(newActors.map(a => a.id));
-        if (worldState) {
-            const removedIds = worldState.agents
-                .filter(a => a.entityId !== selectedAgentId && !newIds.has(a.entityId))
-                .map(a => a.entityId);
-                
-            if (removedIds.length > 0) {
-                 setWorldState(prev => {
-                     if (!prev) return null;
-                     const nextAgents = prev.agents.filter(a => !removedIds.includes(a.entityId));
-                     return refreshWorldDerived(prev, nextAgents);
-                 });
-            }
-        }
-
-        setSceneCast(newIds);
+        setSceneCast(new Set(newActors.map(a => a.id)));
         persistActorPositions();
-        if (!worldState) setWorldState(null);
+        forceRebuildWorld();
     };
     
     // Scene Preset Loader
@@ -376,12 +356,15 @@ export const GoalSandbox: React.FC = () => {
             .filter(Boolean) as string[];
 
         const fallbackId = allCharacters[0]?.entityId || '';
-        const nextSelected = resolvedChars[0] || resolveCharacterId(scene.characters[0]) || fallbackId;
-        const nextCast = new Set<string>(resolvedChars.length ? resolvedChars : (nextSelected ? [nextSelected] : []));
+        const nextSelected =
+            resolvedChars[0] || resolveCharacterId(scene.characters[0]) || fallbackId;
+
+        // sceneCast = остальные, кроме выбранного
+        const nextCast = new Set<string>(resolvedChars.filter(id => id !== nextSelected));
 
         setSelectedAgentId(nextSelected);
-        setSceneCast(nextCast); 
-        
+        setSceneCast(nextCast);
+
         if (scene.configs) {
             Object.entries(scene.configs).forEach(([id, cfg]) => {
                 const rid = resolveCharacterId(id);
@@ -393,17 +376,17 @@ export const GoalSandbox: React.FC = () => {
             setSelectedLocationId(scene.locationId);
             setLocationMode('preset');
         }
-        
+
         if (scene.suggestedScenarioId) {
-             setActiveScenarioId(scene.suggestedScenarioId);
+            setActiveScenarioId(scene.suggestedScenarioId);
         }
-        
+
         const enginePreset = scene.enginePresetId || 'safe_hub';
         setSceneControl({ presetId: enginePreset, metrics: {}, norms: {} });
-        
+
         setActorPositions({});
 
-        setWorldState(null); // Trigger full rebuild
+        forceRebuildWorld(); // <-- КЛЮЧЕВО: всегда срабатывает, даже если worldState уже null
     };
 
     const activeMap = useMemo(() => {
