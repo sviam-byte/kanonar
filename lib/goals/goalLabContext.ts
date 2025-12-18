@@ -171,7 +171,7 @@ export function buildGoalLabContext(
       presetId: sc.presetId,
       sceneId: sc.sceneId || `scene_${sc.presetId}`,
       startedAtTick: tick,
-      participants: [selfId],
+      participants: (world?.agents || []).map((a: any) => a.entityId || a.id).filter(Boolean),
       locationId: (agent as any).locationId || getLocationForAgent(world, selfId)?.entityId,
       metricsOverride: sc.metrics || {},
       normsOverride: sc.norms || {}
