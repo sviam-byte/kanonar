@@ -164,6 +164,24 @@ export const GoalSandbox: React.FC = () => {
         return 'custom-lab-location';
     }, [locationMode, selectedLocationId]);
 
+    // Map selection helpers (must be defined before any hook that references them)
+    const activeMap = useMemo(() => {
+        if (locationMode === 'custom') return ensureMapCells(map);
+        if (selectedLocationId) {
+            const loc = allLocations.find(l => l.entityId === selectedLocationId);
+            if (loc?.map) return ensureMapCells(loc.map);
+        }
+        return ensureMapCells(map);
+    }, [locationMode, map, selectedLocationId]);
+
+    const getSelectedLocationEntity = useCallback((): LocationEntity => {
+        if (locationMode === 'preset' && selectedLocationId) {
+            const loc = allLocations.find(l => l.entityId === selectedLocationId);
+            if (loc) return loc as any;
+        }
+        return createCustomLocationEntity(activeMap) as any;
+    }, [locationMode, selectedLocationId, activeMap]);
+
     const ensureCompleteInitialRelations = useCallback((agentIds: string[], base: any) => {
         const out: any = { ...(base || {}) };
         for (const a of agentIds) {
@@ -409,23 +427,6 @@ export const GoalSandbox: React.FC = () => {
 
         setWorldState(null); // Trigger full rebuild
     };
-
-    const activeMap = useMemo(() => {
-        if (locationMode === 'custom') return ensureMapCells(map);
-        if (selectedLocationId) {
-            const loc = allLocations.find(l => l.entityId === selectedLocationId);
-            if (loc?.map) return ensureMapCells(loc.map);
-        }
-        return ensureMapCells(map);
-    }, [locationMode, map, selectedLocationId]);
-
-    const getSelectedLocationEntity = useCallback((): LocationEntity => {
-        if (locationMode === 'preset' && selectedLocationId) {
-            const loc = allLocations.find(l => l.entityId === selectedLocationId);
-            if (loc) return loc as any;
-        }
-        return createCustomLocationEntity(activeMap) as any;
-    }, [locationMode, selectedLocationId, activeMap]);
 
     useEffect(() => {
         if (!worldState) return;
