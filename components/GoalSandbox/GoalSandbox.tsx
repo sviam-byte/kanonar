@@ -32,6 +32,10 @@ import { buildFrameMvp } from '../../lib/context/buildFrameMvp';
 import { FrameDebugPanel } from '../GoalLab/FrameDebugPanel';
 import { ScenePreset } from '../../data/presets/scenes';
 import { SCENE_PRESETS } from '../../lib/scene/presets';
+import { initTomForCharacters } from '../../lib/tom/init';
+import { assignRoles } from '../../lib/roles/assignment';
+import { constructGil } from '../../lib/gil/apply';
+import type { DyadConfigForA } from '../../lib/tom/dyad-metrics';
 
 function createCustomLocationEntity(map: LocationMap): LocationEntity {
     const cells = map.cells || [];
@@ -80,6 +84,7 @@ const dedupeAtomsById = (arr: ContextAtom[]) => {
 
 export const GoalSandbox: React.FC = () => {
     const { characters: sandboxCharacters, setDyadConfigFor } = useSandbox();
+    const [fatalError, setFatalError] = useState<string | null>(null);
     
     const allCharacters = useMemo(() => {
         const base = (getEntitiesByType(EntityType.Character) as CharacterEntity[]).concat(getEntitiesByType(EntityType.Essence) as CharacterEntity[]);
@@ -122,6 +127,21 @@ export const GoalSandbox: React.FC = () => {
     // Persistent Cast Management
     const [sceneCast, setSceneCast] = useState<Set<string>>(new Set());
 
+    // Optional per-scene dyad configs (A->B perception weights), typically from ScenePreset
+    const [runtimeDyadConfigs, setRuntimeDyadConfigs] = useState<Record<string, DyadConfigForA> | null>(null);
+
+    const persistActorPositions = useCallback(() => {
+        if (!worldState) return;
+        setActorPositions(prev => {
+            const next = { ...prev };
+            worldState.agents.forEach(a => {
+                const pos = (a as any).position;
+                if (pos) next[a.entityId] = pos;
+            });
+            return next;
+        });
+    }, [worldState]);
+
     // Ensure selectedAgent is valid
     useEffect(() => {
         if (allCharacters.length === 0) return;
@@ -133,6 +153,53 @@ export const GoalSandbox: React.FC = () => {
             setSelectedAgentId(allCharacters[0].entityId);
         }
     }, [allCharacters, selectedAgentId]);
+
+    const getActiveLocationId = useCallback(() => {
+        if (locationMode === 'preset' && selectedLocationId) return selectedLocationId;
+        return 'custom-lab-location';
+    }, [locationMode, selectedLocationId]);
+
+    const ensureCompleteInitialRelations = useCallback((agentIds: string[], base: any) => {
+        const out: any = { ...(base || {}) };
+        for (const a of agentIds) {
+            out[a] = { ...(out[a] || {}) };
+            for (const b of agentIds) {
+                if (a === b) continue;
+                out[a][b] = {
+                    trust: out[a]?.[b]?.trust ?? 0.4,
+                    bond: out[a]?.[b]?.bond ?? 0.2,
+                    authority: out[a]?.[b]?.authority ?? 0.4,
+                };
+            }
+        }
+        return out;
+    }, []);
+
+    const refreshWorldDerived = useCallback((prev: WorldState, nextAgents: AgentState[]) => {
+        const locId = getActiveLocationId();
+        const agentIds = nextAgents.map(a => a.entityId);
+
+        const agentsWithLoc = nextAgents.map(a => {
+            const pos = actorPositions[a.entityId] || (a as any).position || { x: 5, y: 5 };
+            return { ...(a as any), locationId: locId, position: pos } as AgentState;
+        });
+
+        const initialRelations = ensureCompleteInitialRelations(agentIds, (prev as any).initialRelations);
+
+        const worldBase: WorldState = {
+            ...(prev as any),
+            agents: agentsWithLoc,
+            initialRelations,
+        };
+
+        const roleMap = assignRoles(worldBase.agents, worldBase.scenario, worldBase);
+        worldBase.agents = worldBase.agents.map(a => ({ ...(a as any), effectiveRole: roleMap[a.entityId] } as AgentState));
+
+        worldBase.tom = initTomForCharacters(worldBase.agents as any, worldBase as any, runtimeDyadConfigs || undefined) as any;
+        (worldBase as any).gilParams = constructGil(worldBase.agents as any) as any;
+
+        return { ...(worldBase as any) };
+    }, [actorPositions, ensureCompleteInitialRelations, getActiveLocationId, runtimeDyadConfigs]);
 
     const participantIds = useMemo(() => {
         if (!worldState) {
@@ -153,26 +220,26 @@ export const GoalSandbox: React.FC = () => {
                 return next;
             });
             setSelectedAgentId(id);
-            if (worldState) {
-                 const char = allCharacters.find(c => c.entityId === id);
-                 if (char) {
-                    const temp = createInitialWorld(Date.now(), [char], activeScenarioId);
-                    if (temp && temp.agents[0]) {
-                        const newAgent = temp.agents[0];
-                        // Default placement logic
-                        if (actorPositions[id]) {
-                            (newAgent as any).position = actorPositions[id];
-                        } else {
-                            (newAgent as any).position = { x: 5, y: 5 };
-                        }
-                        setWorldState(prev => prev ? { ...prev, agents: [...prev.agents, newAgent] } : null);
-                    }
-                 }
-            } else {
-                 setWorldState(null);
-            }
+            persistActorPositions();
+            setWorldState(null);
         }
-    }, [worldState, allCharacters, activeScenarioId, actorPositions]);
+    }, [worldState, persistActorPositions]);
+
+    const resolveCharacterId = useCallback((rawId: string): string | null => {
+        if (!rawId) return null;
+
+        const exact = allCharacters.find(c => c.entityId === rawId);
+        if (exact) return exact.entityId;
+
+        const prefixed = `character-${rawId}`;
+        const pref = allCharacters.find(c => c.entityId === prefixed);
+        if (pref) return pref.entityId;
+
+        const loose = allCharacters.find(c =>
+            c.entityId.endsWith(rawId) || c.entityId.includes(rawId)
+        );
+        return loose ? loose.entityId : null;
+    }, [allCharacters]);
 
     // Initialize World
     useEffect(() => {
@@ -190,23 +257,49 @@ export const GoalSandbox: React.FC = () => {
                 if (w) {
                     w.groupGoalId = undefined;
                     w.locations = [getSelectedLocationEntity(), ...allLocations];
+                    const nextPositions = { ...actorPositions };
                     
                     // Placement: if no position, scatter slightly
                     w.agents.forEach((a, i) => {
                         if (actorPositions[a.entityId]) {
                             (a as any).position = actorPositions[a.entityId];
+                            nextPositions[a.entityId] = actorPositions[a.entityId];
                         } else {
                             const offsetX = (i % 3) * 2;
                             const offsetY = Math.floor(i / 3) * 2;
-                            (a as any).position = { x: 5 + offsetX, y: 5 + offsetY };
+                            const pos = { x: 5 + offsetX, y: 5 + offsetY };
+                            (a as any).position = pos;
+                            nextPositions[a.entityId] = pos;
                         }
                     });
                     
+                    const locId = getActiveLocationId();
+                    w.agents = w.agents.map(a => ({ ...(a as any), locationId: locId } as AgentState));
+
+                    const ids = w.agents.map(a => a.entityId);
+                    (w as any).initialRelations = ensureCompleteInitialRelations(ids, (w as any).initialRelations);
+
+                    const roleMap = assignRoles(w.agents as any, w.scenario as any, w as any);
+                    w.agents = w.agents.map(a => ({ ...(a as any), effectiveRole: roleMap[a.entityId] } as AgentState));
+                    w.tom = initTomForCharacters(w.agents as any, w as any, runtimeDyadConfigs || undefined) as any;
+                    (w as any).gilParams = constructGil(w.agents as any) as any;
+
+                    setActorPositions(nextPositions);
                     setWorldState(w);
                 }
             }
         }
-    }, [worldState, allCharacters, selectedAgentId, sceneCast, actorPositions, activeScenarioId]);
+    }, [worldState, allCharacters, selectedAgentId, sceneCast, actorPositions, activeScenarioId, runtimeDyadConfigs, getSelectedLocationEntity, getActiveLocationId, ensureCompleteInitialRelations]);
+
+    useEffect(() => {
+        if (!worldState) return;
+        if (!selectedAgentId) return;
+        const exists = worldState.agents.some(a => a.entityId === selectedAgentId);
+        if (!exists) {
+            const next = worldState.agents[0]?.entityId || allCharacters[0]?.entityId || '';
+            if (next) setSelectedAgentId(next);
+        }
+    }, [worldState, selectedAgentId, allCharacters]);
 
     const nearbyActors = useMemo<LocalActorRef[]>(() => {
         if (!worldState) return [];
@@ -232,30 +325,26 @@ export const GoalSandbox: React.FC = () => {
     const handleNearbyActorsChange = (newActors: LocalActorRef[]) => {
         const currentIds = new Set(worldState?.agents.map(a => a.entityId) || []);
         const addedRef = newActors.find(a => !currentIds.has(a.id));
-        
-        if (addedRef) {
-             setSceneCast(prev => new Set(prev).add(addedRef.id));
-             
-             if (worldState) {
-                 const char = allCharacters.find(c => c.entityId === addedRef.id);
-                 if (char) {
-                     const temp = createInitialWorld(Date.now(), [char], activeScenarioId);
-                     if (temp && temp.agents[0]) {
-                         const newAgent = temp.agents[0];
-                         if (actorPositions[addedRef.id]) {
-                             (newAgent as any).position = actorPositions[addedRef.id];
-                         } else {
-                             (newAgent as any).position = { x: 6, y: 6 }; // Default nearby
-                         }
-                         setWorldState(prev => prev ? {
-                             ...prev,
-                             agents: [...prev.agents, newAgent]
-                         } : null);
-                     }
-                 }
-             }
+
+        if (addedRef && worldState) {
+            const char = allCharacters.find(c => c.entityId === addedRef.id);
+            if (char) {
+                const temp = createInitialWorld(Date.now(), [char], activeScenarioId);
+                if (temp && temp.agents[0]) {
+                    const newAgent = temp.agents[0];
+                    if (actorPositions[addedRef.id]) {
+                        (newAgent as any).position = actorPositions[addedRef.id];
+                    } else {
+                        (newAgent as any).position = { x: 6, y: 6 };
+                    }
+                    setWorldState(prev => {
+                        if (!prev) return null;
+                        return refreshWorldDerived(prev, [...prev.agents, newAgent]);
+                    });
+                }
+            }
         }
-        
+
         const newIds = new Set(newActors.map(a => a.id));
         if (worldState) {
             const removedIds = worldState.agents
@@ -263,50 +352,58 @@ export const GoalSandbox: React.FC = () => {
                 .map(a => a.entityId);
                 
             if (removedIds.length > 0) {
-                 setSceneCast(prev => {
-                     const next = new Set(prev);
-                     removedIds.forEach(id => next.delete(id));
-                     return next;
+                 setWorldState(prev => {
+                     if (!prev) return null;
+                     const nextAgents = prev.agents.filter(a => !removedIds.includes(a.entityId));
+                     return refreshWorldDerived(prev, nextAgents);
                  });
-                 setWorldState(prev => prev ? {
-                     ...prev,
-                     agents: prev.agents.filter(a => !removedIds.includes(a.entityId))
-                 } : null);
             }
         }
+
+        setSceneCast(newIds);
+        persistActorPositions();
+        if (!worldState) setWorldState(null);
     };
     
     // Scene Preset Loader
     const handleLoadScene = (scene: ScenePreset) => {
-        if (scene.characters.length > 0) {
-            setSelectedAgentId(scene.characters[0]);
-            setSceneCast(new Set(scene.characters)); 
-            
-            // Apply Dyad Configs
-            if (scene.configs) {
-                Object.entries(scene.configs).forEach(([id, cfg]) => {
-                    setDyadConfigFor(id, cfg);
-                });
-            }
+        if (!scene?.characters?.length) return;
 
-            if (scene.locationId) {
-                setSelectedLocationId(scene.locationId);
-                setLocationMode('preset');
-            }
-            
-            if (scene.suggestedScenarioId) {
-                 setActiveScenarioId(scene.suggestedScenarioId);
-            }
-            
-            // Set Scene Control using the Engine Preset ID
-            const enginePreset = scene.enginePresetId || 'safe_hub';
-            setSceneControl({ presetId: enginePreset, metrics: {}, norms: {} });
-            
-            // Reset Positions
-            setActorPositions({});
+        setRuntimeDyadConfigs((scene as any).configs || null);
 
-            setWorldState(null); // Trigger full rebuild
+        const resolvedChars = scene.characters
+            .map(id => resolveCharacterId(id))
+            .filter(Boolean) as string[];
+
+        const fallbackId = allCharacters[0]?.entityId || '';
+        const nextSelected = resolvedChars[0] || resolveCharacterId(scene.characters[0]) || fallbackId;
+        const nextCast = new Set<string>(resolvedChars.length ? resolvedChars : (nextSelected ? [nextSelected] : []));
+
+        setSelectedAgentId(nextSelected);
+        setSceneCast(nextCast); 
+        
+        if (scene.configs) {
+            Object.entries(scene.configs).forEach(([id, cfg]) => {
+                const rid = resolveCharacterId(id);
+                if (rid) setDyadConfigFor(rid, cfg);
+            });
         }
+
+        if (scene.locationId) {
+            setSelectedLocationId(scene.locationId);
+            setLocationMode('preset');
+        }
+        
+        if (scene.suggestedScenarioId) {
+             setActiveScenarioId(scene.suggestedScenarioId);
+        }
+        
+        const enginePreset = scene.enginePresetId || 'safe_hub';
+        setSceneControl({ presetId: enginePreset, metrics: {}, norms: {} });
+        
+        setActorPositions({});
+
+        setWorldState(null); // Trigger full rebuild
     };
 
     const activeMap = useMemo(() => {
@@ -326,6 +423,18 @@ export const GoalSandbox: React.FC = () => {
         return createCustomLocationEntity(activeMap) as any;
     }, [locationMode, selectedLocationId, activeMap]);
 
+    useEffect(() => {
+        if (!worldState) return;
+        const locId = getActiveLocationId();
+        setWorldState(prev => {
+            if (!prev) return prev;
+            const already = prev.agents.every(a => (a as any).locationId === locId);
+            if (already) return prev;
+            const nextAgents = prev.agents.map(a => ({ ...(a as any), locationId: locId } as AgentState));
+            return { ...(prev as any), agents: nextAgents };
+        });
+    }, [getActiveLocationId, worldState]);
+
     const handleActorClick = (x: number, y: number) => {
         if (placingActorId) {
             setActorPositions(prev => ({ ...prev, [placingActorId]: { x, y } }));
@@ -340,25 +449,32 @@ export const GoalSandbox: React.FC = () => {
     };
 
     const glCtx = useMemo(() => {
-        if (!worldState) return null;
-        const agent = worldState.agents.find(a => a.entityId === selectedAgentId);
-        if (!agent) return null;
+        try {
+            if (!worldState) return null;
+            const agent = worldState.agents.find(a => a.entityId === selectedAgentId);
+            if (!agent) return null;
 
-        const activeEvents = eventRegistry.getAll().filter(e => selectedEventIds.has(e.id));
-        const loc = getSelectedLocationEntity();
+            const activeEvents = eventRegistry.getAll().filter(e => selectedEventIds.has(e.id));
+            const loc = getSelectedLocationEntity();
 
-        return buildGoalLabContext(worldState, selectedAgentId, {
-            snapshotOptions: {
-                activeEvents,
-                overrideLocation: loc,
-                manualAtoms,
-                gridMap: activeMap,
-                atomOverridesLayer, 
-                overrideEvents: injectedEvents,
-                sceneControl
-            },
-            timeOverride: worldState.tick
-        });
+            setFatalError(null);
+            return buildGoalLabContext(worldState, selectedAgentId, {
+                snapshotOptions: {
+                    activeEvents,
+                    overrideLocation: loc,
+                    manualAtoms,
+                    gridMap: activeMap,
+                    atomOverridesLayer, 
+                    overrideEvents: injectedEvents,
+                    sceneControl
+                },
+                timeOverride: worldState.tick
+            });
+        } catch (err: any) {
+            console.error(err);
+            setFatalError(err?.message || 'Unknown Goal Lab error');
+            return null;
+        }
     }, [worldState, selectedAgentId, manualAtoms, selectedEventIds, activeMap, atomOverridesLayer, injectedEvents, sceneControl, getSelectedLocationEntity]);
 
     const pipelineFrame = useMemo(() => {
@@ -460,6 +576,12 @@ export const GoalSandbox: React.FC = () => {
 
                 <div className="col-span-9 flex flex-col min-h-0 overflow-y-auto custom-scrollbar p-6 space-y-6">
                     <div className="grid grid-cols-1 gap-6">
+                        {fatalError && (
+                            <div className="bg-red-900/40 border border-red-500/60 text-red-200 p-4 rounded">
+                                <div className="font-bold text-sm mb-1">Goal Lab error</div>
+                                <div className="text-xs font-mono whitespace-pre-wrap opacity-80">{fatalError}</div>
+                            </div>
+                        )}
                         <GoalLabResults 
                             context={snapshot} 
                             goalScores={goals} 
