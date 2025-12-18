@@ -107,6 +107,7 @@ export const GoalSandbox: React.FC = () => {
         ensureMapCells({ id: 'sandbox', width: 12, height: 12, cells: [], defaultWalkable: true, defaultDanger: 0, defaultCover: 0 })
     );
     const [actorPositions, setActorPositions] = useState<Record<string, {x: number, y: number}>>({});
+    const [nearbyActorsUi, setNearbyActorsUi] = useState<LocalActorRef[]>([]);
     
     const [locationMode, setLocationMode] = useState<'preset' | 'custom'>('preset');
     const [selectedLocationId, setSelectedLocationId] = useState<string>('');
@@ -323,28 +324,36 @@ export const GoalSandbox: React.FC = () => {
         }
     }, [worldState, selectedAgentId, allCharacters]);
 
-    const nearbyActors = useMemo<LocalActorRef[]>(() => {
-        if (!worldState) return [];
-        return worldState.agents
+    useEffect(() => {
+        if (!worldState) return;
+
+        const me = worldState.agents.find(a => a.entityId === selectedAgentId) as any;
+        const myPos = me?.position || { x: 0, y: 0 };
+
+        const next = worldState.agents
             .filter(a => a.entityId !== selectedAgentId)
             .map(a => {
-                // Calculate actual distance
-                const myPos = (worldState.agents.find(me => me.entityId === selectedAgentId) as any)?.position || {x:0,y:0};
-                const otherPos = (a as any).position || {x:0,y:0};
-                const dist = Math.sqrt(Math.pow(myPos.x - otherPos.x, 2) + Math.pow(myPos.y - otherPos.y, 2));
+                const otherPos = (a as any).position || { x: 0, y: 0 };
+                const dist = Math.hypot(myPos.x - otherPos.x, myPos.y - otherPos.y);
 
                 return {
                     id: a.entityId,
                     label: a.title,
                     kind: 'neutral',
-                    role: a.effectiveRole || 'observer',
+                    role: (a as any).effectiveRole || 'observer',
                     distance: dist,
-                    threatLevel: 0
-                };
+                    threatLevel: 0,
+                } as LocalActorRef;
             });
+
+        setNearbyActorsUi(next);
     }, [worldState, selectedAgentId]);
 
+    const nearbyActors = nearbyActorsUi;
+
     const handleNearbyActorsChange = (newActors: LocalActorRef[]) => {
+        setNearbyActorsUi(newActors);
+
         const currentIds = new Set(worldState?.agents.map(a => a.entityId) || []);
         const addedRef = newActors.find(a => !currentIds.has(a.id));
 
@@ -403,6 +412,21 @@ export const GoalSandbox: React.FC = () => {
 
         setSelectedAgentId(nextSelected);
         setSceneCast(nextCast); 
+        setNearbyActorsUi(
+          Array.from(nextCast)
+            .filter(id => id !== nextSelected)
+            .map(id => {
+              const c = allCharacters.find(x => x.entityId === id);
+              return {
+                id,
+                label: c?.title || id,
+                kind: 'neutral',
+                role: c?.roles?.global?.[0] || 'observer',
+                distance: 10,
+                threatLevel: 0,
+              } as LocalActorRef;
+            })
+        );
         
         if (scene.configs) {
             Object.entries(scene.configs).forEach(([id, cfg]) => {
