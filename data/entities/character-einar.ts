@@ -1,0 +1,270 @@
+
+import { CharacterEntity, EntityType, Branch } from '../../types';
+
+const data: CharacterEntity = {
+    entityId: "character-einar",
+    type: EntityType.Character,
+    title: "Эйнар",
+    subtitle: "Эмиссар, Космонавт",
+    authors: [{ name: "auto_extract", role: "Source" }],
+    year: "432",
+    versionTags: [Branch.Current],
+    status: "published",
+    tags: ["эмиссар", "дипломат", "исследователь"],
+    description: "Исследователь и дипломат, специализирующийся на внешних контактах и 'дальних' экспедициях. Обладает высокой пластичностью и стремлением к истине, сохраняя баланс между автономией и служением.",
+    relations: [],
+    media: [],
+    evidenceIds: [],
+    changelog: [{ version: "1.0", date: "432 OВ", author: "System", summary: "Initial record creation." }],
+    roles: {
+        global: ["advisor", "operative"]
+    },
+    vector_base: {
+        // A) Values
+        A_Causality_Sanctity: 0.82,
+        A_Memory_Fidelity: 0.78,
+        A_Reversibility: 0.65,
+        A_Legitimacy_Procedure: 0.70,
+        A_Safety_Care: 0.55,
+        A_Liberty_Autonomy: 0.80,
+        A_Justice_Fairness: 0.72,
+        A_Power_Sovereignty: 0.45,
+        A_Knowledge_Truth: 0.90,
+        A_Tradition_Continuity: 0.40,
+        A_Transparency_Secrecy: 0.75,
+        A_Aesthetic_Meaning: 0.80,
+        
+        // B) Cognitive
+        B_discount_rate: 0.35,
+        B_exploration_rate: 0.82,
+        B_tolerance_ambiguity: 0.75,
+        B_goal_coherence: 0.70,
+        B_cooldown_discipline: 0.55,
+        B_decision_temperature: 0.60,
+
+        // C) Social
+        C_reciprocity_index: 0.70,
+        C_betrayal_cost: 0.80,
+        C_reputation_sensitivity: 0.60,
+        C_dominance_empathy: 0.35,
+        C_coalition_loyalty: 0.65,
+
+        // D) Body/Neuro
+        D_fine_motor: 0.60,
+        D_stamina_reserve: 0.65,
+        D_pain_tolerance: 0.55,
+        D_HPA_reactivity: 0.70,
+        D_sleep_resilience: 0.55,
+
+        // E) Content
+        E_KB_stem: 0.55,
+        E_KB_civic: 0.70,
+        E_KB_topos: 0.75,
+        E_Model_calibration: 0.78,
+        E_Skill_repair_topology: 0.40,
+        E_Skill_causal_surgery: 0.45,
+        E_Skill_chronicle_verify: 0.70,
+        E_Skill_diplomacy_negotiation: 0.80,
+        E_Skill_ops_fieldcraft: 0.45,
+        E_Skill_opsec_hacking: 0.50,
+        E_Epi_volume: 0.70,
+        E_Epi_recency: 0.80,
+        E_Epi_schema_strength: 0.60,
+
+        // F) Dynamics
+        F_Plasticity: 0.78,
+        F_Value_update_rate: 0.55,
+        F_Extinction_rate: 0.50,
+        F_Trauma_plasticity: 0.80,
+        F_Skill_learning_rate: 0.75,
+        F_Forgetting_noise: 0.35,
+
+        // G) Meta
+        G_Self_concept_strength: 0.65,
+        G_Identity_rigidity: 0.50,
+        G_Self_consistency_drive: 0.80,
+        G_Metacog_accuracy: 0.72,
+        G_Narrative_agency: 0.82,
+    },
+    identity: {
+        version_gates: [Branch.Current],
+        hard_caps: [], 
+        param_locked: [], 
+        locks_source: [],
+        oaths: [], 
+        sigils: {}, 
+        chain_of_command: [],
+        clearance_level: 4, // approx 0.75 mapped to 0-5
+        consent_ledger: [], 
+        identity_chain_of_custody: [],
+        sacred_set: [],
+    },
+    cognitive: {
+        goals: [], 
+        core_values: ['истина', 'автономия'], 
+        utility_shape: { risk_aversion: 0.4, discount_rate: 0.35 }, // Derived from exploration/discount
+        policy: { kind: "rule", params: { exploration_rate: 0.82, temperature: 0.6 } }, 
+        planning_horizon: 20,
+        fallback_policy: "diplomacy", 
+        belief_state: {},
+        observation_model: { noise_var: 0.40 }, 
+        report_model: { bias: 0, noise_var: 0.35 },
+        affective_module: { anger: 10, fear: 20, hope: 80 },
+        cognitive_biases: [], 
+        counterfactual_skill: 75,
+        protocol_fidelity: 70, 
+        audit_honesty: 80,
+        deception_propensity: 30,
+        tolerance_ambiguity: 75,
+        goal_coherence: 70,
+        shame_guilt_sensitivity: 40,
+        compliance_index: 50,
+        oversight_pressure: 40,
+        cooldown_discipline: 55,
+        salience_bias: 50,
+        w_goals: {},
+    },
+    competencies: {
+        competence_core: 75, 
+        decision_quality: 72, 
+        resilience: 65,
+        causal_sensitivity: 70, 
+        topo_affinity: 55, 
+        mandate_literacy: 70,
+        specializations: ['дипломатия', 'исследование'], 
+        topo_windows: [],
+        OPSEC_literacy: 50,
+        deception_skill: 50,
+    },
+    state: {
+        will: 65, // Derived from G_Self_consistency
+        loyalty: 70, 
+        dark_exposure: 20,
+        drift_state: 10, 
+        burnout_risk: 0.3,
+        backlog_load: 40,
+        overload_sensitivity: 50,
+    },
+    memory: {
+        attention: { E: 120, A_star: 140 }, // Scaled from 0.6/0.7 * 200
+        visibility_zone: 60, 
+        memory_write_rights: 3, 
+        iris_corridor_width: 60,
+        witness_count: 50, 
+        mu_M_branch: 0.6, 
+        apophenia_debt: 10,
+        visibility_lag_days: 1,
+        consolidation_rate: 70,
+        retrieval_noise: 0.35,
+    },
+    social: {
+        audience_reputation: [{ segment: 'general', score: 60 }],
+        dynamic_ties: {}, coalitions: [], commitments: [],
+        dag_node_id: 'character-einar', edges_out: [],
+        causal_liability_share: 0.1,
+        co_sign_latency: [],
+        reciprocity_index: 70,
+        betrayal_cost: 80,
+        reputation_sensitivity: 60,
+    },
+    resources: {
+        endowments: { attention_hours: 60, tokens: 800 },
+        time_budget_h: 100, // 0.60 * 168 approx
+        inventory: [], 
+        mandate_power: 40,
+        co_sign_network: [],
+        risk_budget: { cvar: 65, infra: 40, dark: 20, apophenia: 30 },
+        mandate_cooldowns: [],
+        risk_budget_cvar: 0.65,
+        infra_budget: 0.40,
+        dark_quota: 0.20,
+    },
+    sector: { sector_id: 'sector-diplomacy', L_star_personal: 20 },
+    repro: { seed_id: 'character-einar-seed' },
+    body: {
+        sex_phenotype: 'typical_male',
+        structural: {
+            height_cm: 176, 
+            mass_kg: 70,
+            shoulder_width_cm: 42, pelvis_width_cm: 36,
+            limb_lengths: { arm_cm: 62, leg_cm: 82 },
+            hand_span_cm: 19, foot_length_cm: 26,
+            center_of_mass: { height_rel: 0.55, depth_rel: 0.5 },
+            joint_laxity: 0.5
+        },
+        functional: {
+            strength_upper: 0.55, 
+            strength_lower: 0.65, 
+            explosive_power: 0.55, 
+            aerobic_capacity: 0.65,
+            recovery_speed: 0.6, 
+            strength_endurance_profile: 0.6, 
+            injury_risk: { knees: 0.5, ankles: 0.5, lower_back: 0.5, shoulders: 0.5 }
+        },
+        adipose: { body_fat_percent: 15, metabolic_reserve: 0.55, fat_distribution: 'mixed' },
+        hormonal: {
+            has_cyclic_hormones: false, androgen_baseline: 0.6, androgen_circadian_amplitude: 0.15,
+            stress_sensitivity: 0.6, sleep_sensitivity: 0.6
+        },
+        reproductive: { can_be_pregnant: false, is_pregnant: false, fatigue_penalty: 0, heart_rate_increase: 0, injury_risk_increase: 0, emotional_lability: 0 },
+        constitution: {
+            height_cm: 176, 
+            mass_kg: 70,
+            strength_max: 0.55, 
+            endurance_max: 0.65, 
+            dexterity: 0.60,
+            vision_acuity: 0.80, 
+            hearing_db: 0,
+            pain_tolerance: 0.55, 
+            cold_heat_tolerance: 0.50,
+        },
+        capacity: { fine_motor: 0.60, VO2max: 65 },
+        reserves: {
+            energy_store_kJ: 1200, // 0.6 * 2000
+            hydration: 0.70, 
+            glycemia_mmol: 5.0, 
+            O2_margin: 0.55,
+            sleep_homeostat_S: 0.40, 
+            circadian_phase_h: 10, 
+            sleep_debt_h: 1.5, 
+            immune_tone: 0.60,
+        },
+        acute: {
+            hp: 90, 
+            injuries_severity: 10, 
+            pain_now: 10, 
+            temperature_c: 36.8, 
+            tremor: 0.10, 
+            reaction_time_ms: 250, // 0.55 inv scaled
+            fatigue: 35, 
+            stress: 45, 
+            moral_injury: 20,
+        },
+        regulation: { HPA_axis: 0.65, arousal: 0.55 },
+    },
+    tom: { self: null, perceived: {} },
+    relationships: {},
+    goal_graph: { nodes: [], edges: [] },
+    authority: {
+      signature_weight: { 
+          causal: 0.5, 
+          topo: 0.5, 
+          civic: 0.60, 
+          infra: 0.40, 
+          memory: 0.5, 
+          ethics: 0.5, 
+          markets: 0.5 
+      },
+      co_sign_threshold: 1, // 0.60 mapped to threshold
+    },
+    evidence: { witness_pull: 0.55, evidence_quality: 0.70 },
+    observation: { noise: 0.40, report_noise: 0.35 },
+    context: { 
+        age: 28,
+        faction: "independent"
+    },
+    compute: { compute_budget: 75, decision_deadline_s: 1, tom_depth: 3 },
+    historicalEvents: [],
+};
+
+export default data;
