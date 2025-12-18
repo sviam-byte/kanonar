@@ -352,48 +352,18 @@ export const GoalSandbox: React.FC = () => {
     const nearbyActors = nearbyActorsUi;
 
     const handleNearbyActorsChange = (newActors: LocalActorRef[]) => {
+        // 1) UI source of truth
         setNearbyActorsUi(newActors);
 
-        const currentIds = new Set(worldState?.agents.map(a => a.entityId) || []);
-        const addedRef = newActors.find(a => !currentIds.has(a.id));
-
-        if (addedRef && worldState) {
-            const char = allCharacters.find(c => c.entityId === addedRef.id);
-            if (char) {
-                const temp = createInitialWorld(Date.now(), [char], activeScenarioId);
-                if (temp && temp.agents[0]) {
-                    const newAgent = temp.agents[0];
-                    if (actorPositions[addedRef.id]) {
-                        (newAgent as any).position = actorPositions[addedRef.id];
-                    } else {
-                        (newAgent as any).position = { x: 6, y: 6 };
-                    }
-                    setWorldState(prev => {
-                        if (!prev) return null;
-                        return refreshWorldDerived(prev, [...prev.agents, newAgent]);
-                    });
-                }
-            }
-        }
-
+        // 2) Update cast (excluding active)
         const newIds = new Set(newActors.map(a => a.id));
-        if (worldState) {
-            const removedIds = worldState.agents
-                .filter(a => a.entityId !== selectedAgentId && !newIds.has(a.entityId))
-                .map(a => a.entityId);
-                
-            if (removedIds.length > 0) {
-                 setWorldState(prev => {
-                     if (!prev) return null;
-                     const nextAgents = prev.agents.filter(a => !removedIds.includes(a.entityId));
-                     return refreshWorldDerived(prev, nextAgents);
-                 });
-            }
-        }
-
         setSceneCast(newIds);
+
+        // 3) Persist positions
         persistActorPositions();
-        if (!worldState) setWorldState(null);
+
+        // 4) Always rebuild world from canonical cast + selected agent
+        setWorldState(null);
     };
     
     // Scene Preset Loader

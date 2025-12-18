@@ -138,7 +138,9 @@ export const GoalLabControls: React.FC<Props> = ({
       };
       
       // We append to nearbyActors because that triggers the injection logic in parent
-      onNearbyActorsChange([...nearbyActors, newActor]);
+      onNearbyActorsChange(
+        nearbyActors.some(a => a.id === newActor.id) ? nearbyActors : [...nearbyActors, newActor]
+      );
       setSelectedActorToAdd('');
   };
   
