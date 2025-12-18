@@ -1,5 +1,5 @@
 
-import { AgentState, WorldState, CharacterGoalId, GoalEcology, GoalState, LifeGoalComponents, GoalId } from '../../types';
+import { AgentState, WorldState, CharacterGoalId, GoalEcology, GoalState, LifeGoalComponents, GoalId } from '../types';
 import { PlanningGoalDef, GoalDomainId, SituationContext } from './types-goals';
 import { buildLifeDomainWeights, LIFE_GOAL_DEFS } from './life-domains';
 import { aggregateDomainContextWeights, buildSituationContext, CONTEXT_PROFILES } from './context-goals';
