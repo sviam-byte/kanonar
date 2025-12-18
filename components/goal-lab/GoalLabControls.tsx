@@ -49,6 +49,9 @@ interface Props {
   
   // New: List of all participant IDs in the current scene/world
   participantIds?: string[];
+  // NEW: direct scene participant control (preferred over nearbyActors)
+  onAddParticipant?: (id: string) => void;
+  onRemoveParticipant?: (id: string) => void;
   
   // Scene Control Props
   sceneControl?: any;
@@ -70,6 +73,8 @@ export const GoalLabControls: React.FC<Props> = ({
   onRunTicks,
   world, onWorldChange,
   participantIds,
+  onAddParticipant,
+  onRemoveParticipant,
   sceneControl, onSceneControlChange, scenePresets
 }) => {
   
@@ -125,6 +130,15 @@ export const GoalLabControls: React.FC<Props> = ({
 
   const handleAddCharacter = () => {
       if (!selectedActorToAdd) return;
+
+      // Preferred path: parent controls scene membership directly
+      if (onAddParticipant) {
+          onAddParticipant(selectedActorToAdd);
+          setSelectedActorToAdd('');
+          return;
+      }
+
+      // Fallback: old behavior via nearbyActors
       const char = allCharacters.find(c => c.entityId === selectedActorToAdd);
       if (!char) return;
 
@@ -145,6 +159,10 @@ export const GoalLabControls: React.FC<Props> = ({
   };
   
   const handleRemoveCharacter = (id: string) => {
+      if (onRemoveParticipant) {
+          onRemoveParticipant(id);
+          return;
+      }
       onNearbyActorsChange(nearbyActors.filter(a => a.id !== id));
   };
   
@@ -179,7 +197,6 @@ export const GoalLabControls: React.FC<Props> = ({
       if (participantIds) {
           // If we have world state participants, show them.
           return participantIds
-              .filter(id => id !== selectedAgentId)
               .map(id => {
                   const char = allCharacters.find(c => c.entityId === id);
                   return { id, label: char?.title || id };
@@ -190,10 +207,14 @@ export const GoalLabControls: React.FC<Props> = ({
 
   // Main agent dropdown: Show everyone available in library or restricted to current scene
   const activeAgentOptions = React.useMemo(() => {
-      return allCharacters.map(c => ({
-          ...c,
-          inScene: participantIds?.includes(c.entityId) ?? false
-      })).sort((a,b) => (b.inScene === a.inScene) ? 0 : b.inScene ? 1 : -1);
+      if (participantIds && participantIds.length > 0) {
+          const set = new Set(participantIds);
+          return allCharacters
+              .filter(c => set.has(c.entityId))
+              .map(c => ({ ...c, inScene: true }));
+      }
+      // fallback: if no participantIds provided, keep old behavior
+      return allCharacters.map(c => ({ ...c, inScene: false }));
   }, [allCharacters, participantIds]);
   
   // Add Character Dropdown: exclude those already in scene
@@ -525,16 +546,27 @@ export const GoalLabControls: React.FC<Props> = ({
                     ADD
                 </button>
             </div>
+            <div className="text-[9px] text-canon-text-light mt-1">
+              participantIds: {(participantIds?.length ?? 0)} | nearbyActors: {nearbyActors.length}
+            </div>
             
             <div className="space-y-1">
                  {activeSceneActors.map((actor) => (
-                     <div key={actor.id} className="flex items-center gap-2 bg-canon-bg border border-canon-border/30 p-1 rounded text-[10px]">
-                         <button 
+                     <div
+                       key={actor.id}
+                       className={`flex items-center gap-2 p-1 rounded text-[10px] border ${
+                         actor.id === selectedAgentId
+                           ? 'bg-canon-accent/15 border-canon-accent'
+                           : 'bg-canon-bg border-canon-border/30'
+                       }`}
+                     >
+                         <button
                            className="flex-1 truncate text-left hover:underline"
                            onClick={() => onSelectAgent(actor.id)}
                            title="Switch active agent"
                          >
                            {actor.label}
+                           {actor.id === selectedAgentId ? '  •  FOCUS' : ''}
                          </button>
                          <button 
                             type="button"
