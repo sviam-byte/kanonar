@@ -1,0 +1,467 @@
+
+import React, { useState } from 'react';
+import { ContextSnapshot, ContextualGoalScore, ContextAtom, TemporalContextConfig, ContextualGoalContribution } from '../../lib/context/v2/types';
+import { GOAL_DEFS } from '../../lib/goals/space'; 
+import { AffectState } from '../../types';
+import { AgentContextFrame, TomRelationView, TomPhysicalOther } from '../../lib/context/frame/types';
+import { Tabs } from '../Tabs';
+import { ContextInspector } from '../ContextInspector';
+import { LocationGoalsDebugPanel } from '../goals/LocationGoalsDebugPanel';
+import { TomGoalsDebugPanel } from '../goals/TomGoalsDebugPanel';
+import { AffectGrid, SpecificEmotionBar } from '../visuals/AffectGrid';
+import { TomEntry } from '../../lib/tom/state';
+import type { ContextualMindReport } from '../../lib/tom/contextual/types';
+import { ContextMindPanel } from './ContextMindPanel';
+import { AccessPanel } from './AccessPanel';
+import { PossibilitiesPanel } from './PossibilitiesPanel';
+import { DiffPanel } from './DiffPanel';
+import { AtomDiff } from '../../lib/snapshot/diffAtoms';
+import { DecisionPanel } from './DecisionPanel';
+import { AtomsPanel } from './AtomsPanel';
+import { ThreatPanel } from './ThreatPanel';
+import { ToMPanel } from './ToMPanel';
+import { CoveragePanel } from './CoveragePanel';
+import { GoalLabSnapshotV1 } from '../../lib/goal-lab/snapshotTypes';
+
+interface Props {
+  context: ContextSnapshot | null;
+  frame?: AgentContextFrame | null;
+  goalScores: ContextualGoalScore[];
+  situation?: any | null;
+  goalPreview?: {
+    goals: Array<{ id: string; label: string; priority: number; activation: number; base_ctx: number }>;
+    debug: { temperature: number; d_mix: Record<string, number> };
+  } | null;
+  actorLabels?: Record<string, string>;
+  affect?: AffectState | null;
+  temporal?: TemporalContextConfig;
+  locationScores?: any[];
+  tomScores?: any[];
+  tom?: Record<string, TomEntry>;
+  contextualMind?: ContextualMindReport | null;
+  atomDiff?: AtomDiff[];
+  snapshotV1?: GoalLabSnapshotV1 | null;
+}
+
+interface AtomStyle {
+    label: string;
+    bg: string;
+    border: string;
+    text: string;
+    icon: string;
+}
+
+const ATOM_CONFIG: Record<string, AtomStyle> = {
+    'physical_risk': { label: 'Физ. угроза', bg: 'bg-red-900/40', border: 'border-red-500/50', text: 'text-red-300', icon: '⚔️' },
+    'threat': { label: 'Угроза', bg: 'bg-red-900/40', border: 'border-red-500/50', text: 'text-red-300', icon: '⚠️' },
+    'threat_local': { label: 'Лок. угроза', bg: 'bg-red-900/40', border: 'border-red-500/50', text: 'text-red-300', icon: '⚔️' },
+    'proximity_enemy': { label: 'Враг рядом', bg: 'bg-orange-900/40', border: 'border-orange-500/50', text: 'text-orange-300', icon: '👹' },
+    'belief_target_hostile': { label: 'Враждебность', bg: 'bg-orange-900/30', border: 'border-orange-500/30', text: 'text-orange-200', icon: '💢' },
+    'social_support': { label: 'Поддержка', bg: 'bg-green-900/40', border: 'border-green-500/50', text: 'text-green-300', icon: '🤝' },
+    'support_available': { label: 'Есть помощь', bg: 'bg-green-900/40', border: 'border-green-500/50', text: 'text-green-300', icon: '🚑' },
+    'proximity_friend': { label: 'Друг рядом', bg: 'bg-emerald-900/40', border: 'border-emerald-500/50', text: 'text-emerald-300', icon: '🛡️' },
+    'care_need': { label: 'Нужна помощь', bg: 'bg-teal-900/40', border: 'border-teal-500/50', text: 'text-teal-300', icon: '🆘' },
+    'intimacy': { label: 'Близость', bg: 'bg-pink-900/40', border: 'border-pink-500/50', text: 'text-pink-300', icon: '❤️' },
+    'authority_presence': { label: 'Власть', bg: 'bg-purple-900/40', border: 'border-purple-500/50', text: 'text-purple-300', icon: '👑' },
+    'norm_pressure': { label: 'Давление норм', bg: 'bg-indigo-900/40', border: 'border-indigo-500/50', text: 'text-indigo-300', icon: '⚖️' },
+    'low_visibility_zone': { label: 'Скрытность', bg: 'bg-gray-800', border: 'border-gray-500', text: 'text-gray-300', icon: '🌫️' },
+    'crowding_pressure': { label: 'Толкучка', bg: 'bg-yellow-900/40', border: 'border-yellow-500/50', text: 'text-yellow-300', icon: '👥' },
+    'safe_zone_hint': { label: 'Безопасно', bg: 'bg-blue-900/40', border: 'border-blue-500/50', text: 'text-blue-300', icon: '🏰' },
+    'body_ok': { label: 'Тело OK', bg: 'bg-green-900/20', border: 'border-green-500/30', text: 'text-green-300', icon: '💪' },
+    'body_wounded': { label: 'Ранен', bg: 'bg-red-900/40', border: 'border-red-500/50', text: 'text-red-300', icon: '🩸' },
+    'self_pain': { label: 'Боль', bg: 'bg-red-900/30', border: 'border-red-500/40', text: 'text-red-300', icon: '⚡' },
+    'time_pressure': { label: 'Цейтнот', bg: 'bg-amber-900/40', border: 'border-amber-500/50', text: 'text-amber-300', icon: '⏳' },
+    'social_visibility': { label: 'На виду', bg: 'bg-cyan-900/40', border: 'border-cyan-500/50', text: 'text-cyan-300', icon: '👀' },
+    'default': { label: 'Атом', bg: 'bg-canon-bg', border: 'border-canon-border', text: 'text-canon-text-light', icon: '🔹' }
+};
+
+function getAtomStyle(kind: string): AtomStyle {
+    return ATOM_CONFIG[kind] || ATOM_CONFIG['default'];
+}
+
+function getGoalLabel(goalId: string): string {
+    const def = GOAL_DEFS[goalId as keyof typeof GOAL_DEFS];
+    return def?.label_ru || goalId;
+}
+
+export const ValueBadge: React.FC<{ label: string, value: number, color?: string }> = ({ label, value, color = "text-canon-text" }) => (
+    <div className="flex flex-col bg-canon-bg border border-canon-border/40 rounded p-2 text-center min-w-[70px]">
+        <span className="text-[10px] text-canon-text-light uppercase tracking-wider mb-1">{label}</span>
+        <div className="relative h-1.5 w-full bg-canon-bg-light rounded-full overflow-hidden mb-1">
+             <div className={`absolute top-0 left-0 h-full ${color.replace('text-', 'bg-')}`} style={{ width: `${Math.min(100, value * 100)}%` }}></div>
+        </div>
+        <span className={`font-mono font-bold text-sm ${color}`}>{value.toFixed(2)}</span>
+    </div>
+);
+
+const AtomBadge: React.FC<{ atom: ContextAtom }> = ({ atom }) => {
+    const style = getAtomStyle(atom.kind);
+    return (
+        <div className={`flex-shrink-0 flex items-center gap-2 px-2 py-1.5 rounded border ${style.bg} ${style.border} ${style.text} text-xs transition-transform hover:scale-105 select-none`} title={atom.id}>
+            <span className="text-sm">{style.icon}</span>
+            <div className="flex flex-col leading-none">
+                <span className="font-bold whitespace-nowrap">{atom.label || style.label}</span>
+                <span className="text-[9px] opacity-70 font-mono mt-0.5">
+                    {(atom.magnitude ?? 0).toFixed(2)} • {atom.source}
+                </span>
+            </div>
+        </div>
+    )
+}
+
+export const ContextRibbon: React.FC<{ atoms: ContextAtom[] }> = ({ atoms }) => {
+    if (atoms.length === 0) return <div className="p-4 text-center text-xs text-canon-text-light italic bg-canon-bg-light/30 rounded border border-canon-border/30">Контекст чист. Нет активных факторов.</div>;
+    
+    // Sort atoms by magnitude descending
+    const sorted = [...atoms].sort((a,b) => (b.magnitude ?? 0) - (a.magnitude ?? 0));
+
+    return (
+        <div className="w-full bg-black/20 border-y border-canon-border/30 p-2 overflow-x-auto custom-scrollbar">
+            <div className="flex gap-2">
+                {sorted.map((atom) => (
+                    <AtomBadge key={atom.id} atom={atom} />
+                ))}
+            </div>
+        </div>
+    );
+};
+
+// ... AnalysisView, GoalRow, EcologyView, ToMEntityCard helper components ...
+
+const ContributionRow: React.FC<{ contrib: ContextualGoalContribution }> = ({ contrib }) => {
+    const style = getAtomStyle(contrib.atomKind || 'default');
+    
+    return (
+        <div className="flex justify-between items-center text-xs bg-black/20 p-2 rounded hover:bg-white/5 border border-transparent hover:border-canon-border/30 transition-colors">
+            <div className="flex items-center gap-2 overflow-hidden">
+                {/* Visual Indicator of Source */}
+                {contrib.atomKind ? (
+                     <div className={`w-1.5 h-6 rounded-full ${style.bg.replace('/40', '')}`} title={contrib.atomKind}></div>
+                ) : (
+                     <div className="w-1.5 h-6 rounded-full bg-gray-600"></div>
+                )}
+                
+                <div className="flex flex-col min-w-0">
+                    <span className="font-medium text-canon-text truncate" title={contrib.explanation}>
+                        {contrib.explanation || contrib.source}
+                    </span>
+                    {contrib.atomLabel && (
+                        <span className="text-[9px] text-canon-text-light/70 truncate font-mono">
+                           {contrib.atomLabel} {contrib.formula ? `• ${contrib.formula}` : ''}
+                        </span>
+                    )}
+                    {!contrib.atomLabel && (
+                         <span className="text-[9px] text-canon-text-light/70 truncate font-mono">
+                           {contrib.source}
+                        </span>
+                    )}
+                </div>
+            </div>
+            
+            <span className={`font-mono font-bold whitespace-nowrap ml-2 ${contrib.value > 0 ? 'text-green-400' : 'text-red-400'}`}>
+                {contrib.value > 0 ? '+' : ''}{contrib.value.toFixed(2)}
+            </span>
+        </div>
+    );
+}
+
+export const AnalysisView: React.FC<{ score: ContextualGoalScore }> = ({ score }) => {
+    const groups = {
+        'Внешние Факторы (Атомы)': score.contributions.filter(c => c.source !== 'life'),
+        'Внутренние (Личность)': score.contributions.filter(c => c.source === 'life')
+    };
+
+    return (
+        <div className="absolute inset-0 overflow-y-auto custom-scrollbar p-4 space-y-4 pb-20">
+            <div className="flex-shrink-0 p-4 bg-canon-bg border border-canon-border rounded mb-4">
+                 <div className="flex justify-between items-start">
+                    <div>
+                        <h3 className="text-xl font-bold text-canon-text">{getGoalLabel(score.goalId)}</h3>
+                        <div className="text-xs text-canon-text-light font-mono mt-1">{score.goalId}</div>
+                    </div>
+                    <div className="text-right">
+                        <div className="text-2xl font-mono font-bold text-canon-accent">{score.totalLogit.toFixed(2)}</div>
+                        <div className="text-[10px] uppercase text-canon-text-light tracking-wider">Total Logit</div>
+                    </div>
+                </div>
+            </div>
+
+            <div className="space-y-6">
+                {groups['Внешние Факторы (Атомы)'].length > 0 && (
+                    <div>
+                        <h5 className="text-[10px] font-bold text-canon-text-light uppercase mb-2 px-1">Контекст и Окружение</h5>
+                        <div className="space-y-1">
+                            {groups['Внешние Факторы (Атомы)'].sort((a,b) => Math.abs(b.value) - Math.abs(a.value)).map((c, i) => (
+                                <ContributionRow key={i} contrib={c} />
+                            ))}
+                        </div>
+                    </div>
+                )}
+                
+                {groups['Внутренние (Личность)'].length > 0 && (
+                     <div>
+                        <h5 className="text-[10px] font-bold text-canon-text-light uppercase mb-2 px-1 border-t border-canon-border/20 pt-4">Личность и Драйвы</h5>
+                        <div className="space-y-1">
+                            {groups['Внутренние (Личность)'].sort((a,b) => Math.abs(b.value) - Math.abs(a.value)).map((c, i) => (
+                                <ContributionRow key={i} contrib={c} />
+                            ))}
+                        </div>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+};
+
+const GoalRow: React.FC<{ 
+    score: ContextualGoalScore; 
+    onSelect: () => void; 
+    isSelected: boolean;
+}> = ({ score, onSelect, isSelected }) => {
+    const label = getGoalLabel(score.goalId);
+    
+    return (
+        <div 
+            onClick={onSelect}
+            className={`
+                group cursor-pointer rounded-lg border p-2.5 mb-2 transition-all relative overflow-hidden
+                ${isSelected 
+                    ? 'bg-canon-bg-light border-canon-accent shadow-md' 
+                    : 'bg-canon-bg border-canon-border/40 hover:border-canon-border hover:bg-canon-bg-light/50'
+                }
+            `}
+        >
+             {/* Progress Bar Background */}
+             <div className="absolute bottom-0 left-0 h-1 bg-canon-accent/20 transition-all duration-500" style={{ width: `${score.probability * 100}%` }}></div>
+             
+             <div className="flex justify-between items-center relative z-10">
+                <span className={`text-xs font-bold truncate ${isSelected ? 'text-canon-text' : 'text-canon-text/80'}`}>{label}</span>
+                <span className={`font-mono text-xs font-bold ${isSelected ? 'text-canon-accent' : 'text-canon-text-light'}`}>
+                    {(score.probability * 100).toFixed(0)}%
+                </span>
+             </div>
+             
+             {/* Key Contributors Dots */}
+             <div className="flex gap-1 mt-1.5 h-1.5">
+                 {score.contributions.filter(c => c.value > 0.5).slice(0, 5).map((c, i) => {
+                      const style = getAtomStyle(c.atomKind || 'default');
+                      return <div key={i} className={`w-1.5 h-1.5 rounded-full ${style.bg.replace('/40', '')}`} title={c.explanation} />
+                 })}
+             </div>
+        </div>
+    );
+}
+
+export const EcologyView: React.FC<{ goals: ContextualGoalScore[], onSelect: (id: string) => void, selectedId: string | null }> = ({ goals, onSelect, selectedId }) => {
+    const activeGoals = goals.filter(g => g.probability > 0.05).sort((a,b) => b.probability - a.probability);
+    const latentGoals = goals.filter(g => g.probability <= 0.05 && g.probability > 0.01).sort((a,b) => b.probability - a.probability);
+    
+    return (
+        <div className="p-3 space-y-4 pb-12">
+             <div>
+                <h4 className="text-[10px] font-bold text-canon-green uppercase mb-2 px-1">Execute ({activeGoals.length})</h4>
+                {activeGoals.map(g => (
+                    <GoalRow key={g.goalId + (g.targetAgentId||'')} score={g} onSelect={() => onSelect(g.goalId)} isSelected={selectedId === g.goalId} />
+                ))}
+                {activeGoals.length === 0 && <div className="text-xs text-canon-text-light italic px-2">No active goals.</div>}
+             </div>
+             <div>
+                <h4 className="text-[10px] font-bold text-yellow-400 uppercase mb-2 px-1 border-t border-canon-border/20 pt-2">Latent / Queue ({latentGoals.length})</h4>
+                {latentGoals.map(g => (
+                    <GoalRow key={g.goalId + (g.targetAgentId||'')} score={g} onSelect={() => onSelect(g.goalId)} isSelected={selectedId === g.goalId} />
+                ))}
+             </div>
+        </div>
+    )
+}
+
+const ToMEntityCard: React.FC<{ relation: TomRelationView, body?: TomPhysicalOther }> = ({ relation, body }) => {
+    const name = relation.targetId.split('-')[1] || relation.targetId;
+    let stanceColor = 'border-canon-border/30';
+    if (relation.trust > 0.7) { stanceColor = 'border-green-500/50'; }
+    if (relation.threat > 0.5) { stanceColor = 'border-red-500/50'; }
+    
+    return (
+        <div className={`bg-canon-bg/40 border-l-4 ${stanceColor} rounded p-2 mb-2`}>
+            <div className="flex justify-between items-center mb-1">
+                 <span className="font-bold text-sm text-canon-text">{name}</span>
+                 {relation.label && <span className="text-[9px] bg-white/10 px-1.5 py-0.5 rounded text-canon-text-light uppercase">{relation.label}</span>}
+            </div>
+            <div className="grid grid-cols-3 gap-2 text-[10px] mb-2">
+                <div className="flex flex-col">
+                    <span className="text-canon-text-light">Trust</span>
+                    <span className={`font-mono font-bold ${relation.trust > 0.5 ? 'text-green-400' : 'text-gray-500'}`}>{relation.trust.toFixed(2)}</span>
+                </div>
+                 <div className="flex flex-col">
+                    <span className="text-canon-text-light">Threat</span>
+                    <span className={`font-mono font-bold ${relation.threat > 0.4 ? 'text-red-400' : 'text-gray-500'}`}>{relation.threat.toFixed(2)}</span>
+                </div>
+                 <div className="flex flex-col">
+                    <span className="text-canon-text-light">Align</span>
+                    <span className="font-mono font-bold text-blue-400">{relation.align.toFixed(2)}</span>
+                </div>
+            </div>
+            {body && (
+                 <div className="bg-black/20 p-1.5 rounded flex justify-between items-center text-[10px]">
+                     <span className="text-canon-text-light">Condition:</span>
+                     <div className="flex gap-2">
+                         <span className={body.isSeverelyWounded ? 'text-red-400 font-bold' : 'text-green-400'}>{body.isSeverelyWounded ? 'CRITICAL' : 'OK'}</span>
+                         <span className="text-canon-border">|</span>
+                         <span className={body.isCombatCapable ? 'text-blue-400' : 'text-gray-500'}>{body.isCombatCapable ? 'ARMED' : 'HARMLESS'}</span>
+                     </div>
+                 </div>
+            )}
+        </div>
+    )
+}
+
+export const GoalLabResults: React.FC<Props> = ({ context, frame, goalScores, situation, goalPreview, affect, contextualMind, locationScores, tomScores, tom, atomDiff, snapshotV1 }) => {
+    const [selectedGoalId, setSelectedGoalId] = useState<string | null>(null);
+    const [isPreviewOpen, setPreviewOpen] = useState(false);
+    const [activeTabIndex, setActiveTabIndex] = useState(0);
+
+    const effectiveSelectedId = selectedGoalId || (goalScores.length > 0 ? goalScores[0].goalId : null);
+    const selectedScore = goalScores.find(g => g.goalId === effectiveSelectedId);
+
+    // Use unified snapshot if available, else legacy context
+    const currentAtoms = snapshotV1?.atoms ?? context?.atoms ?? [];
+    
+    // Aggregates from snapshot or legacy context
+    const stats = {
+        threat: snapshotV1?.contextMind?.metrics?.find((m: any) => m.key === 'threat')?.value ?? context?.aggregates?.threatLevel ?? context?.summary.physicalRisk ?? 0,
+        support: snapshotV1?.contextMind?.metrics?.find((m: any) => m.key === 'support')?.value ?? context?.aggregates?.socialSupport ?? context?.summary.socialSupport ?? 0,
+        pressure: snapshotV1?.contextMind?.metrics?.find((m: any) => m.key === 'pressure')?.value ?? ((context?.summary.timePressure ?? 0) + (context?.summary.normPressure ?? 0)) / 2,
+        crowd: snapshotV1?.contextMind?.metrics?.find((m: any) => m.key === 'crowd')?.value ?? context?.aggregates?.crowding ?? context?.summary.crowding ?? 0
+    };
+
+    if (!context) {
+        return <div className="flex items-center justify-center h-full text-canon-text-light text-xs opacity-50">Выберите агента для анализа.</div>;
+    }
+
+    const AnalysisTab = () => (
+        selectedScore ? <AnalysisView score={selectedScore} /> : <div className="flex h-full items-center justify-center text-canon-text-light/50 text-xs"><div className="text-center"><div className="text-3xl mb-2">🎯</div><p>Выберите цель слева<br/>для детального анализа.</p></div></div>
+    );
+    
+    const AtomsTab = () => (
+        <AtomsPanel atoms={currentAtoms} />
+    );
+
+    const ThreatTab = () => (
+        <ThreatPanel atoms={currentAtoms} />
+    );
+
+    const ToMTab = () => (
+        <ToMPanel atoms={currentAtoms} />
+    );
+
+    const MindTab = () => (
+        <ContextMindPanel cm={snapshotV1?.contextMind} atoms={currentAtoms} selfId={snapshotV1?.selfId} />
+    );
+
+    const CoverageTab = () => (
+        <CoveragePanel coverage={snapshotV1?.coverage} />
+    );
+    
+    const DebugTab = () => (
+         <div className="p-4 space-y-4 h-full overflow-y-auto custom-scrollbar pb-20 absolute inset-0">
+            <ContextInspector snapshot={context} goals={goalScores} title="Global Inspector (Legacy)"/>
+            {locationScores && <LocationGoalsDebugPanel scores={locationScores} />}
+            {tomScores && <TomGoalsDebugPanel scores={tomScores} />}
+         </div>
+    );
+
+    const AccessTab = () => <AccessPanel decisions={(context as any).access || []} />;
+    const PossibilitiesTab = () => <PossibilitiesPanel possibilities={(context as any).possibilities || snapshotV1?.possibilities || []} />;
+    const DiffTab = () => <DiffPanel diffs={atomDiff || snapshotV1?.atomDiff || []} />;
+    const DecisionTab = () => <DecisionPanel decision={(context as any).decision || snapshotV1?.decision} />;
+
+    const renderContent = () => {
+        switch(activeTabIndex) {
+            case 0: return <AnalysisTab />;
+            case 1: return <AtomsTab />;
+            case 2: return <ThreatTab />;
+            case 3: return <ToMTab />;
+            case 4: return <MindTab />; 
+            case 5: return <CoverageTab />; // NEW
+            case 6: return <PossibilitiesTab />;
+            case 7: return <DecisionTab />;
+            case 8: return <AccessTab />;
+            case 9: return <DiffTab />;
+            case 10: return <DebugTab />;
+            default: return <AnalysisTab />;
+        }
+    };
+    
+    const tabsList = ['Analysis', 'Atoms', 'Threat', 'ToM', 'CtxMind', 'Coverage', 'Possibilities', 'Decision', 'Access', 'Diff', 'Debug'];
+
+    return (
+        <div className="flex flex-col h-full overflow-hidden bg-canon-bg-light border border-canon-border rounded-lg shadow-xl">
+            <div className="bg-canon-bg border-b border-canon-border p-3 grid grid-cols-4 gap-3 shadow-sm z-10 shrink-0">
+                <ValueBadge label="Угроза" value={stats.threat} color="text-red-400" />
+                <ValueBadge label="Давление" value={stats.pressure} color="text-amber-400" />
+                <ValueBadge label="Поддержка" value={stats.support} color="text-emerald-400" />
+                <ValueBadge label="Толпа" value={stats.crowd} color="text-blue-400" />
+            </div>
+
+            <div className="bg-black/30 border-b border-canon-border/50 shrink-0">
+                <ContextRibbon atoms={currentAtoms} />
+            </div>
+
+            {goalPreview?.goals?.length ? (
+                <div className="bg-canon-bg border-b border-canon-border/30 p-2 shrink-0">
+                    <button onClick={() => setPreviewOpen(!isPreviewOpen)} className="w-full flex items-center justify-between text-[10px] font-bold text-canon-text-light uppercase tracking-wider hover:text-canon-accent transition-colors">
+                        <div className="flex items-center gap-2"><span>Contextual priorities</span><span className="font-mono text-[9px] opacity-70 bg-black/30 px-1 rounded">{goalPreview.goals.length}</span></div>
+                        <span>{isPreviewOpen ? '▼' : '▶'}</span>
+                    </button>
+                    {isPreviewOpen && (
+                        <div className="mt-2 animate-fade-in">
+                            {situation ? (
+                                <div className="mb-2 flex flex-wrap gap-1 text-[10px] text-canon-text-light/80">
+                                    <span className="px-2 py-0.5 rounded bg-black/20 border border-canon-border/30">kind: {String(situation.scenarioKind || 'other')}</span>
+                                    <span className="px-2 py-0.5 rounded bg-black/20 border border-canon-border/30">threat: {Number(situation.threatLevel ?? 0).toFixed(2)}</span>
+                                    <span className="px-2 py-0.5 rounded bg-black/20 border border-canon-border/30">pressure: {Number(situation.timePressure ?? 0).toFixed(2)}</span>
+                                </div>
+                            ) : null}
+                            <div className="flex flex-wrap gap-2">
+                                {goalPreview.goals.slice(0, 10).map(g => (
+                                    <div key={g.id} className="px-2 py-1 rounded border border-canon-border/40 bg-black/20">
+                                        <div className="text-[11px] font-semibold text-canon-text truncate max-w-[220px]" title={g.id}>{g.label}</div>
+                                        <div className="text-[9px] font-mono text-canon-text-light/70">p={g.priority.toFixed(2)} • a={g.activation.toFixed(2)}</div>
+                                    </div>
+                                ))}
+                            </div>
+                            <div className="text-[9px] font-mono text-canon-text-light/60 mt-1 text-right">
+                                {goalPreview.debug?.temperature != null ? `T=${Number(goalPreview.debug.temperature).toFixed(2)}` : ''}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            ) : null}
+
+            <div className="flex-1 flex min-h-0">
+                <div className="w-5/12 min-w-[220px] border-r border-canon-border bg-canon-bg/30 flex flex-col overflow-hidden">
+                    <div className="p-3 border-b border-canon-border/20 bg-canon-bg/50 shrink-0 flex justify-between items-center">
+                        <h4 className="text-[10px] font-bold text-canon-text-light uppercase px-1">Goal Ecology</h4>
+                        <span className="text-[9px] font-mono text-canon-text-light">{goalScores.length} Goals</span>
+                    </div>
+                    <div className="flex-1 overflow-y-auto custom-scrollbar p-2 pb-12">
+                         <EcologyView goals={goalScores} onSelect={setSelectedGoalId} selectedId={effectiveSelectedId} />
+                    </div>
+                </div>
+
+                <div className="flex-1 flex flex-col overflow-hidden bg-canon-bg">
+                    <div className="border-b border-canon-border flex-shrink-0 flex overflow-x-auto custom-scrollbar no-scrollbar">
+                        {tabsList.map((label, index) => (
+                            <button key={label} onClick={() => setActiveTabIndex(index)} className={`px-4 py-2 text-sm font-medium transition-colors whitespace-nowrap ${activeTabIndex === index ? 'border-b-2 border-canon-accent text-canon-accent' : 'text-canon-text-light hover:text-white'}`}>
+                            {label}
+                            </button>
+                        ))}
+                    </div>
+                    <div className="flex-1 min-h-0 relative">
+                        {renderContent()}
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
