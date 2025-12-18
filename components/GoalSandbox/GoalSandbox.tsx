@@ -280,6 +280,69 @@ export const GoalSandbox: React.FC = () => {
     return worldState.agents.map(a => a.entityId);
   }, [sceneParticipants, selectedAgentId, worldState]);
 
+  const rebuildWorldFromParticipants = useCallback(
+    (idsInput: Set<string>) => {
+      const subject = allCharacters.find(c => c.entityId === selectedAgentId);
+      if (!subject) return;
+
+      const ids = new Set(idsInput);
+      if (selectedAgentId) ids.add(selectedAgentId);
+
+      const participants = Array.from(ids)
+        .map(id => allCharacters.find(c => c.entityId === id))
+        .filter(Boolean) as CharacterEntity[];
+
+      if (participants.length === 0) return;
+
+      const w = createInitialWorld(Date.now(), participants, activeScenarioId);
+      if (!w) return;
+
+      w.groupGoalId = undefined;
+      w.locations = [getSelectedLocationEntity(), ...allLocations];
+
+      const nextPositions = { ...actorPositions };
+      w.agents.forEach((a, i) => {
+        if (actorPositions[a.entityId]) {
+          (a as any).position = actorPositions[a.entityId];
+          nextPositions[a.entityId] = actorPositions[a.entityId];
+        } else {
+          const offsetX = (i % 3) * 2;
+          const offsetY = Math.floor(i / 3) * 2;
+          const pos = { x: 5 + offsetX, y: 5 + offsetY };
+          (a as any).position = pos;
+          nextPositions[a.entityId] = pos;
+        }
+      });
+
+      const locId = getActiveLocationId();
+      w.agents = w.agents.map(a => ({ ...(a as any), locationId: locId } as AgentState));
+
+      const allIds = w.agents.map(a => a.entityId);
+      (w as any).initialRelations = ensureCompleteInitialRelations(allIds, (w as any).initialRelations);
+
+      const roleMap = assignRoles(w.agents as any, w.scenario as any, w as any);
+      w.agents = w.agents.map(
+        a => ({ ...(a as any), effectiveRole: (roleMap as any)[a.entityId] } as AgentState)
+      );
+
+      w.tom = initTomForCharacters(w.agents as any, w as any, runtimeDyadConfigs || undefined) as any;
+      (w as any).gilParams = constructGil(w.agents as any) as any;
+
+      setActorPositions(nextPositions);
+      setWorldState(w);
+    },
+    [
+      allCharacters,
+      selectedAgentId,
+      activeScenarioId,
+      actorPositions,
+      getSelectedLocationEntity,
+      getActiveLocationId,
+      ensureCompleteInitialRelations,
+      runtimeDyadConfigs,
+    ]
+  );
+
   const handleSelectAgent = useCallback(
     (id: string) => {
       if (!id) return;
@@ -312,13 +375,14 @@ export const GoalSandbox: React.FC = () => {
       setSceneParticipants(prev => {
         const next = new Set(prev);
         next.add(id);
+
+        // ВАЖНО: пересобираем мир синхронно, без ожидания useEffect
+        rebuildWorldFromParticipants(next);
+
         return next;
       });
-
-      persistActorPositions();
-      forceRebuildWorld();
     },
-    [selectedAgentId, persistActorPositions, forceRebuildWorld]
+    [selectedAgentId, rebuildWorldFromParticipants]
   );
 
   const handleRemoveParticipant = useCallback(
@@ -329,13 +393,13 @@ export const GoalSandbox: React.FC = () => {
       setSceneParticipants(prev => {
         const next = new Set(prev);
         next.delete(id);
+
+        rebuildWorldFromParticipants(next);
+
         return next;
       });
-
-      persistActorPositions();
-      forceRebuildWorld();
     },
-    [selectedAgentId, persistActorPositions, forceRebuildWorld]
+    [selectedAgentId, rebuildWorldFromParticipants]
   );
 
   const resolveCharacterId = useCallback(
@@ -357,7 +421,7 @@ export const GoalSandbox: React.FC = () => {
 
   // Initialize World
   useEffect(() => {
-    if (!worldState && selectedAgentId) {
+    if (!worldState && selectedAgentId && sceneParticipants.size > 0) {
       const subject = allCharacters.find(c => c.entityId === selectedAgentId);
 
       // participants = ALL scene participants (plus ensure selectedAgentId)
