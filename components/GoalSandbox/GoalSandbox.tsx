@@ -272,13 +272,31 @@ export const GoalSandbox: React.FC = () => {
   );
 
   const participantIds = useMemo(() => {
-    if (!worldState) {
-      const ids = new Set(sceneParticipants);
-      if (selectedAgentId) ids.add(selectedAgentId);
-      return Array.from(ids);
+    const ids = new Set(sceneParticipants);
+    if (selectedAgentId) ids.add(selectedAgentId);
+    return Array.from(ids);
+  }, [sceneParticipants, selectedAgentId]);
+
+  const setEquals = (a: Set<string>, b: Set<string>) => {
+    if (a.size !== b.size) return false;
+    for (const x of a) if (!b.has(x)) return false;
+    return true;
+  };
+
+  useEffect(() => {
+    if (!worldState) return;
+
+    const desired = new Set(sceneParticipants);
+    if (selectedAgentId) desired.add(selectedAgentId);
+
+    const actual = new Set(worldState.agents.map(a => a.entityId));
+
+    if (!setEquals(desired, actual)) {
+      // важное: не теряем позиции перед пересборкой
+      persistActorPositions();
+      forceRebuildWorld();
     }
-    return worldState.agents.map(a => a.entityId);
-  }, [sceneParticipants, selectedAgentId, worldState]);
+  }, [worldState, sceneParticipants, selectedAgentId, persistActorPositions, forceRebuildWorld]);
 
   const rebuildWorldFromParticipants = useCallback(
     (idsInput: Set<string>) => {
@@ -372,17 +390,21 @@ export const GoalSandbox: React.FC = () => {
       if (!id) return;
       if (id === selectedAgentId) return;
 
+      console.log('[ADD] request', { id, selectedAgentId });
+
       setSceneParticipants(prev => {
         const next = new Set(prev);
         next.add(id);
 
-        // ВАЖНО: пересобираем мир синхронно, без ожидания useEffect
-        rebuildWorldFromParticipants(next);
+        console.log('[ADD] sceneParticipants ->', Array.from(next));
 
         return next;
       });
+
+      persistActorPositions();
+      forceRebuildWorld();
     },
-    [selectedAgentId, rebuildWorldFromParticipants]
+    [selectedAgentId, persistActorPositions, forceRebuildWorld]
   );
 
   const handleRemoveParticipant = useCallback(
