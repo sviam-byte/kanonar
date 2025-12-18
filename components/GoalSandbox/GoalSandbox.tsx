@@ -248,9 +248,9 @@ export const GoalSandbox: React.FC = () => {
             });
             setSelectedAgentId(id);
             persistActorPositions();
-            setWorldState(null);
+            forceRebuildWorld();
         }
-    }, [worldState, persistActorPositions]);
+    }, [worldState, persistActorPositions, forceRebuildWorld]);
 
     const resolveCharacterId = useCallback((rawId: string): string | null => {
         if (!rawId) return null;
