@@ -49,6 +49,9 @@ interface Props {
   
   // New: List of all participant IDs in the current scene/world
   participantIds?: string[];
+  // NEW: direct scene participant control (preferred over nearbyActors)
+  onAddParticipant?: (id: string) => void;
+  onRemoveParticipant?: (id: string) => void;
   
   // Scene Control Props
   sceneControl?: any;
@@ -70,6 +73,8 @@ export const GoalLabControls: React.FC<Props> = ({
   onRunTicks,
   world, onWorldChange,
   participantIds,
+  onAddParticipant,
+  onRemoveParticipant,
   sceneControl, onSceneControlChange, scenePresets
 }) => {
   
@@ -125,6 +130,15 @@ export const GoalLabControls: React.FC<Props> = ({
 
   const handleAddCharacter = () => {
       if (!selectedActorToAdd) return;
+
+      // Preferred path: parent controls scene membership directly
+      if (onAddParticipant) {
+          onAddParticipant(selectedActorToAdd);
+          setSelectedActorToAdd('');
+          return;
+      }
+
+      // Fallback: old behavior via nearbyActors
       const char = allCharacters.find(c => c.entityId === selectedActorToAdd);
       if (!char) return;
 
@@ -145,6 +159,10 @@ export const GoalLabControls: React.FC<Props> = ({
   };
   
   const handleRemoveCharacter = (id: string) => {
+      if (onRemoveParticipant) {
+          onRemoveParticipant(id);
+          return;
+      }
       onNearbyActorsChange(nearbyActors.filter(a => a.id !== id));
   };
   
@@ -527,6 +545,9 @@ export const GoalLabControls: React.FC<Props> = ({
                 >
                     ADD
                 </button>
+            </div>
+            <div className="text-[9px] text-canon-text-light mt-1">
+              participantIds: {(participantIds?.length ?? 0)} | nearbyActors: {nearbyActors.length}
             </div>
             
             <div className="space-y-1">

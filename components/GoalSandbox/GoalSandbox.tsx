@@ -304,6 +304,40 @@ export const GoalSandbox: React.FC = () => {
     [worldState, persistActorPositions, forceRebuildWorld]
   );
 
+  const handleAddParticipant = useCallback(
+    (id: string) => {
+      if (!id) return;
+      if (id === selectedAgentId) return;
+
+      setSceneParticipants(prev => {
+        const next = new Set(prev);
+        next.add(id);
+        return next;
+      });
+
+      persistActorPositions();
+      forceRebuildWorld();
+    },
+    [selectedAgentId, persistActorPositions, forceRebuildWorld]
+  );
+
+  const handleRemoveParticipant = useCallback(
+    (id: string) => {
+      if (!id) return;
+      if (id === selectedAgentId) return;
+
+      setSceneParticipants(prev => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+
+      persistActorPositions();
+      forceRebuildWorld();
+    },
+    [selectedAgentId, persistActorPositions, forceRebuildWorld]
+  );
+
   const resolveCharacterId = useCallback(
     (rawId: string): string | null => {
       if (!rawId) return null;
@@ -692,6 +726,8 @@ export const GoalSandbox: React.FC = () => {
               world={worldState as any}
               onWorldChange={setWorldState as any}
               participantIds={participantIds}
+              onAddParticipant={handleAddParticipant}
+              onRemoveParticipant={handleRemoveParticipant}
               onLoadScene={handleLoadScene}
               sceneControl={sceneControl}
               onSceneControlChange={setSceneControl}
