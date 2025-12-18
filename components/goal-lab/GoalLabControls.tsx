@@ -191,38 +191,37 @@ export const GoalLabControls: React.FC<Props> = ({
   
   const filteredAtomKinds = CONTEXT_ATOM_KIND_CATALOG.filter(k => k.includes(customAtomSearch));
   
-  // Calculate who is in scene but not the active agent
-  // If participantIds is present, use it. Otherwise use nearbyActors logic.
-  const activeSceneActors = React.useMemo(() => {
-      if (participantIds) {
-          // If we have world state participants, show them.
-          return participantIds
-              .map(id => {
-                  const char = allCharacters.find(c => c.entityId === id);
-                  return { id, label: char?.title || id };
-              });
-      }
-      return nearbyActors.filter(a => a.id !== selectedAgentId);
-  }, [participantIds, nearbyActors, selectedAgentId, allCharacters]);
+  const sceneIds = React.useMemo(() => {
+      const ids =
+        participantIds && participantIds.length > 0
+          ? new Set(participantIds)
+          : world?.agents?.length
+            ? new Set(world.agents.map((a: any) => a.entityId))
+            : new Set<string>();
 
-  // Main agent dropdown: Show everyone available in library or restricted to current scene
+      if (ids.size === 0 && selectedAgentId) ids.add(selectedAgentId);
+      return ids;
+  }, [participantIds, world, selectedAgentId]);
+
+  // Calculate who is in scene but not the active agent
+  const activeSceneActors = React.useMemo(() => {
+      return Array.from(sceneIds).map(id => {
+          const char = allCharacters.find(c => c.entityId === id);
+          return { id, label: char?.title || id };
+      });
+  }, [sceneIds, allCharacters]);
+
+  // Main agent dropdown: Show only current scene/world participants
   const activeAgentOptions = React.useMemo(() => {
-      if (participantIds && participantIds.length > 0) {
-          const set = new Set(participantIds);
-          return allCharacters
-              .filter(c => set.has(c.entityId))
-              .map(c => ({ ...c, inScene: true }));
-      }
-      // fallback: if no participantIds provided, keep old behavior
-      return allCharacters.map(c => ({ ...c, inScene: false }));
-  }, [allCharacters, participantIds]);
+      return allCharacters
+          .filter(c => sceneIds.has(c.entityId))
+          .map(c => ({ ...c, inScene: true }));
+  }, [allCharacters, sceneIds]);
   
   // Add Character Dropdown: exclude those already in scene
   const availableToAdd = React.useMemo(() => {
-      const currentIds = new Set(participantIds || []);
-      currentIds.add(selectedAgentId);
-      return allCharacters.filter(c => !currentIds.has(c.entityId));
-  }, [allCharacters, participantIds, selectedAgentId]);
+      return allCharacters.filter(c => !sceneIds.has(c.entityId));
+  }, [allCharacters, sceneIds]);
 
   return (
     <div className="flex flex-col h-full bg-canon-bg border-t border-canon-border">

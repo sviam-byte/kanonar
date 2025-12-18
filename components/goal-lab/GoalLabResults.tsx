@@ -315,7 +315,21 @@ const ToMEntityCard: React.FC<{ relation: TomRelationView, body?: TomPhysicalOth
     )
 }
 
-export const GoalLabResults: React.FC<Props> = ({ context, frame, goalScores, situation, goalPreview, affect, contextualMind, locationScores, tomScores, tom, atomDiff, snapshotV1 }) => {
+export const GoalLabResults: React.FC<Props> = ({
+  context,
+  frame,
+  goalScores,
+  situation,
+  goalPreview,
+  actorLabels,
+  affect,
+  contextualMind,
+  locationScores,
+  tomScores,
+  tom,
+  atomDiff,
+  snapshotV1,
+}) => {
     const [selectedGoalId, setSelectedGoalId] = useState<string | null>(null);
     const [isPreviewOpen, setPreviewOpen] = useState(false);
     const [activeTabIndex, setActiveTabIndex] = useState(0);
@@ -394,8 +408,25 @@ export const GoalLabResults: React.FC<Props> = ({ context, frame, goalScores, si
     
     const tabsList = ['Analysis', 'Atoms', 'Threat', 'ToM', 'CtxMind', 'Coverage', 'Possibilities', 'Decision', 'Access', 'Diff', 'Debug'];
 
+    const focusId = (context as any)?.agentId;
+    const focusLabel = (focusId && actorLabels?.[focusId]) ? actorLabels[focusId] : focusId;
+
     return (
         <div className="flex flex-col h-full overflow-hidden bg-canon-bg-light border border-canon-border rounded-lg shadow-xl">
+            {context && (
+                <div className="bg-canon-bg border-b border-canon-border/60 p-3">
+                    <div className="text-xs font-bold text-canon-text uppercase tracking-wider">Фокус</div>
+                    <div className="text-sm text-canon-text-light">
+                        {focusLabel || '—'}
+                        {focusId ? (
+                          <span className="text-[10px] font-mono text-canon-text-light/70 ml-2">
+                            agentId: {focusId}
+                            {(context as any)?.locationId ? ` • locationId: ${(context as any).locationId}` : ''}
+                          </span>
+                        ) : null}
+                    </div>
+                </div>
+            )}
             <div className="bg-canon-bg border-b border-canon-border p-3 grid grid-cols-4 gap-3 shadow-sm z-10 shrink-0">
                 <ValueBadge label="Угроза" value={stats.threat} color="text-red-400" />
                 <ValueBadge label="Давление" value={stats.pressure} color="text-amber-400" />

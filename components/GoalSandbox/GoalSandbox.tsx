@@ -107,6 +107,14 @@ export const GoalSandbox: React.FC = () => {
     return Array.from(map.values());
   }, [sandboxCharacters]);
 
+  const actorLabels = useMemo(() => {
+    const m: Record<string, string> = {};
+    allCharacters.forEach(c => {
+      m[c.entityId] = c.title;
+    });
+    return m;
+  }, [allCharacters]);
+
   const [selectedAgentId, setSelectedAgentId] = useState<string>(allCharacters[0]?.entityId || '');
   const [activeScenarioId, setActiveScenarioId] = useState<string>('cave_rescue');
 
@@ -284,18 +292,9 @@ export const GoalSandbox: React.FC = () => {
 
   useEffect(() => {
     if (!worldState) return;
-
-    const desired = new Set(sceneParticipants);
-    if (selectedAgentId) desired.add(selectedAgentId);
-
     const actual = new Set(worldState.agents.map(a => a.entityId));
-
-    if (!setEquals(desired, actual)) {
-      // важное: не теряем позиции перед пересборкой
-      persistActorPositions();
-      forceRebuildWorld();
-    }
-  }, [worldState, sceneParticipants, selectedAgentId, persistActorPositions, forceRebuildWorld]);
+    setSceneParticipants(prev => (setEquals(prev, actual) ? prev : actual));
+  }, [worldState]);
 
   const rebuildWorldFromParticipants = useCallback(
     (idsInput: Set<string>) => {
@@ -569,8 +568,6 @@ export const GoalSandbox: React.FC = () => {
   const handleLoadScene = (scene: ScenePreset) => {
     if (!scene?.characters?.length) return;
 
-    setRuntimeDyadConfigs((scene as any).configs || null);
-
     const resolvedChars = scene.characters
       .map(id => resolveCharacterId(id))
       .filter(Boolean) as string[];
@@ -583,6 +580,17 @@ export const GoalSandbox: React.FC = () => {
 
     setSceneParticipants(nextParticipants);
     setSelectedAgentId(nextSelected);
+
+    if ((scene as any).configs) {
+      const resolvedCfgs: Record<string, DyadConfigForA> = {};
+      for (const [rawId, cfg] of Object.entries((scene as any).configs)) {
+        const rid = resolveCharacterId(rawId);
+        if (rid) resolvedCfgs[rid] = cfg as DyadConfigForA;
+      }
+      setRuntimeDyadConfigs(resolvedCfgs);
+    } else {
+      setRuntimeDyadConfigs(null);
+    }
 
     if ((scene as any).configs) {
       Object.entries((scene as any).configs).forEach(([id, cfg]) => {
@@ -837,6 +845,7 @@ export const GoalSandbox: React.FC = () => {
 
             <GoalLabResults
               context={snapshot as any}
+              actorLabels={actorLabels}
               goalScores={goals as any}
               situation={situation as any}
               goalPreview={goalPreview as any}

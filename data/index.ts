@@ -3,6 +3,11 @@ import { AnyEntity, CharacterEntity } from '../types';
 import { EntityType } from '../enums';
 import { createFittedCharacterFromArchetype } from '../lib/archetypes/fitter';
 
+const entityModules = import.meta.glob<{ default: AnyEntity }>('./entities/*.ts', { eager: true });
+const globEntities: AnyEntity[] = Object.values(entityModules)
+  .map(m => (m as any).default)
+  .filter(Boolean);
+
 // Objects & Concepts
 import glassKnifeData from './entities/object-glass-knife';
 import comfortUnitData from './entities/object-comfort-unit';
@@ -32,39 +37,49 @@ import elaraData from './entities/character-elara';
 import { allSocialEvents } from './social-events';
 import { allLocations } from './locations';
 
-export const allEntities: AnyEntity[] = [
-  // Objects & Concepts
-  glassKnifeData,
-  comfortUnitData,
-  museumData,
-  
-  // Characters
-  deicideMentorData,
-  assiTheRunnerData,
-  masterGideonData,
-  krystarMannData,
-  teganNotsData,
-  maeraAlbData,
-  rionData,
-  norrData,
-  tavelData,
-  bruniData,
-  einarData,
-  rheaData,
-  corData,
-  larsonData,
-  bernardData,
-  olafData,
-  brandData,
-  lyraData,
-  elaraData,
+export const allEntities: AnyEntity[] = (() => {
+  const map = new Map<string, AnyEntity>();
+
+  // Load everything from entities folder first
+  for (const e of globEntities) {
+    map.set((e as any).entityId, e);
+  }
+
+  // Allow explicit imports to override
+  for (const e of [
+    glassKnifeData,
+    comfortUnitData,
+    museumData,
+    deicideMentorData,
+    assiTheRunnerData,
+    masterGideonData,
+    krystarMannData,
+    teganNotsData,
+    maeraAlbData,
+    rionData,
+    norrData,
+    tavelData,
+    bruniData,
+    einarData,
+    rheaData,
+    corData,
+    larsonData,
+    bernardData,
+    olafData,
+    brandData,
+    lyraData,
+    elaraData,
+  ]) {
+    map.set((e as any).entityId, e);
+  }
 
   // Locations
-  ...allLocations,
+  for (const loc of allLocations) {
+    map.set((loc as any).entityId, loc);
+  }
 
-  // Social Events
-  // ...allSocialEvents, // Social events are handled separately for now
-];
+  return Array.from(map.values());
+})();
 
 export const entityMap: Map<string, AnyEntity> = new Map(
   allEntities.map(e => [e.entityId, e])
