@@ -36,6 +36,7 @@ import { initTomForCharacters } from '../../lib/tom/init';
 import { assignRoles } from '../../lib/roles/assignment';
 import { constructGil } from '../../lib/gil/apply';
 import type { DyadConfigForA } from '../../lib/tom/dyad-metrics';
+import { ensureMapCells } from '../../lib/world/ensureMapCells';
 
 function createCustomLocationEntity(map: LocationMap): LocationEntity {
     const cells = map.cells || [];
@@ -100,7 +101,9 @@ export const GoalSandbox: React.FC = () => {
     const [worldState, setWorldState] = useState<WorldState | null>(null);
     
     // Scene Management
-    const [map, setMap] = useState<LocationMap>({ id: 'sandbox', width: 12, height: 12, cells: [] });
+    const [map, setMap] = useState<LocationMap>(() => 
+        ensureMapCells({ id: 'sandbox', width: 12, height: 12, cells: [], defaultWalkable: true, defaultDanger: 0, defaultCover: 0 })
+    );
     const [actorPositions, setActorPositions] = useState<Record<string, {x: number, y: number}>>({});
     
     const [locationMode, setLocationMode] = useState<'preset' | 'custom'>('preset');
@@ -406,12 +409,12 @@ export const GoalSandbox: React.FC = () => {
     };
 
     const activeMap = useMemo(() => {
-        if (locationMode === 'custom') return map;
+        if (locationMode === 'custom') return ensureMapCells(map);
         if (selectedLocationId) {
             const loc = allLocations.find(l => l.entityId === selectedLocationId);
-            return loc?.map || map;
+            if (loc?.map) return ensureMapCells(loc.map);
         }
-        return map;
+        return ensureMapCells(map);
     }, [locationMode, map, selectedLocationId]);
 
     const getSelectedLocationEntity = useCallback((): LocationEntity => {

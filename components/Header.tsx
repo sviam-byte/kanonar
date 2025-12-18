@@ -6,6 +6,8 @@ import { useSandbox } from '../contexts/SandboxContext';
 import { useAccess } from '../contexts/AccessContext';
 import { Branch } from '../types';
 
+const PATCH_REVISION = '5';
+
 const NavDropdown: React.FC<{ label: string; active: boolean; colorClass?: string; children: React.ReactNode }> = ({ label, active, colorClass = "text-canon-text", children }) => {
     const [isOpen, setIsOpen] = useState(false);
     const ref = useRef<HTMLDivElement>(null);
@@ -73,6 +75,7 @@ export const Header: React.FC = () => {
       <div className="flex items-center gap-8">
         <Link to="/" className="text-lg font-bold text-canon-accent font-mono flex items-center gap-2 hover:opacity-80 transition-opacity">
           KANONAR 4.0
+          <span className="text-[10px] bg-canon-blue/20 text-canon-blue px-1.5 py-0.5 rounded border border-canon-blue/40">{PATCH_REVISION}</span>
           {isAdmin && <span className="text-[10px] bg-red-600 text-white px-1.5 py-0.5 rounded uppercase tracking-wider">Admin</span>}
           {isRestricted && activeModule && (
              <div className="flex items-center gap-2 px-2 py-0.5 bg-yellow-500/10 border border-yellow-500/50 rounded ml-2">

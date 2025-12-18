@@ -18,17 +18,26 @@ export const MapViewer: React.FC<MapViewerProps> = ({ map, onCellClick, highligh
     
     // Auto-fit on mount/resize
     useEffect(() => {
-        if (containerRef.current) {
-            const { clientWidth, clientHeight } = containerRef.current;
+        const el = containerRef.current;
+        if (!el) return;
+
+        const recompute = () => {
+            const { clientWidth, clientHeight } = el;
             const mapPxWidth = map.width * 32;
             const mapPxHeight = map.height * 32;
-            
+
             const scaleX = (clientWidth - 40) / mapPxWidth;
             const scaleY = (clientHeight - 40) / mapPxHeight;
-            const fitScale = Math.min(scaleX, scaleY, 1.0); // Don't zoom in past 100% by default
-            
+            const fitScale = Math.min(scaleX, scaleY, 1.0);
+
             setScale(Math.max(0.2, fitScale));
-        }
+        };
+
+        recompute();
+
+        const ro = new ResizeObserver(() => recompute());
+        ro.observe(el);
+        return () => ro.disconnect();
     }, [map.width, map.height]);
 
     const handleZoomIn = () => setScale(s => Math.min(3, s + 0.1));
