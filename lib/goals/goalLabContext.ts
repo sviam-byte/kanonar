@@ -13,7 +13,7 @@ import { applyAtomOverrides, AtomOverrideLayer, applyAtomOverrides as extractApp
 import { validateAtoms } from '../context/validate/frameValidator';
 import { buildSummaryAtoms } from '../context/summaries/buildSummaries';
 import { computeCoverageReport } from '../goal-lab/coverage/computeCoverage';
-import { normalizeAffectState } from '../affect/normalize';
+import { atomizeAffectOverrides } from '../affect/atomizeAffect';
 
 // New Imports for Pipeline
 import { buildStage0Atoms } from '../context/pipeline/stage0';
@@ -45,6 +45,13 @@ export interface GoalLabContextResult {
   goalPreview: {
     goals: Array<{ id: string; label: string; priority: number; activation: number; base_ctx: number }>;
     debug: { temperature: number; d_mix: Record<string, number> };
+  };
+  stages?: {
+    stage0Atoms: ContextAtom[];
+    axesAtoms: ContextAtom[];
+    atomsAfterAxes: ContextAtom[];
+    threatAtoms: ContextAtom[];
+    decision: any;
   };
 }
 
@@ -146,17 +153,6 @@ export function buildGoalLabContext(
   const manualAtomsRaw = (opts.snapshotOptions?.manualAtoms || []).map(normalizeAtom);
   const { atoms: appliedOverrides } = extractApplied(manualAtomsRaw, overridesLayer);
 
-  // Apply affect overrides from UI knobs (must affect ALL downstream calculations).
-  const affectOverrides = (opts.snapshotOptions as any)?.affectOverrides;
-  if (affectOverrides && typeof affectOverrides === 'object') {
-    const merged = {
-      ...(agent as any).affect,
-      ...affectOverrides,
-      e: { ...((agent as any).affect?.e || {}), ...(affectOverrides as any).e },
-    };
-    agent = { ...(agent as any), affect: normalizeAffectState(merged) } as any;
-  }
-  
   // Belief Atoms
   const beliefAtoms = [
       ...((agent as any).memory?.beliefAtoms || []),
@@ -173,6 +169,11 @@ export function buildGoalLabContext(
   // Crowd atom for stage 0 input (optional)
   const ctxCrowdAtom = legacyFrameAtoms.find(a => a.id === 'soc_crowd_density' || a.kind === 'crowding_pressure');
   const ctxCrowd = ctxCrowdAtom ? ctxCrowdAtom.magnitude : 0;
+
+  const baseExtraWorldAtoms: ContextAtom[] = [];
+  if (opts.snapshotOptions?.affectOverrides) {
+    baseExtraWorldAtoms.push(...atomizeAffectOverrides(selfId, opts.snapshotOptions.affectOverrides as any));
+  }
 
   // --- SCENE ENGINE INTEGRATION ---
   const sc = opts.snapshotOptions?.sceneControl;
@@ -233,16 +234,17 @@ export function buildGoalLabContext(
         world: worldForPipeline,
         agent: agentForPipeline,
         selfId,
-        extraWorldAtoms: sceneAtoms, 
-        beliefAtoms,              
-        overrideAtoms: appliedOverrides, 
+        extraWorldAtoms: [...baseExtraWorldAtoms, ...sceneAtoms],
+        beliefAtoms,
+        overrideAtoms: appliedOverrides,
         arousal,
         ctxCrowd,
         events: eventsAll,
-        sceneSnapshot: sceneSnapshotForStage0 
+        sceneSnapshot: sceneSnapshotForStage0
       });
 
       const atomsPreAxes = stage0.mergedAtoms;
+      const axesAtoms = stage0.axesAtoms;
 
       // 5. Derive Axes
       const axesRes = deriveContextVectors({
@@ -382,7 +384,8 @@ export function buildGoalLabContext(
         return 0;
       })());
       const body = clamp01((threatCalc.inputs as any)?.woundedPressure ?? 0);
-      
+      const affectBoost = clamp01(threatCalc.affectBoost ?? 0);
+
       threatAtoms.push(
         normalizeAtom({
             id: `threat:ch:authority:${selfId}`,
@@ -419,6 +422,18 @@ export function buildGoalLabContext(
             tags: ['threat', 'channel', 'body'],
             label: `body pressure:${Math.round(body * 100)}%`,
             trace: { usedAtomIds: threatCalc.usedAtomIds || [], notes: ['body channel'], parts: { body } }
+        } as any),
+        normalizeAtom({
+            id: `threat:affect_boost:${selfId}`,
+            kind: 'threat_component' as any,
+            ns: 'threat' as any,
+            origin: 'derived',
+            source: 'affect',
+            magnitude: affectBoost,
+            confidence: 1,
+            tags: ['threat', 'affect'],
+            label: `affect boost=${Math.round(affectBoost * 100)}%`,
+            trace: { usedAtomIds: [`affect:fear:${selfId}`, `affect:arousal:${selfId}`, `affect:anger:${selfId}`, `affect:shame:${selfId}`], notes: ['affect multiplier'], parts: { affectBoost } }
         } as any)
       );
 
@@ -436,7 +451,8 @@ export function buildGoalLabContext(
       } as any);
 
       // 10. Possibility Graph (Registry-based)
-      const atomsForPossibilities = [...atomsForThreat, ...threatAtoms, threatAtom];
+      const threatAtomList = [...threatAtoms, threatAtom];
+      const atomsForPossibilities = [...atomsForThreat, ...threatAtomList];
       const possibilities = derivePossibilitiesRegistry({ selfId, atoms: atomsForPossibilities });
       const possAtoms = atomizePossibilities(possibilities);
       
@@ -454,7 +470,11 @@ export function buildGoalLabContext(
           accessPack,
           provenance: stage0.provenance,
           rumorBeliefs,
-          axesRes 
+          axesRes,
+          stage0Atoms: stage0.preAxesAtoms,
+          axesAtoms,
+          atomsAfterAxes: atomsAfterAccess,
+          threatAtoms: threatAtomList,
       };
   };
 
@@ -479,6 +499,14 @@ export function buildGoalLabContext(
     possibilities: result.possibilities,
     topK: 12
   });
+
+  const stages = {
+    stage0Atoms: result.stage0Atoms ?? [],
+    axesAtoms: result.axesAtoms ?? [],
+    atomsAfterAxes: result.atomsAfterAxes ?? [],
+    threatAtoms: result.threatAtoms ?? [],
+    decision,
+  };
 
   const validation = validateAtoms(finalAtoms, { autofix: true });
   const atomsValidated = validation.fixedAtoms ?? finalAtoms;
@@ -543,5 +571,6 @@ export function buildGoalLabContext(
     ctxV2,
     situation,
     goalPreview,
+    stages,
   };
 }

@@ -252,6 +252,17 @@ const GoalRow: React.FC<{
                       return <div key={i} className={`w-1.5 h-1.5 rounded-full ${style.bg.replace('/40', '')}`} title={c.explanation} />
                  })}
              </div>
+
+             { (score as any)?.evidence?.evidenceAtomIds?.length ? (
+               <details className="mt-2 text-[11px] text-canon-text-light/80">
+                 <summary className="cursor-pointer text-canon-accent hover:text-white">why</summary>
+                 <div className="mt-1 space-y-0.5">
+                   {(score as any).evidence.evidenceAtomIds.slice(0, 12).map((id: string) => (
+                     <div key={id} className="font-mono text-[10px] bg-black/30 rounded px-2 py-0.5 border border-canon-border/30 truncate" title={id}>{id}</div>
+                   ))}
+                 </div>
+               </details>
+             ) : null }
         </div>
     );
 }

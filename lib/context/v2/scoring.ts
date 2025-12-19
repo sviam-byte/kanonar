@@ -21,6 +21,7 @@ import { computeTraitLogits } from '../../life-goals/life-from-traits';
 import { computeConcreteGoals } from '../../life-goals/v4-engine';
 import { makeZeroGoalLogits } from '../../life-goals/psych-to-goals';
 import { computeBioLogitsV3 } from '../../life-goals/life-from-biography';
+import { buildGoalEvidence } from '../../goals/evidence';
 
 // Helper to map domains for legacy compatibility
 function mapDomainsToGoalLogits(
@@ -107,6 +108,20 @@ export function scoreContextualGoals(
           contributions: contributions
       };
   });
+
+  try {
+    const selfId = agent?.entityId;
+    if (selfId && ctx?.atoms?.length) {
+      for (const g of scores) {
+        const goalId = g.goalId || (g as any).id || (g as any).goalId;
+        const domain = (g as any)?.domain;
+        const kind = (g as any)?.type || (g as any)?.kind;
+        (g as any).evidence = buildGoalEvidence({ goalId: String(goalId), selfId, atoms: ctx.atoms as any, domain, kind });
+      }
+    }
+  } catch {
+    // evidence is best-effort; scoring must not fail
+  }
 
   return scores.sort((a, b) => b.probability - a.probability);
 }

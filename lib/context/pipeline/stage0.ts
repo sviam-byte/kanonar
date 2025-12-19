@@ -51,6 +51,8 @@ export type Stage0Output = {
   mergedAtoms: ContextAtom[];
   provenance: Map<string, EpistemicLayer>;
   obsAtoms: ContextAtom[];
+  preAxesAtoms: ContextAtom[];
+  axesAtoms: ContextAtom[];
 };
 
 function clamp01(x: number) {
@@ -180,6 +182,8 @@ export function buildStage0Atoms(input: Stage0Input): Stage0Output {
       ...obsAtoms // Merge observations as world facts for now (or obs layer if separate)
   ];
 
+  const preAxesAtoms = [...worldAtomsPlus];
+
   // 8. Derive Context Axes Atoms (Strictly from canonical atoms)
   const ctxAtoms = deriveAxes({
       selfId: input.selfId,
@@ -195,9 +199,11 @@ export function buildStage0Atoms(input: Stage0Input): Stage0Output {
     override: input.overrideAtoms || []
   });
 
-  return { 
-      mergedAtoms: merged.merged, 
-      provenance: merged.provenance, 
-      obsAtoms: obsAtoms 
+  return {
+      mergedAtoms: merged.merged,
+      provenance: merged.provenance,
+      obsAtoms: obsAtoms,
+      preAxesAtoms,
+      axesAtoms: ctxAtoms,
   };
 }

@@ -85,6 +85,7 @@ export function buildGoalLabSceneDumpV2(input: SceneDumpInput) {
     pipeline: {
       glCtx,
       snapshot,
+      stages: (glCtx as any)?.stages,
       snapshotV1,
       goals,
       locationScores,

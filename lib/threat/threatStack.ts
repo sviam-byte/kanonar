@@ -43,6 +43,7 @@ export type ThreatBreakdown = {
   usedAtomIds: string[];
   why: string[];
   traceAtoms?: ContextAtom[];
+  affectBoost?: number;
 };
 
 function getMag(atoms: any[], id: string, fallback = 0) {
@@ -87,6 +88,10 @@ function getDyadTrust(atoms: ContextAtom[], selfId: string, otherId: string): nu
   return 0.45;
 }
 
+function getAffect01(atoms: ContextAtom[], id: string, fallback = 0): number {
+  return clamp01(getAtom01(atoms, id, fallback as any));
+}
+
 function noisyOr01(values: number[]) {
   const prod = values.reduce((p, v) => p * (1 - v), 1);
   return Math.max(0, Math.min(1, 1 - prod));
@@ -104,10 +109,14 @@ export function computeThreatStack(i: ThreatInputs, contextAtoms?: ContextAtom[]
   const traceAtoms: ContextAtom[] = [];
   let inputs: ThreatInputs = { ...i };
   const usedAtomIds: string[] = [];
+  let fear = 0;
+  let arousal = 0;
+  let anger = 0;
+  let shame = 0;
 
   if (contextAtoms && contextAtoms.length > 0) {
       const atoms = contextAtoms;
-      const selfId = (atoms.find(a => a.subject)?.subject as string) || 'unknown'; 
+      const selfId = (atoms.find(a => a.subject)?.subject as string) || 'unknown';
 
       // ---------- ENV ----------
       const envDanger = Math.max(
@@ -223,6 +232,12 @@ export function computeThreatStack(i: ThreatInputs, contextAtoms?: ContextAtom[]
       
       const epistemicNoise = Math.max(unc, 0.6 * rumorFlag);
 
+      fear = getAffect01(atoms, `affect:fear:${selfId}`, fear);
+      arousal = getAffect01(atoms, `affect:arousal:${selfId}`, arousal);
+      anger = getAffect01(atoms, `affect:anger:${selfId}`, anger);
+      shame = getAffect01(atoms, `affect:shame:${selfId}`, shame);
+      usedAtomIds.push(`affect:fear:${selfId}`, `affect:arousal:${selfId}`, `affect:anger:${selfId}`, `affect:shame:${selfId}`);
+
       // ---------- traits ----------
       inputs.paranoia = getFeat(atoms, `feat:char:${selfId}:trait.paranoia`, inputs.paranoia);
       inputs.experience = getFeat(atoms, `feat:char:${selfId}:trait.experience`, inputs.experience);
@@ -274,14 +289,17 @@ export function computeThreatStack(i: ThreatInputs, contextAtoms?: ContextAtom[]
   const wEnv = 0.40, wSoc = 0.30, wScn = 0.30;
   const combined = 1 - (1 - wEnv * env) * (1 - wSoc * social) * (1 - wScn * scenario);
 
-  const total = clamp01(sigmoid(2.4 * (combined - 0.35 + 0.55 * personal)));
+  const baseTotal = clamp01(sigmoid(2.4 * (combined - 0.35 + 0.55 * personal)));
+  const affectBoost = clamp01(0.35 * fear + 0.20 * arousal + 0.10 * anger + 0.10 * shame);
+  const total = clamp01(baseTotal * (1 + affectBoost));
 
-  return { 
-      env, social, scenario, personal, total, 
-      inputs, 
-      usedAtomIds: Array.from(new Set(usedAtomIds)).filter(Boolean), 
-      why, 
-      traceAtoms 
+  return {
+      env, social, scenario, personal, total,
+      inputs,
+      usedAtomIds: Array.from(new Set(usedAtomIds)).filter(Boolean),
+      why,
+      traceAtoms,
+      affectBoost
   };
 }
 
