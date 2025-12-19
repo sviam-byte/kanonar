@@ -4,8 +4,10 @@ import { createFittedCharacterFromArchetype } from '../lib/archetypes/fitter';
 import { allSocialEvents } from './social-events';
 import { allLocations } from './locations';
 
-// Автоподхват всех сущностей из data/entities/**/*.ts
-const entityModules = import.meta.glob('./entities/**/*.ts', { eager: true });
+// Автоподхват всех сущностей из data/entities/**/*.ts (с защитой, если glob недоступен)
+const entityModules = (import.meta as any)?.glob
+  ? (import.meta as any).glob('./entities/**/*.ts', { eager: true })
+  : {};
 
 function pickDefaultEntity(mod: unknown): AnyEntity | null {
   const ent = (mod as any)?.default;
