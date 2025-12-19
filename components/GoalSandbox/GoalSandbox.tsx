@@ -723,20 +723,20 @@ export const GoalSandbox: React.FC = () => {
     }
   };
 
-  const glCtx = useMemo(() => {
+  const glCtxResult = useMemo(() => {
+    if (!worldState) return { ctx: null as any, err: null as string | null };
+
+    const perspectiveId2 = perspectiveAgentId || selectedAgentId;
+    if (!perspectiveId2) return { ctx: null as any, err: null as string | null };
+
+    const agent = worldState.agents.find(a => a.entityId === perspectiveId2);
+    if (!agent) return { ctx: null as any, err: null as string | null };
+
     try {
-      if (!worldState) return null;
-      const perspectiveId = perspectiveAgentId || selectedAgentId;
-      if (!perspectiveId) return null;
-
-      const agent = worldState.agents.find(a => a.entityId === perspectiveId);
-      if (!agent) return null;
-
       const activeEvents = eventRegistry.getAll().filter(e => selectedEventIds.has(e.id));
       const loc = getSelectedLocationEntity();
 
-      setFatalError(null);
-      return buildGoalLabContext(worldState, perspectiveId, {
+      const ctx = buildGoalLabContext(worldState, perspectiveId2, {
         snapshotOptions: {
           activeEvents,
           overrideLocation: loc,
@@ -748,10 +748,11 @@ export const GoalSandbox: React.FC = () => {
         },
         timeOverride: (worldState as any).tick,
       });
-    } catch (err: any) {
-      console.error(err);
-      setFatalError(err?.message || 'Unknown Goal Lab error');
-      return null;
+
+      return { ctx, err: null as string | null };
+    } catch (e: any) {
+      console.error(e);
+      return { ctx: null as any, err: String(e?.message || e) };
     }
   }, [
     worldState,
@@ -765,6 +766,14 @@ export const GoalSandbox: React.FC = () => {
     sceneControl,
     getSelectedLocationEntity,
   ]);
+
+  const glCtx = glCtxResult.ctx;
+
+  useEffect(() => {
+    if (glCtxResult.err) {
+      setFatalError(glCtxResult.err);
+    }
+  }, [glCtxResult.err]);
 
   const pipelineFrame = useMemo(() => {
     if (!glCtx || !(glCtx as any).snapshot) return null;
