@@ -480,14 +480,14 @@ export function buildGoalLabContext(
   };
 
   // --- Two-Pass Scene Logic ---
-  const sceneAtomsA = sceneInst ? applySceneAtoms({ scene: sceneInst, preset: SCENE_PRESETS[sceneInst.presetId], worldTick: tick }) : [];
+  const sceneAtomsA = sceneInst ? applySceneAtoms({ scene: sceneInst, preset: SCENE_PRESETS[sceneInst.presetId], worldTick: tick, selfId }) : [];
   let result = runPipeline(sceneAtomsA, sceneInst);
 
   if (sceneInst && sc?.presetId) {
       const stepped = stepSceneInstance({ scene: sceneInst, nowTick: tick, atomsForConditions: result.atoms });
       if (stepped.phaseId !== sceneInst.phaseId) {
           sceneInst = stepped;
-          const sceneAtomsB = applySceneAtoms({ scene: sceneInst, preset: SCENE_PRESETS[sceneInst.presetId], worldTick: tick });
+          const sceneAtomsB = applySceneAtoms({ scene: sceneInst, preset: SCENE_PRESETS[sceneInst.presetId], worldTick: tick, selfId });
           result = runPipeline(sceneAtomsB, sceneInst);
       }
   }
