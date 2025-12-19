@@ -28,6 +28,28 @@ export function applyRelationPriorsToDyads(atoms: ContextAtom[], selfId: string)
   const trustDyads = atoms.filter(a => a.id.startsWith(`tom:dyad:${selfId}:`) && a.id.endsWith(':trust'));
   const threatDyads = atoms.filter(a => a.id.startsWith(`tom:dyad:${selfId}:`) && a.id.endsWith(':threat'));
 
+  if (trustDyads.length === 0 && threatDyads.length === 0) {
+    out.push(normalizeAtom({
+      id: `tom:priorApplied:${selfId}:no_dyads`,
+      kind: 'tom_prior_applied',
+      ns: 'tom',
+      origin: 'derived',
+      source: 'tom_base',
+      magnitude: 0,
+      confidence: 1,
+      subject: selfId,
+      tags: ['tom', 'prior', 'missing_dyads'],
+      label: 'tom prior skipped: no tom:dyad atoms found',
+      trace: {
+        usedAtomIds: [],
+        notes: ['no tom:dyad atoms present for relation priors'],
+        parts: { selfId },
+      },
+    } as any));
+
+    return { atoms: out };
+  }
+
   // trust
   for (const d of trustDyads) {
     const otherId = d.target || d.id.split(':')[3]; // tom:dyad:self:other:trust

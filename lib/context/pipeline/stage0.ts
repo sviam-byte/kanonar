@@ -12,6 +12,7 @@ import { atomizeCapabilities } from '../../capabilities/atomizeCapabilities';
 import { getLocationForAgent, getAgentsInLocation } from '../../world/locations';
 import { atomizeTraces } from '../atomize/atomizeTraces';
 import { deriveAxes } from '../axes/deriveAxes';
+import { atomizeTomDyads } from '../../../tom/atomizeTomDyads';
 
 // New RelationBase Logic
 import { extractRelBaseFromCharacter } from '../../relations/extract';
@@ -172,9 +173,10 @@ export function buildStage0Atoms(input: Stage0Input): Stage0Output {
       ...(input.extraWorldAtoms || []),
       ...relAtoms, 
       ...eventAtoms, 
-      ...capAtoms, 
-      ...locAccessAtoms, 
+      ...capAtoms,
+      ...locAccessAtoms,
       ...traceAtoms,
+      ...atomizeTomDyads(input.world, input.selfId),
       ...obsAtoms // Merge observations as world facts for now (or obs layer if separate)
   ];
 
