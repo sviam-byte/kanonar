@@ -34,6 +34,7 @@ export function getAgentMapCell(
 
   const cells = location.map.cells;
   for (const cell of cells) {
+    if (!cell) continue;
     const occupants: string[] =
       ((cell as any).agentIds as string[]) ||
       ((cell as any).occupants as string[]) ||

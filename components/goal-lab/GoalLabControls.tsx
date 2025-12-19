@@ -139,6 +139,9 @@ export const GoalLabControls: React.FC<Props> = ({
       // Preferred path: parent controls scene membership directly
       if (onAddParticipant) {
           onAddParticipant(selectedActorToAdd);
+          // Чтобы было сразу видно, что добавление сработало —
+          // переключаем фокус на добавленного персонажа.
+          onSelectAgent(selectedActorToAdd);
           setSelectedActorToAdd('');
           return;
       }
@@ -161,6 +164,11 @@ export const GoalLabControls: React.FC<Props> = ({
           onNearbyActorsChange([...nearbyActors, newActor]);
       }
       setSelectedActorToAdd('');
+  };
+
+  const handleLoadPresetScene = (scene: any) => {
+      onLoadScene?.(scene);
+      setActiveTab('scene'); // сразу показать каст/селекторы/кнопки
   };
   
   const handleRemoveCharacter = (id: string) => {
@@ -197,20 +205,19 @@ export const GoalLabControls: React.FC<Props> = ({
   const filteredAtomKinds = CONTEXT_ATOM_KIND_CATALOG.filter(k => k.includes(customAtomSearch));
   
   const sceneIds = React.useMemo(() => {
-      const ids =
-        participantIds && participantIds.length > 0
-          ? new Set(participantIds)
-          : world?.agents?.length
-            ? new Set(world.agents.map((a: any) => a.entityId))
-            : new Set<string>();
+      const ids = new Set<string>(participantIds || []);
+      // страховка: active/perspective всегда должны быть в списке,
+      // но НЕ тащим world.agents, чтобы сцена была единственным источником правды.
+      if (selectedAgentId) ids.add(selectedAgentId);
+      if (perspectiveAgentId) ids.add(perspectiveAgentId);
+      return Array.from(ids);
+  }, [participantIds, selectedAgentId, perspectiveAgentId]);
 
-      if (ids.size === 0 && selectedAgentId) ids.add(selectedAgentId);
-      return ids;
-  }, [participantIds, world, selectedAgentId]);
+  const sceneIdSet = React.useMemo(() => new Set(sceneIds), [sceneIds]);
 
   // Calculate who is in scene but not the active agent
   const activeSceneActors = React.useMemo(() => {
-      return Array.from(sceneIds).map(id => {
+      return sceneIds.map(id => {
           const char = allCharacters.find(c => c.entityId === id);
           return { id, label: char?.title || id };
       });
@@ -219,23 +226,88 @@ export const GoalLabControls: React.FC<Props> = ({
   // Main agent dropdown: Show only current scene/world participants
   const activeAgentOptions = React.useMemo(() => {
       return allCharacters
-          .filter(c => sceneIds.has(c.entityId))
+          .filter(c => sceneIdSet.has(c.entityId))
           .map(c => ({ ...c, inScene: true }));
-  }, [allCharacters, sceneIds]);
+  }, [allCharacters, sceneIdSet]);
   
   // Add Character Dropdown: exclude those already in scene
   const availableToAdd = React.useMemo(() => {
-      return allCharacters.filter(c => !sceneIds.has(c.entityId));
-  }, [allCharacters, sceneIds]);
+      return allCharacters.filter(c => !sceneIdSet.has(c.entityId));
+  }, [allCharacters, sceneIdSet]);
 
   return (
     <div className="flex flex-col h-full bg-canon-bg border-t border-canon-border">
-      
+
       {/* 0. ACTIVE AGENT */}
       <div className="flex-shrink-0 p-2 border-b border-canon-border/50 bg-canon-bg-light/30">
+        {/* Scene cast (single source of truth) */}
+        <div className="border border-canon-border rounded p-2 mb-3 bg-black/20">
+          <div className="text-[10px] font-bold uppercase tracking-widest text-canon-accent mb-2">
+            Scene cast
+          </div>
+
+          {sceneIds.length === 0 && (
+            <div className="text-[11px] opacity-70">No actors in scene.</div>
+          )}
+
+          <div className="space-y-1">
+            {sceneIds.map(id => {
+              const ch = allCharacters.find(c => c.entityId === id);
+              const label = ch?.title ?? id;
+
+              const isActive = id === selectedAgentId;
+              const isPerspective = id === perspectiveAgentId;
+
+              return (
+                <div
+                  key={id}
+                  className={`flex items-center justify-between gap-2 px-2 py-1 rounded border ${
+                    isActive || isPerspective ? 'border-canon-accent/60 bg-canon-accent/10' : 'border-canon-border/60 bg-black/10'
+                  }`}
+                >
+                  <div className="min-w-0">
+                    <div className="text-[11px] font-semibold truncate">{label}</div>
+                    <div className="text-[10px] opacity-70 font-mono truncate">{id}</div>
+                  </div>
+
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      className={`px-2 py-0.5 text-[10px] rounded border ${
+                        isActive ? 'bg-canon-accent text-black border-canon-accent' : 'border-canon-border hover:border-canon-accent/70'
+                      }`}
+                      onClick={() => onSelectAgent?.(id)}
+                      title="Set as Active agent"
+                    >
+                      Active
+                    </button>
+
+                    <button
+                      className={`px-2 py-0.5 text-[10px] rounded border ${
+                        isPerspective ? 'bg-canon-accent text-black border-canon-accent' : 'border-canon-border hover:border-canon-accent/70'
+                      }`}
+                      onClick={() => onSelectPerspective?.(id)}
+                      title="Set as Perspective agent"
+                    >
+                      View
+                    </button>
+
+                    <button
+                      className="px-2 py-0.5 text-[10px] rounded border border-red-500/50 text-red-200 hover:bg-red-900/30"
+                      onClick={() => onRemoveParticipant?.(id)}
+                      title="Remove from scene"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
         <div className="flex justify-between items-center mb-1">
           <span className="text-[10px] font-bold text-canon-text-light uppercase">Active Agent (Focus)</span>
-          <button 
+          <button
             type="button"
             onClick={() => onStartPlacement(placingActorId === selectedAgentId ? null : selectedAgentId)}
             disabled={!selectedAgentId}
@@ -314,10 +386,8 @@ export const GoalLabControls: React.FC<Props> = ({
                     <span>🎬</span> Quick Presets
                 </div>
                 {TEST_SCENES.map(scene => (
-                    <button
-                        type="button"
+                    <div
                         key={scene.id}
-                        onClick={() => onLoadScene(scene)}
                         className="w-full text-left bg-canon-bg-light/30 border border-canon-border/50 rounded p-2 hover:border-canon-accent hover:bg-canon-bg-light/60 transition-all group"
                     >
                         <div className="flex justify-between items-baseline">
@@ -325,7 +395,15 @@ export const GoalLabControls: React.FC<Props> = ({
                             <span className="text-[9px] font-mono text-canon-text-light">{scene.characters.length} chars</span>
                         </div>
                         <p className="text-[9px] text-canon-text-light mt-1 line-clamp-2">{scene.description}</p>
-                    </button>
+                        <div className="mt-2 flex justify-end">
+                          <button
+                              onClick={() => handleLoadPresetScene(scene)}
+                              className="px-2 py-1 text-[10px] bg-canon-accent text-black rounded hover:opacity-80"
+                          >
+                              LOAD SCENE
+                          </button>
+                        </div>
+                    </div>
                 ))}
             </div>
         )}

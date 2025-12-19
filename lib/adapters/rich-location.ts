@@ -3,6 +3,7 @@ import { LocationEntity, WorldState, AgentState } from '../../types';
 import { Location, createEmptyLocation, GoalSpec, ContextMode, HazardSpec, NormRule } from '../location/types';
 import { calculateArchetypeMetricsFromVectorBase } from '../archetypes/metrics';
 import { normalizeCellOccupancy } from '../world/mapNormalize';
+import { ensureMapCells } from '../world/ensureMapCells';
 
 /**
  * Hydrates a lightweight LocationEntity (from WorldState) into a fully functional Rich Location Model.
@@ -12,11 +13,19 @@ import { normalizeCellOccupancy } from '../world/mapNormalize';
 export function hydrateLocation(entity: LocationEntity): Location {
     const base = createEmptyLocation(entity.entityId, entity.title || entity.entityId);
     
-    let map = entity.map;
-    if (map && Array.isArray(map.cells)) {
+    let map = entity.map || createEmptyLocation(entity.entityId, entity.title || entity.entityId).map;
+
+    // Multi-agent computations expect a dense grid. Fill missing cells defensively.
+    try {
+        map = ensureMapCells(map as any);
+    } catch {
+        // keep as-is
+    }
+
+    if (map && Array.isArray((map as any).cells)) {
         map = {
             ...map,
-            cells: map.cells.map(normalizeCellOccupancy)
+            cells: (map as any).cells.map(normalizeCellOccupancy).filter(Boolean)
         };
     }
 

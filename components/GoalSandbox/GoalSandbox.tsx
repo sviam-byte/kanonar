@@ -13,7 +13,7 @@ import {
   type AgentState,
 } from '../../types';
 import { useSandbox } from '../../contexts/SandboxContext';
-import { getEntitiesByType } from '../../data';
+import { getAllCharactersWithRuntime } from '../../data';
 import { createInitialWorld } from '../../lib/world/initializer';
 import { scoreContextualGoals } from '../../lib/context/v2/scoring';
 import type { ContextAtom } from '../../lib/context/v2/types';
@@ -114,11 +114,11 @@ export const GoalSandbox: React.FC = () => {
   const { characters: sandboxCharacters, setDyadConfigFor } = useSandbox();
 
   const [fatalError, setFatalError] = useState<string | null>(null);
+  const [runtimeError, setRuntimeError] = useState<string | null>(null);
 
   const allCharacters = useMemo(() => {
-    const base = (getEntitiesByType(EntityType.Character) as CharacterEntity[]).concat(
-      getEntitiesByType(EntityType.Essence) as CharacterEntity[]
-    );
+    // Единый источник правды: реестр + runtime-characters (и essences внутри).
+    const base = getAllCharactersWithRuntime();
     const map = new Map<string, CharacterEntity>();
     [...base, ...sandboxCharacters].forEach(c => map.set(c.entityId, c));
     return Array.from(map.values());
@@ -361,7 +361,15 @@ export const GoalSandbox: React.FC = () => {
       if (!w) return;
 
       w.groupGoalId = undefined;
-      w.locations = [getSelectedLocationEntity(), ...allLocations];
+      w.locations = [getSelectedLocationEntity(), ...allLocations].map(loc => {
+        const m = (loc as any)?.map;
+        if (!m) return loc as any;
+        try {
+          return { ...(loc as any), map: ensureMapCells(m) } as any;
+        } catch {
+          return loc as any;
+        }
+      });
 
       const nextPositions = { ...actorPositionsRef.current };
       w.agents.forEach((a, i) => {
@@ -434,6 +442,11 @@ export const GoalSandbox: React.FC = () => {
       if (!id) return;
       if (id === selectedAgentId) return;
 
+      if (!allCharacters.some(c => c.entityId === id)) {
+        setFatalError(`Add participant failed: unknown character id: ${String(id)}`);
+        return;
+      }
+
       console.log('[ADD] request', { id, selectedAgentId });
 
       setSceneParticipants(prev => {
@@ -448,7 +461,7 @@ export const GoalSandbox: React.FC = () => {
       persistActorPositions();
       forceRebuildWorld();
     },
-    [selectedAgentId, persistActorPositions, forceRebuildWorld]
+    [selectedAgentId, persistActorPositions, forceRebuildWorld, allCharacters]
   );
 
   const handleRemoveParticipant = useCallback(
@@ -491,6 +504,16 @@ export const GoalSandbox: React.FC = () => {
     const ids = new Set(sceneParticipants);
     ids.add(selectedAgentId);
 
+    // Если в сцене лежат id, которых нет среди зарегистрированных сущностей,
+    // результат будет выглядеть как "не добавляется" (id просто отфильтруется).
+    const missingIds = Array.from(ids).filter(id => !allCharacters.some(c => c.entityId === id));
+    if (missingIds.length) {
+      setRuntimeError(`Scene contains unknown character ids: ${missingIds.join(', ')}`);
+    } else {
+      // не затираем fatalError; это только мягкое предупреждение
+      setRuntimeError(prev => (prev && prev.startsWith('Scene contains unknown') ? null : prev));
+    }
+
     const participants = Array.from(ids)
       .map(id => allCharacters.find(c => c.entityId === id))
       .filter(Boolean) as CharacterEntity[];
@@ -505,7 +528,15 @@ export const GoalSandbox: React.FC = () => {
       }
 
       w.groupGoalId = undefined;
-      w.locations = [getSelectedLocationEntity(), ...allLocations];
+      w.locations = [getSelectedLocationEntity(), ...allLocations].map(loc => {
+        const m = (loc as any)?.map;
+        if (!m) return loc as any;
+        try {
+          return { ...(loc as any), map: ensureMapCells(m) } as any;
+        } catch {
+          return loc as any;
+        }
+      });
 
       const nextPositions = { ...actorPositionsRef.current };
 
@@ -754,56 +785,72 @@ export const GoalSandbox: React.FC = () => {
     return buildFrameMvp(scene as any);
   }, [glCtx, selectedAgentId, getSelectedLocationEntity, worldState, manualAtoms]);
 
-  const { snapshot, goals, locationScores, tomScores, situation, goalPreview, contextualMind } = useMemo(() => {
-    if (!glCtx || !worldState) {
-      return {
-        frame: null,
-        snapshot: null,
-        goals: [],
-        locationScores: [],
-        tomScores: [],
-        situation: null,
-        goalPreview: null,
-        contextualMind: null,
-      };
-    }
-
-    const { agent, frame, snapshot, situation, goalPreview } = glCtx as any;
-    snapshot.atoms = dedupeAtomsById(snapshot.atoms);
-
-    const goals = scoreContextualGoals(agent, worldState, snapshot, undefined, frame || undefined);
-    const locScores = computeLocationGoalsForAgent(
-      worldState,
-      agent.entityId,
-      (agent as any).locationId || null
-    );
-    const tomScores = computeTomGoalsForAgent(worldState, agent.entityId);
-
-    let cm: ContextualMindReport | null = null;
-    try {
-      cm = computeContextualMind({
-        world: worldState,
-        agent,
-        frame: frame || null,
-        goalPreview: goalPreview?.goals ?? null,
-        domainMix: { ...(snapshot?.domains ?? {}), ...(goalPreview?.debug?.d_mix ?? {}) } as any,
-        atoms: snapshot.atoms,
-      }).report;
-    } catch (e) {
-      console.error(e);
-    }
-
-    return {
-      frame,
-      snapshot,
-      goals,
-      locationScores: locScores,
-      tomScores,
-      situation,
-      goalPreview,
-      contextualMind: cm,
+  const computed = useMemo(() => {
+    const empty = {
+      frame: null,
+      snapshot: null,
+      goals: [] as any[],
+      locationScores: [] as any[],
+      tomScores: [] as any[],
+      situation: null as any,
+      goalPreview: null as any,
+      contextualMind: null as ContextualMindReport | null,
     };
+
+    if (!glCtx || !worldState) {
+      return { ...empty, error: null as any };
+    }
+
+    try {
+      const { agent, frame, snapshot, situation, goalPreview } = glCtx as any;
+      snapshot.atoms = dedupeAtomsById(snapshot.atoms);
+
+      const goals = scoreContextualGoals(agent, worldState, snapshot, undefined, frame || undefined);
+      const locScores = computeLocationGoalsForAgent(
+        worldState,
+        agent.entityId,
+        (agent as any).locationId || null
+      );
+      const tomScores = computeTomGoalsForAgent(worldState, agent.entityId);
+
+      let cm: ContextualMindReport | null = null;
+      try {
+        cm = computeContextualMind({
+          world: worldState,
+          agent,
+          frame: frame || null,
+          goalPreview: goalPreview?.goals ?? null,
+          domainMix: { ...(snapshot?.domains ?? {}), ...(goalPreview?.debug?.d_mix ?? {}) } as any,
+          atoms: snapshot.atoms,
+        }).report;
+      } catch (e) {
+        console.error(e);
+      }
+
+      return {
+        frame,
+        snapshot,
+        goals,
+        locationScores: locScores,
+        tomScores,
+        situation,
+        goalPreview,
+        contextualMind: cm,
+        error: null,
+      };
+    } catch (e: any) {
+      console.error('[GoalSandbox] compute pipeline failed', e);
+      return { ...empty, error: e };
+    }
   }, [glCtx, worldState]);
+
+  const { snapshot, goals, locationScores, tomScores, situation, goalPreview, contextualMind, error: computeError } = computed;
+
+  useEffect(() => {
+    if (computeError) {
+      setFatalError(String((computeError as any)?.message || computeError));
+    }
+  }, [computeError]);
 
   const snapshotV1 = useMemo(() => {
     if (!glCtx) return null;
@@ -967,6 +1014,13 @@ export const GoalSandbox: React.FC = () => {
               <div className="bg-red-900/40 border border-red-500/60 text-red-200 p-4 rounded">
                 <div className="font-bold text-sm mb-1">Goal Lab error</div>
                 <div className="text-xs font-mono whitespace-pre-wrap opacity-80">{fatalError}</div>
+              </div>
+            )}
+
+            {runtimeError && !fatalError && (
+              <div className="bg-amber-900/30 border border-amber-500/60 text-amber-100 p-4 rounded">
+                <div className="font-bold text-sm mb-1">Goal Lab warning</div>
+                <div className="text-xs font-mono whitespace-pre-wrap opacity-80">{runtimeError}</div>
               </div>
             )}
 
