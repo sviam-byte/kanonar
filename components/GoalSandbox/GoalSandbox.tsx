@@ -304,17 +304,29 @@ export const GoalSandbox: React.FC = () => {
     return Array.from(ids);
   }, [sceneParticipants, selectedAgentId]);
 
-  const setEquals = (a: Set<string>, b: Set<string>) => {
-    if (a.size !== b.size) return false;
-    for (const x of a) if (!b.has(x)) return false;
-    return true;
-  };
-
   useEffect(() => {
     if (!worldState) return;
+
     const actual = new Set(worldState.agents.map(a => a.entityId));
-    setSceneParticipants(prev => (setEquals(prev, actual) ? prev : actual));
-  }, [worldState]);
+
+    // Reconcile scene participants to match actual world agents without triggering rebuild loops
+    setSceneParticipants(prev => {
+      const prevPlusSelected = new Set(prev);
+      if (selectedAgentId) prevPlusSelected.add(selectedAgentId);
+
+      let same = prevPlusSelected.size === actual.size;
+      if (same) {
+        for (const id of prevPlusSelected) {
+          if (!actual.has(id)) {
+            same = false;
+            break;
+          }
+        }
+      }
+
+      return same ? prev : new Set(actual);
+    });
+  }, [worldState, selectedAgentId]);
 
   const rebuildWorldFromParticipants = useCallback(
     (idsInput: Set<string>) => {
