@@ -32,6 +32,7 @@ import { runTicks } from '../../lib/engine/tick';
 import type { AtomDiff } from '../../lib/snapshot/diffAtoms';
 import { adaptToSnapshotV1 } from '../../lib/goal-lab/snapshotAdapter';
 import { CastPerspectivePanel } from '../goal-lab/CastPerspectivePanel';
+import { allScenarioDefs } from '../../data/scenarios/index';
 
 // Pipeline Imports
 import { buildFrameMvp } from '../../lib/context/buildFrameMvp';
@@ -648,8 +649,14 @@ export const GoalSandbox: React.FC = () => {
       setLocationMode('preset');
     }
 
-    if ((scene as any).suggestedScenarioId) {
-      setActiveScenarioId((scene as any).suggestedScenarioId);
+    const sid = (scene as any).suggestedScenarioId;
+    if (sid) {
+      if (allScenarioDefs[sid]) {
+        setActiveScenarioId(sid);
+      } else {
+        // не ломаем worldState; просто сообщаем
+        setFatalError(`Preset scene requested unknown scenarioId: ${String(sid)}`);
+      }
     }
 
     const enginePreset = (scene as any).enginePresetId || 'safe_hub';
