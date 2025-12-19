@@ -22,6 +22,7 @@ import { ThreatPanel } from './ThreatPanel';
 import { ToMPanel } from './ToMPanel';
 import { CoveragePanel } from './CoveragePanel';
 import { GoalLabSnapshotV1 } from '../../lib/goal-lab/snapshotTypes';
+import { NarrativePanel } from './NarrativePanel';
 
 interface Props {
   context: ContextSnapshot | null;
@@ -43,6 +44,7 @@ interface Props {
   snapshotV1?: GoalLabSnapshotV1 | null;
   perspectiveAgentId?: string | null;
   tomRows?: Array<{ me: string; other: string; dyad: any }> | null;
+  sceneDump?: any;
 }
 
 interface AtomStyle {
@@ -333,10 +335,37 @@ export const GoalLabResults: React.FC<Props> = ({
   snapshotV1,
   perspectiveAgentId,
   tomRows,
+  sceneDump,
 }) => {
     const [selectedGoalId, setSelectedGoalId] = useState<string | null>(null);
     const [isPreviewOpen, setPreviewOpen] = useState(false);
     const [activeTabIndex, setActiveTabIndex] = useState(0);
+
+    const downloadScene = () => {
+        const dump = sceneDump ?? { snapshotV1, context, goalScores, situation, goalPreview, contextualMind, atomDiff, tomRows };
+        const replacer = (_k: string, v: any) => {
+            if (v instanceof Map) return Object.fromEntries(Array.from(v.entries()));
+            if (v instanceof Set) return Array.from(v.values());
+            if (typeof v === 'function') return undefined;
+            return v;
+        };
+        try {
+            const json = JSON.stringify(dump, replacer, 2);
+            const blob = new Blob([json], { type: 'application/json;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            const ts = new Date().toISOString().replace(/[:.]/g, '-');
+            const focus = (dump as any)?.focus?.perspectiveId || (dump as any)?.focus?.selectedAgentId || (context as any)?.agentId || 'agent';
+            a.href = url;
+            a.download = `goal-lab-scene__${String(focus)}__${ts}.json`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(url);
+        } catch (e) {
+            console.error('[GoalLabResults] failed to export scene JSON', e);
+        }
+    };
 
     const effectiveSelectedId = selectedGoalId || (goalScores.length > 0 ? goalScores[0].goalId : null);
     const selectedScore = goalScores.find(g => g.goalId === effectiveSelectedId);
@@ -392,25 +421,29 @@ export const GoalLabResults: React.FC<Props> = ({
     const PossibilitiesTab = () => <PossibilitiesPanel possibilities={(context as any).possibilities || snapshotV1?.possibilities || []} />;
     const DiffTab = () => <DiffPanel diffs={atomDiff || snapshotV1?.atomDiff || []} />;
     const DecisionTab = () => <DecisionPanel decision={(context as any).decision || snapshotV1?.decision} />;
+    const ExplainTab = () => (
+        <NarrativePanel situation={situation as any} goalPreview={goalPreview as any} contextualMind={contextualMind as any} />
+    );
 
     const renderContent = () => {
         switch(activeTabIndex) {
-            case 0: return <AnalysisTab />;
-            case 1: return <AtomsTab />;
-            case 2: return <ThreatTab />;
-            case 3: return <ToMTab />;
-            case 4: return <MindTab />; 
-            case 5: return <CoverageTab />; // NEW
-            case 6: return <PossibilitiesTab />;
-            case 7: return <DecisionTab />;
-            case 8: return <AccessTab />;
-            case 9: return <DiffTab />;
-            case 10: return <DebugTab />;
-            default: return <AnalysisTab />;
+            case 0: return <ExplainTab />;
+            case 1: return <AnalysisTab />;
+            case 2: return <AtomsTab />;
+            case 3: return <ThreatTab />;
+            case 4: return <ToMTab />;
+            case 5: return <MindTab />;
+            case 6: return <CoverageTab />; // NEW
+            case 7: return <PossibilitiesTab />;
+            case 8: return <DecisionTab />;
+            case 9: return <AccessTab />;
+            case 10: return <DiffTab />;
+            case 11: return <DebugTab />;
+            default: return <ExplainTab />;
         }
     };
-    
-  const tabsList = ['Analysis', 'Atoms', 'Threat', 'ToM', 'CtxMind', 'Coverage', 'Possibilities', 'Decision', 'Access', 'Diff', 'Debug'];
+
+  const tabsList = ['Explain', 'Analysis', 'Atoms', 'Threat', 'ToM', 'CtxMind', 'Coverage', 'Possibilities', 'Decision', 'Access', 'Diff', 'Debug'];
 
   const focusId = (context as any)?.agentId;
   const focusLabel = (focusId && actorLabels?.[focusId]) ? actorLabels[focusId] : focusId;
@@ -432,15 +465,25 @@ export const GoalLabResults: React.FC<Props> = ({
             )}
             {context && (
                 <div className="bg-canon-bg border-b border-canon-border/60 p-3">
-                    <div className="text-xs font-bold text-canon-text uppercase tracking-wider">Фокус</div>
-                    <div className="text-sm text-canon-text-light">
-                        {focusLabel || '—'}
-                        {focusId ? (
-                          <span className="text-[10px] font-mono text-canon-text-light/70 ml-2">
-                            agentId: {focusId}
-                            {(context as any)?.locationId ? ` • locationId: ${(context as any).locationId}` : ''}
-                          </span>
-                        ) : null}
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <div className="text-xs font-bold text-canon-text uppercase tracking-wider">Фокус</div>
+                        <div className="text-sm text-canon-text-light">
+                            {focusLabel || '—'}
+                            {focusId ? (
+                              <span className="text-[10px] font-mono text-canon-text-light/70 ml-2">
+                                agentId: {focusId}
+                                {(context as any)?.locationId ? ` • locationId: ${(context as any).locationId}` : ''}
+                              </span>
+                            ) : null}
+                        </div>
+                      </div>
+                      <button
+                        onClick={downloadScene}
+                        className="px-3 py-1 text-[11px] font-semibold border border-canon-border/60 rounded bg-canon-bg-light hover:bg-canon-bg-light/70 transition-colors"
+                      >
+                        Download scene JSON
+                      </button>
                     </div>
                 </div>
             )}

@@ -44,6 +44,7 @@ import { assignRoles } from '../../lib/roles/assignment';
 import { constructGil } from '../../lib/gil/apply';
 import type { DyadConfigForA } from '../../lib/tom/dyad-metrics';
 import { ensureMapCells } from '../../lib/world/ensureMapCells';
+import { defaultAffect } from '../../lib/emotions/engine';
 
 function createCustomLocationEntity(map: LocationMap): LocationEntity {
   const cells = map.cells || [];
@@ -168,6 +169,64 @@ export const GoalSandbox: React.FC = () => {
   const [affectOverrides, setAffectOverrides] = useState<Partial<AffectState>>({});
   const [selectedEventIds, setSelectedEventIds] = useState<Set<string>>(new Set());
   const [manualAtoms, setManualAtoms] = useState<ContextAtom[]>([]);
+
+  const mergeAffectOverrides = useCallback(
+    (base: AffectState | undefined, tick: number, ovr: Partial<AffectState>): AffectState => {
+      const a0 = base ?? defaultAffect(tick);
+      const next: AffectState = {
+        ...a0,
+        e: { ...(a0.e || ({} as any)) },
+        regulation: { ...(a0.regulation || ({} as any)) },
+        updatedAtTick: tick,
+      };
+
+      const setE = (k: any, v: number) => {
+        if (!next.e) (next as any).e = {};
+        (next.e as any)[k] = v;
+      };
+
+      if (ovr.valence != null && Number.isFinite(ovr.valence as any)) next.valence = Number(ovr.valence);
+      if (ovr.arousal != null && Number.isFinite(ovr.arousal as any)) next.arousal = Number(ovr.arousal);
+
+      // UI сейчас даёт legacy subset (fear/anger/shame). Держим в sync и поля, и e[]
+      const fear = (ovr as any).fear;
+      const anger = (ovr as any).anger;
+      const shame = (ovr as any).shame;
+
+      if (fear != null && Number.isFinite(fear)) {
+        (next as any).fear = Number(fear);
+        setE('fear', Number(fear));
+      }
+      if (anger != null && Number.isFinite(anger)) {
+        (next as any).anger = Number(anger);
+        setE('anger', Number(anger));
+      }
+      if (shame != null && Number.isFinite(shame)) {
+        (next as any).shame = Number(shame);
+        setE('shame', Number(shame));
+      }
+
+      return next;
+    },
+    []
+  );
+
+  const applyAffectOverridesToWorld = useCallback(
+    (w: WorldState, agentId: string, ovr: Partial<AffectState>) => {
+      if (!ovr || Object.keys(ovr).length === 0) return w;
+
+      const tick = (w as any)?.tick ?? 0;
+      const idx = (w.agents || []).findIndex(a => a.entityId === agentId);
+      if (idx < 0) return w;
+
+      const a0 = w.agents[idx] as any;
+      const a1 = { ...a0, affect: mergeAffectOverrides(a0.affect, tick, ovr) } as AgentState;
+      const nextAgents = [...(w.agents as any[])];
+      nextAgents[idx] = a1;
+      return { ...(w as any), agents: nextAgents } as WorldState;
+    },
+    [mergeAffectOverrides]
+  );
 
   // Atom Overrides
   const [atomOverridesLayer, setAtomOverridesLayer] = useState<AtomOverrideLayer>({
@@ -318,30 +377,6 @@ export const GoalSandbox: React.FC = () => {
     },
     [ensureCompleteInitialRelations, getActiveLocationId, runtimeDyadConfigs]
   );
-
-  useEffect(() => {
-    if (!worldState) return;
-
-    const actual = new Set(worldState.agents.map(a => a.entityId));
-
-    // Reconcile scene participants to match actual world agents without triggering rebuild loops
-    setSceneParticipants(prev => {
-      const prevPlusSelected = new Set(prev);
-      if (selectedAgentId) prevPlusSelected.add(selectedAgentId);
-
-      let same = prevPlusSelected.size === actual.size;
-      if (same) {
-        for (const id of prevPlusSelected) {
-          if (!actual.has(id)) {
-            same = false;
-            break;
-          }
-        }
-      }
-
-      return same ? prev : new Set(actual);
-    });
-  }, [worldState, selectedAgentId]);
 
   const rebuildWorldFromParticipants = useCallback(
     (idsInput: Set<string>) => {
@@ -729,14 +764,16 @@ export const GoalSandbox: React.FC = () => {
     const pid = perspectiveAgentId || selectedAgentId;
     if (!pid) return { ctx: null as any, err: null as string | null };
 
-    const agent = worldState.agents.find(a => a.entityId === pid);
+    const worldForCtx = applyAffectOverridesToWorld(worldState, pid, affectOverrides);
+
+    const agent = worldForCtx.agents.find(a => a.entityId === pid);
     if (!agent) return { ctx: null as any, err: `Perspective agent not found in world: ${pid}` };
 
     try {
       const activeEvents = eventRegistry.getAll().filter(e => selectedEventIds.has(e.id));
       const loc = getSelectedLocationEntity();
 
-      const ctx = buildGoalLabContext(worldState, pid, {
+      const ctx = buildGoalLabContext(worldForCtx, pid, {
         snapshotOptions: {
           activeEvents,
           overrideLocation: loc,
@@ -746,7 +783,7 @@ export const GoalSandbox: React.FC = () => {
           overrideEvents: injectedEvents,
           sceneControl,
         },
-        timeOverride: (worldState as any).tick,
+        timeOverride: (worldForCtx as any).tick,
       });
 
       return { ctx, err: null as string | null };
@@ -765,6 +802,8 @@ export const GoalSandbox: React.FC = () => {
     injectedEvents,
     sceneControl,
     getSelectedLocationEntity,
+    applyAffectOverridesToWorld,
+    affectOverrides,
   ]);
 
   const glCtx = glCtxResult.ctx;
@@ -779,24 +818,65 @@ export const GoalSandbox: React.FC = () => {
     }
   }, [glCtxResult.err]);
 
-  const pipelineFrame = useMemo(() => {
-    if (!glCtx || !(glCtx as any).snapshot) return null;
-    const scene = {
-      agent: worldState?.agents.find(a => a.entityId === (perspectiveAgentId || selectedAgentId)),
-      location: getSelectedLocationEntity(),
-      otherAgents: worldState?.agents
-        .filter(a => a.entityId !== (perspectiveAgentId || selectedAgentId))
-        .map(a => ({
-          id: a.entityId,
-          name: (a as any).title,
-          pos: (a as any).position || { x: 0, y: 0 },
-          isWounded: (a as any).hp < 70,
-        })),
-      overrides: manualAtoms,
-      tick: (worldState as any)?.tick ?? 0,
+  const pipelineFrameResult = useMemo(() => {
+    if (!worldState) return { frame: null as any, err: null as string | null };
+
+    const pid = perspectiveAgentId || selectedAgentId;
+    if (!pid) return { frame: null as any, err: null as string | null };
+
+    const a0 = worldState.agents.find(a => a.entityId === pid);
+    if (!a0) return { frame: null as any, err: `Perspective agent not found in world: ${pid}` };
+
+    const locEnt = getSelectedLocationEntity();
+
+    // buildFrameMvp ожидает location.visibility/crowd/noise на верхнем уровне
+    const loc = {
+      id: (locEnt as any).entityId ?? (locEnt as any).id ?? 'loc',
+      visibility: (locEnt as any).visibility ?? (locEnt as any).properties?.visibility ?? 0.7,
+      crowd: (locEnt as any).crowd ?? (locEnt as any).properties?.crowd ?? 0.3,
+      noise: (locEnt as any).noise ?? (locEnt as any).properties?.noise ?? 0.2,
     };
-    return buildFrameMvp(scene as any);
-  }, [glCtx, selectedAgentId, getSelectedLocationEntity, worldState, manualAtoms]);
+
+    // КРИТИЧНО: agent должен быть {id,pos}
+    const agent = {
+      id: a0.entityId,
+      pos: (a0 as any).position ?? { x: 0, y: 0 },
+    };
+
+    const otherAgents = (worldState.agents || [])
+      .filter(a => a.entityId !== a0.entityId)
+      .map(a => ({
+        id: a.entityId,
+        name: (a as any).title,
+        pos: (a as any).position ?? { x: 0, y: 0 },
+        isWounded: (a as any).hp < 70,
+      }));
+
+    try {
+      const frame = buildFrameMvp({
+        agent,
+        location: loc,
+        otherAgents,
+        overrides: manualAtoms,
+        tick: (worldState as any)?.tick ?? 0,
+      } as any);
+
+      return { frame, err: null as string | null };
+    } catch (e: any) {
+      console.error('[GoalSandbox] buildFrameMvp failed', e);
+      return { frame: null as any, err: String(e?.message || e) };
+    }
+  }, [worldState, selectedAgentId, perspectiveAgentId, manualAtoms, getSelectedLocationEntity]);
+
+  const pipelineFrame = pipelineFrameResult.frame;
+
+  useEffect(() => {
+    if (pipelineFrameResult.err) {
+      setRuntimeError(pipelineFrameResult.err);
+    } else {
+      setRuntimeError(null);
+    }
+  }, [pipelineFrameResult.err]);
 
   const computed = useMemo(() => {
     const empty = {
@@ -940,6 +1020,81 @@ export const GoalSandbox: React.FC = () => {
     sceneControl,
   ]);
 
+  const sceneDump = useMemo(() => {
+    const tick = (worldState as any)?.tick ?? 0;
+    return {
+      schemaVersion: 1,
+      exportedAt: new Date().toISOString(),
+      tick,
+      focus: {
+        selectedAgentId,
+        perspectiveId,
+        selectedLocationId,
+        locationMode,
+      },
+      inputs: {
+        affectOverrides,
+        manualAtoms,
+        atomOverridesLayer,
+        selectedEventIds: Array.from(selectedEventIds || []),
+        injectedEvents,
+        sceneControl,
+        activeMapId: (activeMap as any)?.id ?? null,
+      },
+      world: worldState
+        ? {
+            tick: (worldState as any).tick,
+            scenario: (worldState as any).scenario,
+            scene: (worldState as any).scene,
+            agents: (worldState as any).agents,
+            leadership: (worldState as any).leadership,
+            factions: (worldState as any).factions,
+            tom: (worldState as any).tom,
+            eventLog: (worldState as any).eventLog,
+          }
+        : null,
+      pipeline: {
+        glCtx,
+        snapshot,
+        snapshotV1,
+        goals,
+        locationScores,
+        tomScores,
+        situation,
+        goalPreview,
+        contextualMind,
+        pipelineFrame,
+      },
+      tomMatrixForPerspective,
+      castRows,
+    };
+  }, [
+    worldState,
+    selectedAgentId,
+    perspectiveId,
+    selectedLocationId,
+    locationMode,
+    affectOverrides,
+    manualAtoms,
+    atomOverridesLayer,
+    selectedEventIds,
+    injectedEvents,
+    sceneControl,
+    activeMap,
+    glCtx,
+    snapshot,
+    snapshotV1,
+    goals,
+    locationScores,
+    tomScores,
+    situation,
+    goalPreview,
+    contextualMind,
+    pipelineFrame,
+    tomMatrixForPerspective,
+    castRows,
+  ]);
+
   const handleRunTicks = useCallback(
     (steps: number) => {
       if (!worldState || !selectedAgentId) return;
@@ -1057,6 +1212,7 @@ export const GoalSandbox: React.FC = () => {
               tom={(worldState as any)?.tom?.[perspectiveId]}
               atomDiff={atomDiff as any}
               snapshotV1={snapshotV1 as any}
+              sceneDump={sceneDump as any}
             />
 
             {pipelineFrame && (
