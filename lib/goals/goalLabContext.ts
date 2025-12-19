@@ -14,6 +14,7 @@ import { validateAtoms } from '../context/validate/frameValidator';
 import { buildSummaryAtoms } from '../context/summaries/buildSummaries';
 import { computeCoverageReport } from '../goal-lab/coverage/computeCoverage';
 import { normalizeAffectState } from '../affect/normalize';
+import { atomizeAffect } from '../affect/atomize';
 
 // New Imports for Pipeline
 import { buildStage0Atoms } from '../context/pipeline/stage0';
@@ -228,14 +229,21 @@ export function buildGoalLabContext(
 
   // --- Pipeline Execution Helper ---
   const runPipeline = (sceneAtoms: ContextAtom[], sceneSnapshotForStage0: any) => {
+      // Canonical affect atoms (bridge for UI knobs -> threat/goals explanations)
+      const affectAtoms = atomizeAffect(
+        selfId,
+        (agentForPipeline as any).affect,
+        affectOverrides && typeof affectOverrides === 'object' && Object.keys(affectOverrides).length > 0 ? 'manual' : 'derived'
+      );
+
       // 4. Stage 0 (World Facts)
       const stage0 = buildStage0Atoms({
         world: worldForPipeline,
         agent: agentForPipeline,
         selfId,
-        extraWorldAtoms: sceneAtoms, 
-        beliefAtoms,              
-        overrideAtoms: appliedOverrides, 
+        extraWorldAtoms: [...sceneAtoms, ...affectAtoms],
+        beliefAtoms,
+        overrideAtoms: appliedOverrides,
         arousal,
         ctxCrowd,
         events: eventsAll,
@@ -249,7 +257,14 @@ export function buildGoalLabContext(
           atoms: atomsPreAxes,
           tuning: (frame?.what?.contextTuning || (world.scene as any)?.contextTuning)
       });
-      const atomsWithAxes = [...atomsPreAxes]; 
+      // IMPORTANT: axes must be materialized into the atom stream, otherwise access/threat/goals won't see them.
+      const atomsWithAxes = mergeEpistemicAtoms({
+          world: atomsPreAxes,
+          obs: [],
+          belief: [],
+          override: [],
+          derived: axesRes.atoms
+      }).merged;
 
       // 5.5 Constraints & Access
       const locId = (agentForPipeline as any).locationId || getLocationForAgent(worldForPipeline, selfId)?.entityId;
@@ -480,14 +495,14 @@ export function buildGoalLabContext(
   };
 
   // --- Two-Pass Scene Logic ---
-  const sceneAtomsA = sceneInst ? applySceneAtoms({ scene: sceneInst, preset: SCENE_PRESETS[sceneInst.presetId], worldTick: tick }) : [];
+  const sceneAtomsA = sceneInst ? applySceneAtoms({ scene: sceneInst, preset: SCENE_PRESETS[sceneInst.presetId], worldTick: tick, selfId }) : [];
   let result = runPipeline(sceneAtomsA, sceneInst);
 
   if (sceneInst && sc?.presetId) {
       const stepped = stepSceneInstance({ scene: sceneInst, nowTick: tick, atomsForConditions: result.atoms });
       if (stepped.phaseId !== sceneInst.phaseId) {
           sceneInst = stepped;
-          const sceneAtomsB = applySceneAtoms({ scene: sceneInst, preset: SCENE_PRESETS[sceneInst.presetId], worldTick: tick });
+          const sceneAtomsB = applySceneAtoms({ scene: sceneInst, preset: SCENE_PRESETS[sceneInst.presetId], worldTick: tick, selfId });
           result = runPipeline(sceneAtomsB, sceneInst);
       }
   }
@@ -523,7 +538,8 @@ export function buildGoalLabContext(
   });
   
   (snapshot as any).debug = {
-      legacyAtoms: legacyFrameAtoms, 
+      legacyAtoms: legacyFrameAtoms,
+      axes: result.axesRes,
   };
   (snapshot as any).access = result.accessPack.decisions;
   (snapshot as any).possibilities = result.possibilities;
