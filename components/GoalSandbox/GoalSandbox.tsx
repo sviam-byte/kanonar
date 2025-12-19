@@ -723,20 +723,20 @@ export const GoalSandbox: React.FC = () => {
     }
   };
 
-  const glCtx = useMemo(() => {
+  const glCtxResult = useMemo(() => {
+    if (!worldState) return { ctx: null as any, err: null as string | null };
+
+    const pid = perspectiveAgentId || selectedAgentId;
+    if (!pid) return { ctx: null as any, err: null as string | null };
+
+    const agent = worldState.agents.find(a => a.entityId === pid);
+    if (!agent) return { ctx: null as any, err: `Perspective agent not found in world: ${pid}` };
+
     try {
-      if (!worldState) return null;
-      const perspectiveId = perspectiveAgentId || selectedAgentId;
-      if (!perspectiveId) return null;
-
-      const agent = worldState.agents.find(a => a.entityId === perspectiveId);
-      if (!agent) return null;
-
       const activeEvents = eventRegistry.getAll().filter(e => selectedEventIds.has(e.id));
       const loc = getSelectedLocationEntity();
 
-      setFatalError(null);
-      return buildGoalLabContext(worldState, perspectiveId, {
+      const ctx = buildGoalLabContext(worldState, pid, {
         snapshotOptions: {
           activeEvents,
           overrideLocation: loc,
@@ -748,10 +748,11 @@ export const GoalSandbox: React.FC = () => {
         },
         timeOverride: (worldState as any).tick,
       });
-    } catch (err: any) {
-      console.error(err);
-      setFatalError(err?.message || 'Unknown Goal Lab error');
-      return null;
+
+      return { ctx, err: null as string | null };
+    } catch (e: any) {
+      console.error('[GoalSandbox] buildGoalLabContext failed', e);
+      return { ctx: null as any, err: String(e?.message || e) };
     }
   }, [
     worldState,
@@ -765,6 +766,18 @@ export const GoalSandbox: React.FC = () => {
     sceneControl,
     getSelectedLocationEntity,
   ]);
+
+  const glCtx = glCtxResult.ctx;
+
+  useEffect(() => {
+    // ВАЖНО: setState только в эффектах, не в useMemo
+    if (glCtxResult.err) {
+      setFatalError(glCtxResult.err);
+    } else {
+      // аккуратно чистим fatalError только если оно было от glCtx
+      setFatalError(prev => (prev ? null : prev));
+    }
+  }, [glCtxResult.err]);
 
   const pipelineFrame = useMemo(() => {
     if (!glCtx || !(glCtx as any).snapshot) return null;

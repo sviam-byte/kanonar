@@ -67,16 +67,16 @@ export function getLocationMapCell(
 ): LocationMapCell | undefined {
   const map = loc.map;
   if (!map) return undefined;
-  return map.cells.find(c => c.x === x && c.y === y);
+  return map.cells.find((c: any) => c && c.x === x && c.y === y);
 }
 
 /**
  * Получить координаты клетки агента из его позиции.
  */
-export function getAgentMapCell(agent: { pos: { x: number; y: number } }) {
+export function getAgentMapCell(agent: { pos?: { x?: number; y?: number } }) {
   return {
-    cx: Math.round(agent.pos.x),
-    cy: Math.round(agent.pos.y),
+    cx: Math.round(agent.pos?.x ?? 0),
+    cy: Math.round(agent.pos?.y ?? 0),
   };
 }
 

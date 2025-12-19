@@ -30,14 +30,16 @@ import { PlanningLabPage } from './pages/PlanningLabPage';
 import { DialogueLabPage } from './pages/DialogueLabPage';
 import { BiographyLabPage } from './pages/BiographyLabPage';
 import { GoalLabPage } from './pages/GoalLabPage';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 
 function App() {
   return (
-    <HashRouter>
-      <BranchProvider>
-        <SandboxProvider>
-          <AccessProvider>
+    <ErrorBoundary>
+      <HashRouter>
+        <BranchProvider>
+          <SandboxProvider>
+            <AccessProvider>
               <div className="min-h-screen flex flex-col">
                 <Header />
                 <main className="flex-grow">
@@ -55,27 +57,28 @@ function App() {
                     <Route path="/events" element={<EventsPage />} />
                     <Route path="/social_event" element={<SocialEventsListPage />} />
                     <Route path="/social-simulator" element={<EventsConstructorPage />} />
-                     <Route path="/solver" element={<SolverPage />} />
-                     <Route path="/runner" element={<RunnerPage />} />
-                     <Route path="/runner/:scenarioId" element={<RunnerPage />} />
-                     <Route path="/builder" element={<CharacterBuilderPage />} />
-                     <Route path="/presets" element={<PresetsPage />} />
-                     <Route path="/character-lab" element={<CharacterLabPage />} />
-                     <Route path="/mass" element={<MassNetworkPage />} />
-                     <Route path="/access" element={<AccessModulePage />} />
-                     <Route path="/planning-lab" element={<PlanningLabPage />} />
-                     <Route path="/dialogue-lab" element={<DialogueLabPage />} />
-                     <Route path="/goal-lab" element={<GoalLabPage />} />
-                     <Route path="/biography-lab" element={<BiographyLabPage />} />
+                    <Route path="/solver" element={<SolverPage />} />
+                    <Route path="/runner" element={<RunnerPage />} />
+                    <Route path="/runner/:scenarioId" element={<RunnerPage />} />
+                    <Route path="/builder" element={<CharacterBuilderPage />} />
+                    <Route path="/presets" element={<PresetsPage />} />
+                    <Route path="/character-lab" element={<CharacterLabPage />} />
+                    <Route path="/mass" element={<MassNetworkPage />} />
+                    <Route path="/access" element={<AccessModulePage />} />
+                    <Route path="/planning-lab" element={<PlanningLabPage />} />
+                    <Route path="/dialogue-lab" element={<DialogueLabPage />} />
+                    <Route path="/goal-lab" element={<GoalLabPage />} />
+                    <Route path="/biography-lab" element={<BiographyLabPage />} />
                     <Route path="/:entityType" element={<EntityListPage />} />
                     <Route path="/:entityType/:entityId" element={<EntityDetailPage />} />
                   </Routes>
                 </main>
               </div>
-          </AccessProvider>
-        </SandboxProvider>
-      </BranchProvider>
-    </HashRouter>
+            </AccessProvider>
+          </SandboxProvider>
+        </BranchProvider>
+      </HashRouter>
+    </ErrorBoundary>
   );
 }
 

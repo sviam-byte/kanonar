@@ -19,6 +19,7 @@ import { allLocations } from '../../data/locations';
 import { hydrateLocation } from '../adapters/rich-location';
 import { validateLocation } from '../location/validate';
 import { defaultBody, defaultIdentity } from '../character-snippet';
+import { ensureMapCells } from '../world/ensureMapCells';
 
 function fillDefaults(defaults: any, value: any): any {
     if (value == null) return structuredClone(defaults);
@@ -129,7 +130,20 @@ export function createInitialWorld(
         } as AgentState;
     });
 
-    const tempWorld = { 
+    const normalizedLocations = allLocations.map((loc: any) => {
+        const map = loc?.map;
+        if (map && Array.isArray(map.cells)) {
+            try {
+                return { ...loc, map: ensureMapCells(map) };
+            } catch {
+                // хотя бы выкинем undefined-ячейки
+                return { ...loc, map: { ...map, cells: map.cells.filter(Boolean) } };
+            }
+        }
+        return loc;
+    });
+
+    const tempWorld = {
         tick: 0,
         agents,
         context: 'sim',
@@ -147,7 +161,7 @@ export function createInitialWorld(
         },
         scenario: scenarioDef,
         massNetwork: buildDefaultMassNetwork(Branch.Current),
-        locations: allLocations, // Populate from registry
+        locations: normalizedLocations, // Populate from registry
         eventLog: { schemaVersion: 1, events: [] } // Initialize Event Log
     };
 
