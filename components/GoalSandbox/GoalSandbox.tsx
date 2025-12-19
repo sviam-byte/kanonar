@@ -726,17 +726,17 @@ export const GoalSandbox: React.FC = () => {
   const glCtxResult = useMemo(() => {
     if (!worldState) return { ctx: null as any, err: null as string | null };
 
-    const perspectiveId2 = perspectiveAgentId || selectedAgentId;
-    if (!perspectiveId2) return { ctx: null as any, err: null as string | null };
+    const pid = perspectiveAgentId || selectedAgentId;
+    if (!pid) return { ctx: null as any, err: null as string | null };
 
-    const agent = worldState.agents.find(a => a.entityId === perspectiveId2);
-    if (!agent) return { ctx: null as any, err: null as string | null };
+    const agent = worldState.agents.find(a => a.entityId === pid);
+    if (!agent) return { ctx: null as any, err: `Perspective agent not found in world: ${pid}` };
 
     try {
       const activeEvents = eventRegistry.getAll().filter(e => selectedEventIds.has(e.id));
       const loc = getSelectedLocationEntity();
 
-      const ctx = buildGoalLabContext(worldState, perspectiveId2, {
+      const ctx = buildGoalLabContext(worldState, pid, {
         snapshotOptions: {
           activeEvents,
           overrideLocation: loc,
@@ -751,7 +751,7 @@ export const GoalSandbox: React.FC = () => {
 
       return { ctx, err: null as string | null };
     } catch (e: any) {
-      console.error(e);
+      console.error('[GoalSandbox] buildGoalLabContext failed', e);
       return { ctx: null as any, err: String(e?.message || e) };
     }
   }, [
@@ -770,8 +770,12 @@ export const GoalSandbox: React.FC = () => {
   const glCtx = glCtxResult.ctx;
 
   useEffect(() => {
+    // ВАЖНО: setState только в эффектах, не в useMemo
     if (glCtxResult.err) {
       setFatalError(glCtxResult.err);
+    } else {
+      // аккуратно чистим fatalError только если оно было от glCtx
+      setFatalError(prev => (prev ? null : prev));
     }
   }, [glCtxResult.err]);
 
