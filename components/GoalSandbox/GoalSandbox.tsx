@@ -31,6 +31,7 @@ import { AtomOverrideLayer } from '../../lib/context/overrides/types';
 import { runTicks } from '../../lib/engine/tick';
 import type { AtomDiff } from '../../lib/snapshot/diffAtoms';
 import { adaptToSnapshotV1 } from '../../lib/goal-lab/snapshotAdapter';
+import { CastPerspectivePanel } from '../goal-lab/CastPerspectivePanel';
 
 // Pipeline Imports
 import { buildFrameMvp } from '../../lib/context/buildFrameMvp';
@@ -801,6 +802,54 @@ export const GoalSandbox: React.FC = () => {
     return rows;
   }, [worldState, participantIds, perspectiveId]);
 
+  const castRows = useMemo(() => {
+    if (!worldState) return [];
+
+    const activeEvents = eventRegistry.getAll().filter(e => selectedEventIds.has(e.id));
+    const loc = getSelectedLocationEntity();
+    const ids = participantIds.slice(0, 8); // control perf
+
+    return ids.map(id => {
+      const char = allCharacters.find(c => c.entityId === id);
+      let snap: any = null;
+
+      try {
+        const res = buildGoalLabContext(worldState, id, {
+          snapshotOptions: {
+            activeEvents,
+            overrideLocation: loc,
+            manualAtoms,
+            gridMap: activeMap,
+            atomOverridesLayer,
+            overrideEvents: injectedEvents,
+            sceneControl,
+          },
+          timeOverride: (worldState as any).tick,
+        });
+        snap = res?.snapshot ?? null;
+      } catch {
+        snap = null;
+      }
+
+      return {
+        id,
+        label: char?.title || id,
+        snapshot: snap,
+      };
+    });
+  }, [
+    worldState,
+    participantIds,
+    allCharacters,
+    selectedEventIds,
+    getSelectedLocationEntity,
+    manualAtoms,
+    activeMap,
+    atomOverridesLayer,
+    injectedEvents,
+    sceneControl,
+  ]);
+
   const handleRunTicks = useCallback(
     (steps: number) => {
       if (!worldState || !selectedAgentId) return;
@@ -890,6 +939,8 @@ export const GoalSandbox: React.FC = () => {
                 <div className="text-xs font-mono whitespace-pre-wrap opacity-80">{fatalError}</div>
               </div>
             )}
+
+            <CastPerspectivePanel rows={castRows} focusId={selectedAgentId} onFocus={handleSelectAgent} />
 
             <GoalLabResults
               context={snapshot as any}
