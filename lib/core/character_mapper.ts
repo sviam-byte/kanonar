@@ -16,7 +16,7 @@ const get = (obj: Record<string, number> | undefined, key: string, def: number =
  */
 export function mapCharacterToBehaviorParams(character: CharacterEntity): CharacterParams {
     const p = character.vector_base;
-    const body = character.body;
+    const body = (character.body ?? {}) as any;
     const legacy = character; // Using the whole entity for legacy fields
 
     // --- Mapping Formulas from Design Document ---
@@ -36,22 +36,22 @@ export function mapCharacterToBehaviorParams(character: CharacterEntity): Charac
     const MAX_KCAL = 2500;
     const VO2MAX_REF = 50;
     const ENDURANCE_REF = 0.8;
-    const vo2_norm = (body.capacity?.VO2max || VO2MAX_REF) / VO2MAX_REF;
-    const endurance_norm = (body.constitution?.endurance_max || ENDURANCE_REF) / ENDURANCE_REF;
-    const sleepDebtFactor = Math.exp(-0.1 * (body.reserves?.sleep_debt_h || 0));
+    const vo2_norm = ((body?.capacity?.VO2max ?? VO2MAX_REF) / VO2MAX_REF);
+    const endurance_norm = ((body?.constitution?.endurance_max ?? ENDURANCE_REF) / ENDURANCE_REF);
+    const sleepDebtFactor = Math.exp(-0.1 * (body?.reserves?.sleep_debt_h || 0));
 
     const tau_energy = (0.05 + 0.35 * (1 - Math.tanh(1.5 * (vo2_norm - 1)))) * sleepDebtFactor;
     
     const stoicism = get(p, 'B_cooldown_discipline');
     const dark_exposure_norm = (legacy.state?.dark_exposure || 0) / 100;
-    const hpa_axis = body.regulation?.HPA_axis || 0.5;
+    const hpa_axis = body?.regulation?.HPA_axis ?? 0.5;
     const tau_stress = 0.02 + 0.23 * sigmoid(4 * (stoicism - (hpa_axis - 0.5) - dark_exposure_norm));
 
     const focus = get(p, 'G_Metacog_accuracy'); // Proxy for focus
     const tau_attention = (0.05 + 0.30 * sigmoid(3 * focus - 1.5)) * sleepDebtFactor;
     
     const resilience = get(p, 'G_Self_consistency_drive');
-    const moral_injury_norm = (body.acute?.moral_injury || 0) / 100;
+    const moral_injury_norm = ((body?.acute?.moral_injury || 0) / 100);
     const tau_will = 0.01 + 0.19 * sigmoid(5 * (resilience - moral_injury_norm));
 
     // 4. Base Process Noise σ_{0,i}
@@ -115,7 +115,7 @@ export function mapCharacterToBehaviorParams(character: CharacterEntity): Charac
     const shock_profile_J = {
         stress: 0.2 + 0.4 * (hpa_axis / HPA_MAX),
         energy: -(0.4 - 0.3 * ((vo2_norm + endurance_norm) / 2)),
-        injury: 0.3 * (1 - (body.reserves?.immune_tone || 0.5)),
+        injury: 0.3 * (1 - (body?.reserves?.immune_tone || 0.5)),
         moral: 0.5 * dark_exposure_norm,
     };
 
@@ -151,7 +151,10 @@ export function mapCharacterToBehaviorParams(character: CharacterEntity): Charac
 
     // 13. Gumbel Beta
     const decisiveness = get(p, 'G_Metacog_accuracy'); // Proxy
-    const gumbel_beta = Math.min(0.8, 0.05 + 0.75 * (((body.reserves?.sleep_debt_h || 0) / 24) + 0.5 * (1 - decisiveness)));
+    const gumbel_beta = Math.min(
+      0.8,
+      0.05 + 0.75 * (((body?.reserves?.sleep_debt_h || 0) / 24) + 0.5 * (1 - decisiveness))
+    );
 
     // 14. Planning Style
     // Deliberate if high discipline + high agency

@@ -57,6 +57,10 @@ interface Props {
   sceneControl?: any;
   onSceneControlChange?: (ctrl: any) => void;
   scenePresets?: any[];
+
+  // Perspective (who is the observer)
+  perspectiveAgentId?: string | null;
+  onSelectPerspective?: (id: string) => void;
 }
 
 export const GoalLabControls: React.FC<Props> = ({
@@ -75,7 +79,8 @@ export const GoalLabControls: React.FC<Props> = ({
   participantIds,
   onAddParticipant,
   onRemoveParticipant,
-  sceneControl, onSceneControlChange, scenePresets
+  sceneControl, onSceneControlChange, scenePresets,
+  perspectiveAgentId, onSelectPerspective
 }) => {
   
   const [selectedActorToAdd, setSelectedActorToAdd] = React.useState<string>('');
@@ -191,38 +196,37 @@ export const GoalLabControls: React.FC<Props> = ({
   
   const filteredAtomKinds = CONTEXT_ATOM_KIND_CATALOG.filter(k => k.includes(customAtomSearch));
   
-  // Calculate who is in scene but not the active agent
-  // If participantIds is present, use it. Otherwise use nearbyActors logic.
-  const activeSceneActors = React.useMemo(() => {
-      if (participantIds) {
-          // If we have world state participants, show them.
-          return participantIds
-              .map(id => {
-                  const char = allCharacters.find(c => c.entityId === id);
-                  return { id, label: char?.title || id };
-              });
-      }
-      return nearbyActors.filter(a => a.id !== selectedAgentId);
-  }, [participantIds, nearbyActors, selectedAgentId, allCharacters]);
+  const sceneIds = React.useMemo(() => {
+      const ids =
+        participantIds && participantIds.length > 0
+          ? new Set(participantIds)
+          : world?.agents?.length
+            ? new Set(world.agents.map((a: any) => a.entityId))
+            : new Set<string>();
 
-  // Main agent dropdown: Show everyone available in library or restricted to current scene
+      if (ids.size === 0 && selectedAgentId) ids.add(selectedAgentId);
+      return ids;
+  }, [participantIds, world, selectedAgentId]);
+
+  // Calculate who is in scene but not the active agent
+  const activeSceneActors = React.useMemo(() => {
+      return Array.from(sceneIds).map(id => {
+          const char = allCharacters.find(c => c.entityId === id);
+          return { id, label: char?.title || id };
+      });
+  }, [sceneIds, allCharacters]);
+
+  // Main agent dropdown: Show only current scene/world participants
   const activeAgentOptions = React.useMemo(() => {
-      if (participantIds && participantIds.length > 0) {
-          const set = new Set(participantIds);
-          return allCharacters
-              .filter(c => set.has(c.entityId))
-              .map(c => ({ ...c, inScene: true }));
-      }
-      // fallback: if no participantIds provided, keep old behavior
-      return allCharacters.map(c => ({ ...c, inScene: false }));
-  }, [allCharacters, participantIds]);
+      return allCharacters
+          .filter(c => sceneIds.has(c.entityId))
+          .map(c => ({ ...c, inScene: true }));
+  }, [allCharacters, sceneIds]);
   
   // Add Character Dropdown: exclude those already in scene
   const availableToAdd = React.useMemo(() => {
-      const currentIds = new Set(participantIds || []);
-      currentIds.add(selectedAgentId);
-      return allCharacters.filter(c => !currentIds.has(c.entityId));
-  }, [allCharacters, participantIds, selectedAgentId]);
+      return allCharacters.filter(c => !sceneIds.has(c.entityId));
+  }, [allCharacters, sceneIds]);
 
   return (
     <div className="flex flex-col h-full bg-canon-bg border-t border-canon-border">
@@ -526,6 +530,27 @@ export const GoalLabControls: React.FC<Props> = ({
                 <h3 className="text-[10px] font-bold text-canon-text-light uppercase tracking-wider">Scene Participants</h3>
             </div>
             
+            <div className="mb-3 p-2 rounded border border-canon-border/30 bg-canon-bg">
+              <div className="text-[11px] font-bold mb-2">Perspective (для кого считаем)</div>
+
+              <div className="flex flex-wrap gap-1">
+                {(participantIds || []).map(id => (
+                  <button
+                    key={id}
+                    className={`px-2 py-1 rounded text-[10px] border ${
+                      id === perspectiveAgentId
+                        ? 'bg-canon-accent/15 border-canon-accent'
+                        : 'bg-canon-bg border-canon-border/40'
+                    }`}
+                    onClick={() => onSelectPerspective?.(id)}
+                    type="button"
+                  >
+                    {id === perspectiveAgentId ? '● ' : ''}{id}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <div className="flex gap-2 mb-3">
                 <select 
                     className="flex-1 bg-canon-bg border border-canon-border rounded px-2 py-1 text-[10px]"

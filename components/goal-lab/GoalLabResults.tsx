@@ -41,6 +41,8 @@ interface Props {
   contextualMind?: ContextualMindReport | null;
   atomDiff?: AtomDiff[];
   snapshotV1?: GoalLabSnapshotV1 | null;
+  perspectiveAgentId?: string | null;
+  tomRows?: Array<{ me: string; other: string; dyad: any }> | null;
 }
 
 interface AtomStyle {
@@ -315,7 +317,23 @@ const ToMEntityCard: React.FC<{ relation: TomRelationView, body?: TomPhysicalOth
     )
 }
 
-export const GoalLabResults: React.FC<Props> = ({ context, frame, goalScores, situation, goalPreview, affect, contextualMind, locationScores, tomScores, tom, atomDiff, snapshotV1 }) => {
+export const GoalLabResults: React.FC<Props> = ({
+  context,
+  frame,
+  goalScores,
+  situation,
+  goalPreview,
+  actorLabels,
+  affect,
+  contextualMind,
+  locationScores,
+  tomScores,
+  tom,
+  atomDiff,
+  snapshotV1,
+  perspectiveAgentId,
+  tomRows,
+}) => {
     const [selectedGoalId, setSelectedGoalId] = useState<string | null>(null);
     const [isPreviewOpen, setPreviewOpen] = useState(false);
     const [activeTabIndex, setActiveTabIndex] = useState(0);
@@ -394,8 +412,31 @@ export const GoalLabResults: React.FC<Props> = ({ context, frame, goalScores, si
     
     const tabsList = ['Analysis', 'Atoms', 'Threat', 'ToM', 'CtxMind', 'Coverage', 'Possibilities', 'Decision', 'Access', 'Diff', 'Debug'];
 
+    const focusId = (context as any)?.agentId;
+    const focusLabel = (focusId && actorLabels?.[focusId]) ? actorLabels[focusId] : focusId;
+
     return (
         <div className="flex flex-col h-full overflow-hidden bg-canon-bg-light border border-canon-border rounded-lg shadow-xl">
+            {perspectiveAgentId && (
+                <div className="bg-canon-bg border-b border-canon-border/60 p-3">
+                    <div className="text-xs font-bold text-canon-text uppercase tracking-wider">Perspective</div>
+                    <div className="text-sm text-canon-text-light">{perspectiveAgentId}</div>
+                </div>
+            )}
+            {context && (
+                <div className="bg-canon-bg border-b border-canon-border/60 p-3">
+                    <div className="text-xs font-bold text-canon-text uppercase tracking-wider">Фокус</div>
+                    <div className="text-sm text-canon-text-light">
+                        {focusLabel || '—'}
+                        {focusId ? (
+                          <span className="text-[10px] font-mono text-canon-text-light/70 ml-2">
+                            agentId: {focusId}
+                            {(context as any)?.locationId ? ` • locationId: ${(context as any).locationId}` : ''}
+                          </span>
+                        ) : null}
+                    </div>
+                </div>
+            )}
             <div className="bg-canon-bg border-b border-canon-border p-3 grid grid-cols-4 gap-3 shadow-sm z-10 shrink-0">
                 <ValueBadge label="Угроза" value={stats.threat} color="text-red-400" />
                 <ValueBadge label="Давление" value={stats.pressure} color="text-amber-400" />
@@ -406,6 +447,22 @@ export const GoalLabResults: React.FC<Props> = ({ context, frame, goalScores, si
             <div className="bg-black/30 border-b border-canon-border/50 shrink-0">
                 <ContextRibbon atoms={currentAtoms} />
             </div>
+
+            {tomRows && tomRows.length > 0 && (
+                <div className="bg-canon-bg border-b border-canon-border/30 p-2 shrink-0">
+                    <div className="text-[11px] font-bold mb-2">ToM (X думает про Y)</div>
+                    <div className="flex flex-col gap-1">
+                        {tomRows.map(r => (
+                            <div key={`${r.me}__${r.other}`} className="text-[10px] border border-canon-border/30 rounded p-1">
+                                <div className="font-semibold">{r.me} → {r.other}</div>
+                                <div className="opacity-80">
+                                    trust: {String((r.dyad as any)?.trust ?? '—')} · threat: {String((r.dyad as any)?.threat ?? '—')} · intent: {String((r.dyad as any)?.intent ?? '—')}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
 
             {goalPreview?.goals?.length ? (
                 <div className="bg-canon-bg border-b border-canon-border/30 p-2 shrink-0">
