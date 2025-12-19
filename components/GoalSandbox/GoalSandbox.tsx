@@ -45,7 +45,6 @@ import { assignRoles } from '../../lib/roles/assignment';
 import { constructGil } from '../../lib/gil/apply';
 import type { DyadConfigForA } from '../../lib/tom/dyad-metrics';
 import { ensureMapCells } from '../../lib/world/ensureMapCells';
-import { defaultAffect } from '../../lib/emotions/engine';
 
 function createCustomLocationEntity(map: LocationMap): LocationEntity {
   const cells = map.cells || [];
@@ -171,63 +170,7 @@ export const GoalSandbox: React.FC = () => {
   const [selectedEventIds, setSelectedEventIds] = useState<Set<string>>(new Set());
   const [manualAtoms, setManualAtoms] = useState<ContextAtom[]>([]);
 
-  const mergeAffectOverrides = useCallback(
-    (base: AffectState | undefined, tick: number, ovr: Partial<AffectState>): AffectState => {
-      const a0 = base ?? defaultAffect(tick);
-      const next: AffectState = {
-        ...a0,
-        e: { ...(a0.e || ({} as any)) },
-        regulation: { ...(a0.regulation || ({} as any)) },
-        updatedAtTick: tick,
-      };
-
-      const setE = (k: any, v: number) => {
-        if (!next.e) (next as any).e = {};
-        (next.e as any)[k] = v;
-      };
-
-      if (ovr.valence != null && Number.isFinite(ovr.valence as any)) next.valence = Number(ovr.valence);
-      if (ovr.arousal != null && Number.isFinite(ovr.arousal as any)) next.arousal = Number(ovr.arousal);
-
-      // UI сейчас даёт legacy subset (fear/anger/shame). Держим в sync и поля, и e[]
-      const fear = (ovr as any).fear;
-      const anger = (ovr as any).anger;
-      const shame = (ovr as any).shame;
-
-      if (fear != null && Number.isFinite(fear)) {
-        (next as any).fear = Number(fear);
-        setE('fear', Number(fear));
-      }
-      if (anger != null && Number.isFinite(anger)) {
-        (next as any).anger = Number(anger);
-        setE('anger', Number(anger));
-      }
-      if (shame != null && Number.isFinite(shame)) {
-        (next as any).shame = Number(shame);
-        setE('shame', Number(shame));
-      }
-
-      return next;
-    },
-    []
-  );
-
-  const applyAffectOverridesToWorld = useCallback(
-    (w: WorldState, agentId: string, ovr: Partial<AffectState>) => {
-      if (!ovr || Object.keys(ovr).length === 0) return w;
-
-      const tick = (w as any)?.tick ?? 0;
-      const idx = (w.agents || []).findIndex(a => a.entityId === agentId);
-      if (idx < 0) return w;
-
-      const a0 = w.agents[idx] as any;
-      const a1 = { ...a0, affect: mergeAffectOverrides(a0.affect, tick, ovr) } as AgentState;
-      const nextAgents = [...(w.agents as any[])];
-      nextAgents[idx] = a1;
-      return { ...(w as any), agents: nextAgents } as WorldState;
-    },
-    [mergeAffectOverrides]
-  );
+  // NOTE: Do not mutate worldState via affect overrides. Affect is materialized as atoms inside buildGoalLabContext.
 
   // Atom Overrides
   const [atomOverridesLayer, setAtomOverridesLayer] = useState<AtomOverrideLayer>({
@@ -765,7 +708,7 @@ export const GoalSandbox: React.FC = () => {
     const pid = perspectiveAgentId || selectedAgentId;
     if (!pid) return { ctx: null as any, err: null as string | null };
 
-    const worldForCtx = applyAffectOverridesToWorld(worldState, pid, affectOverrides);
+    const worldForCtx = worldState;
 
     const agent = worldForCtx.agents.find(a => a.entityId === pid);
     if (!agent) return { ctx: null as any, err: `Perspective agent not found in world: ${pid}` };
@@ -804,7 +747,6 @@ export const GoalSandbox: React.FC = () => {
     injectedEvents,
     sceneControl,
     getSelectedLocationEntity,
-    applyAffectOverridesToWorld,
     affectOverrides,
   ]);
 
@@ -979,7 +921,7 @@ export const GoalSandbox: React.FC = () => {
 
     const activeEvents = eventRegistry.getAll().filter(e => selectedEventIds.has(e.id));
     const loc = getSelectedLocationEntity();
-    const ids = participantIds.slice(0, 8); // control perf
+    const ids = participantIds; // control perf removed; export needs full cast
 
     return ids.map(id => {
       const char = allCharacters.find(c => c.entityId === id);
@@ -995,6 +937,7 @@ export const GoalSandbox: React.FC = () => {
             atomOverridesLayer,
             overrideEvents: injectedEvents,
             sceneControl,
+            affectOverrides,
           },
           timeOverride: (worldState as any).tick,
         });
@@ -1020,6 +963,7 @@ export const GoalSandbox: React.FC = () => {
     atomOverridesLayer,
     injectedEvents,
     sceneControl,
+    affectOverrides,
   ]);
 
   const sceneDumpV2 = useMemo(() => {
