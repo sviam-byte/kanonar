@@ -164,6 +164,12 @@ export const GoalSandbox: React.FC = () => {
   // Persistent Scene Participants: stores ALL actors in the scene (including selectedAgentId)
   const [sceneParticipants, setSceneParticipants] = useState<Set<string>>(() => new Set());
 
+  const participantIds = useMemo(() => {
+    const ids = new Set(sceneParticipants);
+    if (selectedAgentId) ids.add(selectedAgentId);
+    return Array.from(ids);
+  }, [sceneParticipants, selectedAgentId]);
+
   // Optional per-scene dyad configs (A->B perception weights), typically from ScenePreset
   const [runtimeDyadConfigs, setRuntimeDyadConfigs] = useState<Record<string, DyadConfigForA> | null>(
     null
@@ -209,10 +215,9 @@ export const GoalSandbox: React.FC = () => {
   }, [selectedAgentId]);
 
   useEffect(() => {
+    if (!participantIds.length) return;
     if (perspectiveId && participantIds.includes(perspectiveId)) return;
-    if (participantIds.length > 0) {
-      setPerspectiveAgentId(participantIds[0]);
-    }
+    setPerspectiveAgentId(participantIds[0]);
   }, [participantIds, perspectiveId]);
 
   useEffect(() => {
@@ -297,12 +302,6 @@ export const GoalSandbox: React.FC = () => {
     },
     [actorPositions, ensureCompleteInitialRelations, getActiveLocationId, runtimeDyadConfigs]
   );
-
-  const participantIds = useMemo(() => {
-    const ids = new Set(sceneParticipants);
-    if (selectedAgentId) ids.add(selectedAgentId);
-    return Array.from(ids);
-  }, [sceneParticipants, selectedAgentId]);
 
   useEffect(() => {
     if (!worldState) return;
