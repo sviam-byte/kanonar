@@ -31,6 +31,7 @@ import { AtomOverrideLayer } from '../../lib/context/overrides/types';
 import { runTicks } from '../../lib/engine/tick';
 import type { AtomDiff } from '../../lib/snapshot/diffAtoms';
 import { adaptToSnapshotV1 } from '../../lib/goal-lab/snapshotAdapter';
+import { buildGoalLabSceneDumpV2, downloadJson } from '../../lib/goal-lab/sceneDump';
 import { CastPerspectivePanel } from '../goal-lab/CastPerspectivePanel';
 import { allScenarioDefs } from '../../data/scenarios/index';
 
@@ -1021,67 +1022,48 @@ export const GoalSandbox: React.FC = () => {
     sceneControl,
   ]);
 
-  const sceneDump = useMemo(() => {
-    const tick = (worldState as any)?.tick ?? 0;
-    return {
-      schemaVersion: 1,
-      exportedAt: new Date().toISOString(),
-      tick,
-      focus: {
-        selectedAgentId,
-        perspectiveId,
-        selectedLocationId,
-        locationMode,
-      },
-      inputs: {
-        affectOverrides,
-        manualAtoms,
-        atomOverridesLayer,
-        selectedEventIds: Array.from(selectedEventIds || []),
-        injectedEvents,
-        sceneControl,
-        activeMapId: (activeMap as any)?.id ?? null,
-      },
-      world: worldState
-        ? {
-            tick: (worldState as any).tick,
-            scenario: (worldState as any).scenario,
-            scene: (worldState as any).scene,
-            agents: (worldState as any).agents,
-            leadership: (worldState as any).leadership,
-            factions: (worldState as any).factions,
-            tom: (worldState as any).tom,
-            eventLog: (worldState as any).eventLog,
-          }
-        : null,
-      pipeline: {
-        glCtx,
-        snapshot,
-        snapshotV1,
-        goals,
-        locationScores,
-        tomScores,
-        situation,
-        goalPreview,
-        contextualMind,
-        pipelineFrame,
-      },
+  const sceneDumpV2 = useMemo(() => {
+    return buildGoalLabSceneDumpV2({
+      world: worldState,
+      selectedAgentId,
+      perspectiveId,
+      selectedLocationId,
+      locationMode,
+      participantIds,
+      activeMap,
+      selectedEventIds,
+      manualAtoms,
+      atomOverridesLayer,
+      affectOverrides,
+      injectedEvents,
+      sceneControl,
+      glCtx,
+      snapshot,
+      snapshotV1,
+      goals,
+      locationScores,
+      tomScores,
+      situation,
+      goalPreview,
+      contextualMind,
+      pipelineFrame,
       tomMatrixForPerspective,
       castRows,
-    };
+    });
   }, [
     worldState,
     selectedAgentId,
     perspectiveId,
     selectedLocationId,
     locationMode,
-    affectOverrides,
+    participantIds,
+    activeMap,
+    selectedEventIds,
     manualAtoms,
     atomOverridesLayer,
-    selectedEventIds,
+    affectOverrides,
     injectedEvents,
     sceneControl,
-    activeMap,
     glCtx,
     snapshot,
     snapshotV1,
@@ -1110,72 +1092,13 @@ export const GoalSandbox: React.FC = () => {
     [worldState, selectedAgentId, manualAtoms, activeMap, atomOverridesLayer, sceneControl, affectOverrides]
   );
 
-  const handleDownloadSceneJson = useCallback(() => {
-    if (!worldState) return;
+  const onDownloadScene = useCallback(() => {
+    if (!sceneDumpV2) return;
 
-    const exportedAt = new Date().toISOString();
-    const pid = perspectiveAgentId || selectedAgentId || null;
-
-    const payload = {
-      schemaVersion: 2,
-      exportedAt,
-      tick: (worldState as any).tick ?? 0,
-      focus: {
-        selectedAgentId: selectedAgentId || null,
-        perspectiveAgentId: pid,
-        selectedLocationId: selectedLocationId || null,
-        locationMode,
-        participantIds: participantIds.slice(),
-      },
-      inputs: {
-        activeMapId: (activeMap as any)?.id ?? null,
-        selectedEventIds: Array.from(selectedEventIds),
-        manualAtoms,
-        atomOverridesLayer,
-        affectOverrides,
-        injectedEvents,
-        sceneControl,
-      },
-      world: worldState,
-      pipeline: {
-        glCtx,
-        computed: {
-          frame: (pipelineFrameResult as any)?.frame ?? null,
-          snapshot: (glCtx as any)?.snapshot ?? null,
-          ctxV2: (glCtx as any)?.ctxV2 ?? null,
-          situation: (glCtx as any)?.situation ?? null,
-          goalPreview: (glCtx as any)?.goalPreview ?? null,
-          cast: castRows,
-        },
-      },
-    };
-
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    const who = pid || 'unknown';
-    a.href = url;
-    a.download = `goal-lab-scene__${who}__${exportedAt.replace(/[:.]/g, '-')}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-  }, [
-    worldState,
-    selectedAgentId,
-    perspectiveAgentId,
-    selectedLocationId,
-    locationMode,
-    participantIds,
-    activeMap,
-    selectedEventIds,
-    manualAtoms,
-    atomOverridesLayer,
-    affectOverrides,
-    injectedEvents,
-    sceneControl,
-    glCtx,
-    pipelineFrameResult,
-    castRows,
-  ]);
+    const exportedAt = new Date().toISOString().replace(/[:.]/g, '-');
+    const pid = perspectiveId || selectedAgentId || 'unknown';
+    downloadJson(sceneDumpV2, `goal-lab-scene__character-${pid}__${exportedAt}.json`);
+  }, [perspectiveId, sceneDumpV2, selectedAgentId]);
 
   const mapHighlights = useMemo(() => {
     if (!worldState) return [];
@@ -1229,7 +1152,7 @@ export const GoalSandbox: React.FC = () => {
               affectOverrides={affectOverrides}
               onAffectOverridesChange={setAffectOverrides}
               onRunTicks={handleRunTicks}
-              onDownloadSceneJson={handleDownloadSceneJson}
+              onDownloadScene={onDownloadScene}
               world={worldState as any}
               onWorldChange={setWorldState as any}
               participantIds={participantIds}
@@ -1281,7 +1204,8 @@ export const GoalSandbox: React.FC = () => {
               tom={(worldState as any)?.tom?.[perspectiveId]}
               atomDiff={atomDiff as any}
               snapshotV1={snapshotV1 as any}
-              sceneDump={sceneDump as any}
+              sceneDump={sceneDumpV2 as any}
+              onDownloadScene={onDownloadScene}
             />
 
             {pipelineFrame && (
