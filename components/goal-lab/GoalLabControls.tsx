@@ -139,6 +139,9 @@ export const GoalLabControls: React.FC<Props> = ({
       // Preferred path: parent controls scene membership directly
       if (onAddParticipant) {
           onAddParticipant(selectedActorToAdd);
+          // Чтобы было сразу видно, что добавление сработало —
+          // переключаем фокус на добавленного персонажа.
+          onSelectAgent(selectedActorToAdd);
           setSelectedActorToAdd('');
           return;
       }
