@@ -31,8 +31,10 @@ export function applySceneAtoms(args: {
   scene: SceneInstance | null | undefined;
   preset: any;
   worldTick: number;
+  /** Optional: when provided, also publish ctx:src:* atoms scoped to this agent */
+  selfId?: string;
 }): ContextAtom[] {
-  const { scene, preset, worldTick } = args;
+  const { scene, preset, worldTick, selfId } = args;
   if (!scene || !preset) return [];
 
   const out: ContextAtom[] = [];
@@ -53,6 +55,23 @@ export function applySceneAtoms(args: {
       label: `scene ${k}=${Math.round(v * 100)}%`,
       trace: { usedAtomIds: [], notes: ['from scene instance metrics'], parts: { tick: worldTick, phaseId: scene.phaseId } }
     } as any));
+
+    // Also publish agent-scoped context inputs (canonical path for axes)
+    if (selfId) {
+      out.push(normalizeAtom({
+        id: `ctx:src:scene:${k}:${selfId}`,
+        ns: 'ctx',
+        kind: 'ctx_input',
+        origin: 'world',
+        source: 'scene',
+        magnitude: v,
+        confidence: 1,
+        subject: selfId,
+        tags: ['ctx','src','scene', k],
+        label: `scene.${k}=${Math.round(v * 100)}%`,
+        trace: { usedAtomIds: [], notes: ['from scene instance metrics'], parts: { tick: worldTick, phaseId: scene.phaseId } }
+      } as any));
+    }
   }
 
   // 2) publish norms as atoms norm:<id>
@@ -71,6 +90,23 @@ export function applySceneAtoms(args: {
       label: `norm ${k}=${Math.round(v * 100)}%`,
       trace: { usedAtomIds: [], notes: ['from scene instance norms'], parts: { tick: worldTick, phaseId: scene.phaseId } }
     } as any));
+
+    // Also publish agent-scoped context inputs (canonical path for axes)
+    if (selfId) {
+      out.push(normalizeAtom({
+        id: `ctx:src:norm:${k}:${selfId}`,
+        ns: 'ctx',
+        kind: 'ctx_input',
+        origin: 'world',
+        source: 'scene',
+        magnitude: v,
+        confidence: 1,
+        subject: selfId,
+        tags: ['ctx','src','norm', k],
+        label: `norm.${k}=${Math.round(v * 100)}%`,
+        trace: { usedAtomIds: [], notes: ['from scene instance norms'], parts: { tick: worldTick, phaseId: scene.phaseId } }
+      } as any));
+    }
   }
 
   // 3) publish injections (flags/offers/constraints/events)

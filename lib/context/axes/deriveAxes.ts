@@ -47,10 +47,26 @@ export function deriveAxes(args: { selfId: string; atoms: ContextAtom[]; tuning?
   const { selfId, atoms } = args;
 
   // Inputs (canonical from patch 52 + patch 54)
-  const privacy = get(atoms, `world:loc:privacy:${selfId}`, 0);
-  const control = get(atoms, `world:loc:control_level:${selfId}`, 0);
-  const crowd = get(atoms, `world:loc:crowd:${selfId}`, 0);
-  const normPressure = get(atoms, `world:loc:normative_pressure:${selfId}`, 0);
+  const locPrivacy = get(atoms, `world:loc:privacy:${selfId}`, 0);
+  const locControl = get(atoms, `world:loc:control_level:${selfId}`, 0);
+  const locCrowd = get(atoms, `world:loc:crowd:${selfId}`, 0);
+  const locNormPressure = get(atoms, `world:loc:normative_pressure:${selfId}`, 0);
+
+  const scCrowd = get(atoms, `ctx:src:scene:crowd:${selfId}`, 0);
+  const scHostility = get(atoms, `ctx:src:scene:hostility:${selfId}`, 0);
+  const scUrgency = get(atoms, `ctx:src:scene:urgency:${selfId}`, 0);
+  const scScarcity = get(atoms, `ctx:src:scene:scarcity:${selfId}`, 0);
+  const scChaos = get(atoms, `ctx:src:scene:chaos:${selfId}`, 0);
+  const scNovelty = get(atoms, `ctx:src:scene:novelty:${selfId}`, 0);
+  const scLoss = get(atoms, `ctx:src:scene:loss:${selfId}`, 0);
+  const scResourceAccess = get(atoms, `ctx:src:scene:resourceAccess:${selfId}`, 0);
+  const scThreat = get(atoms, `ctx:src:scene:threat:${selfId}`, 0);
+
+  const normPrivacy = get(atoms, `ctx:src:norm:privacy:${selfId}`, 0);
+  const normPublicExposure = get(atoms, `ctx:src:norm:publicExposure:${selfId}`, 0);
+  const normSurveillance = get(atoms, `ctx:src:norm:surveillance:${selfId}`, 0);
+  const normNormPressure = get(atoms, `ctx:src:norm:normPressure:${selfId}`, 0);
+  const normProceduralStrict = get(atoms, `ctx:src:norm:proceduralStrict:${selfId}`, 0);
 
   const cover = get(atoms, `world:map:cover:${selfId}`, 0);
   const escape = get(atoms, `world:map:escape:${selfId}`, 0);
@@ -64,14 +80,23 @@ export function deriveAxes(args: { selfId: string; atoms: ContextAtom[]; tuning?
   const uncertainty = clamp01(1 - infoAdequacy);
 
   // Axes
-  const publicness = clamp01(1 - privacy);
-  const surveillance = clamp01(0.75 * control + 0.25 * publicness);
-  const hierarchy = clamp01(0.7 * control + 0.3 * normPressure);
+  const privacy = clamp01(0.7 * locPrivacy + 0.3 * normPrivacy);
+  const publicnessFromLoc = clamp01(1 - locPrivacy);
+  const publicness = clamp01(0.7 * publicnessFromLoc + 0.3 * normPublicExposure);
+  const control = locControl;
+  const surveillance = clamp01(0.55 * control + 0.20 * publicness + 0.25 * normSurveillance);
+  const crowd = clamp01(0.6 * locCrowd + 0.4 * scCrowd);
+  const normPressure = clamp01(0.55 * locNormPressure + 0.45 * normNormPressure);
+  const hierarchy = clamp01(0.55 * control + 0.25 * normPressure + 0.20 * normProceduralStrict);
+  const dangerBase = clamp01(0.65 * danger + 0.20 * (1 - escape) + 0.15 * (1 - cover));
+  const dangerSocial = clamp01(0.55 * scHostility + 0.45 * scThreat);
+  const ctxDanger = clamp01(0.75 * dangerBase + 0.25 * dangerSocial);
+  const ctxCrowd = crowd;
+  const ctxNormPressure = clamp01(0.45 * normPressure + 0.30 * surveillance + 0.15 * publicness + 0.10 * normProceduralStrict);
 
-  const ctxDanger = clamp01(0.65 * danger + 0.20 * (1 - escape) + 0.15 * (1 - cover));
-  const ctxCrowd = clamp01(crowd);
-  const ctxNormPressure = clamp01(0.5 * normPressure + 0.3 * surveillance + 0.2 * publicness);
-  const ctxIntimacy = clamp01(privacy * 0.7 + (1-surveillance)*0.3);
+  const ctxTimePressure = clamp01(0.7 * scUrgency + 0.3 * (1 - escape));
+  const ctxScarcity = clamp01(0.75 * scScarcity + 0.25 * (1 - scResourceAccess));
+  const ctxGrief = clamp01(scLoss);
 
   // Pain (ctx:pain) from feature if available
   const featPain = get(atoms, `feat:char:${selfId}:body.pain`, 0);
@@ -81,6 +106,20 @@ export function deriveAxes(args: { selfId: string; atoms: ContextAtom[]; tuning?
     `world:loc:control_level:${selfId}`,
     `world:loc:crowd:${selfId}`,
     `world:loc:normative_pressure:${selfId}`,
+    `ctx:src:scene:crowd:${selfId}`,
+    `ctx:src:scene:hostility:${selfId}`,
+    `ctx:src:scene:urgency:${selfId}`,
+    `ctx:src:scene:scarcity:${selfId}`,
+    `ctx:src:scene:chaos:${selfId}`,
+    `ctx:src:scene:novelty:${selfId}`,
+    `ctx:src:scene:loss:${selfId}`,
+    `ctx:src:scene:resourceAccess:${selfId}`,
+    `ctx:src:scene:threat:${selfId}`,
+    `ctx:src:norm:privacy:${selfId}`,
+    `ctx:src:norm:publicExposure:${selfId}`,
+    `ctx:src:norm:surveillance:${selfId}`,
+    `ctx:src:norm:normPressure:${selfId}`,
+    `ctx:src:norm:proceduralStrict:${selfId}`,
     `world:map:cover:${selfId}`,
     `world:map:escape:${selfId}`,
     `world:map:danger:${selfId}`,
@@ -95,7 +134,10 @@ export function deriveAxes(args: { selfId: string; atoms: ContextAtom[]; tuning?
     atom(`ctx:surveillance:${selfId}`, surveillance, used, { surveillance, control, publicness }),
     atom(`ctx:hierarchy:${selfId}`, hierarchy, used, { hierarchy, control, normPressure }),
     atom(`ctx:crowd:${selfId}`, ctxCrowd, used, { crowd }),
-    atom(`ctx:normPressure:${selfId}`, ctxNormPressure, used, { normPressure, surveillance, publicness }),
+    atom(`ctx:normPressure:${selfId}`, ctxNormPressure, used, { normPressure, surveillance, publicness, normProceduralStrict }),
+    atom(`ctx:timePressure:${selfId}`, ctxTimePressure, used, { ctxTimePressure, scUrgency, escape }),
+    atom(`ctx:scarcity:${selfId}`, ctxScarcity, used, { ctxScarcity, scScarcity, scResourceAccess }),
+    atom(`ctx:grief:${selfId}`, ctxGrief, used, { ctxGrief, scLoss }),
     atom(`ctx:uncertainty:${selfId}`, uncertainty, used, { uncertainty, infoAdequacy }),
     atom(`ctx:danger:${selfId}`, ctxDanger, used, { ctxDanger, danger, escape, cover }),
     atom(`ctx:intimacy:${selfId}`, ctxIntimacy, used, { ctxIntimacy, privacy, surveillance }),
