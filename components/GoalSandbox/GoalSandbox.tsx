@@ -782,6 +782,7 @@ export const GoalSandbox: React.FC = () => {
           atomOverridesLayer,
           overrideEvents: injectedEvents,
           sceneControl,
+          affectOverrides,
         },
         timeOverride: (worldForCtx as any).tick,
       });
@@ -1101,13 +1102,80 @@ export const GoalSandbox: React.FC = () => {
       const result = runTicks({
         world: worldState,
         agentId: selectedAgentId,
-        baseInput: { snapshotOptions: { manualAtoms, gridMap: activeMap, atomOverridesLayer, sceneControl } },
+        baseInput: { snapshotOptions: { manualAtoms, gridMap: activeMap, atomOverridesLayer, sceneControl, affectOverrides } },
         cfg: { steps, dt: 1 },
       } as any);
       setWorldState({ ...(worldState as any), tick: (result as any).tick });
     },
-    [worldState, selectedAgentId, manualAtoms, activeMap, atomOverridesLayer, sceneControl]
+    [worldState, selectedAgentId, manualAtoms, activeMap, atomOverridesLayer, sceneControl, affectOverrides]
   );
+
+  const handleDownloadSceneJson = useCallback(() => {
+    if (!worldState) return;
+
+    const exportedAt = new Date().toISOString();
+    const pid = perspectiveAgentId || selectedAgentId || null;
+
+    const payload = {
+      schemaVersion: 2,
+      exportedAt,
+      tick: (worldState as any).tick ?? 0,
+      focus: {
+        selectedAgentId: selectedAgentId || null,
+        perspectiveAgentId: pid,
+        selectedLocationId: selectedLocationId || null,
+        locationMode,
+        participantIds: participantIds.slice(),
+      },
+      inputs: {
+        activeMapId: (activeMap as any)?.id ?? null,
+        selectedEventIds: Array.from(selectedEventIds),
+        manualAtoms,
+        atomOverridesLayer,
+        affectOverrides,
+        injectedEvents,
+        sceneControl,
+      },
+      world: worldState,
+      pipeline: {
+        glCtx,
+        computed: {
+          frame: (pipelineFrameResult as any)?.frame ?? null,
+          snapshot: (glCtx as any)?.snapshot ?? null,
+          ctxV2: (glCtx as any)?.ctxV2 ?? null,
+          situation: (glCtx as any)?.situation ?? null,
+          goalPreview: (glCtx as any)?.goalPreview ?? null,
+          cast: castRows,
+        },
+      },
+    };
+
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const who = pid || 'unknown';
+    a.href = url;
+    a.download = `goal-lab-scene__${who}__${exportedAt.replace(/[:.]/g, '-')}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [
+    worldState,
+    selectedAgentId,
+    perspectiveAgentId,
+    selectedLocationId,
+    locationMode,
+    participantIds,
+    activeMap,
+    selectedEventIds,
+    manualAtoms,
+    atomOverridesLayer,
+    affectOverrides,
+    injectedEvents,
+    sceneControl,
+    glCtx,
+    pipelineFrameResult,
+    castRows,
+  ]);
 
   const mapHighlights = useMemo(() => {
     if (!worldState) return [];
@@ -1161,6 +1229,7 @@ export const GoalSandbox: React.FC = () => {
               affectOverrides={affectOverrides}
               onAffectOverridesChange={setAffectOverrides}
               onRunTicks={handleRunTicks}
+              onDownloadSceneJson={handleDownloadSceneJson}
               world={worldState as any}
               onWorldChange={setWorldState as any}
               participantIds={participantIds}

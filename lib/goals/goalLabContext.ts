@@ -13,6 +13,7 @@ import { applyAtomOverrides, AtomOverrideLayer, applyAtomOverrides as extractApp
 import { validateAtoms } from '../context/validate/frameValidator';
 import { buildSummaryAtoms } from '../context/summaries/buildSummaries';
 import { computeCoverageReport } from '../goal-lab/coverage/computeCoverage';
+import { normalizeAffectState } from '../affect/normalize';
 
 // New Imports for Pipeline
 import { buildStage0Atoms } from '../context/pipeline/stage0';
@@ -126,11 +127,11 @@ export function buildGoalLabContext(
   world: WorldState,
   agentId: string,
   opts: {
-    snapshotOptions?: ContextBuildOptions & { atomOverridesLayer?: AtomOverrideLayer; overrideEvents?: any[]; sceneControl?: any };
+    snapshotOptions?: ContextBuildOptions & { atomOverridesLayer?: AtomOverrideLayer; overrideEvents?: any[]; sceneControl?: any; affectOverrides?: any };
     timeOverride?: number;
   } = {}
 ): GoalLabContextResult | null {
-  const agent = world.agents.find(a => a.entityId === agentId);
+  let agent = world.agents.find(a => a.entityId === agentId);
   if (!agent) return null;
 
   // 1. Build Frame (Legacy / Visuals only)
@@ -144,6 +145,17 @@ export function buildGoalLabContext(
   const overridesLayer = opts.snapshotOptions?.atomOverridesLayer;
   const manualAtomsRaw = (opts.snapshotOptions?.manualAtoms || []).map(normalizeAtom);
   const { atoms: appliedOverrides } = extractApplied(manualAtomsRaw, overridesLayer);
+
+  // Apply affect overrides from UI knobs (must affect ALL downstream calculations).
+  const affectOverrides = (opts.snapshotOptions as any)?.affectOverrides;
+  if (affectOverrides && typeof affectOverrides === 'object') {
+    const merged = {
+      ...(agent as any).affect,
+      ...affectOverrides,
+      e: { ...((agent as any).affect?.e || {}), ...(affectOverrides as any).e },
+    };
+    agent = { ...(agent as any), affect: normalizeAffectState(merged) } as any;
+  }
   
   // Belief Atoms
   const beliefAtoms = [
@@ -187,12 +199,39 @@ export function buildGoalLabContext(
     sceneInst = (world as any).sceneSnapshot;
   }
 
+  // --- Location override (GoalLab UI) ---
+  // Context v2 builder supports overrideLocation, but the stage0-based pipeline historically used agent.locationId/world.locations
+  // and therefore ignored UI location overrides. We make the override canonical for the pipeline.
+  const overrideLocation = opts.snapshotOptions?.overrideLocation as any;
+  let worldForPipeline: any = world;
+  let agentForPipeline: any = agent;
+  if (overrideLocation) {
+    const locIdOverride = typeof overrideLocation === 'string' ? overrideLocation : overrideLocation.entityId;
+    if (locIdOverride) {
+      agentForPipeline = { ...agentForPipeline, locationId: locIdOverride };
+
+      // Ensure the overridden location exists in world.locations so stage0 can resolve features/observations.
+      if (typeof overrideLocation === 'object' && overrideLocation.entityId) {
+        const existing = (worldForPipeline.locations || []).find((l: any) => l.entityId === overrideLocation.entityId);
+        const nextLocs = existing
+          ? (worldForPipeline.locations || []).map((l: any) => (l.entityId === overrideLocation.entityId ? overrideLocation : l))
+          : [...(worldForPipeline.locations || []), overrideLocation];
+        worldForPipeline = { ...worldForPipeline, locations: nextLocs };
+      }
+
+      // Keep scene snapshot aligned (used by buildSceneFeatures etc.)
+      if (sceneInst && typeof sceneInst === 'object') {
+        sceneInst = { ...sceneInst, locationId: locIdOverride };
+      }
+    }
+  }
+
   // --- Pipeline Execution Helper ---
   const runPipeline = (sceneAtoms: ContextAtom[], sceneSnapshotForStage0: any) => {
       // 4. Stage 0 (World Facts)
       const stage0 = buildStage0Atoms({
-        world,
-        agent,
+        world: worldForPipeline,
+        agent: agentForPipeline,
         selfId,
         extraWorldAtoms: sceneAtoms, 
         beliefAtoms,              
@@ -213,7 +252,7 @@ export function buildGoalLabContext(
       const atomsWithAxes = [...atomsPreAxes]; 
 
       // 5.5 Constraints & Access
-      const locId = (agent as any).locationId || getLocationForAgent(world, selfId)?.entityId;
+      const locId = (agentForPipeline as any).locationId || getLocationForAgent(worldForPipeline, selfId)?.entityId;
       const accessPack = deriveAccess(atomsWithAxes, selfId, locId);
       const atomsAfterAccess = mergeEpistemicAtoms({
           world: atomsWithAxes,

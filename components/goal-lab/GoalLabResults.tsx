@@ -498,6 +498,40 @@ export const GoalLabResults: React.FC<Props> = ({
                 <ContextRibbon atoms={currentAtoms} />
             </div>
 
+            {(contextualMind || situation || (context as any)?.locationId) && (
+              <div className="bg-canon-bg border-b border-canon-border/30 p-3 shrink-0">
+                <div className="text-[11px] font-bold mb-2">Объяснение (что происходит → что я думаю → что я чувствую)</div>
+                <div className="text-[11px] text-canon-text-light leading-snug space-y-1">
+                  <div>
+                    <span className="font-semibold text-canon-text">Сейчас:</span>{' '}
+                    {situation
+                      ? `сцена=${String(situation.scenarioKind || 'other')}, угроза=${Number(situation.threatLevel ?? 0).toFixed(2)}, давление=${Number(situation.timePressure ?? 0).toFixed(2)}, толпа=${Number(situation.crowdSize ?? 1)}.`
+                      : '—'}
+                    {(context as any)?.locationId ? ` Локация=${String((context as any).locationId)}.` : ''}
+                  </div>
+                  <div>
+                    <span className="font-semibold text-canon-text">ToM:</span>{' '}
+                    {tomRows && tomRows.length
+                      ? `активных dyad=${tomRows.length} (см. ниже).`
+                      : 'dyad-слой пуст (нет целей/агентов в поле зрения, либо сборщик dyad не получил входов).'}
+                  </div>
+                  {contextualMind?.affect ? (
+                    <div>
+                      <span className="font-semibold text-canon-text">Эмоции:</span>{' '}
+                      {(() => {
+                        const a: any = contextualMind.affect;
+                        const e: any = a.e || a;
+                        const fmt = (x: any) => (x == null ? '—' : Number(x).toFixed(2));
+                        return `valence=${fmt(a.valence)} arousal=${fmt(a.arousal)} control=${fmt(a.control)}; fear=${fmt(e.fear)} anger=${fmt(e.anger)} sadness=${fmt(e.sadness)} joy=${fmt(e.joy)} shame=${fmt(e.shame)} trust=${fmt(e.trust ?? a.trustBaseline)}`;
+                      })()}
+                    </div>
+                  ) : (
+                    <div><span className="font-semibold text-canon-text">Эмоции:</span> нет отчёта contextualMind.</div>
+                  )}
+                </div>
+              </div>
+            )}
+
             {tomRows && tomRows.length > 0 && (
                 <div className="bg-canon-bg border-b border-canon-border/30 p-2 shrink-0">
                     <div className="text-[11px] font-bold mb-2">ToM (X думает про Y)</div>
