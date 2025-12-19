@@ -34,7 +34,7 @@ export function initTomForCharacters(
       let baseRespect = 0.5; 
       
       // Use safe access or default 0
-      const clearance = j.identity.clearance_level || 0;
+      const clearance = j.identity?.clearance_level ?? 0;
       let baseDominance = clearance / 5;
       let baseFear = 0.1; // Initialize fear
 

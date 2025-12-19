@@ -18,6 +18,33 @@ import { constructGil } from '../gil/apply';
 import { allLocations } from '../../data/locations';
 import { hydrateLocation } from '../adapters/rich-location';
 import { validateLocation } from '../location/validate';
+import { defaultBody, defaultIdentity } from '../character-snippet';
+
+function fillDefaults(defaults: any, value: any): any {
+    if (value == null) return structuredClone(defaults);
+
+    // массивы/примитивы — как есть
+    if (Array.isArray(defaults)) return Array.isArray(value) ? value : structuredClone(defaults);
+    if (typeof defaults !== 'object' || defaults === null) return value;
+
+    const out: any = Array.isArray(value) ? value : { ...value };
+    for (const k of Object.keys(defaults)) {
+        const dv = defaults[k];
+        const vv = value?.[k];
+        out[k] = vv === undefined ? structuredClone(dv) : fillDefaults(dv, vv);
+    }
+    return out;
+}
+
+function normalizeCharacterForWorld(c: CharacterEntity): CharacterEntity {
+    // убираем функции/прочий мусор из сущностей, но сохраняем структуру
+    const raw = JSON.parse(JSON.stringify(c)) as any;
+
+    raw.body = fillDefaults(defaultBody, raw.body);
+    raw.identity = fillDefaults(defaultIdentity, raw.identity);
+
+    return raw as CharacterEntity;
+}
 
 export function createInitialWorld(
     startTime: number,
@@ -30,23 +57,25 @@ export function createInitialWorld(
     if (!scenarioDef) return null;
 
     const agents = characters.map(c => {
-        const fullMetrics = calculateAllCharacterMetrics(c, Branch.Current, []);
-        const bp = mapCharacterToBehaviorParams(c);
-        const goalWeights = computeCharacterGoalWeights(c);
+        const cNorm = normalizeCharacterForWorld(c);
+
+        const fullMetrics = calculateAllCharacterMetrics(cNorm, Branch.Current, []);
+        const bp = mapCharacterToBehaviorParams(cNorm);
+        const goalWeights = computeCharacterGoalWeights(cNorm);
         
         // Merge custom goal weights
         Object.assign(goalWeights, customGoalWeights);
 
         const archetypeState = {
              mixture: {},
-             actualId: c.identity?.arch_true_dominant_id || 'H-1-SR',
+             actualId: cNorm.identity?.arch_true_dominant_id || 'H-1-SR',
              actualFit: 0,
              shadowId: null,
              shadowFit: 0,
              shadowActivation: 0,
              self: {
                  selfMixture: {},
-                 selfId: c.identity?.arch_self_dominant_id || 'H-1-SR',
+                 selfId: cNorm.identity?.arch_self_dominant_id || 'H-1-SR',
                  selfConfidence: 1,
                  perceivedAxes: {},
                  selfShadowId: null,
@@ -59,8 +88,8 @@ export function createInitialWorld(
         };
 
         return {
-            ...JSON.parse(JSON.stringify(c)),
-            hp: c.body?.acute?.hp ?? 100,
+            ...JSON.parse(JSON.stringify(cNorm)),
+            hp: cNorm.body?.acute?.hp ?? 100,
             S: 50,
             temperature: bp.T0,
             gumbelScale: bp.gumbel_beta,
@@ -68,17 +97,17 @@ export function createInitialWorld(
             baseTemperature: bp.T0,
             kappa_T: bp.kappa_T_sensitivity,
             baseSigmaProc: bp.sigma0,
-            rngChannels: { decide: makeAgentRNG(c.entityId, 1), physio: makeAgentRNG(c.entityId, 2), perceive: makeAgentRNG(c.entityId, 3) },
+            rngChannels: { decide: makeAgentRNG(cNorm.entityId, 1), physio: makeAgentRNG(cNorm.entityId, 2), perceive: makeAgentRNG(cNorm.entityId, 3) },
             behavioralParams: bp,
-            capabilities: mapCharacterToCapabilities(c),
+            capabilities: mapCharacterToCapabilities(cNorm),
             w_eff: [], relationships: {}, perceivedStates: new Map(),
-            goalWeights, 
+            goalWeights,
             goalIds: Object.keys(GOAL_DEFS),
             wSelfBase: Object.keys(GOAL_DEFS).map(id => goalWeights[id as keyof typeof GOAL_DEFS] || 0),
             actionHistory: [],
-            body: c.body || { acute: { stress: 0, fatigue: 0, moral_injury: 0 } },
-            state: c.state || { dark_exposure: 0 },
-            
+            body: cNorm.body || { acute: { stress: 0, fatigue: 0, moral_injury: 0 } },
+            state: cNorm.state || { dark_exposure: 0 },
+
             tomMetrics: fullMetrics.tomMetrics,
             v42metrics: fullMetrics.v42metrics,
             tomV2Metrics: fullMetrics.tomV2Metrics,
@@ -87,10 +116,10 @@ export function createInitialWorld(
             quickStates: fullMetrics.quickStates,
             psych: fullMetrics.psych,
             archetype: archetypeState,
-            
+
             identityProfile: {
-                archetypeObserved: c.identity?.arch_true_dominant_id,
-                archetypeSelf: c.identity?.arch_self_dominant_id,
+                archetypeObserved: cNorm.identity?.arch_true_dominant_id,
+                archetypeSelf: cNorm.identity?.arch_self_dominant_id,
                 tensionSelfObserved: 0,
                 archetypePerceivedBy: {}
             },
