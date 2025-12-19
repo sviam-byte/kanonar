@@ -22,6 +22,7 @@ import { allLocations } from '../../data/locations';
 import { computeLocationGoalsForAgent } from '../../lib/context/v2/locationGoals';
 import { computeTomGoalsForAgent } from '../../lib/context/v2/tomGoals';
 import { GoalLabControls } from '../goal-lab/GoalLabControls';
+import { PreGoalsPanel, type PreGoals } from '../goal-lab/PreGoalsPanel';
 import { eventRegistry } from '../../data/events-registry';
 import { buildGoalLabContext } from '../../lib/goals/goalLabContext';
 import { computeContextualMind } from '../../lib/tom/contextual/engine';
@@ -167,6 +168,14 @@ export const GoalSandbox: React.FC = () => {
 
   // Debug & Overrides
   const [affectOverrides, setAffectOverrides] = useState<Partial<AffectState>>({});
+  const [preGoals, setPreGoals] = useState<PreGoals>({
+    safety: 0.5,
+    social: 0.5,
+    resource: 0.5,
+    explore: 0.3,
+    bonding: 0.4,
+    dominance: 0.2,
+  });
   const [selectedEventIds, setSelectedEventIds] = useState<Set<string>>(new Set());
   const [manualAtoms, setManualAtoms] = useState<ContextAtom[]>([]);
 
@@ -724,6 +733,8 @@ export const GoalSandbox: React.FC = () => {
           atomOverridesLayer,
           overrideEvents: injectedEvents,
           sceneControl,
+          preGoals,
+          affectOverrides,
           // affect overrides are now materialized as affect:* atoms in the pipeline
         },
         timeOverride: (worldForCtx as any).tick,
@@ -746,6 +757,7 @@ export const GoalSandbox: React.FC = () => {
     sceneControl,
     getSelectedLocationEntity,
     affectOverrides,
+    preGoals,
   ]);
 
   const glCtx = glCtxResult.ctx;
@@ -927,18 +939,20 @@ export const GoalSandbox: React.FC = () => {
         let stages: any = null;
 
         try {
-          const res = buildGoalLabContext(worldState, id, {
-            snapshotOptions: {
-              activeEvents,
-              overrideLocation: loc,
-              manualAtoms,
-              gridMap: activeMap,
-              atomOverridesLayer,
-              overrideEvents: injectedEvents,
-              sceneControl,
-            },
-            timeOverride: (worldState as any).tick,
-          });
+            const res = buildGoalLabContext(worldState, id, {
+              snapshotOptions: {
+                activeEvents,
+                overrideLocation: loc,
+                manualAtoms,
+                gridMap: activeMap,
+                atomOverridesLayer,
+                overrideEvents: injectedEvents,
+                sceneControl,
+                preGoals,
+                affectOverrides,
+              },
+              timeOverride: (worldState as any).tick,
+            });
           snap = res?.snapshot ?? null;
           stages = res?.stages ?? null;
         } catch {
@@ -963,6 +977,8 @@ export const GoalSandbox: React.FC = () => {
     atomOverridesLayer,
     injectedEvents,
     sceneControl,
+    preGoals,
+    affectOverrides,
   ]);
 
   const sceneDumpV2 = useMemo(() => {
@@ -977,6 +993,7 @@ export const GoalSandbox: React.FC = () => {
       selectedEventIds,
       manualAtoms,
       atomOverridesLayer,
+      preGoals,
       affectOverrides,
       injectedEvents,
       sceneControl,
@@ -1004,6 +1021,7 @@ export const GoalSandbox: React.FC = () => {
     selectedEventIds,
     manualAtoms,
     atomOverridesLayer,
+    preGoals,
     affectOverrides,
     injectedEvents,
     sceneControl,
@@ -1027,12 +1045,12 @@ export const GoalSandbox: React.FC = () => {
       const result = runTicks({
         world: worldState,
         agentId: selectedAgentId,
-        baseInput: { snapshotOptions: { manualAtoms, gridMap: activeMap, atomOverridesLayer, sceneControl, affectOverrides } },
+        baseInput: { snapshotOptions: { manualAtoms, gridMap: activeMap, atomOverridesLayer, sceneControl, preGoals, affectOverrides } },
         cfg: { steps, dt: 1 },
       } as any);
       setWorldState({ ...(worldState as any), tick: (result as any).tick });
     },
-    [worldState, selectedAgentId, manualAtoms, activeMap, atomOverridesLayer, sceneControl, affectOverrides]
+    [worldState, selectedAgentId, manualAtoms, activeMap, atomOverridesLayer, sceneControl, preGoals, affectOverrides]
   );
 
   const onDownloadScene = useCallback(() => {
@@ -1108,6 +1126,10 @@ export const GoalSandbox: React.FC = () => {
               onSceneControlChange={setSceneControl}
               scenePresets={Object.values(SCENE_PRESETS) as any}
             />
+
+            <div className="mt-3">
+              <PreGoalsPanel value={preGoals} onChange={setPreGoals} />
+            </div>
           </div>
         </div>
 

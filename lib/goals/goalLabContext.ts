@@ -14,6 +14,7 @@ import { validateAtoms } from '../context/validate/frameValidator';
 import { buildSummaryAtoms } from '../context/summaries/buildSummaries';
 import { computeCoverageReport } from '../goal-lab/coverage/computeCoverage';
 import { atomizeAffectOverrides } from '../affect/atomizeAffect';
+import { atomizePreGoals } from './preGoals';
 
 // New Imports for Pipeline
 import { buildStage0Atoms } from '../context/pipeline/stage0';
@@ -171,6 +172,9 @@ export function buildGoalLabContext(
   const ctxCrowd = ctxCrowdAtom ? ctxCrowdAtom.magnitude : 0;
 
   const baseExtraWorldAtoms: ContextAtom[] = [];
+  if (opts.snapshotOptions?.preGoals) {
+    baseExtraWorldAtoms.push(...atomizePreGoals(selfId, opts.snapshotOptions.preGoals as any));
+  }
   if (opts.snapshotOptions?.affectOverrides) {
     baseExtraWorldAtoms.push(...atomizeAffectOverrides(selfId, opts.snapshotOptions.affectOverrides as any));
   }

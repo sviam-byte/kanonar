@@ -22,6 +22,9 @@ import { computeConcreteGoals } from '../../life-goals/v4-engine';
 import { makeZeroGoalLogits } from '../../life-goals/psych-to-goals';
 import { computeBioLogitsV3 } from '../../life-goals/life-from-biography';
 import { buildGoalEvidence } from '../../goals/evidence';
+import { readPreGoal01 } from '../../goals/preGoals';
+
+const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
 
 // Helper to map domains for legacy compatibility
 function mapDomainsToGoalLogits(
@@ -108,6 +111,41 @@ export function scoreContextualGoals(
           contributions: contributions
       };
   });
+
+  // --- NEW: apply pre-goals multipliers (domain-sensitive) ---
+  try {
+    const selfId = agent?.entityId;
+    if (selfId && ctx?.atoms?.length) {
+      const atoms = ctx.atoms as any;
+
+      const wSafety = readPreGoal01(atoms, selfId, 'safety', 0.5);
+      const wSocial = readPreGoal01(atoms, selfId, 'social', 0.5);
+      const wResource = readPreGoal01(atoms, selfId, 'resource', 0.5);
+      const wExplore = readPreGoal01(atoms, selfId, 'explore', 0.5);
+      const wBonding = readPreGoal01(atoms, selfId, 'bonding', 0.5);
+      const wDominance = readPreGoal01(atoms, selfId, 'dominance', 0.5);
+
+      for (const g of scores) {
+        const dom = String((g as any)?.domain ?? (g as any)?.group ?? (g as any)?.category ?? '').toLowerCase();
+        let mult = 1;
+        if (dom.includes('safety') || dom.includes('avoid') || dom.includes('escape')) mult *= (0.75 + 0.5 * wSafety);
+        if (dom.includes('social') || dom.includes('norm') || dom.includes('status')) mult *= (0.75 + 0.5 * wSocial);
+        if (dom.includes('resource') || dom.includes('consume') || dom.includes('acquire')) mult *= (0.75 + 0.5 * wResource);
+        if (dom.includes('explore') || dom.includes('learn') || dom.includes('curiosity')) mult *= (0.75 + 0.5 * wExplore);
+        if (dom.includes('bond') || dom.includes('care') || dom.includes('ally')) mult *= (0.75 + 0.5 * wBonding);
+        if (dom.includes('domin') || dom.includes('power') || dom.includes('control')) mult *= (0.75 + 0.5 * wDominance);
+
+        const base = typeof (g as any).score === 'number' ? (g as any).score : (g as any).probability;
+        const prob = typeof base === 'number' ? base : 0;
+        const next = clamp01(prob * mult);
+        (g as any).score = next;
+        (g as any).probability = next;
+        (g as any).preGoalMult = mult;
+      }
+    }
+  } catch {
+    // pre-goals are best-effort overlays
+  }
 
   try {
     const selfId = agent?.entityId;

@@ -32,6 +32,12 @@ export function buildGoalEvidence(args: {
   const kind = (args.kind ?? '').toLowerCase();
 
   const baseCandidates = [
+    `goal:pre:${selfId}:safety`,
+    `goal:pre:${selfId}:social`,
+    `goal:pre:${selfId}:resource`,
+    `goal:pre:${selfId}:explore`,
+    `goal:pre:${selfId}:bonding`,
+    `goal:pre:${selfId}:dominance`,
     `ctx:danger:${selfId}`,
     `ctx:surveillance:${selfId}`,
     `ctx:publicness:${selfId}`,
