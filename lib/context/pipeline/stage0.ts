@@ -12,7 +12,7 @@ import { atomizeCapabilities } from '../../capabilities/atomizeCapabilities';
 import { getLocationForAgent, getAgentsInLocation } from '../../world/locations';
 import { atomizeTraces } from '../atomize/atomizeTraces';
 import { deriveAxes } from '../axes/deriveAxes';
-import { atomizeTomDyads } from '../../../tom/atomizeTomDyads';
+import { atomizeTomDyads } from '../../tom/atomizeTomDyads';
 
 // New RelationBase Logic
 import { extractRelBaseFromCharacter } from '../../relations/extract';
