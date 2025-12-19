@@ -10,7 +10,9 @@ export function ensureMapCells(map: LocationMap): LocationMap {
 
   const existing = new Map<string, LocationMapCell>();
   for (const c of (map.cells || [])) {
-    existing.set(`${c.x},${c.y}`, c);
+    if (!c) continue;
+    if (!Number.isFinite((c as any).x) || !Number.isFinite((c as any).y)) continue;
+    existing.set(`${(c as any).x},${(c as any).y}`, c as any);
   }
 
   const cells: LocationMapCell[] = [];

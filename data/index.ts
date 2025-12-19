@@ -8,10 +8,23 @@ import { allLocations } from './locations';
 const entityModules = import.meta.glob('./entities/**/*.ts', { eager: true });
 
 function pickDefaultEntity(mod: unknown): AnyEntity | null {
-  const ent = (mod as any)?.default;
-  if (!ent || typeof ent !== 'object') return null;
-  if (!('entityId' in (ent as any)) || !('type' in (ent as any))) return null;
-  return ent as AnyEntity;
+  const m = mod as any;
+  const ent = m?.default;
+  if (ent && typeof ent === 'object' && ('entityId' in ent) && ('type' in ent)) {
+    return ent as AnyEntity;
+  }
+
+  // Fallback: allow named exports (часто при ручном создании сущностей)
+  if (m && typeof m === 'object') {
+    for (const k of Object.keys(m)) {
+      const v = (m as any)[k];
+      if (v && typeof v === 'object' && ('entityId' in v) && ('type' in v)) {
+        return v as AnyEntity;
+      }
+    }
+  }
+
+  return null;
 }
 
 const importedEntities: AnyEntity[] = Object.values(entityModules)

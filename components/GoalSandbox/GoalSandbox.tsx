@@ -361,7 +361,15 @@ export const GoalSandbox: React.FC = () => {
       if (!w) return;
 
       w.groupGoalId = undefined;
-      w.locations = [getSelectedLocationEntity(), ...allLocations];
+      w.locations = [getSelectedLocationEntity(), ...allLocations].map(loc => {
+        const m = (loc as any)?.map;
+        if (!m) return loc as any;
+        try {
+          return { ...(loc as any), map: ensureMapCells(m) } as any;
+        } catch {
+          return loc as any;
+        }
+      });
 
       const nextPositions = { ...actorPositionsRef.current };
       w.agents.forEach((a, i) => {
@@ -434,6 +442,11 @@ export const GoalSandbox: React.FC = () => {
       if (!id) return;
       if (id === selectedAgentId) return;
 
+      if (!allCharacters.some(c => c.entityId === id)) {
+        setFatalError(`Add participant failed: unknown character id: ${String(id)}`);
+        return;
+      }
+
       console.log('[ADD] request', { id, selectedAgentId });
 
       setSceneParticipants(prev => {
@@ -448,7 +461,7 @@ export const GoalSandbox: React.FC = () => {
       persistActorPositions();
       forceRebuildWorld();
     },
-    [selectedAgentId, persistActorPositions, forceRebuildWorld]
+    [selectedAgentId, persistActorPositions, forceRebuildWorld, allCharacters]
   );
 
   const handleRemoveParticipant = useCallback(
@@ -505,7 +518,15 @@ export const GoalSandbox: React.FC = () => {
       }
 
       w.groupGoalId = undefined;
-      w.locations = [getSelectedLocationEntity(), ...allLocations];
+      w.locations = [getSelectedLocationEntity(), ...allLocations].map(loc => {
+        const m = (loc as any)?.map;
+        if (!m) return loc as any;
+        try {
+          return { ...(loc as any), map: ensureMapCells(m) } as any;
+        } catch {
+          return loc as any;
+        }
+      });
 
       const nextPositions = { ...actorPositionsRef.current };
 
@@ -754,56 +775,72 @@ export const GoalSandbox: React.FC = () => {
     return buildFrameMvp(scene as any);
   }, [glCtx, selectedAgentId, getSelectedLocationEntity, worldState, manualAtoms]);
 
-  const { snapshot, goals, locationScores, tomScores, situation, goalPreview, contextualMind } = useMemo(() => {
-    if (!glCtx || !worldState) {
-      return {
-        frame: null,
-        snapshot: null,
-        goals: [],
-        locationScores: [],
-        tomScores: [],
-        situation: null,
-        goalPreview: null,
-        contextualMind: null,
-      };
-    }
-
-    const { agent, frame, snapshot, situation, goalPreview } = glCtx as any;
-    snapshot.atoms = dedupeAtomsById(snapshot.atoms);
-
-    const goals = scoreContextualGoals(agent, worldState, snapshot, undefined, frame || undefined);
-    const locScores = computeLocationGoalsForAgent(
-      worldState,
-      agent.entityId,
-      (agent as any).locationId || null
-    );
-    const tomScores = computeTomGoalsForAgent(worldState, agent.entityId);
-
-    let cm: ContextualMindReport | null = null;
-    try {
-      cm = computeContextualMind({
-        world: worldState,
-        agent,
-        frame: frame || null,
-        goalPreview: goalPreview?.goals ?? null,
-        domainMix: { ...(snapshot?.domains ?? {}), ...(goalPreview?.debug?.d_mix ?? {}) } as any,
-        atoms: snapshot.atoms,
-      }).report;
-    } catch (e) {
-      console.error(e);
-    }
-
-    return {
-      frame,
-      snapshot,
-      goals,
-      locationScores: locScores,
-      tomScores,
-      situation,
-      goalPreview,
-      contextualMind: cm,
+  const computed = useMemo(() => {
+    const empty = {
+      frame: null,
+      snapshot: null,
+      goals: [] as any[],
+      locationScores: [] as any[],
+      tomScores: [] as any[],
+      situation: null as any,
+      goalPreview: null as any,
+      contextualMind: null as ContextualMindReport | null,
     };
+
+    if (!glCtx || !worldState) {
+      return { ...empty, error: null as any };
+    }
+
+    try {
+      const { agent, frame, snapshot, situation, goalPreview } = glCtx as any;
+      snapshot.atoms = dedupeAtomsById(snapshot.atoms);
+
+      const goals = scoreContextualGoals(agent, worldState, snapshot, undefined, frame || undefined);
+      const locScores = computeLocationGoalsForAgent(
+        worldState,
+        agent.entityId,
+        (agent as any).locationId || null
+      );
+      const tomScores = computeTomGoalsForAgent(worldState, agent.entityId);
+
+      let cm: ContextualMindReport | null = null;
+      try {
+        cm = computeContextualMind({
+          world: worldState,
+          agent,
+          frame: frame || null,
+          goalPreview: goalPreview?.goals ?? null,
+          domainMix: { ...(snapshot?.domains ?? {}), ...(goalPreview?.debug?.d_mix ?? {}) } as any,
+          atoms: snapshot.atoms,
+        }).report;
+      } catch (e) {
+        console.error(e);
+      }
+
+      return {
+        frame,
+        snapshot,
+        goals,
+        locationScores: locScores,
+        tomScores,
+        situation,
+        goalPreview,
+        contextualMind: cm,
+        error: null,
+      };
+    } catch (e: any) {
+      console.error('[GoalSandbox] compute pipeline failed', e);
+      return { ...empty, error: e };
+    }
   }, [glCtx, worldState]);
+
+  const { snapshot, goals, locationScores, tomScores, situation, goalPreview, contextualMind, error: computeError } = computed;
+
+  useEffect(() => {
+    if (computeError) {
+      setFatalError(String((computeError as any)?.message || computeError));
+    }
+  }, [computeError]);
 
   const snapshotV1 = useMemo(() => {
     if (!glCtx) return null;

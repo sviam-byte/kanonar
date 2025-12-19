@@ -410,17 +410,24 @@ export const GoalLabResults: React.FC<Props> = ({
         }
     };
     
-    const tabsList = ['Analysis', 'Atoms', 'Threat', 'ToM', 'CtxMind', 'Coverage', 'Possibilities', 'Decision', 'Access', 'Diff', 'Debug'];
+  const tabsList = ['Analysis', 'Atoms', 'Threat', 'ToM', 'CtxMind', 'Coverage', 'Possibilities', 'Decision', 'Access', 'Diff', 'Debug'];
 
-    const focusId = (context as any)?.agentId;
-    const focusLabel = (focusId && actorLabels?.[focusId]) ? actorLabels[focusId] : focusId;
+  const focusId = (context as any)?.agentId;
+  const focusLabel = (focusId && actorLabels?.[focusId]) ? actorLabels[focusId] : focusId;
+  const perspectiveLabel = perspectiveAgentId
+    ? (actorLabels?.[perspectiveAgentId] || perspectiveAgentId)
+    : null;
 
     return (
         <div className="flex flex-col h-full overflow-hidden bg-canon-bg-light border border-canon-border rounded-lg shadow-xl">
             {perspectiveAgentId && (
                 <div className="bg-canon-bg border-b border-canon-border/60 p-3">
                     <div className="text-xs font-bold text-canon-text uppercase tracking-wider">Perspective</div>
-                    <div className="text-sm text-canon-text-light">{perspectiveAgentId}</div>
+                    <div className="text-sm text-canon-text-light">
+                      {perspectiveLabel}
+                      <span className="text-[10px] font-mono text-canon-text-light/70 ml-2">agentId: {perspectiveAgentId}</span>
+                      <div className="text-[10px] text-canon-text-light/60 mt-1">Все расчёты ниже — из этой перспективы.</div>
+                    </div>
                 </div>
             )}
             {context && (
