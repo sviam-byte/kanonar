@@ -534,20 +534,23 @@ export const GoalLabControls: React.FC<Props> = ({
               <div className="text-[11px] font-bold mb-2">Perspective (для кого считаем)</div>
 
               <div className="flex flex-wrap gap-1">
-                {(participantIds || []).map(id => (
-                  <button
-                    key={id}
-                    className={`px-2 py-1 rounded text-[10px] border ${
-                      id === perspectiveAgentId
-                        ? 'bg-canon-accent/15 border-canon-accent'
-                        : 'bg-canon-bg border-canon-border/40'
-                    }`}
-                    onClick={() => onSelectPerspective?.(id)}
-                    type="button"
-                  >
-                    {id === perspectiveAgentId ? '● ' : ''}{id}
-                  </button>
-                ))}
+                {(participantIds || []).map(id => {
+                  const label = allCharacters.find(c => c.entityId === id)?.title || id;
+                  return (
+                    <button
+                      key={id}
+                      className={`px-2 py-1 rounded text-[10px] border ${
+                        perspectiveAgentId === id
+                          ? 'bg-canon-accent/20 border-canon-accent/50 text-canon-text-light'
+                          : 'bg-canon-bg border-canon-border/40 text-canon-text-muted hover:text-canon-text-light'
+                      }`}
+                      onClick={() => onSelectPerspective?.(id)}
+                      title={`Perspective: ${id}`}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
