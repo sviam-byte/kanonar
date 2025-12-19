@@ -73,7 +73,10 @@ export function getLocationForAgent(world: WorldState, agent: AgentState): Locat
 
 export function indexLocationMapCells(loc: LocationWithMap): Map<string, LocationMapCell> {
   const map = new Map<string, LocationMapCell>();
-  for (const cell of loc.map!.cells) {
+  const cells = loc.map?.cells ?? [];
+  for (const cell of cells as any[]) {
+    if (!cell) continue;
+    if (!Number.isFinite(cell.x) || !Number.isFinite(cell.y)) continue;
     map.set(`${cell.x},${cell.y}`, cell);
   }
   return map;
