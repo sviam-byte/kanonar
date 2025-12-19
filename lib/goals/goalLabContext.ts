@@ -273,63 +273,42 @@ export function buildGoalLabContext(
       const atomsAfterBeliefGen = [...atomsAfterAccess, ...rumorBeliefs];
       
       // 7. Apply Relation Priors
-      const priorsApplied = applyRelationPriorsToDyads(atomsAfterBeliefGen, selfId);
-      const atomsAfterPriors = mergeEpistemicAtoms({
-          world: atomsAfterBeliefGen,
-          obs: [],
-          belief: [],
-          override: [],
-          derived: priorsApplied.atoms
-      }).merged;
+      const relationPriorsForSelf = (() => {
+        const m = new Map<string, { otherId: string; trustPrior?: number; threatPrior?: number }>();
+        for (const a of atomsAfterBeliefGen) {
+          if (!a?.id?.startsWith(`rel:base:${selfId}:`)) continue;
+          const parts = a.id.split(':');
+          const otherId = parts[3];
+          const kind = parts[4];
+          if (!otherId || otherId === selfId) continue;
+          const rec = m.get(otherId) ?? { otherId };
+          if (kind === 'loyalty' || kind === 'closeness') {
+            const v = clamp01(a.magnitude ?? 0);
+            rec.trustPrior = Math.max(rec.trustPrior ?? 0, v);
+          }
+          if (kind === 'hostility') {
+            rec.threatPrior = clamp01(a.magnitude ?? 0);
+          }
+          m.set(otherId, rec);
+        }
+        return Array.from(m.values());
+      })();
+
+      const atomsAfterPriors = applyRelationPriorsToDyads({
+        atoms: atomsAfterBeliefGen,
+        selfId,
+        relationPriors: relationPriorsForSelf,
+      });
 
       // 8. ToM Context Bias
-      const biasPack = buildBeliefToMBias(atomsAfterPriors, selfId);
-      const bias = biasPack.bias;
-      
-      const tomCtxDyads: ContextAtom[] = [];
-      const dyads = atomsAfterPriors.filter(a => a.id.startsWith(`tom:dyad:${selfId}:`));
-
-      for (const a of dyads) {
-          if (a.id.endsWith(':trust')) {
-            const trust = clamp01(a.magnitude ?? 0);
-            const t2 = clamp01(trust * (1 - 0.6 * bias));
-            tomCtxDyads.push(normalizeAtom({
-              id: a.id.replace(':trust', ':trust_ctx'),
-              kind: 'tom_dyad_metric', 
-              ns: 'tom',
-              origin: 'derived',
-              source: 'tom_ctx',
-              magnitude: t2,
-              confidence: 1,
-              tags: ['tom', 'ctx'],
-              subject: selfId,
-              target: a.target,
-              label: `trust_ctx:${Math.round(t2 * 100)}%`,
-              trace: { usedAtomIds: [a.id, `tom:ctx:bias:${selfId}`], notes: ['trust adjusted by ctx bias'], parts: { trust, bias } }
-            } as any));
-          }
-          if (a.id.endsWith(':threat')) {
-            const thr = clamp01(a.magnitude ?? 0);
-            const thr2 = clamp01(thr + 0.6 * bias * (1 - thr));
-            tomCtxDyads.push(normalizeAtom({
-              id: a.id.replace(':threat', ':threat_ctx'),
-              kind: 'tom_dyad_metric',
-              ns: 'tom',
-              origin: 'derived',
-              source: 'tom_ctx',
-              magnitude: thr2,
-              confidence: 1,
-              tags: ['tom', 'ctx'],
-              subject: selfId,
-              target: a.target,
-              label: `threat_ctx:${Math.round(thr2 * 100)}%`,
-              trace: { usedAtomIds: [a.id, `tom:ctx:bias:${selfId}`], notes: ['threat adjusted by ctx bias'], parts: { thr, bias } }
-            } as any));
-          }
-      }
-      
-      // 9. Threat Stack
-      const atomsForThreat = [...atomsAfterPriors, ...biasPack.atoms, ...tomCtxDyads];
+      const biasPack = buildBeliefToMBias({
+        atoms: atomsAfterPriors,
+        selfId,
+        beliefs: epistemicBeliefs,
+        rumors: epistemicRumors,
+        access
+      });
+      const atomsForThreat = biasPack.atoms;
       const threatInputs = {
           envDanger: 0, visibilityBad: 0, coverLack: 0, crowding: 0,
           nearbyCount: 0, nearbyTrustMean: 0.45, nearbyHostileMean: 0, hierarchyPressure: 0, surveillance: 0,

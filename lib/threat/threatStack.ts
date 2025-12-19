@@ -1,5 +1,6 @@
 // lib/threat/threatStack.ts
 import { ContextAtom } from '../context/v2/types';
+import { getAtom01 } from '../tom/atomsDyad';
 
 export type Clamp01 = (x: number) => number;
 export const clamp01: Clamp01 = (x) => (x < 0 ? 0 : x > 1 ? 1 : x);
@@ -62,6 +63,28 @@ function pickAny(atoms: any[], ids: string[], fallback = 0) {
     if (a && typeof a.magnitude === 'number' && Number.isFinite(a.magnitude)) return a.magnitude;
   }
   return fallback;
+}
+
+function getDyadThreat(atoms: ContextAtom[], selfId: string, otherId: string): number {
+  const ctx = getAtom01(atoms, `tom:dyad:${selfId}:${otherId}:threat_ctx`, NaN as any);
+  if (Number.isFinite(ctx)) return ctx;
+  const prior = getAtom01(atoms, `tom:dyad:${selfId}:${otherId}:threat_prior`, NaN as any);
+  if (Number.isFinite(prior)) return prior;
+  const base = getAtom01(atoms, `tom:dyad:${selfId}:${otherId}:threat`, NaN as any);
+  if (Number.isFinite(base)) return base;
+  const relHostility = getAtom01(atoms, `rel:base:${selfId}:${otherId}:hostility`, NaN as any);
+  if (Number.isFinite(relHostility)) return relHostility;
+  return 0;
+}
+
+function getDyadTrust(atoms: ContextAtom[], selfId: string, otherId: string): number {
+  const ctx = getAtom01(atoms, `tom:dyad:${selfId}:${otherId}:trust_ctx`, NaN as any);
+  if (Number.isFinite(ctx)) return ctx;
+  const prior = getAtom01(atoms, `tom:dyad:${selfId}:${otherId}:trust_prior`, NaN as any);
+  if (Number.isFinite(prior)) return prior;
+  const base = getAtom01(atoms, `tom:dyad:${selfId}:${otherId}:trust`, NaN as any);
+  if (Number.isFinite(base)) return base;
+  return 0.45;
 }
 
 function noisyOr01(values: number[]) {
@@ -158,16 +181,13 @@ export function computeThreatStack(i: ThreatInputs, contextAtoms?: ContextAtom[]
           closeVals.push(close);
           wts.push(w);
 
-          const trust = pickAny(atoms, [
-              `tom:dyad:${selfId}:${otherId}:trust_ctx`,
-              `tom:dyad:${selfId}:${otherId}:trust`
-          ], 0.45);
-          
-          const dyThreat = pickAny(atoms, [
-              `tom:dyad:${selfId}:${otherId}:threat_ctx`,
-              `tom:dyad:${selfId}:${otherId}:threat`,
-              `rel:base:${selfId}:${otherId}:hostility`
-          ], clamp01(1 - trust));
+          const trust = getDyadTrust(atoms, selfId, otherId);
+
+          const dyThreat = (() => {
+              const v = getDyadThreat(atoms, selfId, otherId);
+              if (Number.isFinite(v)) return v;
+              return clamp01(1 - trust);
+          })();
 
           wTrust.push(clamp01(trust) * w);
           wHost.push(clamp01(dyThreat) * w);
@@ -175,7 +195,9 @@ export function computeThreatStack(i: ThreatInputs, contextAtoms?: ContextAtom[]
           usedAtomIds.push(
               o.id, `obs:los:${selfId}:${otherId}`, `obs:audio:${selfId}:${otherId}`,
               `tom:dyad:${selfId}:${otherId}:trust_ctx`, `tom:dyad:${selfId}:${otherId}:trust`,
+              `tom:dyad:${selfId}:${otherId}:trust_prior`,
               `tom:dyad:${selfId}:${otherId}:threat_ctx`, `tom:dyad:${selfId}:${otherId}:threat`,
+              `tom:dyad:${selfId}:${otherId}:threat_prior`,
               `rel:base:${selfId}:${otherId}:hostility`
           );
       }
