@@ -1,6 +1,6 @@
 // components/GoalSandbox/GoalSandbox.tsx
 
-import React, { useMemo, useState, useEffect, useCallback } from 'react';
+import React, { useMemo, useState, useEffect, useCallback, useRef } from 'react';
 import {
   EntityType,
   Branch,
@@ -32,6 +32,7 @@ import { runTicks } from '../../lib/engine/tick';
 import type { AtomDiff } from '../../lib/snapshot/diffAtoms';
 import { adaptToSnapshotV1 } from '../../lib/goal-lab/snapshotAdapter';
 import { CastPerspectivePanel } from '../goal-lab/CastPerspectivePanel';
+import { allScenarioDefs } from '../../data/scenarios/index';
 
 // Pipeline Imports
 import { buildFrameMvp } from '../../lib/context/buildFrameMvp';
@@ -94,6 +95,21 @@ const dedupeAtomsById = (arr: ContextAtom[]) => {
   return out;
 };
 
+const positionsEqual = (
+  a: Record<string, { x: number; y: number }>,
+  b: Record<string, { x: number; y: number }>
+) => {
+  const aKeys = Object.keys(a);
+  const bKeys = Object.keys(b);
+  if (aKeys.length !== bKeys.length) return false;
+  for (const key of aKeys) {
+    const pa = a[key];
+    const pb = b[key];
+    if (!pb || pa.x !== pb.x || pa.y !== pb.y) return false;
+  }
+  return true;
+};
+
 export const GoalSandbox: React.FC = () => {
   const { characters: sandboxCharacters, setDyadConfigFor } = useSandbox();
 
@@ -138,6 +154,10 @@ export const GoalSandbox: React.FC = () => {
   const [actorPositions, setActorPositions] = useState<Record<string, { x: number; y: number }>>(
     {}
   );
+  const actorPositionsRef = useRef(actorPositions);
+  useEffect(() => {
+    actorPositionsRef.current = actorPositions;
+  }, [actorPositions]);
   const [rebuildNonce, setRebuildNonce] = useState(0);
 
   const [locationMode, setLocationMode] = useState<'preset' | 'custom'>('preset');
@@ -163,6 +183,12 @@ export const GoalSandbox: React.FC = () => {
 
   // Persistent Scene Participants: stores ALL actors in the scene (including selectedAgentId)
   const [sceneParticipants, setSceneParticipants] = useState<Set<string>>(() => new Set());
+
+  const participantIds = useMemo(() => {
+    const ids = new Set(sceneParticipants);
+    if (selectedAgentId) ids.add(selectedAgentId);
+    return Array.from(ids);
+  }, [sceneParticipants, selectedAgentId]);
 
   // Optional per-scene dyad configs (A->B perception weights), typically from ScenePreset
   const [runtimeDyadConfigs, setRuntimeDyadConfigs] = useState<Record<string, DyadConfigForA> | null>(
@@ -205,14 +231,9 @@ export const GoalSandbox: React.FC = () => {
   }, [perspectiveAgentId, selectedAgentId]);
 
   useEffect(() => {
-    if (selectedAgentId) setPerspectiveAgentId(selectedAgentId);
-  }, [selectedAgentId]);
-
-  useEffect(() => {
+    if (!participantIds.length) return;
     if (perspectiveId && participantIds.includes(perspectiveId)) return;
-    if (participantIds.length > 0) {
-      setPerspectiveAgentId(participantIds[0]);
-    }
+    setPerspectiveAgentId(participantIds[0]);
   }, [participantIds, perspectiveId]);
 
   useEffect(() => {
@@ -269,7 +290,7 @@ export const GoalSandbox: React.FC = () => {
       const agentIds = nextAgents.map(a => a.entityId);
 
       const agentsWithLoc = nextAgents.map(a => {
-        const pos = actorPositions[a.entityId] || (a as any).position || { x: 5, y: 5 };
+        const pos = actorPositionsRef.current[a.entityId] || (a as any).position || { x: 5, y: 5 };
         return { ...(a as any), locationId: locId, position: pos } as AgentState;
       });
 
@@ -295,14 +316,8 @@ export const GoalSandbox: React.FC = () => {
 
       return { ...(worldBase as any) };
     },
-    [actorPositions, ensureCompleteInitialRelations, getActiveLocationId, runtimeDyadConfigs]
+    [ensureCompleteInitialRelations, getActiveLocationId, runtimeDyadConfigs]
   );
-
-  const participantIds = useMemo(() => {
-    const ids = new Set(sceneParticipants);
-    if (selectedAgentId) ids.add(selectedAgentId);
-    return Array.from(ids);
-  }, [sceneParticipants, selectedAgentId]);
 
   useEffect(() => {
     if (!worldState) return;
@@ -348,11 +363,11 @@ export const GoalSandbox: React.FC = () => {
       w.groupGoalId = undefined;
       w.locations = [getSelectedLocationEntity(), ...allLocations];
 
-      const nextPositions = { ...actorPositions };
+      const nextPositions = { ...actorPositionsRef.current };
       w.agents.forEach((a, i) => {
-        if (actorPositions[a.entityId]) {
-          (a as any).position = actorPositions[a.entityId];
-          nextPositions[a.entityId] = actorPositions[a.entityId];
+        if (actorPositionsRef.current[a.entityId]) {
+          (a as any).position = actorPositionsRef.current[a.entityId];
+          nextPositions[a.entityId] = actorPositionsRef.current[a.entityId];
         } else {
           const offsetX = (i % 3) * 2;
           const offsetY = Math.floor(i / 3) * 2;
@@ -376,14 +391,13 @@ export const GoalSandbox: React.FC = () => {
       w.tom = initTomForCharacters(w.agents as any, w as any, runtimeDyadConfigs || undefined) as any;
       (w as any).gilParams = constructGil(w.agents as any) as any;
 
-      setActorPositions(nextPositions);
+      setActorPositions(prev => (positionsEqual(prev, nextPositions) ? prev : nextPositions));
       setWorldState(w);
     },
     [
       allCharacters,
       selectedAgentId,
       activeScenarioId,
-      actorPositions,
       getSelectedLocationEntity,
       getActiveLocationId,
       ensureCompleteInitialRelations,
@@ -445,13 +459,12 @@ export const GoalSandbox: React.FC = () => {
       setSceneParticipants(prev => {
         const next = new Set(prev);
         next.delete(id);
-
-        rebuildWorldFromParticipants(next);
-
         return next;
       });
+
+      forceRebuildWorld();
     },
-    [selectedAgentId, rebuildWorldFromParticipants]
+    [selectedAgentId, forceRebuildWorld]
   );
 
   const resolveCharacterId = useCallback(
@@ -494,12 +507,12 @@ export const GoalSandbox: React.FC = () => {
       w.groupGoalId = undefined;
       w.locations = [getSelectedLocationEntity(), ...allLocations];
 
-      const nextPositions = { ...actorPositions };
+      const nextPositions = { ...actorPositionsRef.current };
 
       w.agents.forEach((a, i) => {
-        if (actorPositions[a.entityId]) {
-          (a as any).position = actorPositions[a.entityId];
-          nextPositions[a.entityId] = actorPositions[a.entityId];
+        if (actorPositionsRef.current[a.entityId]) {
+          (a as any).position = actorPositionsRef.current[a.entityId];
+          nextPositions[a.entityId] = actorPositionsRef.current[a.entityId];
         } else {
           const offsetX = (i % 3) * 2;
           const offsetY = Math.floor(i / 3) * 2;
@@ -523,7 +536,7 @@ export const GoalSandbox: React.FC = () => {
       w.tom = initTomForCharacters(w.agents as any, w as any, runtimeDyadConfigs || undefined) as any;
       (w as any).gilParams = constructGil(w.agents as any) as any;
 
-      setActorPositions(nextPositions);
+      setActorPositions(prev => (positionsEqual(prev, nextPositions) ? prev : nextPositions));
       setWorldState(w);
       setFatalError(null);
     } catch (e: any) {
@@ -538,7 +551,6 @@ export const GoalSandbox: React.FC = () => {
     allCharacters,
     activeScenarioId,
     runtimeDyadConfigs,
-    actorPositions,
     getSelectedLocationEntity,
     getActiveLocationId,
     ensureCompleteInitialRelations,
@@ -637,8 +649,14 @@ export const GoalSandbox: React.FC = () => {
       setLocationMode('preset');
     }
 
-    if ((scene as any).suggestedScenarioId) {
-      setActiveScenarioId((scene as any).suggestedScenarioId);
+    const sid = (scene as any).suggestedScenarioId;
+    if (sid) {
+      if (allScenarioDefs[sid]) {
+        setActiveScenarioId(sid);
+      } else {
+        // не ломаем worldState; просто сообщаем
+        setFatalError(`Preset scene requested unknown scenarioId: ${String(sid)}`);
+      }
     }
 
     const enginePreset = (scene as any).enginePresetId || 'safe_hub';
@@ -952,7 +970,11 @@ export const GoalSandbox: React.FC = () => {
               </div>
             )}
 
-            <CastPerspectivePanel rows={castRows} focusId={selectedAgentId} onFocus={handleSelectAgent} />
+            <CastPerspectivePanel
+              rows={castRows}
+              focusId={perspectiveId}
+              onFocus={setPerspectiveAgentId}
+            />
 
             <GoalLabResults
               context={snapshot as any}
@@ -965,7 +987,7 @@ export const GoalSandbox: React.FC = () => {
               contextualMind={contextualMind as any}
               locationScores={locationScores as any}
               tomScores={tomScores as any}
-              tom={(worldState as any)?.tom?.[selectedAgentId]}
+              tom={(worldState as any)?.tom?.[perspectiveId]}
               atomDiff={atomDiff as any}
               snapshotV1={snapshotV1 as any}
             />

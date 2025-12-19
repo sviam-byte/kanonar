@@ -21,7 +21,7 @@ export const TEST_SCENES: ScenePreset[] = [
         title: 'Теган и Кристар (Покои)',
         description: 'Приватная сцена. Максимальная близость, преданность и иерархия.',
         locationId: 'ka_palace.tegan_quarters',
-        suggestedScenarioId: 'council_simple',
+        suggestedScenarioId: 'council_chamber',
         enginePresetId: 'safe_hub', // Relaxed, private
         characters: ['character-tegan-nots', 'character-krystar-mann'],
         configs: {

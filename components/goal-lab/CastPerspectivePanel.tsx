@@ -15,7 +15,7 @@ export const CastPerspectivePanel: React.FC<{
   return (
     <div className="bg-canon-bg border border-canon-border/40 rounded p-3">
       <div className="text-[10px] font-bold text-canon-text-light uppercase tracking-wider mb-2">
-        Scene perspectives (FOCUS drives atoms/ToM)
+        Scene perspectives (PERSPECTIVE drives atoms/ToM)
       </div>
 
       <div className="flex flex-wrap gap-2">
