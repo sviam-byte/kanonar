@@ -42,6 +42,7 @@ interface Props {
 
   onLoadScene?: (preset: ScenePreset) => void;
   onRunTicks?: (steps: number) => void;
+  onDownloadScene?: () => void;
 
   // Optional: World Access for Mods
   world?: any;
@@ -75,6 +76,7 @@ export const GoalLabControls: React.FC<Props> = ({
   affectOverrides, onAffectOverridesChange,
   onLoadScene,
   onRunTicks,
+  onDownloadScene,
   world, onWorldChange,
   participantIds,
   onAddParticipant,
@@ -444,6 +446,21 @@ export const GoalLabControls: React.FC<Props> = ({
                  <div className="text-[10px] text-canon-text-light italic">
                      Running ticks updates internal state (affect, stress traces) and advances world time.
                  </div>
+
+                 {onDownloadScene && (
+                   <div className="pt-2 border-t border-canon-border/60">
+                     <button
+                       type="button"
+                       onClick={onDownloadScene}
+                       className="w-full px-4 py-2 bg-canon-bg border border-canon-border text-canon-text text-xs font-bold rounded hover:bg-canon-bg-light/40 transition-colors"
+                     >
+                       Download full scene JSON (atoms + calculations)
+                     </button>
+                     <div className="text-[10px] text-canon-text-light italic mt-1">
+                       Includes: world, participants, manual atoms, overrides, scene control, pipeline snapshot, goals.
+                     </div>
+                   </div>
+                 )}
              </div>
         )}
         

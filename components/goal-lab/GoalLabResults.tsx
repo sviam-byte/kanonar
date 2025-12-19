@@ -43,6 +43,8 @@ interface Props {
   snapshotV1?: GoalLabSnapshotV1 | null;
   perspectiveAgentId?: string | null;
   tomRows?: Array<{ me: string; other: string; dyad: any }> | null;
+  sceneDump?: any;
+  onDownloadScene?: () => void;
 }
 
 interface AtomStyle {
@@ -333,17 +335,54 @@ export const GoalLabResults: React.FC<Props> = ({
   snapshotV1,
   perspectiveAgentId,
   tomRows,
+  sceneDump,
+  onDownloadScene,
 }) => {
     const [selectedGoalId, setSelectedGoalId] = useState<string | null>(null);
     const [isPreviewOpen, setPreviewOpen] = useState(false);
     const [activeTabIndex, setActiveTabIndex] = useState(0);
+
+    const canDownload = Boolean(onDownloadScene || sceneDump);
+
+    const handleDownloadScene = () => {
+        if (onDownloadScene) {
+            onDownloadScene();
+            return;
+        }
+
+        if (!sceneDump) return;
+
+        const dump = sceneDump ?? { snapshotV1, context, goalScores, situation, goalPreview, contextualMind, atomDiff, tomRows };
+        const replacer = (_k: string, v: any) => {
+            if (v instanceof Map) return Object.fromEntries(Array.from(v.entries()));
+            if (v instanceof Set) return Array.from(v.values());
+            if (typeof v === 'function') return undefined;
+            return v;
+        };
+        try {
+            const json = JSON.stringify(dump, replacer, 2);
+            const blob = new Blob([json], { type: 'application/json;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            const ts = new Date().toISOString().replace(/[:.]/g, '-');
+            const focus = (dump as any)?.focus?.perspectiveId || (dump as any)?.focus?.selectedAgentId || (context as any)?.agentId || 'agent';
+            a.href = url;
+            a.download = `goal-lab-scene__${String(focus)}__${ts}.json`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(url);
+        } catch (e) {
+            console.error('[GoalLabResults] failed to export scene JSON', e);
+        }
+    };
 
     const effectiveSelectedId = selectedGoalId || (goalScores.length > 0 ? goalScores[0].goalId : null);
     const selectedScore = goalScores.find(g => g.goalId === effectiveSelectedId);
 
     // Use unified snapshot if available, else legacy context
     const currentAtoms = snapshotV1?.atoms ?? context?.atoms ?? [];
-    
+
     // Aggregates from snapshot or legacy context
     const stats = {
         threat: snapshotV1?.contextMind?.metrics?.find((m: any) => m.key === 'threat')?.value ?? context?.aggregates?.threatLevel ?? context?.summary.physicalRisk ?? 0,
@@ -351,6 +390,24 @@ export const GoalLabResults: React.FC<Props> = ({
         pressure: snapshotV1?.contextMind?.metrics?.find((m: any) => m.key === 'pressure')?.value ?? ((context?.summary.timePressure ?? 0) + (context?.summary.normPressure ?? 0)) / 2,
         crowd: snapshotV1?.contextMind?.metrics?.find((m: any) => m.key === 'crowd')?.value ?? context?.aggregates?.crowding ?? context?.summary.crowding ?? 0
     };
+
+    const topAtoms = [...currentAtoms]
+        .sort((a, b) => (b.magnitude ?? 0) - (a.magnitude ?? 0))
+        .slice(0, 12);
+
+    const tomSummaries = (tomRows || [])
+        .slice(0, 8)
+        .map(row => {
+            const dyad = (row as any)?.dyad || row;
+            const contextual = (dyad as any)?.contextual || (row as any)?.contextual;
+            const state = contextual?.state || (dyad as any)?.state || {};
+            return {
+                id: row.other,
+                label: (actorLabels && actorLabels[row.other]) || row.other,
+                trust: (state as any).trust,
+                threat: (state as any).threat,
+            };
+        });
 
     if (!context) {
         return <div className="flex items-center justify-center h-full text-canon-text-light text-xs opacity-50">Выберите агента для анализа.</div>;
@@ -392,25 +449,74 @@ export const GoalLabResults: React.FC<Props> = ({
     const PossibilitiesTab = () => <PossibilitiesPanel possibilities={(context as any).possibilities || snapshotV1?.possibilities || []} />;
     const DiffTab = () => <DiffPanel diffs={atomDiff || snapshotV1?.atomDiff || []} />;
     const DecisionTab = () => <DecisionPanel decision={(context as any).decision || snapshotV1?.decision} />;
+    const explainStats = {
+        threat: Number(stats.threat) || 0,
+        pressure: Number(stats.pressure) || 0,
+        support: Number(stats.support) || 0,
+        crowd: Number(stats.crowd) || 0,
+    };
+
+    const fmt = (v: any) => (Number.isFinite(v) ? Number(v).toFixed(2) : '—');
+
+    const ExplainTab = () => (
+        <div className="absolute inset-0 overflow-y-auto custom-scrollbar p-4 space-y-4 pb-20">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <ValueBadge label="Угроза" value={explainStats.threat} color="text-red-400" />
+                <ValueBadge label="Давление" value={explainStats.pressure} color="text-amber-400" />
+                <ValueBadge label="Поддержка" value={explainStats.support} color="text-emerald-400" />
+                <ValueBadge label="Толпа" value={explainStats.crowd} color="text-blue-400" />
+            </div>
+
+            <div className="border border-canon-border/50 rounded-lg bg-black/20 p-3">
+                <div className="text-xs font-bold text-canon-text uppercase tracking-wider mb-2">Топ атомов (по magnitude)</div>
+                {topAtoms.length ? (
+                    <div className="flex flex-wrap gap-2">
+                        {topAtoms.map(atom => (
+                            <AtomBadge key={atom.id} atom={atom} />
+                        ))}
+                    </div>
+                ) : (
+                    <div className="text-[12px] text-canon-text-light/70">Нет активных атомов.</div>
+                )}
+            </div>
+
+            <div className="border border-canon-border/50 rounded-lg bg-black/20 p-3">
+                <div className="text-xs font-bold text-canon-text uppercase tracking-wider mb-2">Восприятие других (ToM)</div>
+                {tomSummaries.length ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                        {tomSummaries.map(row => (
+                            <div key={row.id} className="border border-canon-border/40 rounded bg-black/30 p-2">
+                                <div className="text-sm font-semibold text-canon-text">{row.label}</div>
+                                <div className="text-[10px] font-mono text-canon-text-light/80 mt-1">trust: {fmt(row.trust)} • threat: {fmt(row.threat)}</div>
+                            </div>
+                        ))}
+                    </div>
+                ) : (
+                    <div className="text-[12px] text-canon-text-light/70">Dyad-слой пуст.</div>
+                )}
+            </div>
+        </div>
+    );
 
     const renderContent = () => {
         switch(activeTabIndex) {
-            case 0: return <AnalysisTab />;
-            case 1: return <AtomsTab />;
-            case 2: return <ThreatTab />;
-            case 3: return <ToMTab />;
-            case 4: return <MindTab />; 
-            case 5: return <CoverageTab />; // NEW
-            case 6: return <PossibilitiesTab />;
-            case 7: return <DecisionTab />;
-            case 8: return <AccessTab />;
-            case 9: return <DiffTab />;
-            case 10: return <DebugTab />;
-            default: return <AnalysisTab />;
+            case 0: return <ExplainTab />;
+            case 1: return <AnalysisTab />;
+            case 2: return <AtomsTab />;
+            case 3: return <ThreatTab />;
+            case 4: return <ToMTab />;
+            case 5: return <MindTab />;
+            case 6: return <CoverageTab />; // NEW
+            case 7: return <PossibilitiesTab />;
+            case 8: return <DecisionTab />;
+            case 9: return <AccessTab />;
+            case 10: return <DiffTab />;
+            case 11: return <DebugTab />;
+            default: return <ExplainTab />;
         }
     };
-    
-  const tabsList = ['Analysis', 'Atoms', 'Threat', 'ToM', 'CtxMind', 'Coverage', 'Possibilities', 'Decision', 'Access', 'Diff', 'Debug'];
+
+  const tabsList = ['Explain', 'Analysis', 'Atoms', 'Threat', 'ToM', 'CtxMind', 'Coverage', 'Possibilities', 'Decision', 'Access', 'Diff', 'Debug'];
 
   const focusId = (context as any)?.agentId;
   const focusLabel = (focusId && actorLabels?.[focusId]) ? actorLabels[focusId] : focusId;
@@ -432,15 +538,19 @@ export const GoalLabResults: React.FC<Props> = ({
             )}
             {context && (
                 <div className="bg-canon-bg border-b border-canon-border/60 p-3">
-                    <div className="text-xs font-bold text-canon-text uppercase tracking-wider">Фокус</div>
-                    <div className="text-sm text-canon-text-light">
-                        {focusLabel || '—'}
-                        {focusId ? (
-                          <span className="text-[10px] font-mono text-canon-text-light/70 ml-2">
-                            agentId: {focusId}
-                            {(context as any)?.locationId ? ` • locationId: ${(context as any).locationId}` : ''}
-                          </span>
-                        ) : null}
+                    <div className="flex items-center gap-2">
+                      <div>
+                        <div className="text-xs font-bold text-canon-text uppercase tracking-wider">Фокус</div>
+                        <div className="text-sm text-canon-text-light">
+                            {focusLabel || '—'}
+                            {focusId ? (
+                              <span className="text-[10px] font-mono text-canon-text-light/70 ml-2">
+                                agentId: {focusId}
+                                {(context as any)?.locationId ? ` • locationId: ${(context as any).locationId}` : ''}
+                              </span>
+                            ) : null}
+                        </div>
+                      </div>
                     </div>
                 </div>
             )}
@@ -454,6 +564,7 @@ export const GoalLabResults: React.FC<Props> = ({
             <div className="bg-black/30 border-b border-canon-border/50 shrink-0">
                 <ContextRibbon atoms={currentAtoms} />
             </div>
+
 
             {tomRows && tomRows.length > 0 && (
                 <div className="bg-canon-bg border-b border-canon-border/30 p-2 shrink-0">
@@ -514,12 +625,22 @@ export const GoalLabResults: React.FC<Props> = ({
                 </div>
 
                 <div className="flex-1 flex flex-col overflow-hidden bg-canon-bg">
-                    <div className="border-b border-canon-border flex-shrink-0 flex overflow-x-auto custom-scrollbar no-scrollbar">
-                        {tabsList.map((label, index) => (
-                            <button key={label} onClick={() => setActiveTabIndex(index)} className={`px-4 py-2 text-sm font-medium transition-colors whitespace-nowrap ${activeTabIndex === index ? 'border-b-2 border-canon-accent text-canon-accent' : 'text-canon-text-light hover:text-white'}`}>
-                            {label}
+                    <div className="border-b border-canon-border flex-shrink-0 flex items-center justify-between gap-2 px-2">
+                        <div className="flex overflow-x-auto custom-scrollbar no-scrollbar">
+                            {tabsList.map((label, index) => (
+                                <button key={label} onClick={() => setActiveTabIndex(index)} className={`px-4 py-2 text-sm font-medium transition-colors whitespace-nowrap ${activeTabIndex === index ? 'border-b-2 border-canon-accent text-canon-accent' : 'text-canon-text-light hover:text-white'}`}>
+                                {label}
+                                </button>
+                            ))}
+                        </div>
+                        {canDownload && (
+                            <button
+                                onClick={handleDownloadScene}
+                                className="px-3 py-1 text-[11px] font-semibold border border-canon-border/60 rounded bg-canon-bg-light hover:bg-canon-bg-light/70 transition-colors"
+                            >
+                                Download scene JSON
                             </button>
-                        ))}
+                        )}
                     </div>
                     <div className="flex-1 min-h-0 relative">
                         {renderContent()}

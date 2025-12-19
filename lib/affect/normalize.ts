@@ -52,10 +52,18 @@ export function normalizeAffectState(raw: any): AffectState {
   if (a.e.trust != null) a.trustBaseline = clamp01(a.e.trust);
   if (a.trustBaseline != null) a.e.trust = clamp01(a.trustBaseline);
   
-  // Other emotions mirror to top level (except trust which is trustBaseline)
+  // Other emotions: treat a.e.* as canonical and mirror it to top-level.
+  // This avoids a common failure mode where top-level defaults to 0 while a.e carries the real values.
   for (const k of ["fear", "anger", "sadness", "joy", "disgust", "pride", "attachment", "loneliness", "curiosity"] as const) {
-    if (a.e[k] != null) a[k] = clamp01(a[k] ?? a.e[k]);
-    if (a[k] != null && a.e[k] == null) a.e[k] = clamp01(a[k]);
+    if (a.e[k] != null) {
+      a.e[k] = clamp01(a.e[k]);
+      a[k] = a.e[k];
+      continue;
+    }
+    if (a[k] != null) {
+      a[k] = clamp01(a[k]);
+      a.e[k] = a[k];
+    }
   }
   
   // base scalars
