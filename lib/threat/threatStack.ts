@@ -1,5 +1,6 @@
 // lib/threat/threatStack.ts
 import { ContextAtom } from '../context/v2/types';
+import { getAtom01 } from '../tom/atomsDyad';
 
 export type Clamp01 = (x: number) => number;
 export const clamp01: Clamp01 = (x) => (x < 0 ? 0 : x > 1 ? 1 : x);
@@ -42,6 +43,7 @@ export type ThreatBreakdown = {
   usedAtomIds: string[];
   why: string[];
   traceAtoms?: ContextAtom[];
+  affectBoost?: number;
 };
 
 function getMag(atoms: any[], id: string, fallback = 0) {
@@ -64,6 +66,32 @@ function pickAny(atoms: any[], ids: string[], fallback = 0) {
   return fallback;
 }
 
+function getDyadThreat(atoms: ContextAtom[], selfId: string, otherId: string): number {
+  const ctx = getAtom01(atoms, `tom:dyad:${selfId}:${otherId}:threat_ctx`, NaN as any);
+  if (Number.isFinite(ctx)) return ctx;
+  const prior = getAtom01(atoms, `tom:dyad:${selfId}:${otherId}:threat_prior`, NaN as any);
+  if (Number.isFinite(prior)) return prior;
+  const base = getAtom01(atoms, `tom:dyad:${selfId}:${otherId}:threat`, NaN as any);
+  if (Number.isFinite(base)) return base;
+  const relHostility = getAtom01(atoms, `rel:base:${selfId}:${otherId}:hostility`, NaN as any);
+  if (Number.isFinite(relHostility)) return relHostility;
+  return 0;
+}
+
+function getDyadTrust(atoms: ContextAtom[], selfId: string, otherId: string): number {
+  const ctx = getAtom01(atoms, `tom:dyad:${selfId}:${otherId}:trust_ctx`, NaN as any);
+  if (Number.isFinite(ctx)) return ctx;
+  const prior = getAtom01(atoms, `tom:dyad:${selfId}:${otherId}:trust_prior`, NaN as any);
+  if (Number.isFinite(prior)) return prior;
+  const base = getAtom01(atoms, `tom:dyad:${selfId}:${otherId}:trust`, NaN as any);
+  if (Number.isFinite(base)) return base;
+  return 0.45;
+}
+
+function getAffect01(atoms: ContextAtom[], id: string, fallback = 0): number {
+  return clamp01(getAtom01(atoms, id, fallback as any));
+}
+
 function noisyOr01(values: number[]) {
   const prod = values.reduce((p, v) => p * (1 - v), 1);
   return Math.max(0, Math.min(1, 1 - prod));
@@ -81,10 +109,14 @@ export function computeThreatStack(i: ThreatInputs, contextAtoms?: ContextAtom[]
   const traceAtoms: ContextAtom[] = [];
   let inputs: ThreatInputs = { ...i };
   const usedAtomIds: string[] = [];
+  let fear = 0;
+  let arousal = 0;
+  let anger = 0;
+  let shame = 0;
 
   if (contextAtoms && contextAtoms.length > 0) {
       const atoms = contextAtoms;
-      const selfId = (atoms.find(a => a.subject)?.subject as string) || 'unknown'; 
+      const selfId = (atoms.find(a => a.subject)?.subject as string) || 'unknown';
 
       // ---------- ENV ----------
       const envDanger = Math.max(
@@ -158,16 +190,13 @@ export function computeThreatStack(i: ThreatInputs, contextAtoms?: ContextAtom[]
           closeVals.push(close);
           wts.push(w);
 
-          const trust = pickAny(atoms, [
-              `tom:dyad:${selfId}:${otherId}:trust_ctx`,
-              `tom:dyad:${selfId}:${otherId}:trust`
-          ], 0.45);
-          
-          const dyThreat = pickAny(atoms, [
-              `tom:dyad:${selfId}:${otherId}:threat_ctx`,
-              `tom:dyad:${selfId}:${otherId}:threat`,
-              `rel:base:${selfId}:${otherId}:hostility`
-          ], clamp01(1 - trust));
+          const trust = getDyadTrust(atoms, selfId, otherId);
+
+          const dyThreat = (() => {
+              const v = getDyadThreat(atoms, selfId, otherId);
+              if (Number.isFinite(v)) return v;
+              return clamp01(1 - trust);
+          })();
 
           wTrust.push(clamp01(trust) * w);
           wHost.push(clamp01(dyThreat) * w);
@@ -175,7 +204,9 @@ export function computeThreatStack(i: ThreatInputs, contextAtoms?: ContextAtom[]
           usedAtomIds.push(
               o.id, `obs:los:${selfId}:${otherId}`, `obs:audio:${selfId}:${otherId}`,
               `tom:dyad:${selfId}:${otherId}:trust_ctx`, `tom:dyad:${selfId}:${otherId}:trust`,
+              `tom:dyad:${selfId}:${otherId}:trust_prior`,
               `tom:dyad:${selfId}:${otherId}:threat_ctx`, `tom:dyad:${selfId}:${otherId}:threat`,
+              `tom:dyad:${selfId}:${otherId}:threat_prior`,
               `rel:base:${selfId}:${otherId}:hostility`
           );
       }
@@ -200,6 +231,12 @@ export function computeThreatStack(i: ThreatInputs, contextAtoms?: ContextAtom[]
       usedAtomIds.push(`ctx:uncertainty:${selfId}`, `obs:infoAdequacy:${selfId}`, `belief:banner:${selfId}`, `trace:traumaPriming:${selfId}`);
       
       const epistemicNoise = Math.max(unc, 0.6 * rumorFlag);
+
+      fear = getAffect01(atoms, `affect:fear:${selfId}`, fear);
+      arousal = getAffect01(atoms, `affect:arousal:${selfId}`, arousal);
+      anger = getAffect01(atoms, `affect:anger:${selfId}`, anger);
+      shame = getAffect01(atoms, `affect:shame:${selfId}`, shame);
+      usedAtomIds.push(`affect:fear:${selfId}`, `affect:arousal:${selfId}`, `affect:anger:${selfId}`, `affect:shame:${selfId}`);
 
       // ---------- traits ----------
       inputs.paranoia = getFeat(atoms, `feat:char:${selfId}:trait.paranoia`, inputs.paranoia);
@@ -252,14 +289,17 @@ export function computeThreatStack(i: ThreatInputs, contextAtoms?: ContextAtom[]
   const wEnv = 0.40, wSoc = 0.30, wScn = 0.30;
   const combined = 1 - (1 - wEnv * env) * (1 - wSoc * social) * (1 - wScn * scenario);
 
-  const total = clamp01(sigmoid(2.4 * (combined - 0.35 + 0.55 * personal)));
+  const baseTotal = clamp01(sigmoid(2.4 * (combined - 0.35 + 0.55 * personal)));
+  const affectBoost = clamp01(0.35 * fear + 0.20 * arousal + 0.10 * anger + 0.10 * shame);
+  const total = clamp01(baseTotal * (1 + affectBoost));
 
-  return { 
-      env, social, scenario, personal, total, 
-      inputs, 
-      usedAtomIds: Array.from(new Set(usedAtomIds)).filter(Boolean), 
-      why, 
-      traceAtoms 
+  return {
+      env, social, scenario, personal, total,
+      inputs,
+      usedAtomIds: Array.from(new Set(usedAtomIds)).filter(Boolean),
+      why,
+      traceAtoms,
+      affectBoost
   };
 }
 

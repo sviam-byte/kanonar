@@ -146,25 +146,96 @@ export function buildWorldFactsAtoms(input: WorldFactsInput): ContextAtom[] {
       } as any));
     };
 
+    // Canonical path for axes: ctx:src:scene:* and ctx:src:norm:*
+    const addCtxSrc01 = (id: string, v: any, label: string, tags: string[]) => {
+      const m = clamp01(num(v, 0));
+      out.push(normalizeAtom({
+        id,
+        ns: 'ctx',
+        kind: 'ctx_input',
+        origin: 'world',
+        source: 'scene',
+        magnitude: m,
+        confidence: 1,
+        subject: selfId,
+        tags,
+        label,
+        trace: { usedAtomIds: [], notes: ['from sceneSnapshot'], parts: {} }
+      } as any));
+    };
+
     // keep them as 0..1 already; if you store 0..100 elsewhere, convert before passing here
     // Note: scene metrics in older code might be 0-100. We detect and scale.
     const scale = (val: number) => val > 1 ? val / 100 : val;
 
-    if (metrics.crowd !== undefined) addScene01(`scene:crowd:${selfId}`, scale(metrics.crowd), `scene.crowd=${Math.round(scale(metrics.crowd)*100)}%`, ['scene','crowd']);
-    if (metrics.hostility !== undefined) addScene01(`scene:hostility:${selfId}`, scale(metrics.hostility), `scene.hostility=${Math.round(scale(metrics.hostility)*100)}%`, ['scene','hostility']);
-    if (metrics.urgency !== undefined) addScene01(`scene:urgency:${selfId}`, scale(metrics.urgency), `scene.urgency=${Math.round(scale(metrics.urgency)*100)}%`, ['scene','urgency']);
-    if (metrics.scarcity !== undefined) addScene01(`scene:scarcity:${selfId}`, scale(metrics.scarcity), `scene.scarcity=${Math.round(scale(metrics.scarcity)*100)}%`, ['scene','scarcity']);
-    if (metrics.novelty !== undefined) addScene01(`scene:novelty:${selfId}`, scale(metrics.novelty), `scene.novelty=${Math.round(scale(metrics.novelty)*100)}%`, ['scene','novelty']);
-    if (metrics.loss !== undefined) addScene01(`scene:loss:${selfId}`, scale(metrics.loss), `scene.loss=${Math.round(scale(metrics.loss)*100)}%`, ['scene','loss']);
-    if (metrics.resourceAccess !== undefined) addScene01(`scene:resourceAccess:${selfId}`, scale(metrics.resourceAccess), `scene.resourceAccess=${Math.round(scale(metrics.resourceAccess)*100)}%`, ['scene','resourceAccess']);
-    
-    // Legacy metric support
-    if (metrics.threat !== undefined) addScene01(`scene:threat:${selfId}`, scale(metrics.threat), `scene.threat=${Math.round(scale(metrics.threat)*100)}%`, ['scene','threat']);
+    if (metrics.crowd !== undefined) {
+      const v = scale(metrics.crowd);
+      addScene01(`scene:crowd:${selfId}`, v, `scene.crowd=${Math.round(v*100)}%`, ['scene','crowd']);
+      addCtxSrc01(`ctx:src:scene:crowd:${selfId}`, v, `scene.crowd=${Math.round(v*100)}%`, ['ctx','src','scene','crowd']);
+    }
+    if (metrics.hostility !== undefined) {
+      const v = scale(metrics.hostility);
+      addScene01(`scene:hostility:${selfId}`, v, `scene.hostility=${Math.round(v*100)}%`, ['scene','hostility']);
+      addCtxSrc01(`ctx:src:scene:hostility:${selfId}`, v, `scene.hostility=${Math.round(v*100)}%`, ['ctx','src','scene','hostility']);
+    }
+    if (metrics.urgency !== undefined) {
+      const v = scale(metrics.urgency);
+      addScene01(`scene:urgency:${selfId}`, v, `scene.urgency=${Math.round(v*100)}%`, ['scene','urgency']);
+      addCtxSrc01(`ctx:src:scene:urgency:${selfId}`, v, `scene.urgency=${Math.round(v*100)}%`, ['ctx','src','scene','urgency']);
+    }
+    if (metrics.scarcity !== undefined) {
+      const v = scale(metrics.scarcity);
+      addScene01(`scene:scarcity:${selfId}`, v, `scene.scarcity=${Math.round(v*100)}%`, ['scene','scarcity']);
+      addCtxSrc01(`ctx:src:scene:scarcity:${selfId}`, v, `scene.scarcity=${Math.round(v*100)}%`, ['ctx','src','scene','scarcity']);
+    }
+    if (metrics.novelty !== undefined) {
+      const v = scale(metrics.novelty);
+      addScene01(`scene:novelty:${selfId}`, v, `scene.novelty=${Math.round(v*100)}%`, ['scene','novelty']);
+      addCtxSrc01(`ctx:src:scene:novelty:${selfId}`, v, `scene.novelty=${Math.round(v*100)}%`, ['ctx','src','scene','novelty']);
+    }
+    if (metrics.loss !== undefined) {
+      const v = scale(metrics.loss);
+      addScene01(`scene:loss:${selfId}`, v, `scene.loss=${Math.round(v*100)}%`, ['scene','loss']);
+      addCtxSrc01(`ctx:src:scene:loss:${selfId}`, v, `scene.loss=${Math.round(v*100)}%`, ['ctx','src','scene','loss']);
+    }
+    if (metrics.resourceAccess !== undefined) {
+      const v = scale(metrics.resourceAccess);
+      addScene01(`scene:resourceAccess:${selfId}`, v, `scene.resourceAccess=${Math.round(v*100)}%`, ['scene','resourceAccess']);
+      addCtxSrc01(`ctx:src:scene:resourceAccess:${selfId}`, v, `scene.resourceAccess=${Math.round(v*100)}%`, ['ctx','src','scene','resourceAccess']);
+    }
 
-    if (norms.proceduralStrict !== undefined) addScene01(`scene:proceduralStrict:${selfId}`, scale(norms.proceduralStrict), `norm.proceduralStrict=${Math.round(scale(norms.proceduralStrict)*100)}%`, ['norm','proceduralStrict']);
-    if (norms.surveillance !== undefined) addScene01(`norm:surveillance:${selfId}`, scale(norms.surveillance), `norm.surveillance=${Math.round(scale(norms.surveillance)*100)}%`, ['norm','surveillance']);
-    if ((norms.publicExposure ?? norms.publicness) !== undefined) addScene01(`ctx:publicness:${selfId}`, scale(norms.publicExposure ?? norms.publicness), `ctx.publicness=${Math.round(scale(norms.publicExposure ?? norms.publicness)*100)}%`, ['ctx','publicness']);
-    if (norms.privacy !== undefined) addScene01(`ctx:privacy:${selfId}`, scale(norms.privacy), `ctx.privacy=${Math.round(scale(norms.privacy)*100)}%`, ['ctx','privacy']);
+    // Legacy metric support
+    if (metrics.threat !== undefined) {
+      const v = scale(metrics.threat);
+      addScene01(`scene:threat:${selfId}`, v, `scene.threat=${Math.round(v*100)}%`, ['scene','threat']);
+      addCtxSrc01(`ctx:src:scene:threat:${selfId}`, v, `scene.threat=${Math.round(v*100)}%`, ['ctx','src','scene','threat']);
+    }
+
+    // Optional metrics passthrough (if present in older snapshots)
+    for (const k of ['chaos', 'threat'] as const) {
+      const val = (metrics as any)?.[k];
+      if (val !== undefined) {
+        const v = scale(val);
+        addScene01(`scene:${k}:${selfId}`, v, `scene.${k}=${Math.round(v*100)}%`, ['scene', k]);
+        addCtxSrc01(`ctx:src:scene:${k}:${selfId}`, v, `scene.${k}=${Math.round(v*100)}%`, ['ctx','src','scene', k]);
+      }
+    }
+
+    // Norms (publish as ctx:src:norm:*; do NOT write ctx:* directly (deriveAxes owns ctx:* atoms))
+    const normsPairs: Array<[string, any]> = [
+      ['proceduralStrict', norms.proceduralStrict],
+      ['surveillance', norms.surveillance],
+      ['publicExposure', norms.publicExposure ?? norms.publicness],
+      ['privacy', norms.privacy],
+      ['normPressure', norms.normPressure]
+    ];
+    for (const [k, raw] of normsPairs) {
+      if (raw === undefined) continue;
+      const v = scale(raw);
+      // legacy mirror (kept for debugging/backward)
+      addScene01(`norm:${k}:${selfId}`, v, `norm.${k}=${Math.round(v*100)}%`, ['norm', k]);
+      addCtxSrc01(`ctx:src:norm:${k}:${selfId}`, v, `norm.${k}=${Math.round(v*100)}%`, ['ctx','src','norm', k]);
+    }
 
     const presetId = sc.presetId || sc.sceneId || sc.sceneType || sc.scenarioDef?.id;
     if (presetId) {

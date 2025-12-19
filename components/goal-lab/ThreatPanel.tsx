@@ -6,7 +6,12 @@ import { MetricBar } from '../tom/MetricBar';
 export const ThreatPanel: React.FC<{ atoms: ContextAtom[] }> = ({ atoms }) => {
   const data = useMemo(() => {
     const threatFinal = atoms.find(a => String(a.id).startsWith(`threat:final`))?.magnitude ?? 0;
-    const channels = atoms.filter(a => String(a.id).startsWith('threat:ch:')).sort((a,b) => (b.magnitude||0) - (a.magnitude||0));
+    const channels = atoms
+      .filter(a =>
+        String(a.id).startsWith('threat:ch:') ||
+        String(a.id).startsWith('threat:affect_boost')
+      )
+      .sort((a,b) => (b.magnitude||0) - (a.magnitude||0));
     return { threatFinal, channels };
   }, [atoms]);
 

@@ -13,7 +13,8 @@ import { applyAtomOverrides, AtomOverrideLayer, applyAtomOverrides as extractApp
 import { validateAtoms } from '../context/validate/frameValidator';
 import { buildSummaryAtoms } from '../context/summaries/buildSummaries';
 import { computeCoverageReport } from '../goal-lab/coverage/computeCoverage';
-import { normalizeAffectState } from '../affect/normalize';
+import { atomizeAffectOverrides } from '../affect/atomizeAffect';
+import { atomizePreGoals } from './preGoals';
 
 // New Imports for Pipeline
 import { buildStage0Atoms } from '../context/pipeline/stage0';
@@ -45,6 +46,13 @@ export interface GoalLabContextResult {
   goalPreview: {
     goals: Array<{ id: string; label: string; priority: number; activation: number; base_ctx: number }>;
     debug: { temperature: number; d_mix: Record<string, number> };
+  };
+  stages?: {
+    stage0Atoms: ContextAtom[];
+    axesAtoms: ContextAtom[];
+    atomsAfterAxes: ContextAtom[];
+    threatAtoms: ContextAtom[];
+    decision: any;
   };
 }
 
@@ -146,17 +154,6 @@ export function buildGoalLabContext(
   const manualAtomsRaw = (opts.snapshotOptions?.manualAtoms || []).map(normalizeAtom);
   const { atoms: appliedOverrides } = extractApplied(manualAtomsRaw, overridesLayer);
 
-  // Apply affect overrides from UI knobs (must affect ALL downstream calculations).
-  const affectOverrides = (opts.snapshotOptions as any)?.affectOverrides;
-  if (affectOverrides && typeof affectOverrides === 'object') {
-    const merged = {
-      ...(agent as any).affect,
-      ...affectOverrides,
-      e: { ...((agent as any).affect?.e || {}), ...(affectOverrides as any).e },
-    };
-    agent = { ...(agent as any), affect: normalizeAffectState(merged) } as any;
-  }
-  
   // Belief Atoms
   const beliefAtoms = [
       ...((agent as any).memory?.beliefAtoms || []),
@@ -173,6 +170,14 @@ export function buildGoalLabContext(
   // Crowd atom for stage 0 input (optional)
   const ctxCrowdAtom = legacyFrameAtoms.find(a => a.id === 'soc_crowd_density' || a.kind === 'crowding_pressure');
   const ctxCrowd = ctxCrowdAtom ? ctxCrowdAtom.magnitude : 0;
+
+  const baseExtraWorldAtoms: ContextAtom[] = [];
+  if (opts.snapshotOptions?.preGoals) {
+    baseExtraWorldAtoms.push(...atomizePreGoals(selfId, opts.snapshotOptions.preGoals as any));
+  }
+  if (opts.snapshotOptions?.affectOverrides) {
+    baseExtraWorldAtoms.push(...atomizeAffectOverrides(selfId, opts.snapshotOptions.affectOverrides as any));
+  }
 
   // --- SCENE ENGINE INTEGRATION ---
   const sc = opts.snapshotOptions?.sceneControl;
@@ -233,16 +238,17 @@ export function buildGoalLabContext(
         world: worldForPipeline,
         agent: agentForPipeline,
         selfId,
-        extraWorldAtoms: sceneAtoms, 
-        beliefAtoms,              
-        overrideAtoms: appliedOverrides, 
+        extraWorldAtoms: [...baseExtraWorldAtoms, ...sceneAtoms],
+        beliefAtoms,
+        overrideAtoms: appliedOverrides,
         arousal,
         ctxCrowd,
         events: eventsAll,
-        sceneSnapshot: sceneSnapshotForStage0 
+        sceneSnapshot: sceneSnapshotForStage0
       });
 
       const atomsPreAxes = stage0.mergedAtoms;
+      const axesAtoms = stage0.axesAtoms;
 
       // 5. Derive Axes
       const axesRes = deriveContextVectors({
@@ -273,63 +279,42 @@ export function buildGoalLabContext(
       const atomsAfterBeliefGen = [...atomsAfterAccess, ...rumorBeliefs];
       
       // 7. Apply Relation Priors
-      const priorsApplied = applyRelationPriorsToDyads(atomsAfterBeliefGen, selfId);
-      const atomsAfterPriors = mergeEpistemicAtoms({
-          world: atomsAfterBeliefGen,
-          obs: [],
-          belief: [],
-          override: [],
-          derived: priorsApplied.atoms
-      }).merged;
+      const relationPriorsForSelf = (() => {
+        const m = new Map<string, { otherId: string; trustPrior?: number; threatPrior?: number }>();
+        for (const a of atomsAfterBeliefGen) {
+          if (!a?.id?.startsWith(`rel:base:${selfId}:`)) continue;
+          const parts = a.id.split(':');
+          const otherId = parts[3];
+          const kind = parts[4];
+          if (!otherId || otherId === selfId) continue;
+          const rec = m.get(otherId) ?? { otherId };
+          if (kind === 'loyalty' || kind === 'closeness') {
+            const v = clamp01(a.magnitude ?? 0);
+            rec.trustPrior = Math.max(rec.trustPrior ?? 0, v);
+          }
+          if (kind === 'hostility') {
+            rec.threatPrior = clamp01(a.magnitude ?? 0);
+          }
+          m.set(otherId, rec);
+        }
+        return Array.from(m.values());
+      })();
+
+      const atomsAfterPriors = applyRelationPriorsToDyads({
+        atoms: atomsAfterBeliefGen,
+        selfId,
+        relationPriors: relationPriorsForSelf,
+      });
 
       // 8. ToM Context Bias
-      const biasPack = buildBeliefToMBias(atomsAfterPriors, selfId);
-      const bias = biasPack.bias;
-      
-      const tomCtxDyads: ContextAtom[] = [];
-      const dyads = atomsAfterPriors.filter(a => a.id.startsWith(`tom:dyad:${selfId}:`));
-
-      for (const a of dyads) {
-          if (a.id.endsWith(':trust')) {
-            const trust = clamp01(a.magnitude ?? 0);
-            const t2 = clamp01(trust * (1 - 0.6 * bias));
-            tomCtxDyads.push(normalizeAtom({
-              id: a.id.replace(':trust', ':trust_ctx'),
-              kind: 'tom_dyad_metric', 
-              ns: 'tom',
-              origin: 'derived',
-              source: 'tom_ctx',
-              magnitude: t2,
-              confidence: 1,
-              tags: ['tom', 'ctx'],
-              subject: selfId,
-              target: a.target,
-              label: `trust_ctx:${Math.round(t2 * 100)}%`,
-              trace: { usedAtomIds: [a.id, `tom:ctx:bias:${selfId}`], notes: ['trust adjusted by ctx bias'], parts: { trust, bias } }
-            } as any));
-          }
-          if (a.id.endsWith(':threat')) {
-            const thr = clamp01(a.magnitude ?? 0);
-            const thr2 = clamp01(thr + 0.6 * bias * (1 - thr));
-            tomCtxDyads.push(normalizeAtom({
-              id: a.id.replace(':threat', ':threat_ctx'),
-              kind: 'tom_dyad_metric',
-              ns: 'tom',
-              origin: 'derived',
-              source: 'tom_ctx',
-              magnitude: thr2,
-              confidence: 1,
-              tags: ['tom', 'ctx'],
-              subject: selfId,
-              target: a.target,
-              label: `threat_ctx:${Math.round(thr2 * 100)}%`,
-              trace: { usedAtomIds: [a.id, `tom:ctx:bias:${selfId}`], notes: ['threat adjusted by ctx bias'], parts: { thr, bias } }
-            } as any));
-          }
-      }
-      
-      // 9. Threat Stack
-      const atomsForThreat = [...atomsAfterPriors, ...biasPack.atoms, ...tomCtxDyads];
+      const biasPack = buildBeliefToMBias({
+        atoms: atomsAfterPriors,
+        selfId,
+        beliefs: epistemicBeliefs,
+        rumors: epistemicRumors,
+        access
+      });
+      const atomsForThreat = biasPack.atoms;
       const threatInputs = {
           envDanger: 0, visibilityBad: 0, coverLack: 0, crowding: 0,
           nearbyCount: 0, nearbyTrustMean: 0.45, nearbyHostileMean: 0, hierarchyPressure: 0, surveillance: 0,
@@ -403,7 +388,8 @@ export function buildGoalLabContext(
         return 0;
       })());
       const body = clamp01((threatCalc.inputs as any)?.woundedPressure ?? 0);
-      
+      const affectBoost = clamp01(threatCalc.affectBoost ?? 0);
+
       threatAtoms.push(
         normalizeAtom({
             id: `threat:ch:authority:${selfId}`,
@@ -440,6 +426,18 @@ export function buildGoalLabContext(
             tags: ['threat', 'channel', 'body'],
             label: `body pressure:${Math.round(body * 100)}%`,
             trace: { usedAtomIds: threatCalc.usedAtomIds || [], notes: ['body channel'], parts: { body } }
+        } as any),
+        normalizeAtom({
+            id: `threat:affect_boost:${selfId}`,
+            kind: 'threat_component' as any,
+            ns: 'threat' as any,
+            origin: 'derived',
+            source: 'affect',
+            magnitude: affectBoost,
+            confidence: 1,
+            tags: ['threat', 'affect'],
+            label: `affect boost=${Math.round(affectBoost * 100)}%`,
+            trace: { usedAtomIds: [`affect:fear:${selfId}`, `affect:arousal:${selfId}`, `affect:anger:${selfId}`, `affect:shame:${selfId}`], notes: ['affect multiplier'], parts: { affectBoost } }
         } as any)
       );
 
@@ -457,7 +455,8 @@ export function buildGoalLabContext(
       } as any);
 
       // 10. Possibility Graph (Registry-based)
-      const atomsForPossibilities = [...atomsForThreat, ...threatAtoms, threatAtom];
+      const threatAtomList = [...threatAtoms, threatAtom];
+      const atomsForPossibilities = [...atomsForThreat, ...threatAtomList];
       const possibilities = derivePossibilitiesRegistry({ selfId, atoms: atomsForPossibilities });
       const possAtoms = atomizePossibilities(possibilities);
       
@@ -475,19 +474,23 @@ export function buildGoalLabContext(
           accessPack,
           provenance: stage0.provenance,
           rumorBeliefs,
-          axesRes 
+          axesRes,
+          stage0Atoms: stage0.preAxesAtoms,
+          axesAtoms,
+          atomsAfterAxes: atomsAfterAccess,
+          threatAtoms: threatAtomList,
       };
   };
 
   // --- Two-Pass Scene Logic ---
-  const sceneAtomsA = sceneInst ? applySceneAtoms({ scene: sceneInst, preset: SCENE_PRESETS[sceneInst.presetId], worldTick: tick }) : [];
+  const sceneAtomsA = sceneInst ? applySceneAtoms({ scene: sceneInst, preset: SCENE_PRESETS[sceneInst.presetId], worldTick: tick, selfId }) : [];
   let result = runPipeline(sceneAtomsA, sceneInst);
 
   if (sceneInst && sc?.presetId) {
       const stepped = stepSceneInstance({ scene: sceneInst, nowTick: tick, atomsForConditions: result.atoms });
       if (stepped.phaseId !== sceneInst.phaseId) {
           sceneInst = stepped;
-          const sceneAtomsB = applySceneAtoms({ scene: sceneInst, preset: SCENE_PRESETS[sceneInst.presetId], worldTick: tick });
+          const sceneAtomsB = applySceneAtoms({ scene: sceneInst, preset: SCENE_PRESETS[sceneInst.presetId], worldTick: tick, selfId });
           result = runPipeline(sceneAtomsB, sceneInst);
       }
   }
@@ -500,6 +503,14 @@ export function buildGoalLabContext(
     possibilities: result.possibilities,
     topK: 12
   });
+
+  const stages = {
+    stage0Atoms: result.stage0Atoms ?? [],
+    axesAtoms: result.axesAtoms ?? [],
+    atomsAfterAxes: result.atomsAfterAxes ?? [],
+    threatAtoms: result.threatAtoms ?? [],
+    decision,
+  };
 
   const validation = validateAtoms(finalAtoms, { autofix: true });
   const atomsValidated = validation.fixedAtoms ?? finalAtoms;
@@ -564,5 +575,6 @@ export function buildGoalLabContext(
     ctxV2,
     situation,
     goalPreview,
+    stages,
   };
 }

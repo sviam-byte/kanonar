@@ -23,6 +23,23 @@ import { ToMPanel } from './ToMPanel';
 import { CoveragePanel } from './CoveragePanel';
 import { GoalLabSnapshotV1 } from '../../lib/goal-lab/snapshotTypes';
 
+const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
+const getAtom = (atoms: ContextAtom[] | undefined, id: string, d = 0) => {
+  const a = atoms?.find(x => String(x?.id) === id);
+  const v = typeof a?.magnitude === 'number' && Number.isFinite(a.magnitude) ? a.magnitude : d;
+  return v;
+};
+const deriveAffectFromAtoms = (atoms: ContextAtom[] | undefined, selfId: string): AffectState | null => {
+  if (!atoms?.length || !selfId) return null;
+  const arousal = clamp01(getAtom(atoms, `affect:arousal:${selfId}`, 0));
+  const fear = clamp01(getAtom(atoms, `affect:fear:${selfId}`, 0));
+  const anger = clamp01(getAtom(atoms, `affect:anger:${selfId}`, 0));
+  const shame = clamp01(getAtom(atoms, `affect:shame:${selfId}`, 0));
+  const valenceRaw = getAtom(atoms, `affect:valence:${selfId}`, 0);
+  const valence = clamp01((valenceRaw + 1) / 2);
+  return { valence, arousal, fear, anger, shame } as any;
+};
+
 interface Props {
   context: ContextSnapshot | null;
   frame?: AgentContextFrame | null;
@@ -252,6 +269,17 @@ const GoalRow: React.FC<{
                       return <div key={i} className={`w-1.5 h-1.5 rounded-full ${style.bg.replace('/40', '')}`} title={c.explanation} />
                  })}
              </div>
+
+             { (score as any)?.evidence?.evidenceAtomIds?.length ? (
+               <details className="mt-2 text-[11px] text-canon-text-light/80">
+                 <summary className="cursor-pointer text-canon-accent hover:text-white">why</summary>
+                 <div className="mt-1 space-y-0.5">
+                   {(score as any).evidence.evidenceAtomIds.slice(0, 12).map((id: string) => (
+                     <div key={id} className="font-mono text-[10px] bg-black/30 rounded px-2 py-0.5 border border-canon-border/30 truncate" title={id}>{id}</div>
+                   ))}
+                 </div>
+               </details>
+             ) : null }
         </div>
     );
 }
@@ -382,6 +410,8 @@ export const GoalLabResults: React.FC<Props> = ({
 
     // Use unified snapshot if available, else legacy context
     const currentAtoms = snapshotV1?.atoms ?? context?.atoms ?? [];
+    const selfId = perspectiveAgentId || (context as any)?.agentId || '';
+    const affectForUi = affect ?? deriveAffectFromAtoms(currentAtoms, selfId);
 
     // Aggregates from snapshot or legacy context
     const stats = {
@@ -553,6 +583,18 @@ export const GoalLabResults: React.FC<Props> = ({
                       </div>
                     </div>
                 </div>
+            )}
+            {affectForUi && (
+              <div className="bg-black/30 border-b border-canon-border/40 p-3 flex flex-wrap gap-2 items-center">
+                <div className="text-[11px] font-bold uppercase tracking-wider text-canon-text-light">Affect (atoms)</div>
+                <div className="flex flex-wrap gap-2 items-center text-[10px]">
+                  <SpecificEmotionBar label="Valence" value={affectForUi.valence ?? 0} />
+                  <SpecificEmotionBar label="Arousal" value={affectForUi.arousal ?? 0} />
+                  <SpecificEmotionBar label="Fear" value={affectForUi.fear ?? 0} />
+                  <SpecificEmotionBar label="Anger" value={affectForUi.anger ?? 0} />
+                  <SpecificEmotionBar label="Shame" value={affectForUi.shame ?? 0} />
+                </div>
+              </div>
             )}
             <div className="bg-canon-bg border-b border-canon-border p-3 grid grid-cols-4 gap-3 shadow-sm z-10 shrink-0">
                 <ValueBadge label="Угроза" value={stats.threat} color="text-red-400" />

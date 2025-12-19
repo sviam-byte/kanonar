@@ -4,11 +4,27 @@ import { ContextAtom } from '../../lib/context/v2/types';
 
 export const ToMPanel: React.FC<{ atoms: ContextAtom[] }> = ({ atoms }) => {
     const data = useMemo(() => {
-        const base = atoms.filter(a => a.id.startsWith('tom:base:') || a.id.startsWith('tom:dyad:'));
-        const ctx = atoms.filter(a => a.id.startsWith('tom:ctx:') || a.id.startsWith('tom:bias:'));
-        const effective = atoms.filter(a => a.id.startsWith('tom:effective:') || a.id.startsWith('tom:priorApplied:'));
-        
-        return { base, ctx, effective };
+        const tom = atoms.filter(a => String(a.id).startsWith('tom:dyad:') || String(a.id).startsWith('tom:base:') || String(a.id).startsWith('tom:ctx:'));
+
+        const base = tom.filter(a =>
+          /:trust$|:threat$|:alignment$|:familiarity$/.test(String(a.id)) ||
+          String(a.id).startsWith('tom:base:')
+        );
+
+        const prior = tom.filter(a => /:_prior$/.test(String(a.id)) || String(a.id).includes(':prior'));
+
+        const ctx = tom.filter(a =>
+          /:_ctx$/.test(String(a.id)) ||
+          String(a.id).startsWith('tom:ctx:') ||
+          String(a.id).startsWith('tom:bias:')
+        );
+
+        const effective = tom.filter(a =>
+          String(a.id).startsWith('tom:effective:') ||
+          String(a.id).startsWith('tom:priorApplied:')
+        );
+
+        return { base, prior, ctx, effective };
     }, [atoms]);
 
     const renderList = (title: string, list: ContextAtom[]) => (
@@ -29,8 +45,9 @@ export const ToMPanel: React.FC<{ atoms: ContextAtom[] }> = ({ atoms }) => {
     return (
         <div className="h-full min-h-0 bg-canon-bg text-canon-text p-4 overflow-auto custom-scrollbar">
             {renderList("Base / Dyad", data.base)}
-            {renderList("Context / Bias", data.ctx)}
-            {renderList("Effective / Prior Applied", data.effective)}
+            {renderList("Prior (soft)", data.prior)}
+            {renderList("Context (ctx)", data.ctx)}
+            {data.effective.length ? renderList("Effective (legacy)", data.effective) : null}
         </div>
     );
 };

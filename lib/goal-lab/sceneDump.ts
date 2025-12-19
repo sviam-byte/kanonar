@@ -12,6 +12,7 @@ type SceneDumpInput = {
   selectedEventIds?: Set<string> | string[];
   manualAtoms?: any;
   atomOverridesLayer?: AtomOverrideLayer;
+  preGoals?: any;
   affectOverrides?: any;
   injectedEvents?: any;
   sceneControl?: any;
@@ -44,6 +45,7 @@ export function buildGoalLabSceneDumpV2(input: SceneDumpInput) {
     selectedEventIds,
     manualAtoms,
     atomOverridesLayer,
+    preGoals,
     affectOverrides,
     injectedEvents,
     sceneControl,
@@ -77,6 +79,7 @@ export function buildGoalLabSceneDumpV2(input: SceneDumpInput) {
       selectedEventIds: Array.from(selectedEventIds ?? []),
       manualAtoms,
       atomOverridesLayer,
+      preGoals,
       affectOverrides,
       injectedEvents,
       sceneControl,
@@ -85,6 +88,7 @@ export function buildGoalLabSceneDumpV2(input: SceneDumpInput) {
     pipeline: {
       glCtx,
       snapshot,
+      stages: (glCtx as any)?.stages,
       snapshotV1,
       goals,
       locationScores,
