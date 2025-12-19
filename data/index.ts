@@ -4,10 +4,8 @@ import { createFittedCharacterFromArchetype } from '../lib/archetypes/fitter';
 import { allSocialEvents } from './social-events';
 import { allLocations } from './locations';
 
-// Автоподхват всех сущностей из data/entities/**/*.ts (с защитой, если glob недоступен)
-const entityModules = (import.meta as any)?.glob
-  ? (import.meta as any).glob('./entities/**/*.ts', { eager: true })
-  : {};
+// Автоподхват всех сущностей из data/entities/**/*.ts (требует Vite import.meta.glob)
+const entityModules = import.meta.glob('./entities/**/*.ts', { eager: true });
 
 function pickDefaultEntity(mod: unknown): AnyEntity | null {
   const ent = (mod as any)?.default;
@@ -19,6 +17,13 @@ function pickDefaultEntity(mod: unknown): AnyEntity | null {
 const importedEntities: AnyEntity[] = Object.values(entityModules)
   .map(pickDefaultEntity)
   .filter(Boolean) as AnyEntity[];
+
+if (importedEntities.length === 0) {
+  // Явно сигнализируем, что реестр пуст, вместо тихого "чёрного экрана"
+  throw new Error(
+    '[data/index] import.meta.glob("./entities/**/*.ts") вернул 0 сущностей. Проверь, что билд идёт под Vite.'
+  );
+}
 
 // Собираем реестр: все сущности + все локации
 export const allEntities: AnyEntity[] = [
