@@ -15,7 +15,7 @@ import { buildSummaryAtoms } from '../context/summaries/buildSummaries';
 import { computeCoverageReport } from '../goal-lab/coverage/computeCoverage';
 import { normalizeAffectState } from '../affect/normalize';
 import { atomizeAffect } from '../affect/atomize';
-
+import { synthesizeAffectFromMind } from '../affect/synthesizeFromMind';
 // New Imports for Pipeline
 import { buildStage0Atoms } from '../context/pipeline/stage0';
 import { deriveContextVectors } from '../context/axes/deriveAxes';
@@ -257,7 +257,14 @@ export function buildGoalLabContext(
           atoms: atomsPreAxes,
           tuning: (frame?.what?.contextTuning || (world.scene as any)?.contextTuning)
       });
-      const atomsWithAxes = [...atomsPreAxes]; 
+      // IMPORTANT: axes must be materialized into the atom stream, otherwise access/threat/goals won't see them.
+      const atomsWithAxes = mergeEpistemicAtoms({
+          world: atomsPreAxes,
+          obs: [],
+          belief: [],
+          override: [],
+          derived: axesRes.atoms
+      }).merged;
 
       // 5.5 Constraints & Access
       const locId = (agentForPipeline as any).locationId || getLocationForAgent(worldForPipeline, selfId)?.entityId;
@@ -521,14 +528,26 @@ export function buildGoalLabContext(
   });
   
   snapshot.coverage = computeCoverageReport(atomsWithSummaries as any);
-  snapshot.atoms = atomsWithSummaries;
+  // Drop legacy scene:* atoms in favor of canonical ctx:src:scene:* inputs.
+  snapshot.atoms = (atomsWithSummaries || []).filter(a => !String(a?.id || '').startsWith('scene:'));
   snapshot.validation = validation;
   snapshot.decision = decision; 
   
-  snapshot.contextMind = computeContextMindScoreboard({
+  const contextMind = computeContextMindScoreboard({
     selfId,
     atoms: atomsWithSummaries
   });
+
+  // Synthesize affect from appraisal/emotion mindstate to keep affect axes alive.
+  try {
+    const fallback = (agentForPipeline as any)?.affect ?? null;
+    const synthesized = synthesizeAffectFromMind(contextMind, fallback);
+    (agentForPipeline as any).affect = synthesized;
+    (snapshot as any).contextMindAffect = synthesized;
+    if (contextMind && typeof contextMind === 'object') (contextMind as any).affect = synthesized;
+  } catch {}
+
+  snapshot.contextMind = contextMind;
   
   (snapshot as any).debug = {
       legacyAtoms: legacyFrameAtoms,
