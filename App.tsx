@@ -31,6 +31,7 @@ import { DialogueLabPage } from './pages/DialogueLabPage';
 import { BiographyLabPage } from './pages/BiographyLabPage';
 import { GoalLabPage } from './pages/GoalLabPage';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { NarrativePage } from './pages/NarrativePage';
 
 
 function App() {
@@ -69,6 +70,7 @@ function App() {
                     <Route path="/dialogue-lab" element={<DialogueLabPage />} />
                     <Route path="/goal-lab" element={<GoalLabPage />} />
                     <Route path="/biography-lab" element={<BiographyLabPage />} />
+                    <Route path="/narrative" element={<NarrativePage />} />
                     <Route path="/:entityType" element={<EntityListPage />} />
                     <Route path="/:entityType/:entityId" element={<EntityDetailPage />} />
                   </Routes>
