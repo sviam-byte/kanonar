@@ -1,5 +1,6 @@
 import type { AtomOverrideLayer } from '../context/overrides/types';
 import type { WorldState } from '../../types';
+import { buildGoalLabExplain } from './explain';
 
 type SceneDumpInput = {
   world: WorldState | null;
@@ -94,6 +95,7 @@ export function buildGoalLabSceneDumpV2(input: SceneDumpInput) {
       contextualMind,
       pipelineFrame,
     },
+    explain: buildGoalLabExplain(snapshot ?? null),
     tomMatrixForPerspective,
     castRows,
   };

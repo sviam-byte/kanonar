@@ -150,10 +150,13 @@ export function buildGoalLabContext(
   // Apply affect overrides from UI knobs (must affect ALL downstream calculations).
   const affectOverrides = (opts.snapshotOptions as any)?.affectOverrides;
   if (affectOverrides && typeof affectOverrides === 'object') {
+    const prev = (agent as any).affect || null;
     const merged = {
-      ...(agent as any).affect,
+      ...(prev || {}),
       ...affectOverrides,
-      e: { ...((agent as any).affect?.e || {}), ...(affectOverrides as any).e },
+      e: { ...((prev as any)?.e || {}), ...((affectOverrides as any)?.e || {}) },
+      regulation: { ...((prev as any)?.regulation || {}), ...((affectOverrides as any)?.regulation || {}) },
+      moral: { ...((prev as any)?.moral || {}), ...((affectOverrides as any)?.moral || {}) },
     };
     agent = { ...(agent as any), affect: normalizeAffectState(merged) } as any;
   }
@@ -300,7 +303,7 @@ export function buildGoalLabContext(
       // 8. ToM Context Bias
       const biasPack = buildBeliefToMBias(atomsAfterPriors, selfId);
       const bias = biasPack.bias;
-      
+
       const tomCtxDyads: ContextAtom[] = [];
       const dyads = atomsAfterPriors.filter(a => a.id.startsWith(`tom:dyad:${selfId}:`));
 
@@ -342,9 +345,53 @@ export function buildGoalLabContext(
             } as any));
           }
       }
-      
+
+      // 8.5 Effective ToM dyads (canonical layer)
+      // Rule: if *_ctx exists -> use it, else base.
+      const dyadBase = dyads.filter(a => a.id.endsWith(':trust') || a.id.endsWith(':threat'));
+      const byId = new Map<string, ContextAtom>();
+      for (const a of [...dyadBase, ...tomCtxDyads]) byId.set(a.id, a);
+
+      const effectiveDyads: ContextAtom[] = [];
+      for (const a of dyadBase) {
+        const target = a.target;
+        if (!target) continue;
+
+        const isTrust = a.id.endsWith(':trust');
+        const baseId = a.id;
+        const ctxId = isTrust ? baseId.replace(':trust', ':trust_ctx') : baseId.replace(':threat', ':threat_ctx');
+        const chosen = byId.get(ctxId) || byId.get(baseId);
+        if (!chosen) continue;
+
+        // Build canonical effective id
+        // base: tom:dyad:<self>:<target>:trust  -> tom:effective:dyad:<self>:<target>:trust
+        const parts = baseId.split(':'); // ["tom","dyad",selfId,target,metric]
+        if (parts.length < 5) continue;
+        const metric = isTrust ? 'trust' : 'threat';
+        const effId = `tom:effective:dyad:${selfId}:${parts[3]}:${metric}`;
+
+        effectiveDyads.push(normalizeAtom({
+          id: effId,
+          kind: 'tom_dyad_metric',
+          ns: 'tom',
+          origin: 'derived',
+          source: 'tom_effective',
+          magnitude: clamp01(chosen.magnitude ?? 0),
+          confidence: 1,
+          tags: ['tom', 'effective', isTrust ? 'trust' : 'threat'],
+          subject: selfId,
+          target,
+          label: `${metric}_effective:${Math.round(clamp01(chosen.magnitude ?? 0) * 100)}%`,
+          trace: {
+            usedAtomIds: [baseId, ...(byId.has(ctxId) ? [ctxId] : [])],
+            notes: ['effective dyad = ctx if present else base'],
+            parts: { chosen: byId.has(ctxId) ? 'ctx' : 'base' }
+          }
+        } as any));
+      }
+
       // 9. Threat Stack
-      const atomsForThreat = [...atomsAfterPriors, ...biasPack.atoms, ...tomCtxDyads];
+      const atomsForThreat = [...atomsAfterPriors, ...biasPack.atoms, ...tomCtxDyads, ...effectiveDyads];
       const threatInputs = {
           envDanger: 0, visibilityBad: 0, coverLack: 0, crowding: 0,
           nearbyCount: 0, nearbyTrustMean: 0.45, nearbyHostileMean: 0, hierarchyPressure: 0, surveillance: 0,
