@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useCallback, useEffect } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 
 interface NarrativeChapter {
   id: string;
@@ -532,22 +533,56 @@ const Card: React.FC<{ children: React.ReactNode; className?: string; id?: strin
 );
 
 export const NarrativePage: React.FC = () => {
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  const scrollToSection = useCallback(
+    (id: string, replaceHash = true) => {
+      const element = document.getElementById(id);
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        if (replaceHash) {
+          navigate(`/narrative#${id}`, { replace: true });
+        }
+      }
+    },
+    [navigate]
+  );
+
+  useEffect(() => {
+    if (location.hash) {
+      scrollToSection(location.hash.replace('#', ''), false);
+    }
+  }, [location.hash, scrollToSection]);
+
+  const tocItems = [
+    { id: preamble.id, title: preamble.title },
+    ...sections.map(section => ({ id: section.id, title: section.title })),
+    { id: homeostasisProtocol.id, title: 'Протокол гомеостаза' },
+  ];
+
   return (
     <div className="p-8 space-y-10">
       <div className="bg-gradient-to-r from-canon-purple/20 via-canon-blue/10 to-canon-green/10 border border-canon-border rounded-xl p-8 shadow-lg">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
-          <div>
+          <div className="space-y-3">
             <p className="text-sm uppercase text-canon-text-light tracking-widest">Нарративный контур</p>
-            <h1 className="text-4xl font-bold text-canon-accent mt-2">{homeostasisProtocol.subtitle}</h1>
-            <h2 className="text-2xl font-semibold text-white mt-1">{homeostasisProtocol.title}</h2>
-            <p className="text-canon-text-light mt-4 max-w-3xl">
-              Преобразованный корпус регламента разбит на карточки с перекрёстными ссылками и быстрой навигацией по ключевым блокам.
+            <div>
+              <h1 className="text-4xl font-bold text-canon-accent">{homeostasisProtocol.subtitle}</h1>
+              <h2 className="text-2xl font-semibold text-white">{homeostasisProtocol.title}</h2>
+            </div>
+            <p className="text-canon-text-light max-w-3xl">
+              Преобразованный корпус регламента уложен в карточки, снабжён перекрёстными ссылками и быстрыми переходами к каждому контуру.
             </p>
-            <div className="flex flex-wrap gap-2 mt-4">
+            <div className="flex flex-wrap gap-2">
               {homeostasisProtocol.anchorLinks.map(link => (
-                <a key={link.href} href={link.href} className="px-3 py-1 text-xs font-semibold bg-canon-bg border border-canon-border rounded-full hover:border-canon-accent hover:text-canon-accent transition-colors">
+                <button
+                  key={link.href}
+                  onClick={() => scrollToSection(link.href.replace('#', ''))}
+                  className="px-3 py-1 text-xs font-semibold bg-canon-bg border border-canon-border rounded-full hover:border-canon-accent hover:text-canon-accent transition-colors"
+                >
                   {link.label}
-                </a>
+                </button>
               ))}
             </div>
           </div>
@@ -562,82 +597,112 @@ export const NarrativePage: React.FC = () => {
         </div>
       </div>
 
-      <section id="preamble" className="space-y-4">
-        <div className="flex items-center gap-3">
-          <span className="text-canon-accent text-2xl">⚖️</span>
+      <div className="grid gap-8 lg:grid-cols-[280px_1fr]">
+        <aside className="bg-canon-bg border border-canon-border rounded-lg p-4 h-fit sticky top-24 space-y-4 shadow-sm">
           <div>
-            <p className="text-xs uppercase tracking-widest text-canon-text-light">Порог входа</p>
-            <h3 className="text-3xl font-bold">{preamble.title}</h3>
+            <p className="text-xs uppercase tracking-widest text-canon-text-light">Быстрые ссылки</p>
+            <h3 className="text-lg font-semibold text-white">Карта разделов</h3>
           </div>
-        </div>
-        <Card>
-          <div className="grid gap-3 md:grid-cols-2">
-            {preamble.paragraphs.map((para, idx) => (
-              <p key={idx} className="text-canon-text-light leading-relaxed">{para}</p>
+          <div className="space-y-2">
+            {tocItems.map(item => (
+              <button
+                key={item.id}
+                onClick={() => scrollToSection(item.id)}
+                className="w-full text-left px-3 py-2 rounded-md border border-transparent hover:border-canon-accent hover:bg-canon-bg-light/60 transition-colors"
+              >
+                <span className="block text-sm text-white">{item.title}</span>
+                <span className="text-[11px] text-canon-text-light">#{item.id}</span>
+              </button>
             ))}
           </div>
-        </Card>
-      </section>
+        </aside>
 
-      {sections.map(section => (
-        <section key={section.id} id={section.id} className="space-y-4">
-          <div className="flex items-center gap-3">
-            <span className="text-canon-accent text-2xl">📜</span>
-            <div>
-              <p className="text-xs uppercase tracking-widest text-canon-text-light">Контур</p>
-              <h3 className="text-3xl font-bold text-white">{section.title}</h3>
+        <div className="space-y-12">
+          <section id="preamble" className="space-y-4">
+            <div className="flex items-center gap-3">
+              <span className="text-canon-accent text-2xl">⚖️</span>
+              <div>
+                <p className="text-xs uppercase tracking-widest text-canon-text-light">Порог входа</p>
+                <h3 className="text-3xl font-bold">{preamble.title}</h3>
+              </div>
             </div>
-          </div>
+            <Card>
+              <div className="grid gap-3 md:grid-cols-2">
+                {preamble.paragraphs.map((para, idx) => (
+                  <p key={idx} className="text-canon-text-light leading-relaxed">{para}</p>
+                ))}
+              </div>
+            </Card>
+          </section>
 
-          <div className="grid gap-4 lg:grid-cols-2">
-            {section.chapters.map(chapter => (
-              <Card key={chapter.id} id={chapter.id} className="flex flex-col gap-3">
-                <div className="flex items-center justify-between gap-2">
-                  <div>
-                    <h4 className="text-xl font-semibold text-canon-accent">{chapter.title}</h4>
-                    {chapter.description && (
-                      <p className="text-sm text-canon-text-light mt-1">{chapter.description}</p>
-                    )}
-                  </div>
-                  <a href={`#${section.id}`} className="text-xs text-canon-text-light hover:text-canon-accent">↑ к разделу</a>
+          {sections.map(section => (
+            <section key={section.id} id={section.id} className="space-y-4">
+              <div className="flex items-center gap-3">
+                <span className="text-canon-accent text-2xl">📜</span>
+                <div>
+                  <p className="text-xs uppercase tracking-widest text-canon-text-light">Контур</p>
+                  <h3 className="text-3xl font-bold text-white">{section.title}</h3>
+                  {section.summary && <p className="text-sm text-canon-text-light mt-1">{section.summary}</p>}
                 </div>
-                <ul className="space-y-2 text-sm text-white leading-relaxed list-disc list-inside">
-                  {chapter.clauses.map((clause, idx) => (
-                    <li key={idx}>{clause}</li>
-                  ))}
-                </ul>
-              </Card>
-            ))}
-          </div>
-        </section>
-      ))}
+              </div>
 
-      <section id="homeostasis" className="space-y-4">
-        <div className="flex items-center gap-3">
-          <span className="text-canon-accent text-2xl">🧭</span>
-          <div>
-            <p className="text-xs uppercase tracking-widest text-canon-text-light">Сводка</p>
-            <h3 className="text-3xl font-bold text-white">Протокол гомеостаза: быстрый обзор</h3>
-          </div>
+              <div className="grid gap-4 lg:grid-cols-2">
+                {section.chapters.map(chapter => (
+                  <Card key={chapter.id} id={chapter.id} className="flex flex-col gap-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <h4 className="text-xl font-semibold text-canon-accent">{chapter.title}</h4>
+                        {chapter.description && (
+                          <p className="text-sm text-canon-text-light mt-1">{chapter.description}</p>
+                        )}
+                      </div>
+                      <button
+                        onClick={() => scrollToSection(section.id)}
+                        className="text-xs text-canon-text-light hover:text-canon-accent"
+                        aria-label="Вернуться к заголовку раздела"
+                      >
+                        ↑ к разделу
+                      </button>
+                    </div>
+                    <ul className="space-y-2 text-sm text-white leading-relaxed list-disc list-inside">
+                      {chapter.clauses.map((clause, idx) => (
+                        <li key={idx}>{clause}</li>
+                      ))}
+                    </ul>
+                  </Card>
+                ))}
+              </div>
+            </section>
+          ))}
+
+          <section id="homeostasis" className="space-y-4">
+            <div className="flex items-center gap-3">
+              <span className="text-canon-accent text-2xl">🧭</span>
+              <div>
+                <p className="text-xs uppercase tracking-widest text-canon-text-light">Сводка</p>
+                <h3 className="text-3xl font-bold text-white">Протокол гомеостаза: быстрый обзор</h3>
+              </div>
+            </div>
+            <div className="grid gap-4 lg:grid-cols-3">
+              <Card>
+                <h4 className="text-lg font-semibold text-canon-accent mb-2">Алгоритмическая ясность</h4>
+                <p className="text-sm text-canon-text-light leading-relaxed">Комбинация Lex-Compiler, GovLint и фаззинга норм обеспечивает синтаксический иммунитет, цифровую подпись актов и защиту от дрейфа смыслов.</p>
+                <button onClick={() => scrollToSection('chapter0')} className="text-xs text-canon-accent mt-3 inline-block">→ Язык как фундамент права</button>
+              </Card>
+              <Card>
+                <h4 className="text-lg font-semibold text-canon-accent mb-2">Антихрупкое управление</h4>
+                <p className="text-sm text-canon-text-light leading-relaxed">Регнум с разделёнными сигиллами, правом локальных экспериментов и аукционами откатов удерживает систему в гомеостазе без узурпации.</p>
+                <button onClick={() => scrollToSection('chapter2')} className="text-xs text-canon-accent mt-3 inline-block">→ Архитектура власти</button>
+              </Card>
+              <Card>
+                <h4 className="text-lg font-semibold text-canon-accent mb-2">Гуманитарный каркас</h4>
+                <p className="text-sm text-canon-text-light leading-relaxed">Палата Чувств, протоколы психической когерентности и правосудие восстановления удерживают алгоритмы в союзе с человеческим достоинством.</p>
+                <button onClick={() => scrollToSection('chapter3ter')} className="text-xs text-canon-accent mt-3 inline-block">→ Контур психической когерентности</button>
+              </Card>
+            </div>
+          </section>
         </div>
-        <div className="grid gap-4 lg:grid-cols-3">
-          <Card>
-            <h4 className="text-lg font-semibold text-canon-accent mb-2">Алгоритмическая ясность</h4>
-            <p className="text-sm text-canon-text-light leading-relaxed">Комбинация Lex-Compiler, GovLint и фаззинга норм обеспечивает синтаксический иммунитет, цифровую подпись актов и защиту от дрейфа смыслов.</p>
-            <a href="#chapter0" className="text-xs text-canon-accent mt-3 inline-block">→ Язык как фундамент права</a>
-          </Card>
-          <Card>
-            <h4 className="text-lg font-semibold text-canon-accent mb-2">Антихрупкое управление</h4>
-            <p className="text-sm text-canon-text-light leading-relaxed">Регнум с разделёнными сигиллами, правом локальных экспериментов и аукционами откатов удерживает систему в гомеостазе без узурпации.</p>
-            <a href="#chapter2" className="text-xs text-canon-accent mt-3 inline-block">→ Архитектура власти</a>
-          </Card>
-          <Card>
-            <h4 className="text-lg font-semibold text-canon-accent mb-2">Гуманитарный каркас</h4>
-            <p className="text-sm text-canon-text-light leading-relaxed">Палата Чувств, протоколы психической когерентности и правосудие восстановления удерживают алгоритмы в союзе с человеческим достоинством.</p>
-            <a href="#chapter3ter" className="text-xs text-canon-accent mt-3 inline-block">→ Контур психической когерентности</a>
-          </Card>
-        </div>
-      </section>
+      </div>
     </div>
   );
 };

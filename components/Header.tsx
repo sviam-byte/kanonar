@@ -39,9 +39,9 @@ const NavDropdown: React.FC<{ label: string; active: boolean; colorClass?: strin
     );
 };
 
-const NavItem: React.FC<{ to: string; label: string; active: boolean }> = ({ to, label, active }) => (
-    <Link 
-        to={to} 
+const NavItem: React.FC<{ to: string | { pathname: string; hash?: string }; label: string; active: boolean }> = ({ to, label, active }) => (
+    <Link
+        to={to}
         className={`px-4 py-2 text-sm text-left hover:bg-canon-bg-light transition-colors ${active ? 'text-canon-text font-bold bg-canon-bg-light/50' : 'text-canon-text-light'}`}
     >
         {label}
@@ -126,7 +126,7 @@ export const Header: React.FC = () => {
                 colorClass="text-purple-400"
             >
                 <NavItem to="/narrative" label="Нарративный холст" active={isActive('/narrative')} />
-                <NavItem to="/narrative#homeostasis" label="Протокол гомеостаза" active={isHomeostasisActive} />
+                <NavItem to={{ pathname: '/narrative', hash: '#homeostasis' }} label="Протокол гомеостаза" active={isHomeostasisActive} />
                 <NavItem to="/archetypes" label="Куб Архетипов" active={isActive('/archetypes')} />
                 <NavItem to="/archetype-relations" label="Граф Архетипов" active={isActive('/archetype-relations')} />
                 <NavItem to="/mass" label="Массовые Сети" active={isActive('/mass')} />
