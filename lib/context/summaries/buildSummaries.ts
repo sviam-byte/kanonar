@@ -81,9 +81,15 @@ export function buildSummaryAtoms(frameAtoms: ContextAtom[], opts: { selfId: str
     meta: { topChannel: topCh ? { id: topCh.id, magnitude: topCh.magnitude, label: atomLabel(topCh) } : null }
   } as any));
 
-  // 3) emo banner: dominant emotion (emo:* excluding banners)
-  const emos = frameAtoms.filter(a => (a.ns === 'emo' || a.kind === 'emotion') && !a.id.includes('banner'));
-  const topEmo = emos.sort((a, b) => (b.magnitude ?? 0) - (a.magnitude ?? 0))[0];
+  // 3) emo banner: dominant emotion (prefer discrete affect:e:/emotion: over valence)
+  const emoCandidates = frameAtoms
+    .filter(a => (a.ns === 'emo' || a.kind === 'emotion' || String(a.id).startsWith('affect:e:') || String(a.id).startsWith('emotion:')) && !String(a.id).includes('banner'))
+    .map(a => ({ id: a.id, magnitude: typeof a.magnitude === 'number' ? a.magnitude : 0, label: a.label ?? a.id }));
+
+  const discreteEmos = emoCandidates.filter(e => e.id.startsWith('affect:e:') || e.id.startsWith('emotion:'));
+  const valenceEmo = emoCandidates.find(e => e.id.startsWith('affect:valence:'));
+  const topDiscrete = discreteEmos.sort((a, b) => (b.magnitude ?? 0) - (a.magnitude ?? 0))[0];
+  const topEmo = topDiscrete && (topDiscrete.magnitude ?? 0) > 0.05 ? topDiscrete : valenceEmo || emoCandidates[0];
 
   out.push(normalizeAtom({
     id: 'emo:banner',
@@ -92,11 +98,11 @@ export function buildSummaryAtoms(frameAtoms: ContextAtom[], opts: { selfId: str
     origin: 'derived',
     source: 'summaries',
     magnitude: clamp01(topEmo?.magnitude ?? 0),
-    label: topEmo ? `${(topEmo as any).emotion || topEmo.id}:${Math.round((topEmo.magnitude ?? 0) * 100)}%` : 'no emotions',
+    label: topEmo ? `${topEmo.label || topEmo.id}:${Math.round((topEmo.magnitude ?? 0) * 100)}%` : 'no emotions',
     tags: ['summary', 'banner', 'emo'],
     confidence: 1,
     trace: { sourceAtomIds: topEmo ? [topEmo.id] : [], notes: ['dominant emotion'] },
-    meta: { top: topEmo ? { id: topEmo.id, magnitude: topEmo.magnitude, label: atomLabel(topEmo) } : null }
+    meta: { top: topEmo ? { id: topEmo.id, magnitude: topEmo.magnitude, label: topEmo.label } : null }
   } as any));
 
   // 4) tom banner per target (who is this person for me now)
