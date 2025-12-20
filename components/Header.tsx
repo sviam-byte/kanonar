@@ -56,6 +56,7 @@ export const Header: React.FC = () => {
   const location = useLocation();
   const isActive = (path: string) => location.pathname === path;
   const isGroupActive = (paths: string[]) => paths.some(p => location.pathname.startsWith(p));
+  const isHomeostasisActive = location.pathname === '/narrative' && location.hash === '#homeostasis';
 
   const handleAdminToggle = () => {
       if (isAdmin) {
@@ -119,11 +120,13 @@ export const Header: React.FC = () => {
                  <NavItem to="/simulations" label="Системные Модели" active={isActive('/simulations')} />
             </NavDropdown>
 
-            <NavDropdown 
-                label="Analysis" 
-                active={isGroupActive(['/archetypes', '/archetype-relations', '/mass'])}
+            <NavDropdown
+                label="Нарратив"
+                active={isGroupActive(['/archetypes', '/archetype-relations', '/mass', '/narrative'])}
                 colorClass="text-purple-400"
             >
+                <NavItem to="/narrative" label="Нарративный холст" active={isActive('/narrative')} />
+                <NavItem to="/narrative#homeostasis" label="Протокол гомеостаза" active={isHomeostasisActive} />
                 <NavItem to="/archetypes" label="Куб Архетипов" active={isActive('/archetypes')} />
                 <NavItem to="/archetype-relations" label="Граф Архетипов" active={isActive('/archetype-relations')} />
                 <NavItem to="/mass" label="Массовые Сети" active={isActive('/mass')} />
