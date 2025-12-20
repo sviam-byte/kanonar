@@ -30,6 +30,7 @@ import { deriveAccess } from '../access/deriveAccess';
 import { getLocationForAgent } from "../world/locations";
 import { decideAction } from '../decision/decide';
 import { computeContextMindScoreboard } from '../contextMind/scoreboard';
+import { atomizeContextMindMetrics } from '../contextMind/atomizeMind';
 
 // Scene Engine
 import { SCENE_PRESETS } from '../scene/presets';
@@ -347,45 +348,40 @@ export function buildGoalLabContext(
       }
 
       // 8.5 Effective ToM dyads (canonical layer)
-      // Rule: if *_ctx exists -> use it, else base.
-      const dyadBase = dyads.filter(a => a.id.endsWith(':trust') || a.id.endsWith(':threat'));
-      const byId = new Map<string, ContextAtom>();
-      for (const a of [...dyadBase, ...tomCtxDyads]) byId.set(a.id, a);
+      // Rule: use *_ctx if exists, else base.
+      const baseDyads = dyads.filter(a => a.id.endsWith(':trust') || a.id.endsWith(':threat'));
+      const ctxByBaseId = new Map<string, ContextAtom>();
+      for (const a of tomCtxDyads) {
+        // convert trust_ctx -> trust baseId, threat_ctx -> threat baseId
+        const baseId = a.id.replace(':trust_ctx', ':trust').replace(':threat_ctx', ':threat');
+        ctxByBaseId.set(baseId, a);
+      }
 
       const effectiveDyads: ContextAtom[] = [];
-      for (const a of dyadBase) {
-        const target = a.target;
-        if (!target) continue;
-
-        const isTrust = a.id.endsWith(':trust');
-        const baseId = a.id;
-        const ctxId = isTrust ? baseId.replace(':trust', ':trust_ctx') : baseId.replace(':threat', ':threat_ctx');
-        const chosen = byId.get(ctxId) || byId.get(baseId);
-        if (!chosen) continue;
-
-        // Build canonical effective id
-        // base: tom:dyad:<self>:<target>:trust  -> tom:effective:dyad:<self>:<target>:trust
-        const parts = baseId.split(':'); // ["tom","dyad",selfId,target,metric]
+      for (const b of baseDyads) {
+        const chosen = ctxByBaseId.get(b.id) || b;
+        const parts = b.id.split(':'); // tom:dyad:self:target:metric
         if (parts.length < 5) continue;
-        const metric = isTrust ? 'trust' : 'threat';
-        const effId = `tom:effective:dyad:${selfId}:${parts[3]}:${metric}`;
+        const target = parts[3];
+        const metric = parts[4] === 'trust' ? 'trust' : 'threat';
+        const effId = `tom:effective:dyad:${selfId}:${target}:${metric}`;
 
         effectiveDyads.push(normalizeAtom({
           id: effId,
-          kind: 'tom_dyad_metric',
           ns: 'tom',
+          kind: 'tom_dyad_metric',
           origin: 'derived',
           source: 'tom_effective',
-          magnitude: clamp01(chosen.magnitude ?? 0),
+          magnitude: clamp01((chosen as any).magnitude ?? 0),
           confidence: 1,
-          tags: ['tom', 'effective', isTrust ? 'trust' : 'threat'],
           subject: selfId,
           target,
-          label: `${metric}_effective:${Math.round(clamp01(chosen.magnitude ?? 0) * 100)}%`,
+          tags: ['tom', 'effective', metric],
+          label: `${metric}_effective:${Math.round(clamp01((chosen as any).magnitude ?? 0) * 100)}%`,
           trace: {
-            usedAtomIds: [baseId, ...(byId.has(ctxId) ? [ctxId] : [])],
+            usedAtomIds: [b.id, ...(chosen.id !== b.id ? [chosen.id] : [])],
             notes: ['effective dyad = ctx if present else base'],
-            parts: { chosen: byId.has(ctxId) ? 'ctx' : 'base' }
+            parts: { chosen: chosen.id !== b.id ? 'ctx' : 'base' }
           }
         } as any));
       }
@@ -555,35 +551,39 @@ export function buildGoalLabContext(
   }
 
   const finalAtoms = dedupeAtomsById(result.atoms);
-
-  const decision = decideAction({
-    selfId,
-    atoms: finalAtoms,
-    possibilities: result.possibilities,
-    topK: 12
-  });
-
   const validation = validateAtoms(finalAtoms, { autofix: true });
   const atomsValidated = validation.fixedAtoms ?? finalAtoms;
   
   const summaries = buildSummaryAtoms(atomsValidated, { selfId });
   const atomsWithSummaries = dedupeAtomsById([...atomsValidated, ...summaries.atoms]).map(normalizeAtom);
 
-  const snapshot = buildContextSnapshot(world, agent, {
-      ...opts.snapshotOptions,
-      manualAtoms: atomsWithSummaries 
-  });
-  
-  snapshot.coverage = computeCoverageReport(atomsWithSummaries as any);
-  // Drop legacy scene:* atoms in favor of canonical ctx:src:scene:* inputs.
-  snapshot.atoms = (atomsWithSummaries || []).filter(a => !String(a?.id || '').startsWith('scene:'));
-  snapshot.validation = validation;
-  snapshot.decision = decision; 
-  
+  // Compute scoreboard (mind) BEFORE deciding, and materialize it into atoms.
   const contextMind = computeContextMindScoreboard({
     selfId,
     atoms: atomsWithSummaries
   });
+
+  const mindAtoms = atomizeContextMindMetrics(selfId, contextMind);
+  const atomsWithMind = dedupeAtomsById([...atomsWithSummaries, ...mindAtoms]).map(normalizeAtom);
+
+  // Decide AFTER mind metrics exist in the atom stream
+  const decision = decideAction({
+    selfId,
+    atoms: atomsWithMind,
+    possibilities: result.possibilities,
+    topK: 12
+  });
+
+  const snapshot = buildContextSnapshot(world, agent, {
+      ...opts.snapshotOptions,
+      manualAtoms: atomsWithMind
+  });
+  
+  snapshot.coverage = computeCoverageReport(atomsWithMind as any);
+  // Drop legacy scene:* atoms in favor of canonical ctx:src:scene:* inputs.
+  snapshot.atoms = (atomsWithMind || []).filter(a => !String(a?.id || '').startsWith('scene:'));
+  snapshot.validation = validation;
+  snapshot.decision = decision; 
 
   // Synthesize affect from appraisal/emotion mindstate to keep affect axes alive.
   try {
