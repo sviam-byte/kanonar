@@ -1,19 +1,29 @@
-
 import React, { useMemo } from 'react';
 import { ContextAtom } from '../../lib/context/v2/types';
 
 export const ToMPanel: React.FC<{ atoms: ContextAtom[] }> = ({ atoms }) => {
     const data = useMemo(() => {
-        const base = atoms.filter(a => a.id.startsWith('tom:base:') || a.id.startsWith('tom:dyad:'));
-        const ctx = atoms.filter(a => a.id.startsWith('tom:ctx:') || a.id.startsWith('tom:bias:'));
-        const effective = atoms.filter(a => a.id.startsWith('tom:effective:') || a.id.startsWith('tom:priorApplied:'));
-        
-        return { base, ctx, effective };
+        const baseDyads = atoms.filter(a =>
+          a.id.startsWith('tom:dyad:') && (a.id.endsWith(':trust') || a.id.endsWith(':threat'))
+        );
+        const ctxDyads = atoms.filter(a =>
+          a.id.startsWith('tom:dyad:') && (a.id.endsWith(':trust_ctx') || a.id.endsWith(':threat_ctx'))
+        );
+        const effectiveDyads = atoms.filter(a =>
+          a.id.startsWith('tom:effective:dyad:') && (a.id.endsWith(':trust') || a.id.endsWith(':threat'))
+        );
+        const bias = atoms.filter(a =>
+          a.id.startsWith('tom:ctx:') || a.id.startsWith('tom:bias:') || a.id.includes(':bias:')
+        );
+
+        return { baseDyads, ctxDyads, effectiveDyads, bias };
     }, [atoms]);
 
     const renderList = (title: string, list: ContextAtom[]) => (
-        <div className="mb-4">
-            <h4 className="text-xs font-bold text-canon-accent uppercase mb-2 border-b border-canon-border/30 pb-1">{title} ({list.length})</h4>
+        <div className="mb-5">
+            <h4 className="text-xs font-bold text-canon-accent uppercase mb-2 border-b border-canon-border/30 pb-1">
+                {title} ({list.length})
+            </h4>
             <div className="space-y-1">
                 {list.length === 0 && <div className="text-[10px] italic text-canon-text-light">None</div>}
                 {list.map(a => (
@@ -28,9 +38,10 @@ export const ToMPanel: React.FC<{ atoms: ContextAtom[] }> = ({ atoms }) => {
 
     return (
         <div className="h-full min-h-0 bg-canon-bg text-canon-text p-4 overflow-auto custom-scrollbar">
-            {renderList("Base / Dyad", data.base)}
-            {renderList("Context / Bias", data.ctx)}
-            {renderList("Effective / Prior Applied", data.effective)}
+            {renderList("Dyads (base)", data.baseDyads)}
+            {renderList("Dyads (ctx)", data.ctxDyads)}
+            {renderList("Dyads (effective)", data.effectiveDyads)}
+            {renderList("Bias", data.bias)}
         </div>
     );
 };

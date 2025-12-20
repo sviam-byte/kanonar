@@ -102,8 +102,11 @@ export function computeContextMindScoreboard(args: {
   // trusted presence + offers help + high trust dyads (if you have tom:dyad:*:trust)
   const helpOfferIds = atoms.filter(a => a.id.startsWith('off:') && a.id.includes('help')).map(a => a.id);
   const trustDyads = atoms
-    .filter(a => a.id.startsWith('tom:') && a.id.includes(':trust') && !a.id.includes(':ctx:'))
-    .slice(0, 40)
+    .filter(a =>
+      (a.id.startsWith('tom:effective:dyad:') && a.id.endsWith(':trust')) ||
+      (a.id.startsWith('tom:dyad:') && a.id.endsWith(':trust'))
+    )
+    .slice(0, 80)
     .map(a => a.id);
 
   // A simple proxy:

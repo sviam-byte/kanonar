@@ -203,6 +203,20 @@ export const GoalLabControls: React.FC<Props> = ({
   const handleAffectChange = (key: keyof AffectState, value: number) => {
       onAffectOverridesChange({ ...affectOverrides, [key]: value });
   };
+
+  const setAffectNested = (path: 'e' | 'regulation', key: string, value: number) => {
+    if (path === 'e') {
+      onAffectOverridesChange({
+        ...affectOverrides,
+        e: { ...(affectOverrides as any).e, [key]: value }
+      } as any);
+      return;
+    }
+    onAffectOverridesChange({
+      ...affectOverrides,
+      regulation: { ...(affectOverrides as any).regulation, [key]: value }
+    } as any);
+  };
   
   const filteredAtomKinds = CONTEXT_ATOM_KIND_CATALOG.filter(k => k.includes(customAtomSearch));
   
@@ -527,6 +541,53 @@ export const GoalLabControls: React.FC<Props> = ({
                  <Slider label="Fear (0..1)" value={affectOverrides.fear ?? 0} setValue={v => handleAffectChange('fear', v)} />
                  <Slider label="Anger (0..1)" value={affectOverrides.anger ?? 0} setValue={v => handleAffectChange('anger', v)} />
                  <Slider label="Shame (0..1)" value={affectOverrides.shame ?? 0} setValue={v => handleAffectChange('shame', v)} />
+
+                 {/* Discrete emotions */}
+                 <div className="mt-3 border border-canon-border/30 rounded p-2 bg-black/10">
+                   <div className="text-[10px] font-bold uppercase tracking-widest text-canon-accent mb-2">
+                     Discrete emotions (affect.e)
+                   </div>
+
+                   {(['fear','anger','shame','trust','sadness','joy','curiosity','hope','loneliness','attachment','guilt','pride','disgust'] as const).map((k) => (
+                     <div key={k} className="mb-2">
+                       <div className="flex justify-between text-[11px] mb-1">
+                         <span className="opacity-80">{k}</span>
+                         <span className="font-mono opacity-80">{(((affectOverrides as any)?.e?.[k] ?? 0) as number).toFixed(2)}</span>
+                       </div>
+                       <Slider
+                         value={((affectOverrides as any)?.e?.[k] ?? 0) as number}
+                         onChange={(v) => setAffectNested('e', k, v)}
+                         min={0}
+                         max={1}
+                         step={0.01}
+                       />
+                     </div>
+                   ))}
+                 </div>
+
+                 {/* Regulation */}
+                 <div className="mt-3 border border-canon-border/30 rounded p-2 bg-black/10">
+                   <div className="text-[10px] font-bold uppercase tracking-widest text-canon-accent mb-2">
+                     Regulation (affect.regulation)
+                   </div>
+
+                   {(['suppression','reappraisal','rumination','threatBias','moralRumination'] as const).map((k) => (
+                     <div key={k} className="mb-2">
+                       <div className="flex justify-between text-[11px] mb-1">
+                         <span className="opacity-80">{k}</span>
+                         <span className="font-mono opacity-80">{(((affectOverrides as any)?.regulation?.[k] ?? 0) as number).toFixed(2)}</span>
+                       </div>
+                       <Slider
+                         value={((affectOverrides as any)?.regulation?.[k] ?? 0) as number}
+                         onChange={(v) => setAffectNested('regulation', k, v)}
+                         min={0}
+                         max={1}
+                         step={0.01}
+                       />
+                     </div>
+                   ))}
+                 </div>
+
                  <div className="pt-2 border-t border-canon-border/30">
                      <button type="button" onClick={() => onAffectOverridesChange({})} className="w-full text-xs bg-canon-bg-light border border-canon-border rounded py-1 hover:text-canon-red">Reset Affect</button>
                  </div>
