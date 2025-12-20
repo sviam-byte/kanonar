@@ -526,6 +526,7 @@ const homeostasisProtocol = {
   ]
 };
 
+// Полный текст протокола гомеостаза (должен совпадать с источником без изменений)
 const homeostasisNarrativeText = `---
 title: "Протокол Гомеостаза v1.5.3"
 date: 2025-09-24T20:00:00Z
