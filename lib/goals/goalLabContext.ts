@@ -32,6 +32,7 @@ import { getLocationForAgent } from "../world/locations";
 import { decideAction } from '../decision/decide';
 import { computeContextMindScoreboard } from '../contextMind/scoreboard';
 import { atomizeContextMindMetrics } from '../contextMind/atomizeMind';
+import { deriveSocialProximityAtoms } from '../context/stage1/socialProximity';
 
 // Scene Engine
 import { SCENE_PRESETS } from '../scene/presets';
@@ -252,12 +253,22 @@ export function buildGoalLabContext(
         arousal,
         ctxCrowd,
         events: eventsAll,
-        sceneSnapshot: sceneSnapshotForStage0 
+        sceneSnapshot: sceneSnapshotForStage0
       });
 
       // Add compatibility aliases (ctx:danger -> ctx:danger:selfId, threat:final -> threat:final:selfId, ...)
       const aliasAtoms = buildSelfAliases(stage0.mergedAtoms, selfId);
-      const atomsPreAxes = [...stage0.mergedAtoms, ...aliasAtoms];
+      let atomsPreAxes = [...stage0.mergedAtoms, ...aliasAtoms];
+
+      // Социальные proximity-атомы: дружба/вражда рядом из (obs + tom + rel)
+      const socProx = deriveSocialProximityAtoms({ selfId, atoms: atomsPreAxes });
+      atomsPreAxes = mergeEpistemicAtoms({
+        world: atomsPreAxes,
+        obs: [],
+        belief: [],
+        override: [],
+        derived: socProx.atoms
+      }).merged;
 
       // 5. Derive Axes
       const axesRes = deriveContextVectors({

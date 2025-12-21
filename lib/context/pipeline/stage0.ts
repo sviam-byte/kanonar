@@ -22,6 +22,7 @@ import { buildWorldFactsAtoms } from './worldFacts';
 import { buildCharacterFeatures, buildLocationFeatures, buildSceneFeatures } from '../../features/registry';
 import { atomizeFeatures } from '../../features/atomize';
 import { extractLocationAtoms } from '../sources/locationAtoms';
+import { extractTomDyadAtoms } from '../sources/tomDyadAtoms';
 
 export type Stage0Input = {
   world: WorldState;
@@ -148,6 +149,24 @@ export function buildStage0Atoms(input: Stage0Input): Stage0Output {
   
   const relAtoms = atomizeRelBase(input.selfId, relBase);
 
+  const nearbyIds = obsAtoms
+    .filter(a => typeof a.id === 'string' && a.id.startsWith(`obs:nearby:${input.selfId}:`))
+    .map(a => String((a.id as string).split(':')[3] ?? ''))
+    .filter(id => id && id !== input.selfId);
+
+  const sceneIds = Array.isArray((sceneSnapshot as any)?.participants)
+    ? (sceneSnapshot as any).participants.map((x: any) => String(x?.entityId ?? x?.id ?? x)).filter(Boolean)
+    : [];
+
+  const otherAgentIds = Array.from(new Set([...nearbyIds, ...sceneIds])).filter(id => id !== input.selfId);
+
+  const { dyadAtoms: tomDyadAtoms, relHintAtoms: tomRelHints } = extractTomDyadAtoms({
+    world: input.world,
+    agent: input.agent,
+    selfId: input.selfId,
+    otherAgentIds
+  });
+
   // 3. Event Layer (Evidence)
   const worldEvents = input.events ?? ((input.world as any)?.eventLog?.events || []);
   const eventAtoms = atomizeEventsForAgent({
@@ -207,7 +226,7 @@ export function buildStage0Atoms(input: Stage0Input): Stage0Output {
   const merged = mergeEpistemicAtoms({
     world: worldAtomsPlus,
     obs: obsAtoms,
-    belief: input.beliefAtoms || [],
+    belief: [...(input.beliefAtoms || []), ...tomDyadAtoms, ...tomRelHints],
     override: input.overrideAtoms || [],
     derived: ctxAtoms
   });
