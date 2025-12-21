@@ -5,7 +5,17 @@ import React, { useState } from "react";
 import { LocationMap, LocationMapCell } from "../types";
 import { LocationVectorMap } from "./locations/LocationVectorMap";
 
-type Brush = "walkable" | "wall" | "obstacle" | "danger" | "safe" | "cover" | "elevation_up" | "elevation_down";
+type Brush =
+  | "walkable"
+  | "wall"
+  | "obstacle"
+  | "danger"
+  | "hazard"
+  | "clear_hazard"
+  | "safe"
+  | "cover"
+  | "elevation_up"
+  | "elevation_down";
 
 interface Props {
   map: LocationMap;
@@ -44,6 +54,16 @@ export const LocationMapEditor: React.FC<Props> = ({ map, onChange, cellSize = 1
     } else if (brush === "danger") {
       updated.walkable = true;
       updated.danger = Math.min(1, (updated.danger ?? 0.3) + 0.3);
+    } else if (brush === "hazard") {
+      updated.walkable = true;
+      updated.danger = 1;
+      const tags = new Set<string>(Array.isArray(updated.tags) ? updated.tags : []);
+      tags.add("hazard");
+      updated.tags = Array.from(tags);
+    } else if (brush === "clear_hazard") {
+      const tags = new Set<string>(Array.isArray(updated.tags) ? updated.tags : []);
+      tags.delete("hazard");
+      updated.tags = Array.from(tags);
     } else if (brush === "safe") {
       updated.walkable = true;
       updated.danger = 0;
@@ -69,7 +89,7 @@ export const LocationMapEditor: React.FC<Props> = ({ map, onChange, cellSize = 1
       <div className="flex gap-2 items-center justify-between">
         <div className="flex flex-col gap-1">
             <div className="flex flex-wrap gap-1 text-[10px]">
-            {(["walkable", "wall", "obstacle", "cover", "danger", "safe"] as Brush[]).map(b => (
+            {(["walkable", "wall", "obstacle", "cover", "danger", "hazard", "clear_hazard", "safe"] as Brush[]).map(b => (
                 <button
                 key={b}
                 onClick={() => setBrush(b)}
@@ -134,21 +154,25 @@ export const LocationMapEditor: React.FC<Props> = ({ map, onChange, cellSize = 1
                 const top = cell.y * cellSize;
 
                 let bg = "transparent";
+                const tags = Array.isArray((cell as any).tags) ? (cell as any).tags : [];
                 // Only show overlay if it has logic attached, otherwise let vector show through
                 if (!cell.walkable) {
                     if (cell.cover >= 0.9) bg = "rgba(100,100,100,0.7)"; // Wall
                     else bg = "rgba(80,50,50,0.6)"; // Obstacle
                 }
-                else if (cell.danger > 0.6) bg = "rgba(220, 38, 38, 0.4)"; 
+                else if (cell.danger > 0.6) bg = "rgba(220, 38, 38, 0.4)";
                 else if (cell.danger > 0.2) bg = "rgba(185, 28, 28, 0.2)";
                 else if (cell.cover > 0.4) bg = "rgba(6, 78, 59, 0.4)";
-                
+
                 // Height tint
                 const elev = cell.elevation || 0;
                 if (elev !== 0) {
                      if (elev > 0) bg = `rgba(255,255,255,${Math.min(0.3, elev*0.1)})`;
                      else bg = `rgba(0,0,0,${Math.min(0.5, Math.abs(elev)*0.2)})`;
                 }
+
+                // Final override: hazard-tag should be visually unambiguous
+                if (tags.includes("hazard")) bg = "rgba(236, 72, 153, 0.55)";
 
                 // Always show faint border for editing
                 const border = '1px solid rgba(255,255,255,0.05)';
@@ -168,7 +192,7 @@ export const LocationMapEditor: React.FC<Props> = ({ map, onChange, cellSize = 1
                         cursor: "pointer",
                         zIndex: 10
                     }}
-                    title={`(${cell.x},${cell.y}) W:${cell.walkable} D:${cell.danger} C:${cell.cover} H:${elev}`}
+                    title={`(${cell.x},${cell.y}) W:${cell.walkable} D:${cell.danger} C:${cell.cover} H:${elev} tags:${Array.isArray((cell as any).tags) ? (cell as any).tags.join(",") : ""}`}
                 />
                 );
             })}
