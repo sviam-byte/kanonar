@@ -1,5 +1,5 @@
 // lib/context/stage1/socialProximity.ts
-import type { ContextAtom } from '../v2/types';
+import type { AtomNamespace, ContextAtom } from '../v2/types';
 import { normalizeAtom } from '../v2/infer';
 
 function clamp01(x: number) {
@@ -17,11 +17,20 @@ function hasTag(atoms: ContextAtom[], id: string) {
   return atoms.some(a => a.id === id && (a.magnitude ?? 0) > 0.5);
 }
 
-function mk(kind: string, id: string, selfId: string, otherId: string, magnitude: number, parts: any, usedAtomIds: string[]): ContextAtom {
+function mk(
+  ns: AtomNamespace | any,
+  kind: string,
+  id: string,
+  selfId: string,
+  otherId: string,
+  magnitude: number,
+  parts: any,
+  usedAtomIds: string[]
+): ContextAtom {
   return normalizeAtom({
     id,
     kind,
-    ns: 'soc',
+    ns,
     origin: 'derived',
     source: 'socialProximity',
     magnitude: clamp01(magnitude),
@@ -29,7 +38,7 @@ function mk(kind: string, id: string, selfId: string, otherId: string, magnitude
     subject: selfId,
     target: otherId,
     relatedAgentId: otherId,
-    tags: ['social', 'proximity', kind],
+    tags: [String(ns), 'socialProximity', kind],
     trace: { usedAtomIds: Array.from(new Set(usedAtomIds)), notes: [], parts },
   } as any);
 }
@@ -62,18 +71,24 @@ export function deriveSocialProximityAtoms(args: { selfId: string; atoms: Contex
     if (tagEnemy) used.push(`rel:tag:${selfId}:${otherId}:enemy`);
 
     if (friend) {
+      // Pure proximity stays in prox:*
       out.push(
-        mk('proximity_friend', `prox:friend:${selfId}:${otherId}`, selfId, otherId, close, { close, trust, threat }, used),
-        mk('tom_trusted_ally_near', `tom:trusted_ally_near:${selfId}:${otherId}`, selfId, otherId, close * trust, { close, trust }, used)
+        mk('map', 'proximity_friend', `prox:friend:${selfId}:${otherId}`, selfId, otherId, close, { close, trust, threat }, used),
+      );
+      // Social meaning becomes soc:*
+      out.push(
+        mk('soc', 'social_support', `soc:support:${selfId}:${otherId}`, selfId, otherId, close * trust, { close, trust, threat, friend: true }, used),
       );
     } else if (enemy) {
       out.push(
-        mk('proximity_enemy', `prox:enemy:${selfId}:${otherId}`, selfId, otherId, close, { close, trust, threat }, used),
-        mk('tom_threatening_other_near', `tom:threatening_other_near:${selfId}:${otherId}`, selfId, otherId, close * threat, { close, threat }, used)
+        mk('map', 'proximity_enemy', `prox:enemy:${selfId}:${otherId}`, selfId, otherId, close, { close, trust, threat }, used),
+      );
+      out.push(
+        mk('soc', 'social_threat', `soc:threat:${selfId}:${otherId}`, selfId, otherId, close * threat, { close, trust, threat, enemy: true }, used),
       );
     } else if (neutral) {
       out.push(
-        mk('proximity_neutral', `prox:neutral:${selfId}:${otherId}`, selfId, otherId, close, { close, trust, threat }, used)
+        mk('map', 'proximity_neutral', `prox:neutral:${selfId}:${otherId}`, selfId, otherId, close, { close, trust, threat }, used)
       );
     }
   }

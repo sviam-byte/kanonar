@@ -2,6 +2,9 @@
 // lib/contextMind/scoreboard.ts
 import { ContextAtom } from '../context/v2/types';
 
+const SOC_SUPPORT_PREFIX = 'soc:support:';
+const SOC_THREAT_PREFIX  = 'soc:threat:';
+
 function clamp01(x: number) {
   if (!Number.isFinite(x)) return 0;
   return Math.max(0, Math.min(1, x));
@@ -101,6 +104,14 @@ export function computeContextMindScoreboard(args: {
   // ---------- SUPPORT ----------
   // trusted presence + offers help + high trust dyads (if you have tom:dyad:*:trust)
   const helpOfferIds = atoms.filter(a => a.id.startsWith('off:') && a.id.includes('help')).map(a => a.id);
+
+  // NEW: explicit social atoms (nearby support/threat)
+  const socSupportIds = atoms
+    .filter(a => a.id.startsWith(`${SOC_SUPPORT_PREFIX}${selfId}:`))
+    .map(a => a.id);
+  const socThreatIds = atoms
+    .filter(a => a.id.startsWith(`${SOC_THREAT_PREFIX}${selfId}:`))
+    .map(a => a.id);
   const trustDyads = atoms
     .filter(a =>
       (a.id.startsWith('tom:effective:dyad:') && a.id.endsWith(':trust')) ||
@@ -121,11 +132,21 @@ export function computeContextMindScoreboard(args: {
     const trusts = trustDyads.length ? trustDyads.map(id => getMag(atoms, id, 0)).sort((a,b)=>b-a).slice(0, 5) : [];
     const trustAvg = trusts.length ? trusts.reduce((s,v)=>s+v,0)/trusts.length : 0;
 
-    support = clamp01(0.6 * help + 0.4 * trustAvg);
+    const socSup = socSupportIds.length
+      ? socSupportIds.map(id => getMag(atoms, id, 0)).sort((a,b)=>b-a).slice(0, 5).reduce((s,v)=>s+v,0) / Math.min(5, socSupportIds.length)
+      : 0;
+    const socThr = socThreatIds.length
+      ? socThreatIds.map(id => getMag(atoms, id, 0)).sort((a,b)=>b-a).slice(0, 5).reduce((s,v)=>s+v,0) / Math.min(5, socThreatIds.length)
+      : 0;
+
+    // support boosted by nearby allies, reduced by nearby hostile presence
+    support = clamp01(0.35 * help + 0.25 * trustAvg + 0.55 * socSup - 0.25 * socThr);
 
     supportUsed = [
       ...(helpOfferIds.slice(0, 6)),
-      ...(trustDyads.slice(0, 6))
+      ...(trustDyads.slice(0, 6)),
+      ...(socSupportIds.slice(0, 6)),
+      ...(socThreatIds.slice(0, 6)),
     ];
   }
 
