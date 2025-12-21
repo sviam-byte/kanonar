@@ -33,6 +33,7 @@ import { decideAction } from '../decision/decide';
 import { computeContextMindScoreboard } from '../contextMind/scoreboard';
 import { atomizeContextMindMetrics } from '../contextMind/atomizeMind';
 import { deriveSocialProximityAtoms } from '../context/stage1/socialProximity';
+import { deriveHazardGeometryAtoms } from '../context/stage1/hazardGeometry';
 
 // Scene Engine
 import { SCENE_PRESETS } from '../scene/presets';
@@ -268,6 +269,20 @@ export function buildGoalLabContext(
         belief: [],
         override: [],
         derived: socProx.atoms
+      }).merged;
+
+      // Геометрия опасности: расстояния до hazard-клеток и опасность между агентами
+      const hazGeo = deriveHazardGeometryAtoms({
+        world: worldForPipeline,
+        selfId,
+        atoms: atomsPreAxes
+      });
+      atomsPreAxes = mergeEpistemicAtoms({
+        world: atomsPreAxes,
+        obs: [],
+        belief: [],
+        override: [],
+        derived: hazGeo.atoms
       }).merged;
 
       // 5. Derive Axes

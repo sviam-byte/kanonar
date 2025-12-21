@@ -199,6 +199,61 @@ export const ATOM_SPECS: AtomSpec[] = [
     tags: ['soc','tom']
   },
   {
+    specId: 'world.map.hazard_proximity',
+    idPattern: /^world:map:hazardProximity:(?<selfId>[a-zA-Z0-9_-]+)(?::(?<otherId>[a-zA-Z0-9_-]+))?$/,
+    title: p => `Карта: близость к опасным клеткам${p.otherId ? ` (${p.otherId})` : ''}`,
+    meaning: p => `Насколько близко ${p.otherId ? p.otherId : p.selfId} находится к ближайшей “опасной клетке” (1 = рядом, 0 = далеко или опасностей нет).`,
+    scale: { min: 0, max: 1, lowMeans: 'далеко от опасности', highMeans: 'очень близко к опасности', typical: '0.0–0.8' },
+    producedBy: ['lib/context/stage1/hazardGeometry.ts'],
+    consumedBy: ['lib/threat/*', 'lib/context/axes/*'],
+    tags: ['world','map','hazard']
+  },
+  {
+    specId: 'world.map.hazard_between',
+    idPattern: /^world:map:hazardBetween:(?<selfId>[a-zA-Z0-9_-]+):(?<otherId>[a-zA-Z0-9_-]+)$/,
+    title: p => `Карта: опасность между ${p.selfId} и ${p.otherId}`,
+    meaning: p => `Максимальная опасность на сегменте между позициями ${p.selfId} и ${p.otherId} (по сетке карты).`,
+    scale: { min: 0, max: 1, lowMeans: 'между нами чисто', highMeans: 'между нами опасность' },
+    producedBy: ['lib/context/stage1/hazardGeometry.ts'],
+    tags: ['world','map','hazard']
+  },
+  {
+    specId: 'soc.ally_hazard_between',
+    idPattern: /^soc:allyHazardBetween:(?<selfId>[a-zA-Z0-9_-]+):(?<otherId>[a-zA-Z0-9_-]+)$/,
+    title: p => `Соц: союзник рядом, но между нами опасность (${p.otherId})`,
+    meaning: _p => `Композиция prox:friend * world:map:hazardBetween.`,
+    scale: { min: 0, max: 1 },
+    producedBy: ['lib/context/stage1/hazardGeometry.ts'],
+    tags: ['soc','hazard']
+  },
+  {
+    specId: 'soc.enemy_hazard_between',
+    idPattern: /^soc:enemyHazardBetween:(?<selfId>[a-zA-Z0-9_-]+):(?<otherId>[a-zA-Z0-9_-]+)$/,
+    title: p => `Соц: враг рядом, но между нами опасность (${p.otherId})`,
+    meaning: _p => `Композиция prox:enemy * world:map:hazardBetween.`,
+    scale: { min: 0, max: 1 },
+    producedBy: ['lib/context/stage1/hazardGeometry.ts'],
+    tags: ['soc','hazard']
+  },
+  {
+    specId: 'haz.enemy_proximity',
+    idPattern: /^haz:enemyProximity:(?<selfId>[a-zA-Z0-9_-]+)$/,
+    title: p => `Опасность: близость врагов (${p.selfId})`,
+    meaning: _p => `Максимум prox:enemy. Это “враг как источник опасности”.`,
+    scale: { min: 0, max: 1 },
+    producedBy: ['lib/context/stage1/hazardGeometry.ts'],
+    tags: ['misc','enemy']
+  },
+  {
+    specId: 'haz.danger_source_proximity',
+    idPattern: /^haz:dangerSourceProximity:(?<selfId>[a-zA-Z0-9_-]+)$/,
+    title: p => `Опасность: ближайший источник (${p.selfId})`,
+    meaning: _p => `max(world:map:hazardProximity, haz:enemyProximity).`,
+    scale: { min: 0, max: 1 },
+    producedBy: ['lib/context/stage1/hazardGeometry.ts'],
+    tags: ['misc','danger']
+  },
+  {
     specId: 'threat.final',
     idPattern: /^threat:final:(?<selfId>[a-zA-Z0-9_-]+)$/,
     title: p => `Угроза: итоговая (${p.selfId})`,
