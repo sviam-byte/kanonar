@@ -17,7 +17,7 @@ function hasTag(atoms: ContextAtom[], id: string) {
   return atoms.some(a => a.id === id && (a.magnitude ?? 0) > 0.5);
 }
 
-function mk(kind: string, id: string, selfId: string, otherId: string, magnitude: number, parts: any): ContextAtom {
+function mk(kind: string, id: string, selfId: string, otherId: string, magnitude: number, parts: any, usedAtomIds: string[]): ContextAtom {
   return normalizeAtom({
     id,
     kind,
@@ -30,7 +30,7 @@ function mk(kind: string, id: string, selfId: string, otherId: string, magnitude
     target: otherId,
     relatedAgentId: otherId,
     tags: ['social', 'proximity', kind],
-    trace: { usedAtomIds: [], notes: [], parts },
+    trace: { usedAtomIds: Array.from(new Set(usedAtomIds)), notes: [], parts },
   } as any);
 }
 
@@ -57,19 +57,23 @@ export function deriveSocialProximityAtoms(args: { selfId: string; atoms: Contex
     const enemy = tagEnemy || (threat >= 0.65 && trust <= 0.45);
     const neutral = !friend && !enemy;
 
+    const used = [n.id, `tom:dyad:${selfId}:${otherId}:trust`, `tom:dyad:${selfId}:${otherId}:threat`];
+    if (tagFriend) used.push(`rel:tag:${selfId}:${otherId}:friend`);
+    if (tagEnemy) used.push(`rel:tag:${selfId}:${otherId}:enemy`);
+
     if (friend) {
       out.push(
-        mk('proximity_friend', `prox:friend:${selfId}:${otherId}`, selfId, otherId, close, { close, trust, threat }),
-        mk('tom_trusted_ally_near', `tom:trusted_ally_near:${selfId}:${otherId}`, selfId, otherId, close * trust, { close, trust })
+        mk('proximity_friend', `prox:friend:${selfId}:${otherId}`, selfId, otherId, close, { close, trust, threat }, used),
+        mk('tom_trusted_ally_near', `tom:trusted_ally_near:${selfId}:${otherId}`, selfId, otherId, close * trust, { close, trust }, used)
       );
     } else if (enemy) {
       out.push(
-        mk('proximity_enemy', `prox:enemy:${selfId}:${otherId}`, selfId, otherId, close, { close, trust, threat }),
-        mk('tom_threatening_other_near', `tom:threatening_other_near:${selfId}:${otherId}`, selfId, otherId, close * threat, { close, threat })
+        mk('proximity_enemy', `prox:enemy:${selfId}:${otherId}`, selfId, otherId, close, { close, trust, threat }, used),
+        mk('tom_threatening_other_near', `tom:threatening_other_near:${selfId}:${otherId}`, selfId, otherId, close * threat, { close, threat }, used)
       );
     } else if (neutral) {
       out.push(
-        mk('proximity_neutral', `prox:neutral:${selfId}:${otherId}`, selfId, otherId, close, { close, trust, threat })
+        mk('proximity_neutral', `prox:neutral:${selfId}:${otherId}`, selfId, otherId, close, { close, trust, threat }, used)
       );
     }
   }

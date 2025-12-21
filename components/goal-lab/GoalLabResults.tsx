@@ -17,11 +17,12 @@ import { PossibilitiesPanel } from './PossibilitiesPanel';
 import { DiffPanel } from './DiffPanel';
 import { AtomDiff } from '../../lib/snapshot/diffAtoms';
 import { DecisionPanel } from './DecisionPanel';
-import { AtomsPanel } from './AtomsPanel';
+import { AtomBrowser } from './AtomBrowser';
 import { ThreatPanel } from './ThreatPanel';
 import { ToMPanel } from './ToMPanel';
 import { CoveragePanel } from './CoveragePanel';
 import { GoalLabSnapshotV1 } from '../../lib/goal-lab/snapshotTypes';
+import { AtomInspector } from './AtomInspector';
 
 interface Props {
   context: ContextSnapshot | null;
@@ -338,9 +339,10 @@ export const GoalLabResults: React.FC<Props> = ({
   sceneDump,
   onDownloadScene,
 }) => {
-    const [selectedGoalId, setSelectedGoalId] = useState<string | null>(null);
-    const [isPreviewOpen, setPreviewOpen] = useState(false);
-    const [activeTabIndex, setActiveTabIndex] = useState(0);
+  const [selectedGoalId, setSelectedGoalId] = useState<string | null>(null);
+  const [isPreviewOpen, setPreviewOpen] = useState(false);
+  const [activeTabIndex, setActiveTabIndex] = useState(0);
+  const [selectedAtomId, setSelectedAtomId] = useState<string | null>(null);
 
     const canDownload = Boolean(onDownloadScene || sceneDump);
 
@@ -417,9 +419,24 @@ export const GoalLabResults: React.FC<Props> = ({
         selectedScore ? <AnalysisView score={selectedScore} /> : <div className="flex h-full items-center justify-center text-canon-text-light/50 text-xs"><div className="text-center"><div className="text-3xl mb-2">🎯</div><p>Выберите цель слева<br/>для детального анализа.</p></div></div>
     );
     
-    const AtomsTab = () => (
-        <AtomsPanel atoms={currentAtoms} />
-    );
+    const AtomsTab = () => {
+        const selectedAtom = currentAtoms.find(a => a.id === selectedAtomId) || null;
+
+        return (
+          <div className="h-full min-h-0">
+            <AtomBrowser
+              atoms={currentAtoms}
+              selectedAtomId={selectedAtomId}
+              onSelectedAtomIdChange={setSelectedAtomId}
+              renderDetails={(atom) => (
+                <div className="p-4">
+                  <AtomInspector atom={atom} allAtoms={currentAtoms} />
+                </div>
+              )}
+            />
+          </div>
+        );
+    };
 
     const ThreatTab = () => (
         <ThreatPanel atoms={currentAtoms} />

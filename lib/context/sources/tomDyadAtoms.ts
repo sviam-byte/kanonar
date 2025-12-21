@@ -99,7 +99,7 @@ function mkDyadAtom(selfId: string, otherId: string, metric: string, magnitude: 
     target: otherId,
     tags: ['tom', 'dyad', metric],
     label: `${metric}:${Math.round(clamp01(magnitude) * 100)}%`,
-    trace: { usedAtomIds: [], notes: ['from ToM state'], parts },
+    trace: { usedAtomIds: [`tom_state:${selfId}:${otherId}`], notes: ['from ToM state'], parts },
   } as any);
 }
 
@@ -150,7 +150,7 @@ export function extractTomDyadAtoms(args: {
         subject: selfId,
         target: otherId,
         tags: ['rel', 'tag', 'friend', 'tom_hint'],
-        trace: { usedAtomIds: [], notes: ['trust+bond high'], parts: { trust: m.trust, bond: m.bond, threat } },
+        trace: { usedAtomIds: [`tom_state:${selfId}:${otherId}`], notes: ['trust+bond high'], parts: { trust: m.trust, bond: m.bond, threat } },
       } as any));
     }
 
@@ -166,7 +166,7 @@ export function extractTomDyadAtoms(args: {
         subject: selfId,
         target: otherId,
         tags: ['rel', 'tag', 'enemy', 'tom_hint'],
-        trace: { usedAtomIds: [], notes: ['threat high'], parts: { trust: m.trust, threat } },
+        trace: { usedAtomIds: [`tom_state:${selfId}:${otherId}`], notes: ['threat high'], parts: { trust: m.trust, threat } },
       } as any));
     }
   }

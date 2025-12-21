@@ -69,6 +69,22 @@ export function validateAtoms(atoms: ContextAtom[], opts?: { autofix?: boolean }
         if (!fixed[i].ns) fixed[i].ns = inferAtomNamespace(fixed[i]);
         if (!fixed[i].origin) fixed[i].origin = inferAtomOrigin(fixed[i].source, fixed[i].id);
     }
+
+    const ns = (a as any).ns;
+    const needsTrace = (a as any).origin === 'derived'
+      || ['ctx', 'threat', 'tom', 'poss', 'mind', 'soc'].includes(ns as any);
+    if (needsTrace) {
+      if (!a.trace) {
+        push('warn', 'trace.missing', 'Derived atom missing trace metadata', atomId);
+      } else {
+        if (!Array.isArray((a.trace as any).usedAtomIds) || (a.trace as any).usedAtomIds.length === 0) {
+          push('info', 'trace.used.empty', 'derived atom has empty usedAtomIds', atomId);
+        }
+        if ((a.trace as any).parts === undefined) {
+          push('info', 'trace.parts.missing', 'derived atom missing trace.parts', atomId);
+        }
+      }
+    }
   }
 
   // 2. Logic Consistency Checks
