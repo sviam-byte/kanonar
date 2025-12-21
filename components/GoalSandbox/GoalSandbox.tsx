@@ -30,6 +30,7 @@ import { MapViewer } from '../locations/MapViewer';
 import { AtomOverrideLayer } from '../../lib/context/overrides/types';
 import { runTicks } from '../../lib/engine/tick';
 import type { AtomDiff } from '../../lib/snapshot/diffAtoms';
+import { diffAtoms } from '../../lib/snapshot/diffAtoms';
 import { adaptToSnapshotV1 } from '../../lib/goal-lab/snapshotAdapter';
 import { buildGoalLabSceneDumpV2, downloadJson } from '../../lib/goal-lab/sceneDump';
 import { CastPerspectivePanel } from '../goal-lab/CastPerspectivePanel';
@@ -111,6 +112,16 @@ const positionsEqual = (
   return true;
 };
 
+const cloneWorld = <T,>(w: T): T => {
+  // structuredClone is available in modern runtimes; fallback JSON is enough for plain world objects
+  try {
+    // @ts-ignore
+    return structuredClone(w);
+  } catch {
+    return JSON.parse(JSON.stringify(w));
+  }
+};
+
 export const GoalSandbox: React.FC = () => {
   const { characters: sandboxCharacters, setDyadConfigFor } = useSandbox();
 
@@ -182,6 +193,11 @@ export const GoalSandbox: React.FC = () => {
   const [sceneControl, setSceneControl] = useState<any>({ presetId: 'safe_hub' });
 
   const [atomDiff, setAtomDiff] = useState<AtomDiff[]>([]);
+
+  // --- Tick simulation session state ---
+  const baselineWorldRef = useRef<WorldState | null>(null);
+  const lastSnapshotAtomsRef = useRef<ContextAtom[] | null>(null);
+  const lastBaselineKeyRef = useRef<string>('');
 
   const resetTransientForNewScene = useCallback((reason: string) => {
     // Anything “interactive” must not carry between preset scenes.
@@ -585,6 +601,17 @@ export const GoalSandbox: React.FC = () => {
     }
   }, [worldState, selectedAgentId, allCharacters]);
 
+  // Update baseline when world is rebuilt (new scene session or cast rebuild)
+  useEffect(() => {
+    if (!worldState) return;
+    const sceneId = String((sceneControl as any)?.sceneId || 'no_scene_id');
+    const key = `${sceneId}::${rebuildNonce}`;
+    if (key === lastBaselineKeyRef.current) return;
+    lastBaselineKeyRef.current = key;
+    baselineWorldRef.current = cloneWorld(worldState);
+    setAtomDiff([]);
+  }, [worldState, rebuildNonce, sceneControl]);
+
   const nearbyActors = useMemo<LocalActorRef[]>(() => {
     const ids = Array.from(sceneParticipants).filter(id => id !== selectedAgentId);
 
@@ -915,6 +942,12 @@ export const GoalSandbox: React.FC = () => {
     }
   }, [computeError]);
 
+  useEffect(() => {
+    if (snapshot?.atoms && Array.isArray(snapshot.atoms)) {
+      lastSnapshotAtomsRef.current = snapshot.atoms as any;
+    }
+  }, [snapshot]);
+
   const snapshotV1 = useMemo(() => {
     if (!glCtx) return null;
     return adaptToSnapshotV1(glCtx as any, { selfId: perspectiveId } as any);
@@ -1050,16 +1083,65 @@ export const GoalSandbox: React.FC = () => {
 
   const handleRunTicks = useCallback(
     (steps: number) => {
-      if (!worldState || !selectedAgentId) return;
+      if (!worldState) return;
+      const pid = perspectiveId || selectedAgentId;
+      if (!pid) return;
+
+      const prevAtoms = lastSnapshotAtomsRef.current || [];
+      const nextWorld = cloneWorld(worldState);
+
+      const activeEvents = eventRegistry.getAll().filter(e => selectedEventIds.has(e.id));
+      const loc = getSelectedLocationEntity();
+
       const result = runTicks({
-        world: worldState,
-        agentId: selectedAgentId,
-        baseInput: { snapshotOptions: { manualAtoms, gridMap: activeMap, atomOverridesLayer, sceneControl, affectOverrides } },
+        world: nextWorld,
+        agentId: pid,
+        baseInput: {
+          snapshotOptions: {
+            activeEvents,
+            overrideLocation: loc,
+            manualAtoms,
+            gridMap: activeMap,
+            atomOverridesLayer,
+            overrideEvents: injectedEvents,
+            sceneControl,
+            affectOverrides,
+          },
+        },
         cfg: { steps, dt: 1 },
       } as any);
-      setWorldState({ ...(worldState as any), tick: (result as any).tick });
+
+      const lastSnap = (result as any)?.snapshots?.[(result as any)?.snapshots?.length - 1] || null;
+      const nextAtoms: ContextAtom[] = (lastSnap?.atoms || []) as any;
+      if (prevAtoms && nextAtoms) {
+        setAtomDiff(diffAtoms(prevAtoms as any, nextAtoms as any));
+      } else {
+        setAtomDiff([]);
+      }
+
+      // sync positions cache so UI (MapViewer / proximity atoms) doesn’t read stale coords
+      const nextPositions: Record<string, { x: number; y: number }> = {};
+      (nextWorld as any)?.agents?.forEach((a: any) => {
+        if (a?.entityId && a?.position) nextPositions[a.entityId] = a.position;
+      });
+      actorPositionsRef.current = nextPositions;
+      setActorPositions(nextPositions);
+
+      setWorldState(nextWorld);
     },
-    [worldState, selectedAgentId, manualAtoms, activeMap, atomOverridesLayer, sceneControl, affectOverrides]
+    [
+      worldState,
+      selectedAgentId,
+      perspectiveId,
+      manualAtoms,
+      activeMap,
+      atomOverridesLayer,
+      sceneControl,
+      affectOverrides,
+      injectedEvents,
+      selectedEventIds,
+      getSelectedLocationEntity,
+    ]
   );
 
   const onDownloadScene = useCallback(() => {
@@ -1069,6 +1151,22 @@ export const GoalSandbox: React.FC = () => {
     const pid = perspectiveId || selectedAgentId || 'unknown';
     downloadJson(sceneDumpV2, `goal-lab-scene__character-${pid}__${exportedAt}.json`);
   }, [perspectiveId, sceneDumpV2, selectedAgentId]);
+
+  const handleResetSim = useCallback(() => {
+    const base = baselineWorldRef.current;
+    if (!base) return;
+    const w = cloneWorld(base);
+
+    const nextPositions: Record<string, { x: number; y: number }> = {};
+    (w as any)?.agents?.forEach((a: any) => {
+      if (a?.entityId && a?.position) nextPositions[a.entityId] = a.position;
+    });
+
+    actorPositionsRef.current = nextPositions;
+    setActorPositions(nextPositions);
+    setAtomDiff([]);
+    setWorldState(w);
+  }, []);
 
   const mapHighlights = useMemo(() => {
     if (!worldState) return [];
@@ -1122,6 +1220,7 @@ export const GoalSandbox: React.FC = () => {
               affectOverrides={affectOverrides}
               onAffectOverridesChange={setAffectOverrides}
               onRunTicks={handleRunTicks}
+              onResetSim={handleResetSim}
               onDownloadScene={onDownloadScene}
               world={worldState as any}
               onWorldChange={setWorldState as any}
