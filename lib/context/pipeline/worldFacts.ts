@@ -59,7 +59,7 @@ export function buildWorldFactsAtoms(input: WorldFactsInput): ContextAtom[] {
       target: String(locId),
       tags: ['world', 'location'],
       label: `location=${String(locId)}`,
-      trace: { usedAtomIds: [], notes: [], parts: {} },
+      trace: { usedAtomIds: [], notes: ['canonical location reference'], parts: { locationId: String(locId) } },
       meta: { locationId: String(locId) }
     } as any));
   }

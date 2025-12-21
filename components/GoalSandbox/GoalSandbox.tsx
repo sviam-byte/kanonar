@@ -155,10 +155,9 @@ export const GoalSandbox: React.FC = () => {
   const [actorPositions, setActorPositions] = useState<Record<string, { x: number; y: number }>>(
     {}
   );
-  const actorPositionsRef = useRef(actorPositions);
-  useEffect(() => {
-    actorPositionsRef.current = actorPositions;
-  }, [actorPositions]);
+  const actorPositionsRef = useRef<Record<string, { x: number; y: number }>>({});
+  // IMPORTANT: must be synchronous to avoid “previous scene positions” leaking into rebuild
+  actorPositionsRef.current = actorPositions;
   const [rebuildNonce, setRebuildNonce] = useState(0);
 
   const [locationMode, setLocationMode] = useState<'preset' | 'custom'>('preset');
@@ -183,6 +182,29 @@ export const GoalSandbox: React.FC = () => {
   const [sceneControl, setSceneControl] = useState<any>({ presetId: 'safe_hub' });
 
   const [atomDiff, setAtomDiff] = useState<AtomDiff[]>([]);
+
+  const resetTransientForNewScene = useCallback((reason: string) => {
+    // Anything “interactive” must not carry between preset scenes.
+    setSelectedEventIds(new Set());
+    setInjectedEvents([]);
+    setManualAtoms([]);
+    setAtomDiff([]);
+    setNearbyActors([]); // legacy injection list
+    setPlacingActorId(null);
+    setAffectOverrides({});
+    setAtomOverridesLayer({ layerId: 'goal-lab', updatedAt: Date.now(), ops: [] });
+
+    // Clear positions BOTH in state and ref (ref is read by rebuild).
+    actorPositionsRef.current = {};
+    setActorPositions({});
+
+    // Optional: clear runtime UI errors so they don’t look “sticky”
+    setRuntimeError(null);
+    // fatalError лучше чистить только если он был “про сцену”, но можно и так:
+    // setFatalError(null);
+
+    (console as any)?.debug?.(`[GoalLab] resetTransientForNewScene: ${reason}`);
+  }, []);
 
   // Persistent Scene Participants: stores ALL actors in the scene (including selectedAgentId)
   const [sceneParticipants, setSceneParticipants] = useState<Set<string>>(() => new Set());
@@ -240,12 +262,9 @@ export const GoalSandbox: React.FC = () => {
   }, [participantIds, perspectiveId]);
 
   useEffect(() => {
+    // Only auto-fill cast if it's empty (initial boot), never on arbitrary selection changes.
     if (!selectedAgentId) return;
-    setSceneParticipants(prev => {
-      const next = new Set(prev);
-      next.add(selectedAgentId);
-      return next;
-    });
+    setSceneParticipants(prev => (prev.size ? prev : new Set([selectedAgentId])));
   }, [selectedAgentId]);
 
   const getActiveLocationId = useCallback(() => {
@@ -396,24 +415,14 @@ export const GoalSandbox: React.FC = () => {
     (id: string) => {
       if (!id) return;
 
-      // If already in the current world, just focus it (do NOT mutate cast)
-      if (worldState && worldState.agents.some(a => a.entityId === id)) {
-        setSelectedAgentId(id);
+      // Selecting is a VIEW operation; it must not mutate the scene cast.
+      if (!sceneParticipants.has(id) && id !== selectedAgentId) {
+        setRuntimeError(`Cannot select agent not in scene cast: ${id}. Add it explicitly.`);
         return;
       }
-
-      // Ensure the focused agent is part of the scene participants
-      setSceneParticipants(prev => {
-        const next = new Set(prev);
-        next.add(id);
-        return next;
-      });
-
       setSelectedAgentId(id);
-      persistActorPositions();
-      forceRebuildWorld();
     },
-    [worldState, persistActorPositions, forceRebuildWorld]
+    [sceneParticipants, selectedAgentId]
   );
 
   const handleAddParticipant = useCallback(
@@ -619,62 +628,79 @@ export const GoalSandbox: React.FC = () => {
   };
 
   // Scene Preset Loader
-  const handleLoadScene = (scene: ScenePreset) => {
-    if (!scene?.characters?.length) return;
+  const handleLoadScene = useCallback(
+    (scene: ScenePreset) => {
+      if (!scene?.characters?.length) return;
 
-    const resolvedChars = scene.characters
-      .map(id => resolveCharacterId(id))
-      .filter(Boolean) as string[];
+      // New scene session => reset all transient/override layers
+      resetTransientForNewScene(`loadScene:${scene.id}`);
 
-    const fallbackId = allCharacters[0]?.entityId || '';
-    const nextSelected = resolvedChars[0] || resolveCharacterId(scene.characters[0]) || fallbackId;
+      const resolvedChars = scene.characters
+        .map(id => resolveCharacterId(id))
+        .filter(Boolean) as string[];
 
-    const nextParticipants = new Set<string>(resolvedChars);
-    if (nextSelected) nextParticipants.add(nextSelected);
+      const fallbackId = allCharacters[0]?.entityId || '';
+      const nextSelected = resolvedChars[0] || resolveCharacterId(scene.characters[0]) || fallbackId;
 
-    setSceneParticipants(nextParticipants);
-    setSelectedAgentId(nextSelected);
-    setPerspectiveAgentId(nextSelected);
+      const nextParticipants = new Set<string>(resolvedChars);
+      if (nextSelected) nextParticipants.add(nextSelected);
 
-    if ((scene as any).configs) {
-      const resolvedCfgs: Record<string, DyadConfigForA> = {};
-      for (const [rawId, cfg] of Object.entries((scene as any).configs)) {
-        const rid = resolveCharacterId(rawId);
-        if (rid) resolvedCfgs[rid] = cfg as DyadConfigForA;
-      }
-      setRuntimeDyadConfigs(resolvedCfgs);
-    } else {
-      setRuntimeDyadConfigs(null);
-    }
+      setSceneParticipants(nextParticipants);
+      setSelectedAgentId(nextSelected);
+      setPerspectiveAgentId(nextSelected);
 
-    if ((scene as any).configs) {
-      Object.entries((scene as any).configs).forEach(([id, cfg]) => {
-        const rid = resolveCharacterId(id);
-        if (rid) setDyadConfigFor(rid, cfg as any);
-      });
-    }
-
-    if ((scene as any).locationId) {
-      setSelectedLocationId((scene as any).locationId);
+      // Location must be explicitly set from preset (otherwise it leaks from previous scene)
       setLocationMode('preset');
-    }
+      setSelectedLocationId(scene.locationId || '');
 
-    const sid = (scene as any).suggestedScenarioId;
-    if (sid) {
-      if (allScenarioDefs[sid]) {
-        setActiveScenarioId(sid);
-      } else {
-        // не ломаем worldState; просто сообщаем
-        setFatalError(`Preset scene requested unknown scenarioId: ${String(sid)}`);
+      // Scenario from preset
+      if (scene.suggestedScenarioId) {
+        if (allScenarioDefs[scene.suggestedScenarioId]) {
+          setActiveScenarioId(scene.suggestedScenarioId);
+        } else {
+          setFatalError(`Preset scene requested unknown scenarioId: ${String(scene.suggestedScenarioId)}`);
+        }
       }
-    }
 
-    const enginePreset = (scene as any).enginePresetId || 'safe_hub';
-    setSceneControl({ presetId: enginePreset, metrics: {}, norms: {} });
+      if ((scene as any).configs) {
+        const resolvedCfgs: Record<string, DyadConfigForA> = {};
+        for (const [rawId, cfg] of Object.entries((scene as any).configs)) {
+          const rid = resolveCharacterId(rawId);
+          if (rid) resolvedCfgs[rid] = cfg as DyadConfigForA;
+        }
+        setRuntimeDyadConfigs(resolvedCfgs);
+      } else {
+        setRuntimeDyadConfigs(null);
+      }
 
-    setActorPositions({});
-    forceRebuildWorld();
-  };
+      if ((scene as any).configs) {
+        Object.entries((scene as any).configs).forEach(([id, cfg]) => {
+          const rid = resolveCharacterId(id);
+          if (rid) setDyadConfigFor(rid, cfg as any);
+        });
+      }
+
+      const enginePreset = scene.enginePresetId || 'safe_hub';
+      setSceneControl({
+        presetId: enginePreset,
+        // Unique scene session id prevents any downstream caching collisions
+        sceneId: `scene_${scene.id}_${Date.now()}`,
+        metrics: {},
+        norms: {},
+      });
+
+      forceRebuildWorld();
+    },
+    [
+      allCharacters,
+      resolveCharacterId,
+      setDyadConfigFor,
+      resetTransientForNewScene,
+      setActiveScenarioId,
+      setSelectedLocationId,
+      forceRebuildWorld,
+    ]
+  );
 
   // Keep agents' locationId in sync with selected location
   useEffect(() => {

@@ -8,6 +8,7 @@ export function AtomInspector({ atom, allAtoms: _allAtoms }: { atom: ContextAtom
   const d = describeAtom(atom);
   const used = atom.trace?.usedAtomIds || [];
   const parts = atom.trace?.parts || null;
+  const isDerived = (atom as any).origin === 'derived';
 
   return (
     <div style={{ padding: 12, border: '1px solid rgba(255,255,255,0.12)', borderRadius: 10 }}>
@@ -40,7 +41,9 @@ export function AtomInspector({ atom, allAtoms: _allAtoms }: { atom: ContextAtom
               </ul>
             </>
           ) : (
-            <div style={{ marginTop: 6, opacity: 0.75 }}>Нет usedAtomIds (для derived это плохо — нужно добавить).</div>
+            isDerived
+              ? <div style={{ marginTop: 6, opacity: 0.75 }}>Нет usedAtomIds (для derived это плохо — нужно добавить).</div>
+              : <div style={{ marginTop: 6, opacity: 0.75 }}>usedAtomIds: —</div>
           )}
 
           {parts ? (

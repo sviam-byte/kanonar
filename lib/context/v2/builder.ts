@@ -31,8 +31,26 @@ function buildBasicAtoms(agent: AgentState, options: ContextBuildOptions): Conte
  * This ensures the Goal Engine (Domains) and Affect Engine (Summary) share reality.
  */
 function computeSummaryFromDomains(domains: Record<string, number>, atoms: ContextAtom[]): ContextSummary {
-    const getMax = (kind: string) => atoms.filter(a => a.kind === kind).reduce((max, a) => Math.max(max, a.magnitude || 0), 0);
-    const getAtomVal = (kind: string) => atoms.find(x => x.kind === kind)?.magnitude ?? 0;
+    const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
+    const maxByPrefix = (prefix: string, fb = 0) => {
+      let m = -1;
+      for (const a of atoms) {
+        const id = String((a as any)?.id ?? '');
+        if (!id.startsWith(prefix)) continue;
+        const v = (a as any)?.magnitude;
+        if (typeof v === 'number' && Number.isFinite(v)) m = Math.max(m, clamp01(v));
+      }
+      return m >= 0 ? m : fb;
+    };
+    const firstByPrefix = (prefix: string, fb = 0) => {
+      for (const a of atoms) {
+        const id = String((a as any)?.id ?? '');
+        if (!id.startsWith(prefix)) continue;
+        const v = (a as any)?.magnitude;
+        if (typeof v === 'number' && Number.isFinite(v)) return clamp01(v);
+      }
+      return fb;
+    };
 
     return {
         // Core mappings from Domains
@@ -43,15 +61,15 @@ function computeSummaryFromDomains(domains: Record<string, number>, atoms: Conte
         socialSupport: domains['care/help'] > 0 ? domains['care/help'] : (domains.attachment ?? 0),
         
         // Specific pass-throughs for things that don't map cleanly to the main 6 domains
-        resourceAvailability: 0.5, // Default
-        socialVisibility: getAtomVal('soc_publicness'), // Raw atom check
-        timePressure: getAtomVal('time_pressure'),
+        resourceAvailability: 1 - (domains.scarcity ?? 0),
+        socialVisibility: firstByPrefix('ctx:publicness:', 0.5),
+        timePressure: domains.timePressure ?? firstByPrefix('ctx:timePressure:', 0),
         
-        proximityAllies: getMax('proximity_friend'),
-        proximityEnemies: getMax('proximity_enemy'),
-        crowding: getAtomVal('soc_crowd_density') || getMax('crowding_pressure'),
-        
-        primaryTargetProximity: getMax('target_presence'),
+        proximityAllies: maxByPrefix('prox:friend:', 0),
+        proximityEnemies: maxByPrefix('prox:enemy:', 0),
+        crowding: firstByPrefix('ctx:crowd:', 0),
+
+        primaryTargetProximity: maxByPrefix('target_presence', 0),
         
         // Legacy/Derived
         threatLevel: domains.danger ?? 0,

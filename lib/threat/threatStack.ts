@@ -87,12 +87,23 @@ export function computeThreatStack(i: ThreatInputs, contextAtoms?: ContextAtom[]
       const selfId = (atoms.find(a => a.subject)?.subject as string) || 'unknown'; 
 
       // ---------- ENV ----------
+      const hazardProx = getMag(atoms, `world:map:hazardProximity:${selfId}`, 0);
+      const dangerSourceProx = getMag(atoms, `haz:dangerSourceProximity:${selfId}`, 0);
+
       const envDanger = Math.max(
           getMag(atoms, `world:map:danger:${selfId}`, 0),
           getMag(atoms, `world:env:hazard:${selfId}`, 0),
-          getMag(atoms, `ctx:danger:${selfId}`, 0)
+          getMag(atoms, `ctx:danger:${selfId}`, 0),
+          0.75 * hazardProx,
+          0.85 * dangerSourceProx
       );
-      usedAtomIds.push(`world:map:danger:${selfId}`, `world:env:hazard:${selfId}`, `ctx:danger:${selfId}`);
+      usedAtomIds.push(
+          `world:map:danger:${selfId}`,
+          `world:env:hazard:${selfId}`,
+          `ctx:danger:${selfId}`,
+          `world:map:hazardProximity:${selfId}`,
+          `haz:dangerSourceProximity:${selfId}`
+      );
       
       const visibility = getMag(atoms, `world:loc:visibility:${selfId}`, 0.6);
       usedAtomIds.push(`world:loc:visibility:${selfId}`);
