@@ -37,8 +37,8 @@ export const DEFAULT_COVERAGE_GROUPS: CoverageGroup[] = [
     groupId: 'map_local',
     title: 'Map / Local metrics',
     expectations: [
-      { id: 'cover', label: 'cover', anyOf: [{ prefix: 'world:map:cover:' }, { prefix: 'map:cover:' }, { prefix: 'local_best_cover' }], severity: 'warn' },
-      { id: 'escape', label: 'escape', anyOf: [{ prefix: 'world:map:escape:' }, { prefix: 'map:escape:' }, { prefix: 'nav_exit_nearby' }], severity: 'warn' },
+      { id: 'cover', label: 'cover', anyOf: [{ prefix: 'world:map:cover:' }, { prefix: 'map:cover:' }, { prefix: 'ctx:cover:' }, { prefix: 'local_best_cover' }], severity: 'warn' },
+      { id: 'escape', label: 'escape', anyOf: [{ prefix: 'world:map:escape:' }, { prefix: 'map:escape:' }, { prefix: 'ctx:escape:' }, { prefix: 'nav_exit_nearby' }], severity: 'warn' },
       { id: 'exits', label: 'exits count', anyOf: [{ prefix: 'world:map:exits:' }, { prefix: 'nav_exits_count' }], severity: 'info' },
       { id: 'visibility', label: 'visibility', anyOf: [{ prefix: 'world:map:visibility:' }, { prefix: 'env_visibility' }], severity: 'info' },
       { id: 'hazard', label: 'hazard/danger', anyOf: [{ prefix: 'world:env:hazard:' }, { prefix: 'env_hazard' }, { prefix: 'cell_hazard' }], severity: 'warn' }
@@ -59,7 +59,8 @@ export const DEFAULT_COVERAGE_GROUPS: CoverageGroup[] = [
     expectations: [
       { id: 'danger', label: 'ctx danger', anyOf: [{ prefix: 'ctx:danger:' }], severity: 'warn' },
       { id: 'uncertainty', label: 'ctx uncertainty', anyOf: [{ prefix: 'ctx:uncertainty:' }], severity: 'info' },
-      { id: 'hierarchy', label: 'ctx hierarchy', anyOf: [{ prefix: 'ctx:hierarchy:' }], severity: 'info' }
+      { id: 'hierarchy', label: 'ctx hierarchy', anyOf: [{ prefix: 'ctx:hierarchy:' }], severity: 'info' },
+      { id: 'proceduralStrict', label: 'ctx proceduralStrict', anyOf: [{ prefix: 'ctx:proceduralStrict:' }, { prefix: 'norm:proceduralStrict:' }, { prefix: 'ctx:src:norm:proceduralStrict:' }], severity: 'info' }
     ]
   },
   {

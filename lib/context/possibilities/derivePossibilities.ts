@@ -36,10 +36,10 @@ export function derivePossibilities(atoms: ContextAtom[], selfId: string): { pos
   const outAtoms: ContextAtom[] = [];
   const poss: Possibility[] = [];
   
-  const cover = getMag(atoms, 'ctx:cover', getMag(atoms, 'map_cover', 0));
-  const escape = getMag(atoms, 'ctx:escape', 0);
-  const publicness = getMag(atoms, 'ctx:publicness', 0);
-  const protocolStrict = getMag(atoms, 'ctx:proceduralStrict', 0);
+  const cover = getMag(atoms, `ctx:cover:${selfId}`, getMag(atoms, 'map_cover', 0));
+  const escape = getMag(atoms, `ctx:escape:${selfId}`, 0);
+  const publicness = getMag(atoms, `ctx:publicness:${selfId}`, 0);
+  const protocolStrict = getMag(atoms, `ctx:proceduralStrict:${selfId}`, 0);
 
   // constraints
   const noViolence = protocolStrict > 0.6 ? 1 : 0;
@@ -54,7 +54,7 @@ export function derivePossibilities(atoms: ContextAtom[], selfId: string): { pos
       confidence: 1,
       tags: ['con', 'protocol'],
       label: 'protocol forbids violence',
-      trace: { usedAtomIds: ['ctx:proceduralStrict'], notes: ['derived constraint'], parts: { protocolStrict } }
+      trace: { usedAtomIds: [`ctx:proceduralStrict:${selfId}`], notes: ['derived constraint'], parts: { protocolStrict } }
     } as any));
   }
 
@@ -67,7 +67,7 @@ export function derivePossibilities(atoms: ContextAtom[], selfId: string): { pos
     label: 'Hide (use cover)',
     magnitude: hideAvail,
     enabled: hideAvail > 0.1,
-    whyAtomIds: ['ctx:cover', 'map_cover'].filter(id => has(atoms, id))
+    whyAtomIds: [`ctx:cover:${selfId}`, 'map_cover'].filter(id => has(atoms, id))
   });
 
   // exit:escape (generic)
@@ -79,7 +79,7 @@ export function derivePossibilities(atoms: ContextAtom[], selfId: string): { pos
     label: 'Escape (exit routes)',
     magnitude: escapeAvail,
     enabled: escapeAvail > 0.1,
-    whyAtomIds: ['ctx:escape']
+    whyAtomIds: [`ctx:escape:${selfId}`]
   });
 
   // talk/help/share_secret/attack depend on nearby agents (obs:nearby:* ids)
@@ -137,7 +137,7 @@ export function derivePossibilities(atoms: ContextAtom[], selfId: string): { pos
       label: `Share secret with ${other}`,
       magnitude: secretOk ? clamp01(0.6 + 0.4 * closeness) : 0.05,
       enabled: secretOk && closeness > 0.2,
-      whyAtomIds: ['ctx:publicness', `rel:base:${selfId}:${other}:loyalty`].filter(id => has(atoms, id)),
+      whyAtomIds: [`ctx:publicness:${selfId}`, `rel:base:${selfId}:${other}:loyalty`].filter(id => has(atoms, id)),
       blockedBy: !secretOk ? ['con:context:noPrivacyOrTrust'] : []
     });
 

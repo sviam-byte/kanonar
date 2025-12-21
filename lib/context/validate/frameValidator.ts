@@ -10,13 +10,14 @@ function isNum(x: any): x is number {
   return typeof x === 'number' && Number.isFinite(x);
 }
 
-function getMag(atoms: ContextAtom[], id: string) {
-    // Exact match
-    let a = atoms.find(x => x.id === id);
-    if (a) return isNum(a.magnitude) ? a.magnitude : NaN;
-    
-    // Partial check for some known patterns if exact fails? No, strict.
-    return NaN;
+function getMag(atoms: ContextAtom[], idOrPrefix: string) {
+  // exact
+  const exact = atoms.find(x => x.id === idOrPrefix);
+  if (exact) return isNum(exact.magnitude) ? exact.magnitude : NaN;
+  // prefix fallback
+  const pref = atoms.find(x => x.id.startsWith(idOrPrefix));
+  if (pref) return isNum(pref.magnitude) ? pref.magnitude : NaN;
+  return NaN;
 }
 
 export function validateAtoms(atoms: ContextAtom[], opts?: { autofix?: boolean }): ValidationReport {
@@ -68,13 +69,29 @@ export function validateAtoms(atoms: ContextAtom[], opts?: { autofix?: boolean }
         if (!fixed[i].ns) fixed[i].ns = inferAtomNamespace(fixed[i]);
         if (!fixed[i].origin) fixed[i].origin = inferAtomOrigin(fixed[i].source, fixed[i].id);
     }
+
+    const ns = (a as any).ns;
+    const needsTrace = (a as any).origin === 'derived'
+      || ['ctx', 'threat', 'tom', 'poss', 'mind', 'soc'].includes(ns as any);
+    if (needsTrace) {
+      if (!a.trace) {
+        push('warn', 'trace.missing', 'Derived atom missing trace metadata', atomId);
+      } else {
+        if (!Array.isArray((a.trace as any).usedAtomIds) || (a.trace as any).usedAtomIds.length === 0) {
+          push('info', 'trace.used.empty', 'derived atom has empty usedAtomIds', atomId);
+        }
+        if ((a.trace as any).parts === undefined) {
+          push('info', 'trace.parts.missing', 'derived atom missing trace.parts', atomId);
+        }
+      }
+    }
   }
 
   // 2. Logic Consistency Checks
   
   // Escape vs Exits
-  const escape = atoms.find(a => a.id === 'ctx:escape')?.magnitude; // Simplified check
-  const exits = atoms.find(a => a.id.includes('nav_exits_count') || a.id.includes('map_exits'))?.magnitude;
+  const escape = getMag(atoms, 'world:map:escape:');
+  const exits = getMag(atoms, 'world:map:exits:');
   if (isNum(escape) && isNum(exits) && exits > 0.2 && escape < 0.05) {
       push('warn', 'logic.escape_mismatch', `High exit availability but low escape context`, 'ctx:escape', { escape, exits });
   }
@@ -87,9 +104,9 @@ export function validateAtoms(atoms: ContextAtom[], opts?: { autofix?: boolean }
   }
 
   // Surveillance vs Privacy
-  const surv = getMag(atoms, 'norm:surveillance');
+  const surv = getMag(atoms, 'ctx:surveillance:');
   // Privacy can be ctx:privacy or world:loc:privacy or inferred.
-  const priv = getMag(atoms, 'ctx:privacy') || getMag(atoms, 'world:loc:privacy');
+  const priv = getMag(atoms, 'ctx:privacy:') || getMag(atoms, 'world:loc:privacy:');
   if (isNum(surv) && isNum(priv) && surv > 0.7 && priv > 0.7) {
       push('info', 'logic.surv_privacy', `High surveillance and high privacy detected - check logic`, 'norm:surveillance');
   }

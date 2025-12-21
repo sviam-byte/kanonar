@@ -14,6 +14,14 @@ function getMag(atoms: ContextAtom[], id: string, fallback = 0) {
   return (typeof m === 'number' && Number.isFinite(m)) ? m : fallback;
 }
 
+function getCtxMag(atoms: ContextAtom[], selfId: string, axis: string, fallback = 0) {
+  return getMag(atoms, `ctx:${axis}:${selfId}`, getMag(atoms, `ctx:${axis}`, fallback));
+}
+
+function getThreatFinal(atoms: ContextAtom[], selfId: string, fallback = 0) {
+  return getMag(atoms, `threat:final:${selfId}`, getMag(atoms, 'threat:final', fallback));
+}
+
 function scalarize(v: CostVector, w?: Partial<CostVector>) {
   const ww = {
     time: w?.time ?? 0.20,
@@ -42,11 +50,11 @@ export function computeActionCost(args: {
   // Read inputs from context atoms (Stage0 + Derived)
   const fatigue = getMag(atoms, 'body:fatigue', getMag(atoms, 'self_fatigue', 0));
   const pain = getMag(atoms, 'body:pain', getMag(atoms, 'self_pain', 0));
-  const timePressure = getMag(atoms, 'ctx:timePressure', 0);
-  const publicness = getMag(atoms, 'ctx:publicness', 0);
-  const surveillance = getMag(atoms, 'norm:surveillance', 0);
-  const protocolStrict = getMag(atoms, 'ctx:proceduralStrict', 0);
-  const threat = getMag(atoms, 'threat:final', 0);
+  const timePressure = getCtxMag(atoms, selfId, 'timePressure', 0);
+  const publicness = getCtxMag(atoms, selfId, 'publicness', 0);
+  const surveillance = getMag(atoms, `norm:surveillance:${selfId}`, getMag(atoms, 'norm:surveillance', 0));
+  const protocolStrict = getCtxMag(atoms, selfId, 'proceduralStrict', 0);
+  const threat = getThreatFinal(atoms, selfId, 0);
 
   // Base costs
   let v: CostVector = { time: 0.2, energy: 0.2, social: 0.1, risk: 0.1, moral: 0.05 };
@@ -147,8 +155,22 @@ export function computeActionCost(args: {
     tags: ['cost', actionId],
     label: `cost ${actionId}=${Math.round(total * 100)}%`,
     trace: {
-      usedAtomIds: ['body:fatigue', 'self_fatigue', 'body:pain', 'self_pain', 'ctx:timePressure', 'ctx:publicness', 'norm:surveillance', 'ctx:proceduralStrict', 'threat:final']
-        .filter(x => atoms.some(a => a.id === x)),
+      usedAtomIds: [
+        'body:fatigue',
+        'self_fatigue',
+        'body:pain',
+        'self_pain',
+        `ctx:timePressure:${selfId}`,
+        'ctx:timePressure',
+        `ctx:publicness:${selfId}`,
+        'ctx:publicness',
+        `norm:surveillance:${selfId}`,
+        'norm:surveillance',
+        `ctx:proceduralStrict:${selfId}`,
+        'ctx:proceduralStrict',
+        `threat:final:${selfId}`,
+        'threat:final'
+      ].filter(x => atoms.some(a => a.id === x)),
       notes: ['computed by CostModel'],
       parts: { ...v, total, ...explain }
     },

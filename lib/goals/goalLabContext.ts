@@ -23,6 +23,7 @@ import { mergeEpistemicAtoms } from '../context/epistemic/mergeEpistemic';
 import { generateRumorBeliefs } from '../context/epistemic/rumorGenerator';
 import { buildBeliefToMBias } from '../tom/ctx/beliefBias';
 import { applyRelationPriorsToDyads } from '../tom/base/applyRelationPriors';
+import { buildSelfAliases } from '../context/v2/aliases';
 import { computeThreatStack } from '../threat/threatStack';
 import { derivePossibilitiesRegistry } from '../possibilities/derive';
 import { atomizePossibilities } from '../possibilities/atomize';
@@ -31,6 +32,7 @@ import { getLocationForAgent } from "../world/locations";
 import { decideAction } from '../decision/decide';
 import { computeContextMindScoreboard } from '../contextMind/scoreboard';
 import { atomizeContextMindMetrics } from '../contextMind/atomizeMind';
+import { deriveSocialProximityAtoms } from '../context/stage1/socialProximity';
 
 // Scene Engine
 import { SCENE_PRESETS } from '../scene/presets';
@@ -251,10 +253,22 @@ export function buildGoalLabContext(
         arousal,
         ctxCrowd,
         events: eventsAll,
-        sceneSnapshot: sceneSnapshotForStage0 
+        sceneSnapshot: sceneSnapshotForStage0
       });
 
-      const atomsPreAxes = stage0.mergedAtoms;
+      // Add compatibility aliases (ctx:danger -> ctx:danger:selfId, threat:final -> threat:final:selfId, ...)
+      const aliasAtoms = buildSelfAliases(stage0.mergedAtoms, selfId);
+      let atomsPreAxes = [...stage0.mergedAtoms, ...aliasAtoms];
+
+      // Социальные proximity-атомы: дружба/вражда рядом из (obs + tom + rel)
+      const socProx = deriveSocialProximityAtoms({ selfId, atoms: atomsPreAxes });
+      atomsPreAxes = mergeEpistemicAtoms({
+        world: atomsPreAxes,
+        obs: [],
+        belief: [],
+        override: [],
+        derived: socProx.atoms
+      }).merged;
 
       // 5. Derive Axes
       const axesRes = deriveContextVectors({

@@ -58,10 +58,10 @@ export function integrateAgentState(args: {
 
   // 2. Stress Integrator
   // Psychological stress load. Input: threat:final + lack of control
-  const threatFinal = getMag(atomsAfterAffect, 'threat:final', 0);
+  const threatFinal = getMag(atomsAfterAffect, `threat:final:${agent.entityId}`, getMag(atomsAfterAffect, 'threat:final', 0));
   // controllability usually stored in affect calculation or appraisal atoms
   // We approximate lack of control via uncertainty if specific atom missing
-  const uncertainty = getMag(atomsAfterAffect, 'ctx:uncertainty', 0.5);
+  const uncertainty = getMag(atomsAfterAffect, `ctx:uncertainty:${agent.entityId}`, getMag(atomsAfterAffect, 'ctx:uncertainty', 0.5));
   
   const stressTarget = clamp01(0.65 * threatFinal + 0.35 * uncertainty);
   agent.state.traces.stressLoad = clamp01(
@@ -80,8 +80,8 @@ export function integrateAgentState(args: {
 
   // 4. Trust Climate / Decay
   // Under high surveillance/publicness, general trust decays. In safe hubs, it recovers.
-  const surveillance = getMag(atomsAfterAffect, 'norm:surveillance', 0);
-  const publicness = getMag(atomsAfterAffect, 'ctx:publicness', 0);
+  const surveillance = getMag(atomsAfterAffect, `norm:surveillance:${agent.entityId}`, getMag(atomsAfterAffect, 'norm:surveillance', 0));
+  const publicness = getMag(atomsAfterAffect, `ctx:publicness:${agent.entityId}`, getMag(atomsAfterAffect, 'ctx:publicness', 0));
   // scene flags
   const isSafeHub = atomsAfterAffect.some(a => a.id === 'scene:mode:safeHub') ? 1 : 0;
   

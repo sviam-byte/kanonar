@@ -37,7 +37,7 @@ export function scorePossibility(args: {
   const { cost, parts, usedAtomIds } = computeActionCost({ selfId, atoms, p });
 
   // Basic preference: if threat high, prefer escape/hide
-  const threatFinal = get(atoms, `threat:final`, 0);
+  const threatFinal = get(atoms, `threat:final:${selfId}`, get(atoms, 'threat:final', 0));
   
   let pref = 0;
   if (p.id.startsWith('exit:escape')) pref += 0.35 * threatFinal;
@@ -45,7 +45,7 @@ export function scorePossibility(args: {
   if (p.id.startsWith('aff:talk')) pref += -0.10 * threatFinal;
 
   // Protocol: if strict, prefer talk over attack
-  const protocol = get(atoms, `scene:proceduralStrict:${selfId}`, get(atoms, `norm:proceduralStrict:${selfId}`, 0));
+  const protocol = get(atoms, `ctx:proceduralStrict:${selfId}`, get(atoms, `norm:proceduralStrict:${selfId}`, 0));
   if (p.id.startsWith('aff:talk')) pref += 0.15 * protocol;
   if (p.id.startsWith('aff:attack')) pref += -0.40 * protocol;
 

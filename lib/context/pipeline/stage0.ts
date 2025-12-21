@@ -21,6 +21,8 @@ import { atomizeRelBase } from '../../relations/atomize';
 import { buildWorldFactsAtoms } from './worldFacts';
 import { buildCharacterFeatures, buildLocationFeatures, buildSceneFeatures } from '../../features/registry';
 import { atomizeFeatures } from '../../features/atomize';
+import { extractLocationAtoms } from '../sources/locationAtoms';
+import { extractTomDyadAtoms } from '../sources/tomDyadAtoms';
 
 export type Stage0Input = {
   world: WorldState;
@@ -138,11 +140,32 @@ export function buildStage0Atoms(input: Stage0Input): Stage0Output {
       otherAgentIds: othersInLoc
   });
 
+  // Full location-derived facts: world:loc:* + world:map:* + world:env:hazard:* + world:map:escape:*
+  const locationAtoms = loc ? extractLocationAtoms({ selfId: input.selfId, location: loc }) : [];
+
   // 2. Relationship Layer (RelationBase)
   const relBase = extractRelBaseFromCharacter({ selfId: input.selfId, character: input.agent, tick });
   (input.agent as any).rel_base = relBase; 
   
   const relAtoms = atomizeRelBase(input.selfId, relBase);
+
+  const nearbyIds = obsAtoms
+    .filter(a => typeof a.id === 'string' && a.id.startsWith(`obs:nearby:${input.selfId}:`))
+    .map(a => String((a.id as string).split(':')[3] ?? ''))
+    .filter(id => id && id !== input.selfId);
+
+  const sceneIds = Array.isArray((sceneSnapshot as any)?.participants)
+    ? (sceneSnapshot as any).participants.map((x: any) => String(x?.entityId ?? x?.id ?? x)).filter(Boolean)
+    : [];
+
+  const otherAgentIds = Array.from(new Set([...nearbyIds, ...sceneIds])).filter(id => id !== input.selfId);
+
+  const { dyadAtoms: tomDyadAtoms, relHintAtoms: tomRelHints } = extractTomDyadAtoms({
+    world: input.world,
+    agent: input.agent,
+    selfId: input.selfId,
+    otherAgentIds
+  });
 
   // 3. Event Layer (Evidence)
   const worldEvents = input.events ?? ((input.world as any)?.eventLog?.events || []);
@@ -164,33 +187,48 @@ export function buildStage0Atoms(input: Stage0Input): Stage0Output {
   const traceAtoms = atomizeTraces(input.selfId, input.agent);
 
   // 7. Epistemic Merge
-  const worldAtomsPlus = [
-      ...worldFacts,
-      ...selfFeatAtoms,
-      ...locFeatAtoms,
-      ...scFeatAtoms,
-      ...(input.extraWorldAtoms || []),
-      ...relAtoms, 
-      ...eventAtoms, 
-      ...capAtoms, 
-      ...locAccessAtoms, 
-      ...traceAtoms,
-      ...obsAtoms // Merge observations as world facts for now (or obs layer if separate)
+  const atomsForAxes = [
+    ...worldFacts,
+    ...locationAtoms,
+    ...selfFeatAtoms,
+    ...locFeatAtoms,
+    ...scFeatAtoms,
+    ...(input.extraWorldAtoms || []),
+    ...relAtoms,
+    ...eventAtoms,
+    ...capAtoms,
+    ...locAccessAtoms,
+    ...traceAtoms,
+    ...obsAtoms
   ];
 
   // 8. Derive Context Axes Atoms (Strictly from canonical atoms)
   const ctxAtoms = deriveAxes({
       selfId: input.selfId,
-      atoms: worldAtomsPlus // Pass the accumulated atoms to derive axes
+      atoms: atomsForAxes // Pass the accumulated atoms to derive axes
   }).atoms;
 
+  // World layer: only facts (plus extras). Obs goes into obs layer. Ctx goes into derived layer.
+  const worldAtomsPlus = [
+      ...worldFacts,
+      ...locationAtoms,
+      ...selfFeatAtoms,
+      ...locFeatAtoms,
+      ...scFeatAtoms,
+      ...(input.extraWorldAtoms || []),
+      ...relAtoms,
+      ...eventAtoms,
+      ...capAtoms,
+      ...locAccessAtoms,
+      ...traceAtoms
+  ];
+
   const merged = mergeEpistemicAtoms({
-    world: [...worldAtomsPlus, ...ctxAtoms],
-    obs: [], // Obs already merged into worldAtomsPlus for derivation, or should be separate layer? 
-             // Using mergeEpistemicAtoms we can put them in 'obs' layer if we want
-             // But extractObservationAtoms returns ContextAtom[], simpler to concat.
-    belief: input.beliefAtoms || [],
-    override: input.overrideAtoms || []
+    world: worldAtomsPlus,
+    obs: obsAtoms,
+    belief: [...(input.beliefAtoms || []), ...tomDyadAtoms, ...tomRelHints],
+    override: input.overrideAtoms || [],
+    derived: ctxAtoms
   });
 
   return { 

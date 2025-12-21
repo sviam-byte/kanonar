@@ -9,6 +9,7 @@ type Props = {
   className?: string;
   selectedAtomId?: string | null;
   onSelectedAtomIdChange?: (id: string | null) => void;
+  renderDetails?: (atom: ContextAtom | null, atoms: ContextAtom[]) => React.ReactNode;
 };
 
 const NS_ORDER: AtomNamespace[] = ['obs','map','scene','norm','ctx','aff','threat','tom','rel','emo','goal','self','world','misc'];
@@ -20,7 +21,7 @@ function short(n: any): string {
   return String(n);
 }
 
-export const AtomBrowser: React.FC<Props> = ({ atoms, className, selectedAtomId, onSelectedAtomIdChange }) => {
+export const AtomBrowser: React.FC<Props> = ({ atoms, className, selectedAtomId, onSelectedAtomIdChange, renderDetails }) => {
   const [q, setQ] = useState('');
   const [nsFilter, setNsFilter] = useState<AtomNamespace | 'all'>('all');
   const [originFilter, setOriginFilter] = useState<AtomOrigin | 'all'>('all');
@@ -156,55 +157,57 @@ export const AtomBrowser: React.FC<Props> = ({ atoms, className, selectedAtomId,
 
         {/* Details */}
         <div className="min-h-0 overflow-auto custom-scrollbar bg-canon-bg-light/10">
-          {!selected ? (
-            <div className="p-8 text-xs text-canon-text-light text-center flex flex-col items-center gap-2 opacity-50">
-                <span className="text-2xl">⚛️</span>
-                Select an atom to inspect details.
-            </div>
-          ) : (
-            <div className="p-4 space-y-4">
-              <div className="border-b border-canon-border/50 pb-2">
-                  <h3 className="text-sm font-bold text-canon-text mb-1">{selected.label || selected.kind}</h3>
-                  <div className="text-[10px] font-mono text-canon-text-light select-all">{selected.id}</div>
+          {renderDetails ? renderDetails(selected, normalized) : (
+            !selected ? (
+              <div className="p-8 text-xs text-canon-text-light text-center flex flex-col items-center gap-2 opacity-50">
+                  <span className="text-2xl">⚛️</span>
+                  Select an atom to inspect details.
               </div>
+            ) : (
+              <div className="p-4 space-y-4">
+                <div className="border-b border-canon-border/50 pb-2">
+                    <h3 className="text-sm font-bold text-canon-text mb-1">{selected.label || selected.kind}</h3>
+                    <div className="text-[10px] font-mono text-canon-text-light select-all">{selected.id}</div>
+                </div>
 
-              <div className="flex flex-wrap gap-2 text-[10px]">
-                <span className="px-2 py-1 rounded bg-blue-900/30 text-blue-200 border border-blue-500/30">kind: {selected.kind}</span>
-                <span className="px-2 py-1 rounded bg-purple-900/30 text-purple-200 border border-purple-500/30">ns: {selected.ns}</span>
-                <span className="px-2 py-1 rounded bg-green-900/30 text-green-200 border border-green-500/30">origin: {selected.origin}</span>
-                <span className="px-2 py-1 rounded bg-gray-700/50 text-gray-300 border border-gray-500/30">source: {selected.source}</span>
-                {typeof selected.confidence === 'number' && (
-                  <span className="px-2 py-1 rounded bg-yellow-900/30 text-yellow-200 border border-yellow-500/30">conf: {Math.round(selected.confidence * 100)}%</span>
+                <div className="flex flex-wrap gap-2 text-[10px]">
+                  <span className="px-2 py-1 rounded bg-blue-900/30 text-blue-200 border border-blue-500/30">kind: {selected.kind}</span>
+                  <span className="px-2 py-1 rounded bg-purple-900/30 text-purple-200 border border-purple-500/30">ns: {selected.ns}</span>
+                  <span className="px-2 py-1 rounded bg-green-900/30 text-green-200 border border-green-500/30">origin: {selected.origin}</span>
+                  <span className="px-2 py-1 rounded bg-gray-700/50 text-gray-300 border border-gray-500/30">source: {selected.source}</span>
+                  {typeof selected.confidence === 'number' && (
+                    <span className="px-2 py-1 rounded bg-yellow-900/30 text-yellow-200 border border-yellow-500/30">conf: {Math.round(selected.confidence * 100)}%</span>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div className="p-2 rounded bg-canon-bg border border-canon-border">
+                    <div className="text-canon-text-light mb-1">Magnitude</div>
+                    <div className="font-mono text-lg font-bold text-canon-accent">{short(selected.magnitude)}</div>
+                  </div>
+                  <div className="p-2 rounded bg-canon-bg border border-canon-border">
+                    <div className="text-canon-text-light mb-1">Timestamp</div>
+                    <div className="font-mono text-canon-text">{short((selected as any).t ?? selected.timestamp ?? '')}</div>
+                  </div>
+                </div>
+
+                {selected.trace && (
+                  <div className="p-2 rounded bg-black/30 border border-canon-border/50">
+                    <div className="text-[10px] text-canon-text-light mb-1 uppercase font-bold tracking-wider">Trace (Derivation)</div>
+                    <pre className="text-[9px] font-mono text-green-400 overflow-x-auto whitespace-pre-wrap">
+                        {JSON.stringify(selected.trace, null, 2)}
+                    </pre>
+                  </div>
                 )}
-              </div>
 
-              <div className="grid grid-cols-2 gap-2 text-xs">
-                <div className="p-2 rounded bg-canon-bg border border-canon-border">
-                  <div className="text-canon-text-light mb-1">Magnitude</div>
-                  <div className="font-mono text-lg font-bold text-canon-accent">{short(selected.magnitude)}</div>
-                </div>
-                <div className="p-2 rounded bg-canon-bg border border-canon-border">
-                  <div className="text-canon-text-light mb-1">Timestamp</div>
-                  <div className="font-mono text-canon-text">{short((selected as any).t ?? selected.timestamp ?? '')}</div>
-                </div>
-              </div>
-              
-              {selected.trace && (
                 <div className="p-2 rounded bg-black/30 border border-canon-border/50">
-                  <div className="text-[10px] text-canon-text-light mb-1 uppercase font-bold tracking-wider">Trace (Derivation)</div>
-                  <pre className="text-[9px] font-mono text-green-400 overflow-x-auto whitespace-pre-wrap">
-                      {JSON.stringify(selected.trace, null, 2)}
+                  <div className="text-[10px] text-canon-text-light mb-1 uppercase font-bold tracking-wider">Raw JSON</div>
+                  <pre className="text-[9px] font-mono text-canon-text-light overflow-x-auto whitespace-pre-wrap select-all">
+                      {JSON.stringify(selected, null, 2)}
                   </pre>
                 </div>
-              )}
-
-              <div className="p-2 rounded bg-black/30 border border-canon-border/50">
-                <div className="text-[10px] text-canon-text-light mb-1 uppercase font-bold tracking-wider">Raw JSON</div>
-                <pre className="text-[9px] font-mono text-canon-text-light overflow-x-auto whitespace-pre-wrap select-all">
-                    {JSON.stringify(selected, null, 2)}
-                </pre>
               </div>
-            </div>
+            )
           )}
         </div>
       </div>
