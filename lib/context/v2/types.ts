@@ -68,6 +68,7 @@ export type AtomNamespace =
   | 'map'     // Grid, cells, navigation
   | 'norm'    // Norms, mandates
   | 'obs'     // Perception, nearby agents
+  | 'soc'     // Social proximity / social layer
   | 'self'    // Body, resources
   | 'profile' // Character traits, bio
   | 'ctx'     // High-level context axes (danger, intimacy)

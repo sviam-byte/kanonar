@@ -10,6 +10,12 @@ function clamp01(x: number) {
   return Math.max(0, Math.min(1, x));
 }
 
+function maxMag(atoms: ContextAtom[], pred: (a: ContextAtom) => boolean) {
+  let m = 0;
+  for (const a of atoms) if (pred(a)) m = Math.max(m, clamp01((a as any).magnitude ?? 0));
+  return m;
+}
+
 function getMag(atoms: ContextAtom[], id: string, fb = 0) {
   const a = atoms.find(x => x.id === id);
   const m = (a as any)?.magnitude;
@@ -105,6 +111,14 @@ export function computeContextMindScoreboard(args: {
   // trusted presence + offers help + high trust dyads (if you have tom:dyad:*:trust)
   const helpOfferIds = atoms.filter(a => a.id.startsWith('off:') && a.id.includes('help')).map(a => a.id);
 
+  const allyNearIds = atoms
+    .filter(a => a.id.startsWith(`tom:trusted_ally_near:${selfId}:`) || a.id.startsWith(`soc:support_near:${selfId}:`))
+    .map(a => a.id);
+  const allyNear = Math.max(
+    maxMag(atoms, a => typeof a.id === 'string' && a.id.startsWith(`tom:trusted_ally_near:${selfId}:`)),
+    maxMag(atoms, a => typeof a.id === 'string' && a.id.startsWith(`soc:support_near:${selfId}:`)),
+  );
+
   // NEW: explicit social atoms (nearby support/threat)
   const socSupportIds = atoms
     .filter(a => a.id.startsWith(`${SOC_SUPPORT_PREFIX}${selfId}:`))
@@ -149,6 +163,9 @@ export function computeContextMindScoreboard(args: {
       ...(socThreatIds.slice(0, 6)),
     ];
   }
+
+  support = clamp01(Math.max(support, allyNear));
+  supportUsed = Array.from(new Set([...supportUsed, ...allyNearIds.slice(0, 6)]));
 
   // ---------- CROWD ----------
   // Canonical ID first, legacy fallback

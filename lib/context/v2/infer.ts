@@ -13,6 +13,9 @@ export function inferAtomNamespace(atom: Pick<ContextAtom, 'kind' | 'id' | 'sour
   const s = atom.source;
   const tags = atom.tags || [];
 
+  if (id.startsWith('soc:') || id.startsWith('prox:')) return 'soc';
+  if (tags.includes('social') || tags.includes('proximity')) return 'soc';
+
   if (tags.includes('obs')) return 'obs';
   if (tags.includes('map')) return 'map';
   if (tags.includes('scene')) return 'scene';
@@ -37,6 +40,8 @@ export function inferAtomNamespace(atom: Pick<ContextAtom, 'kind' | 'id' | 'sour
   if (id.startsWith('target_presence:')) return 'obs';
   if (id.startsWith('ctx:')) return 'ctx';
   if (id.startsWith('rel:')) return 'rel';
+
+  if (k.startsWith('soc_')) return 'soc';
 
   if (s === 'map') return 'map';
   if (s === 'where') return 'scene';

@@ -91,6 +91,16 @@ export const ATOM_SPECS: AtomSpec[] = [
     tags: ['tom','dyad']
   },
   {
+    specId: 'tom.dyad.threat',
+    idPattern: /^tom:dyad:(?<selfId>[a-zA-Z0-9_-]+):(?<otherId>[a-zA-Z0-9_-]+):threat$/,
+    title: p => `ToM: угроза от ${p.otherId}`,
+    meaning: p => `Сводная оценка угрозы/конфликтности со стороны ${p.otherId} для ${p.selfId} (из ToM).`,
+    scale: { min: 0, max: 1, lowMeans: 'не опасен', highMeans: 'очень опасен' },
+    producedBy: ['lib/context/sources/tomDyadAtoms.ts'],
+    consumedBy: ['lib/threat/*', 'lib/context/stage1/socialProximity.ts'],
+    tags: ['tom','dyad']
+  },
+  {
     specId: 'tom.dyad.metric.generic',
     idPattern: /^tom:dyad:(?<selfId>[a-zA-Z0-9_-]+):(?<otherId>[a-zA-Z0-9_-]+):(?<metric>[a-zA-Z0-9_-]+)$/,
     title: p => `ToM dyad: ${p.metric} к ${p.otherId}`,
@@ -110,9 +120,21 @@ export const ATOM_SPECS: AtomSpec[] = [
     specId: 'rel.tag',
     idPattern: /^rel:tag:(?<selfId>[a-zA-Z0-9_-]+):(?<otherId>[a-zA-Z0-9_-]+):(?<tag>[a-zA-Z0-9_-]+)$/,
     title: p => `Отношение: ${p.tag} (${p.otherId})`,
-    meaning: p => `Устойчивый тег отношения ${p.selfId}→${p.otherId}: "${p.tag}".`,
+    meaning: p => `Дискретный социальный тег “${p.tag}” от ${p.selfId} к ${p.otherId}. Обычно 0/1 с confidence.`,
+    scale: { min: 0, max: 1, lowMeans: 'нет тега', highMeans: 'тег активен' },
+    producedBy: ['lib/context/sources/tomDyadAtoms.ts', 'lib/rel/*'],
+    consumedBy: ['lib/tom/*', 'lib/context/stage1/socialProximity.ts'],
+    tags: ['rel','tag']
+  },
+  {
+    specId: 'prox.friend',
+    idPattern: /^prox:friend:(?<selfId>[a-zA-Z0-9_-]+):(?<otherId>[a-zA-Z0-9_-]+)$/,
+    title: p => `Proximity: друг рядом (${p.otherId})`,
+    meaning: p => `Флаг “${p.otherId} рядом и он friend/ally по rel/tag или ToM”.`,
     scale: { min: 0, max: 1, lowMeans: 'нет', highMeans: 'да' },
-    tags: ['rel']
+    producedBy: ['lib/context/stage1/socialProximity.ts'],
+    consumedBy: ['lib/contextMind/*', 'lib/threat/*', 'lib/decision/*'],
+    tags: ['soc','proximity']
   },
   {
     specId: 'prox.generic',
@@ -129,6 +151,36 @@ export const ATOM_SPECS: AtomSpec[] = [
     meaning: p => `Социальный вклад от ${p.otherId} рядом с ${p.selfId}: ${p.kind}. Обычно собирается из obs:nearby + tom:dyad + rel:tag.`,
     scale: { min: 0, max: 1, lowMeans: 'нет', highMeans: 'сильно' },
     tags: ['soc']
+  },
+  {
+    specId: 'soc.support_threat_near',
+    idPattern: /^soc:(?<kind>support|threat)_near:(?<selfId>[a-zA-Z0-9_-]+):(?<otherId>[a-zA-Z0-9_-]+)$/,
+    title: p => `Социально: ${p.kind === 'support' ? 'поддержка' : 'угроза'} рядом (${p.otherId})`,
+    meaning: p => `Сигнал “${p.kind} прямо рядом” от ${p.otherId} к ${p.selfId}: близость × оценка ToM.`,
+    scale: { min: 0, max: 1, lowMeans: 'нет', highMeans: 'сильно' },
+    tags: ['soc','proximity']
+  },
+  {
+    specId: 'tom.trusted_ally_near',
+    idPattern: /^tom:trusted_ally_near:(?<selfId>[a-zA-Z0-9_-]+):(?<otherId>[a-zA-Z0-9_-]+)$/,
+    title: p => `Поддержка рядом: ${p.otherId}`,
+    meaning: p => `Нормализованный сигнал “рядом союзник”: близость (obs:nearby) × доверие (tom:dyad:*:trust).`,
+    scale: { min: 0, max: 1, lowMeans: 'поддержки рядом нет', highMeans: 'сильная поддержка рядом' },
+    formula: _p => `nearby(self,other) * trust(self→other)`,
+    producedBy: ['lib/context/stage1/socialProximity.ts'],
+    consumedBy: ['lib/contextMind/scoreboard.ts', 'lib/decision/*'],
+    tags: ['soc','tom']
+  },
+  {
+    specId: 'tom.threatening_other_near',
+    idPattern: /^tom:threatening_other_near:(?<selfId>[a-zA-Z0-9_-]+):(?<otherId>[a-zA-Z0-9_-]+)$/,
+    title: p => `Опасный рядом: ${p.otherId}`,
+    meaning: p => `Нормализованный сигнал “угроза рядом”: близость × (угроза/конфликт из ToM).`,
+    scale: { min: 0, max: 1, lowMeans: 'опасных рядом нет', highMeans: 'опасный очень близко' },
+    formula: _p => `nearby(self,other) * threat(self←other)`,
+    producedBy: ['lib/context/stage1/socialProximity.ts'],
+    consumedBy: ['lib/threat/*', 'lib/decision/*'],
+    tags: ['soc','tom']
   },
   {
     specId: 'threat.final',

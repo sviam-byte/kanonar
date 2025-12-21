@@ -12,7 +12,7 @@ type Props = {
   renderDetails?: (atom: ContextAtom | null, atoms: ContextAtom[]) => React.ReactNode;
 };
 
-const NS_ORDER: AtomNamespace[] = ['obs','map','scene','norm','ctx','aff','threat','tom','rel','emo','goal','self','world','misc'];
+const NS_ORDER: AtomNamespace[] = ['obs','map','scene','norm','ctx','soc','aff','threat','tom','rel','emo','goal','self','world','misc'];
 const ORIGIN_ORDER: AtomOrigin[] = ['world','scene','obs','self','profile','override','derived','belief','memory'];
 
 function short(n: any): string {

@@ -79,12 +79,24 @@ export function deriveSocialProximityAtoms(args: { selfId: string; atoms: Contex
       out.push(
         mk('soc', 'social_support', `soc:support:${selfId}:${otherId}`, selfId, otherId, close * trust, { close, trust, threat, friend: true }, used),
       );
+      out.push(
+        mk('soc', 'tom_trusted_ally_near', `tom:trusted_ally_near:${selfId}:${otherId}`, selfId, otherId, close * trust, { close, trust, threat, friend: true }, used),
+      );
+      out.push(
+        mk('soc', 'social_support_near', `soc:support_near:${selfId}:${otherId}`, selfId, otherId, close * trust, { close, trust, threat, friend: true }, used),
+      );
     } else if (enemy) {
       out.push(
         mk('map', 'proximity_enemy', `prox:enemy:${selfId}:${otherId}`, selfId, otherId, close, { close, trust, threat }, used),
       );
       out.push(
         mk('soc', 'social_threat', `soc:threat:${selfId}:${otherId}`, selfId, otherId, close * threat, { close, trust, threat, enemy: true }, used),
+      );
+      out.push(
+        mk('soc', 'tom_threatening_other_near', `tom:threatening_other_near:${selfId}:${otherId}`, selfId, otherId, close * threat, { close, trust, threat, enemy: true }, used),
+      );
+      out.push(
+        mk('soc', 'social_threat_near', `soc:threat_near:${selfId}:${otherId}`, selfId, otherId, close * threat, { close, trust, threat, enemy: true }, used),
       );
     } else if (neutral) {
       out.push(

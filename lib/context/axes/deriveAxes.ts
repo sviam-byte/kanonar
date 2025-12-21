@@ -216,6 +216,7 @@ export type DeriveAxesResult = {
   raw: ContextAxesVector;
   tuned: ContextAxesVector;
   atomsUsed: Partial<Record<ContextSignalId, { value: number; confidence?: number; from: string }>>;
+  atoms: ContextAtom[];
   tuningApplied?: ContextTuning;
 };
 
@@ -229,7 +230,7 @@ export function deriveContextVectors(args: {
   const { atoms, tuning } = args;
   const raw = defaultAxes();
   const atomsUsed: DeriveAxesResult['atomsUsed'] = {};
-  const idx = buildAtomIndex(atoms ?? null);
+  const srcAtoms = atoms ?? [];
 
   // Look for the specific atoms derived by `deriveAxes` (atom generator)
   // We assume selfId is embedded in atom IDs or we search by prefix/kind if needed.
@@ -261,7 +262,43 @@ export function deriveContextVectors(args: {
   // Note: we can detect isFormal/isPrivate from atoms too now if needed
   const tuned = applyTuning(raw, tuning ?? null);
 
-  return { raw, tuned, atomsUsed, tuningApplied: tuning ?? undefined };
+  // Infer selfId from any ctx:* atom id (ctx:axis:self)
+  let selfId = '';
+  for (const a of srcAtoms) {
+    const id = String((a as any)?.id ?? '');
+    if (id.startsWith('ctx:')) {
+      const parts = id.split(':');
+      if (parts.length >= 3 && parts[2]) {
+        selfId = parts[2];
+        break;
+      }
+    }
+  }
+
+  const outAtoms: ContextAtom[] = [];
+  if (selfId) {
+    for (const k of Object.keys(tuned)) {
+      const id = `ctx:${k}:${selfId}`;
+      const from = (atomsUsed as any)[`ctx_${k}`]?.from || id;
+      outAtoms.push({
+        id,
+        ns: 'ctx',
+        kind: 'ctx_axis_tuned',
+        origin: 'derived',
+        source: 'deriveContextVectors',
+        magnitude: clamp01((tuned as any)[k]),
+        confidence: 1,
+        tags: ['ctx', 'axis', 'tuned'],
+        trace: {
+          usedAtomIds: [String(from)],
+          parts: { raw: (raw as any)[k], tuned: (tuned as any)[k], tuning },
+        },
+        label: `${k}:${Math.round(clamp01((tuned as any)[k]) * 100)}%`
+      } as any);
+    }
+  }
+
+  return { raw, tuned, atomsUsed, atoms: outAtoms, tuningApplied: tuning ?? undefined };
 }
 
 // Deprecated export for backward compatibility if needed, though replaced
