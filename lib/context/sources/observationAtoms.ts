@@ -6,16 +6,28 @@ function clamp01(x: number) {
   if (!Number.isFinite(x)) return 0;
   return Math.max(0, Math.min(1, x));
 }
-function atom(id: string, magnitude: number, confidence: number, meta: any = {}): ContextAtom {
+
+function atom(args: {
+  id: string;
+  magnitude: number;
+  subject?: string;
+  target?: string;
+  meta?: any;
+  label?: string;
+  confidence?: number;
+}): ContextAtom {
   return {
-    id,
+    id: args.id,
     ns: 'obs',
     kind: 'observation',
     origin: 'obs',
     source: 'observationExtractor',
-    magnitude: clamp01(magnitude),
-    confidence: clamp01(confidence),
-    meta
+    magnitude: clamp01(args.magnitude),
+    confidence: clamp01(args.confidence ?? 1),
+    subject: args.subject,
+    target: args.target,
+    label: args.label,
+    meta: args.meta
   } as any;
 }
 
@@ -122,10 +134,34 @@ export function extractObservationAtoms(args: {
     // confidence: combine sensory channels
     const conf = clamp01(Math.max(los, aud) * (0.75 + 0.25 * close));
 
-    // observation atoms
-    out.push(atom(`obs:nearby:${selfId}:${otherId}`, close, conf, { dist }));
-    out.push(atom(`obs:los:${selfId}:${otherId}`, los, clamp01(los), { dist }));
-    out.push(atom(`obs:audio:${selfId}:${otherId}`, aud, clamp01(aud), { dist }));
+    // observation atoms with subject/target for compatibility
+    out.push(atom({
+      id: `obs:nearby:${selfId}:${otherId}`,
+      magnitude: close,
+      confidence: conf,
+      subject: selfId,
+      target: otherId,
+      meta: { dist },
+      label: `near:${Math.round(close * 100)}%`
+    }));
+    out.push(atom({
+      id: `obs:los:${selfId}:${otherId}`,
+      magnitude: los,
+      confidence: clamp01(los),
+      subject: selfId,
+      target: otherId,
+      meta: { dist },
+      label: `los:${Math.round(los * 100)}%`
+    }));
+    out.push(atom({
+      id: `obs:audio:${selfId}:${otherId}`,
+      magnitude: aud,
+      confidence: clamp01(aud),
+      subject: selfId,
+      target: otherId,
+      meta: { dist },
+      label: `aud:${Math.round(aud * 100)}%`
+    }));
 
     // summary for infoAdequacy
     infoAdequacyAccum += clamp01(0.6 * los + 0.4 * aud);
@@ -138,8 +174,13 @@ export function extractObservationAtoms(args: {
   const socialQuality = infoAdequacyCount ? clamp01(infoAdequacyAccum / infoAdequacyCount) : envQuality;
   const infoAdequacy = clamp01(0.7 * envQuality + 0.3 * socialQuality);
 
-  out.push(atom(`obs:infoAdequacy:${selfId}`, infoAdequacy, 1, {
-    envQuality, socialQuality, visibility, noise, crowd
+  out.push(atom({
+    id: `obs:infoAdequacy:${selfId}`,
+    magnitude: infoAdequacy,
+    confidence: 1,
+    subject: selfId,
+    meta: { envQuality, socialQuality, visibility, noise, crowd },
+    label: `infoAdequacy:${Math.round(infoAdequacy * 100)}%`
   }));
 
   return out;

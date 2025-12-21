@@ -69,7 +69,11 @@ export function deriveAxes(args: { selfId: string; atoms: ContextAtom[]; tuning?
   const normProceduralStrict = get(atoms, `ctx:src:norm:proceduralStrict:${selfId}`, 0);
 
   const cover = get(atoms, `world:map:cover:${selfId}`, 0);
-  const escape = get(atoms, `world:map:escape:${selfId}`, 0);
+  // escape может отсутствовать, тогда берём exits как прокси (если есть)
+  const exits = get(atoms, `world:map:exits:${selfId}`, NaN);
+  const escape = Number.isFinite(exits)
+    ? clamp01(Math.max(get(atoms, `world:map:escape:${selfId}`, 0), exits))
+    : get(atoms, `world:map:escape:${selfId}`, 0);
   const danger = Math.max(
     get(atoms, `world:map:danger:${selfId}`, 0),
     get(atoms, `world:env:hazard:${selfId}`, 0)
@@ -99,6 +103,13 @@ export function deriveAxes(args: { selfId: string; atoms: ContextAtom[]; tuning?
   const ctxScarcity = clamp01(0.75 * scScarcity + 0.25 * (1 - scResourceAccess));
   const ctxGrief = clamp01(scLoss);
 
+  // legitimacy: насколько “режим/правила” воспринимаются законными и устойчивыми
+  // proxy: меньше хаоса + выше процедурная строгость + (немного) контроль как "работающие институты"
+  const ctxLegitimacy = clamp01(0.45 * (1 - scChaos) + 0.35 * normProceduralStrict + 0.20 * control);
+
+  // secrecy: насколько опасно “светиться/говорить” (наблюдаемость+публичность+угроза+низкая приватность)
+  const ctxSecrecy = clamp01(0.35 * surveillance + 0.20 * publicness + 0.25 * scThreat + 0.20 * (1 - privacy));
+
   // Pain (ctx:pain) from feature if available
   const featPain = get(atoms, `feat:char:${selfId}:body.pain`, 0);
 
@@ -106,10 +117,6 @@ export function deriveAxes(args: { selfId: string; atoms: ContextAtom[]; tuning?
   const ctxProceduralStrict = clamp01(normProceduralStrict);
   const ctxCover = clamp01(cover);
   const ctxEscape = clamp01(escape);
-
-  // Legitimacy/Secrecy heuristics (until richer institutional model lands)
-  const ctxLegitimacy = clamp01(0.60 * ctxProceduralStrict + 0.20 * hierarchy + 0.20 * (1 - scChaos));
-  const ctxSecrecy = clamp01(0.55 * privacy + 0.25 * (1 - surveillance) + 0.20 * (1 - publicness));
   
   const used = [
     `world:loc:privacy:${selfId}`,
@@ -132,6 +139,7 @@ export function deriveAxes(args: { selfId: string; atoms: ContextAtom[]; tuning?
     `ctx:src:norm:proceduralStrict:${selfId}`,
     `world:map:cover:${selfId}`,
     `world:map:escape:${selfId}`,
+    `world:map:exits:${selfId}`,
     `world:map:danger:${selfId}`,
     `world:env:hazard:${selfId}`,
     `obs:infoAdequacy:${selfId}`,

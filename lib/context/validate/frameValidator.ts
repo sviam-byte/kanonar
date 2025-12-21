@@ -10,13 +10,14 @@ function isNum(x: any): x is number {
   return typeof x === 'number' && Number.isFinite(x);
 }
 
-function getMag(atoms: ContextAtom[], id: string) {
-    // Exact match
-    let a = atoms.find(x => x.id === id);
-    if (a) return isNum(a.magnitude) ? a.magnitude : NaN;
-    
-    // Partial check for some known patterns if exact fails? No, strict.
-    return NaN;
+function getMag(atoms: ContextAtom[], idOrPrefix: string) {
+  // exact
+  const exact = atoms.find(x => x.id === idOrPrefix);
+  if (exact) return isNum(exact.magnitude) ? exact.magnitude : NaN;
+  // prefix fallback
+  const pref = atoms.find(x => x.id.startsWith(idOrPrefix));
+  if (pref) return isNum(pref.magnitude) ? pref.magnitude : NaN;
+  return NaN;
 }
 
 export function validateAtoms(atoms: ContextAtom[], opts?: { autofix?: boolean }): ValidationReport {
@@ -73,8 +74,8 @@ export function validateAtoms(atoms: ContextAtom[], opts?: { autofix?: boolean }
   // 2. Logic Consistency Checks
   
   // Escape vs Exits
-  const escape = atoms.find(a => a.id === 'ctx:escape')?.magnitude; // Simplified check
-  const exits = atoms.find(a => a.id.includes('nav_exits_count') || a.id.includes('map_exits'))?.magnitude;
+  const escape = getMag(atoms, 'world:map:escape:');
+  const exits = getMag(atoms, 'world:map:exits:');
   if (isNum(escape) && isNum(exits) && exits > 0.2 && escape < 0.05) {
       push('warn', 'logic.escape_mismatch', `High exit availability but low escape context`, 'ctx:escape', { escape, exits });
   }
@@ -87,9 +88,9 @@ export function validateAtoms(atoms: ContextAtom[], opts?: { autofix?: boolean }
   }
 
   // Surveillance vs Privacy
-  const surv = getMag(atoms, 'norm:surveillance');
+  const surv = getMag(atoms, 'ctx:surveillance:');
   // Privacy can be ctx:privacy or world:loc:privacy or inferred.
-  const priv = getMag(atoms, 'ctx:privacy') || getMag(atoms, 'world:loc:privacy');
+  const priv = getMag(atoms, 'ctx:privacy:') || getMag(atoms, 'world:loc:privacy:');
   if (isNum(surv) && isNum(priv) && surv > 0.7 && priv > 0.7) {
       push('info', 'logic.surv_privacy', `High surveillance and high privacy detected - check logic`, 'norm:surveillance');
   }

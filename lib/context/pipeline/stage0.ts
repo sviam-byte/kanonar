@@ -21,6 +21,7 @@ import { atomizeRelBase } from '../../relations/atomize';
 import { buildWorldFactsAtoms } from './worldFacts';
 import { buildCharacterFeatures, buildLocationFeatures, buildSceneFeatures } from '../../features/registry';
 import { atomizeFeatures } from '../../features/atomize';
+import { extractLocationAtoms } from '../sources/locationAtoms';
 
 export type Stage0Input = {
   world: WorldState;
@@ -138,6 +139,9 @@ export function buildStage0Atoms(input: Stage0Input): Stage0Output {
       otherAgentIds: othersInLoc
   });
 
+  // Full location-derived facts: world:loc:* + world:map:* + world:env:hazard:* + world:map:escape:*
+  const locationAtoms = loc ? extractLocationAtoms({ selfId: input.selfId, location: loc }) : [];
+
   // 2. Relationship Layer (RelationBase)
   const relBase = extractRelBaseFromCharacter({ selfId: input.selfId, character: input.agent, tick });
   (input.agent as any).rel_base = relBase; 
@@ -164,33 +168,48 @@ export function buildStage0Atoms(input: Stage0Input): Stage0Output {
   const traceAtoms = atomizeTraces(input.selfId, input.agent);
 
   // 7. Epistemic Merge
-  const worldAtomsPlus = [
-      ...worldFacts,
-      ...selfFeatAtoms,
-      ...locFeatAtoms,
-      ...scFeatAtoms,
-      ...(input.extraWorldAtoms || []),
-      ...relAtoms, 
-      ...eventAtoms, 
-      ...capAtoms, 
-      ...locAccessAtoms, 
-      ...traceAtoms,
-      ...obsAtoms // Merge observations as world facts for now (or obs layer if separate)
+  const atomsForAxes = [
+    ...worldFacts,
+    ...locationAtoms,
+    ...selfFeatAtoms,
+    ...locFeatAtoms,
+    ...scFeatAtoms,
+    ...(input.extraWorldAtoms || []),
+    ...relAtoms,
+    ...eventAtoms,
+    ...capAtoms,
+    ...locAccessAtoms,
+    ...traceAtoms,
+    ...obsAtoms
   ];
 
   // 8. Derive Context Axes Atoms (Strictly from canonical atoms)
   const ctxAtoms = deriveAxes({
       selfId: input.selfId,
-      atoms: worldAtomsPlus // Pass the accumulated atoms to derive axes
+      atoms: atomsForAxes // Pass the accumulated atoms to derive axes
   }).atoms;
 
+  // World layer: only facts (plus extras). Obs goes into obs layer. Ctx goes into derived layer.
+  const worldAtomsPlus = [
+      ...worldFacts,
+      ...locationAtoms,
+      ...selfFeatAtoms,
+      ...locFeatAtoms,
+      ...scFeatAtoms,
+      ...(input.extraWorldAtoms || []),
+      ...relAtoms,
+      ...eventAtoms,
+      ...capAtoms,
+      ...locAccessAtoms,
+      ...traceAtoms
+  ];
+
   const merged = mergeEpistemicAtoms({
-    world: [...worldAtomsPlus, ...ctxAtoms],
-    obs: [], // Obs already merged into worldAtomsPlus for derivation, or should be separate layer? 
-             // Using mergeEpistemicAtoms we can put them in 'obs' layer if we want
-             // But extractObservationAtoms returns ContextAtom[], simpler to concat.
+    world: worldAtomsPlus,
+    obs: obsAtoms,
     belief: input.beliefAtoms || [],
-    override: input.overrideAtoms || []
+    override: input.overrideAtoms || [],
+    derived: ctxAtoms
   });
 
   return { 

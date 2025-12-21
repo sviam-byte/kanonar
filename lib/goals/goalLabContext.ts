@@ -23,6 +23,7 @@ import { mergeEpistemicAtoms } from '../context/epistemic/mergeEpistemic';
 import { generateRumorBeliefs } from '../context/epistemic/rumorGenerator';
 import { buildBeliefToMBias } from '../tom/ctx/beliefBias';
 import { applyRelationPriorsToDyads } from '../tom/base/applyRelationPriors';
+import { buildSelfAliases } from '../context/v2/aliases';
 import { computeThreatStack } from '../threat/threatStack';
 import { derivePossibilitiesRegistry } from '../possibilities/derive';
 import { atomizePossibilities } from '../possibilities/atomize';
@@ -254,7 +255,9 @@ export function buildGoalLabContext(
         sceneSnapshot: sceneSnapshotForStage0 
       });
 
-      const atomsPreAxes = stage0.mergedAtoms;
+      // Add compatibility aliases (ctx:danger -> ctx:danger:selfId, threat:final -> threat:final:selfId, ...)
+      const aliasAtoms = buildSelfAliases(stage0.mergedAtoms, selfId);
+      const atomsPreAxes = [...stage0.mergedAtoms, ...aliasAtoms];
 
       // 5. Derive Axes
       const axesRes = deriveContextVectors({
