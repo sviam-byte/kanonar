@@ -492,7 +492,7 @@ export const HomeostasisData = {
   homeostasisNarrativeText,
 } as const;
 
-export default function HomeostasisProtocolPage() {
+export function NarrativePage() {
   // Держим всё детерминированно: любые derived-данные — из одного места.
   const data = useMemo(() => HomeostasisData, []);
 
@@ -549,3 +549,5 @@ export default function HomeostasisProtocolPage() {
     </div>
   );
 }
+
+export default NarrativePage;
