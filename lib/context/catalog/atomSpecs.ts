@@ -51,6 +51,18 @@ function matchPattern(id: string, re: RegExp): Record<string, string> | null {
 // Основные спеки (ядро). Дальше расширяется.
 export const ATOM_SPECS: AtomSpec[] = [
   {
+    specId: 'world.location.ref',
+    idPattern: /^world:location:(?<selfId>[a-zA-Z0-9_-]+)$/,
+    title: p => `Мир: текущая локация (${p.selfId})`,
+    meaning: p =>
+      `Ссылочный атом: где находится агент ${p.selfId} в текущем тике. ` +
+      `magnitude всегда 1, а конкретный locationId хранится в atom.target / atom.meta.locationId и в label.`,
+    scale: { min: 0, max: 1, lowMeans: 'не используется', highMeans: 'активно' },
+    producedBy: ['lib/context/pipeline/worldFacts.ts'],
+    consumedBy: ['lib/context/sources/locationAtoms.ts', 'lib/context/pipeline/stage0.ts'],
+    tags: ['world','location']
+  },
+  {
     specId: 'ctx.axis',
     idPattern: /^ctx:(?<axis>[a-zA-Z0-9_-]+):(?<selfId>[a-zA-Z0-9_-]+)(?::(?<otherId>[a-zA-Z0-9_-]+))?$/,
     title: p => `Контекст: ${(AXIS_RU[p.axis]?.title ?? p.axis)}${p.otherId ? ` (${p.otherId})` : ''}`,
