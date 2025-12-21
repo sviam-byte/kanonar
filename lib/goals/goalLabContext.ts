@@ -272,6 +272,7 @@ export function buildGoalLabContext(
 
       // 5. Derive Axes
       const axesRes = deriveContextVectors({
+          selfId,
           atoms: atomsPreAxes,
           tuning: (frame?.what?.contextTuning || (world.scene as any)?.contextTuning)
       });
