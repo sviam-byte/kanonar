@@ -101,11 +101,14 @@ export const ATOM_SPECS: AtomSpec[] = [
     tags: ['tom','dyad']
   },
   {
-    specId: 'tom.dyad.metric.generic',
-    idPattern: /^tom:dyad:(?<selfId>[a-zA-Z0-9_-]+):(?<otherId>[a-zA-Z0-9_-]+):(?<metric>[a-zA-Z0-9_-]+)$/,
+    specId: 'tom.dyad.metric',
+    idPattern: /^tom:dyad:(?<selfId>[a-zA-Z0-9_-]+):(?<otherId>[a-zA-Z0-9_-]+):(?<metric>[a-zA-Z0-9_]+)$/,
     title: p => `ToM dyad: ${p.metric} к ${p.otherId}`,
-    meaning: p => `Dyad-оценка ${p.metric} у ${p.selfId} по отношению к ${p.otherId}.`,
-    scale: { min: 0, max: 1, lowMeans: 'низко', highMeans: 'высоко' },
+    meaning: p => `Нормализованная dyad-оценка (${p.metric}) того, как ${p.selfId} воспринимает ${p.otherId}.`,
+    scale: { min: 0, max: 1, lowMeans: 'минимум', highMeans: 'максимум', typical: '0.2–0.8' },
+    formula: p => `Берётся из ToM-состояния (world.tom / agent.tom) и сводится в tom:dyad:* в extractTomDyadAtoms().`,
+    producedBy: ['lib/context/sources/tomDyadAtoms.ts'],
+    consumedBy: ['lib/context/stage1/socialProximity.ts', 'lib/threat/*', 'lib/decision/*'],
     tags: ['tom','dyad']
   },
   {
@@ -120,21 +123,22 @@ export const ATOM_SPECS: AtomSpec[] = [
     specId: 'rel.tag',
     idPattern: /^rel:tag:(?<selfId>[a-zA-Z0-9_-]+):(?<otherId>[a-zA-Z0-9_-]+):(?<tag>[a-zA-Z0-9_-]+)$/,
     title: p => `Отношение: ${p.tag} (${p.otherId})`,
-    meaning: p => `Дискретный социальный тег “${p.tag}” от ${p.selfId} к ${p.otherId}. Обычно 0/1 с confidence.`,
-    scale: { min: 0, max: 1, lowMeans: 'нет тега', highMeans: 'тег активен' },
-    producedBy: ['lib/context/sources/tomDyadAtoms.ts', 'lib/rel/*'],
-    consumedBy: ['lib/tom/*', 'lib/context/stage1/socialProximity.ts'],
-    tags: ['rel','tag']
+    meaning: p => `Бинарный ярлык отношения (friend/enemy/etc) для пары ${p.selfId} → ${p.otherId}. Может быть из памяти (rel_base) или подсказкой из ToM.`,
+    scale: { min: 0, max: 1, lowMeans: 'нет ярлыка', highMeans: 'ярлык активен' },
+    producedBy: ['lib/rel/*', 'lib/context/sources/tomDyadAtoms.ts'],
+    consumedBy: ['lib/context/stage1/socialProximity.ts', 'lib/decision/*'],
+    tags: ['rel']
   },
   {
-    specId: 'prox.friend',
-    idPattern: /^prox:friend:(?<selfId>[a-zA-Z0-9_-]+):(?<otherId>[a-zA-Z0-9_-]+)$/,
-    title: p => `Proximity: друг рядом (${p.otherId})`,
-    meaning: p => `Флаг “${p.otherId} рядом и он friend/ally по rel/tag или ToM”.`,
-    scale: { min: 0, max: 1, lowMeans: 'нет', highMeans: 'да' },
+    specId: 'soc.proximity',
+    idPattern: /^prox:(?<kind>friend|enemy|neutral):(?<selfId>[a-zA-Z0-9_-]+):(?<otherId>[a-zA-Z0-9_-]+)$/,
+    title: p => `Социальная близость: ${p.kind} рядом (${p.otherId})`,
+    meaning: p => `Интеграция “рядом” (obs:nearby) и отношения (tom:dyad + rel:tag) в один сигнал: кто рядом и это союзник/враг/нейтрал для ${p.selfId}.`,
+    scale: { min: 0, max: 1, lowMeans: 'почти не влияет', highMeans: 'рядом и сильно влияет' },
+    formula: _p => `prox = w_close*obs:nearby + w_rel*ToM/rel (см. socialProximity.ts)`,
     producedBy: ['lib/context/stage1/socialProximity.ts'],
-    consumedBy: ['lib/contextMind/*', 'lib/threat/*', 'lib/decision/*'],
-    tags: ['soc','proximity']
+    consumedBy: ['lib/threat/*', 'lib/decision/*', 'lib/contextMind/*'],
+    tags: ['social']
   },
   {
     specId: 'prox.generic',
@@ -161,10 +165,10 @@ export const ATOM_SPECS: AtomSpec[] = [
     tags: ['soc','proximity']
   },
   {
-    specId: 'tom.trusted_ally_near',
+    specId: 'soc.trusted_ally_near',
     idPattern: /^tom:trusted_ally_near:(?<selfId>[a-zA-Z0-9_-]+):(?<otherId>[a-zA-Z0-9_-]+)$/,
-    title: p => `Поддержка рядом: ${p.otherId}`,
-    meaning: p => `Нормализованный сигнал “рядом союзник”: близость (obs:nearby) × доверие (tom:dyad:*:trust).`,
+    title: p => `Ситуация: доверенный союзник рядом (${p.otherId})`,
+    meaning: p => `Флаг: рядом есть союзник, которому доверяют. Используется как социальный “буфер” опасности/стресса.`,
     scale: { min: 0, max: 1, lowMeans: 'поддержки рядом нет', highMeans: 'сильная поддержка рядом' },
     formula: _p => `nearby(self,other) * trust(self→other)`,
     producedBy: ['lib/context/stage1/socialProximity.ts'],
@@ -172,10 +176,10 @@ export const ATOM_SPECS: AtomSpec[] = [
     tags: ['soc','tom']
   },
   {
-    specId: 'tom.threatening_other_near',
+    specId: 'soc.threatening_other_near',
     idPattern: /^tom:threatening_other_near:(?<selfId>[a-zA-Z0-9_-]+):(?<otherId>[a-zA-Z0-9_-]+)$/,
-    title: p => `Опасный рядом: ${p.otherId}`,
-    meaning: p => `Нормализованный сигнал “угроза рядом”: близость × (угроза/конфликт из ToM).`,
+    title: p => `Ситуация: угрожающий другой рядом (${p.otherId})`,
+    meaning: p => `Флаг: рядом персонаж, который воспринимается как угроза. Должен усиливать danger/threat.`,
     scale: { min: 0, max: 1, lowMeans: 'опасных рядом нет', highMeans: 'опасный очень близко' },
     formula: _p => `nearby(self,other) * threat(self←other)`,
     producedBy: ['lib/context/stage1/socialProximity.ts'],

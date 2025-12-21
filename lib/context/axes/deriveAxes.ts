@@ -216,11 +216,12 @@ export type DeriveAxesResult = {
   raw: ContextAxesVector;
   tuned: ContextAxesVector;
   atomsUsed: Partial<Record<ContextSignalId, { value: number; confidence?: number; from: string }>>;
-  atoms: ContextAtom[];
   tuningApplied?: ContextTuning;
+  atoms?: ContextAtom[];
 };
 
 export function deriveContextVectors(args: {
+  selfId?: string;
   frame?: any;
   world?: any;
   atoms?: ContextAtomLike[] | null;
@@ -230,7 +231,6 @@ export function deriveContextVectors(args: {
   const { atoms, tuning } = args;
   const raw = defaultAxes();
   const atomsUsed: DeriveAxesResult['atomsUsed'] = {};
-  const srcAtoms = atoms ?? [];
 
   // Look for the specific atoms derived by `deriveAxes` (atom generator)
   // We assume selfId is embedded in atom IDs or we search by prefix/kind if needed.
@@ -245,60 +245,66 @@ export function deriveContextVectors(args: {
   
   // We will scan for atoms starting with `ctx:` to fill the vector.
   if (atoms) {
-      for (const a of atoms) {
-          if (a.id && a.id.startsWith('ctx:')) {
-              const key = a.id.split(':')[1]; // ctx:danger:xyz -> danger
-              if (key && key in raw) {
-                  // @ts-ignore
-                  raw[key] = Math.max(raw[key], clamp01(a.magnitude || 0));
-                  // @ts-ignore
-                  atomsUsed[`ctx_${key}`] = { value: raw[key], confidence: a.confidence, from: a.id };
-              }
-          }
+    for (const a of atoms) {
+      if (a.id && a.id.startsWith('ctx:')) {
+        const key = a.id.split(':')[1]; // ctx:danger:xyz -> danger
+        if (key && key in raw) {
+          // @ts-ignore
+          raw[key] = Math.max(raw[key], clamp01(a.magnitude || 0));
+          // @ts-ignore
+          atomsUsed[`ctx_${key}`] = { value: raw[key], confidence: a.confidence, from: a.id };
+        }
       }
+    }
   }
 
   // Tuned axes
   // Note: we can detect isFormal/isPrivate from atoms too now if needed
   const tuned = applyTuning(raw, tuning ?? null);
 
-  // Infer selfId from any ctx:* atom id (ctx:axis:self)
-  let selfId = '';
-  for (const a of srcAtoms) {
-    const id = String((a as any)?.id ?? '');
-    if (id.startsWith('ctx:')) {
+  // Infer selfId from any ctx:* atom id (ctx:axis:self), skipping ctx:src:* atoms
+  const inferSelfId = (): string | null => {
+    if (args.selfId) return args.selfId;
+    for (const a of atoms ?? []) {
+      const id = String((a as any)?.id || '');
+      if (!id.startsWith('ctx:')) continue;
+      if (id.startsWith('ctx:src:')) continue;
       const parts = id.split(':');
-      if (parts.length >= 3 && parts[2]) {
-        selfId = parts[2];
-        break;
+      if (parts.length === 3) {
+        const axis = parts[1];
+        if (axis && (axis in raw)) return parts[2];
       }
     }
-  }
+    return null;
+  };
+
+  const selfId = inferSelfId();
 
   const outAtoms: ContextAtom[] = [];
   if (selfId) {
     for (const k of Object.keys(tuned)) {
       const id = `ctx:${k}:${selfId}`;
-      const from = (atomsUsed as any)[`ctx_${k}`]?.from || id;
+      const v = clamp01((tuned as any)[k]);
       outAtoms.push({
         id,
         ns: 'ctx',
-        kind: 'ctx_axis_tuned',
+        kind: 'ctx_axis',
         origin: 'derived',
         source: 'deriveContextVectors',
-        magnitude: clamp01((tuned as any)[k]),
+        magnitude: v,
         confidence: 1,
         tags: ['ctx', 'axis', 'tuned'],
         trace: {
-          usedAtomIds: [String(from)],
-          parts: { raw: (raw as any)[k], tuned: (tuned as any)[k], tuning },
+          usedAtomIds: [id],
+          notes: ['tuning overlay (raw -> tuned)'],
+          parts: { raw: (raw as any)[k] ?? 0, tuned: v, tuning: tuning ?? null },
         },
-        label: `${k}:${Math.round(clamp01((tuned as any)[k]) * 100)}%`
+        label: `${k}:${Math.round(v * 100)}%`
       } as any);
     }
   }
 
-  return { raw, tuned, atomsUsed, atoms: outAtoms, tuningApplied: tuning ?? undefined };
+  return { raw, tuned, atomsUsed, tuningApplied: tuning ?? undefined, atoms: outAtoms };
 }
 
 // Deprecated export for backward compatibility if needed, though replaced

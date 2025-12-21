@@ -68,11 +68,16 @@ export type AtomNamespace =
   | 'map'     // Grid, cells, navigation
   | 'norm'    // Norms, mandates
   | 'obs'     // Perception, nearby agents
-  | 'soc'     // Social proximity / social layer
+  | 'soc'     // Social layer (proximity + social situation flags)
   | 'self'    // Body, resources
   | 'profile' // Character traits, bio
   | 'ctx'     // High-level context axes (danger, intimacy)
   | 'aff'     // Affordances
+  | 'con'     // Constraints
+  | 'off'     // Offers
+  | 'cap'     // Capabilities
+  | 'access'  // Access decisions
+  | 'cost'    // Costs / tradeoffs
   | 'tom'     // Theory of Mind (beliefs, relations)
   | 'emo'     // Affect / Emotions
   | 'goal'    // Active goals
