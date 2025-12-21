@@ -16,11 +16,11 @@ function get(atoms: ContextAtom[], id: string, fb = 0) {
   return (typeof m === 'number' && Number.isFinite(m)) ? m : fb;
 }
 
-function atom(id: string, magnitude: number, usedAtomIds: string[], parts: any): ContextAtom {
+function atom(id: string, magnitude: number, usedAtomIds: string[], parts: any, kind: string = 'ctx_axis'): ContextAtom {
   return {
     id,
     ns: 'ctx',
-    kind: 'ctx_axis',
+    kind,
     origin: 'derived',
     source: 'deriveAxes',
     magnitude: clamp01(magnitude),
@@ -101,6 +101,15 @@ export function deriveAxes(args: { selfId: string; atoms: ContextAtom[]; tuning?
 
   // Pain (ctx:pain) from feature if available
   const featPain = get(atoms, `feat:char:${selfId}:body.pain`, 0);
+
+  // Additional ctx signals used by downstream systems
+  const ctxProceduralStrict = clamp01(normProceduralStrict);
+  const ctxCover = clamp01(cover);
+  const ctxEscape = clamp01(escape);
+
+  // Legitimacy/Secrecy heuristics (until richer institutional model lands)
+  const ctxLegitimacy = clamp01(0.60 * ctxProceduralStrict + 0.20 * hierarchy + 0.20 * (1 - scChaos));
+  const ctxSecrecy = clamp01(0.55 * privacy + 0.25 * (1 - surveillance) + 0.20 * (1 - publicness));
   
   const used = [
     `world:loc:privacy:${selfId}`,
@@ -141,6 +150,14 @@ export function deriveAxes(args: { selfId: string; atoms: ContextAtom[]; tuning?
     atom(`ctx:intimacy:${selfId}`, ctxIntimacy, used, { ctxIntimacy, privacy, surveillance }),
     atom(`ctx:timePressure:${selfId}`, ctxTimePressure, used, { ctxTimePressure, scUrgency, escape }),
     atom(`ctx:scarcity:${selfId}`, ctxScarcity, used, { ctxScarcity, scScarcity, scResourceAccess }),
+
+    atom(`ctx:legitimacy:${selfId}`, ctxLegitimacy, used, { ctxLegitimacy, ctxProceduralStrict, hierarchy, scChaos }),
+    atom(`ctx:secrecy:${selfId}`, ctxSecrecy, used, { ctxSecrecy, privacy, surveillance, publicness }),
+    // Aux ctx signals used by action/possibility models
+    atom(`ctx:proceduralStrict:${selfId}`, ctxProceduralStrict, used, { ctxProceduralStrict, normProceduralStrict }, 'ctx_aux'),
+    atom(`ctx:cover:${selfId}`, ctxCover, used, { ctxCover, cover }, 'ctx_aux'),
+    atom(`ctx:escape:${selfId}`, ctxEscape, used, { ctxEscape, escape }, 'ctx_aux'),
+
     atom(`ctx:grief:${selfId}`, ctxGrief, used, { ctxGrief, scLoss }),
     atom(`ctx:pain:${selfId}`, featPain, used, { featPain })
   ];

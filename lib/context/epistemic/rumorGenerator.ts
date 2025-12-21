@@ -20,7 +20,7 @@ export function generateRumorBeliefs(input: {
   tick: number;
   seed: number;                   
 }): ContextAtom[] {
-  const u = clamp01(getMag(input.atomsAfterAxes, 'ctx:uncertainty', 0));
+  const u = clamp01(getMag(input.atomsAfterAxes, `ctx:uncertainty:${input.selfId}`, getMag(input.atomsAfterAxes, 'ctx:uncertainty', 0)));
   if (u < 0.4) return []; // Low uncertainty -> clear perception
 
   // Intensity of distortion (0..1)
@@ -37,7 +37,7 @@ export function generateRumorBeliefs(input: {
   if (rng() < p1) {
     const believed = clamp01(0.4 + 0.6 * strength + 0.2 * rng());
     out.push(normalizeAtom({
-      id: 'belief:norm:surveillance',
+      id: `belief:norm:surveillance:${input.selfId}`,
       kind: 'tom_belief', // Using generic belief kind
       ns: 'obs',
       origin: 'belief',
@@ -46,7 +46,7 @@ export function generateRumorBeliefs(input: {
       confidence: clamp01(0.35 + 0.55 * (1 - strength)), // Higher uncertainty = lower confidence in the delusion
       tags: ['belief', 'rumor', 'surveillance'],
       label: `rumor:surveillance≈${Math.round(believed * 100)}%`,
-      trace: { usedAtomIds: ['ctx:uncertainty'], notes: ['generated from uncertainty'], parts: { uncertainty: u, strength, p: p1 } }
+      trace: { usedAtomIds: [`ctx:uncertainty:${input.selfId}`], notes: ['generated from uncertainty'], parts: { uncertainty: u, strength, p: p1 } }
     } as any));
   }
 
@@ -54,7 +54,7 @@ export function generateRumorBeliefs(input: {
   if (rng() < p2) {
     const believed = clamp01(0.3 + 0.7 * strength + 0.2 * rng());
     out.push(normalizeAtom({
-      id: 'belief:scene:hostility',
+      id: `belief:scene:hostility:${input.selfId}`,
       kind: 'tom_belief',
       ns: 'obs',
       origin: 'belief',
@@ -63,14 +63,14 @@ export function generateRumorBeliefs(input: {
       confidence: clamp01(0.35 + 0.55 * (1 - strength)),
       tags: ['belief', 'rumor', 'hostility'],
       label: `rumor:hostility≈${Math.round(believed * 100)}%`,
-      trace: { usedAtomIds: ['ctx:uncertainty'], notes: ['generated from uncertainty'], parts: { uncertainty: u, strength, p: p2 } }
+      trace: { usedAtomIds: [`ctx:uncertainty:${input.selfId}`], notes: ['generated from uncertainty'], parts: { uncertainty: u, strength, p: p2 } }
     } as any));
   }
 
   // Summary banner for UI
   if (out.length > 0) {
     out.push(normalizeAtom({
-      id: 'belief:banner',
+      id: `belief:banner:${input.selfId}`,
       kind: 'ctx_axis', // Or summary_banner if available in catalog
       ns: 'obs',
       origin: 'belief',
@@ -79,7 +79,7 @@ export function generateRumorBeliefs(input: {
       confidence: 1,
       tags: ['belief', 'banner', 'summary'],
       label: `rumors:${out.length - 0} u=${Math.round(u * 100)}%`,
-      trace: { usedAtomIds: ['ctx:uncertainty'], notes: ['belief banner'], parts: { uncertainty: u, strength } }
+      trace: { usedAtomIds: [`ctx:uncertainty:${input.selfId}`], notes: ['belief banner'], parts: { uncertainty: u, strength } }
     } as any));
   }
 

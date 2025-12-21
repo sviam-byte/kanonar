@@ -30,10 +30,10 @@ export function computeActionCost(args: {
   const stress = get(atoms, `feat:char:${selfId}:body.stress`, 0);
   
   // threat.final (if you have stable id), else approximate via channel atoms:
-  const threatFinalAtom = findPrefix(atoms, `threat:final`)[0]?.id;
+  const threatFinalAtom = findPrefix(atoms, `threat:final:${selfId}`)[0]?.id || findPrefix(atoms, `threat:final:`)[0]?.id || findPrefix(atoms, `threat:final`)[0]?.id;
   const threatFinal = threatFinalAtom ? get(atoms, threatFinalAtom, 0) : 0;
 
-  const proceduralStrict = findPrefix(atoms, `scene:proceduralStrict:${selfId}`)[0]?.id
+  const proceduralStrict = findPrefix(atoms, `ctx:proceduralStrict:${selfId}`)[0]?.id
     || findPrefix(atoms, `norm:proceduralStrict:${selfId}`)[0]?.id;
   const protocol = proceduralStrict ? get(atoms, proceduralStrict, 0) : 0;
 
