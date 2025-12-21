@@ -42,6 +42,7 @@ interface Props {
 
   onLoadScene?: (preset: ScenePreset) => void;
   onRunTicks?: (steps: number) => void;
+  onResetSim?: () => void;
   onDownloadScene?: () => void;
 
   // Optional: World Access for Mods
@@ -76,6 +77,7 @@ export const GoalLabControls: React.FC<Props> = ({
   affectOverrides, onAffectOverridesChange,
   onLoadScene,
   onRunTicks,
+  onResetSim,
   onDownloadScene,
   world, onWorldChange,
   participantIds,
@@ -437,12 +439,15 @@ export const GoalLabControls: React.FC<Props> = ({
         )}
 
         {activeTab === 'sim' && onRunTicks && (
-             <div className="space-y-4">
-                 <div className="text-xs font-bold text-canon-text uppercase tracking-wider mb-2 flex items-center gap-2">
-                    <span>⏱️</span> Time Control
-                 </div>
-                 <div className="grid grid-cols-2 gap-2">
-                     <button 
+            <div className="space-y-4">
+                <div className="text-xs font-bold text-canon-text uppercase tracking-wider mb-2 flex items-center gap-2">
+                   <span>⏱️</span> Time Control
+                </div>
+                <div className="text-[10px] font-mono text-canon-text-light">
+                  tick: {typeof (world as any)?.tick === 'number' ? (world as any).tick : 'n/a'}
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                    <button 
                         type="button"
                         onClick={() => onRunTicks(1)} 
                         className="px-4 py-2 bg-canon-accent text-black text-xs font-bold rounded hover:bg-opacity-80 transition-colors"
@@ -455,11 +460,20 @@ export const GoalLabControls: React.FC<Props> = ({
                         className="px-4 py-2 bg-canon-bg border border-canon-accent text-canon-accent text-xs font-bold rounded hover:bg-canon-accent/10 transition-colors"
                      >
                          Run 10 Ticks
-                     </button>
-                 </div>
-                 <div className="text-[10px] text-canon-text-light italic">
-                     Running ticks updates internal state (affect, stress traces) and advances world time.
-                 </div>
+                    </button>
+                </div>
+                {onResetSim && (
+                  <button
+                    type="button"
+                    onClick={() => onResetSim()}
+                    className="w-full px-4 py-2 bg-canon-bg border border-canon-border text-canon-text text-xs font-bold rounded hover:bg-canon-bg-light/40 transition-colors"
+                  >
+                    Reset to scene baseline
+                  </button>
+                )}
+                <div className="text-[10px] text-canon-text-light italic">
+                    Running ticks updates internal state (affect, stress traces) and advances world time.
+                </div>
 
                  {onDownloadScene && (
                    <div className="pt-2 border-t border-canon-border/60">
