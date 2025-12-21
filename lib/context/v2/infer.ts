@@ -14,6 +14,7 @@ export function inferAtomNamespace(atom: Pick<ContextAtom, 'kind' | 'id' | 'sour
   const tags = atom.tags || [];
 
   if (tags.includes('obs')) return 'obs';
+  if (tags.includes('social')) return 'soc';
   if (tags.includes('map')) return 'map';
   if (tags.includes('scene')) return 'scene';
   if (tags.includes('norm')) return 'norm';
@@ -26,8 +27,9 @@ export function inferAtomNamespace(atom: Pick<ContextAtom, 'kind' | 'id' | 'sour
   if (k.startsWith('tom_') || k === 'tom_belief') return 'tom';
   if (k.startsWith('rel_') || k === 'relationship_label') return 'rel';
   if (k.startsWith('afford_')) return 'aff';
+  if (k.startsWith('proximity_') || k.startsWith('soc_')) return 'soc';
   if (k.startsWith('nav_') || k.startsWith('cell_') || k.startsWith('map_') || k.startsWith('hazard_')) return 'map';
-  if (k.startsWith('env_') || k.startsWith('soc_') || k.startsWith('loc_') || k === 'location' || k === 'location_tag') return 'scene';
+  if (k.startsWith('env_') || k.startsWith('loc_') || k === 'location' || k === 'location_tag') return 'scene';
   if (k.startsWith('self_') || k.startsWith('body_')) return 'self';
   if (k === 'emotion' || k === 'affect') return 'emo';
   if (k === 'threat' || k.startsWith('threat_') || k === 'enemy_threat') return 'threat';
@@ -37,15 +39,23 @@ export function inferAtomNamespace(atom: Pick<ContextAtom, 'kind' | 'id' | 'sour
   if (id.startsWith('target_presence:')) return 'obs';
   if (id.startsWith('ctx:')) return 'ctx';
   if (id.startsWith('rel:')) return 'rel';
+  if (id.startsWith('prox:')) return 'soc';
+  if (id.startsWith('cap:')) return 'cap';
+  if (id.startsWith('access:')) return 'access';
+  if (id.startsWith('con:')) return 'con';
+  if (id.startsWith('off:')) return 'off';
+  if (id.startsWith('cost:')) return 'cost';
+  if (id.startsWith('feat:')) return 'feat';
 
   if (s === 'map') return 'map';
   if (s === 'where') return 'scene';
-  if (s === 'who' || s === 'proximity' || s === 'social_proximity') return 'obs';
+  if (s === 'who') return 'obs';
+  if (s === 'proximity' || s === 'social_proximity' || s === 'socialProximity' || s === 'social') return 'soc';
   if (s === 'event' || s === 'timeline' || s === 'timeline_process') return 'scene';
   if (s === 'tom') return 'tom';
   if (s === 'body') return 'self';
   if (s === 'relations') return 'rel'; // Source relations maps to rel namespace
-  if (s === 'derived' || s === 'threat' || s === 'social') return 'ctx';
+  if (s === 'derived' || s === 'threat') return 'ctx';
 
   return 'misc';
 }

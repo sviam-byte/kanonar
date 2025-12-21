@@ -9,22 +9,75 @@ import { ContextAtom } from './types';
 export function computeDomainsFromAtoms(
   atoms: ContextAtom[]
 ): Record<string, number> {
-  
+
+  const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
+
+  // Prefer canonical ctx:* axes if present (GoalLab pipeline)
+  const maxByPrefix = (prefix: string, fb = NaN) => {
+    let m = -1;
+    for (const a of atoms) {
+      const id = String((a as any)?.id ?? '');
+      if (!id.startsWith(prefix)) continue;
+      const v = (a as any)?.magnitude;
+      if (typeof v === 'number' && Number.isFinite(v)) m = Math.max(m, clamp01(v));
+    }
+    return m >= 0 ? m : fb;
+  };
+
+  const ctxDanger = maxByPrefix('ctx:danger:', NaN);
+  const ctxIntimacy = maxByPrefix('ctx:intimacy:', NaN);
+  const ctxHierarchy = maxByPrefix('ctx:hierarchy:', NaN);
+  const ctxNormPressure = maxByPrefix('ctx:normPressure:', NaN);
+  const ctxSurveillance = maxByPrefix('ctx:surveillance:', NaN);
+  const ctxCrowd = maxByPrefix('ctx:crowd:', NaN);
+  const ctxScarcity = maxByPrefix('ctx:scarcity:', NaN);
+  const ctxTimePressure = maxByPrefix('ctx:timePressure:', NaN);
+
+  // If ctx axes exist, build domains primarily from them.
+  if (Number.isFinite(ctxDanger)) {
+    const danger = clamp01(ctxDanger);
+    const intimacy = Number.isFinite(ctxIntimacy) ? clamp01(ctxIntimacy) : 0;
+    const hierarchy = Number.isFinite(ctxHierarchy) ? clamp01(ctxHierarchy) : 0;
+    const surveillance = Number.isFinite(ctxSurveillance) ? clamp01(ctxSurveillance) : 0;
+    const crowding = Number.isFinite(ctxCrowd) ? clamp01(ctxCrowd) : 0;
+    const obligation = Number.isFinite(ctxNormPressure)
+      ? clamp01(0.65 * ctxNormPressure + 0.35 * hierarchy)
+      : clamp01(0.35 * hierarchy + 0.25 * surveillance);
+
+    // Social support: look for canonical soc support atoms if present
+    const support = maxByPrefix('soc:support_near:', 0);
+    const attachment = clamp01(0.6 * intimacy * (1 - danger) + 0.4 * support);
+    const avoidance = clamp01(0.5 * danger + 0.3 * surveillance + 0.2 * crowding);
+    const care_help = maxByPrefix('mind:careNeed:', 0); // fallback; keep legacy care signals below if you want
+
+    return {
+      danger,
+      intimacy,
+      hierarchy,
+      obligation,
+      avoidance,
+      attachment,
+      'care/help': clamp01(care_help),
+      social: clamp01((support + crowding) / 2),
+      status: clamp01(hierarchy * 0.5),
+      scarcity: Number.isFinite(ctxScarcity) ? clamp01(ctxScarcity) : 0,
+      timePressure: Number.isFinite(ctxTimePressure) ? clamp01(ctxTimePressure) : 0,
+    } as any;
+  }
+
   // Helper to get sum of magnitudes for a specific kind
-  const getSum = (kind: string) => 
+  const getSum = (kind: string) =>
     atoms.filter(a => a.kind === kind).reduce((sum, a) => sum + (a.magnitude || 0), 0);
 
   // Helper to check for presence/max
-  const getMax = (kind: string) => 
+  const getMax = (kind: string) =>
     atoms.filter(a => a.kind === kind).reduce((max, a) => Math.max(max, a.magnitude || 0), 0);
-  
+
   const getAtomVal = (kind: string, defaultValue: number = 0) => {
       const a = atoms.find(x => x.kind === kind);
       if (!a || typeof a.magnitude !== 'number') return defaultValue;
       return a.magnitude;
   };
-  
-  const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
 
   /**
    * Bounded weighted combination: keeps result in [0,1] and avoids instant saturation.
