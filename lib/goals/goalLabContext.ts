@@ -34,6 +34,8 @@ import { computeContextMindScoreboard } from '../contextMind/scoreboard';
 import { atomizeContextMindMetrics } from '../contextMind/atomizeMind';
 import { deriveSocialProximityAtoms } from '../context/stage1/socialProximity';
 import { deriveHazardGeometryAtoms } from '../context/stage1/hazardGeometry';
+import { deriveAppraisalAtoms } from '../emotion/appraisals';
+import { deriveEmotionAtoms } from '../emotion/emotions';
 
 // Scene Engine
 import { SCENE_PRESETS } from '../scene/presets';
@@ -544,13 +546,39 @@ export function buildGoalLabContext(
           trace: { usedAtomIds: threatCalc.usedAtomIds || [], notes: threatCalc.why?.slice(0, 6) || ['threat stack'], parts: { ...threatCalc } }
       } as any);
 
-      // 10. Possibility Graph (Registry-based)
-      const atomsForPossibilities = [...atomsForThreat, ...threatAtoms, threatAtom];
-      const possibilities = derivePossibilitiesRegistry({ selfId, atoms: atomsForPossibilities });
+      // 10. Emotions: appraisals -> emotions
+      const atomsAfterThreat = mergeEpistemicAtoms({
+        world: atomsForThreat,
+        obs: [],
+        belief: [],
+        override: [],
+        derived: [...threatAtoms, threatAtom]
+      }).merged;
+
+      const appraisals = deriveAppraisalAtoms(selfId, atomsAfterThreat);
+      const atomsAfterAppraisals = mergeEpistemicAtoms({
+        world: atomsAfterThreat,
+        obs: [],
+        belief: [],
+        override: [],
+        derived: appraisals
+      }).merged;
+
+      const emotions = deriveEmotionAtoms(selfId, atomsAfterAppraisals);
+      const atomsAfterEmotions = mergeEpistemicAtoms({
+        world: atomsAfterAppraisals,
+        obs: [],
+        belief: [],
+        override: [],
+        derived: emotions
+      }).merged;
+
+      // 11. Possibility Graph (Registry-based)
+      const possibilities = derivePossibilitiesRegistry({ selfId, atoms: atomsAfterEmotions });
       const possAtoms = atomizePossibilities(possibilities);
-      
+
       const atomsAfterPoss = mergeEpistemicAtoms({
-        world: atomsForPossibilities,
+        world: atomsAfterEmotions,
         obs: [],
         belief: [],
         override: [],

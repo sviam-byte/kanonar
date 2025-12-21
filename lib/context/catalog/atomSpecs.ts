@@ -254,6 +254,24 @@ export const ATOM_SPECS: AtomSpec[] = [
     tags: ['misc','danger']
   },
   {
+    specId: 'mind.appraisal',
+    idPattern: /^app:(?<key>[a-zA-Z0-9_-]+):(?<selfId>[a-zA-Z0-9_-]+)$/,
+    title: p => `Appraisal: ${p.key} (${p.selfId})`,
+    meaning: p => `Оценка ситуации (причина эмоций). Шкала 0..1, где 1 = максимум "${p.key}".`,
+    scale: { min: 0, max: 1 },
+    producedBy: ['lib/emotion/appraisals.ts'],
+    tags: ['mind','emotion','appraisal'],
+  },
+  {
+    specId: 'mind.emotion',
+    idPattern: /^emo:(?<key>[a-zA-Z0-9_-]+):(?<selfId>[a-zA-Z0-9_-]+)$/,
+    title: p => `Эмоция: ${p.key} (${p.selfId})`,
+    meaning: p => `Эмоциональное состояние, вычисленное из appraisals. Шкала 0..1.`,
+    scale: { min: 0, max: 1 },
+    producedBy: ['lib/emotion/emotions.ts'],
+    tags: ['mind','emotion'],
+  },
+  {
     specId: 'threat.final',
     idPattern: /^threat:final:(?<selfId>[a-zA-Z0-9_-]+)$/,
     title: p => `Угроза: итоговая (${p.selfId})`,
