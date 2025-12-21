@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 
 interface NarrativeChapter {
   id: string;
@@ -473,7 +473,8 @@ const sections: NarrativeSection[] = [
  * (Соответствует <h3 id="..."> в каноническом тексте.)
  */
 const anchorLinks: AnchorLink[] = [
-  { label: 'Преамбула', href: '#прембула' }, // NOTE: если у тебя реально "#preamble" в рендере, замени ниже на '#preamble' и синхронизируй id
+  { label: 'Точка входа', href: '#homeostasis' },
+  { label: 'Преамбула', href: '#преамбула' },
   { label: 'Фундаментальные законы', href: '#часть-1-фундаментальные-законы-инварианты-и-хаос' },
   { label: 'Архитектура власти', href: '#часть-2-архитектура-власти-и-управления' },
   { label: 'Права и общество', href: '#часть-3-человек-общество-и-права' },
@@ -492,60 +493,181 @@ export const HomeostasisData = {
   homeostasisNarrativeText,
 } as const;
 
+const GlassCard: React.FC<{ title?: string; subtitle?: string; children: React.ReactNode; className?: string }> = ({
+  title,
+  subtitle,
+  children,
+  className = '',
+}) => (
+  <div
+    className={`relative overflow-hidden rounded-2xl border border-canon-border/50 bg-canon-bg/70 shadow-[0_0_40px_rgba(0,0,0,0.35)] ${className}`}
+  >
+    <div className="absolute inset-0 bg-gradient-to-br from-canon-bg-light/30 via-transparent to-canon-accent/5 pointer-events-none" />
+    <div className="relative p-6 space-y-3">
+      {title && <h2 className="text-xl font-bold text-white tracking-tight">{title}</h2>}
+      {subtitle && <div className="text-sm text-canon-text-light">{subtitle}</div>}
+      <div className="space-y-3">{children}</div>
+    </div>
+  </div>
+);
+
+const AnchorPill: React.FC<AnchorLink> = ({ label, href }) => (
+  <a
+    href={href}
+    className="inline-flex items-center gap-2 rounded-full border border-canon-border/60 bg-canon-bg-light/70 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-canon-text-light hover:border-canon-accent hover:text-white hover:shadow-[0_0_12px_rgba(0,170,255,0.35)] transition-all"
+  >
+    <span className="h-2 w-2 rounded-full bg-canon-accent shadow-[0_0_6px_rgba(0,170,255,0.7)]" />
+    {label}
+  </a>
+);
+
+const ChapterList: React.FC<{ chapters: NarrativeChapter[] }> = ({ chapters }) => (
+  <div className="grid gap-4 md:grid-cols-2">
+    {chapters.map((chapter) => (
+      <div
+        key={chapter.id}
+        className="rounded-xl border border-canon-border/50 bg-canon-bg-light/40 p-4 hover:border-canon-accent/60 hover:shadow-[0_0_20px_rgba(0,170,255,0.12)] transition-all"
+      >
+        <div className="flex items-start justify-between gap-2">
+          <div>
+            <p className="text-xs uppercase tracking-wide text-canon-text-light">{chapter.contentAnchor ? 'Якорь' : 'Глава'}</p>
+            <h4 className="text-lg font-semibold text-white leading-tight">{chapter.title}</h4>
+          </div>
+          {chapter.contentAnchor && (
+            <a href={`#${chapter.contentAnchor}`} className="text-xs text-canon-accent hover:underline">
+              перейти
+            </a>
+          )}
+        </div>
+        {chapter.description && <p className="mt-2 text-sm text-canon-text-light leading-relaxed">{chapter.description}</p>}
+        {chapter.clauses.length > 0 && (
+          <ul className="mt-3 space-y-1.5 text-sm text-canon-text/90 list-disc list-inside">
+            {chapter.clauses.map((clause) => (
+              <li key={clause}>{clause}</li>
+            ))}
+          </ul>
+        )}
+      </div>
+    ))}
+  </div>
+);
+
 export default function HomeostasisProtocolPage() {
   // Держим всё детерминированно: любые derived-данные — из одного места.
   const data = useMemo(() => HomeostasisData, []);
+  const [copied, setCopied] = useState(false);
 
-  // Здесь ты рендеришь:
-  // - data.homeostasisProtocol (title/subtitle/paragraphs/anchorLinks)
-  // - data.preamble + data.sections как “карту”
-  // - data.homeostasisNarrativeText как канон (md/html renderer)
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(data.homeostasisNarrativeText);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error('Не удалось скопировать текст', err);
+    }
+  };
+
   return (
-    <div>
-      <h1>{data.homeostasisProtocol.title}</h1>
-      <div>{data.homeostasisProtocol.subtitle}</div>
-
-      <nav>
-        {data.homeostasisProtocol.anchorLinks.map((a) => (
-          <a key={a.href} href={a.href} style={{ display: 'inline-block', marginRight: 12 }}>
-            {a.label}
-          </a>
-        ))}
-      </nav>
-
-      <hr />
-
-      <h2>{data.preamble.title}</h2>
-      {data.preamble.paragraphs.map((p) => (
-        <p key={p}>{p}</p>
-      ))}
-
-      <hr />
-
-      <h2>Карта</h2>
-      {data.sections.map((s) => (
-        <section key={s.id}>
-          <h3>{s.title}</h3>
-          {s.chapters.map((c) => (
-            <div key={c.id} style={{ marginBottom: 10 }}>
-              <strong>{c.title}</strong>
-              {c.description ? <div>{c.description}</div> : null}
-              {c.clauses.length ? (
-                <ul>
-                  {c.clauses.map((cl) => (
-                    <li key={cl}>{cl}</li>
+    <div className="min-h-screen bg-gradient-to-br from-canon-bg via-canon-bg-light/40 to-canon-bg">
+      <div className="mx-auto max-w-6xl px-4 py-10 space-y-10">
+        <section
+          id="homeostasis"
+          className="relative overflow-hidden rounded-3xl border border-canon-border/50 bg-[radial-gradient(circle_at_20%_20%,rgba(0,170,255,0.12),transparent_35%),radial-gradient(circle_at_80%_10%,rgba(255,68,68,0.08),transparent_30%),linear-gradient(135deg,rgba(255,255,255,0.02),rgba(0,0,0,0.3))] p-[1px]"
+        >
+          <div className="relative rounded-[30px] bg-canon-bg/70 p-8 shadow-[0_20px_60px_rgba(0,0,0,0.45)] border border-canon-border/60">
+            <div className="flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
+              <div className="space-y-4 max-w-3xl">
+                <div className="inline-flex items-center gap-2 rounded-full border border-canon-border/60 bg-canon-bg-light/60 px-3 py-1 text-xs uppercase tracking-[0.2em] text-canon-text-light">
+                  Симбиотический регламент • версия 1.5.4
+                </div>
+                <div className="space-y-2">
+                  <h1 className="text-3xl md:text-4xl font-bold text-white leading-tight drop-shadow-[0_0_24px_rgba(0,170,255,0.2)]">
+                    {data.homeostasisProtocol.title}
+                  </h1>
+                  <p className="text-lg text-canon-text-light">{data.homeostasisProtocol.subtitle}</p>
+                </div>
+                <div className="grid gap-3 md:grid-cols-2">
+                  {data.homeostasisProtocol.paragraphs.map((p) => (
+                    <div key={p} className="rounded-xl border border-canon-border/60 bg-canon-bg-light/60 p-3 text-sm text-canon-text leading-relaxed">
+                      {p}
+                    </div>
                   ))}
-                </ul>
-              ) : null}
+                </div>
+              </div>
+              <div className="flex flex-col gap-3 md:w-72">
+                <div className="rounded-xl border border-canon-border/60 bg-canon-bg-light/60 p-4">
+                  <p className="text-xs uppercase tracking-wide text-canon-text-light mb-2">Навигация</p>
+                  <div className="flex flex-wrap gap-2">
+                    {data.homeostasisProtocol.anchorLinks.map((link) => (
+                      <AnchorPill key={link.href} {...link} />
+                    ))}
+                  </div>
+                </div>
+                <div className="rounded-xl border border-canon-border/60 bg-canon-bg-light/60 p-4">
+                  <p className="text-xs uppercase tracking-wide text-canon-text-light mb-2">Деплой</p>
+                  <p className="text-sm text-canon-text-light leading-relaxed">
+                    Канон уже готов для публикации: структурированные якоря, карта частей и полный текст в одном модуле. Просто
+                    подключи страницу <code className="font-mono">/narrative#homeostasis</code> на витрину.
+                  </p>
+                </div>
+              </div>
             </div>
-          ))}
+          </div>
         </section>
-      ))}
 
-      <hr />
+        <GlassCard title={data.preamble.title} subtitle="Быстрая, но цельная версия преамбулы">
+          <div className="grid gap-3 md:grid-cols-2">
+            {data.preamble.paragraphs.map((paragraph) => (
+              <div
+                key={paragraph}
+                className="rounded-xl border border-canon-border/50 bg-canon-bg-light/40 p-4 text-sm text-canon-text leading-relaxed"
+              >
+                {paragraph}
+              </div>
+            ))}
+          </div>
+        </GlassCard>
 
-      <h2>Полный текст (канон)</h2>
-      <pre style={{ whiteSpace: 'pre-wrap' }}>{data.homeostasisNarrativeText}</pre>
+        <GlassCard title="Карта протокола" subtitle="Главы с якорями для быстрого перехода">
+          <div className="space-y-6">
+            {data.sections.map((section) => (
+              <div key={section.id} className="space-y-3">
+                <div className="flex items-baseline gap-3">
+                  <div className="h-2 w-2 rounded-full bg-canon-accent shadow-[0_0_10px_rgba(0,170,255,0.6)]" />
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.2em] text-canon-text-light">Раздел</p>
+                    <h3 className="text-xl font-semibold text-white">{section.title}</h3>
+                    {section.summary && <p className="text-sm text-canon-text-light">{section.summary}</p>}
+                  </div>
+                </div>
+                <ChapterList chapters={section.chapters} />
+              </div>
+            ))}
+          </div>
+        </GlassCard>
+
+        <GlassCard
+          title="Полный текст протокола"
+          subtitle="Единый источник истины: можно читать, копировать или линковать на нужные параграфы"
+        >
+          <div className="flex items-center justify-between gap-3 text-xs text-canon-text-light">
+            <span>Markdown/HTML канон. Сохраняем форматирование и метаданные.</span>
+            <button
+              onClick={handleCopy}
+              className="rounded-full border border-canon-border/60 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-canon-accent hover:border-canon-accent hover:bg-canon-accent/10 transition-colors"
+            >
+              {copied ? 'Скопировано' : 'Скопировать'}
+            </button>
+          </div>
+          <div className="rounded-xl border border-canon-border/50 bg-canon-bg-light/50 p-4">
+            <article className="max-h-[70vh] overflow-y-auto whitespace-pre-wrap text-sm leading-relaxed text-canon-text custom-scrollbar">
+              {data.homeostasisNarrativeText}
+            </article>
+          </div>
+        </GlassCard>
+      </div>
     </div>
   );
 }
+
+export const NarrativePage = HomeostasisProtocolPage;
