@@ -16,7 +16,7 @@ export function computeNoiseAmplifier(agent: AgentState): number {
     const stress_norm = (agent.body.acute.stress ?? 0) / 100;
     const sleep_debt_norm = Math.min(1, (agent.body.reserves.sleep_debt_h || 0) / 24);
     const hpa_excess = Math.max(0, (agent.body.regulation.HPA_axis ?? 0.5) - 0.5); // Assuming HPA_0 is 0.5
-    const dark_exposure_norm = (agent.state.dark_exposure ?? 0) / 100;
+    const dark_exposure_norm = (agent.state?.dark_exposure ?? 0) / 100;
 
     let h = 1.0;
     h += a_stress * stress_norm;

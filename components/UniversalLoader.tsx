@@ -118,25 +118,27 @@ export const UniversalLoader: React.FC = () => {
             </div>
 
             {/* Test Scenes */}
-            <div className="bg-canon-bg-light border border-canon-border rounded-lg p-4 space-y-3 shadow-sm">
-                <h3 className="text-sm font-bold text-canon-text">Тестовые Сцены (Пресеты)</h3>
-                <div className="grid grid-cols-1 gap-2">
-                    {TEST_SCENES.map(scene => (
-                        <button
-                            key={scene.id}
-                            onClick={() => loadScene(scene)}
-                            className="text-left group flex flex-col bg-canon-bg border border-canon-border/50 rounded p-2 hover:border-canon-accent/50 transition-all"
-                        >
-                            <div className="flex justify-between items-baseline">
-                                <span className="text-xs font-bold text-canon-text group-hover:text-canon-accent transition-colors">{scene.title}</span>
-                                <span className="text-[9px] font-mono text-canon-text-light">{scene.characters.length} chars</span>
-                            </div>
-                            <p className="text-[10px] text-canon-text-light mt-1">{scene.description}</p>
-                            <div className="text-[9px] font-mono text-canon-text-light/50 mt-1 truncate">Loc: {scene.locationId}</div>
-                        </button>
-                    ))}
+            {TEST_SCENES.length > 0 && (
+                <div className="bg-canon-bg-light border border-canon-border rounded-lg p-4 space-y-3 shadow-sm">
+                    <h3 className="text-sm font-bold text-canon-text">Тестовые Сцены (Пресеты)</h3>
+                    <div className="grid grid-cols-1 gap-2">
+                        {TEST_SCENES.map(scene => (
+                            <button
+                                key={scene.id}
+                                onClick={() => loadScene(scene)}
+                                className="text-left group flex flex-col bg-canon-bg border border-canon-border/50 rounded p-2 hover:border-canon-accent/50 transition-all"
+                            >
+                                <div className="flex justify-between items-baseline">
+                                    <span className="text-xs font-bold text-canon-text group-hover:text-canon-accent transition-colors">{scene.title}</span>
+                                    <span className="text-[9px] font-mono text-canon-text-light">{scene.characters.length} chars</span>
+                                </div>
+                                <p className="text-[10px] text-canon-text-light mt-1">{scene.description}</p>
+                                <div className="text-[9px] font-mono text-canon-text-light/50 mt-1 truncate">Loc: {scene.locationId}</div>
+                            </button>
+                        ))}
+                    </div>
                 </div>
-            </div>
+            )}
         </div>
     );
 };

@@ -25,6 +25,8 @@ import { calculateArchetypeMetricsFromVectorBase } from '../../lib/archetypes/me
 import { allArchetypes, getArchetypeData, FUNCTION_NAMES } from '../../data/archetypes';
 import { Link } from 'react-router-dom';
 import { computeTomOrderChain, TomOrderLayer } from '../../lib/tom/second_order';
+import { useAccess } from '../../contexts/AccessContext';
+import { filterCharactersForActiveModule } from '../../lib/modules/visibility';
 
 interface Props {
   observerId: string;
@@ -1015,7 +1017,13 @@ export const TomGeneralInspector: React.FC<Props> = ({ observerId, observerEntit
         return [...chars, ...essences];
     }, []);
 
-    const observerChar = observerEntityOverride ?? allChars.find(c => c.entityId === observerId);
+    const { activeModule } = useAccess();
+    const visibleChars = useMemo(
+        () => filterCharactersForActiveModule(allChars, activeModule),
+        [allChars, activeModule]
+    );
+
+    const observerChar = observerEntityOverride ?? visibleChars.find(c => c.entityId === observerId);
 
     // NEW: Ensure we have the fully calculated observer state including dominant archetype
     const calculatedObserver = useMemo(() => {
@@ -1056,7 +1064,7 @@ export const TomGeneralInspector: React.FC<Props> = ({ observerId, observerEntit
     }, [calculatedObserver]);
 
     // 2. Resolve Target
-    const targetChar = useMemo(() => allChars.find(c => c.entityId === targetId), [allChars, targetId]);
+    const targetChar = useMemo(() => visibleChars.find(c => c.entityId === targetId), [visibleChars, targetId]);
     const targetDossier = useMemo(() => {
         if (!targetChar) return undefined;
         const calculated = calculateAllCharacterMetrics(targetChar, Branch.Current, []);
@@ -1144,7 +1152,7 @@ export const TomGeneralInspector: React.FC<Props> = ({ observerId, observerEntit
                         className="bg-canon-bg-light border border-canon-border rounded px-2 py-1 text-xs focus:border-canon-accent outline-none min-w-[150px]"
                     >
                         <option value="">[ Выберите цель ]</option>
-                        {allChars.filter(c => c.entityId !== observerId).map(c => <option key={c.entityId} value={c.entityId}>{c.title}</option>)}
+                        {visibleChars.filter(c => c.entityId !== observerId).map(c => <option key={c.entityId} value={c.entityId}>{c.title}</option>)}
                     </select>
                 </div>
 

@@ -106,7 +106,8 @@ export const AccessModulePage: React.FC = () => {
                 <div className="mt-8 pt-6 border-t border-canon-border/30 text-center">
                      <p className="text-xs text-canon-text-light mb-2">Доступные коды (Dev):</p>
                      <div className="flex flex-wrap justify-center gap-2 font-mono text-xs text-canon-accent">
-                        <span className="cursor-pointer hover:underline" onClick={() => setCode("TEGAN-KRYSTAR")}>TEGAN-KRYSTAR</span>
+<span className="cursor-pointer hover:underline" onClick={() => setCode("TEGAN-KRYSTAR")}>TEGAN-KRYSTAR</span>
+<span className="cursor-pointer hover:underline" onClick={() => setCode("GENSHIN")}>GENSHIN</span>
                         <span className="cursor-pointer hover:underline" onClick={() => setCode("CHRONICLE-1")}>CHRONICLE-1</span>
                         <span className="cursor-pointer hover:underline" onClick={() => setCode("CHRONICLE-5")}>CHRONICLE-5</span>
                      </div>

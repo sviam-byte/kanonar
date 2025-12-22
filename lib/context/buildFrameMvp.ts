@@ -1,6 +1,7 @@
 import { buildStage0Atoms } from './stage0/buildStage0';
 import { applyStage1Ctx } from './stage1/buildStage1';
 import { applyStage3Threat } from './stage3/buildStage3';
+import { applyStage2Emotion } from './stage2/buildStage2Emotion';
 
 export function buildFrameMvp(scene: any, tuning?: any) {
   const bag = buildStage0Atoms(scene);
@@ -12,6 +13,9 @@ export function buildFrameMvp(scene: any, tuning?: any) {
     (scene.otherAgents ?? []).map((x: any) => x.id),
     tuning,
   );
+
+  // Stage2 эмоции/аппрайзал — чтобы app:* и emo:* реально появлялись в Debug Area
+  applyStage2Emotion(bag, scene.agent.id);
 
   const resolved = bag.resolve();
   const aid = scene.agent.id;

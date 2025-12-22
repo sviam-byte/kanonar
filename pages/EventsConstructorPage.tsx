@@ -210,21 +210,23 @@ export const EventsConstructorPage: React.FC = () => {
                {/* Sidebar content */}
                 
                 {/* 1. Quick Scenes Loader (NEW) */}
-                <div className="bg-canon-bg-light border border-canon-border rounded-lg p-4">
-                    <h3 className="font-bold mb-3 text-canon-accent text-sm uppercase tracking-wider">Готовые Сцены</h3>
-                    <div className="space-y-2">
-                        {TEST_SCENES.map(scene => (
-                            <button
-                                key={scene.id}
-                                onClick={() => handleLoadScene(scene)}
-                                className="w-full text-left bg-canon-bg border border-canon-border/50 rounded p-2 hover:border-canon-accent hover:bg-canon-bg/80 transition-all group"
-                            >
-                                <div className="text-xs font-bold text-canon-text group-hover:text-white">{scene.title}</div>
-                                <div className="text-[10px] text-canon-text-light mt-0.5 truncate">{scene.characters.length} chars • {scene.locationId}</div>
-                            </button>
-                        ))}
+                {TEST_SCENES.length > 0 && (
+                    <div className="bg-canon-bg-light border border-canon-border rounded-lg p-4">
+                        <h3 className="font-bold mb-3 text-canon-accent text-sm uppercase tracking-wider">Готовые Сцены</h3>
+                        <div className="space-y-2">
+                            {TEST_SCENES.map(scene => (
+                                <button
+                                    key={scene.id}
+                                    onClick={() => handleLoadScene(scene)}
+                                    className="w-full text-left bg-canon-bg border border-canon-border/50 rounded p-2 hover:border-canon-accent hover:bg-canon-bg/80 transition-all group"
+                                >
+                                    <div className="text-xs font-bold text-canon-text group-hover:text-white">{scene.title}</div>
+                                    <div className="text-[10px] text-canon-text-light mt-0.5 truncate">{scene.characters.length} chars • {scene.locationId}</div>
+                                </button>
+                            ))}
+                        </div>
                     </div>
-                </div>
+                )}
 
                 <div className="bg-canon-bg-light border border-canon-border rounded-lg p-4">
                     <h2 className="text-xl font-bold mb-3 text-canon-text">Социальный симулятор</h2>

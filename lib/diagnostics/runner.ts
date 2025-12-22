@@ -152,7 +152,7 @@ export async function runDiagnosticScenario(
     world.agents.forEach(agent => {
         const fullMetrics = calculateAllCharacterMetrics(agent, agent.versionTags[0] as Branch, []);
         if (fullMetrics.v42metrics && fullMetrics.v42metrics.ExhaustRisk_t > 0.8) agent.mode = 'burnout';
-        else if ((agent.state.dark_exposure ?? 0) > 70) agent.mode = 'dark';
+        else if ((agent.state?.dark_exposure ?? 0) > 70) agent.mode = 'dark';
         else agent.mode = 'normal';
     });
 

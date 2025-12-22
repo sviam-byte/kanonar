@@ -351,7 +351,7 @@ const buildLowerCorridorsMap = (): LocationMap => {
     return { id: 'lower_corridors_map', width, height, cells, visuals, exits };
 };
 
-// 5. Tegan's Quarters (Detailed - Safe sanctuary)
+// 5. Private Quarters (Detailed - Safe sanctuary)
 const buildTeganQuartersMap = (): LocationMap => {
     const width = 20;
     const height = 16;
@@ -617,7 +617,7 @@ export const allLocations: LocationEntity[] = [
   {
     entityId: "ka_palace.tegan_quarters",
     type: EntityType.Location,
-    title: "Покои Тегана",
+    title: "Покои",
     versionTags: [Branch.Current],
     kind: "room",
     tags: ["module_only", "private", "safe_hub"],
