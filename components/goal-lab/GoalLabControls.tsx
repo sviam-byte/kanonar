@@ -8,8 +8,9 @@ import { Slider } from '../Slider';
 import { AffectState } from '../../types';
 import { TEST_SCENES, ScenePreset } from '../../data/presets/scenes';
 import { CONTEXT_ATOM_KIND_CATALOG, DEFAULT_MANUAL_KINDS } from '../../lib/context/v2/catalog';
-import { ModsPanel } from './ModsPanel'; 
+import { ModsPanel } from './ModsPanel';
 import { ScenePanel } from './ScenePanel';
+import { EmotionInspector } from './EmotionInspector';
 
 interface Props {
   allCharacters: CharacterEntity[];
@@ -30,6 +31,9 @@ interface Props {
   
   manualAtoms: ContextAtom[];
   onChangeManualAtoms: (atoms: ContextAtom[]) => void;
+
+  // Optional: current computed atoms (for inspectors)
+  computedAtoms?: ContextAtom[];
 
   nearbyActors: LocalActorRef[];
   onNearbyActorsChange: (actors: LocalActorRef[]) => void;
@@ -72,6 +76,7 @@ export const GoalLabControls: React.FC<Props> = ({
   locationMode, onLocationModeChange,
   selectedEventIds, onToggleEvent,
   manualAtoms, onChangeManualAtoms,
+  computedAtoms,
   nearbyActors, onNearbyActorsChange,
   placingActorId, onStartPlacement,
   affectOverrides, onAffectOverridesChange,
@@ -88,7 +93,7 @@ export const GoalLabControls: React.FC<Props> = ({
 }) => {
   
   const [selectedActorToAdd, setSelectedActorToAdd] = React.useState<string>('');
-  const [activeTab, setActiveTab] = React.useState<'events' | 'affect' | 'manual' | 'scenes' | 'sim' | 'mods' | 'scene'>('scenes');
+  const [activeTab, setActiveTab] = React.useState<'events' | 'affect' | 'manual' | 'emotions' | 'scenes' | 'sim' | 'mods' | 'scene'>('scenes');
   
   // Custom atom form state
   const [customAtomKind, setCustomAtomKind] = React.useState<ContextAtomKind>('threat');
@@ -384,8 +389,8 @@ export const GoalLabControls: React.FC<Props> = ({
 
       {/* Tabs */}
       <div className="flex border-b border-canon-border/50 overflow-x-auto no-scrollbar">
-          {['scenes', 'scene', 'events', 'sim', 'affect', 'manual', 'mods'].map(tab => (
-            <button 
+          {['scenes', 'scene', 'events', 'sim', 'affect', 'emotions', 'manual', 'mods'].map(tab => (
+            <button
                key={tab}
                className={`flex-1 py-1 px-2 text-[10px] font-bold uppercase whitespace-nowrap ${activeTab === tab ? 'text-canon-accent border-b-2 border-canon-accent' : 'text-canon-text-light'}`}
                onClick={() => setActiveTab(tab as any)}
@@ -606,6 +611,17 @@ export const GoalLabControls: React.FC<Props> = ({
                      <button type="button" onClick={() => onAffectOverridesChange({})} className="w-full text-xs bg-canon-bg-light border border-canon-border rounded py-1 hover:text-canon-red">Reset Affect</button>
                  </div>
              </div>
+        )}
+
+        {activeTab === 'emotions' && (
+          <div className="mt-2">
+            <EmotionInspector
+              selfId={selectedAgentId}
+              atoms={computedAtoms || []}
+              manualAtoms={manualAtoms}
+              onChangeManualAtoms={onChangeManualAtoms}
+            />
+          </div>
         )}
 
         {activeTab === 'manual' && (

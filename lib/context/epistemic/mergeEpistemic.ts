@@ -19,12 +19,9 @@ export type MergeResult = {
   provenance: Map<string, EpistemicLayer>; // winning layer for each atom ID
 };
 
-// Priority: Derived > Override > Belief > Obs > World
-// (Derived overrides everything as it's the final synthesis, Override handles manual injection, Belief overrides perception, Obs overrides static world data)
-// Actually, usually: Override > Derived > Belief > Obs > World
-// Let's stick to the prompt's implied priority which seems to be Override > Belief > Obs > World?
-// The prompt said: "world -> obs -> belief -> override (and derived?)"
-const PRIORITY: EpistemicLayer[] = ['world', 'obs', 'belief', 'override', 'derived'];
+// Priority (low -> high): World < Obs < Belief < Derived < Override
+// Override atoms must beat derived ones so manual emo/app overrides win over computed values.
+const PRIORITY: EpistemicLayer[] = ['world', 'obs', 'belief', 'derived', 'override'];
 
 function layerRank(layer: EpistemicLayer) {
   return PRIORITY.indexOf(layer);
