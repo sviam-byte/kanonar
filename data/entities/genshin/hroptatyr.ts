@@ -1,0 +1,64 @@
+import { Branch, CharacterEntity, EntityType } from '../../../types';
+
+const hroptatyr: CharacterEntity = {
+  entityId: 'character-genshin-hroptatyr',
+  type: EntityType.Character,
+  title: 'Хроптатюр',
+  subtitle: 'The Wise Man / The Negotiator',
+  description:
+    'Глава университета и прагматичный переговорщик с богами. Старается выиграть партию у судьбы административными ресурсами.',
+  tags: ['genshin', 'sage', 'negotiator', 'khaenriah'],
+  versionTags: [Branch.Current],
+  body: {
+    sex_phenotype: 'typical_male',
+    functional: {
+      strength_upper: 0.5,
+      strength_lower: 0.5,
+      explosive_power: 0.4,
+      aerobic_capacity: 0.6,
+      recovery_speed: 0.6,
+      strength_endurance_profile: 0.6,
+      injury_risk: { knees: 0.2, ankles: 0.2, lower_back: 0.3, shoulders: 0.2 },
+    },
+    reserves: {
+      energy_store_kJ: 1000,
+      hydration: 0.85,
+      glycemia_mmol: 5.0,
+      O2_margin: 0.85,
+      sleep_homeostat_S: 0.5,
+      circadian_phase_h: 12,
+      sleep_debt_h: 2,
+      immune_tone: 0.8,
+    },
+    acute: {
+      hp: 95,
+      injuries_severity: 0.05,
+      pain_now: 0.1,
+      temperature_c: 36.6,
+      tremor: 0,
+      reaction_time_ms: 250,
+      fatigue: 25,
+      stress: 35,
+      moral_injury: 25,
+    },
+    regulation: { HPA_axis: 0.4, arousal: 0.3 },
+  },
+  identity: {
+    clearance_level: 4,
+    version_gates: [Branch.Current],
+    self_concept: 'Голос разума',
+    oaths: [
+      { key: 'negotiate_with_gods', description: 'Держать канал переговоров с богами открытым' },
+    ],
+  },
+  axes: {
+    leverage: 1.0,
+    hierarchy: 0.8,
+    riskTolerance: 0.4,
+    clarity: 0.9,
+    emotionality: 0.1,
+    submission: 0.3,
+  },
+};
+
+export default hroptatyr;
