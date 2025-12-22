@@ -482,6 +482,20 @@ export const GoalLabResults: React.FC<Props> = ({
 
         return (
           <div className="absolute inset-0 overflow-y-auto custom-scrollbar p-4 space-y-4 pb-20">
+            <div className="border border-canon-border/40 rounded bg-black/15 p-3">
+              <div className="text-xs font-bold text-canon-text uppercase tracking-wider">How emotions are computed</div>
+              <div className="text-[12px] text-canon-text-light mt-2 space-y-1">
+                <div><span className="font-mono">app:*</span> — оценка ситуации (угроза/контроль/давление/неопределённость).</div>
+                <div><span className="font-mono">emo:*</span> — эмоции как функция <span className="font-mono">app:*</span>.</div>
+                <div className="text-[11px] text-canon-text-light/80 mt-2">
+                  Пример: <span className="font-mono">emo:fear</span> растёт при угрозе и падает при контроле; усиливается неопределённостью.
+                </div>
+                <div className="text-[11px] text-canon-text-light/80">
+                  Каждая эмоция должна иметь <span className="font-mono">trace.usedAtomIds</span> и <span className="font-mono">trace.parts</span> (веса/вклад).
+                </div>
+              </div>
+            </div>
+
             <div className="text-xs font-bold text-canon-text uppercase tracking-wider">Appraisals (app:*)</div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
               {app.length ? app.map(a => <Row key={a.id} a={a} />) : <div className="text-[12px] text-canon-text-light/70">Нет app:* атомов.</div>}

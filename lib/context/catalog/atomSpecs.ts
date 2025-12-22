@@ -125,6 +125,27 @@ export const ATOM_SPECS: AtomSpec[] = [
     tags: ['obs','social']
   },
   {
+    specId: 'app.generic',
+    idPattern: /^app:(?<channel>[a-zA-Z0-9_-]+):(?<selfId>[a-zA-Z0-9_-]+)$/,
+    title: p => `Appraisal: ${p.channel} (${p.selfId})`,
+    meaning: p =>
+      `Оценка ситуации (appraisal) для агента ${p.selfId}: канал "${p.channel}". ` +
+      `Appraisal — промежуточный слой между контекстом (ctx/threat/mind/world) и эмоциями (emo:*).`,
+    scale: { min: 0, max: 1, lowMeans: 'низко', highMeans: 'высоко' },
+    tags: ['app','emotionLayer']
+  },
+  {
+    specId: 'emo.generic',
+    idPattern: /^emo:(?<channel>[a-zA-Z0-9_-]+):(?<selfId>[a-zA-Z0-9_-]+)$/,
+    title: p => `Emotion: ${p.channel} (${p.selfId})`,
+    meaning: p =>
+      `Эмоция/аффективный канал для агента ${p.selfId}: "${p.channel}". ` +
+      `Считается из appraisal-атомов (app:*), которые, в свою очередь, считаются из ctx/threat/mind/world. ` +
+      `Диапазон по умолчанию 0..1 (valence может храниться как 0..1 при внутреннем -1..1).`,
+    scale: { min: 0, max: 1, lowMeans: 'нет/слабо', highMeans: 'сильно' },
+    tags: ['emo','emotionLayer']
+  },
+  {
     specId: 'tom.dyad.trust',
     idPattern: /^tom:dyad:(?<selfId>[a-zA-Z0-9_-]+):(?<otherId>[a-zA-Z0-9_-]+):trust$/,
     title: p => `ToM: доверие к ${p.otherId}`,
