@@ -3,7 +3,7 @@ import { Branch, CharacterEntity, EntityType } from '../../../types';
 const rhinedottir: CharacterEntity = {
   entityId: 'character-genshin-rhinedottir',
   type: EntityType.Character,
-  title: 'Райндоттир',
+  title: 'Рейндоттир',
   subtitle: 'Gold / The Alchemist',
   description:
     'Gold / The Alchemist. Наблюдатель и инженер живого: холодная этика эксперимента, идеал совершенства и трикстерская дисциплина текста.',

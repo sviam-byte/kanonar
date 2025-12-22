@@ -3,7 +3,7 @@ import { Branch, CharacterEntity, EntityType } from '../../../types';
 const kaeya: CharacterEntity = {
   entityId: 'character-genshin-kaeya',
   type: EntityType.Character,
-  title: 'Кэйа Альберих',
+  title: 'Кэйа',
   subtitle: 'The Dying King / The Architect',
   description:
     'The Dying King / The Architect. Король Каэнри’ах: рациональная жестокость, стратегическая нежность и власть как инструмент удержания мира.',
@@ -121,7 +121,7 @@ const kaeya: CharacterEntity = {
       { id: 'crown', title: 'Корона', text: 'Власть как необходимость: не роскошь, а механизм выживания страны.', tags: ['khaenriah'] },
       { id: 'architect', title: 'Архитектор системы', text: 'Держит баланс между планами Шестёрки, логистикой и дипломатией.', tags: ['politics'] },
       { id: 'illness', title: 'Умирающий король', text: 'Болезнь/проклятие как тайна и рычаг. Скрывает, чтобы не потерять контроль.', tags: ['secret'] },
-      { id: 'consort', title: 'Связь с Дэйном', text: 'Опасная близость: поддержка и привязка, которая одновременно лечит и ломает.', tags: ['relationship'] },
+      { id: 'consort', title: 'Связь с Дайнслейфом', text: 'Опасная близость: поддержка и привязка, которая одновременно лечит и ломает.', tags: ['relationship'] },
     ],
   },
   relationships: {

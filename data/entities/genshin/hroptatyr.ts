@@ -3,7 +3,7 @@ import { Branch, CharacterEntity, EntityType } from '../../../types';
 const hroptatyr: CharacterEntity = {
   entityId: 'character-genshin-hroptatyr',
   type: EntityType.Character,
-  title: 'Хроптатюр',
+  title: 'Хрофтатюр',
   subtitle: 'The Wise Man / The Negotiator',
   description:
     'The Wise Man / The Negotiator. Мастер переговоров: терпит неоднозначность, торгует смыслами и строит мосты там, где все хотят стен.',

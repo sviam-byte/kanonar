@@ -3,7 +3,7 @@ import { Branch, CharacterEntity, EntityType } from '../../../types';
 const dainsleif: CharacterEntity = {
   entityId: 'character-genshin-dainsleif',
   type: EntityType.Character,
-  title: 'Дэйнслейф',
+  title: 'Дайнслейф',
   subtitle: 'The Twilight Sword / The Consort',
   description:
     'The Twilight Sword / The Consort. Последний страж Каэнри’ах: холодная дисциплина, травма контроля, железная клятва и опасная близость к королю.',

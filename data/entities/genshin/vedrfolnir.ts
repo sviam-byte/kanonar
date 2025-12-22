@@ -3,7 +3,7 @@ import { Branch, CharacterEntity, EntityType } from '../../../types';
 const vedrfolnir: CharacterEntity = {
   entityId: 'character-genshin-vedrfolnir',
   type: EntityType.Character,
-  title: 'Ведрфольнир',
+  title: 'Ведрфёльнир',
   subtitle: 'The Visionary / The Cynic',
   description:
     'The Visionary / The Cynic. Провидец, который смотрит на мир как на игру: мало верит людям, много — закономерностям и скуке.',
