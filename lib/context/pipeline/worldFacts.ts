@@ -81,7 +81,17 @@ export function buildWorldFactsAtoms(input: WorldFactsInput): ContextAtom[] {
       subject: selfId,
       tags,
       label,
-      trace: { usedAtomIds: [], notes: ['from location.properties/state'], parts: {} }
+      trace: {
+        usedAtomIds: [],
+        notes: ['from location.properties/state'],
+        parts: {
+          key: id.split(':')[2],
+          raw: v,
+          norm: m,
+          locationId: locId ? String(locId) : undefined,
+        }
+      },
+      meta: { locationId: locId ? String(locId) : undefined, raw: v }
     } as any));
   };
 

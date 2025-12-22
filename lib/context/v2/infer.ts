@@ -79,5 +79,27 @@ export function inferAtomOrigin(source: ContextSource, id: string): AtomOrigin {
 export function normalizeAtom<T extends ContextAtom>(atom: T): T {
   const ns = atom.ns ?? inferAtomNamespace(atom);
   const origin = atom.origin ?? inferAtomOrigin(atom.source, atom.id);
-  return { ...atom, ns, origin };
+  const out: any = { ...atom, ns, origin };
+  const id = String(out.id || '');
+
+  // Ensure trace exists with sensible defaults (prevents “empty air” in Debug Area)
+  if (!out.trace) {
+    out.trace = {
+      usedAtomIds: [],
+      notes: ['trace:auto (missing in producer)'],
+      parts: {},
+    };
+  } else {
+    if (!Array.isArray(out.trace.usedAtomIds)) out.trace.usedAtomIds = [];
+    if (!Array.isArray(out.trace.notes)) out.trace.notes = [];
+    if (!out.trace.parts || typeof out.trace.parts !== 'object') out.trace.parts = {};
+  }
+
+  // Heuristic: infer subject from the trailing segment of the id if not provided
+  if (!out.subject && id.split(':').length >= 2) {
+    const tail = id.split(':')[id.split(':').length - 1];
+    if (tail && tail.length >= 3) out.subject = out.subject || tail;
+  }
+
+  return out as ContextAtom;
 }

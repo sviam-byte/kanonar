@@ -29,6 +29,19 @@ export function TraceDrawer({
     return <div className="p-8 text-center text-canon-text-light italic text-xs">Выберите атом для просмотра трассировки.</div>;
   }
   const tr = atom.meta?.trace;
+  const partsRaw = tr?.parts;
+  const partsList = Array.isArray(partsRaw)
+    ? partsRaw
+    : partsRaw && typeof partsRaw === 'object'
+      ? Object.entries(partsRaw).map(([name, value]) => {
+          const v = (value as any) || {};
+          return {
+            name,
+            value: typeof v === 'number' ? v : v.val ?? v.value ?? 0,
+            weight: v.w ?? v.weight ?? 1,
+          };
+        })
+      : [];
   return (
     <div className="flex flex-col gap-6 animate-fade-in">
       <div className="bg-canon-bg p-4 rounded border border-canon-border">
@@ -90,7 +103,7 @@ export function TraceDrawer({
                 </tr>
             </thead>
             <tbody>
-                {(tr?.parts ?? []).map((p, i) => (
+                {partsList.map((p, i) => (
                     <tr key={i} className="border-t border-canon-border/30 hover:bg-white/5">
                         <td className="p-2 truncate max-w-[120px]" title={p.name}>{p.name}</td>
                         <td className="p-2 text-right font-mono text-canon-accent">{(p.value ?? 0).toFixed(2)}</td>
@@ -99,7 +112,16 @@ export function TraceDrawer({
                 ))}
             </tbody>
           </table>
-          {(tr?.parts ?? []).length === 0 && <div className="p-4 text-center text-xs text-canon-text-light italic">No parts trace available.</div>}
+          {partsList.length === 0 && (
+            <div className="p-4 text-center text-xs text-canon-text-light italic">
+              No parts trace available.
+              {atom.meta && (
+                <div className="mt-2 text-[10px] font-mono opacity-80 whitespace-pre-wrap break-all border border-canon-border/30 rounded p-2 bg-black/30">
+                  {JSON.stringify(atom.meta, null, 2)}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>

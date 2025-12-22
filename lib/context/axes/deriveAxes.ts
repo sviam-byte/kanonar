@@ -16,7 +16,29 @@ function get(atoms: ContextAtom[], id: string, fb = 0) {
   return (typeof m === 'number' && Number.isFinite(m)) ? m : fb;
 }
 
-function atom(id: string, magnitude: number, usedAtomIds: string[], parts: any, kind: string = 'ctx_axis'): ContextAtom {
+type PartEntry = { name: string; val: number; w?: number; contrib?: number };
+
+function buildParts(entries: PartEntry[], formula?: string) {
+  const parts: Record<string, any> = {};
+  for (const e of entries) {
+    parts[e.name] = {
+      val: e.val,
+      w: e.w,
+      contrib: e.contrib ?? (typeof e.w === 'number' ? e.val * e.w : undefined),
+    };
+  }
+  if (formula) parts.formula = formula;
+  return parts;
+}
+
+function atom(
+  id: string,
+  magnitude: number,
+  usedAtomIds: string[],
+  parts: any,
+  kind: string = 'ctx_axis',
+  notes: string[] = ['axis from deriveAxes'],
+): ContextAtom {
   return {
     id,
     ns: 'ctx',
@@ -25,7 +47,7 @@ function atom(id: string, magnitude: number, usedAtomIds: string[], parts: any, 
     source: 'deriveAxes',
     magnitude: clamp01(magnitude),
     confidence: 1,
-    trace: { usedAtomIds, parts },
+    trace: { usedAtomIds, parts, notes },
     label: `${id.split(':')[1]}:${Math.round(clamp01(magnitude) * 100)}%`
   } as any;
 }
@@ -118,56 +140,172 @@ export function deriveAxes(args: { selfId: string; atoms: ContextAtom[]; tuning?
   const ctxCover = clamp01(cover);
   const ctxEscape = clamp01(escape);
   
-  const used = [
-    `world:loc:privacy:${selfId}`,
-    `world:loc:control_level:${selfId}`,
-    `world:loc:crowd:${selfId}`,
-    `world:loc:normative_pressure:${selfId}`,
-    `ctx:src:scene:crowd:${selfId}`,
-    `ctx:src:scene:hostility:${selfId}`,
-    `ctx:src:scene:urgency:${selfId}`,
-    `ctx:src:scene:scarcity:${selfId}`,
-    `ctx:src:scene:chaos:${selfId}`,
-    `ctx:src:scene:novelty:${selfId}`,
-    `ctx:src:scene:loss:${selfId}`,
-    `ctx:src:scene:resourceAccess:${selfId}`,
-    `ctx:src:scene:threat:${selfId}`,
-    `ctx:src:norm:privacy:${selfId}`,
-    `ctx:src:norm:publicExposure:${selfId}`,
-    `ctx:src:norm:surveillance:${selfId}`,
-    `ctx:src:norm:normPressure:${selfId}`,
-    `ctx:src:norm:proceduralStrict:${selfId}`,
-    `world:map:cover:${selfId}`,
-    `world:map:escape:${selfId}`,
-    `world:map:exits:${selfId}`,
-    `world:map:danger:${selfId}`,
-    `world:env:hazard:${selfId}`,
-    `obs:infoAdequacy:${selfId}`,
-    `feat:char:${selfId}:body.pain`
-  ];
-
   const outAtoms = [
-    atom(`ctx:privacy:${selfId}`, privacy, used, { privacy }),
-    atom(`ctx:publicness:${selfId}`, publicness, used, { publicness, privacy }),
-    atom(`ctx:surveillance:${selfId}`, surveillance, used, { surveillance, control, publicness }),
-    atom(`ctx:hierarchy:${selfId}`, hierarchy, used, { hierarchy, control, normPressure }),
-    atom(`ctx:crowd:${selfId}`, ctxCrowd, used, { crowd }),
-    atom(`ctx:normPressure:${selfId}`, ctxNormPressure, used, { normPressure, surveillance, publicness }),
-    atom(`ctx:uncertainty:${selfId}`, uncertainty, used, { uncertainty, infoAdequacy }),
-    atom(`ctx:danger:${selfId}`, ctxDanger, used, { ctxDanger, danger, escape, cover }),
-    atom(`ctx:intimacy:${selfId}`, ctxIntimacy, used, { ctxIntimacy, privacy, surveillance }),
-    atom(`ctx:timePressure:${selfId}`, ctxTimePressure, used, { ctxTimePressure, scUrgency, escape }),
-    atom(`ctx:scarcity:${selfId}`, ctxScarcity, used, { ctxScarcity, scScarcity, scResourceAccess }),
+    atom(
+      `ctx:privacy:${selfId}`,
+      privacy,
+      [`world:loc:privacy:${selfId}`, `ctx:src:norm:privacy:${selfId}`],
+      buildParts([
+        { name: 'locPrivacy', val: locPrivacy, w: 0.7 },
+        { name: 'normPrivacy', val: normPrivacy, w: 0.3 },
+      ], 'privacy = 0.7*locPrivacy + 0.3*normPrivacy')
+    ),
+    atom(
+      `ctx:publicness:${selfId}`,
+      publicness,
+      [`world:loc:privacy:${selfId}`, `ctx:src:norm:publicExposure:${selfId}`],
+      buildParts([
+        { name: 'publicnessFromLoc', val: publicnessFromLoc, w: 0.7 },
+        { name: 'normPublicExposure', val: normPublicExposure, w: 0.3 },
+      ], 'publicness = 0.7*(1-privacy) + 0.3*normPublicExposure')
+    ),
+    atom(
+      `ctx:surveillance:${selfId}`,
+      surveillance,
+      [`world:loc:control_level:${selfId}`, `ctx:publicness:${selfId}`, `ctx:src:norm:surveillance:${selfId}`],
+      buildParts([
+        { name: 'control', val: control, w: 0.55 },
+        { name: 'publicness', val: publicness, w: 0.20 },
+        { name: 'normSurveillance', val: normSurveillance, w: 0.25 },
+      ], 'surveillance = 0.55*control + 0.20*publicness + 0.25*normSurveillance')
+    ),
+    atom(
+      `ctx:hierarchy:${selfId}`,
+      hierarchy,
+      [`world:loc:control_level:${selfId}`, `ctx:normPressure:${selfId}`, `ctx:src:norm:proceduralStrict:${selfId}`],
+      buildParts([
+        { name: 'control', val: control, w: 0.55 },
+        { name: 'normPressure', val: normPressure, w: 0.25 },
+        { name: 'normProceduralStrict', val: normProceduralStrict, w: 0.20 },
+      ], 'hierarchy = 0.55*control + 0.25*normPressure + 0.20*proceduralStrict')
+    ),
+    atom(
+      `ctx:crowd:${selfId}`,
+      ctxCrowd,
+      [`world:loc:crowd:${selfId}`, `ctx:src:scene:crowd:${selfId}`],
+      buildParts([
+        { name: 'locCrowd', val: locCrowd, w: 0.6 },
+        { name: 'sceneCrowd', val: scCrowd, w: 0.4 },
+      ], 'crowd = 0.6*locCrowd + 0.4*sceneCrowd')
+    ),
+    atom(
+      `ctx:normPressure:${selfId}`,
+      ctxNormPressure,
+      [`world:loc:normative_pressure:${selfId}`, `ctx:surveillance:${selfId}`, `ctx:publicness:${selfId}`, `ctx:src:norm:normPressure:${selfId}`, `ctx:src:norm:proceduralStrict:${selfId}`],
+      buildParts([
+        { name: 'locNormPressure', val: locNormPressure, w: 0.45 },
+        { name: 'surveillance', val: surveillance, w: 0.30 },
+        { name: 'publicness', val: publicness, w: 0.15 },
+        { name: 'normProceduralStrict', val: normProceduralStrict, w: 0.10 },
+      ], 'normPressure = 0.45*locNormPressure + 0.30*surveillance + 0.15*publicness + 0.10*proceduralStrict')
+    ),
+    atom(
+      `ctx:uncertainty:${selfId}`,
+      uncertainty,
+      [`obs:infoAdequacy:${selfId}`],
+      buildParts([
+        { name: 'infoAdequacy', val: infoAdequacy, w: -1, contrib: -(1 - infoAdequacy) },
+        { name: 'uncertainty', val: uncertainty },
+      ], 'uncertainty = 1 - infoAdequacy')
+    ),
+    atom(
+      `ctx:danger:${selfId}`,
+      ctxDanger,
+      [`world:map:danger:${selfId}`, `world:env:hazard:${selfId}`, `world:map:escape:${selfId}`, `world:map:cover:${selfId}`, `ctx:src:scene:hostility:${selfId}`, `ctx:src:scene:threat:${selfId}`],
+      buildParts([
+        { name: 'dangerBase', val: dangerBase, w: 0.75 },
+        { name: 'dangerSocial', val: dangerSocial, w: 0.25 },
+        { name: 'mapDanger', val: danger, w: 0.65 },
+        { name: 'escape', val: escape, w: -0.20, contrib: -0.20 * escape },
+        { name: 'cover', val: cover, w: -0.15, contrib: -0.15 * cover },
+        { name: 'sceneHostility', val: scHostility, w: 0.55 },
+        { name: 'sceneThreat', val: scThreat, w: 0.45 },
+      ], 'danger = 0.75*(0.65*danger + 0.20*(1-escape)+0.15*(1-cover)) + 0.25*(0.55*hostility + 0.45*sceneThreat)')
+    ),
+    atom(
+      `ctx:intimacy:${selfId}`,
+      ctxIntimacy,
+      [`ctx:privacy:${selfId}`, `ctx:surveillance:${selfId}`],
+      buildParts([
+        { name: 'privacy', val: privacy, w: 0.7 },
+        { name: 'surveillance', val: surveillance, w: -0.3, contrib: -0.3 * surveillance },
+      ], 'intimacy = 0.7*privacy + 0.3*(1-surveillance)')
+    ),
+    atom(
+      `ctx:timePressure:${selfId}`,
+      ctxTimePressure,
+      [`ctx:src:scene:urgency:${selfId}`, `world:map:escape:${selfId}`],
+      buildParts([
+        { name: 'sceneUrgency', val: scUrgency, w: 0.7 },
+        { name: 'escape', val: escape, w: -0.3, contrib: -0.3 * escape },
+      ], 'timePressure = 0.7*urgency + 0.3*(1-escape)')
+    ),
+    atom(
+      `ctx:scarcity:${selfId}`,
+      ctxScarcity,
+      [`ctx:src:scene:scarcity:${selfId}`, `ctx:src:scene:resourceAccess:${selfId}`],
+      buildParts([
+        { name: 'sceneScarcity', val: scScarcity, w: 0.75 },
+        { name: 'resourceAccess', val: scResourceAccess, w: -0.25, contrib: -0.25 * scResourceAccess },
+      ], 'scarcity = 0.75*sceneScarcity + 0.25*(1-resourceAccess)')
+    ),
 
-    atom(`ctx:legitimacy:${selfId}`, ctxLegitimacy, used, { ctxLegitimacy, ctxProceduralStrict, hierarchy, scChaos }),
-    atom(`ctx:secrecy:${selfId}`, ctxSecrecy, used, { ctxSecrecy, privacy, surveillance, publicness }),
+    atom(
+      `ctx:legitimacy:${selfId}`,
+      ctxLegitimacy,
+      [`ctx:src:scene:chaos:${selfId}`, `ctx:src:norm:proceduralStrict:${selfId}`, `world:loc:control_level:${selfId}`],
+      buildParts([
+        { name: 'chaos', val: scChaos, w: -0.45, contrib: -0.45 * scChaos },
+        { name: 'proceduralStrict', val: normProceduralStrict, w: 0.35 },
+        { name: 'control', val: control, w: 0.20 },
+      ], 'legitimacy = 0.45*(1-chaos) + 0.35*proceduralStrict + 0.20*control')
+    ),
+    atom(
+      `ctx:secrecy:${selfId}`,
+      ctxSecrecy,
+      [`ctx:surveillance:${selfId}`, `ctx:publicness:${selfId}`, `ctx:src:scene:threat:${selfId}`, `ctx:privacy:${selfId}`],
+      buildParts([
+        { name: 'surveillance', val: surveillance, w: 0.35 },
+        { name: 'publicness', val: publicness, w: 0.20 },
+        { name: 'sceneThreat', val: scThreat, w: 0.25 },
+        { name: 'privacy', val: privacy, w: -0.20, contrib: -0.20 * privacy },
+      ], 'secrecy = 0.35*surveillance + 0.20*publicness + 0.25*sceneThreat + 0.20*(1-privacy)')
+    ),
     // Aux ctx signals used by action/possibility models
-    atom(`ctx:proceduralStrict:${selfId}`, ctxProceduralStrict, used, { ctxProceduralStrict, normProceduralStrict }, 'ctx_aux'),
-    atom(`ctx:cover:${selfId}`, ctxCover, used, { ctxCover, cover }, 'ctx_aux'),
-    atom(`ctx:escape:${selfId}`, ctxEscape, used, { ctxEscape, escape }, 'ctx_aux'),
+    atom(
+      `ctx:proceduralStrict:${selfId}`,
+      ctxProceduralStrict,
+      [`ctx:src:norm:proceduralStrict:${selfId}`],
+      buildParts([{ name: 'proceduralStrict', val: normProceduralStrict }], 'proceduralStrict = norm.proceduralStrict'),
+      'ctx_aux'
+    ),
+    atom(
+      `ctx:cover:${selfId}`,
+      ctxCover,
+      [`world:map:cover:${selfId}`],
+      buildParts([{ name: 'cover', val: cover }], 'cover = map.cover'),
+      'ctx_aux'
+    ),
+    atom(
+      `ctx:escape:${selfId}`,
+      ctxEscape,
+      [`world:map:escape:${selfId}`],
+      buildParts([{ name: 'escape', val: escape }], 'escape = map.escape'),
+      'ctx_aux'
+    ),
 
-    atom(`ctx:grief:${selfId}`, ctxGrief, used, { ctxGrief, scLoss }),
-    atom(`ctx:pain:${selfId}`, featPain, used, { featPain })
+    atom(
+      `ctx:grief:${selfId}`,
+      ctxGrief,
+      [`ctx:src:scene:loss:${selfId}`],
+      buildParts([{ name: 'sceneLoss', val: scLoss }], 'grief = scene.loss')
+    ),
+    atom(
+      `ctx:pain:${selfId}`,
+      featPain,
+      [`feat:char:${selfId}:body.pain`],
+      buildParts([{ name: 'bodyPain', val: featPain }], 'pain = body.pain')
+    )
   ];
 
   return { atoms: outAtoms };
