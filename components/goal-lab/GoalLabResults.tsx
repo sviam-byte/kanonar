@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { ContextSnapshot, ContextualGoalScore, ContextAtom, TemporalContextConfig, ContextualGoalContribution } from '../../lib/context/v2/types';
+import type { ContextSnapshot, ContextualGoalScore, ContextAtom, TemporalContextConfig, ContextualGoalContribution } from '../../lib/context/v2/types';
 import { GOAL_DEFS } from '../../lib/goals/space'; 
 import { AffectState } from '../../types';
 import { AgentContextFrame, TomRelationView, TomPhysicalOther } from '../../lib/context/frame/types';
@@ -341,6 +341,8 @@ export const GoalLabResults: React.FC<Props> = ({
   tomRows,
   sceneDump,
   onDownloadScene,
+  manualAtoms,
+  onChangeManualAtoms,
 }) => {
   const [selectedGoalId, setSelectedGoalId] = useState<string | null>(null);
   const [isPreviewOpen, setPreviewOpen] = useState(false);
@@ -546,8 +548,8 @@ export const GoalLabResults: React.FC<Props> = ({
           <EmotionExplainPanel
             selfId={selfId}
             atoms={currentAtoms}
-            manualAtoms={props.manualAtoms}
-            onChangeManualAtoms={props.onChangeManualAtoms}
+            manualAtoms={manualAtoms || []}
+            onChangeManualAtoms={onChangeManualAtoms}
           />
         </div>
       );
