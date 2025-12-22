@@ -27,6 +27,34 @@ function layerRank(layer: EpistemicLayer) {
   return PRIORITY.indexOf(layer);
 }
 
+function splitByOrigin(atoms: ContextAtom[]): LayeredAtoms {
+  const out: LayeredAtoms = { world: [], obs: [], belief: [], override: [], derived: [] };
+  for (const a of atoms || []) {
+    const origin = (a as any)?.origin;
+    if (origin === 'override') out.override.push(a);
+    else if (origin === 'belief' || origin === 'memory') out.belief.push(a);
+    else if (origin === 'obs') out.obs.push(a);
+    else if (origin === 'derived') (out.derived as ContextAtom[]).push(a);
+    else out.world.push(a);
+  }
+  return out;
+}
+
+/**
+ * Merge helper that preserves manual overrides across subsequent pipeline merges.
+ * Use this instead of treating previous merged atoms as "world".
+ */
+export function mergeKeepingOverrides(base: ContextAtom[], derived: ContextAtom[]): MergeResult {
+  const baseLayers = splitByOrigin(base);
+  return mergeEpistemicAtoms({
+    world: baseLayers.world,
+    obs: baseLayers.obs,
+    belief: baseLayers.belief,
+    override: baseLayers.override,
+    derived: [...(baseLayers.derived || []), ...(derived || [])],
+  });
+}
+
 export function mergeEpistemicAtoms(layers: LayeredAtoms): MergeResult {
   const all: Array<{ a: ContextAtom; layer: EpistemicLayer }> = [];
 

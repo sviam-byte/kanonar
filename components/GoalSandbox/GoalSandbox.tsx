@@ -1281,6 +1281,8 @@ export const GoalSandbox: React.FC = () => {
               snapshotV1={snapshotV1 as any}
               sceneDump={sceneDumpV2 as any}
               onDownloadScene={onDownloadScene}
+              manualAtoms={manualAtoms}
+              onChangeManualAtoms={setManualAtoms}
             />
 
             {pipelineFrame && (

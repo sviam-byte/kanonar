@@ -23,6 +23,7 @@ import { ToMPanel } from './ToMPanel';
 import { CoveragePanel } from './CoveragePanel';
 import { GoalLabSnapshotV1 } from '../../lib/goal-lab/snapshotTypes';
 import { AtomInspector } from './AtomInspector';
+import { EmotionExplainPanel } from './EmotionExplainPanel';
 
 interface Props {
   context: ContextSnapshot | null;
@@ -46,6 +47,8 @@ interface Props {
   tomRows?: Array<{ me: string; other: string; dyad: any }> | null;
   sceneDump?: any;
   onDownloadScene?: () => void;
+  manualAtoms?: ContextAtom[];
+  onChangeManualAtoms?: (atoms: ContextAtom[]) => void;
 }
 
 interface AtomStyle {
@@ -461,7 +464,8 @@ export const GoalLabResults: React.FC<Props> = ({
           .filter(a => typeof a.id === 'string' && a.id.startsWith('emo:') && a.id.endsWith(`:${selfId}`))
           .sort((x, y) => metric(y) - metric(x));
 
-        const valence = get(`emo:valence:${selfId}`, 0);
+        const valenceSigned = get(`emo:valence:${selfId}`, 0);
+        const valence01 = (Number.isFinite(valenceSigned) ? (valenceSigned + 1) / 2 : 0.5);
         const arousal = get(`emo:arousal:${selfId}`, 0);
         const fear = get(`emo:fear:${selfId}`, 0);
         const anger = get(`emo:anger:${selfId}`, 0);
@@ -509,7 +513,7 @@ export const GoalLabResults: React.FC<Props> = ({
             <div className="border border-canon-border/40 rounded bg-black/15 p-3">
               <div className="text-xs font-bold text-canon-text uppercase tracking-wider">Core affect (quick)</div>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2">
-                <div className="text-[12px] text-canon-text-light">valence: <span className="font-mono text-canon-text">{Number(valence).toFixed(2)}</span></div>
+                <div className="text-[12px] text-canon-text-light">valence: <span className="font-mono text-canon-text">{Number(valenceSigned).toFixed(2)}</span> <span className="text-[11px] text-canon-text-light">(0..1: {Number(valence01).toFixed(2)})</span></div>
                 <div className="text-[12px] text-canon-text-light">arousal: <span className="font-mono text-canon-text">{Number(arousal).toFixed(2)}</span></div>
                 <div className="text-[12px] text-canon-text-light">fear: <span className="font-mono text-canon-text">{Number(fear).toFixed(2)}</span></div>
                 <div className="text-[12px] text-canon-text-light">anger: <span className="font-mono text-canon-text">{Number(anger).toFixed(2)}</span></div>
@@ -519,7 +523,7 @@ export const GoalLabResults: React.FC<Props> = ({
                 <div className="text-[12px] text-canon-text-light">care: <span className="font-mono text-canon-text">{Number(care).toFixed(2)}</span></div>
               </div>
               <div className="text-[10px] text-canon-text-light/70 mt-2">
-                valence хранится как 0..1 (внутренне может интерпретироваться как -1..1 через valenceSigned в trace.parts).
+                valence хранится как -1..1 (в UI для удобства показана и шкала 0..1 справа).
               </div>
             </div>
 
@@ -533,6 +537,20 @@ export const GoalLabResults: React.FC<Props> = ({
             </div>
           </div>
         );
+    };
+
+    const EmotionExplainTab = () => {
+      const selfId = (snapshotV1 as any)?.selfId || (context as any)?.agentId;
+      return (
+        <div className="absolute inset-0 overflow-y-auto custom-scrollbar p-4 pb-20">
+          <EmotionExplainPanel
+            selfId={selfId}
+            atoms={currentAtoms}
+            manualAtoms={props.manualAtoms}
+            onChangeManualAtoms={props.onChangeManualAtoms}
+          />
+        </div>
+      );
     };
 
     const CoverageTab = () => (
@@ -614,12 +632,13 @@ export const GoalLabResults: React.FC<Props> = ({
             case 9: return <DecisionTab />;
             case 10: return <AccessTab />;
             case 11: return <DiffTab />;
-            case 12: return <DebugTab />;
+            case 12: return <EmotionExplainTab />;
+            case 13: return <DebugTab />;
             default: return <ExplainTab />;
         }
     };
 
-  const tabsList = ['Explain', 'Analysis', 'Atoms', 'Threat', 'ToM', 'CtxMind', 'Emotions', 'Coverage', 'Possibilities', 'Decision', 'Access', 'Diff', 'Debug'];
+  const tabsList = ['Explain', 'Analysis', 'Atoms', 'Threat', 'ToM', 'CtxMind', 'Emotions', 'Coverage', 'Possibilities', 'Decision', 'Access', 'Diff', 'EmotionExplain', 'Debug'];
 
   const focusId = (context as any)?.agentId;
   const focusLabel = (focusId && actorLabels?.[focusId]) ? actorLabels[focusId] : focusId;

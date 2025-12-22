@@ -19,7 +19,7 @@ import { synthesizeAffectFromMind } from '../affect/synthesizeFromMind';
 // New Imports for Pipeline
 import { buildStage0Atoms } from '../context/pipeline/stage0';
 import { deriveContextVectors } from '../context/axes/deriveAxes';
-import { mergeEpistemicAtoms } from '../context/epistemic/mergeEpistemic';
+import { mergeEpistemicAtoms, mergeKeepingOverrides } from '../context/epistemic/mergeEpistemic';
 import { generateRumorBeliefs } from '../context/epistemic/rumorGenerator';
 import { buildBeliefToMBias } from '../tom/ctx/beliefBias';
 import { applyRelationPriorsToDyads } from '../tom/base/applyRelationPriors';
@@ -266,13 +266,7 @@ export function buildGoalLabContext(
 
       // Социальные proximity-атомы: дружба/вражда рядом из (obs + tom + rel)
       const socProx = deriveSocialProximityAtoms({ selfId, atoms: atomsPreAxes });
-      atomsPreAxes = mergeEpistemicAtoms({
-        world: atomsPreAxes,
-        obs: [],
-        belief: [],
-        override: [],
-        derived: socProx.atoms
-      }).merged;
+      atomsPreAxes = mergeKeepingOverrides(atomsPreAxes, socProx.atoms).merged;
 
       // Геометрия опасности: расстояния до hazard-клеток и опасность между агентами
       const hazGeo = deriveHazardGeometryAtoms({
@@ -280,13 +274,7 @@ export function buildGoalLabContext(
         selfId,
         atoms: atomsPreAxes
       });
-      atomsPreAxes = mergeEpistemicAtoms({
-        world: atomsPreAxes,
-        obs: [],
-        belief: [],
-        override: [],
-        derived: hazGeo.atoms
-      }).merged;
+      atomsPreAxes = mergeKeepingOverrides(atomsPreAxes, hazGeo.atoms).merged;
 
       // 5. Derive Axes
       const axesRes = deriveContextVectors({
@@ -295,24 +283,12 @@ export function buildGoalLabContext(
           tuning: (frame?.what?.contextTuning || (world.scene as any)?.contextTuning)
       });
       // IMPORTANT: axes must be materialized into the atom stream, otherwise access/threat/goals won't see them.
-      const atomsWithAxes = mergeEpistemicAtoms({
-          world: atomsPreAxes,
-          obs: [],
-          belief: [],
-          override: [],
-          derived: axesRes.atoms
-      }).merged;
+      const atomsWithAxes = mergeKeepingOverrides(atomsPreAxes, axesRes.atoms).merged;
 
       // 5.5 Constraints & Access
       const locId = (agentForPipeline as any).locationId || getLocationForAgent(worldForPipeline, selfId)?.entityId;
       const accessPack = deriveAccess(atomsWithAxes, selfId, locId);
-      const atomsAfterAccess = mergeEpistemicAtoms({
-          world: atomsWithAxes,
-          obs: [],
-          belief: [],
-          override: [],
-          derived: accessPack.atoms
-      }).merged;
+      const atomsAfterAccess = mergeKeepingOverrides(atomsWithAxes, accessPack.atoms).merged;
 
       // 6. Rumor Generation
       const seed = (world as any).sceneSnapshot?.seed ?? 12345;
@@ -326,13 +302,7 @@ export function buildGoalLabContext(
       
       // 7. Apply Relation Priors
       const priorsApplied = applyRelationPriorsToDyads(atomsAfterBeliefGen, selfId);
-      const atomsAfterPriors = mergeEpistemicAtoms({
-          world: atomsAfterBeliefGen,
-          obs: [],
-          belief: [],
-          override: [],
-          derived: priorsApplied.atoms
-      }).merged;
+      const atomsAfterPriors = mergeKeepingOverrides(atomsAfterBeliefGen, priorsApplied.atoms).merged;
 
       // 8. ToM Context Bias
       const biasPack = buildBeliefToMBias(atomsAfterPriors, selfId);
@@ -564,13 +534,7 @@ export function buildGoalLabContext(
       const possibilities = derivePossibilitiesRegistry({ selfId, atoms: atomsForPossibilities });
       const possAtoms = atomizePossibilities(possibilities);
 
-      const atomsAfterPoss = mergeEpistemicAtoms({
-        world: atomsForPossibilities,
-        obs: [],
-        belief: [],
-        override: [],
-        derived: possAtoms
-      }).merged;
+      const atomsAfterPoss = mergeKeepingOverrides(atomsForPossibilities, possAtoms).merged;
 
       return {
           atoms: atomsAfterPoss,
