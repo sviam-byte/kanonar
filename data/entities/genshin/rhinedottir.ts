@@ -6,9 +6,19 @@ const rhinedottir: CharacterEntity = {
   title: 'Райндоттир',
   subtitle: 'Gold / The Alchemist',
   description:
-    'Аморальный гений из Круга ведьм. Смотрит на катастрофу как на эксперимент и рассматривает людей как объекты.',
+    'Gold / The Alchemist. Наблюдатель и инженер живого: холодная этика эксперимента, идеал совершенства и трикстерская дисциплина текста.',
   tags: ['genshin', 'hexenzirkel', 'alchemist', 'observer', 'module_only'],
   versionTags: [Branch.Current],
+  biography: {
+    summary:
+      'Алхимик “Золото”. Смотрит на мир как на систему, которую можно пересобрать. Умеет прятать истинные мотивы под красивыми рационализациями.',
+    events: [
+      { id: 'gold', title: 'Золото', text: 'Имя как маска и как метод: создавать вещи, которые переживут богов.', tags: ['identity'] },
+      { id: 'perfection', title: 'Стремление к совершенству', text: '“Человек недостаточен” — потому эксперимент становится моралью.', tags: ['ethics'] },
+      { id: 'observer', title: 'Наблюдатель', text: 'Отстранённость как инструмент: ближе к истине, дальше от людей.', tags: ['mindset'] },
+      { id: 'enigmata', title: 'Искажение хроник', text: 'Работа с нарративом/историей как со щитом и оружием.', tags: ['text'] },
+    ],
+  },
   vector_base: {
     A_Causality_Sanctity: 0.3,
     A_Memory_Fidelity: 0.8,

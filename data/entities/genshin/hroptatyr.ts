@@ -6,9 +6,18 @@ const hroptatyr: CharacterEntity = {
   title: 'Хроптатюр',
   subtitle: 'The Wise Man / The Negotiator',
   description:
-    'Глава университета и прагматичный переговорщик с богами. Старается выиграть партию у судьбы административными ресурсами.',
+    'The Wise Man / The Negotiator. Мастер переговоров: терпит неоднозначность, торгует смыслами и строит мосты там, где все хотят стен.',
   tags: ['genshin', 'sage', 'negotiator', 'khaenriah', 'module_only'],
   versionTags: [Branch.Current],
+  biography: {
+    summary:
+      'Человек, который искренне ищет правду — и поэтому выбирает переговоры даже там, где это выглядит слабостью.',
+    events: [
+      { id: 'wiseman', title: 'Мудрец', text: 'Думает системами и последствиями. Учит моделировать ситуации и платить цену за слова.', tags: ['skill'] },
+      { id: 'negotiator', title: 'Переговорщик', text: 'Дипломатия как техника выживания, а не как “дружба”.', tags: ['politics'] },
+      { id: 'mentor', title: 'Наставник', text: 'Тренирует других через симуляции: провоцирует ошибки, чтобы сделать их безопасными.', tags: ['teaching'] },
+    ],
+  },
   vector_base: {
     A_Causality_Sanctity: 0.6,
     A_Memory_Fidelity: 0.7,

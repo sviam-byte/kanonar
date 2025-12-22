@@ -6,7 +6,7 @@ const dainsleif: CharacterEntity = {
   title: 'Дэйнслейф',
   subtitle: 'The Twilight Sword / The Consort',
   description:
-    'Сломленный рыцарь Каэнри\'а, ищущий искупление в тотальном подчинении. Считает себя расходуемым якорем и пищей для короля.',
+    'The Twilight Sword / The Consort. Последний страж Каэнри’ах: холодная дисциплина, травма контроля, железная клятва и опасная близость к королю.',
   tags: ['genshin', 'khaenriah', 'consort', 'blood_source', 'module_only'],
   versionTags: [Branch.Current],
   vector_base: {
@@ -114,26 +114,13 @@ const dainsleif: CharacterEntity = {
     ],
   },
   biography: {
-    characterId: 'character-genshin-dainsleif',
+    summary:
+      'Страж Каэнри’ах и главный свидетель катастрофы. Человек, которого многократно лишали субъектности — и потому он болезненно реагирует на любой контроль.',
     events: [
-      {
-        id: 'betrayal_of_anfortas',
-        time: -300,
-        kind: 'betrayal/crime',
-        valence: -1,
-        intensity: 1.0,
-        axisWeights: { moralLoad: 1 },
-        tags: ['loss_of_honor'],
-      },
-      {
-        id: 'kaeya_first_night',
-        time: -20,
-        kind: 'bond/trauma',
-        valence: -0.4,
-        intensity: 1.0,
-        axisWeights: { submission: 1 },
-        tags: ['total_submission'],
-      },
+      { id: 'birth', title: 'Ранние годы', text: 'Формирование как стража и солдата. Привычка держать лицо и цену молчания.', tags: ['khaenriah'] },
+      { id: 'oath', title: 'Клятва', text: 'Клятва — абсолютна: не нарушается даже под угрозой личного разрушения.', tags: ['oath'] },
+      { id: 'mind_control', title: 'Травма контроля', text: 'Опыт насильственного контроля мыслей/памяти: паника при попытке “исправить” его выбор.', tags: ['trauma'] },
+      { id: 'cataclysm', title: 'Катастрофа', text: 'Выжил и стал носителем памяти о неизбежности. Это делает его и опасным, и почти неизбежно честным.', tags: ['cataclysm'] },
     ],
   },
   relationships: {

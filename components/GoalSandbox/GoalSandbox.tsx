@@ -35,6 +35,8 @@ import { adaptToSnapshotV1 } from '../../lib/goal-lab/snapshotAdapter';
 import { buildGoalLabSceneDumpV2, downloadJson } from '../../lib/goal-lab/sceneDump';
 import { CastPerspectivePanel } from '../goal-lab/CastPerspectivePanel';
 import { allScenarioDefs } from '../../data/scenarios/index';
+import { useAccess } from '../../contexts/AccessContext';
+import { filterCharactersForActiveModule } from '../../lib/modules/visibility';
 
 // Pipeline Imports
 import { buildFrameMvp } from '../../lib/context/buildFrameMvp';
@@ -124,6 +126,7 @@ const cloneWorld = <T,>(w: T): T => {
 
 export const GoalSandbox: React.FC = () => {
   const { characters: sandboxCharacters, setDyadConfigFor } = useSandbox();
+  const { activeModule } = useAccess();
 
   const [fatalError, setFatalError] = useState<string | null>(null);
   const [runtimeError, setRuntimeError] = useState<string | null>(null);
@@ -133,8 +136,9 @@ export const GoalSandbox: React.FC = () => {
     const base = getAllCharactersWithRuntime();
     const map = new Map<string, CharacterEntity>();
     [...base, ...sandboxCharacters].forEach(c => map.set(c.entityId, c));
-    return Array.from(map.values());
-  }, [sandboxCharacters]);
+    const merged = Array.from(map.values());
+    return filterCharactersForActiveModule(merged, activeModule);
+  }, [sandboxCharacters, activeModule]);
 
   const actorLabels = useMemo(() => {
     const m: Record<string, string> = {};

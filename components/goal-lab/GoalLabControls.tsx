@@ -403,7 +403,7 @@ export const GoalLabControls: React.FC<Props> = ({
       {/* Tab Content */}
       <div className="flex-1 min-h-0 flex flex-col p-2 bg-canon-bg overflow-y-auto custom-scrollbar">
         
-        {activeTab === 'scenes' && onLoadScene && (
+        {activeTab === 'scenes' && onLoadScene && TEST_SCENES.length > 0 && (
             <div className="space-y-2">
                 <div className="text-xs font-bold text-canon-text uppercase tracking-wider mb-2 flex items-center gap-2">
                     <span>🎬</span> Quick Presets

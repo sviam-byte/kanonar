@@ -6,7 +6,7 @@ const kaeya: CharacterEntity = {
   title: 'Кэйа Альберих',
   subtitle: 'The Dying King / The Architect',
   description:
-    'Монарх Каэнри\'а, удерживающий рассыпающийся мир силой воли и крови Дэйнслейфа. Контролирует хаос через насилие и обман.',
+    'The Dying King / The Architect. Король Каэнри’ах: рациональная жестокость, стратегическая нежность и власть как инструмент удержания мира.',
   tags: ['genshin', 'khaenriah', 'king', 'architect', 'module_only'],
   versionTags: [Branch.Current],
   vector_base: {
@@ -115,25 +115,13 @@ const kaeya: CharacterEntity = {
     ],
   },
   biography: {
-    characterId: 'character-genshin-kaeya',
+    summary:
+      'Король Каэнри’ах, который строит “правильное” будущее из невозможных решений. Опирается на контроль, структуру и символы власти — и платит за это телом.',
     events: [
-      {
-        id: 'ascension',
-        time: -200,
-        kind: 'victory/trauma',
-        valence: 0.1,
-        intensity: 1.0,
-        tags: ['burden_of_lies'],
-      },
-      {
-        id: 'dainsleif_submission',
-        time: -15,
-        kind: 'bond',
-        valence: 0.6,
-        intensity: 0.9,
-        axisWeights: { control: 0.5 },
-        tags: ['ownership', 'anchor'],
-      },
+      { id: 'crown', title: 'Корона', text: 'Власть как необходимость: не роскошь, а механизм выживания страны.', tags: ['khaenriah'] },
+      { id: 'architect', title: 'Архитектор системы', text: 'Держит баланс между планами Шестёрки, логистикой и дипломатией.', tags: ['politics'] },
+      { id: 'illness', title: 'Умирающий король', text: 'Болезнь/проклятие как тайна и рычаг. Скрывает, чтобы не потерять контроль.', tags: ['secret'] },
+      { id: 'consort', title: 'Связь с Дэйном', text: 'Опасная близость: поддержка и привязка, которая одновременно лечит и ломает.', tags: ['relationship'] },
     ],
   },
   relationships: {

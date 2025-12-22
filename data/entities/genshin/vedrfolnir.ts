@@ -6,9 +6,18 @@ const vedrfolnir: CharacterEntity = {
   title: 'Ведрфольнир',
   subtitle: 'The Visionary / The Cynic',
   description:
-    'Основатель Приказа Бездны, видящий временные линии сразу. Циничный свидетель катастрофы, которую считает неизбежной.',
+    'The Visionary / The Cynic. Провидец, который смотрит на мир как на игру: мало верит людям, много — закономерностям и скуке.',
   tags: ['genshin', 'abyss', 'seer', 'visionary', 'module_only'],
   versionTags: [Branch.Current],
+  biography: {
+    summary:
+      'Отрешённый наблюдатель. Вмешивается редко — чаще ради забавы, но его “забава” обычно разрушительна и точна.',
+    events: [
+      { id: 'seer', title: 'Провидец', text: 'Видит паттерны и финалы. Поэтому ему трудно “сочувствовать процессу”.', tags: ['mindset'] },
+      { id: 'cynic', title: 'Циник', text: 'Не любит мир — любит, когда мир не мешает. Люди для него шум.', tags: ['social'] },
+      { id: 'detached', title: 'Отрешённость', text: 'Сохраняет дистанцию, чтобы не стать участником. Участие для него — проигрыш.', tags: ['control'] },
+    ],
+  },
   vector_base: {
     A_Causality_Sanctity: 0.4,
     A_Memory_Fidelity: 0.9,
