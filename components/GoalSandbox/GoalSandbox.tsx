@@ -1200,6 +1200,7 @@ export const GoalSandbox: React.FC = () => {
               allCharacters={allCharacters}
               allLocations={allLocations as any}
               allEvents={eventRegistry.getAll() as any}
+              computedAtoms={(snapshotV1 as any)?.atoms ?? (snapshot as any)?.atoms ?? []}
               selectedAgentId={selectedAgentId}
               onSelectAgent={handleSelectAgent}
               selectedLocationId={selectedLocationId}

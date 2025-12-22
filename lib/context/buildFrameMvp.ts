@@ -1,21 +1,19 @@
 import { buildStage0Atoms } from './stage0/buildStage0';
 import { applyStage1Ctx } from './stage1/buildStage1';
+import { applyStage2Emotions } from './stage2/buildStage2';
 import { applyStage3Threat } from './stage3/buildStage3';
-import { applyStage2Emotion } from './stage2/buildStage2Emotion';
 
 export function buildFrameMvp(scene: any, tuning?: any) {
   const bag = buildStage0Atoms(scene);
   applyStage1Ctx(bag, scene.agent.id);
-  
+  applyStage2Emotions(bag, scene.agent.id);
+
   applyStage3Threat(
     bag,
     scene.agent.id,
     (scene.otherAgents ?? []).map((x: any) => x.id),
     tuning,
   );
-
-  // Stage2 эмоции/аппрайзал — чтобы app:* и emo:* реально появлялись в Debug Area
-  applyStage2Emotion(bag, scene.agent.id);
 
   const resolved = bag.resolve();
   const aid = scene.agent.id;
@@ -39,6 +37,14 @@ export function buildFrameMvp(scene: any, tuning?: any) {
         pressure: resolved.get(`mind:pressure:${aid}`)?.m ?? 0,
         support: resolved.get(`mind:support:${aid}`)?.m ?? 0,
         crowd: resolved.get(`mind:crowd:${aid}`)?.m ?? 0,
+      },
+      emo: {
+        fear: resolved.get(`emo:fear:${aid}`)?.m ?? 0,
+        anger: resolved.get(`emo:anger:${aid}`)?.m ?? 0,
+        sadness: resolved.get(`emo:sadness:${aid}`)?.m ?? 0,
+        joy: resolved.get(`emo:joy:${aid}`)?.m ?? 0,
+        valence: resolved.get(`emo:valence:${aid}`)?.m ?? 0,
+        arousal: resolved.get(`emo:arousal:${aid}`)?.m ?? 0,
       },
       threat: {
         env: resolved.get(`threat:env:${aid}`)?.m ?? 0,

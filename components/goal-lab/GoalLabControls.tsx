@@ -8,9 +8,8 @@ import { Slider } from '../Slider';
 import { AffectState } from '../../types';
 import { TEST_SCENES, ScenePreset } from '../../data/presets/scenes';
 import { CONTEXT_ATOM_KIND_CATALOG, DEFAULT_MANUAL_KINDS } from '../../lib/context/v2/catalog';
-import { ModsPanel } from './ModsPanel';
+import { ModsPanel } from './ModsPanel'; 
 import { ScenePanel } from './ScenePanel';
-import { EmotionInspector } from './EmotionInspector';
 
 interface Props {
   allCharacters: CharacterEntity[];
@@ -210,6 +209,40 @@ export const GoalLabControls: React.FC<Props> = ({
   const handleAffectChange = (key: keyof AffectState, value: number) => {
       onAffectOverridesChange({ ...affectOverrides, [key]: value });
   };
+
+  const selfComputed = React.useMemo(() => {
+    const atoms = computedAtoms || [];
+    const sid = selectedAgentId;
+    const metric = (a: any) => a.magnitude ?? (a as any)?.m ?? 0;
+    const app = atoms.filter(a => a.id?.startsWith('app:') && a.id.endsWith(`:${sid}`));
+    const emo = atoms.filter(a => a.id?.startsWith('emo:') && a.id.endsWith(`:${sid}`));
+    const get = (id: string, fallback = 0) => {
+      const found = atoms.find(a => a.id === id);
+      return found?.magnitude ?? (found as any)?.m ?? fallback;
+    };
+    return {
+      app: app.sort((x, y) => metric(y) - metric(x)),
+      emo: emo.sort((x, y) => metric(y) - metric(x)),
+      core: {
+        valence: get(`emo:valence:${sid}`, 0),
+        arousal: get(`emo:arousal:${sid}`, 0),
+      },
+    };
+  }, [computedAtoms, selectedAgentId]);
+
+  const clearAffectOverrides = () => onAffectOverridesChange({});
+
+  const MiniBar = ({ label, value }: { label: string; value: number }) => (
+    <div className="border border-canon-border/40 rounded bg-black/20 p-2">
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-[11px] text-canon-text-light truncate">{label}</div>
+        <div className="text-[11px] font-mono text-canon-text">{Number(value ?? 0).toFixed(3)}</div>
+      </div>
+      <div className="h-1.5 w-full bg-canon-bg-light rounded-full overflow-hidden mt-2">
+        <div className="h-full bg-canon-accent" style={{ width: `${Math.min(100, Math.max(0, Number(value ?? 0) * 100))}%` }} />
+      </div>
+    </div>
+  );
 
   const setAffectNested = (path: 'e' | 'regulation', key: string, value: number) => {
     if (path === 'e') {
@@ -614,13 +647,56 @@ export const GoalLabControls: React.FC<Props> = ({
         )}
 
         {activeTab === 'emotions' && (
-          <div className="mt-2">
-            <EmotionInspector
-              selfId={selectedAgentId}
-              atoms={computedAtoms || []}
-              manualAtoms={manualAtoms}
-              onChangeManualAtoms={onChangeManualAtoms}
-            />
+          <div className="p-3 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="text-xs font-bold text-canon-text uppercase tracking-wider">Emotion inspector</div>
+              <button
+                onClick={clearAffectOverrides}
+                className="px-2 py-1 text-[11px] border border-canon-border/60 rounded bg-canon-bg-light hover:bg-canon-bg-light/70"
+                title="Сбросить affectOverrides"
+              >
+                Clear overrides
+              </button>
+            </div>
+
+            <div className="text-[11px] text-canon-text-light">
+              Overrides применяются к <span className="font-mono">agent.affect</span> и влияют на все downstream расчёты.
+            </div>
+
+            <div className="grid grid-cols-1 gap-3">
+              <Slider label="valence (override)" min={-1} max={1} step={0.05} value={(affectOverrides as any).valence ?? 0} setValue={v => handleAffectChange('valence' as any, v)} />
+              <Slider label="arousal (override)" min={0} max={1} step={0.05} value={(affectOverrides as any).arousal ?? 0} setValue={v => handleAffectChange('arousal' as any, v)} />
+              <Slider label="fear (override)" min={0} max={1} step={0.05} value={(affectOverrides as any).fear ?? 0} setValue={v => handleAffectChange('fear' as any, v)} />
+              <Slider label="anger (override)" min={0} max={1} step={0.05} value={(affectOverrides as any).anger ?? 0} setValue={v => handleAffectChange('anger' as any, v)} />
+              <Slider label="shame (override)" min={0} max={1} step={0.05} value={(affectOverrides as any).shame ?? 0} setValue={v => handleAffectChange('shame' as any, v)} />
+              <Slider label="trustBaseline (override)" min={0} max={1} step={0.05} value={(affectOverrides as any).trustBaseline ?? 0} setValue={v => handleAffectChange('trustBaseline' as any, v)} />
+            </div>
+
+            <div className="border border-canon-border/40 rounded bg-black/10 p-3">
+              <div className="text-[11px] font-bold text-canon-text uppercase tracking-wider mb-2">Computed (from atoms)</div>
+              <div className="grid grid-cols-2 gap-2">
+                <MiniBar label="emo:valence" value={selfComputed.core.valence} />
+                <MiniBar label="emo:arousal" value={selfComputed.core.arousal} />
+              </div>
+              <div className="text-[10px] text-canon-text-light/70 mt-2">
+                Показано из <span className="font-mono">computedAtoms</span> (snapshotV1.atoms).
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-3">
+              <div>
+                <div className="text-[11px] font-bold text-canon-text uppercase tracking-wider mb-2">app:*</div>
+                <div className="grid grid-cols-1 gap-2">
+                  {selfComputed.app.length ? selfComputed.app.slice(0, 12).map(a => <MiniBar key={a.id} label={a.id} value={a.magnitude ?? (a as any)?.m ?? 0} />) : <div className="text-[11px] text-canon-text-light/70">Нет app:*.</div>}
+                </div>
+              </div>
+              <div>
+                <div className="text-[11px] font-bold text-canon-text uppercase tracking-wider mb-2">emo:*</div>
+                <div className="grid grid-cols-1 gap-2">
+                  {selfComputed.emo.length ? selfComputed.emo.slice(0, 12).map(a => <MiniBar key={a.id} label={a.id} value={a.magnitude ?? (a as any)?.m ?? 0} />) : <div className="text-[11px] text-canon-text-light/70">Нет emo:*.</div>}
+                </div>
+              </div>
+            </div>
           </div>
         )}
 

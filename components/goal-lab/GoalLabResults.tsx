@@ -450,6 +450,50 @@ export const GoalLabResults: React.FC<Props> = ({
         <ContextMindPanel cm={snapshotV1?.contextMind} atoms={currentAtoms} selfId={snapshotV1?.selfId} />
     );
 
+    const EmotionsTab = () => {
+        const selfId = (snapshotV1 as any)?.selfId || (context as any)?.agentId;
+        const metric = (a: any) => a.magnitude ?? (a as any)?.m ?? 0;
+        const app = currentAtoms
+          .filter(a => typeof a.id === 'string' && a.id.startsWith('app:') && a.id.endsWith(`:${selfId}`))
+          .sort((x, y) => metric(y) - metric(x));
+        const emo = currentAtoms
+          .filter(a => typeof a.id === 'string' && a.id.startsWith('emo:') && a.id.endsWith(`:${selfId}`))
+          .sort((x, y) => metric(y) - metric(x));
+
+        const Row = ({ a }: { a: any }) => {
+          const val = metric(a);
+          return (
+            <div className="border border-canon-border/40 rounded bg-black/20 p-2">
+              <div className="flex items-center justify-between gap-3">
+                <div className="text-[12px] font-semibold text-canon-text truncate">{a.id}</div>
+                <div className="text-[11px] font-mono text-canon-text-light">{Number(val ?? 0).toFixed(3)}</div>
+              </div>
+              <div className="h-1.5 w-full bg-canon-bg-light rounded-full overflow-hidden mt-2">
+                <div className="h-full bg-canon-accent" style={{ width: `${Math.min(100, Math.max(0, Number(val ?? 0) * 100))}%` }} />
+              </div>
+              {a.meta?.trace?.usedAtomIds?.length ? (
+                <div className="text-[10px] text-canon-text-light/70 mt-2">
+                  used: {a.meta.trace.usedAtomIds.slice(0, 6).join(', ')}{a.meta.trace.usedAtomIds.length > 6 ? '…' : ''}
+                </div>
+              ) : null}
+            </div>
+          );
+        };
+
+        return (
+          <div className="absolute inset-0 overflow-y-auto custom-scrollbar p-4 space-y-4 pb-20">
+            <div className="text-xs font-bold text-canon-text uppercase tracking-wider">Appraisals (app:*)</div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+              {app.length ? app.map(a => <Row key={a.id} a={a} />) : <div className="text-[12px] text-canon-text-light/70">Нет app:* атомов.</div>}
+            </div>
+            <div className="text-xs font-bold text-canon-text uppercase tracking-wider mt-4">Emotions (emo:*)</div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+              {emo.length ? emo.map(a => <Row key={a.id} a={a} />) : <div className="text-[12px] text-canon-text-light/70">Нет emo:* атомов.</div>}
+            </div>
+          </div>
+        );
+    };
+
     const CoverageTab = () => (
         <CoveragePanel coverage={snapshotV1?.coverage} />
     );
@@ -523,17 +567,18 @@ export const GoalLabResults: React.FC<Props> = ({
             case 3: return <ThreatTab />;
             case 4: return <ToMTab />;
             case 5: return <MindTab />;
-            case 6: return <CoverageTab />; // NEW
-            case 7: return <PossibilitiesTab />;
-            case 8: return <DecisionTab />;
-            case 9: return <AccessTab />;
-            case 10: return <DiffTab />;
-            case 11: return <DebugTab />;
+            case 6: return <EmotionsTab />;
+            case 7: return <CoverageTab />;
+            case 8: return <PossibilitiesTab />;
+            case 9: return <DecisionTab />;
+            case 10: return <AccessTab />;
+            case 11: return <DiffTab />;
+            case 12: return <DebugTab />;
             default: return <ExplainTab />;
         }
     };
 
-  const tabsList = ['Explain', 'Analysis', 'Atoms', 'Threat', 'ToM', 'CtxMind', 'Coverage', 'Possibilities', 'Decision', 'Access', 'Diff', 'Debug'];
+  const tabsList = ['Explain', 'Analysis', 'Atoms', 'Threat', 'ToM', 'CtxMind', 'Emotions', 'Coverage', 'Possibilities', 'Decision', 'Access', 'Diff', 'Debug'];
 
   const focusId = (context as any)?.agentId;
   const focusLabel = (focusId && actorLabels?.[focusId]) ? actorLabels[focusId] : focusId;
