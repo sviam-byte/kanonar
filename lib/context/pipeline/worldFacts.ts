@@ -99,6 +99,7 @@ export function buildWorldFactsAtoms(input: WorldFactsInput): ContextAtom[] {
   const mm = input.mapMetrics || {};
   const addMM = (k: string, v: any) => {
     const m = clamp01(num(v, 0));
+    const locId2 = input.locationId || input.location?.entityId || input.location?.id;
     out.push(normalizeAtom({
       id: `world:map:${k}:${selfId}`,
       ns: 'world',
@@ -110,7 +111,17 @@ export function buildWorldFactsAtoms(input: WorldFactsInput): ContextAtom[] {
       subject: selfId,
       tags: ['world','map',k],
       label: `${k}=${Math.round(m*100)}%`,
-      trace: { usedAtomIds: [], notes: ['from mapMetrics'], parts: {} }
+      trace: {
+        usedAtomIds: [],
+        notes: ['from mapMetrics'],
+        parts: {
+          key: k,
+          raw: v,
+          norm: m,
+          locationId: locId2 ? String(locId2) : undefined
+        }
+      },
+      meta: { locationId: locId2 ? String(locId2) : undefined, raw: v }
     } as any));
   };
 

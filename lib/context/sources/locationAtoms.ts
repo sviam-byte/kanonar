@@ -23,7 +23,15 @@ function norm01(x: any, fb = 0) {
   return clamp01(v);
 }
 
-function atom(id: string, magnitude: number, meta: any = {}): ContextAtom {
+function atom(
+  id: string,
+  magnitude: number,
+  meta: any = {}
+): ContextAtom {
+  const usedAtomIds: string[] = Array.isArray(meta?.usedAtomIds) ? meta.usedAtomIds : [];
+  const parts: Record<string, any> = (meta?.parts && typeof meta.parts === 'object') ? meta.parts : {};
+  const notes: string[] = Array.isArray(meta?.notes) ? meta.notes : ['from locationExtractor'];
+
   return {
     id,
     ns: id.split(':')[0] as any,
@@ -32,7 +40,12 @@ function atom(id: string, magnitude: number, meta: any = {}): ContextAtom {
     source: 'locationExtractor',
     magnitude: clamp01(magnitude),
     confidence: 1,
-    meta
+    meta,
+    trace: {
+      usedAtomIds,
+      notes,
+      parts
+    }
   } as any;
 }
 
@@ -147,7 +160,25 @@ export function extractLocationAtoms(args: {
   // --- Derived "Escape" Proxy (Cheap, but stable) ---
   // Escape depends on exits + walkable + (1-danger)
   const escape = clamp01(0.45 * agg.exitsCountNorm + 0.35 * agg.walkableFrac + 0.20 * (1 - agg.dangerMean));
-  out.push(atom(`world:map:escape:${selfId}`, escape, { locId, parts: { exits: agg.exitsCountNorm, walkable: agg.walkableFrac, danger: agg.dangerMean } }));
+  out.push(atom(
+    `world:map:escape:${selfId}`,
+    escape,
+    {
+      locId,
+      parts: {
+        exits: agg.exitsCountNorm,
+        walkable: agg.walkableFrac,
+        danger: agg.dangerMean,
+        formula: '0.45*exits + 0.35*walkable + 0.20*(1-danger)'
+      },
+      usedAtomIds: [
+        `world:map:exits:${selfId}`,
+        `world:map:walkableFrac:${selfId}`,
+        `world:map:danger:${selfId}`
+      ],
+      notes: ['derived escape proxy from map aggregates']
+    }
+  ));
 
   return out;
 }
