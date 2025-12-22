@@ -254,22 +254,51 @@ export const ATOM_SPECS: AtomSpec[] = [
     tags: ['misc','danger']
   },
   {
-    specId: 'mind.appraisal',
+    specId: 'appraisal.metric',
     idPattern: /^app:(?<key>[a-zA-Z0-9_-]+):(?<selfId>[a-zA-Z0-9_-]+)$/,
-    title: p => `Appraisal: ${p.key} (${p.selfId})`,
-    meaning: p => `Оценка ситуации (причина эмоций). Шкала 0..1, где 1 = максимум "${p.key}".`,
-    scale: { min: 0, max: 1 },
+    title: p => `Appraisal: ${p.key}`,
+    meaning: p => `Ситуационная оценка (0..1), вход для эмоций/аффекта и контекстного ToM.`,
+    scale: { min: 0, max: 1, lowMeans: 'низко', highMeans: 'высоко', typical: '0.1–0.8' },
     producedBy: ['lib/emotion/appraisals.ts'],
-    tags: ['mind','emotion','appraisal'],
+    tags: ['appraisal','emotion_input']
   },
   {
-    specId: 'mind.emotion',
-    idPattern: /^emo:(?<key>[a-zA-Z0-9_-]+):(?<selfId>[a-zA-Z0-9_-]+)$/,
-    title: p => `Эмоция: ${p.key} (${p.selfId})`,
-    meaning: p => `Эмоциональное состояние, вычисленное из appraisals. Шкала 0..1.`,
-    scale: { min: 0, max: 1 },
+    specId: 'emotion.core',
+    idPattern: /^emo:(?<key>fear|anger|shame|relief|resolve|care):(?<selfId>[a-zA-Z0-9_-]+)$/,
+    title: p => `Emotion: ${p.key}`,
+    meaning: p => `Базовая эмоция (0..1), вычисленная из appraisal.`,
+    scale: { min: 0, max: 1, lowMeans: 'нет/слабо', highMeans: 'сильно', typical: '0.0–0.7' },
     producedBy: ['lib/emotion/emotions.ts'],
-    tags: ['mind','emotion'],
+    consumedBy: ['lib/decision/*', 'lib/tom/*'],
+    tags: ['emotion','core']
+  },
+  {
+    specId: 'emotion.axis',
+    idPattern: /^emo:(?<key>arousal):(?<selfId>[a-zA-Z0-9_-]+)$/,
+    title: p => `Affect axis: ${p.key}`,
+    meaning: p => `Ось аффекта (0..1).`,
+    scale: { min: 0, max: 1, lowMeans: 'низко', highMeans: 'высоко', typical: '0.1–0.9' },
+    producedBy: ['lib/emotion/emotions.ts'],
+    tags: ['emotion','axis']
+  },
+  {
+    specId: 'emotion.axis.valence',
+    idPattern: /^emo:(?<key>valence):(?<selfId>[a-zA-Z0-9_-]+)$/,
+    title: () => `Affect axis: valence`,
+    meaning: () => `Валентность (-1..1): отрицательно/положительно.`,
+    scale: { min: -1, max: 1, lowMeans: 'негативно', highMeans: 'позитивно', typical: '-0.4..0.4' },
+    producedBy: ['lib/emotion/emotions.ts'],
+    tags: ['emotion','axis']
+  },
+  {
+    specId: 'emotion.dyad',
+    idPattern: /^emo:dyad:(?<key>[a-zA-Z0-9_-]+):(?<selfId>[a-zA-Z0-9_-]+):(?<otherId>[a-zA-Z0-9_-]+)$/,
+    title: p => `Dyadic emotion: ${p.key} → ${p.otherId}`,
+    meaning: p => `Эмоция/установка ${p.selfId} к ${p.otherId} (0..1) на базе ToM effective + близости.`,
+    scale: { min: 0, max: 1, lowMeans: 'нет/слабо', highMeans: 'сильно', typical: '0.0–0.8' },
+    producedBy: ['lib/emotion/dyadic.ts'],
+    consumedBy: ['lib/decision/*', 'lib/contextMind/*'],
+    tags: ['emotion','dyad']
   },
   {
     specId: 'threat.final',

@@ -1,85 +1,101 @@
 import type { ContextAtom } from '../context/v2/types';
 import { normalizeAtom } from '../context/v2/infer';
 
-const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
+const clamp01 = (x: number) => (Number.isFinite(x) ? Math.max(0, Math.min(1, x)) : 0);
 
-function mag(atoms: ContextAtom[], id: string, fb = 0) {
+function getMag(atoms: ContextAtom[], id: string, fb = 0) {
   const a = atoms.find(x => x.id === id);
-  const v = a?.magnitude;
-  return typeof v === 'number' && Number.isFinite(v) ? v : fb;
+  const m = (a as any)?.magnitude;
+  return (typeof m === 'number' && Number.isFinite(m)) ? m : fb;
+}
+function firstIdByPrefix(atoms: ContextAtom[], prefix: string) {
+  return atoms.find(a => typeof a?.id === 'string' && a.id.startsWith(prefix))?.id || null;
 }
 
-function maxByPrefix(atoms: ContextAtom[], prefix: string, fb = 0) {
-  let m = -1;
-  for (const a of atoms) {
-    const id = String(a?.id ?? '');
-    if (!id.startsWith(prefix)) continue;
-    const v = a?.magnitude;
-    if (typeof v === 'number' && Number.isFinite(v)) m = Math.max(m, v);
-  }
-  return m >= 0 ? m : fb;
-}
+export function deriveAppraisalAtoms(args: { selfId: string; atoms: ContextAtom[] }) {
+  const { selfId, atoms } = args;
 
-function mk(selfId: string, key: string, magnitude: number, usedAtomIds: string[], parts: any): ContextAtom {
-  return normalizeAtom({
-    id: `app:${key}:${selfId}`,
-    ns: 'mind',
-    kind: 'appraisal',
-    origin: 'derived',
-    source: 'emotionAppraisals',
-    magnitude: clamp01(magnitude),
-    confidence: 1,
-    subject: selfId,
-    tags: ['mind', 'emotion', 'appraisal'],
-    trace: { usedAtomIds: Array.from(new Set(usedAtomIds)), notes: [], parts },
-    meta: parts,
-    label: `app:${key}`,
-  });
-}
+  const threatId = `threat:final:${selfId}`;
+  const threat = getMag(atoms, threatId, getMag(atoms, 'threat:final', 0));
 
-export function deriveAppraisalAtoms(selfId: string, atoms: ContextAtom[]): ContextAtom[] {
-  const used: string[] = [];
+  const unc = getMag(atoms, `ctx:uncertainty:${selfId}`, 0);
+  const norm = getMag(atoms, `ctx:normPressure:${selfId}`, 0);
+  const pub = getMag(atoms, `ctx:publicness:${selfId}`, 0);
+  const intimacy = getMag(atoms, `ctx:intimacy:${selfId}`, 0);
 
-  const threatFinalId = `threat:final:${selfId}`;
-  const threat = mag(atoms, threatFinalId, 0);
-  used.push(threatFinalId);
+  const coverId =
+    firstIdByPrefix(atoms, `world:map:cover:${selfId}`) ||
+    firstIdByPrefix(atoms, `map:cover:${selfId}`) ||
+    firstIdByPrefix(atoms, `ctx:cover:${selfId}`);
+  const escapeId =
+    firstIdByPrefix(atoms, `world:map:escape:${selfId}`) ||
+    firstIdByPrefix(atoms, `map:escape:${selfId}`) ||
+    firstIdByPrefix(atoms, `ctx:escape:${selfId}`);
 
-  const ctxDangerId = `ctx:danger:${selfId}`;
-  const ctxUncId = `ctx:uncertainty:${selfId}`;
-  const ctxNormId = `ctx:normPressure:${selfId}`;
-  const ctxPublicId = `ctx:publicness:${selfId}`;
+  const cover = coverId ? getMag(atoms, coverId, 0) : 0;
+  const escape = escapeId ? getMag(atoms, escapeId, 0) : 0;
 
-  const danger = mag(atoms, ctxDangerId, 0); used.push(ctxDangerId);
-  const uncertainty = mag(atoms, ctxUncId, 0); used.push(ctxUncId);
-  const normPressure = mag(atoms, ctxNormId, 0); used.push(ctxNormId);
-  const publicness = mag(atoms, ctxPublicId, 0); used.push(ctxPublicId);
+  // важное: "контроль" — это не просто отсутствие угрозы, это *возможность влиять*
+  const control = clamp01(0.45 * cover + 0.35 * escape + 0.20 * (1 - unc));
 
-  // Control proxy: if escape/cover is good, control is high
-  const escape = mag(atoms, `world:map:escape:${selfId}`, 0);
-  const cover = mag(atoms, `world:map:cover:${selfId}`, 0);
-  const control = clamp01(0.6 * escape + 0.4 * cover);
+  // "давление" = нормы/публичность (позже можно включить hierarchy/surveillance)
+  const pressure = clamp01(0.65 * norm + 0.35 * pub);
 
-  // Attachment proxy: ally proximity + trust dyads
-  const allyProx = maxByPrefix(atoms, `prox:friend:${selfId}:`, 0);
-  const allySupport = maxByPrefix(atoms, `soc:support_near:${selfId}:`, 0);
-  const attachment = clamp01(0.7 * allyProx + 0.3 * allySupport);
+  // "привязанность к ситуации" (как прокси для "есть что терять / есть кто рядом") — базово от интимности
+  const attachment = clamp01(0.75 * intimacy + 0.25 * (1 - pub));
 
-  // Goal block: use existing mind/goal blockers if present; fallback from scarcity + norm
-  const scarcity = mag(atoms, `ctx:scarcity:${selfId}`, 0);
-  const goalBlock = clamp01(0.6 * scarcity + 0.4 * normPressure);
+  // "loss" — оси deriveAxes уже имеют grief/pain
+  const grief = getMag(atoms, `ctx:grief:${selfId}`, 0);
+  const pain = getMag(atoms, `ctx:pain:${selfId}`, 0);
+  const loss = clamp01(0.65 * grief + 0.35 * pain);
 
-  // Loss proxy (later: from events/body pain)
-  const loss = mag(atoms, `ctx:loss:${selfId}`, 0) || mag(atoms, `ctx:pain:${selfId}`, 0) || 0;
+  // "goalBlock" (пока прокси): timePressure + scarcity
+  const tp = getMag(atoms, `ctx:timePressure:${selfId}`, 0);
+  const sc = getMag(atoms, `ctx:scarcity:${selfId}`, 0);
+  const goalBlock = clamp01(0.55 * tp + 0.45 * sc);
 
-  const out: ContextAtom[] = [];
-  out.push(mk(selfId, 'threat', clamp01(Math.max(threat, danger)), [threatFinalId, ctxDangerId], { threat, danger }));
-  out.push(mk(selfId, 'uncertainty', uncertainty, [ctxUncId], { uncertainty }));
-  out.push(mk(selfId, 'normPressure', normPressure, [ctxNormId], { normPressure }));
-  out.push(mk(selfId, 'publicness', publicness, [ctxPublicId], { publicness }));
-  out.push(mk(selfId, 'control', control, [`world:map:escape:${selfId}`, `world:map:cover:${selfId}`], { escape, cover, control }));
-  out.push(mk(selfId, 'attachment', attachment, [`prox:friend:${selfId}:*`, `soc:support_near:${selfId}:*`], { allyProx, allySupport, attachment }));
-  out.push(mk(selfId, 'goalBlock', goalBlock, [`ctx:scarcity:${selfId}`, ctxNormId], { scarcity, normPressure, goalBlock }));
-  out.push(mk(selfId, 'loss', loss, ['ctx:loss:*', 'ctx:pain:*'], { loss }));
+  const used = [
+    threatId,
+    `ctx:uncertainty:${selfId}`,
+    `ctx:normPressure:${selfId}`,
+    `ctx:publicness:${selfId}`,
+    `ctx:intimacy:${selfId}`,
+    coverId,
+    escapeId,
+    `ctx:grief:${selfId}`,
+    `ctx:pain:${selfId}`,
+    `ctx:timePressure:${selfId}`,
+    `ctx:scarcity:${selfId}`,
+  ].filter(Boolean) as string[];
 
-  return out;
+  const mk = (key: string, v: number, parts: any) =>
+    normalizeAtom({
+      id: `app:${key}:${selfId}`,
+      ns: 'app' as any,
+      kind: 'appraisal' as any,
+      origin: 'derived',
+      source: 'emotion_appraisal',
+      magnitude: clamp01(v),
+      confidence: 1,
+      subject: selfId,
+      tags: ['appraisal', key],
+      label: `app.${key}:${Math.round(clamp01(v) * 100)}%`,
+      trace: { usedAtomIds: used, notes: ['derived appraisal'], parts },
+    } as any);
+
+  const atomsOut: ContextAtom[] = [
+    mk('threat', threat, { threat }),
+    mk('uncertainty', unc, { unc }),
+    mk('control', control, { cover, escape, unc, control }),
+    mk('pressure', pressure, { norm, pub, pressure }),
+    mk('attachment', attachment, { intimacy, pub, attachment }),
+    mk('loss', loss, { grief, pain, loss }),
+    mk('goalBlock', goalBlock, { tp, sc, goalBlock }),
+  ];
+
+  return {
+    appraisal: { threat, uncertainty: unc, control, pressure, attachment, loss, goalBlock },
+    atoms: atomsOut,
+    usedAtomIds: used,
+  };
 }
