@@ -83,6 +83,38 @@ export const ATOM_SPECS: AtomSpec[] = [
     tags: ['ctx','src']
   },
   {
+    specId: 'ctx.source.scoped',
+    idPattern: /^ctx:src:(?<group>[a-zA-Z0-9_-]+):(?<name>[a-zA-Z0-9_-]+):(?<selfId>[a-zA-Z0-9_-]+)$/,
+    title: p => `Источник контекста: ${p.group}.${p.name} (${p.selfId})`,
+    meaning: p =>
+      `Агент-скоупнутый вход в сборку ctx-осей: группа="${p.group}", имя="${p.name}". ` +
+      `Как правило, это “сырые” входы из сцены/норм/мира вида ctx:src:${p.group}:${p.name}:${p.selfId}.`,
+    scale: { min: 0, max: 1, lowMeans: 'не влияет', highMeans: 'сильно влияет' },
+    producedBy: ['lib/scene/applyScene.ts', 'lib/context/pipeline/worldFacts.ts'],
+    consumedBy: ['lib/context/axes/deriveAxes.ts'],
+    tags: ['ctx','src']
+  },
+  {
+    specId: 'ctx.scene.mode',
+    idPattern: /^ctx:scene:mode:(?<mode>[a-zA-Z0-9_-]+):(?<selfId>[a-zA-Z0-9_-]+)$/,
+    title: p => `Режим сцены: ${p.mode} (${p.selfId})`,
+    meaning: p =>
+      `Канонический флаг режима сцены для агента ${p.selfId}. ` +
+      `Появляется из scene-инъекции вида scene:mode:${p.mode} и сохраняется, даже если legacy scene:* атомы фильтруются.`,
+    scale: { min: 0, max: 1, lowMeans: 'не активен', highMeans: 'активен' },
+    producedBy: ['lib/scene/applyScene.ts'],
+    consumedBy: ['lib/engine/integrators.ts', 'lib/context/*', 'lib/decision/*'],
+    tags: ['ctx','scene','mode']
+  },
+  {
+    specId: 'norm.scene',
+    idPattern: /^norm:(?<name>[a-zA-Z0-9_-]+)(?::(?<selfId>[a-zA-Z0-9_-]+))?$/,
+    title: p => `Норма: ${p.name}${p.selfId ? ` (${p.selfId})` : ''}`,
+    meaning: _p => `Нормативный вход (из сцены/локации), используемый для ctx-осей и decision gate.`,
+    scale: { min: 0, max: 1, lowMeans: 'нет/слабо', highMeans: 'сильно' },
+    tags: ['norm']
+  },
+  {
     specId: 'obs.nearby',
     idPattern: /^obs:nearby:(?<selfId>[a-zA-Z0-9_-]+):(?<otherId>[a-zA-Z0-9_-]+)$/,
     title: p => `Наблюдение: близость ${p.otherId}`,

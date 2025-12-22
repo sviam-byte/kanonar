@@ -1,5 +1,5 @@
 // lib/affect/synthesizeFromMind.ts
-import type { AffectState } from './types';
+import type { AffectState } from '../emotions/types';
 
 const num = (v: any, d = 0) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
 const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
@@ -68,6 +68,29 @@ export function synthesizeAffectFromMind(contextMind: any, fallbackAffect?: Part
     fatigue,
     dissociation,
     e,
+
+    // required fields in AffectState (safe defaults)
+    stability: clamp01(1 - (0.55 * stress + 0.25 * dissociation + 0.20 * fatigue)),
+    regulation: {
+      suppression: clamp01(num((fallbackAffect as any)?.regulation?.suppression, 0.25)),
+      reappraisal: clamp01(num((fallbackAffect as any)?.regulation?.reappraisal, 0.35)),
+      rumination: clamp01(num((fallbackAffect as any)?.regulation?.rumination, 0.25)),
+      threatBias: clamp01(num((fallbackAffect as any)?.regulation?.threatBias, 0.35)),
+      moralRumination: clamp01(num((fallbackAffect as any)?.regulation?.moralRumination, 0.2)),
+    },
+    moral: {
+      guilt: clamp01(num((fallbackAffect as any)?.moral?.guilt, num((e as any).guilt, 0))),
+      shame: clamp01(num((fallbackAffect as any)?.moral?.shame, num((e as any).shame, 0))),
+    },
+
+    // legacy compatibility fields (kept coherent with e[] when possible)
+    fear: clamp01(num((e as any).fear, num((fallbackAffect as any)?.fear, 0))),
+    anger: clamp01(num((e as any).anger, num((fallbackAffect as any)?.anger, 0))),
+    shame: clamp01(num((e as any).shame, num((fallbackAffect as any)?.shame, 0))),
+    trustBaseline: clamp01(num((fallbackAffect as any)?.trustBaseline, support)),
+    hope: clamp01(num((e as any).hope, num((fallbackAffect as any)?.hope, 0))),
+
+    updatedAtTick: num((fallbackAffect as any)?.updatedAtTick, 0),
   } as any;
 }
 
