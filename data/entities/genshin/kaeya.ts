@@ -7,8 +7,9 @@ const kaeya: CharacterEntity = {
   subtitle: 'The Dying King / The Architect',
   description:
     'Монарх Каэнри\'а, удерживающий рассыпающийся мир силой воли и крови Дэйнслейфа. Контролирует хаос через насилие и обман.',
-  tags: ['genshin', 'khaenriah', 'king', 'architect'],
+  tags: ['genshin', 'khaenriah', 'king', 'architect', 'module_only'],
   versionTags: [Branch.Current],
+  security: { requiredKey: 'genshin' },
   body: {
     sex_phenotype: 'typical_male',
     functional: {

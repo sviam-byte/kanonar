@@ -74,5 +74,32 @@ export const TEST_SCENES: ScenePreset[] = [
                 bias_dominance: 0.1
             }
         }
+    },
+    {
+        id: 'genshin_kaeya_dainsleif',
+        title: 'Кэйа и Дэйнслейф (Каэнри’а, приватно)',
+        description: 'Тест-сцена для Genshin-модуля: высокая близость, иерархия, скрытая угроза и наблюдение.',
+        locationId: 'ka_palace.tegan_quarters',
+        suggestedScenarioId: 'council_chamber',
+        enginePresetId: 'safe_hub',
+        characters: ['character-genshin-kaeya', 'character-genshin-dainsleif'],
+        configs: {
+            'character-genshin-kaeya': {
+                ...baseConfig,
+                bias_trust: 0.4,
+                bias_closeness: 0.8,
+                bias_respect: 0.7,
+                bias_dominance: 0.8,
+                bias_fear: 0.1,
+            },
+            'character-genshin-dainsleif': {
+                ...baseConfig,
+                bias_trust: 0.7,
+                bias_closeness: 0.9,
+                bias_respect: 0.9,
+                bias_dominance: -0.8,
+                bias_fear: 0.5,
+            }
+        }
     }
 ];

@@ -7,8 +7,9 @@ const vedrfolnir: CharacterEntity = {
   subtitle: 'The Visionary / The Cynic',
   description:
     'Основатель Приказа Бездны, видящий временные линии сразу. Циничный свидетель катастрофы, которую считает неизбежной.',
-  tags: ['genshin', 'abyss', 'seer', 'visionary'],
+  tags: ['genshin', 'abyss', 'seer', 'visionary', 'module_only'],
   versionTags: [Branch.Current],
+  security: { requiredKey: 'genshin' },
   body: {
     sex_phenotype: 'typical_male',
     functional: {

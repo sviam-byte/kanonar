@@ -7,8 +7,9 @@ const hroptatyr: CharacterEntity = {
   subtitle: 'The Wise Man / The Negotiator',
   description:
     'Глава университета и прагматичный переговорщик с богами. Старается выиграть партию у судьбы административными ресурсами.',
-  tags: ['genshin', 'sage', 'negotiator', 'khaenriah'],
+  tags: ['genshin', 'sage', 'negotiator', 'khaenriah', 'module_only'],
   versionTags: [Branch.Current],
+  security: { requiredKey: 'genshin' },
   body: {
     sex_phenotype: 'typical_male',
     functional: {

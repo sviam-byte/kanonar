@@ -7,8 +7,9 @@ const rhinedottir: CharacterEntity = {
   subtitle: 'Gold / The Alchemist',
   description:
     'Аморальный гений из Круга ведьм. Смотрит на катастрофу как на эксперимент и рассматривает людей как объекты.',
-  tags: ['genshin', 'hexenzirkel', 'alchemist', 'observer'],
+  tags: ['genshin', 'hexenzirkel', 'alchemist', 'observer', 'module_only'],
   versionTags: [Branch.Current],
+  security: { requiredKey: 'genshin' },
   body: {
     sex_phenotype: 'typical_female',
     functional: {

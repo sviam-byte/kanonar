@@ -7,8 +7,9 @@ const dainsleif: CharacterEntity = {
   subtitle: 'The Twilight Sword / The Consort',
   description:
     'Сломленный рыцарь Каэнри\'а, ищущий искупление в тотальном подчинении. Считает себя расходуемым якорем и пищей для короля.',
-  tags: ['genshin', 'khaenriah', 'consort', 'blood_source'],
+  tags: ['genshin', 'khaenriah', 'consort', 'blood_source', 'module_only'],
   versionTags: [Branch.Current],
+  security: { requiredKey: 'genshin' },
   body: {
     sex_phenotype: 'typical_male',
     functional: {
