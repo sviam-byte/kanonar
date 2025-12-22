@@ -38,11 +38,18 @@ export function scorePossibility(args: {
 
   // Basic preference: if threat high, prefer escape/hide
   const threatFinal = get(atoms, `threat:final:${selfId}`, get(atoms, 'threat:final', 0));
-  
+  const fear = get(atoms, `emo:fear:${selfId}`, 0);
+  const anger = get(atoms, `emo:anger:${selfId}`, 0);
+  const shame = get(atoms, `emo:shame:${selfId}`, 0);
+  const resolve = get(atoms, `emo:resolve:${selfId}`, 0);
+  const care = get(atoms, `emo:care:${selfId}`, 0);
+
   let pref = 0;
-  if (p.id.startsWith('exit:escape')) pref += 0.35 * threatFinal;
-  if (p.id.startsWith('aff:hide')) pref += 0.25 * threatFinal;
-  if (p.id.startsWith('aff:talk')) pref += -0.10 * threatFinal;
+  if (p.id.startsWith('exit:escape')) pref += 0.25 * fear + 0.10 * threatFinal;
+  if (p.id.startsWith('aff:hide'))   pref += 0.20 * fear;
+  if (p.id.startsWith('aff:talk'))   pref += 0.10 * shame - 0.10 * fear;
+  if (p.id.startsWith('aff:attack')) pref += 0.20 * anger + 0.10 * resolve - 0.25 * shame;
+  if (p.id.startsWith('off:help'))   pref += 0.20 * care - 0.10 * fear;
 
   // Protocol: if strict, prefer talk over attack
   const protocol = get(atoms, `ctx:proceduralStrict:${selfId}`, get(atoms, `norm:proceduralStrict:${selfId}`, 0));

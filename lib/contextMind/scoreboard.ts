@@ -43,6 +43,9 @@ export type ContextMindScoreboard = {
   schemaVersion: number;
   selfId: string;
   metrics: MindMetric[];
+  appraisal: Record<string, number>;
+  emotions: Record<string, number>;
+  derived: Record<string, number>;
 };
 
 export function computeContextMindScoreboard(args: {
@@ -180,6 +183,30 @@ export function computeContextMindScoreboard(args: {
   const crowd = clamp01(Math.max(crowdLoc, crowdScene, crowdCtx));
   const crowdUsed = [crowdLocId, crowdSceneId, crowdCtxId].filter(Boolean) as string[];
 
+  const appraisal = {
+    threat: getMag(atoms, `app:threat:${selfId}`, getMag(atoms, `threat:final:${selfId}`, 0)),
+    uncertainty: getMag(atoms, `app:uncertainty:${selfId}`, getMag(atoms, `ctx:uncertainty:${selfId}`, 0)),
+    control: getMag(atoms, `app:control:${selfId}`, 0),
+    pressure: getMag(atoms, `app:pressure:${selfId}`, getMag(atoms, `ctx:normPressure:${selfId}`, 0)),
+    attachment: getMag(atoms, `app:attachment:${selfId}`, getMag(atoms, `ctx:intimacy:${selfId}`, 0)),
+    loss: getMag(atoms, `app:loss:${selfId}`, 0),
+    goalBlock: getMag(atoms, `app:goalBlock:${selfId}`, 0),
+  };
+
+  const emotions = {
+    fear: getMag(atoms, `emo:fear:${selfId}`, 0),
+    anger: getMag(atoms, `emo:anger:${selfId}`, 0),
+    shame: getMag(atoms, `emo:shame:${selfId}`, 0),
+    relief: getMag(atoms, `emo:relief:${selfId}`, 0),
+    resolve: getMag(atoms, `emo:resolve:${selfId}`, 0),
+    care: getMag(atoms, `emo:care:${selfId}`, 0),
+  };
+
+  const derived = {
+    arousal: getMag(atoms, `emo:arousal:${selfId}`, 0),
+    valence: (atoms.find(a => a.id === `emo:valence:${selfId}`) as any)?.magnitude ?? 0,
+  };
+
   return {
     schemaVersion: 1,
     selfId,
@@ -212,6 +239,9 @@ export function computeContextMindScoreboard(args: {
         parts: { crowdLoc, crowdScene, crowdCtx },
         usedAtomIds: crowdUsed
       }
-    ]
+    ],
+    appraisal,
+    emotions,
+    derived,
   };
 }

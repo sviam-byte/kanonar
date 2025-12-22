@@ -34,6 +34,9 @@ import { computeContextMindScoreboard } from '../contextMind/scoreboard';
 import { atomizeContextMindMetrics } from '../contextMind/atomizeMind';
 import { deriveSocialProximityAtoms } from '../context/stage1/socialProximity';
 import { deriveHazardGeometryAtoms } from '../context/stage1/hazardGeometry';
+import { deriveAppraisalAtoms } from '../emotion/appraisals';
+import { deriveEmotionAtoms } from '../emotion/emotions';
+import { deriveDyadicEmotionAtoms } from '../emotion/dyadic';
 
 // Scene Engine
 import { SCENE_PRESETS } from '../scene/presets';
@@ -544,11 +547,23 @@ export function buildGoalLabContext(
           trace: { usedAtomIds: threatCalc.usedAtomIds || [], notes: threatCalc.why?.slice(0, 6) || ['threat stack'], parts: { ...threatCalc } }
       } as any);
 
+      const atomsAfterThreat = [...atomsForThreat, ...threatAtoms, threatAtom];
+
+      // appraisal -> emotions -> dyadic emotions
+      const appRes = deriveAppraisalAtoms({ selfId, atoms: atomsAfterThreat });
+      const emoRes = deriveEmotionAtoms({ selfId, atoms: [...atomsAfterThreat, ...appRes.atoms] });
+      const dyadEmo = deriveDyadicEmotionAtoms({ selfId, atoms: [...atomsAfterThreat, ...appRes.atoms, ...emoRes.atoms] });
+
       // 10. Possibility Graph (Registry-based)
-      const atomsForPossibilities = [...atomsForThreat, ...threatAtoms, threatAtom];
+      const atomsForPossibilities = [
+        ...atomsAfterThreat,
+        ...appRes.atoms,
+        ...emoRes.atoms,
+        ...dyadEmo.atoms,
+      ];
       const possibilities = derivePossibilitiesRegistry({ selfId, atoms: atomsForPossibilities });
       const possAtoms = atomizePossibilities(possibilities);
-      
+
       const atomsAfterPoss = mergeEpistemicAtoms({
         world: atomsForPossibilities,
         obs: [],

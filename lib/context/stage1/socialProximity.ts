@@ -56,8 +56,14 @@ export function deriveSocialProximityAtoms(args: { selfId: string; atoms: Contex
     const close = clamp01((n as any).magnitude ?? 0);
     if (close <= 0) continue;
 
-    const trust = getMag(atoms, `tom:dyad:${selfId}:${otherId}:trust`, 0.45);
-    const threat = getMag(atoms, `tom:dyad:${selfId}:${otherId}:threat`, clamp01(1 - trust));
+    const trust =
+      getMag(atoms, `tom:effective:dyad:${selfId}:${otherId}:trust`,
+        getMag(atoms, `tom:dyad:${selfId}:${otherId}:trust`, 0)
+      );
+    const threat =
+      getMag(atoms, `tom:effective:dyad:${selfId}:${otherId}:threat`,
+        getMag(atoms, `tom:dyad:${selfId}:${otherId}:threat`, 0)
+      );
 
     const tagFriend = hasTag(atoms, `rel:tag:${selfId}:${otherId}:friend`);
     const tagEnemy = hasTag(atoms, `rel:tag:${selfId}:${otherId}:enemy`);
