@@ -452,6 +452,7 @@ export const GoalLabResults: React.FC<Props> = ({
 
     const EmotionsTab = () => {
         const selfId = (snapshotV1 as any)?.selfId || (context as any)?.agentId;
+        const get = (id: string, fb = 0) => currentAtoms.find(a => a.id === id)?.magnitude ?? fb;
         const metric = (a: any) => a.magnitude ?? (a as any)?.m ?? 0;
         const app = currentAtoms
           .filter(a => typeof a.id === 'string' && a.id.startsWith('app:') && a.id.endsWith(`:${selfId}`))
@@ -459,6 +460,15 @@ export const GoalLabResults: React.FC<Props> = ({
         const emo = currentAtoms
           .filter(a => typeof a.id === 'string' && a.id.startsWith('emo:') && a.id.endsWith(`:${selfId}`))
           .sort((x, y) => metric(y) - metric(x));
+
+        const valence = get(`emo:valence:${selfId}`, 0);
+        const arousal = get(`emo:arousal:${selfId}`, 0);
+        const fear = get(`emo:fear:${selfId}`, 0);
+        const anger = get(`emo:anger:${selfId}`, 0);
+        const shame = get(`emo:shame:${selfId}`, 0);
+        const relief = get(`emo:relief:${selfId}`, 0);
+        const resolve = get(`emo:resolve:${selfId}`, 0);
+        const care = get(`emo:care:${selfId}`, 0);
 
         const Row = ({ a }: { a: any }) => {
           const val = metric(a);
@@ -493,6 +503,23 @@ export const GoalLabResults: React.FC<Props> = ({
                 <div className="text-[11px] text-canon-text-light/80">
                   Каждая эмоция должна иметь <span className="font-mono">trace.usedAtomIds</span> и <span className="font-mono">trace.parts</span> (веса/вклад).
                 </div>
+              </div>
+            </div>
+
+            <div className="border border-canon-border/40 rounded bg-black/15 p-3">
+              <div className="text-xs font-bold text-canon-text uppercase tracking-wider">Core affect (quick)</div>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2">
+                <div className="text-[12px] text-canon-text-light">valence: <span className="font-mono text-canon-text">{Number(valence).toFixed(2)}</span></div>
+                <div className="text-[12px] text-canon-text-light">arousal: <span className="font-mono text-canon-text">{Number(arousal).toFixed(2)}</span></div>
+                <div className="text-[12px] text-canon-text-light">fear: <span className="font-mono text-canon-text">{Number(fear).toFixed(2)}</span></div>
+                <div className="text-[12px] text-canon-text-light">anger: <span className="font-mono text-canon-text">{Number(anger).toFixed(2)}</span></div>
+                <div className="text-[12px] text-canon-text-light">shame: <span className="font-mono text-canon-text">{Number(shame).toFixed(2)}</span></div>
+                <div className="text-[12px] text-canon-text-light">relief: <span className="font-mono text-canon-text">{Number(relief).toFixed(2)}</span></div>
+                <div className="text-[12px] text-canon-text-light">resolve: <span className="font-mono text-canon-text">{Number(resolve).toFixed(2)}</span></div>
+                <div className="text-[12px] text-canon-text-light">care: <span className="font-mono text-canon-text">{Number(care).toFixed(2)}</span></div>
+              </div>
+              <div className="text-[10px] text-canon-text-light/70 mt-2">
+                valence хранится как 0..1 (внутренне может интерпретироваться как -1..1 через valenceSigned в trace.parts).
               </div>
             </div>
 
