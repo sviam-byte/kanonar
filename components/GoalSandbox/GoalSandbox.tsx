@@ -39,7 +39,6 @@ import { useAccess } from '../../contexts/AccessContext';
 import { filterCharactersForActiveModule } from '../../lib/modules/visibility';
 
 // Pipeline Imports
-import { buildFrameMvp } from '../../lib/context/buildFrameMvp';
 import { FrameDebugPanel } from '../GoalLab/FrameDebugPanel';
 import type { ScenePreset } from '../../data/presets/scenes';
 import { SCENE_PRESETS } from '../../lib/scene/presets';
@@ -48,6 +47,9 @@ import { assignRoles } from '../../lib/roles/assignment';
 import { constructGil } from '../../lib/gil/apply';
 import type { DyadConfigForA } from '../../lib/tom/dyad-metrics';
 import { ensureMapCells } from '../../lib/world/ensureMapCells';
+import { buildDebugFrameFromSnapshot } from '../../lib/goal-lab/debugFrameFromSnapshot';
+import { EmotionInspector } from '../GoalLab/EmotionInspector';
+import { normalizeAtom } from '../../lib/context/v2/infer';
 
 function createCustomLocationEntity(map: LocationMap): LocationEntity {
   const cells = map.cells || [];
@@ -286,6 +288,24 @@ export const GoalSandbox: React.FC = () => {
     if (!selectedAgentId) return;
     setSceneParticipants(prev => (prev.size ? prev : new Set([selectedAgentId])));
   }, [selectedAgentId]);
+
+  const setManualAtom = useCallback((id: string, magnitude: number) => {
+    setManualAtoms(prev => {
+      const next = [...(prev || [])].filter(a => (a as any)?.id !== id);
+      next.push(normalizeAtom({
+        id,
+        magnitude,
+        confidence: 1,
+        origin: 'override',
+        source: 'emotion_inspector',
+        kind: 'manual_override',
+        ns: id.split(':')[0],
+        subject: perspectiveId,
+        label: `${id}=${magnitude.toFixed(2)}`
+      } as any));
+      return next;
+    });
+  }, [perspectiveId]);
 
   const getActiveLocationId = useCallback(() => {
     if (locationMode === 'preset' && selectedLocationId) return selectedLocationId;
@@ -819,66 +839,6 @@ export const GoalSandbox: React.FC = () => {
     }
   }, [glCtxResult.err]);
 
-  const pipelineFrameResult = useMemo(() => {
-    if (!worldState) return { frame: null as any, err: null as string | null };
-
-    const pid = perspectiveAgentId || selectedAgentId;
-    if (!pid) return { frame: null as any, err: null as string | null };
-
-    const a0 = worldState.agents.find(a => a.entityId === pid);
-    if (!a0) return { frame: null as any, err: `Perspective agent not found in world: ${pid}` };
-
-    const locEnt = getSelectedLocationEntity();
-
-    // buildFrameMvp ожидает location.visibility/crowd/noise на верхнем уровне
-    const loc = {
-      id: (locEnt as any).entityId ?? (locEnt as any).id ?? 'loc',
-      visibility: (locEnt as any).visibility ?? (locEnt as any).properties?.visibility ?? 0.7,
-      crowd: (locEnt as any).crowd ?? (locEnt as any).properties?.crowd ?? 0.3,
-      noise: (locEnt as any).noise ?? (locEnt as any).properties?.noise ?? 0.2,
-    };
-
-    // КРИТИЧНО: agent должен быть {id,pos}
-    const agent = {
-      id: a0.entityId,
-      pos: (a0 as any).position ?? { x: 0, y: 0 },
-    };
-
-    const otherAgents = (worldState.agents || [])
-      .filter(a => a.entityId !== a0.entityId)
-      .map(a => ({
-        id: a.entityId,
-        name: (a as any).title,
-        pos: (a as any).position ?? { x: 0, y: 0 },
-        isWounded: (a as any).hp < 70,
-      }));
-
-    try {
-      const frame = buildFrameMvp({
-        agent,
-        location: loc,
-        otherAgents,
-        overrides: manualAtoms,
-        tick: (worldState as any)?.tick ?? 0,
-      } as any);
-
-      return { frame, err: null as string | null };
-    } catch (e: any) {
-      console.error('[GoalSandbox] buildFrameMvp failed', e);
-      return { frame: null as any, err: String(e?.message || e) };
-    }
-  }, [worldState, selectedAgentId, perspectiveAgentId, manualAtoms, getSelectedLocationEntity]);
-
-  const pipelineFrame = pipelineFrameResult.frame;
-
-  useEffect(() => {
-    if (pipelineFrameResult.err) {
-      setRuntimeError(pipelineFrameResult.err);
-    } else {
-      setRuntimeError(null);
-    }
-  }, [pipelineFrameResult.err]);
-
   const computed = useMemo(() => {
     const empty = {
       frame: null,
@@ -956,6 +916,11 @@ export const GoalSandbox: React.FC = () => {
     if (!glCtx) return null;
     return adaptToSnapshotV1(glCtx as any, { selfId: perspectiveId } as any);
   }, [glCtx, perspectiveId]);
+
+  const pipelineFrame = useMemo(() => {
+    if (!snapshotV1) return null;
+    return buildDebugFrameFromSnapshot(snapshotV1 as any);
+  }, [snapshotV1]);
 
   const tomMatrixForPerspective = useMemo(() => {
     if (!worldState?.tom) return null;
@@ -1200,6 +1165,7 @@ export const GoalSandbox: React.FC = () => {
               allCharacters={allCharacters}
               allLocations={allLocations as any}
               allEvents={eventRegistry.getAll() as any}
+              computedAtoms={(snapshotV1 as any)?.atoms ?? (snapshot as any)?.atoms ?? []}
               selectedAgentId={selectedAgentId}
               onSelectAgent={handleSelectAgent}
               selectedLocationId={selectedLocationId}
@@ -1280,16 +1246,28 @@ export const GoalSandbox: React.FC = () => {
               snapshotV1={snapshotV1 as any}
               sceneDump={sceneDumpV2 as any}
               onDownloadScene={onDownloadScene}
+              manualAtoms={manualAtoms}
+              onChangeManualAtoms={setManualAtoms}
             />
 
-            {pipelineFrame && (
-              <div className="mt-4">
-                <h3 className="text-lg font-bold text-canon-accent uppercase tracking-widest mb-4 border-b border-canon-border/40 pb-2">
-                  Pipeline Debug Area (Stage 0-3)
-                </h3>
-                <FrameDebugPanel frame={pipelineFrame as any} />
-              </div>
-            )}
+          {snapshotV1 && (
+            <div className="mt-4">
+              <EmotionInspector
+                selfId={perspectiveId}
+                atoms={(snapshotV1 as any)?.atoms || []}
+                setManualAtom={setManualAtom}
+              />
+            </div>
+          )}
+
+          {pipelineFrame && (
+            <div className="mt-4">
+              <h3 className="text-lg font-bold text-canon-accent uppercase tracking-widest mb-4 border-b border-canon-border/40 pb-2">
+                Pipeline Debug Area (Stage 0-3)
+              </h3>
+              <FrameDebugPanel frame={pipelineFrame as any} />
+            </div>
+          )}
           </div>
         </div>
       </div>

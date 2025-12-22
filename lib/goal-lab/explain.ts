@@ -13,6 +13,12 @@ function topMetric(snapshot: any, key: string) {
   return m ? clamp01(m.value) : 0;
 }
 
+function getAtomMag(atoms: any[], id: string, fb = 0) {
+  const a = (atoms || []).find(x => x?.id === id);
+  const m = a?.magnitude;
+  return (typeof m === 'number' && Number.isFinite(m)) ? m : fb;
+}
+
 export function buildGoalLabExplain(snapshot: ContextSnapshot | null) {
   if (!snapshot) return null;
 
@@ -21,6 +27,26 @@ export function buildGoalLabExplain(snapshot: ContextSnapshot | null) {
   const support = topMetric(snapshot as any, 'support');
 
   const affect = (snapshot as any)?.contextMindAffect || (snapshot as any)?.agentAffect || null;
+  const snap: any = snapshot as any;
+  const atoms = (snap?.atoms || []) as any[];
+  const selfId = snap?.selfId;
+
+  const emo = {
+    fear: getAtomMag(atoms, `emo:fear:${selfId}`, 0),
+    anger: getAtomMag(atoms, `emo:anger:${selfId}`, 0),
+    shame: getAtomMag(atoms, `emo:shame:${selfId}`, 0),
+    relief: getAtomMag(atoms, `emo:relief:${selfId}`, 0),
+    resolve: getAtomMag(atoms, `emo:resolve:${selfId}`, 0),
+    care: getAtomMag(atoms, `emo:care:${selfId}`, 0),
+    arousal: getAtomMag(atoms, `emo:arousal:${selfId}`, 0),
+  };
+
+  const app = {
+    threat: getAtomMag(atoms, `app:threat:${selfId}`, (snapshot as any)?.threat?.final ?? 0),
+    uncertainty: getAtomMag(atoms, `app:uncertainty:${selfId}`, 0),
+    control: getAtomMag(atoms, `app:control:${selfId}`, 0),
+    pressure: getAtomMag(atoms, `app:pressure:${selfId}`, 0),
+  };
 
   const whatHappens = [
     threat > 0.66 ? 'Ситуация ощущается опасной.' : threat > 0.33 ? 'Есть заметная угроза.' : 'Ситуация относительно безопасна.',
@@ -43,6 +69,12 @@ export function buildGoalLabExplain(snapshot: ContextSnapshot | null) {
     }
   }
 
+  const emoLine =
+    `Эмоции: страх ${emo.fear.toFixed(2)}, злость ${emo.anger.toFixed(2)}, стыд ${emo.shame.toFixed(2)}, ` +
+    `облегчение ${emo.relief.toFixed(2)}, решимость ${emo.resolve.toFixed(2)}, забота ${emo.care.toFixed(2)}.`;
+
+  feels.push(emoLine);
+
   return {
     schemaVersion: 1,
     what: whatHappens,
@@ -53,6 +85,8 @@ export function buildGoalLabExplain(snapshot: ContextSnapshot | null) {
       pressure,
       support,
       decisionId: decision?.choiceId ?? null,
-    }
+      emotions: emo,
+      appraisals: app,
+    },
   };
 }

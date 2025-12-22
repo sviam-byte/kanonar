@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { ContextSnapshot, ContextualGoalScore, ContextAtom, TemporalContextConfig, ContextualGoalContribution } from '../../lib/context/v2/types';
+import type { ContextSnapshot, ContextualGoalScore, ContextAtom, TemporalContextConfig, ContextualGoalContribution } from '../../lib/context/v2/types';
 import { GOAL_DEFS } from '../../lib/goals/space'; 
 import { AffectState } from '../../types';
 import { AgentContextFrame, TomRelationView, TomPhysicalOther } from '../../lib/context/frame/types';
@@ -23,6 +23,7 @@ import { ToMPanel } from './ToMPanel';
 import { CoveragePanel } from './CoveragePanel';
 import { GoalLabSnapshotV1 } from '../../lib/goal-lab/snapshotTypes';
 import { AtomInspector } from './AtomInspector';
+import { EmotionExplainPanel } from './EmotionExplainPanel';
 
 interface Props {
   context: ContextSnapshot | null;
@@ -46,6 +47,8 @@ interface Props {
   tomRows?: Array<{ me: string; other: string; dyad: any }> | null;
   sceneDump?: any;
   onDownloadScene?: () => void;
+  manualAtoms?: ContextAtom[];
+  onChangeManualAtoms?: (atoms: ContextAtom[]) => void;
 }
 
 interface AtomStyle {
@@ -338,6 +341,8 @@ export const GoalLabResults: React.FC<Props> = ({
   tomRows,
   sceneDump,
   onDownloadScene,
+  manualAtoms,
+  onChangeManualAtoms,
 }) => {
   const [selectedGoalId, setSelectedGoalId] = useState<string | null>(null);
   const [isPreviewOpen, setPreviewOpen] = useState(false);
@@ -450,6 +455,106 @@ export const GoalLabResults: React.FC<Props> = ({
         <ContextMindPanel cm={snapshotV1?.contextMind} atoms={currentAtoms} selfId={snapshotV1?.selfId} />
     );
 
+    const EmotionsTab = () => {
+        const selfId = (snapshotV1 as any)?.selfId || (context as any)?.agentId;
+        const get = (id: string, fb = 0) => currentAtoms.find(a => a.id === id)?.magnitude ?? fb;
+        const metric = (a: any) => a.magnitude ?? (a as any)?.m ?? 0;
+        const app = currentAtoms
+          .filter(a => typeof a.id === 'string' && a.id.startsWith('app:') && a.id.endsWith(`:${selfId}`))
+          .sort((x, y) => metric(y) - metric(x));
+        const emo = currentAtoms
+          .filter(a => typeof a.id === 'string' && a.id.startsWith('emo:') && a.id.endsWith(`:${selfId}`))
+          .sort((x, y) => metric(y) - metric(x));
+
+        const valenceSigned = get(`emo:valence:${selfId}`, 0);
+        const valence01 = (Number.isFinite(valenceSigned) ? (valenceSigned + 1) / 2 : 0.5);
+        const arousal = get(`emo:arousal:${selfId}`, 0);
+        const fear = get(`emo:fear:${selfId}`, 0);
+        const anger = get(`emo:anger:${selfId}`, 0);
+        const shame = get(`emo:shame:${selfId}`, 0);
+        const relief = get(`emo:relief:${selfId}`, 0);
+        const resolve = get(`emo:resolve:${selfId}`, 0);
+        const care = get(`emo:care:${selfId}`, 0);
+
+        const Row = ({ a }: { a: any }) => {
+          const val = metric(a);
+          return (
+            <div className="border border-canon-border/40 rounded bg-black/20 p-2">
+              <div className="flex items-center justify-between gap-3">
+                <div className="text-[12px] font-semibold text-canon-text truncate">{a.id}</div>
+                <div className="text-[11px] font-mono text-canon-text-light">{Number(val ?? 0).toFixed(3)}</div>
+              </div>
+              <div className="h-1.5 w-full bg-canon-bg-light rounded-full overflow-hidden mt-2">
+                <div className="h-full bg-canon-accent" style={{ width: `${Math.min(100, Math.max(0, Number(val ?? 0) * 100))}%` }} />
+              </div>
+              {a.meta?.trace?.usedAtomIds?.length ? (
+                <div className="text-[10px] text-canon-text-light/70 mt-2">
+                  used: {a.meta.trace.usedAtomIds.slice(0, 6).join(', ')}{a.meta.trace.usedAtomIds.length > 6 ? '…' : ''}
+                </div>
+              ) : null}
+            </div>
+          );
+        };
+
+        return (
+          <div className="absolute inset-0 overflow-y-auto custom-scrollbar p-4 space-y-4 pb-20">
+            <div className="border border-canon-border/40 rounded bg-black/15 p-3">
+              <div className="text-xs font-bold text-canon-text uppercase tracking-wider">How emotions are computed</div>
+              <div className="text-[12px] text-canon-text-light mt-2 space-y-1">
+                <div><span className="font-mono">app:*</span> — оценка ситуации (угроза/контроль/давление/неопределённость).</div>
+                <div><span className="font-mono">emo:*</span> — эмоции как функция <span className="font-mono">app:*</span>.</div>
+                <div className="text-[11px] text-canon-text-light/80 mt-2">
+                  Пример: <span className="font-mono">emo:fear</span> растёт при угрозе и падает при контроле; усиливается неопределённостью.
+                </div>
+                <div className="text-[11px] text-canon-text-light/80">
+                  Каждая эмоция должна иметь <span className="font-mono">trace.usedAtomIds</span> и <span className="font-mono">trace.parts</span> (веса/вклад).
+                </div>
+              </div>
+            </div>
+
+            <div className="border border-canon-border/40 rounded bg-black/15 p-3">
+              <div className="text-xs font-bold text-canon-text uppercase tracking-wider">Core affect (quick)</div>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2">
+                <div className="text-[12px] text-canon-text-light">valence: <span className="font-mono text-canon-text">{Number(valenceSigned).toFixed(2)}</span> <span className="text-[11px] text-canon-text-light">(0..1: {Number(valence01).toFixed(2)})</span></div>
+                <div className="text-[12px] text-canon-text-light">arousal: <span className="font-mono text-canon-text">{Number(arousal).toFixed(2)}</span></div>
+                <div className="text-[12px] text-canon-text-light">fear: <span className="font-mono text-canon-text">{Number(fear).toFixed(2)}</span></div>
+                <div className="text-[12px] text-canon-text-light">anger: <span className="font-mono text-canon-text">{Number(anger).toFixed(2)}</span></div>
+                <div className="text-[12px] text-canon-text-light">shame: <span className="font-mono text-canon-text">{Number(shame).toFixed(2)}</span></div>
+                <div className="text-[12px] text-canon-text-light">relief: <span className="font-mono text-canon-text">{Number(relief).toFixed(2)}</span></div>
+                <div className="text-[12px] text-canon-text-light">resolve: <span className="font-mono text-canon-text">{Number(resolve).toFixed(2)}</span></div>
+                <div className="text-[12px] text-canon-text-light">care: <span className="font-mono text-canon-text">{Number(care).toFixed(2)}</span></div>
+              </div>
+              <div className="text-[10px] text-canon-text-light/70 mt-2">
+                valence хранится как -1..1 (в UI для удобства показана и шкала 0..1 справа).
+              </div>
+            </div>
+
+            <div className="text-xs font-bold text-canon-text uppercase tracking-wider">Appraisals (app:*)</div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+              {app.length ? app.map(a => <Row key={a.id} a={a} />) : <div className="text-[12px] text-canon-text-light/70">Нет app:* атомов.</div>}
+            </div>
+            <div className="text-xs font-bold text-canon-text uppercase tracking-wider mt-4">Emotions (emo:*)</div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+              {emo.length ? emo.map(a => <Row key={a.id} a={a} />) : <div className="text-[12px] text-canon-text-light/70">Нет emo:* атомов.</div>}
+            </div>
+          </div>
+        );
+    };
+
+    const EmotionExplainTab = () => {
+      const selfId = (snapshotV1 as any)?.selfId || (context as any)?.agentId;
+      return (
+        <div className="absolute inset-0 overflow-y-auto custom-scrollbar p-4 pb-20">
+          <EmotionExplainPanel
+            selfId={selfId}
+            atoms={currentAtoms}
+            manualAtoms={manualAtoms || []}
+            onChangeManualAtoms={onChangeManualAtoms}
+          />
+        </div>
+      );
+    };
+
     const CoverageTab = () => (
         <CoveragePanel coverage={snapshotV1?.coverage} />
     );
@@ -523,17 +628,19 @@ export const GoalLabResults: React.FC<Props> = ({
             case 3: return <ThreatTab />;
             case 4: return <ToMTab />;
             case 5: return <MindTab />;
-            case 6: return <CoverageTab />; // NEW
-            case 7: return <PossibilitiesTab />;
-            case 8: return <DecisionTab />;
-            case 9: return <AccessTab />;
-            case 10: return <DiffTab />;
-            case 11: return <DebugTab />;
+            case 6: return <EmotionsTab />;
+            case 7: return <CoverageTab />;
+            case 8: return <PossibilitiesTab />;
+            case 9: return <DecisionTab />;
+            case 10: return <AccessTab />;
+            case 11: return <DiffTab />;
+            case 12: return <EmotionExplainTab />;
+            case 13: return <DebugTab />;
             default: return <ExplainTab />;
         }
     };
 
-  const tabsList = ['Explain', 'Analysis', 'Atoms', 'Threat', 'ToM', 'CtxMind', 'Coverage', 'Possibilities', 'Decision', 'Access', 'Diff', 'Debug'];
+  const tabsList = ['Explain', 'Analysis', 'Atoms', 'Threat', 'ToM', 'CtxMind', 'Emotions', 'Coverage', 'Possibilities', 'Decision', 'Access', 'Diff', 'EmotionExplain', 'Debug'];
 
   const focusId = (context as any)?.agentId;
   const focusLabel = (focusId && actorLabels?.[focusId]) ? actorLabels[focusId] : focusId;

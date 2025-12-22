@@ -131,4 +131,7 @@ export const DEFAULT_MANUAL_KINDS: ContextAtomKind[] = [
   'env_hazard',
   'env_visibility',
   'nav_exits_count',
+  // Emotion/Appraisal overrides (for manual editing)
+  'emotion_override',
+  'appraisal_override',
 ];
