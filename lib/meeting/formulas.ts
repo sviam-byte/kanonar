@@ -22,7 +22,7 @@ export function calculateInteractionMetrics(
         0.25 * (p2_char.vector_base?.C_coalition_loyalty ?? 0.5) +
         0.20 * (p2_perceived.latents.EW ?? 0.5) + // Integrity proxy
         0.10 * (p2_v42.InfoHyg_t) -
-        0.20 * ((p2_char.state.dark_exposure ?? 0) / 100);
+        0.20 * ((p2_char.state?.dark_exposure ?? 0) / 100);
 
     const trust = sigmoid(trust_logit - 0.2); // Center the sigmoid around a slightly higher threshold
 

@@ -204,6 +204,17 @@ export function calculateAllCharacterMetrics(
         vector_base: effectiveVectorBase
     };
 
+    // Ensure legacy state exists (some formulas/UI read state.* directly)
+    (effectiveCharacter as any).state = (effectiveCharacter as any).state ?? {
+        will: 50,
+        loyalty: 50,
+        dark_exposure: 0,
+        drift_state: 15,
+        burnout_risk: 0,
+        backlog_load: 0,
+        overload_sensitivity: 50,
+    };
+
     // 1. Flatten & Apply Events
     let flatParams = flattenObject(effectiveCharacter);
     const eventImpacts = calculateEventImpacts(effectiveCharacter, effectiveCharacter.historicalEvents || [], flatParams);
