@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Label } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Label, Cell } from 'recharts';
 import { CalculatedMetrics } from '../../types';
 
 interface WaterfallChartProps {
@@ -57,7 +57,7 @@ export const StateDynamicsWaterfall: React.FC<WaterfallChartProps> = ({ metrics 
                          const isStartOrEnd = entry.name === 'S(t)' || entry.name === 'S(t+1)';
                          const isPositive = entry.value >= 0;
                          const color = isStartOrEnd ? '#00aaff' : (isPositive ? '#33ff99' : '#ff4444');
-                        return <Bar key={`cell-${index}`} fill={color} fillOpacity={0.7} />;
+                        return <Cell key={`cell-${index}`} fill={color} fillOpacity={0.7} />;
                     })}
                 </Bar>
             </BarChart>

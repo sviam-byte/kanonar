@@ -391,16 +391,81 @@ export function buildGoalLabContext(
 
       // 9. Threat Stack
       const atomsForThreat = [...atomsAfterPriors, ...biasPack.atoms, ...tomCtxDyads, ...effectiveDyads];
+      const getMag = (id: string, fb = 0) => {
+        const a = atomsForThreat.find(x => x.id === id);
+        const m = (a as any)?.magnitude;
+        return (typeof m === 'number' && Number.isFinite(m)) ? m : fb;
+      };
+      const firstByPrefix = (prefix: string) =>
+        atomsForThreat.find(a => String((a as any)?.id || '').startsWith(prefix))?.id || null;
+
+        const ctxDanger = getMag(`ctx:danger:${selfId}`, 0);
+        const coverId = firstByPrefix(`world:map:cover:${selfId}`) || firstByPrefix(`ctx:cover:${selfId}`) || null;
+
+        const cover = coverId ? getMag(coverId, 0.5) : 0.5;
+
+      const crowd =
+        getMag(`ctx:crowd:${selfId}`, 0) ||
+        getMag(`world:loc:crowd:${selfId}`, 0);
+
+      const hierarchy =
+        getMag(`ctx:hierarchy:${selfId}`, 0) ||
+        getMag(`world:loc:control:${selfId}`, 0);
+
+      const surveillance =
+        getMag(`ctx:surveillance:${selfId}`, 0);
+
+      const timePressure =
+        getMag(`ctx:timePressure:${selfId}`, 0);
+
+      const scarcity =
+        getMag(`ctx:scarcity:${selfId}`, 0);
+
+      const woundedPressure =
+        getMag(`ctx:wounded:${selfId}`, 0) ||
+        getMag(`ctx:careNeed:${selfId}`, 0);
+
+      // ToM proximity summary (cheap proxy): top effective dyads
+      const effTrust = atomsForThreat
+        .filter(a => String(a.id).startsWith(`tom:effective:dyad:${selfId}:`) && String(a.id).endsWith(`:trust`))
+        .map(a => Number((a as any).magnitude ?? 0))
+        .sort((a, b) => b - a)
+        .slice(0, 5);
+
+      const effThreat = atomsForThreat
+        .filter(a => String(a.id).startsWith(`tom:effective:dyad:${selfId}:`) && String(a.id).endsWith(`:threat`))
+        .map(a => Number((a as any).magnitude ?? 0))
+        .sort((a, b) => b - a)
+        .slice(0, 5);
+
+      const nearbyTrustMean = effTrust.length ? effTrust.reduce((s, v) => s + v, 0) / effTrust.length : 0.45;
+      const nearbyHostileMean = effThreat.length ? effThreat.reduce((s, v) => s + v, 0) / effThreat.length : 0;
+
+      const nearbyCount = Math.max(0, (worldForPipeline?.agents?.length ?? 1) - 1);
+
       const threatInputs = {
-          envDanger: 0, visibilityBad: 0, coverLack: 0, crowding: 0,
-          nearbyCount: 0, nearbyTrustMean: 0.45, nearbyHostileMean: 0, hierarchyPressure: 0, surveillance: 0,
-          timePressure: 0, woundedPressure: 0, goalBlock: 0,
-          paranoia: (agent as any)?.traits?.paranoia ?? 0.35,
-          trauma: (agent as any)?.traits?.trauma ?? 0,
-          exhaustion: (agent as any)?.body?.fatigue ?? 0,
-          dissociation: (agent as any)?.traits?.dissociation ?? 0,
-          experience: (agent as any)?.traits?.experience ?? 0.5
-      }; 
+        envDanger: ctxDanger,
+        visibilityBad: 0,
+        coverLack: Math.max(0, 1 - cover),
+        crowding: crowd,
+
+        nearbyCount,
+        nearbyTrustMean,
+        nearbyHostileMean,
+
+        hierarchyPressure: hierarchy,
+        surveillance,
+
+        timePressure,
+        woundedPressure,
+        goalBlock: Math.max(timePressure, scarcity),
+
+        paranoia: (agent as any)?.traits?.paranoia ?? 0.35,
+        trauma: (agent as any)?.traits?.trauma ?? 0,
+        exhaustion: (agent as any)?.body?.fatigue ?? 0,
+        dissociation: (agent as any)?.traits?.dissociation ?? 0,
+        experience: (agent as any)?.traits?.experience ?? 0.5
+      };
       const threatCalc = computeThreatStack(threatInputs, atomsForThreat);
       
       const threatAtoms: ContextAtom[] = [
@@ -566,14 +631,21 @@ export function buildGoalLabContext(
   const summaries = buildSummaryAtoms(atomsValidated, { selfId });
   const atomsWithSummaries = dedupeAtomsById([...atomsValidated, ...summaries.atoms]).map(normalizeAtom);
 
+  const postOverrides = (appliedOverrides || []).filter(a => {
+    const id = String((a as any)?.id || '');
+    return id.startsWith('emo:') || id.startsWith('app:');
+  });
+
+  const atomsForMind = dedupeAtomsById([...atomsWithSummaries, ...postOverrides]).map(normalizeAtom);
+
   // Compute scoreboard (mind) BEFORE deciding, and materialize it into atoms.
   const contextMind = computeContextMindScoreboard({
     selfId,
-    atoms: atomsWithSummaries
+    atoms: atomsForMind
   });
 
   const mindAtoms = atomizeContextMindMetrics(selfId, contextMind);
-  const atomsWithMind = dedupeAtomsById([...atomsWithSummaries, ...mindAtoms]).map(normalizeAtom);
+  const atomsWithMind = dedupeAtomsById([...atomsForMind, ...mindAtoms]).map(normalizeAtom);
 
   // Decide AFTER mind metrics exist in the atom stream
   const decision = decideAction({
