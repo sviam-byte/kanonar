@@ -126,6 +126,26 @@ export function applySceneAtoms(args: {
       trace: { usedAtomIds: [], notes: ['scene injection'], parts: { phaseId: scene.phaseId } },
       meta: inj.meta
     } as any));
+
+    // Canonical scene mode flags (kept even if legacy scene:* atoms are filtered later).
+    // Example injection id: scene:mode:safeHub
+    // Canonical atom id:     ctx:scene:mode:safeHub:<selfId>
+    if (selfId && typeof inj.id === 'string' && inj.id.startsWith('scene:mode:')) {
+      const mode = inj.id.slice('scene:mode:'.length);
+      out.push(normalizeAtom({
+        id: `ctx:scene:mode:${mode}:${selfId}`,
+        ns: 'ctx',
+        kind: 'ctx_flag',
+        origin: 'world',
+        source: 'scene',
+        magnitude: clamp01(inj.magnitude),
+        confidence: inj.confidence ?? 1,
+        subject: selfId,
+        tags: ['ctx', 'scene', 'mode', mode],
+        label: `sceneMode.${mode}=1`,
+        trace: { usedAtomIds: [inj.id], notes: ['scene mode flag (canonical)'], parts: { phaseId: scene.phaseId } },
+      } as any));
+    }
   }
 
   // 4) publish scene banner

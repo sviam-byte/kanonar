@@ -46,9 +46,9 @@ export function integrateAgentState(args: {
   agent.state.traces = agent.state.traces || {};
 
   // 1. Affect Integrators (Targets from atoms where emo:* are computed inputs)
-  const fear = getMag(atomsAfterAffect, `emotion:${agent.entityId}:fear`, agent.state.affect.fear ?? 0);
-  const anger = getMag(atomsAfterAffect, `emotion:${agent.entityId}:anger`, agent.state.affect.anger ?? 0);
-  const shame = getMag(atomsAfterAffect, `emotion:${agent.entityId}:shame`, agent.state.affect.shame ?? 0);
+  const fear = getMag(atomsAfterAffect, `emo:fear:${agent.entityId}`, agent.state.affect.fear ?? 0);
+  const anger = getMag(atomsAfterAffect, `emo:anger:${agent.entityId}`, agent.state.affect.anger ?? 0);
+  const shame = getMag(atomsAfterAffect, `emo:shame:${agent.entityId}`, agent.state.affect.shame ?? 0);
   // Trust/Hope often come from different atom IDs or are derived. 
   // Using explicit fallbacks if atoms missing.
   
@@ -80,10 +80,10 @@ export function integrateAgentState(args: {
 
   // 4. Trust Climate / Decay
   // Under high surveillance/publicness, general trust decays. In safe hubs, it recovers.
-  const surveillance = getMag(atomsAfterAffect, `norm:surveillance:${agent.entityId}`, getMag(atomsAfterAffect, 'norm:surveillance', 0));
+  const surveillance = getMag(atomsAfterAffect, `ctx:surveillance:${agent.entityId}`, getMag(atomsAfterAffect, 'ctx:surveillance', 0));
   const publicness = getMag(atomsAfterAffect, `ctx:publicness:${agent.entityId}`, getMag(atomsAfterAffect, 'ctx:publicness', 0));
   // scene flags
-  const isSafeHub = atomsAfterAffect.some(a => a.id === 'scene:mode:safeHub') ? 1 : 0;
+  const isSafeHub = atomsAfterAffect.some(a => a.id === `ctx:scene:mode:safeHub:${agent.entityId}`) ? 1 : 0;
   
   const currentTrustClimate = agent.state.traces.trustClimate ?? 0.5;
   // Target: Low if surveillance/public, High if safe
