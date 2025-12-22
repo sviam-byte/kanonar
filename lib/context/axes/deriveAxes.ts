@@ -16,6 +16,14 @@ function get(atoms: ContextAtom[], id: string, fb = 0) {
   return (typeof m === 'number' && Number.isFinite(m)) ? m : fb;
 }
 
+function getAny(atoms: ContextAtom[], ids: string[], fb = 0) {
+  for (const id of ids) {
+    const v = get(atoms, id, NaN);
+    if (Number.isFinite(v)) return v;
+  }
+  return fb;
+}
+
 type PartEntry = { name: string; val: number; w?: number; contrib?: number };
 
 function buildParts(entries: PartEntry[], formula?: string) {
@@ -70,9 +78,15 @@ export function deriveAxes(args: { selfId: string; atoms: ContextAtom[]; tuning?
 
   // Inputs (canonical from patch 52 + patch 54)
   const locPrivacy = get(atoms, `world:loc:privacy:${selfId}`, 0);
-  const locControl = get(atoms, `world:loc:control_level:${selfId}`, 0);
+  const locControl = getAny(atoms, [
+    `world:loc:control_level:${selfId}`,
+    `world:loc:control:${selfId}`
+  ], 0);
   const locCrowd = get(atoms, `world:loc:crowd:${selfId}`, 0);
-  const locNormPressure = get(atoms, `world:loc:normative_pressure:${selfId}`, 0);
+  const locNormPressure = getAny(atoms, [
+    `world:loc:normative_pressure:${selfId}`,
+    `world:loc:normPressure:${selfId}`
+  ], 0);
 
   const scCrowd = get(atoms, `ctx:src:scene:crowd:${selfId}`, 0);
   const scHostility = get(atoms, `ctx:src:scene:hostility:${selfId}`, 0);

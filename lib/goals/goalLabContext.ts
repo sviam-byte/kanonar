@@ -29,6 +29,7 @@ import { derivePossibilitiesRegistry } from '../possibilities/derive';
 import { atomizePossibilities } from '../possibilities/atomize';
 import { deriveAccess } from '../access/deriveAccess';
 import { getLocationForAgent } from "../world/locations";
+import { computeLocalMapMetrics } from '../world/mapMetrics';
 import { decideAction } from '../decision/decide';
 import { computeContextMindScoreboard } from '../contextMind/scoreboard';
 import { atomizeContextMindMetrics } from '../contextMind/atomizeMind';
@@ -246,11 +247,18 @@ export function buildGoalLabContext(
         affectOverrides && typeof affectOverrides === 'object' && Object.keys(affectOverrides).length > 0 ? 'manual' : 'derived'
       );
 
+      // Map metrics from GoalLab grid (local cell neighborhood).
+      // Без этого world:map:* падают в дефолты 0/0.5, и контекст выглядит "не меняется".
+      const gridMap = (opts.snapshotOptions as any)?.gridMap || null;
+      const pos = (agentForPipeline as any)?.position || (agentForPipeline as any)?.pos || null;
+      const mapMetrics = gridMap ? computeLocalMapMetrics(gridMap, pos, 1) : null;
+
       // 4. Stage 0 (World Facts)
       const stage0 = buildStage0Atoms({
         world: worldForPipeline,
         agent: agentForPipeline,
         selfId,
+        mapMetrics: mapMetrics || undefined,
         extraWorldAtoms: [...sceneAtoms, ...affectAtoms],
         beliefAtoms,
         overrideAtoms: appliedOverrides,

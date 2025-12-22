@@ -93,14 +93,36 @@ export function buildWorldFactsAtoms(input: WorldFactsInput): ContextAtom[] {
       },
       meta: { locationId: locId ? String(locId) : undefined, raw: v }
     } as any));
+    return m;
   };
 
   addProp01(`world:loc:privacy:${selfId}`, props.privacy === 'private' ? 1 : 0, `privacy=${props.privacy}`, ['world','loc','privacy']);
   addProp01(`world:loc:visibility:${selfId}`, props.visibility, `visibility=${Math.round(clamp01(num(props.visibility))*100)}%`, ['world','loc','visibility']);
   addProp01(`world:loc:noise:${selfId}`, props.noise, `noise=${Math.round(clamp01(num(props.noise))*100)}%`, ['world','loc','noise']);
   addProp01(`world:loc:social_visibility:${selfId}`, props.social_visibility, `social_visibility=${Math.round(clamp01(num(props.social_visibility))*100)}%`, ['world','loc','social_visibility']);
-  addProp01(`world:loc:normative_pressure:${selfId}`, props.normative_pressure, `normative_pressure=${Math.round(clamp01(num(props.normative_pressure))*100)}%`, ['world','loc','normative_pressure']);
-  addProp01(`world:loc:control_level:${selfId}`, props.control_level, `control_level=${Math.round(clamp01(num(props.control_level))*100)}%`, ['world','loc','control_level']);
+  const normPressureVal = addProp01(`world:loc:normative_pressure:${selfId}`, props.normative_pressure, `normative_pressure=${Math.round(clamp01(num(props.normative_pressure))*100)}%`, ['world','loc','normative_pressure']);
+  const controlLevelVal = addProp01(`world:loc:control_level:${selfId}`, props.control_level, `control_level=${Math.round(clamp01(num(props.control_level))*100)}%`, ['world','loc','control_level']);
+
+  // Legacy aliases for downstream compatibility
+  const addAlias = (id: string, ref: string, magnitude: number, tags: string[], label: string) => {
+    out.push(normalizeAtom({
+      id,
+      ns: 'world',
+      kind: 'world_fact',
+      origin: 'world',
+      source: 'location',
+      magnitude: clamp01(num(magnitude, 0)),
+      confidence: 1,
+      subject: selfId,
+      tags,
+      label,
+      trace: { usedAtomIds: [ref], notes: ['legacy alias'], parts: { ref, magnitude } },
+      meta: { aliasOf: ref }
+    } as any));
+  };
+
+  addAlias(`world:loc:normPressure:${selfId}`, `world:loc:normative_pressure:${selfId}`, normPressureVal, ['world','loc','normPressure'], `normPressure=${Math.round(clamp01(normPressureVal)*100)}%`);
+  addAlias(`world:loc:control:${selfId}`, `world:loc:control_level:${selfId}`, controlLevelVal, ['world','loc','control'], `control=${Math.round(clamp01(controlLevelVal)*100)}%`);
   
   // crowd level as a world fact
   addProp01(`world:loc:crowd:${selfId}`, state.crowd_level, `crowd_level=${Math.round(clamp01(num(state.crowd_level))*100)}%`, ['world','loc','crowd']);

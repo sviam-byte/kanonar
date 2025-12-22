@@ -29,9 +29,12 @@ export type Stage0Input = {
   agent: AgentState;
   selfId: string;
 
+  // optional local map metrics (precomputed)
+  mapMetrics?: any;
+
   // We don't need input.worldAtoms anymore if we build them here.
   // But for legacy compatibility or injections we keep 'extraWorldAtoms'
-  extraWorldAtoms?: ContextAtom[];     
+  extraWorldAtoms?: ContextAtom[];
 
   beliefAtoms?: ContextAtom[];   // agent beliefs (from memory/ToM)
   overrideAtoms?: ContextAtom[]; // GoalLab overrides (manual injection)
@@ -111,6 +114,7 @@ export function buildStage0Atoms(input: Stage0Input): Stage0Output {
       tick,
       selfId: input.selfId,
       self: input.agent,
+      mapMetrics: input.mapMetrics,
       location: loc,
       locationId: locId,
       sceneSnapshot

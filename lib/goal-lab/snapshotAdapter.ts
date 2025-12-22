@@ -9,11 +9,16 @@ function safeTick(x: any) {
 
 export function adaptToSnapshotV1(raw: any, args: { selfId: string }): GoalLabSnapshotV1 {
   // raw can be GoalLabContextResult or similar structure
+  // IMPORTANT:
+  // GoalLabContextResult содержит ДВЕ параллельные ветки атомов:
+  // - snapshot.atoms (каноническая v2/папка pipeline, включает appraisal/emotion)
+  // - v4Atoms (legacy/debug, часто без appraisal/emotion и с другими id-шниками)
+  // Для инспекторов/панелей GoalLab нам нужен именно snapshot.atoms.
   const atoms: ContextAtom[] =
-    (raw?.v4Atoms as ContextAtom[]) || 
+    (raw?.snapshot?.atoms as ContextAtom[]) ||
     (raw?.atoms as ContextAtom[]) ||
     (raw?.frame?.atoms as ContextAtom[]) ||
-    (raw?.snapshot?.atoms as ContextAtom[]) ||
+    (raw?.v4Atoms as ContextAtom[]) ||
     [];
 
   const tick =
