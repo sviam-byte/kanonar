@@ -4,7 +4,7 @@ import { getEntitiesByType } from './index';
 import { allStories } from './stories/index';
 import { allSimulations } from './simulations/index';
 
-export type AccessModuleId = 'default' | 'tegan-krystar';
+export type AccessModuleId = 'default' | 'tegan-krystar' | 'genshin';
 
 export interface AccessModule {
   id: AccessModuleId;
@@ -80,9 +80,42 @@ const TEGAN_KRYSTAR_MODULE: AccessModule = {
   isSimulationAllowed(key: string) { return TK_SIM_KEYS.has(key); }
 };
 
+// --- GENSHIN MODULE ---
+
+const GENSHIN_CHAR_IDS = new Set<string>([
+  'character-genshin-dainsleif',
+  'character-genshin-kaeya',
+  'character-genshin-rhinedottir',
+  'character-genshin-vedrfolnir',
+  'character-genshin-hroptatyr',
+]);
+
+const GENSHIN_MODULE: AccessModule = {
+  id: 'genshin',
+  label: 'Модуль: GENSHIN (Каэнри\'а)',
+  description: 'Закрытый набор персонажей по мотивам Genshin: Каэнри\'а, Король Кэйа, Дайнслейф и ключевые фигуры исследований.',
+  codes: ['GENSHIN', 'KHAENRIAH', 'BLACK-SUN'],
+
+  getCharacters() {
+    const all = getEntitiesByType(EntityType.Character) as CharacterEntity[];
+    return all.filter((ch) => GENSHIN_CHAR_IDS.has(ch.entityId));
+  },
+  getStories() {
+    return [];
+  },
+  getSimulations() {
+    return [];
+  },
+
+  isCharacterAllowed(id: string) { return GENSHIN_CHAR_IDS.has(id); },
+  isStoryAllowed(_id: string) { return false; },
+  isSimulationAllowed(_key: string) { return false; },
+};
+
 export const ACCESS_MODULES: AccessModule[] = [
   DEFAULT_MODULE,
   TEGAN_KRYSTAR_MODULE,
+  GENSHIN_MODULE,
 ];
 
 export function resolveAccessModuleByCode(rawCode: string): AccessModule | null {
