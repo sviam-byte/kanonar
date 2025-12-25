@@ -110,9 +110,13 @@ export function deriveAxes(args: { selfId: string; atoms: ContextAtom[]; tuning?
   const escape = Number.isFinite(exits)
     ? clamp01(Math.max(get(atoms, `world:map:escape:${selfId}`, 0), exits))
     : get(atoms, `world:map:escape:${selfId}`, 0);
+  const hazardProximity = get(atoms, `world:map:hazardProximity:${selfId}`, 0);
+  const hazardSource = get(atoms, `haz:dangerSourceProximity:${selfId}`, 0);
   const danger = Math.max(
     get(atoms, `world:map:danger:${selfId}`, 0),
-    get(atoms, `world:env:hazard:${selfId}`, 0)
+    get(atoms, `world:env:hazard:${selfId}`, 0),
+    hazardProximity,
+    hazardSource
   );
 
   // Observational quality (from patch 54). If missing -> moderate.
@@ -225,11 +229,22 @@ export function deriveAxes(args: { selfId: string; atoms: ContextAtom[]; tuning?
     atom(
       `ctx:danger:${selfId}`,
       ctxDanger,
-      [`world:map:danger:${selfId}`, `world:env:hazard:${selfId}`, `world:map:escape:${selfId}`, `world:map:cover:${selfId}`, `ctx:src:scene:hostility:${selfId}`, `ctx:src:scene:threat:${selfId}`],
+      [
+        `world:map:danger:${selfId}`,
+        `world:env:hazard:${selfId}`,
+        `world:map:hazardProximity:${selfId}`,
+        `haz:dangerSourceProximity:${selfId}`,
+        `world:map:escape:${selfId}`,
+        `world:map:cover:${selfId}`,
+        `ctx:src:scene:hostility:${selfId}`,
+        `ctx:src:scene:threat:${selfId}`
+      ],
       buildParts([
         { name: 'dangerBase', val: dangerBase, w: 0.75 },
         { name: 'dangerSocial', val: dangerSocial, w: 0.25 },
-        { name: 'mapDanger', val: danger, w: 0.65 },
+        { name: 'map+hazardDanger', val: danger, w: 0.65 },
+        { name: 'hazardProximity', val: hazardProximity },
+        { name: 'hazardSource', val: hazardSource },
         { name: 'escape', val: escape, w: -0.20, contrib: -0.20 * escape },
         { name: 'cover', val: cover, w: -0.15, contrib: -0.15 * cover },
         { name: 'sceneHostility', val: scHostility, w: 0.55 },

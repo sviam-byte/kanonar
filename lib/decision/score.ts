@@ -43,13 +43,29 @@ export function scorePossibility(args: {
   const shame = get(atoms, `emo:shame:${selfId}`, 0);
   const resolve = get(atoms, `emo:resolve:${selfId}`, 0);
   const care = get(atoms, `emo:care:${selfId}`, 0);
+  const targetId = (p as any)?.targetId;
+  const hazardBetween = targetId ? clamp01(get(atoms, `world:map:hazardBetween:${selfId}:${targetId}`, 0)) : 0;
+  const allyHazardBetween = targetId ? clamp01(get(atoms, `soc:allyHazardBetween:${selfId}:${targetId}`, 0)) : 0;
+  const enemyHazardBetween = targetId ? clamp01(get(atoms, `soc:enemyHazardBetween:${selfId}:${targetId}`, 0)) : 0;
 
   let pref = 0;
+  const prefParts: Record<string, number> = {};
   if (p.id.startsWith('exit:escape')) pref += 0.25 * fear + 0.10 * threatFinal;
   if (p.id.startsWith('aff:hide'))   pref += 0.20 * fear;
-  if (p.id.startsWith('aff:talk'))   pref += 0.10 * shame - 0.10 * fear;
-  if (p.id.startsWith('aff:attack')) pref += 0.20 * anger + 0.10 * resolve - 0.25 * shame;
-  if (p.id.startsWith('off:help'))   pref += 0.20 * care - 0.10 * fear;
+  if (p.id.startsWith('aff:talk')) {
+    pref += 0.10 * shame - 0.10 * fear - 0.20 * hazardBetween;
+    prefParts.hazardBetween = -0.20 * hazardBetween;
+  }
+  if (p.id.startsWith('aff:attack')) {
+    pref += 0.20 * anger + 0.10 * resolve - 0.25 * shame - 0.25 * enemyHazardBetween - 0.10 * hazardBetween;
+    prefParts.enemyHazardBetween = -0.25 * enemyHazardBetween;
+    prefParts.hazardBetween = (prefParts.hazardBetween ?? 0) + -0.10 * hazardBetween;
+  }
+  if (p.id.startsWith('off:help')) {
+    pref += 0.20 * care - 0.10 * fear - 0.35 * allyHazardBetween - 0.15 * hazardBetween;
+    prefParts.allyHazardBetween = -0.35 * allyHazardBetween;
+    prefParts.hazardBetween = (prefParts.hazardBetween ?? 0) + -0.15 * hazardBetween;
+  }
 
   // Protocol: if strict, prefer talk over attack
   const protocol = get(atoms, `ctx:proceduralStrict:${selfId}`, get(atoms, `norm:proceduralStrict:${selfId}`, 0));
@@ -68,8 +84,16 @@ export function scorePossibility(args: {
     allowed: gate.allowed,
     cost,
     why: {
-      usedAtomIds: [...(p.trace?.usedAtomIds || []), ...usedAtomIds],
-      parts: { availability, pref, costParts: parts },
+      usedAtomIds: [
+        ...(p.trace?.usedAtomIds || []),
+        ...usedAtomIds,
+        ...(targetId ? [
+          `world:map:hazardBetween:${selfId}:${targetId}`,
+          `soc:allyHazardBetween:${selfId}:${targetId}`,
+          `soc:enemyHazardBetween:${selfId}:${targetId}`
+        ] : [])
+      ],
+      parts: { availability, pref, prefParts, costParts: parts },
       blockedBy: gate.blockedBy
     },
     p

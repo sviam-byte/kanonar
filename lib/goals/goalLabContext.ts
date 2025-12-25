@@ -62,6 +62,16 @@ function clamp01(x: number) {
   return Math.max(0, Math.min(1, x));
 }
 
+/** Stable non-crypto hash -> 32-bit positive int. */
+function stableHashInt32(s: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0) || 1;
+}
+
 function dedupeAtomsById(arr: ContextAtom[]): ContextAtom[] {
     const seen = new Set<string>();
     const out: ContextAtom[] = [];
@@ -198,7 +208,8 @@ export function buildGoalLabContext(
       participants: (world?.agents || []).map((a: any) => a.entityId || a.id).filter(Boolean),
       locationId: (agent as any).locationId || getLocationForAgent(world, selfId)?.entityId,
       metricsOverride: sc.metrics || {},
-      normsOverride: sc.norms || {}
+      normsOverride: sc.norms || {},
+      seed: Number.isFinite(sc.seed) ? Number(sc.seed) : undefined
     });
 
     if (Array.isArray(sc.manualInjections)) sceneInst.manualInjections = sc.manualInjections;
@@ -299,7 +310,11 @@ export function buildGoalLabContext(
       const atomsAfterAccess = mergeKeepingOverrides(atomsWithAxes, accessPack.atoms).merged;
 
       // 6. Rumor Generation
-      const seed = (world as any).sceneSnapshot?.seed ?? 12345;
+      const seed =
+        Number.isFinite((sceneInst as any)?.seed) ? Number((sceneInst as any).seed) :
+        Number.isFinite((sceneSnapshotForStage0 as any)?.seed) ? Number((sceneSnapshotForStage0 as any).seed) :
+        Number.isFinite((world as any).sceneSnapshot?.seed) ? Number((world as any).sceneSnapshot.seed) :
+        stableHashInt32(String((sceneInst as any)?.sceneId ?? (world as any)?.scenarioId ?? 'goal-lab') + '::' + String(selfId));
       const rumorBeliefs = generateRumorBeliefs({
           atomsAfterAxes: atomsAfterAccess,
           selfId,

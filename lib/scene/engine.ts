@@ -8,6 +8,15 @@ function clamp01(x: number) {
   return Math.max(0, Math.min(1, x));
 }
 
+function stableHashInt32(s: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0) || 1;
+}
+
 function defaultMetrics(preset: ScenePreset): SceneMetrics {
   const d: any = {
     crowd: 0, hostility: 0, chaos: 0, urgency: 0,
@@ -43,14 +52,19 @@ export function createSceneInstance(args: {
   locationId?: string;
   metricsOverride?: Partial<SceneMetrics>;
   normsOverride?: Partial<SceneNorms>;
+  seed?: number;
 }): SceneInstance {
   const preset = SCENE_PRESETS[args.presetId];
   if (!preset) throw new Error(`Unknown scene preset ${args.presetId}`);
+  const seed = Number.isFinite(args.seed)
+    ? Number(args.seed)
+    : stableHashInt32(String(args.sceneId) + '::' + String(args.presetId));
 
   return {
     schemaVersion: 1,
     sceneId: args.sceneId,
     presetId: args.presetId,
+    seed,
     startedAtTick: args.startedAtTick,
     tick: args.startedAtTick,
     phaseId: preset.entryPhaseId,
