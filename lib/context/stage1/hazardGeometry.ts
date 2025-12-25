@@ -123,12 +123,22 @@ function computeDistanceTransform(
   return dist;
 }
 
+/**
+ * Convert a map cell into a hazard strength in [0..1].
+ *
+ * IMPORTANT:
+ * UI often sets danger ~0.2..0.8. A hard threshold makes hazardBetween/hazardProximity
+ * almost always zero, so use a soft threshold that preserves contrast.
+ */
 function hazardFromCell(cell: any, dangerThreshold: number): number {
   const tags: string[] = Array.isArray(cell?.tags) ? cell.tags : [];
   if (tags.includes('hazard')) return 1;
 
   const d = typeof cell?.danger === 'number' ? cell.danger : 0;
-  return d >= dangerThreshold ? clamp01(d) : 0;
+  const dn = clamp01(d);
+  const eps = clamp01(dangerThreshold);
+  if (dn <= eps) return 0;
+  return clamp01((dn - eps) / Math.max(1e-6, (1 - eps)));
 }
 
 function safePos(pos: any, w: number, h: number): { x: number; y: number } | null {
@@ -181,7 +191,7 @@ export function deriveHazardGeometryAtoms(args: {
   dangerThreshold?: number;
 }): { atoms: ContextAtom[] } {
   const { world, selfId, atoms } = args;
-  const dangerThreshold = typeof args.dangerThreshold === 'number' ? args.dangerThreshold : 0.7;
+  const dangerThreshold = typeof args.dangerThreshold === 'number' ? args.dangerThreshold : 0.15;
 
   const out: ContextAtom[] = [];
 

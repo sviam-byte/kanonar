@@ -77,6 +77,7 @@ export type SceneInstance = {
   schemaVersion: number;
   sceneId: string;
   presetId: string;
+  seed?: number;
 
   startedAtTick: number;
   tick: number;
