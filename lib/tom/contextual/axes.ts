@@ -109,6 +109,9 @@ export function deriveContextAxes(args: {
     soc_publicness: pickAtomExact(idx, { id: 'soc_publicness' }),
     soc_surveillance: pickAtomExact(idx, { id: 'soc_surveillance' }),
     soc_norm_pressure: pickAtomExact(idx, { id: 'soc_norm_pressure' }),
+    ctx_publicness: pickAtomExact(idx, { id: 'ctx:publicness' }),
+    ctx_surveillance: pickAtomExact(idx, { id: 'ctx:surveillance' }),
+    ctx_norm_pressure: pickAtomExact(idx, { id: 'ctx:normPressure' }),
 
     // canonical ctx axes atoms: ids like "ctx:danger"
     ctx_danger: pickAtomExact(idx, { id: 'ctx:danger' }),
@@ -127,6 +130,15 @@ export function deriveContextAxes(args: {
   (Object.keys(A) as Array<keyof typeof A>).forEach((k) => {
     atomsUsed[k as unknown as ContextSignalId] = { value: A[k].value, confidence: A[k].confidence, from: A[k].from };
   });
+
+  const pickPreferred = (
+    primary: { value: number; confidence?: number; from: string },
+    fallback: { value: number; confidence?: number; from: string }
+  ) => (primary.from === 'none' ? fallback : primary);
+
+  const publicnessAtom = pickPreferred(A.soc_publicness, A.ctx_publicness);
+  const normPressureAtom = pickPreferred(A.soc_norm_pressure, A.ctx_norm_pressure);
+  const surveillanceAtom = pickPreferred(A.soc_surveillance, A.ctx_surveillance);
 
   // ---- derive raw axes (0..1)
   // danger: hazards + explicit ctx_danger + scene threat, damped if safe/private and low hazard
@@ -154,13 +166,13 @@ export function deriveContextAxes(args: {
   // publicness: norms + atom + inverse privacy
   raw.publicness = clamp01(
     0.45 * publicExposureNorm +
-      0.25 * A.soc_publicness.value +
+      0.25 * publicnessAtom.value +
       0.20 * (1 - privacyNorm) +
       (isFormal ? 0.10 : 0)
   );
 
-  raw.normPressure = clamp01(Math.max(normPressureNorm, A.soc_norm_pressure.value, (domainMix?.normPressure ?? 0) as number));
-  raw.surveillance = clamp01(Math.max(surveillanceNorm, A.soc_surveillance.value, (domainMix?.surveillance ?? 0) as number));
+  raw.normPressure = clamp01(Math.max(normPressureNorm, normPressureAtom.value, (domainMix?.normPressure ?? 0) as number));
+  raw.surveillance = clamp01(Math.max(surveillanceNorm, surveillanceAtom.value, (domainMix?.surveillance ?? 0) as number));
 
   // scarcity: explicit atom + world scarcity signal + goal mix
   const worldScarcity = typeof world?.scene?.metrics?.scarcity === 'number' ? clamp01(world.scene.metrics.scarcity / 100) : 0;

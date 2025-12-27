@@ -374,40 +374,59 @@ export function buildGoalLabContext(
       }
 
       // 8.5 Effective ToM dyads (canonical layer)
-      // Rule: use *_ctx if exists, else base.
-      const baseDyads = dyads.filter(a => a.id.endsWith(':trust') || a.id.endsWith(':threat'));
-      const ctxByBaseId = new Map<string, ContextAtom>();
-      for (const a of tomCtxDyads) {
-        // convert trust_ctx -> trust baseId, threat_ctx -> threat baseId
-        const baseId = a.id.replace(':trust_ctx', ':trust').replace(':threat_ctx', ':threat');
-        ctxByBaseId.set(baseId, a);
-      }
-
+      const atomsAfterCtx = [...atomsAfterPriors, ...tomCtxDyads];
+      const baseDyads = atomsAfterCtx.filter(a => a.id.startsWith(`tom:dyad:${selfId}:`));
       const effectiveDyads: ContextAtom[] = [];
+      const getMag = (atoms: ContextAtom[], id: string, fb = 0) => {
+        const a = atoms.find(x => x.id === id);
+        const m = (a as any)?.magnitude;
+        return (typeof m === 'number' && Number.isFinite(m)) ? m : fb;
+      };
+
       for (const b of baseDyads) {
-        const chosen = ctxByBaseId.get(b.id) || b;
-        const parts = b.id.split(':'); // tom:dyad:self:target:metric
-        if (parts.length < 5) continue;
-        const target = parts[3];
-        const metric = parts[4] === 'trust' ? 'trust' : 'threat';
-        const effId = `tom:effective:dyad:${selfId}:${target}:${metric}`;
+        const parts = String(b.id).split(':'); // tom:dyad:self:target:metric
+        const target = b.target || parts[3];
+        const metric = parts[4];
+        if (!target || !metric) continue;
+
+        const base = clamp01(b.magnitude ?? 0);
+        let eff = base;
+        const usedIds: string[] = [b.id];
+
+        if (metric === 'trust' || metric === 'threat') {
+          const ctxId = `tom:dyad:${selfId}:${target}:${metric}_ctx`;
+          const ctx = atomsAfterCtx.find(a => a.id === ctxId);
+          if (ctx) {
+            eff = clamp01(ctx.magnitude ?? base);
+            usedIds.push(ctxId);
+          }
+        }
+
+        if (metric === 'support') {
+          const baseThreat = getMag(atomsAfterCtx, `tom:dyad:${selfId}:${target}:threat`, 0);
+          const effThreat = getMag(atomsAfterCtx, `tom:dyad:${selfId}:${target}:threat_ctx`, baseThreat);
+          const denom = Math.max(1e-6, 1 - clamp01(baseThreat));
+          const factor = clamp01((1 - clamp01(effThreat)) / denom);
+          eff = clamp01(base * factor);
+          usedIds.push(`tom:dyad:${selfId}:${target}:threat`, `tom:dyad:${selfId}:${target}:threat_ctx`);
+        }
 
         effectiveDyads.push(normalizeAtom({
-          id: effId,
+          id: `tom:effective:dyad:${selfId}:${target}:${metric}`,
           ns: 'tom',
           kind: 'tom_dyad_metric',
           origin: 'derived',
           source: 'tom_effective',
-          magnitude: clamp01((chosen as any).magnitude ?? 0),
+          magnitude: eff,
           confidence: 1,
           subject: selfId,
           target,
-          tags: ['tom', 'effective', metric],
-          label: `${metric}_effective:${Math.round(clamp01((chosen as any).magnitude ?? 0) * 100)}%`,
+          tags: ['tom', 'effective', 'dyad', metric],
+          label: `${metric}_eff:${Math.round(eff * 100)}%`,
           trace: {
-            usedAtomIds: [b.id, ...(chosen.id !== b.id ? [chosen.id] : [])],
-            notes: ['effective dyad = ctx if present else base'],
-            parts: { chosen: chosen.id !== b.id ? 'ctx' : 'base' }
+            usedAtomIds: Array.from(new Set(usedIds.filter(Boolean))),
+            notes: ['effective dyad metric'],
+            parts: { base, eff }
           }
         } as any));
       }
