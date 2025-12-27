@@ -23,6 +23,7 @@ import { mergeEpistemicAtoms, mergeKeepingOverrides } from '../context/epistemic
 import { generateRumorBeliefs } from '../context/epistemic/rumorGenerator';
 import { buildBeliefToMBias } from '../tom/ctx/beliefBias';
 import { applyRelationPriorsToDyads } from '../tom/base/applyRelationPriors';
+import { buildTomPolicyLayer } from '../tom/policy/tomPolicy';
 import { buildSelfAliases } from '../context/v2/aliases';
 import { computeThreatStack } from '../threat/threatStack';
 import { derivePossibilitiesRegistry } from '../possibilities/derive';
@@ -431,8 +432,20 @@ export function buildGoalLabContext(
         } as any));
       }
 
+      // 8.x ToM Policy layer (mode + predictions + attitude + help + affordances)
+      const tomPolicyPack = buildTomPolicyLayer(
+        [...atomsAfterPriors, ...biasPack.atoms, ...tomCtxDyads, ...effectiveDyads],
+        selfId
+      );
+
       // 9. Threat Stack
-      const atomsForThreat = [...atomsAfterPriors, ...biasPack.atoms, ...tomCtxDyads, ...effectiveDyads];
+      const atomsForThreat = [
+        ...atomsAfterPriors,
+        ...biasPack.atoms,
+        ...tomCtxDyads,
+        ...effectiveDyads,
+        ...tomPolicyPack.atoms
+      ];
       const getMagThreat = (id: string, fb = 0) => {
         const a = atomsForThreat.find(x => x.id === id);
         const m = (a as any)?.magnitude;
