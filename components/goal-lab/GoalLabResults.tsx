@@ -466,6 +466,33 @@ export const GoalLabResults: React.FC<Props> = ({
           .filter(a => typeof a.id === 'string' && a.id.startsWith('emo:') && a.id.endsWith(`:${selfId}`))
           .sort((x, y) => metric(y) - metric(x));
 
+        // Dyadic emotions: emo:dyad:<key>:<selfId>:<otherId>
+        const dyadAll = currentAtoms
+          .filter(a => {
+            const id = String((a as any)?.id || '');
+            if (!id.startsWith('emo:dyad:')) return false;
+            const parts = id.split(':');
+            return parts.length >= 5 && parts[3] === String(selfId);
+          })
+          .map(a => {
+            const parts = String((a as any)?.id || '').split(':');
+            return { a, key: parts[2] || 'dyad', otherId: parts[4] || '' };
+          })
+          .filter(x => x.otherId);
+
+        const dyadTargets = Array.from(new Set(dyadAll.map(x => x.otherId))).sort();
+        const [dyadOtherId, setDyadOtherId] = useState<string>(() => dyadTargets[0] || '');
+        React.useEffect(() => {
+          if (!dyadOtherId && dyadTargets[0]) setDyadOtherId(dyadTargets[0]);
+          if (dyadOtherId && dyadTargets.length && !dyadTargets.includes(dyadOtherId)) {
+            setDyadOtherId(dyadTargets[0] || '');
+          }
+        }, [dyadOtherId, dyadTargets]);
+
+        const dyadForOther = dyadAll
+          .filter(x => x.otherId === dyadOtherId)
+          .sort((x, y) => metric(y.a) - metric(x.a));
+
         const valenceSigned = get(`emo:valence:${selfId}`, 0);
         const valence01 = (Number.isFinite(valenceSigned) ? (valenceSigned + 1) / 2 : 0.5);
         const arousal = get(`emo:arousal:${selfId}`, 0);
@@ -526,6 +553,49 @@ export const GoalLabResults: React.FC<Props> = ({
               </div>
               <div className="text-[10px] text-canon-text-light/70 mt-2">
                 valence хранится как -1..1 (в UI для удобства показана и шкала 0..1 справа).
+              </div>
+            </div>
+
+            <div className="border border-canon-border/40 rounded bg-black/15 p-3">
+              <div className="flex items-end justify-between gap-3">
+                <div>
+                  <div className="text-xs font-bold text-canon-text uppercase tracking-wider">Dyadic emotions (emo:dyad:*)</div>
+                  <div className="text-[11px] text-canon-text-light/80 mt-1">
+                    Эмоции по отношению к конкретному человеку (из effective dyads + proximity).
+                  </div>
+                </div>
+                <div className="min-w-[220px]">
+                  <div className="text-[10px] uppercase text-canon-text-light mb-1">Target</div>
+                  <select
+                    className="w-full bg-black/20 border border-canon-border/40 rounded px-2 py-1 text-xs"
+                    value={dyadOtherId}
+                    onChange={e => setDyadOtherId(e.target.value)}
+                    disabled={!dyadTargets.length}
+                  >
+                    {!dyadTargets.length ? <option value="">(none)</option> : null}
+                    {dyadTargets.map(id => (
+                      <option key={id} value={id}>
+                        {actorLabels?.[id] ? `${actorLabels[id]} (${id})` : id}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-3">
+                {dyadTargets.length ? (
+                  dyadForOther.length ? (
+                    dyadForOther.map(x => <Row key={x.a.id} a={x.a} />)
+                  ) : (
+                    <div className="text-[12px] text-canon-text-light/70">Нет dyadic эмоций для выбранного target.</div>
+                  )
+                ) : (
+                  <div className="text-[12px] text-canon-text-light/70">
+                    Нет <span className="font-mono">emo:dyad:*</span> атомов. Проверь, что вызывается{' '}
+                    <span className="font-mono">deriveDyadicEmotionAtoms()</span> и в атомах есть{' '}
+                    <span className="font-mono">tom:effective:dyad</span> для этого self.
+                  </div>
+                )}
               </div>
             </div>
 
