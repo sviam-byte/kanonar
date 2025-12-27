@@ -433,7 +433,7 @@ export function buildGoalLabContext(
 
       // 9. Threat Stack
       const atomsForThreat = [...atomsAfterPriors, ...biasPack.atoms, ...tomCtxDyads, ...effectiveDyads];
-      const getMag = (id: string, fb = 0) => {
+      const getMagThreat = (id: string, fb = 0) => {
         const a = atomsForThreat.find(x => x.id === id);
         const m = (a as any)?.magnitude;
         return (typeof m === 'number' && Number.isFinite(m)) ? m : fb;
@@ -441,31 +441,31 @@ export function buildGoalLabContext(
       const firstByPrefix = (prefix: string) =>
         atomsForThreat.find(a => String((a as any)?.id || '').startsWith(prefix))?.id || null;
 
-        const ctxDanger = getMag(`ctx:danger:${selfId}`, 0);
+        const ctxDanger = getMagThreat(`ctx:danger:${selfId}`, 0);
         const coverId = firstByPrefix(`world:map:cover:${selfId}`) || firstByPrefix(`ctx:cover:${selfId}`) || null;
 
-        const cover = coverId ? getMag(coverId, 0.5) : 0.5;
+        const cover = coverId ? getMagThreat(coverId, 0.5) : 0.5;
 
       const crowd =
-        getMag(`ctx:crowd:${selfId}`, 0) ||
-        getMag(`world:loc:crowd:${selfId}`, 0);
+        getMagThreat(`ctx:crowd:${selfId}`, 0) ||
+        getMagThreat(`world:loc:crowd:${selfId}`, 0);
 
       const hierarchy =
-        getMag(`ctx:hierarchy:${selfId}`, 0) ||
-        getMag(`world:loc:control:${selfId}`, 0);
+        getMagThreat(`ctx:hierarchy:${selfId}`, 0) ||
+        getMagThreat(`world:loc:control:${selfId}`, 0);
 
       const surveillance =
-        getMag(`ctx:surveillance:${selfId}`, 0);
+        getMagThreat(`ctx:surveillance:${selfId}`, 0);
 
       const timePressure =
-        getMag(`ctx:timePressure:${selfId}`, 0);
+        getMagThreat(`ctx:timePressure:${selfId}`, 0);
 
       const scarcity =
-        getMag(`ctx:scarcity:${selfId}`, 0);
+        getMagThreat(`ctx:scarcity:${selfId}`, 0);
 
       const woundedPressure =
-        getMag(`ctx:wounded:${selfId}`, 0) ||
-        getMag(`ctx:careNeed:${selfId}`, 0);
+        getMagThreat(`ctx:wounded:${selfId}`, 0) ||
+        getMagThreat(`ctx:careNeed:${selfId}`, 0);
 
       // ToM proximity summary (cheap proxy): top effective dyads
       const effTrust = atomsForThreat
