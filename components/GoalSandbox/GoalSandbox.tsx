@@ -1183,7 +1183,6 @@ export const GoalSandbox: React.FC = () => {
               }
               manualAtoms={manualAtoms}
               onChangeManualAtoms={setManualAtoms}
-              computedAtoms={((snapshotV1 as any)?.atoms ?? (snapshot as any)?.atoms ?? [])}
               nearbyActors={nearbyActors}
               onNearbyActorsChange={handleNearbyActorsChange}
               placingActorId={placingActorId}

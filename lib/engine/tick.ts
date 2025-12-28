@@ -9,6 +9,8 @@ import { extractEvidenceFromEvents } from '../evidence/extract';
 import { applyEvidenceToTomBase } from '../tom/memory/update';
 import { updateRelationshipGraphFromEvents } from '../relations/updateFromEvents';
 import { WorldEvent } from '../events/types';
+import { ensureTomMatrix } from '../tom/ensureMatrix';
+import { integrateTomFromAtoms } from '../tom/integrateFromAtoms';
 
 export function ensureWorldTick(world: any) {
   if (typeof world.tick !== 'number') world.tick = 0;
@@ -38,9 +40,17 @@ export function runTicks(args: {
   for (let i = 0; i < steps; i++) {
     advanceWorldTick(world, dt);
     const tickNow = world.tick;
-    
-    // Find the agent in the world (mutable ref)
-    const agent = world.agents?.find((a: any) => a.entityId === agentId) || world.entities?.find((e: any) => e.entityId === agentId) || null;
+
+    const allIds: string[] = (world.agents || []).map((a: any) => a.entityId).filter(Boolean);
+    const procIds: string[] =
+      (cfg.agentIds && cfg.agentIds.length ? cfg.agentIds.slice() :
+      cfg.allAgents ? allIds :
+      [agentId]).filter(Boolean);
+
+    // Ensure full ToM matrix exists: for N agents => N*(N-1) dyads
+    if (procIds.length >= 2) {
+      try { ensureTomMatrix(world, procIds); } catch {}
+    }
 
     // 1) Events at Tick
     const eventsNow = getEventsAtTick(world, tickNow);
@@ -69,59 +79,76 @@ export function runTicks(args: {
         };
     });
 
-    // 2) Update Relations (if graph exists on agent)
-    if (agent && typeof updateRelationshipGraphFromEvents === 'function') {
+    // 2) Update Relations for each processed agent
+    for (const sid of procIds) {
+      const agent = world.agents?.find((a: any) => a.entityId === sid) || null;
+      if (!agent || typeof updateRelationshipGraphFromEvents !== 'function') continue;
       try {
         agent.relations = agent.relations || {};
         agent.relations.graph = agent.relations.graph || agent.rel_graph || { schemaVersion: 1, edges: [] };
-        
+
         const updated = updateRelationshipGraphFromEvents({
           graph: agent.relations.graph,
-          selfId: agentId,
-          events: worldEvents, 
+          selfId: sid,
+          events: worldEvents,
           nowTick: tickNow
         });
-        
+
         agent.relations.graph = updated.graph;
       } catch (e) {
         console.error("Relation update failed", e);
       }
     }
 
-    // 3) Update ToM Base from Evidence
-    if (agent && eventsNow.length > 0) {
+    // 3) Update ToM Base from Evidence for each processed agent
+    if (eventsNow.length > 0) {
       const evAll = extractEvidenceFromEvents({ events: eventsNow });
-      const evForSelf = evAll.filter(e => e.subjectId === agentId);
-      
-      // Update how agent is seen (public rep/tom base) OR how agent sees others?
-      // applyEvidenceToTomBase updates the agent's ToM about OTHERS usually if passed as observer.
-      // Assuming 'agent' is observer here.
-      applyEvidenceToTomBase({
-        agent,
-        evidence: evAll, // pass all relevant evidence
-        tuning: baseInput?.tuning?.tomUpdate
+      for (const sid of procIds) {
+        const agent = world.agents?.find((a: any) => a.entityId === sid) || null;
+        if (!agent) continue;
+        applyEvidenceToTomBase({
+          agent,
+          evidence: evAll,
+          tuning: baseInput?.tuning?.tomUpdate
+        });
+      }
+    }
+
+    // 4) Build snapshot for each agent, integrate affect + tom into world
+    const snapById: Record<string, any> = {};
+    for (const sid of procIds) {
+      const ctxResult = buildGoalLabContext(world, sid, {
+        snapshotOptions: baseInput.snapshotOptions,
+        timeOverride: tickNow,
       });
+      if (!ctxResult) continue;
+      snapById[sid] = ctxResult.snapshot;
     }
 
-    // 4) Build Context Snapshot (AFTER state updates)
-    const ctxResult = buildGoalLabContext(world, agentId, {
-      snapshotOptions: baseInput.snapshotOptions,
-      timeOverride: tickNow,
-    });
-    
-    if (!ctxResult) break; // Agent not found or error
-    
-    const snap = ctxResult.snapshot;
-    snapshots.push(snap);
+    // integrate per-agent slow state + ToM updates from atoms
+    for (const sid of procIds) {
+      const agent = world.agents?.find((a: any) => a.entityId === sid) || null;
+      const snap = snapById[sid];
+      if (!agent || !snap) continue;
 
-    // 5) Integrate Slow State (Affect/Stress/Traces)
-    if (agent) {
-       integrateAgentState({
-           agent,
-           atomsAfterAffect: snap.atoms,
-           tuning: baseInput?.integratorTuning 
-       });
+      integrateAgentState({
+        agent,
+        atomsAfterAffect: snap.atoms,
+        tuning: baseInput?.integratorTuning
+      });
+
+      try {
+        integrateTomFromAtoms({
+          world,
+          selfId: sid,
+          atoms: snap.atoms,
+          tick: tickNow
+        });
+      } catch {}
     }
+
+    // keep existing return shape: snapshots are for the requested focus agentId
+    if (snapById[agentId]) snapshots.push(snapById[agentId]);
 
     // 6. Compute Diffs if requested
     if (withDiffs && snapshots.length >= 2) {

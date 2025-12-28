@@ -1,6 +1,9 @@
 import type { AtomOverrideLayer } from '../context/overrides/types';
 import type { WorldState } from '../../types';
 import { buildGoalLabExplain } from './explain';
+import { ensureTomMatrix } from '../tom/ensureMatrix';
+import { normalizeAffectState } from '../affect/normalize';
+import { defaultAffect } from '../affect/engine';
 
 type SceneDumpInput = {
   world: WorldState | null;
@@ -61,6 +64,18 @@ export function buildGoalLabSceneDumpV2(input: SceneDumpInput) {
     tomMatrixForPerspective,
     castRows,
   } = input;
+
+  // Ensure exported world contains full affect + full ToM matrix
+  try {
+    const w: any = world as any;
+    const ids = (w.agents || []).map((a: any) => a.entityId).filter(Boolean);
+    for (const a of w.agents || []) {
+      if (!a.affect) a.affect = defaultAffect(w.tick ?? 0);
+      a.affect = normalizeAffectState(a.affect);
+      a.state = { ...(a.state || {}), affect: a.affect };
+    }
+    if (ids.length >= 2) ensureTomMatrix(world as any, ids);
+  } catch {}
 
   return {
     schemaVersion: 2,
