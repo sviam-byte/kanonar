@@ -13,8 +13,10 @@ function firstIdByPrefix(atoms: ContextAtom[], prefix: string) {
   return atoms.find(a => typeof a?.id === 'string' && a.id.startsWith(prefix))?.id || null;
 }
 
-export function deriveAppraisalAtoms(args: { selfId: string; atoms: ContextAtom[] }) {
-  const { selfId, atoms } = args;
+export function deriveAppraisalAtoms(args: { selfId: string; atoms: ContextAtom[]; agent?: any }) {
+  const { selfId, atoms, agent } = args;
+
+  const w = (agent?.params?.appraisal_weights || agent?.appraisal_weights || {}) as any;
 
   // ---------- personality / body features ----------
   const trParanoia = clamp01(getMag(atoms, `feat:char:${selfId}:trait.paranoia`, 0.5));
@@ -65,6 +67,21 @@ export function deriveAppraisalAtoms(args: { selfId: string; atoms: ContextAtom[
 
   const pressure0 = clamp01(0.65 * norm0 + 0.35 * pub0);
   const pressure = clamp01(pressure0 * kPress);
+
+  // после базового расчёта — “персонажные” сдвиги (делают различимость)
+  // По умолчанию (если весов нет) всё остаётся как было.
+  const threatBias = Number.isFinite(w.threat_bias) ? w.threat_bias : 0;
+  const threatGain = Number.isFinite(w.threat_gain) ? w.threat_gain : 1;
+
+  const pressureGain = Number.isFinite(w.pressure_gain) ? w.pressure_gain : 1;
+  const controlGain = Number.isFinite(w.control_gain) ? w.control_gain : 1;
+  const uncGain = Number.isFinite(w.uncertainty_gain) ? w.uncertainty_gain : 1;
+
+  // Traits → appraisal:
+  const threatAdj = clamp01(threatBias + (0.5 + (threat - 0.5) * threatGain) + 0.25 * (trParanoia - 0.5));
+  const uncAdj = clamp01(0.5 + (unc - 0.5) * uncGain + 0.20 * (0.5 - trExperience));
+  const pressureAdj = clamp01((0.5 + (pressure - 0.5) * pressureGain) + 0.30 * (trSensitive - 0.5));
+  const controlAdj = clamp01(0.5 + (control - 0.5) * controlGain - 0.10 * (uncAdj - 0.5));
 
   // attachment: keep mostly contextual, but allow mild stress erosion
   const attachment0 = clamp01(0.75 * intimacy0 + 0.25 * (1 - pub0));
@@ -118,20 +135,21 @@ export function deriveAppraisalAtoms(args: { selfId: string; atoms: ContextAtom[
     traits: { paranoia: trParanoia, sensitivity: trSensitive, experience: trExperience },
     body: { stress: bStress, fatigue: bFatigue, pain: bPain, sleepDebt: bSleepDebt },
     gains: { kThreat, kUnc, kCtrl, kPress },
+    weights: { threatBias, threatGain, pressureGain, controlGain, uncGain },
   };
 
   const atomsOut: ContextAtom[] = [
-    mk('threat', threat, { ...partsBase, threat0, threat }),
-    mk('uncertainty', unc, { ...partsBase, unc0, unc }),
-    mk('control', control, { ...partsBase, cover0, escape0, control0, control }),
-    mk('pressure', pressure, { ...partsBase, norm0, pub0, pressure0, pressure }),
+    mk('threat', threatAdj, { ...partsBase, threat0, threat, threatAdj }),
+    mk('uncertainty', uncAdj, { ...partsBase, unc0, unc, uncAdj }),
+    mk('control', controlAdj, { ...partsBase, cover0, escape0, control0, control, controlAdj }),
+    mk('pressure', pressureAdj, { ...partsBase, norm0, pub0, pressure0, pressure, pressureAdj }),
     mk('attachment', attachment, { ...partsBase, intimacy0, pub0, attachment0, attachment }),
     mk('loss', loss, { grief0, pain0, loss }),
     mk('goalBlock', goalBlock, { tp0, sc0, goalBlock }),
   ];
 
   return {
-    appraisal: { threat, uncertainty: unc, control, pressure, attachment, loss, goalBlock },
+    appraisal: { threat: threatAdj, uncertainty: uncAdj, control: controlAdj, pressure: pressureAdj, attachment, loss, goalBlock },
     atoms: atomsOut,
     usedAtomIds: used,
   };

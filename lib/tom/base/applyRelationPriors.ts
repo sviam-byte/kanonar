@@ -21,6 +21,18 @@ function parseDyadId(id: string): { selfId: string; otherId: string; metric: str
   return { selfId: parts[2], otherId: parts[3], metric: parts[4] };
 }
 
+function parseRelBaseId(id: string): { selfId: string; otherId: string; metric: string } | null {
+  // rel:base:self:other:metric
+  const p = id.split(':');
+  if (p.length < 5) return null;
+  if (p[0] !== 'rel' || p[1] !== 'base') return null;
+  return { selfId: p[2], otherId: p[3], metric: p[4] };
+}
+
+function has(atoms: ContextAtom[], id: string) {
+  return atoms.some(a => a.id === id);
+}
+
 type RelBase = {
   closeness: number;
   loyalty: number;
@@ -29,7 +41,7 @@ type RelBase = {
   authority: number;
 };
 
-function readRelBase(atoms: ContextAtom[], selfId: string, otherId: string): RelBase {
+function readRelBaseOnly(atoms: ContextAtom[], selfId: string, otherId: string): RelBase {
   return {
     closeness: clamp01(getMag(atoms, `rel:base:${selfId}:${otherId}:closeness`, 0)),
     loyalty: clamp01(getMag(atoms, `rel:base:${selfId}:${otherId}:loyalty`, 0)),
@@ -39,8 +51,45 @@ function readRelBase(atoms: ContextAtom[], selfId: string, otherId: string): Rel
   };
 }
 
+function readRelPrior(atoms: ContextAtom[], selfId: string, otherId: string): RelBase {
+  return {
+    closeness: clamp01(getMag(atoms, `rel:state:${selfId}:${otherId}:closeness`, getMag(atoms, `rel:base:${selfId}:${otherId}:closeness`, 0))),
+    loyalty: clamp01(getMag(atoms, `rel:state:${selfId}:${otherId}:trust`, getMag(atoms, `rel:base:${selfId}:${otherId}:loyalty`, 0))),
+    hostility: clamp01(getMag(atoms, `rel:state:${selfId}:${otherId}:hostility`, getMag(atoms, `rel:base:${selfId}:${otherId}:hostility`, 0))),
+    dependency: clamp01(getMag(atoms, `rel:state:${selfId}:${otherId}:obligation`, getMag(atoms, `rel:base:${selfId}:${otherId}:dependency`, 0))),
+    authority: clamp01(getMag(atoms, `rel:state:${selfId}:${otherId}:respect`, getMag(atoms, `rel:base:${selfId}:${otherId}:authority`, 0))),
+  };
+}
+
 function relStrength(r: RelBase) {
   return Math.max(r.closeness, r.loyalty, r.hostility, r.dependency, r.authority);
+}
+
+function mkBeliefDyad(selfId: string, otherId: string, metric: string, magnitude: number, parts: any): ContextAtom {
+  return normalizeAtom({
+    id: `tom:dyad:${selfId}:${otherId}:${metric}`,
+    kind: 'tom_dyad_metric',
+    ns: 'tom',
+    origin: 'belief',
+    source: 'rel_base_seed',
+    magnitude: clamp01(magnitude),
+    confidence: 0.65,
+    subject: selfId,
+    target: otherId,
+    tags: ['tom', 'dyad', metric, 'seed'],
+    label: `seed.${metric}:${Math.round(clamp01(magnitude) * 100)}%`,
+    trace: {
+      usedAtomIds: [
+        `rel:base:${selfId}:${otherId}:closeness`,
+        `rel:base:${selfId}:${otherId}:loyalty`,
+        `rel:base:${selfId}:${otherId}:hostility`,
+        `rel:base:${selfId}:${otherId}:dependency`,
+        `rel:base:${selfId}:${otherId}:authority`,
+      ],
+      notes: ['seeded from rel:base'],
+      parts
+    },
+  } as any);
 }
 
 /**
@@ -57,7 +106,45 @@ export function applyRelationPriorsToDyads(
 ): { atoms: ContextAtom[] } {
   const out: ContextAtom[] = [];
 
-  const dyads = atoms.filter(a => typeof a.id === 'string' && a.id.startsWith(`tom:dyad:${selfId}:`));
+  // 0) seed missing dyads from rel:base (so ToM matrix is never sparse)
+  const relBaseIds = atoms
+    .map(a => (typeof a.id === 'string' ? a.id : ''))
+    .filter(id => id.startsWith(`rel:base:${selfId}:`));
+
+  const otherIds = Array.from(new Set(
+    relBaseIds.map(id => parseRelBaseId(id)?.otherId).filter(Boolean) as string[]
+  ));
+
+  for (const otherId of otherIds) {
+    const r = readRelBaseOnly(atoms, selfId, otherId);
+    if (relStrength(r) < 0.05) continue;
+
+    // простые, но НЕ одинаковые и трактуемые сиды
+    const trust0 = clamp01(0.15 + 0.65 * r.loyalty + 0.25 * r.closeness - 0.85 * r.hostility);
+    const threat0 = clamp01(0.10 + 0.90 * r.hostility + 0.25 * (1 - r.closeness));
+    const intim0 = clamp01(0.10 + 0.85 * r.closeness + 0.25 * r.loyalty - 0.80 * r.hostility);
+    const unc0 = clamp01(0.25 + 0.35 * (1 - r.closeness) + 0.25 * (1 - r.loyalty));
+    const align0 = clamp01(0.20 + 0.70 * r.loyalty + 0.20 * r.closeness - 0.70 * r.hostility);
+    const resp0 = clamp01(0.10 + 0.85 * r.authority + 0.15 * r.loyalty);
+    const dom0 = clamp01(0.10 + 0.90 * r.authority + 0.10 * r.hostility);
+    const sup0 = clamp01((0.55 * trust0 + 0.45 * intim0) * (1 - threat0));
+
+    const seed = (metric: string, v: number) => {
+      const id = `tom:dyad:${selfId}:${otherId}:${metric}`;
+      if (!has(atoms, id)) out.push(mkBeliefDyad(selfId, otherId, metric, v, { r, v }));
+    };
+
+    seed('trust', trust0);
+    seed('threat', threat0);
+    seed('intimacy', intim0);
+    seed('uncertainty', unc0);
+    seed('alignment', align0);
+    seed('respect', resp0);
+    seed('dominance', dom0);
+    seed('support', sup0);
+  }
+
+  const dyads = [...atoms, ...out].filter(a => typeof a.id === 'string' && a.id.startsWith(`tom:dyad:${selfId}:`));
   for (const d of dyads) {
     const parsed = parseDyadId(d.id);
     if (!parsed) continue;
@@ -65,7 +152,7 @@ export function applyRelationPriorsToDyads(
     const otherId = (d.target || parsed.otherId || '').toString();
     const metric = parsed.metric;
 
-    const r = readRelBase(atoms, selfId, otherId);
+    const r = readRelPrior(atoms, selfId, otherId);
     if (relStrength(r) < 0.05) continue;
 
     const base = clamp01(d.magnitude ?? 0);
@@ -142,6 +229,11 @@ export function applyRelationPriorsToDyads(
       trace: {
         usedAtomIds: [
           d.id,
+          `rel:state:${selfId}:${otherId}:closeness`,
+          `rel:state:${selfId}:${otherId}:trust`,
+          `rel:state:${selfId}:${otherId}:hostility`,
+          `rel:state:${selfId}:${otherId}:obligation`,
+          `rel:state:${selfId}:${otherId}:respect`,
           `rel:base:${selfId}:${otherId}:closeness`,
           `rel:base:${selfId}:${otherId}:loyalty`,
           `rel:base:${selfId}:${otherId}:hostility`,

@@ -13,6 +13,9 @@
 import type { ContextAtom } from '../v2/types';
 import { normalizeAtom } from '../v2/infer';
 import { ensureMapCells } from '../../world/ensureMapCells';
+import { gateOK } from '../gates/atomGates';
+
+const HAZ_GATE = { anyPrefix: ['world:map:hazard:', 'world:env:hazard:', 'hazard:'] };
 
 function clamp01(x: number) {
   return Math.max(0, Math.min(1, x));
@@ -191,6 +194,7 @@ export function deriveHazardGeometryAtoms(args: {
   dangerThreshold?: number;
 }): { atoms: ContextAtom[] } {
   const { world, selfId, atoms } = args;
+  if (!gateOK(atoms, HAZ_GATE)) return { atoms: [] };
   const dangerThreshold = typeof args.dangerThreshold === 'number' ? args.dangerThreshold : 0.15;
 
   const out: ContextAtom[] = [];
