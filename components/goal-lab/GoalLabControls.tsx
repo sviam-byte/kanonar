@@ -47,6 +47,7 @@ interface Props {
   onRunTicks?: (steps: number) => void;
   onResetSim?: () => void;
   onDownloadScene?: () => void;
+  onImportScene?: (payload: any) => void;
 
   // Optional: World Access for Mods
   world?: any;
@@ -83,6 +84,7 @@ export const GoalLabControls: React.FC<Props> = ({
   onRunTicks,
   onResetSim,
   onDownloadScene,
+  onImportScene,
   world, onWorldChange,
   participantIds,
   onAddParticipant,
@@ -98,6 +100,27 @@ export const GoalLabControls: React.FC<Props> = ({
   const [customAtomKind, setCustomAtomKind] = React.useState<ContextAtomKind>('threat');
   const [customAtomLabel, setCustomAtomLabel] = React.useState('');
   const [customAtomSearch, setCustomAtomSearch] = React.useState('');
+  const importInputRef = React.useRef<HTMLInputElement | null>(null);
+
+  const handleImportClick = () => {
+    importInputRef.current?.click();
+  };
+
+  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] || null;
+    // reset value so selecting same file again triggers onChange
+    e.target.value = '';
+    if (!file) return;
+
+    try {
+      const text = await file.text();
+      const payload = JSON.parse(text);
+      onImportScene?.(payload);
+    } catch (err) {
+      console.error('[GoalLabControls] import failed', err);
+      alert('Import failed: invalid JSON or unsupported schema.');
+    }
+  };
 
   const handleSliderChange = (kind: ContextAtomKind, val: number, id?: string) => {
       const atomId = id || `manual:${kind}`;
@@ -513,11 +536,34 @@ export const GoalLabControls: React.FC<Props> = ({
                     Running ticks updates internal state (affect, stress traces) and advances world time.
                 </div>
 
-                 {onDownloadScene && (
-                   <div className="pt-2 border-t border-canon-border/60">
-                     <button
-                       type="button"
-                       onClick={onDownloadScene}
+                {onDownloadScene && (
+                  <div className="pt-2 border-t border-canon-border/60">
+                    {/* Import */}
+                    {onImportScene && (
+                      <div className="mb-2">
+                        <input
+                          ref={importInputRef}
+                          type="file"
+                          accept="application/json"
+                          className="hidden"
+                          onChange={handleImportFile}
+                        />
+                        <button
+                          type="button"
+                          onClick={handleImportClick}
+                          className="w-full px-4 py-2 bg-canon-bg border border-canon-border text-canon-text text-xs font-bold rounded hover:bg-canon-bg-light/40 transition-colors"
+                        >
+                          Import scene JSON
+                        </button>
+                        <div className="text-[10px] text-canon-text-light italic mt-1">
+                          Loads: world + focus + participants + map/events/manual atoms/overrides.
+                        </div>
+                      </div>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={onDownloadScene}
                        className="w-full px-4 py-2 bg-canon-bg border border-canon-border text-canon-text text-xs font-bold rounded hover:bg-canon-bg-light/40 transition-colors"
                      >
                        Download full scene JSON (atoms + calculations)

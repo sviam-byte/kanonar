@@ -1,6 +1,11 @@
 import React, { useMemo, useState } from 'react';
 import { ContextAtom } from '../../lib/context/v2/types';
 
+export const ToMPanel: React.FC<{
+    atoms: ContextAtom[];
+    defaultSelfId?: string;
+    defaultOtherId?: string;
+}> = ({ atoms, defaultSelfId, defaultOtherId }) => {
 export const ToMPanel: React.FC<{ atoms: ContextAtom[] }> = ({ atoms }) => {
     const parseDyad = (id: string) => {
         // tom:dyad:self:other:metric
@@ -96,11 +101,58 @@ export const ToMPanel: React.FC<{ atoms: ContextAtom[] }> = ({ atoms }) => {
         };
     }, [atoms]);
 
+    const [selfId, setSelfId] = useState<string>('');
     const [selfId, setSelfId] = useState<string>(() => data.selfIds[0] || '');
     const otherOptions = useMemo(() => {
         const set = data.otherIdsBySelf.get(selfId) || new Set<string>();
         return Array.from(set).sort();
     }, [data.otherIdsBySelf, selfId]);
+    const [otherId, setOtherId] = useState<string>('');
+
+    // keep state consistent when atoms update
+    const lastDefaultSelfRef = React.useRef<string | undefined>(undefined);
+    React.useEffect(() => {
+        if (!selfId) {
+            const init =
+                (defaultSelfId && data.selfIds.includes(defaultSelfId)) ? defaultSelfId :
+                (data.selfIds[0] || '');
+            if (init) setSelfId(init);
+            return;
+        }
+
+        if (defaultSelfId && lastDefaultSelfRef.current !== defaultSelfId) {
+            lastDefaultSelfRef.current = defaultSelfId;
+            if (data.selfIds.includes(defaultSelfId) && selfId !== defaultSelfId) {
+                setSelfId(defaultSelfId);
+            }
+        }
+
+        if (selfId && data.selfIds.length > 0 && !data.selfIds.includes(selfId)) {
+            setSelfId(data.selfIds[0]);
+        }
+    }, [defaultSelfId, data.selfIds, selfId]);
+
+    const lastDefaultOtherRef = React.useRef<string | undefined>(undefined);
+    React.useEffect(() => {
+        if (!otherId) {
+            const init =
+                (defaultOtherId && otherOptions.includes(defaultOtherId)) ? defaultOtherId :
+                (otherOptions[0] || '');
+            if (init) setOtherId(init);
+            return;
+        }
+
+        if (defaultOtherId && lastDefaultOtherRef.current !== defaultOtherId) {
+            lastDefaultOtherRef.current = defaultOtherId;
+            if (otherOptions.includes(defaultOtherId) && otherId !== defaultOtherId) {
+                setOtherId(defaultOtherId);
+            }
+        }
+
+        if (otherId && otherOptions.length > 0 && !otherOptions.includes(otherId)) {
+            setOtherId(otherOptions[0] || '');
+        }
+    }, [defaultOtherId, otherOptions, otherId]);
     const [otherId, setOtherId] = useState<string>(() => otherOptions[0] || '');
 
     // keep state consistent when atoms update

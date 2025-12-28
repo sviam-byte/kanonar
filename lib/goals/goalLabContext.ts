@@ -250,6 +250,24 @@ export function buildGoalLabContext(
     }
   }
 
+  // --- Affect canonicalization: if only legacy agent.state.affect exists, create agent.affect for GoalLab ---
+  try {
+    const a: any = agentForPipeline as any;
+    if (!a.affect && a?.state?.affect && typeof a.state.affect === 'object') {
+      a.affect = normalizeAffectState({
+        e: {
+          fear: clamp01(a.state.affect.fear ?? 0),
+          anger: clamp01(a.state.affect.anger ?? 0),
+          shame: clamp01(a.state.affect.shame ?? 0),
+        },
+        stress: clamp01(a.state?.traces?.stressLoad ?? 0),
+        updatedAtTick: tick,
+      } as any);
+    } else if (a.affect) {
+      a.affect = normalizeAffectState(a.affect);
+    }
+  } catch {}
+
   // --- Pipeline Execution Helper ---
   const runPipeline = (sceneAtoms: ContextAtom[], sceneSnapshotForStage0: any) => {
       // Canonical affect atoms (bridge for UI knobs -> threat/goals explanations)

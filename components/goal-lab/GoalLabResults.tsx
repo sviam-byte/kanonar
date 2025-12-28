@@ -447,9 +447,10 @@ export const GoalLabResults: React.FC<Props> = ({
         <ThreatPanel atoms={currentAtoms} />
     );
 
-    const ToMTab = () => (
-        <ToMPanel atoms={currentAtoms} />
-    );
+    const ToMTab = () => {
+        const selfId = (snapshotV1 as any)?.selfId || (context as any)?.agentId;
+        return <ToMPanel atoms={currentAtoms} defaultSelfId={selfId} />;
+    };
 
     const MindTab = () => (
         <ContextMindPanel cm={snapshotV1?.contextMind} atoms={currentAtoms} selfId={snapshotV1?.selfId} />
