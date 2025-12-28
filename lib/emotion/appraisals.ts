@@ -4,6 +4,13 @@ import { normalizeAtom } from '../context/v2/infer';
 const clamp01 = (x: number) => (Number.isFinite(x) ? Math.max(0, Math.min(1, x)) : 0);
 const lerp = (a: number, b: number, t: number) => a + (b - a) * clamp01(t);
 
+// smooth amplify/attenuate in [0,1] without harsh saturation
+const amp01 = (x: number, k: number) => {
+  const xx = clamp01(x);
+  const kk = (Number.isFinite(k) ? Math.max(0, k) : 1);
+  return clamp01(1 - Math.pow(1 - xx, kk));
+};
+
 function getMag(atoms: ContextAtom[], id: string, fb = 0) {
   const a = atoms.find(x => x.id === id);
   const m = (a as any)?.magnitude;
@@ -59,14 +66,14 @@ export function deriveAppraisalAtoms(args: { selfId: string; atoms: ContextAtom[
   const escape0 = escapeId ? getMag(atoms, escapeId, 0) : 0;
 
   // ---------- personalized appraisal ----------
-  const threat = clamp01(threat0 * kThreat);
-  const unc = clamp01(unc0 * kUnc);
+  const threat = amp01(threat0, kThreat);
+  const unc = amp01(unc0, kUnc);
 
   const control0 = clamp01(0.45 * cover0 + 0.35 * escape0 + 0.20 * (1 - unc0));
-  const control = clamp01(control0 * kCtrl);
+  const control = amp01(control0, kCtrl);
 
   const pressure0 = clamp01(0.65 * norm0 + 0.35 * pub0);
-  const pressure = clamp01(pressure0 * kPress);
+  const pressure = amp01(pressure0, kPress);
 
   // после базового расчёта — “персонажные” сдвиги (делают различимость)
   // По умолчанию (если весов нет) всё остаётся как было.
@@ -85,7 +92,7 @@ export function deriveAppraisalAtoms(args: { selfId: string; atoms: ContextAtom[
 
   // attachment: keep mostly contextual, but allow mild stress erosion
   const attachment0 = clamp01(0.75 * intimacy0 + 0.25 * (1 - pub0));
-  const attachment = clamp01(attachment0 * lerp(1.00, 0.80, bStress));
+  const attachment = amp01(attachment0, lerp(1.00, 0.80, bStress));
 
   const grief0 = getMag(atoms, `ctx:grief:${selfId}`, 0);
   const pain0 = getMag(atoms, `ctx:pain:${selfId}`, 0);

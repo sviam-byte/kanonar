@@ -14,8 +14,8 @@ function ensureEdge(mem: RelationMemory, otherId: string): RelationEdge {
       closeness: 0.1,
       loyalty: 0.1,
       hostility: 0.0,
-      dependency: 0.0,
-      authority: 0.0,
+      dependency: 0.05,
+      authority: 0.50,
       tags: [],
       sources: []
     };
@@ -147,6 +147,37 @@ export function extractRelBaseFromCharacter(args: {
         e.lastUpdatedTick = tick;
       }
     }
+  }
+
+  // 4) Roles → relationship priors
+  const roles = c.roles || {};
+  const roleRels = Array.isArray(roles.relations) ? roles.relations : [];
+  for (const rr of roleRels) {
+    const otherId = rr?.other_id || rr?.otherId || rr?.targetId;
+    if (!otherId) continue;
+    const role = String(rr?.role || rr?.kind || '').toLowerCase();
+    const e = ensureEdge(mem, String(otherId));
+    switch (role) {
+      case 'ward_of':
+        addTag(e, 'protected');
+        addTag(e, 'subordinate');
+        e.closeness = clamp01(Math.max(e.closeness, 0.30));
+        e.loyalty = clamp01(Math.max(e.loyalty, 0.60));
+        e.dependency = clamp01(Math.max(e.dependency, 0.55));
+        e.authority = clamp01(Math.max(e.authority, 0.85));
+        e.hostility = clamp01(Math.min(e.hostility, 0.10));
+        break;
+      case 'caretaker_of':
+      case 'protector_of':
+        addTag(e, 'protector');
+        e.authority = clamp01(Math.min(e.authority, 0.25));
+        e.closeness = clamp01(Math.max(e.closeness, 0.25));
+        e.loyalty = clamp01(Math.max(e.loyalty, 0.45));
+        e.dependency = clamp01(Math.max(e.dependency, 0.20));
+        e.hostility = clamp01(Math.min(e.hostility, 0.10));
+        break;
+    }
+    e.sources.push({ type: 'biography', ref: 'roles.relations', weight: 0.7 });
   }
 
   return mem;
