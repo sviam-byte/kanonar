@@ -148,12 +148,7 @@ export function buildStage0Atoms(input: Stage0Input): Stage0Output {
   // Full location-derived facts: world:loc:* + world:map:* + world:env:hazard:* + world:map:escape:*
   const locationAtoms = loc ? extractLocationAtoms({ selfId: input.selfId, location: loc }) : [];
 
-  // 2. Relationship Layer (RelationBase)
-  const relBase = extractRelBaseFromCharacter({ selfId: input.selfId, character: input.agent, tick });
-  (input.agent as any).rel_base = relBase; 
-  
-  const relAtoms = atomizeRelBase(input.selfId, relBase);
-
+  // Build dyad set early (needed for closed rel_base + ToM coverage)
   const nearbyIds = obsAtoms
     .filter(a => typeof a.id === 'string' && a.id.startsWith(`obs:nearby:${input.selfId}:`))
     .map(a => String((a.id as string).split(':')[3] ?? ''))
@@ -164,6 +159,11 @@ export function buildStage0Atoms(input: Stage0Input): Stage0Output {
     : [];
 
   const otherAgentIds = Array.from(new Set([...nearbyIds, ...sceneIds])).filter(id => id !== input.selfId);
+
+  // 2. Relationship Layer (RelationBase) — seed atoms for ALL dyads
+  const relBase = extractRelBaseFromCharacter({ selfId: input.selfId, character: input.agent, tick });
+  (input.agent as any).rel_base = relBase;
+  const relAtoms = atomizeRelBase(input.selfId, relBase, otherAgentIds);
 
   const { dyadAtoms: tomDyadAtoms, relHintAtoms: tomRelHints } = extractTomDyadAtoms({
     world: input.world,
