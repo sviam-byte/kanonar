@@ -62,9 +62,41 @@ export function buildGoalLabSceneDumpV2(input: SceneDumpInput) {
     castRows,
   } = input;
 
+  const quality = (() => {
+    try {
+      const cast = Array.isArray(castRows) ? castRows : [];
+      const castSize = cast.length;
+      const expectedDyads = castSize > 0 ? castSize * (castSize - 1) : 0;
+
+      const perSelf = cast.map((r: any) => {
+        const selfId = r?.id;
+        const atoms: any[] = r?.snapshot?.atoms || [];
+        const dyads = new Set<string>();
+        let affectAtoms = 0;
+        let emoAtoms = 0;
+        for (const a of atoms) {
+          const id = a?.id;
+          if (typeof id !== 'string') continue;
+          if (id.startsWith(`tom:dyad:${selfId}:`)) {
+            const parts = id.split(':');
+            if (parts.length >= 5) dyads.add(`${parts[2]}->${parts[3]}`);
+          } else if (id.startsWith('affect:')) affectAtoms += 1;
+          else if (id.startsWith('emo:')) emoAtoms += 1;
+        }
+        return { selfId, dyadCount: dyads.size, affectAtoms, emoAtoms };
+      });
+
+      const dyadsPresent = perSelf.reduce((acc, x) => acc + (x?.dyadCount || 0), 0);
+      return { castSize, expectedDyads, dyadsPresent, perSelf };
+    } catch {
+      return { error: 'quality-metrics-failed' };
+    }
+  })();
+
   return {
     schemaVersion: 2,
     exportedAt,
+    quality,
     tick: (world as any)?.tick ?? 0,
     focus: {
       selectedAgentId: selectedAgentId ?? null,

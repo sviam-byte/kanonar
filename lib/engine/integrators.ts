@@ -6,6 +6,11 @@ function clamp01(x: number) {
   return Math.max(0, Math.min(1, x));
 }
 
+function clampNegPos1(x: number) {
+  if (!Number.isFinite(x)) return 0;
+  return Math.max(-1, Math.min(1, x));
+}
+
 // generic EMA integrator: x <- x + alpha*(target-x)
 function ema(x: number, target: number, alpha: number) {
   return x + alpha * (target - x);
@@ -55,6 +60,24 @@ export function integrateAgentState(args: {
   agent.state.affect.fear = clamp01(ema(agent.state.affect.fear ?? 0, fear, t.affectAlpha));
   agent.state.affect.anger = clamp01(ema(agent.state.affect.anger ?? 0, anger, t.affectAlpha));
   agent.state.affect.shame = clamp01(ema(agent.state.affect.shame ?? 0, shame, t.affectAlpha));
+
+  // Continuous affect channels (valence [-1..1], arousal/control [0..1])
+  const valence = getMag(atomsAfterAffect, `emo:valence:${agent.entityId}`, agent.state.affect.valence ?? agent.affect?.valence ?? 0);
+  const arousal = getMag(atomsAfterAffect, `emo:arousal:${agent.entityId}`, agent.state.affect.arousal ?? agent.affect?.arousal ?? 0);
+  const control = getMag(atomsAfterAffect, `emo:control:${agent.entityId}`, agent.state.affect.control ?? agent.affect?.control ?? 0);
+
+  agent.state.affect.valence = clampNegPos1(ema(agent.state.affect.valence ?? 0, valence, t.affectAlpha));
+  agent.state.affect.arousal = clamp01(ema(agent.state.affect.arousal ?? 0, arousal, t.affectAlpha));
+  agent.state.affect.control = clamp01(ema(agent.state.affect.control ?? 0, control, t.affectAlpha));
+
+  // Mirror to legacy agent.affect (engine reads agent.affect in many places)
+  agent.affect = agent.affect || {};
+  agent.affect.fear = agent.state.affect.fear;
+  agent.affect.anger = agent.state.affect.anger;
+  agent.affect.shame = agent.state.affect.shame;
+  agent.affect.valence = agent.state.affect.valence;
+  agent.affect.arousal = agent.state.affect.arousal;
+  agent.affect.control = agent.state.affect.control;
 
   // 2. Stress Integrator
   // Psychological stress load. Input: threat:final + lack of control
