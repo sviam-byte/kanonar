@@ -32,10 +32,12 @@ import { deriveAccess } from '../access/deriveAccess';
 import { getLocationForAgent } from "../world/locations";
 import { computeLocalMapMetrics } from '../world/mapMetrics';
 import { decideAction } from '../decision/decide';
+import { deriveActionPriors } from '../decision/actionPriors';
 import { computeContextMindScoreboard } from '../contextMind/scoreboard';
 import { atomizeContextMindMetrics } from '../contextMind/atomizeMind';
 import { deriveSocialProximityAtoms } from '../context/stage1/socialProximity';
 import { deriveHazardGeometryAtoms } from '../context/stage1/hazardGeometry';
+import { applyCharacterLens } from '../context/lens/characterLens';
 import { deriveAppraisalAtoms } from '../emotion/appraisals';
 import { deriveEmotionAtoms } from '../emotion/emotions';
 import { deriveDyadicEmotionAtoms } from '../emotion/dyadic';
@@ -336,12 +338,17 @@ export function buildGoalLabContext(
       const priorsApplied = applyRelationPriorsToDyads(atomsAfterBeliefGen, selfId);
       const atomsAfterPriors = mergeKeepingOverrides(atomsAfterBeliefGen, priorsApplied.atoms).merged;
 
+      // --- Character lens (subjective interpretation) ---
+      const lensRes = applyCharacterLens({ selfId, atoms: atomsAfterPriors, agent: agentForPipeline });
+      const atomsAfterLens = mergeKeepingOverrides(atomsAfterPriors, lensRes.atoms).merged;
+
       // 8. ToM Context Bias
-      const biasPack = buildBeliefToMBias(atomsAfterPriors, selfId);
+      const biasPack = buildBeliefToMBias(atomsAfterLens, selfId);
+      const atomsAfterBias = mergeKeepingOverrides(atomsAfterLens, biasPack.atoms).merged;
       const bias = biasPack.bias;
 
       const tomCtxDyads: ContextAtom[] = [];
-      const dyads = atomsAfterPriors.filter(a => a.id.startsWith(`tom:dyad:${selfId}:`));
+      const dyads = atomsAfterBias.filter(a => a.id.startsWith(`tom:dyad:${selfId}:`));
 
       for (const a of dyads) {
           if (a.id.endsWith(':trust')) {
@@ -383,7 +390,7 @@ export function buildGoalLabContext(
       }
 
       // 8.5 Effective ToM dyads (canonical layer)
-      const atomsAfterCtx = [...atomsAfterPriors, ...tomCtxDyads];
+      const atomsAfterCtx = mergeKeepingOverrides(atomsAfterBias, tomCtxDyads).merged;
       const baseDyads = atomsAfterCtx.filter(a => a.id.startsWith(`tom:dyad:${selfId}:`));
       const effectiveDyads: ContextAtom[] = [];
       const getMag = (atoms: ContextAtom[], id: string, fb = 0) => {
@@ -442,17 +449,32 @@ export function buildGoalLabContext(
 
       // 8.x ToM Policy layer (mode + predictions + attitude + help + affordances)
       const tomPolicyPack = buildTomPolicyLayer(
-        [...atomsAfterPriors, ...biasPack.atoms, ...tomCtxDyads, ...effectiveDyads],
+        [...atomsAfterCtx, ...effectiveDyads],
         selfId
       );
 
-      // 9. Threat Stack
-      const atomsForThreat = [
-        ...atomsAfterPriors,
-        ...biasPack.atoms,
+      // 8.y Action priors (base probabilities), reusable outside GoalLab UI
+      const otherIdsForPriors = Array.from(new Set(
+        atomsAfterBias
+          .filter(a => String(a.id).startsWith(`tom:dyad:${selfId}:`))
+          .map(a => String(a.id).split(':')[3] || a.target)
+          .filter(Boolean)
+      )) as string[];
+
+      const actionPriorAtoms = deriveActionPriors({ selfId, otherIds: otherIdsForPriors, atoms: [
+        ...atomsAfterBias,
         ...tomCtxDyads,
         ...effectiveDyads,
         ...tomPolicyPack.atoms
+      ]});
+
+      // 9. Threat Stack
+      const atomsForThreat = [
+        ...atomsAfterBias,
+        ...tomCtxDyads,
+        ...effectiveDyads,
+        ...tomPolicyPack.atoms,
+        ...actionPriorAtoms
       ];
       const getMagThreat = (id: string, fb = 0) => {
         const a = atomsForThreat.find(x => x.id === id);
@@ -645,20 +667,18 @@ export function buildGoalLabContext(
           trace: { usedAtomIds: threatCalc.usedAtomIds || [], notes: threatCalc.why?.slice(0, 6) || ['threat stack'], parts: { ...threatCalc } }
       } as any);
 
-      const atomsAfterThreat = [...atomsForThreat, ...threatAtoms, threatAtom];
+      const atomsAfterThreat = mergeKeepingOverrides(atomsForThreat, [...threatAtoms, threatAtom]).merged;
 
       // appraisal -> emotions -> dyadic emotions
-      const appRes = deriveAppraisalAtoms({ selfId, atoms: atomsAfterThreat });
-      const emoRes = deriveEmotionAtoms({ selfId, atoms: [...atomsAfterThreat, ...appRes.atoms] });
-      const dyadEmo = deriveDyadicEmotionAtoms({ selfId, atoms: [...atomsAfterThreat, ...appRes.atoms, ...emoRes.atoms] });
+      const appRes = deriveAppraisalAtoms({ selfId, atoms: atomsAfterThreat, agent: agentForPipeline });
+      const atomsAfterApp = mergeKeepingOverrides(atomsAfterThreat, appRes.atoms).merged;
+      const emoRes = deriveEmotionAtoms({ selfId, atoms: atomsAfterApp });
+      const atomsAfterEmo = mergeKeepingOverrides(atomsAfterApp, emoRes.atoms).merged;
+      const dyadEmo = deriveDyadicEmotionAtoms({ selfId, atoms: atomsAfterEmo });
+      const atomsAfterDyadEmo = mergeKeepingOverrides(atomsAfterEmo, dyadEmo.atoms).merged;
 
       // 10. Possibility Graph (Registry-based)
-      const atomsForPossibilities = [
-        ...atomsAfterThreat,
-        ...appRes.atoms,
-        ...emoRes.atoms,
-        ...dyadEmo.atoms,
-      ];
+      const atomsForPossibilities = atomsAfterDyadEmo;
       const possibilities = derivePossibilitiesRegistry({ selfId, atoms: atomsForPossibilities });
       const possAtoms = atomizePossibilities(possibilities);
 

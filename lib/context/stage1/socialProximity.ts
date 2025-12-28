@@ -1,6 +1,11 @@
 // lib/context/stage1/socialProximity.ts
 import type { AtomNamespace, ContextAtom } from '../v2/types';
 import { normalizeAtom } from '../v2/infer';
+import { gateOK } from '../gates/atomGates';
+
+const SOCIAL_GATE = {
+  anyPrefix: ['obs:nearby:', 'tom:dyad:', 'tom:effective:dyad:', 'rel:tag:', 'rel:state:', 'rel:base:']
+};
 
 function clamp01(x: number) {
   if (!Number.isFinite(x)) return 0;
@@ -45,6 +50,7 @@ function mk(
 
 export function deriveSocialProximityAtoms(args: { selfId: string; atoms: ContextAtom[] }): { atoms: ContextAtom[] } {
   const { selfId, atoms } = args;
+  if (!gateOK(atoms, SOCIAL_GATE)) return { atoms: [] };
   const out: ContextAtom[] = [];
 
   const nearby = atoms.filter(a => typeof a.id === 'string' && a.id.startsWith(`obs:nearby:${selfId}:`));

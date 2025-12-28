@@ -18,7 +18,17 @@ function dyadEffId(selfId: string, otherId: string, metric: string) {
 }
 
 function relId(selfId: string, otherId: string, k: string) {
-  return `rel:base:${selfId}:${otherId}:${k}`;
+  // k in policy usually: closeness/loyalty/hostility/dependency/authority
+  // map to rel:state with clearer names
+  const map: Record<string, string> = {
+    closeness: 'closeness',
+    loyalty: 'trust',
+    hostility: 'hostility',
+    dependency: 'obligation',
+    authority: 'respect',
+  };
+  const kk = map[k] || k;
+  return `rel:state:${selfId}:${otherId}:${kk}`;
 }
 
 function mkAtom(

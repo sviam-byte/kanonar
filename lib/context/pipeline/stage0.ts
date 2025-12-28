@@ -23,6 +23,7 @@ import { buildCharacterFeatures, buildLocationFeatures, buildSceneFeatures } fro
 import { atomizeFeatures } from '../../features/atomize';
 import { extractLocationAtoms } from '../sources/locationAtoms';
 import { extractTomDyadAtoms } from '../sources/tomDyadAtoms';
+import { deriveRelStateAtoms } from '../../relations/deriveState';
 
 export type Stage0Input = {
   world: WorldState;
@@ -190,6 +191,30 @@ export function buildStage0Atoms(input: Stage0Input): Stage0Output {
   // 6. Trace Layer (Slow state feedback)
   const traceAtoms = atomizeTraces(input.selfId, input.agent);
 
+  // 2.5 Relationship CURRENT state (derived from rel:base + events + tom + ctx)
+  // Важно: rel:state — это не ToM. Это “текущее отношение”, которое ToM будет учитывать как prior.
+  const relStateAtoms = deriveRelStateAtoms({
+    selfId: input.selfId,
+    otherIds: otherAgentIds,
+    atoms: [
+      ...worldFacts,
+      ...locationAtoms,
+      ...selfFeatAtoms,
+      ...locFeatAtoms,
+      ...scFeatAtoms,
+      ...(input.extraWorldAtoms || []),
+      ...relAtoms,
+      ...eventAtoms,
+      ...capAtoms,
+      ...locAccessAtoms,
+      ...traceAtoms,
+      ...obsAtoms,
+      ...(input.beliefAtoms || []),
+      ...tomDyadAtoms,
+      ...tomRelHints
+    ]
+  });
+
   // 7. Epistemic Merge
   const atomsForAxes = [
     ...worldFacts,
@@ -199,6 +224,7 @@ export function buildStage0Atoms(input: Stage0Input): Stage0Output {
     ...scFeatAtoms,
     ...(input.extraWorldAtoms || []),
     ...relAtoms,
+    ...relStateAtoms,
     ...eventAtoms,
     ...capAtoms,
     ...locAccessAtoms,
@@ -221,6 +247,7 @@ export function buildStage0Atoms(input: Stage0Input): Stage0Output {
       ...scFeatAtoms,
       ...(input.extraWorldAtoms || []),
       ...relAtoms,
+      ...relStateAtoms,
       ...eventAtoms,
       ...capAtoms,
       ...locAccessAtoms,
