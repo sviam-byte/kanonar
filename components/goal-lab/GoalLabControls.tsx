@@ -47,6 +47,7 @@ interface Props {
   onRunTicks?: (steps: number) => void;
   onResetSim?: () => void;
   onDownloadScene?: () => void;
+  onImportSceneDumpV2?: (dump: any) => void;
 
   // Optional: World Access for Mods
   world?: any;
@@ -83,6 +84,7 @@ export const GoalLabControls: React.FC<Props> = ({
   onRunTicks,
   onResetSim,
   onDownloadScene,
+  onImportSceneDumpV2,
   world, onWorldChange,
   participantIds,
   onAddParticipant,
@@ -98,6 +100,21 @@ export const GoalLabControls: React.FC<Props> = ({
   const [customAtomKind, setCustomAtomKind] = React.useState<ContextAtomKind>('threat');
   const [customAtomLabel, setCustomAtomLabel] = React.useState('');
   const [customAtomSearch, setCustomAtomSearch] = React.useState('');
+  const importInputRef = React.useRef<HTMLInputElement | null>(null);
+  const handleImportClick = () => importInputRef.current?.click();
+  const handleImportFile = async (file: File | null) => {
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const json = JSON.parse(text);
+      onImportSceneDumpV2?.(json);
+    } catch (e) {
+      console.error('[GoalLabControls] import failed', e);
+    } finally {
+      // allow re-importing same file
+      if (importInputRef.current) importInputRef.current.value = '';
+    }
+  };
 
   const handleSliderChange = (kind: ContextAtomKind, val: number, id?: string) => {
       const atomId = id || `manual:${kind}`;
@@ -512,6 +529,29 @@ export const GoalLabControls: React.FC<Props> = ({
                 <div className="text-[10px] text-canon-text-light italic">
                     Running ticks updates internal state (affect, stress traces) and advances world time.
                 </div>
+
+                 <input
+                   ref={importInputRef}
+                   type="file"
+                   accept="application/json"
+                   className="hidden"
+                   onChange={(e) => handleImportFile(e.target.files?.[0] ?? null)}
+                 />
+
+                 {onImportSceneDumpV2 && (
+                   <div className="pt-2 border-t border-canon-border/60">
+                     <button
+                       type="button"
+                       onClick={handleImportClick}
+                       className="w-full px-4 py-2 bg-canon-bg border border-canon-border text-canon-text text-xs font-bold rounded hover:bg-canon-bg-light/40 transition-colors"
+                     >
+                       Import scene JSON (full snapshot)
+                     </button>
+                     <div className="text-[10px] text-canon-text-light italic mt-1">
+                       Loads: world + cast + ToM + affect + overrides + events + scene control.
+                     </div>
+                   </div>
+                 )}
 
                  {onDownloadScene && (
                    <div className="pt-2 border-t border-canon-border/60">
