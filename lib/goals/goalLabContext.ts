@@ -202,11 +202,19 @@ export function buildGoalLabContext(
   let sceneInst = null as any;
 
   if (sc?.presetId) {
+    // IMPORTANT: participants define the closed ToM/affect "scene graph".
+    // If GoalLab UI selects a subset of participants, we MUST respect it here,
+    // otherwise Stage0 will compute ToM only for a different set and the
+    // "everything influences everything" loops will appear broken.
+    const participantIds = Array.isArray((opts.snapshotOptions as any)?.participantIds)
+      ? (opts.snapshotOptions as any).participantIds
+      : (world?.agents || []).map((a: any) => a.entityId || a.id).filter(Boolean);
+
     sceneInst = createSceneInstance({
       presetId: sc.presetId,
       sceneId: sc.sceneId || `scene_${sc.presetId}`,
       startedAtTick: tick,
-      participants: (world?.agents || []).map((a: any) => a.entityId || a.id).filter(Boolean),
+      participants: participantIds,
       locationId: (agent as any).locationId || getLocationForAgent(world, selfId)?.entityId,
       metricsOverride: sc.metrics || {},
       normsOverride: sc.norms || {},
