@@ -8,6 +8,7 @@ type ToMPanelProps = {
 };
 
 export const ToMPanel: React.FC<ToMPanelProps> = ({ atoms, defaultSelfId, defaultOtherId }) => {
+export const ToMPanel: React.FC<{ atoms: ContextAtom[] }> = ({ atoms }) => {
     const parseDyad = (id: string) => {
         // tom:dyad:self:other:metric
         // tom:effective:dyad:self:other:metric
