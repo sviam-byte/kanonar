@@ -1,5 +1,7 @@
 
 import { ContextAtom } from '../context/v2/types';
+import { normalizeAffectState } from '../affect/normalize';
+import { defaultAffect } from '../affect/engine';
 
 function clamp01(x: number) {
   if (!Number.isFinite(x)) return 0;
@@ -92,4 +94,31 @@ export function integrateAgentState(args: {
   agent.state.traces.trustClimate = clamp01(
     ema(currentTrustClimate, trustGlobalTarget, t.trustDecayAlpha)
   );
+
+  // 5) CLOSE THE LOOP: canonical affect lives on agent.affect (what GoalLab reads next tick)
+  try {
+    const tickNow = Number.isFinite(agent?.state?.tick) ? agent.state.tick : undefined;
+    const base = agent.affect && typeof agent.affect === 'object'
+      ? agent.affect
+      : defaultAffect(Number.isFinite(tickNow) ? tickNow : 0);
+
+    const next = normalizeAffectState({
+      ...base,
+      e: {
+        ...((base as any).e || {}),
+        fear: agent.state.affect.fear ?? ((base as any).e?.fear ?? 0),
+        anger: agent.state.affect.anger ?? ((base as any).e?.anger ?? 0),
+        shame: agent.state.affect.shame ?? ((base as any).e?.shame ?? 0),
+      },
+      stress: agent.state.traces.stressLoad ?? (base as any).stress,
+      trustBaseline: agent.state.traces.trustClimate ?? (base as any).trustBaseline,
+      updatedAtTick: (Number.isFinite(tickNow) ? tickNow : (base as any).updatedAtTick) ?? 0,
+      // keep convenience fields consistent if they exist
+      fear: agent.state.affect.fear ?? (base as any).fear,
+      anger: agent.state.affect.anger ?? (base as any).anger,
+      shame: agent.state.affect.shame ?? (base as any).shame,
+    } as any);
+
+    agent.affect = next;
+  } catch {}
 }

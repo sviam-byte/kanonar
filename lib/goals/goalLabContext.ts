@@ -23,6 +23,7 @@ import { mergeEpistemicAtoms, mergeKeepingOverrides } from '../context/epistemic
 import { generateRumorBeliefs } from '../context/epistemic/rumorGenerator';
 import { buildBeliefToMBias } from '../tom/ctx/beliefBias';
 import { applyRelationPriorsToDyads } from '../tom/base/applyRelationPriors';
+import { buildTomPolicyLayer } from '../tom/policy/tomPolicy';
 import { buildSelfAliases } from '../context/v2/aliases';
 import { computeThreatStack } from '../threat/threatStack';
 import { derivePossibilitiesRegistry } from '../possibilities/derive';
@@ -249,6 +250,24 @@ export function buildGoalLabContext(
     }
   }
 
+  // --- Affect canonicalization: if only legacy agent.state.affect exists, create agent.affect for GoalLab ---
+  try {
+    const a: any = agentForPipeline as any;
+    if (!a.affect && a?.state?.affect && typeof a.state.affect === 'object') {
+      a.affect = normalizeAffectState({
+        e: {
+          fear: clamp01(a.state.affect.fear ?? 0),
+          anger: clamp01(a.state.affect.anger ?? 0),
+          shame: clamp01(a.state.affect.shame ?? 0),
+        },
+        stress: clamp01(a.state?.traces?.stressLoad ?? 0),
+        updatedAtTick: tick,
+      } as any);
+    } else if (a.affect) {
+      a.affect = normalizeAffectState(a.affect);
+    }
+  } catch {}
+
   // --- Pipeline Execution Helper ---
   const runPipeline = (sceneAtoms: ContextAtom[], sceneSnapshotForStage0: any) => {
       // Canonical affect atoms (bridge for UI knobs -> threat/goals explanations)
@@ -374,47 +393,78 @@ export function buildGoalLabContext(
       }
 
       // 8.5 Effective ToM dyads (canonical layer)
-      // Rule: use *_ctx if exists, else base.
-      const baseDyads = dyads.filter(a => a.id.endsWith(':trust') || a.id.endsWith(':threat'));
-      const ctxByBaseId = new Map<string, ContextAtom>();
-      for (const a of tomCtxDyads) {
-        // convert trust_ctx -> trust baseId, threat_ctx -> threat baseId
-        const baseId = a.id.replace(':trust_ctx', ':trust').replace(':threat_ctx', ':threat');
-        ctxByBaseId.set(baseId, a);
-      }
-
+      const atomsAfterCtx = [...atomsAfterPriors, ...tomCtxDyads];
+      const baseDyads = atomsAfterCtx.filter(a => a.id.startsWith(`tom:dyad:${selfId}:`));
       const effectiveDyads: ContextAtom[] = [];
+      const getMag = (atoms: ContextAtom[], id: string, fb = 0) => {
+        const a = atoms.find(x => x.id === id);
+        const m = (a as any)?.magnitude;
+        return (typeof m === 'number' && Number.isFinite(m)) ? m : fb;
+      };
+
       for (const b of baseDyads) {
-        const chosen = ctxByBaseId.get(b.id) || b;
-        const parts = b.id.split(':'); // tom:dyad:self:target:metric
-        if (parts.length < 5) continue;
-        const target = parts[3];
-        const metric = parts[4] === 'trust' ? 'trust' : 'threat';
-        const effId = `tom:effective:dyad:${selfId}:${target}:${metric}`;
+        const parts = String(b.id).split(':'); // tom:dyad:self:target:metric
+        const target = b.target || parts[3];
+        const metric = parts[4];
+        if (!target || !metric) continue;
+
+        const base = clamp01(b.magnitude ?? 0);
+        let eff = base;
+        const usedIds: string[] = [b.id];
+
+        if (metric === 'trust' || metric === 'threat') {
+          const ctxId = `tom:dyad:${selfId}:${target}:${metric}_ctx`;
+          const ctx = atomsAfterCtx.find(a => a.id === ctxId);
+          if (ctx) {
+            eff = clamp01(ctx.magnitude ?? base);
+            usedIds.push(ctxId);
+          }
+        }
+
+        if (metric === 'support') {
+          const baseThreat = getMag(atomsAfterCtx, `tom:dyad:${selfId}:${target}:threat`, 0);
+          const effThreat = getMag(atomsAfterCtx, `tom:dyad:${selfId}:${target}:threat_ctx`, baseThreat);
+          const denom = Math.max(1e-6, 1 - clamp01(baseThreat));
+          const factor = clamp01((1 - clamp01(effThreat)) / denom);
+          eff = clamp01(base * factor);
+          usedIds.push(`tom:dyad:${selfId}:${target}:threat`, `tom:dyad:${selfId}:${target}:threat_ctx`);
+        }
 
         effectiveDyads.push(normalizeAtom({
-          id: effId,
+          id: `tom:effective:dyad:${selfId}:${target}:${metric}`,
           ns: 'tom',
           kind: 'tom_dyad_metric',
           origin: 'derived',
           source: 'tom_effective',
-          magnitude: clamp01((chosen as any).magnitude ?? 0),
+          magnitude: eff,
           confidence: 1,
           subject: selfId,
           target,
-          tags: ['tom', 'effective', metric],
-          label: `${metric}_effective:${Math.round(clamp01((chosen as any).magnitude ?? 0) * 100)}%`,
+          tags: ['tom', 'effective', 'dyad', metric],
+          label: `${metric}_eff:${Math.round(eff * 100)}%`,
           trace: {
-            usedAtomIds: [b.id, ...(chosen.id !== b.id ? [chosen.id] : [])],
-            notes: ['effective dyad = ctx if present else base'],
-            parts: { chosen: chosen.id !== b.id ? 'ctx' : 'base' }
+            usedAtomIds: Array.from(new Set(usedIds.filter(Boolean))),
+            notes: ['effective dyad metric'],
+            parts: { base, eff }
           }
         } as any));
       }
 
+      // 8.x ToM Policy layer (mode + predictions + attitude + help + affordances)
+      const tomPolicyPack = buildTomPolicyLayer(
+        [...atomsAfterPriors, ...biasPack.atoms, ...tomCtxDyads, ...effectiveDyads],
+        selfId
+      );
+
       // 9. Threat Stack
-      const atomsForThreat = [...atomsAfterPriors, ...biasPack.atoms, ...tomCtxDyads, ...effectiveDyads];
-      const getMag = (id: string, fb = 0) => {
+      const atomsForThreat = [
+        ...atomsAfterPriors,
+        ...biasPack.atoms,
+        ...tomCtxDyads,
+        ...effectiveDyads,
+        ...tomPolicyPack.atoms
+      ];
+      const getMagThreat = (id: string, fb = 0) => {
         const a = atomsForThreat.find(x => x.id === id);
         const m = (a as any)?.magnitude;
         return (typeof m === 'number' && Number.isFinite(m)) ? m : fb;
@@ -422,31 +472,31 @@ export function buildGoalLabContext(
       const firstByPrefix = (prefix: string) =>
         atomsForThreat.find(a => String((a as any)?.id || '').startsWith(prefix))?.id || null;
 
-        const ctxDanger = getMag(`ctx:danger:${selfId}`, 0);
+        const ctxDanger = getMagThreat(`ctx:danger:${selfId}`, 0);
         const coverId = firstByPrefix(`world:map:cover:${selfId}`) || firstByPrefix(`ctx:cover:${selfId}`) || null;
 
-        const cover = coverId ? getMag(coverId, 0.5) : 0.5;
+        const cover = coverId ? getMagThreat(coverId, 0.5) : 0.5;
 
       const crowd =
-        getMag(`ctx:crowd:${selfId}`, 0) ||
-        getMag(`world:loc:crowd:${selfId}`, 0);
+        getMagThreat(`ctx:crowd:${selfId}`, 0) ||
+        getMagThreat(`world:loc:crowd:${selfId}`, 0);
 
       const hierarchy =
-        getMag(`ctx:hierarchy:${selfId}`, 0) ||
-        getMag(`world:loc:control:${selfId}`, 0);
+        getMagThreat(`ctx:hierarchy:${selfId}`, 0) ||
+        getMagThreat(`world:loc:control:${selfId}`, 0);
 
       const surveillance =
-        getMag(`ctx:surveillance:${selfId}`, 0);
+        getMagThreat(`ctx:surveillance:${selfId}`, 0);
 
       const timePressure =
-        getMag(`ctx:timePressure:${selfId}`, 0);
+        getMagThreat(`ctx:timePressure:${selfId}`, 0);
 
       const scarcity =
-        getMag(`ctx:scarcity:${selfId}`, 0);
+        getMagThreat(`ctx:scarcity:${selfId}`, 0);
 
       const woundedPressure =
-        getMag(`ctx:wounded:${selfId}`, 0) ||
-        getMag(`ctx:careNeed:${selfId}`, 0);
+        getMagThreat(`ctx:wounded:${selfId}`, 0) ||
+        getMagThreat(`ctx:careNeed:${selfId}`, 0);
 
       // ToM proximity summary (cheap proxy): top effective dyads
       const effTrust = atomsForThreat
