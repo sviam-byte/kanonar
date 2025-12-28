@@ -28,7 +28,7 @@ import { computeContextualMind } from '../../lib/tom/contextual/engine';
 import type { ContextualMindReport } from '../../lib/tom/contextual/types';
 import { MapViewer } from '../locations/MapViewer';
 import { AtomOverrideLayer } from '../../lib/context/overrides/types';
-import { runTicks } from '../../lib/engine/tick';
+import { runTicksForCast } from '../../lib/engine/tick';
 import type { AtomDiff } from '../../lib/snapshot/diffAtoms';
 import { diffAtoms } from '../../lib/snapshot/diffAtoms';
 import { adaptToSnapshotV1 } from '../../lib/goal-lab/snapshotAdapter';
@@ -176,6 +176,7 @@ export const GoalSandbox: React.FC = () => {
     {}
   );
   const actorPositionsRef = useRef<Record<string, { x: number; y: number }>>({});
+  const importInputRef = useRef<HTMLInputElement | null>(null);
   // IMPORTANT: must be synchronous to avoid “previous scene positions” leaking into rebuild
   actorPositionsRef.current = actorPositions;
   const [rebuildNonce, setRebuildNonce] = useState(0);
@@ -875,6 +876,7 @@ export const GoalSandbox: React.FC = () => {
         // Finally: lock world as imported and set it
         setWorldSource('imported');
         setWorldState(w);
+        baselineWorldRef.current = cloneWorld(w);
         setFatalError(null);
         setRuntimeError(null);
       } catch (e: any) {
@@ -1068,6 +1070,7 @@ export const GoalSandbox: React.FC = () => {
         const res = buildGoalLabContext(worldState, id, {
           snapshotOptions: {
             activeEvents,
+            participantIds,
             overrideLocation: loc,
             manualAtoms,
             gridMap: activeMap,
@@ -1171,11 +1174,12 @@ export const GoalSandbox: React.FC = () => {
       const activeEvents = eventRegistry.getAll().filter(e => selectedEventIds.has(e.id));
       const loc = getSelectedLocationEntity();
 
-      const result = runTicks({
+      const result = runTicksForCast({
         world: nextWorld,
-        agentId: pid,
+        participantIds,
         baseInput: {
           snapshotOptions: {
+            participantIds,
             activeEvents,
             overrideLocation: loc,
             manualAtoms,
@@ -1189,7 +1193,8 @@ export const GoalSandbox: React.FC = () => {
         cfg: { steps, dt: 1 },
       } as any);
 
-      const lastSnap = (result as any)?.snapshots?.[(result as any)?.snapshots?.length - 1] || null;
+      const snapsForPid: any[] = (result as any)?.snapshotsByAgentId?.[pid] || [];
+      const lastSnap = snapsForPid[snapsForPid.length - 1] || null;
       const nextAtoms: ContextAtom[] = (lastSnap?.atoms || []) as any;
       if (prevAtoms && nextAtoms) {
         setAtomDiff(diffAtoms(prevAtoms as any, nextAtoms as any));
@@ -1211,6 +1216,7 @@ export const GoalSandbox: React.FC = () => {
       worldState,
       selectedAgentId,
       perspectiveId,
+      participantIds,
       manualAtoms,
       activeMap,
       atomOverridesLayer,
@@ -1230,6 +1236,27 @@ export const GoalSandbox: React.FC = () => {
     const castTag = Array.isArray(participantIds) && participantIds.length ? `cast-${participantIds.length}` : 'cast';
     downloadJson(sceneDumpV2, `goal-lab-scene__${castTag}__persp-${pid}__${exportedAt}.json`);
   }, [perspectiveId, sceneDumpV2, selectedAgentId, participantIds]);
+
+  const handleImportSceneClick = useCallback(() => {
+    importInputRef.current?.click();
+  }, []);
+
+  const handleImportSceneFile = useCallback(
+    async (file: File) => {
+      try {
+        const text = await file.text();
+        const payload = JSON.parse(text);
+        if (!payload || payload.schemaVersion !== 2) {
+          throw new Error('Invalid scene dump: expected schemaVersion=2');
+        }
+        handleImportSceneDumpV2(payload);
+      } catch (e: any) {
+        console.error('[GoalLab] failed to import scene JSON', e);
+        setRuntimeError(String(e?.message || e));
+      }
+    },
+    [handleImportSceneDumpV2]
+  );
 
   const handleResetSim = useCallback(() => {
     const base = baselineWorldRef.current;
@@ -1356,8 +1383,21 @@ export const GoalSandbox: React.FC = () => {
               snapshotV1={snapshotV1 as any}
               sceneDump={sceneDumpV2 as any}
               onDownloadScene={onDownloadScene}
+              onImportScene={handleImportSceneClick}
               manualAtoms={manualAtoms}
               onChangeManualAtoms={setManualAtoms}
+            />
+
+            <input
+              ref={importInputRef}
+              type="file"
+              accept="application/json"
+              style={{ display: 'none' }}
+              onChange={e => {
+                const file = e.target.files?.[0];
+                if (file) handleImportSceneFile(file);
+                e.currentTarget.value = '';
+              }}
             />
 
           {snapshotV1 && (

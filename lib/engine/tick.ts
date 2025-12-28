@@ -1,6 +1,6 @@
 
 // lib/engine/tick.ts
-import { TickConfig, TickResult } from './tickTypes';
+import { TickConfig, TickResult, TickResultCast } from './tickTypes';
 import { shallowAtomDiff } from './snapshotDiff';
 import { buildGoalLabContext } from '../goals/goalLabContext';
 import { integrateAgentState } from './integrators';
@@ -88,19 +88,16 @@ export function runTicks(args: {
       }
     }
 
-    // 3) Update ToM Base from Evidence
-    if (agent && eventsNow.length > 0) {
+    // 3) Update ToM Base from Evidence (everyone observes the same event log for now)
+    if (agent) {
       const evAll = extractEvidenceFromEvents({ events: eventsNow });
-      const evForSelf = evAll.filter(e => e.subjectId === agentId);
-      
-      // Update how agent is seen (public rep/tom base) OR how agent sees others?
-      // applyEvidenceToTomBase updates the agent's ToM about OTHERS usually if passed as observer.
-      // Assuming 'agent' is observer here.
-      applyEvidenceToTomBase({
-        agent,
-        evidence: evAll, // pass all relevant evidence
-        tuning: baseInput?.tuning?.tomUpdate
-      });
+      if (evAll.length > 0) {
+        applyEvidenceToTomBase({
+          agent,
+          evidence: evAll,
+          tuning: baseInput?.tuning?.tomUpdate,
+        });
+      }
     }
 
     // 4) Build Context Snapshot (AFTER state updates)
@@ -135,4 +132,103 @@ export function runTicks(args: {
   }
 
   return { tick: world.tick, snapshots, diffs: withDiffs ? diffs : undefined, agentId };
+}
+
+export function runTicksForCast(args: {
+  world: any;
+  participantIds: string[];
+  baseInput: any;
+  cfg: TickConfig;
+  withDiffs?: boolean;
+}): TickResultCast {
+  const { world, participantIds, baseInput, cfg, withDiffs } = args;
+  const dt = cfg.dt ?? 1;
+  const steps = cfg.steps ?? 1;
+
+  const ids: string[] =
+    Array.isArray(participantIds) && participantIds.length
+      ? participantIds
+      : (world?.agents || world?.entities || []).map((a: any) => a?.entityId).filter(Boolean);
+
+  const snapshotsByAgentId: Record<string, any[]> = {};
+  const diffsByAgentId: Record<string, any[]> = {};
+  ids.forEach(id => {
+    snapshotsByAgentId[id] = [];
+    diffsByAgentId[id] = [];
+  });
+
+  for (let i = 0; i < steps; i++) {
+    advanceWorldTick(world, dt);
+    const tickNow = world.tick;
+
+    const eventsNow = getEventsAtTick(world, tickNow);
+    const worldEvents: WorldEvent[] = eventsNow.map(ev => {
+      let kind = ev.domain;
+      if (ev.tags && ev.tags.length > 0) {
+        if (ev.tags.includes('help') || ev.tags.includes('aid')) kind = 'helped';
+        else if (ev.tags.includes('attack') || ev.tags.includes('harm')) kind = 'attacked';
+        else if (ev.tags.includes('betrayal')) kind = 'betrayed';
+        else if (ev.tags.includes('lie') || ev.tags.includes('deceive')) kind = 'lied';
+        else if (ev.tags.includes('promise') && ev.tags.includes('kept')) kind = 'kept_oath';
+        else if (ev.tags.includes('promise') && ev.tags.includes('broken')) kind = 'broke_oath';
+        else kind = ev.tags[0];
+      }
+      return {
+        id: ev.id,
+        tick: ev.t,
+        kind,
+        actorId: ev.actorId,
+        targetId: ev.targetId,
+        magnitude: ev.intensity,
+        context: { locationId: ev.locationId },
+      };
+    });
+
+    const evAll = extractEvidenceFromEvents({ events: eventsNow });
+
+    // Relations + ToM for every agent
+    for (const selfId of ids) {
+      const agent =
+        world.agents?.find((a: any) => a.entityId === selfId) ||
+        world.entities?.find((e: any) => e.entityId === selfId) || null;
+      if (!agent) continue;
+
+      try {
+        agent.relations = agent.relations || {};
+        agent.relations.graph = agent.relations.graph || agent.rel_graph || { schemaVersion: 1, edges: [] };
+        const updated = updateRelationshipGraphFromEvents({ graph: agent.relations.graph, selfId, events: worldEvents, nowTick: tickNow });
+        agent.relations.graph = updated.graph;
+      } catch {}
+
+      try {
+        if (evAll.length > 0) applyEvidenceToTomBase({ agent, evidence: evAll, tuning: baseInput?.tuning?.tomUpdate });
+      } catch {}
+    }
+
+    // Snapshot + Affect integration for every agent
+    for (const selfId of ids) {
+      const agent =
+        world.agents?.find((a: any) => a.entityId === selfId) ||
+        world.entities?.find((e: any) => e.entityId === selfId) || null;
+      if (!agent) continue;
+
+      const ctxResult = buildGoalLabContext(world, selfId, { snapshotOptions: baseInput.snapshotOptions, timeOverride: tickNow });
+      if (!ctxResult) continue;
+
+      const snap = ctxResult.snapshot;
+      const arr = snapshotsByAgentId[selfId] || (snapshotsByAgentId[selfId] = []);
+      arr.push(snap);
+
+      try {
+        integrateAgentState({ agent, atomsAfterAffect: snap.atoms, tuning: baseInput?.integratorTuning });
+      } catch {}
+
+      if (withDiffs && arr.length >= 2) {
+        const prev = arr[arr.length - 2];
+        (diffsByAgentId[selfId] || (diffsByAgentId[selfId] = [])).push({ tick: world.tick, atoms: shallowAtomDiff(prev?.atoms || [], snap?.atoms || []) });
+      }
+    }
+  }
+
+  return { tick: world.tick, participantIds: ids, snapshotsByAgentId, diffsByAgentId: withDiffs ? diffsByAgentId : undefined };
 }

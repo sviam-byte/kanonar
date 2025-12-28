@@ -11,3 +11,10 @@ export type TickResult = {
   diffs?: any[];    // optional diff objects
   agentId: string;
 };
+
+export type TickResultCast = {
+  tick: number;
+  participantIds: string[];
+  snapshotsByAgentId: Record<string, any[]>; // per agent: per-step ContextSnapshot
+  diffsByAgentId?: Record<string, any[]>;
+};
