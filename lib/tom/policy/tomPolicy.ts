@@ -57,6 +57,11 @@ export function buildTomPolicyLayer(atoms: ContextAtom[], selfId: string): { ato
   const normPressure = clamp01(getMag(atoms, `ctx:normPressure:${selfId}`, 0));
   const uncertaintyCtx = clamp01(getMag(atoms, `ctx:uncertainty:${selfId}`, 0));
 
+  // ---------- Self traits (personalize policy) ----------
+  const paranoia = clamp01(getMag(atoms, `feat:char:${selfId}:trait.paranoia`, 0.5));
+  const sensitivity = clamp01(getMag(atoms, `feat:char:${selfId}:trait.sensitivity`, 0.5));
+  const experience = clamp01(getMag(atoms, `feat:char:${selfId}:trait.experience`, 0.2));
+
   // Stakes ~ how costly a wrong move is (danger + surveillance/publicness/normPressure add social stakes)
   const stakes = clamp01(0.55 * danger + 0.20 * surveillance + 0.15 * publicness + 0.10 * normPressure);
   // Time/pressure cost ~ less compute available (danger + crowd + normPressure)
@@ -122,12 +127,17 @@ export function buildTomPolicyLayer(atoms: ContextAtom[], selfId: string): { ato
     //
     // Precision decreases with uncertainty (less reliable belief), increases with S2 (more careful inference).
     // This is not a heuristic threshold; it's a principled way to downweight evidence under uncertainty.
-    const precision = clamp01(0.25 + 0.55 * S2 + 0.20 * (1 - dyadUnc));
+    const precisionBase = clamp01(0.25 + 0.55 * S2 + 0.20 * (1 - dyadUnc));
+    const precision = clamp01(precisionBase * (0.80 + 0.50 * experience) * (1.05 - 0.35 * paranoia));
 
     // prior beliefs (from relation memory; if absent -> neutral 0.5)
-    const priorHelp = clamp01(0.50 + 0.30 * relLoyalty + 0.20 * relCloseness - 0.35 * relHostility);
-    const priorHarm = clamp01(0.10 + 0.60 * relHostility + 0.10 * (1 - relCloseness));
-    const priorTruth = clamp01(0.50 + 0.25 * relLoyalty + 0.15 * relAuthority - 0.20 * relHostility);
+    const priorHelp0 = clamp01(0.50 + 0.30 * relLoyalty + 0.20 * relCloseness - 0.35 * relHostility);
+    const priorHarm0 = clamp01(0.10 + 0.60 * relHostility + 0.10 * (1 - relCloseness));
+    const priorTruth0 = clamp01(0.50 + 0.25 * relLoyalty + 0.15 * relAuthority - 0.20 * relHostility);
+
+    const priorHelp = clamp01(priorHelp0 * (1.05 - 0.55 * paranoia));
+    const priorHarm = clamp01(priorHarm0 + 0.35 * paranoia);
+    const priorTruth = clamp01(priorTruth0 * (1.05 - 0.45 * paranoia));
 
     // centered features in [-1..1]
     const c = (x: number) => (2 * clamp01(x) - 1);
@@ -184,6 +194,9 @@ export function buildTomPolicyLayer(atoms: ContextAtom[], selfId: string): { ato
       `ctx:surveillance:${selfId}`,
       `ctx:normPressure:${selfId}`,
       `ctx:uncertainty:${selfId}`,
+      `feat:char:${selfId}:trait.paranoia`,
+      `feat:char:${selfId}:trait.sensitivity`,
+      `feat:char:${selfId}:trait.experience`,
     ];
 
     out.push(mkAtom(selfId, otherId, `tom:predict:${selfId}:${otherId}:help`, postHelp, `P(help)=${Math.round(postHelp * 100)}%`, usedBase, {
@@ -224,10 +237,11 @@ export function buildTomPolicyLayer(atoms: ContextAtom[], selfId: string): { ato
     // - Helping is valuable if other helps back and low harm risk; costly under danger.
     // - Sharing info valuable if truth is high and surveillance/publicness low.
     const U_help = (1 - danger) * 0.8 + (1 - normPressure) * 0.2;
+    const socialCost = clamp01(0.55 * surveillance + 0.45 * publicness);
+    const U_info = (1 - socialCost) * (0.70 + 0.30 * (1 - sensitivity));
     const U_harmed = -(0.8 * danger + 0.2); // more dangerous -> being harmed is worse
-    const U_info = (1 - surveillance) * (1 - publicness) * 0.9;
     const U_escal = -(0.6 * danger + 0.4 * crowd);
-    const U_boundary = 0.35 + 0.35 * normPressure + 0.30 * publicness;
+    const U_boundary = clamp01(0.25 + 0.45 * normPressure + 0.30 * publicness) * (0.75 + 0.50 * sensitivity);
 
     // Outcome probabilities per action (not heuristic “scores”; they are explicit assumptions):
     // assist: success if other helps and doesn't harm
