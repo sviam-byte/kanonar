@@ -33,6 +33,9 @@ import type { AtomDiff } from '../../lib/snapshot/diffAtoms';
 import { diffAtoms } from '../../lib/snapshot/diffAtoms';
 import { adaptToSnapshotV1 } from '../../lib/goal-lab/snapshotAdapter';
 import { buildGoalLabSceneDumpV2, downloadJson } from '../../lib/goal-lab/sceneDump';
+import { ensureTomMatrix } from '../../lib/tom/ensureMatrix';
+import { defaultAffect } from '../../lib/affect/engine';
+import { normalizeAffectState } from '../../lib/affect/normalize';
 import { CastPerspectivePanel } from '../goal-lab/CastPerspectivePanel';
 import { allScenarioDefs } from '../../data/scenarios/index';
 import { useAccess } from '../../contexts/AccessContext';
@@ -1077,7 +1080,7 @@ export const GoalSandbox: React.FC = () => {
             affectOverrides,
           },
         },
-        cfg: { steps, dt: 1 },
+        cfg: { steps, dt: 1, allAgents: true, agentIds: participantIds },
       } as any);
 
       const lastSnap = (result as any)?.snapshots?.[(result as any)?.snapshots?.length - 1] || null;
@@ -1109,6 +1112,7 @@ export const GoalSandbox: React.FC = () => {
       affectOverrides,
       injectedEvents,
       selectedEventIds,
+      participantIds,
       getSelectedLocationEntity,
     ]
   );
@@ -1120,6 +1124,73 @@ export const GoalSandbox: React.FC = () => {
     const pid = perspectiveId || selectedAgentId || 'unknown';
     downloadJson(sceneDumpV2, `goal-lab-scene__character-${pid}__${exportedAt}.json`);
   }, [perspectiveId, sceneDumpV2, selectedAgentId]);
+
+  const handleImportScene = useCallback((payload: any) => {
+    try {
+      if (!payload || typeof payload !== 'object') throw new Error('empty payload');
+      if (payload.schemaVersion !== 2) throw new Error('unsupported schemaVersion');
+      if (!payload.world) throw new Error('missing world');
+
+      // 1) restore world (and make it the new baseline)
+      const importedWorld = payload.world;
+      const w = cloneWorld(importedWorld);
+
+      // Ensure affect exists on every agent and is canonical
+      const ids: string[] = (w as any).agents?.map((a: any) => a.entityId).filter(Boolean) || [];
+      for (const a of (w as any).agents || []) {
+        if (!a.affect) a.affect = defaultAffect((w as any).tick ?? 0);
+        a.affect = normalizeAffectState(a.affect);
+        a.state = { ...(a.state || {}), affect: a.affect, tick: a.state?.tick ?? (w as any).tick ?? 0 };
+      }
+      if (ids.length >= 2) ensureTomMatrix(w as any, ids);
+
+      baselineWorldRef.current = cloneWorld(w as any);
+
+      // 2) restore focus & inputs (with safe fallbacks)
+      const focus = payload.focus || {};
+      const inputs = payload.inputs || {};
+
+      const nextParticipantIds: string[] = Array.isArray(focus.participantIds) ? focus.participantIds : ids;
+      setParticipantIds(nextParticipantIds);
+
+      const nextSelectedAgentId = focus.selectedAgentId || nextParticipantIds[0] || ids[0] || selectedAgentId;
+      handleSelectAgent(nextSelectedAgentId);
+
+      setPerspectiveAgentId(focus.perspectiveId || null);
+      setSelectedLocationId(focus.selectedLocationId || null);
+      setLocationMode(focus.locationMode || 'preset');
+
+      const evIds = Array.isArray(inputs.selectedEventIds) ? inputs.selectedEventIds : [];
+      setSelectedEventIds(new Set(evIds));
+
+      setManualAtoms(inputs.manualAtoms || []);
+      setAtomOverridesLayer(inputs.atomOverridesLayer || null);
+      setAffectOverrides(inputs.affectOverrides || {});
+      setInjectedEvents(inputs.injectedEvents || []);
+      setSceneControl(inputs.sceneControl || null);
+
+      // 3) restore map (best-effort; if missing, keep current)
+      if (payload.inputs?.activeMapId && (payload as any).inputs?.activeMap) {
+        setMap((payload as any).inputs.activeMap);
+      }
+
+      // 4) sync positions cache for MapViewer/proximity logic
+      const nextPositions: Record<string, { x: number; y: number }> = {};
+      (w as any)?.agents?.forEach((a: any) => {
+        if (a?.entityId && a?.position) nextPositions[a.entityId] = a.position;
+      });
+      actorPositionsRef.current = nextPositions;
+      setActorPositions(nextPositions);
+
+      setWorldState(w as any);
+      setAtomDiff([]);
+      setRuntimeError(null);
+      setFatalError(null);
+    } catch (e: any) {
+      console.error('[GoalSandbox] import scene failed', e);
+      setRuntimeError(String(e?.message || e));
+    }
+  }, [handleSelectAgent, selectedAgentId]);
 
   const handleResetSim = useCallback(() => {
     const base = baselineWorldRef.current;
@@ -1192,6 +1263,7 @@ export const GoalSandbox: React.FC = () => {
               onRunTicks={handleRunTicks}
               onResetSim={handleResetSim}
               onDownloadScene={onDownloadScene}
+              onImportScene={handleImportScene}
               world={worldState as any}
               onWorldChange={setWorldState as any}
               participantIds={participantIds}
