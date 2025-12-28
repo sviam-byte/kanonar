@@ -6,6 +6,7 @@ export const ToMPanel: React.FC<{
     defaultSelfId?: string;
     defaultOtherId?: string;
 }> = ({ atoms, defaultSelfId, defaultOtherId }) => {
+export const ToMPanel: React.FC<{ atoms: ContextAtom[] }> = ({ atoms }) => {
     const parseDyad = (id: string) => {
         // tom:dyad:self:other:metric
         // tom:effective:dyad:self:other:metric
@@ -101,6 +102,7 @@ export const ToMPanel: React.FC<{
     }, [atoms]);
 
     const [selfId, setSelfId] = useState<string>('');
+    const [selfId, setSelfId] = useState<string>(() => data.selfIds[0] || '');
     const otherOptions = useMemo(() => {
         const set = data.otherIdsBySelf.get(selfId) || new Set<string>();
         return Array.from(set).sort();
@@ -151,6 +153,16 @@ export const ToMPanel: React.FC<{
             setOtherId(otherOptions[0] || '');
         }
     }, [defaultOtherId, otherOptions, otherId]);
+    const [otherId, setOtherId] = useState<string>(() => otherOptions[0] || '');
+
+    // keep state consistent when atoms update
+    React.useEffect(() => {
+        if (!selfId && data.selfIds[0]) setSelfId(data.selfIds[0]);
+    }, [data.selfIds, selfId]);
+    React.useEffect(() => {
+        if (!otherId && otherOptions[0]) setOtherId(otherOptions[0]);
+        if (otherId && otherOptions.length > 0 && !otherOptions.includes(otherId)) setOtherId(otherOptions[0]);
+    }, [otherOptions, otherId]);
 
     const atomRow = (a: ContextAtom) => (
         <div key={a.id} className="flex justify-between items-center text-xs p-1 hover:bg-white/5 rounded">
