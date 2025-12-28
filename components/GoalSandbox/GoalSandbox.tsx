@@ -156,6 +156,9 @@ export const GoalSandbox: React.FC = () => {
 
   // Core World State
   const [worldState, setWorldState] = useState<WorldState | null>(null);
+  // IMPORTANT: when importing a scene JSON, do NOT rebuild world via createInitialWorld()
+  // иначе импорт перезатрётся эффектом rebuildWorldFromParticipants.
+  const [worldSource, setWorldSource] = useState<'derived' | 'imported'>('derived');
 
   // Scene Management
   const [map, setMap] = useState<LocationMap>(() =>
@@ -469,6 +472,7 @@ export const GoalSandbox: React.FC = () => {
     (id: string) => {
       if (!id) return;
       if (id === selectedAgentId) return;
+      setWorldSource('derived');
 
       if (!allCharacters.some(c => c.entityId === id)) {
         setFatalError(`Add participant failed: unknown character id: ${String(id)}`);
@@ -496,6 +500,7 @@ export const GoalSandbox: React.FC = () => {
     (id: string) => {
       if (!id) return;
       if (id === selectedAgentId) return;
+      setWorldSource('derived');
 
       setSceneParticipants(prev => {
         const next = new Set(prev);
@@ -528,6 +533,7 @@ export const GoalSandbox: React.FC = () => {
   // Initialize / Rebuild World (safe: never null the existing world during rebuild)
   useEffect(() => {
     if (!selectedAgentId) return;
+    if (worldSource === 'imported') return;
 
     const ids = new Set(sceneParticipants);
     ids.add(selectedAgentId);
@@ -613,6 +619,7 @@ export const GoalSandbox: React.FC = () => {
     getSelectedLocationEntity,
     getActiveLocationId,
     ensureCompleteInitialRelations,
+    worldSource,
   ]);
 
   useEffect(() => {
@@ -671,6 +678,7 @@ export const GoalSandbox: React.FC = () => {
   }, [sceneParticipants, selectedAgentId, allCharacters, worldState, actorPositions]);
 
   const handleNearbyActorsChange = (newActors: LocalActorRef[]) => {
+    setWorldSource('derived');
     const next = new Set<string>(newActors.map(a => a.id));
     if (selectedAgentId) next.add(selectedAgentId); // always keep focus inside the scene
     setSceneParticipants(next);
@@ -682,6 +690,7 @@ export const GoalSandbox: React.FC = () => {
   const handleLoadScene = useCallback(
     (scene: ScenePreset) => {
       if (!scene?.characters?.length) return;
+      setWorldSource('derived');
 
       // New scene session => reset all transient/override layers
       resetTransientForNewScene(`loadScene:${scene.id}`);
@@ -778,6 +787,103 @@ export const GoalSandbox: React.FC = () => {
       setPlacingActorId(null);
     }
   };
+
+  const handleImportSceneDumpV2 = useCallback(
+    (dump: any) => {
+      try {
+        if (!dump || typeof dump !== 'object') throw new Error('Invalid dump: not an object');
+        if (dump.schemaVersion !== 2) {
+          throw new Error(`Unsupported schemaVersion: ${String(dump.schemaVersion)}`);
+        }
+        if (!dump.world) throw new Error('Dump has no world');
+
+        // Reset transient UI layers first (but then apply imported inputs)
+        resetTransientForNewScene('importSceneDumpV2');
+
+        const w = cloneWorld(dump.world) as WorldState;
+
+        // Focus
+        const focus = dump.focus || {};
+        const selected = focus.selectedAgentId || focus.perspectiveId || w.agents?.[0]?.entityId || '';
+        const persp = focus.perspectiveId || selected || null;
+
+        // Participants: if absent, fall back to all agents in world
+        const focusParticipants =
+          Array.isArray(focus.participantIds) && focus.participantIds.length
+            ? focus.participantIds.map(String)
+            : (w.agents || []).map(a => String((a as any).entityId)).filter(Boolean);
+
+        // Keep invariant: sceneParticipants excludes selectedAgentId (participantIds memo adds it back)
+        const nextSceneParticipants = new Set<string>(
+          focusParticipants.filter((id: string) => id && id !== selected)
+        );
+
+        setSelectedAgentId(String(selected));
+        setPerspectiveAgentId(persp ? String(persp) : null);
+        setSceneParticipants(nextSceneParticipants);
+
+        // Location mode/id
+        setLocationMode(
+          focus.locationMode === 'custom' || focus.locationMode === 'preset' ? focus.locationMode : 'preset'
+        );
+        setSelectedLocationId(typeof focus.selectedLocationId === 'string' ? focus.selectedLocationId : '');
+
+        // Inputs (overrides)
+        const inputs = dump.inputs || {};
+        setSelectedEventIds(new Set(Array.isArray(inputs.selectedEventIds) ? inputs.selectedEventIds.map(String) : []));
+        setInjectedEvents(Array.isArray(inputs.injectedEvents) ? inputs.injectedEvents : []);
+        setSceneControl(
+          inputs.sceneControl && typeof inputs.sceneControl === 'object' ? inputs.sceneControl : { presetId: 'safe_hub' }
+        );
+
+        // manualAtoms should be normalized to avoid missing fields
+        const importedManual = Array.isArray(inputs.manualAtoms) ? inputs.manualAtoms : [];
+        setManualAtoms(importedManual.map((a: any) => normalizeAtom(a)));
+
+        // atomOverridesLayer
+        setAtomOverridesLayer(
+          inputs.atomOverridesLayer && typeof inputs.atomOverridesLayer === 'object'
+            ? inputs.atomOverridesLayer
+            : { layerId: 'goal-lab', updatedAt: Date.now(), ops: [] }
+        );
+
+        // affectOverrides (UI knobs; pipeline already applies them)
+        setAffectOverrides(inputs.affectOverrides && typeof inputs.affectOverrides === 'object' ? inputs.affectOverrides : {});
+
+        // Import map (prefer custom-lab-location map if present)
+        try {
+          const cl = (w.locations || []).find((l: any) => l?.entityId === 'custom-lab-location');
+          const m = cl?.map;
+          if (m?.width && m?.height) setMap(ensureMapCells(m));
+        } catch {}
+
+        // Import positions from agents into actorPositions (and ref!)
+        const pos: Record<string, { x: number; y: number }> = {};
+        (w.agents || []).forEach((a: any) => {
+          const p = a?.position || a?.pos;
+          if (p && Number.isFinite(p.x) && Number.isFinite(p.y)) {
+            pos[String(a.entityId)] = { x: Number(p.x), y: Number(p.y) };
+          }
+        });
+        actorPositionsRef.current = pos;
+        setActorPositions(pos);
+
+        // Scenario id from imported world if present
+        const scenId = (w as any)?.scenario?.id;
+        if (typeof scenId === 'string' && scenId) setActiveScenarioId(scenId);
+
+        // Finally: lock world as imported and set it
+        setWorldSource('imported');
+        setWorldState(w);
+        setFatalError(null);
+        setRuntimeError(null);
+      } catch (e: any) {
+        console.error('[GoalLab] import failed', e);
+        setRuntimeError(String(e?.message || e));
+      }
+    },
+    [resetTransientForNewScene, setMap, setActiveScenarioId]
+  );
 
   const glCtxResult = useMemo(() => {
     if (!worldState) return { ctx: null as any, err: null as string | null };
@@ -1196,6 +1302,7 @@ export const GoalSandbox: React.FC = () => {
               onRunTicks={handleRunTicks}
               onResetSim={handleResetSim}
               onDownloadScene={onDownloadScene}
+              onImportSceneDumpV2={handleImportSceneDumpV2}
               world={worldState as any}
               onWorldChange={setWorldState as any}
               participantIds={participantIds}

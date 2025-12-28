@@ -47,6 +47,7 @@ interface Props {
   onRunTicks?: (steps: number) => void;
   onResetSim?: () => void;
   onDownloadScene?: () => void;
+  onImportSceneDumpV2?: (dump: any) => void;
 
   // Optional: World Access for Mods
   world?: any;
@@ -83,6 +84,7 @@ export const GoalLabControls: React.FC<Props> = ({
   onRunTicks,
   onResetSim,
   onDownloadScene,
+  onImportSceneDumpV2,
   world, onWorldChange,
   participantIds,
   onAddParticipant,
@@ -98,6 +100,21 @@ export const GoalLabControls: React.FC<Props> = ({
   const [customAtomKind, setCustomAtomKind] = React.useState<ContextAtomKind>('threat');
   const [customAtomLabel, setCustomAtomLabel] = React.useState('');
   const [customAtomSearch, setCustomAtomSearch] = React.useState('');
+  const importInputRef = React.useRef<HTMLInputElement | null>(null);
+  const handleImportClick = () => importInputRef.current?.click();
+  const handleImportFile = async (file: File | null) => {
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const json = JSON.parse(text);
+      onImportSceneDumpV2?.(json);
+    } catch (e) {
+      console.error('[GoalLabControls] import failed', e);
+    } finally {
+      // allow re-importing same file
+      if (importInputRef.current) importInputRef.current.value = '';
+    }
+  };
 
   const handleSliderChange = (kind: ContextAtomKind, val: number, id?: string) => {
       const atomId = id || `manual:${kind}`;
@@ -435,6 +452,24 @@ export const GoalLabControls: React.FC<Props> = ({
 
       {/* Tab Content */}
       <div className="flex-1 min-h-0 flex flex-col p-2 bg-canon-bg overflow-y-auto custom-scrollbar">
+
+        {onDownloadScene && (
+          <div className="mb-2 p-2 rounded border border-canon-border/60 bg-canon-bg-light/20">
+            <div className="text-[10px] font-bold text-canon-text uppercase tracking-wider mb-1">
+              Экспорт сцены
+            </div>
+            <button
+              type="button"
+              onClick={onDownloadScene}
+              className="w-full px-4 py-2 bg-canon-bg border border-canon-border text-canon-text text-xs font-bold rounded hover:bg-canon-bg-light/40 transition-colors"
+            >
+              Скачать всю сцену (JSON)
+            </button>
+            <div className="text-[10px] text-canon-text-light italic mt-1">
+              world + cast + atoms + overrides + расчёты (ToM/affect) + scene control
+            </div>
+          </div>
+        )}
         
         {activeTab === 'scenes' && onLoadScene && TEST_SCENES.length > 0 && (
             <div className="space-y-2">
@@ -476,7 +511,7 @@ export const GoalLabControls: React.FC<Props> = ({
             <div className="text-xs italic text-canon-text-light p-4 text-center">Scene Control not available.</div>
         )}
 
-        {activeTab === 'sim' && onRunTicks && (
+        {activeTab === 'sim' && (
             <div className="space-y-4">
                 <div className="text-xs font-bold text-canon-text uppercase tracking-wider mb-2 flex items-center gap-2">
                    <span>⏱️</span> Time Control
@@ -484,22 +519,28 @@ export const GoalLabControls: React.FC<Props> = ({
                 <div className="text-[10px] font-mono text-canon-text-light">
                   tick: {typeof (world as any)?.tick === 'number' ? (world as any).tick : 'n/a'}
                 </div>
-                <div className="grid grid-cols-2 gap-2">
-                    <button 
-                        type="button"
-                        onClick={() => onRunTicks(1)} 
-                        className="px-4 py-2 bg-canon-accent text-black text-xs font-bold rounded hover:bg-opacity-80 transition-colors"
-                     >
-                         Run 1 Tick
-                     </button>
-                     <button 
-                        type="button"
-                        onClick={() => onRunTicks(10)} 
-                        className="px-4 py-2 bg-canon-bg border border-canon-accent text-canon-accent text-xs font-bold rounded hover:bg-canon-accent/10 transition-colors"
-                     >
-                         Run 10 Ticks
-                    </button>
-                </div>
+                {onRunTicks ? (
+                  <div className="grid grid-cols-2 gap-2">
+                      <button 
+                          type="button"
+                          onClick={() => onRunTicks(1)} 
+                          className="px-4 py-2 bg-canon-accent text-black text-xs font-bold rounded hover:bg-opacity-80 transition-colors"
+                       >
+                           Run 1 Tick
+                       </button>
+                       <button 
+                          type="button"
+                          onClick={() => onRunTicks(10)} 
+                          className="px-4 py-2 bg-canon-bg border border-canon-accent text-canon-accent text-xs font-bold rounded hover:bg-canon-accent/10 transition-colors"
+                       >
+                           Run 10 Ticks
+                      </button>
+                  </div>
+                ) : (
+                  <div className="text-[10px] text-canon-text-light italic">
+                    Tick controls are not available.
+                  </div>
+                )}
                 {onResetSim && (
                   <button
                     type="button"
@@ -513,6 +554,29 @@ export const GoalLabControls: React.FC<Props> = ({
                     Running ticks updates internal state (affect, stress traces) and advances world time.
                 </div>
 
+                 <input
+                   ref={importInputRef}
+                   type="file"
+                   accept="application/json"
+                   className="hidden"
+                   onChange={(e) => handleImportFile(e.target.files?.[0] ?? null)}
+                 />
+
+                 {onImportSceneDumpV2 && (
+                   <div className="pt-2 border-t border-canon-border/60">
+                     <button
+                       type="button"
+                       onClick={handleImportClick}
+                       className="w-full px-4 py-2 bg-canon-bg border border-canon-border text-canon-text text-xs font-bold rounded hover:bg-canon-bg-light/40 transition-colors"
+                     >
+                       Import scene JSON (full snapshot)
+                     </button>
+                     <div className="text-[10px] text-canon-text-light italic mt-1">
+                       Loads: world + cast + ToM + affect + overrides + events + scene control.
+                     </div>
+                   </div>
+                 )}
+
                  {onDownloadScene && (
                    <div className="pt-2 border-t border-canon-border/60">
                      <button
@@ -520,7 +584,7 @@ export const GoalLabControls: React.FC<Props> = ({
                        onClick={onDownloadScene}
                        className="w-full px-4 py-2 bg-canon-bg border border-canon-border text-canon-text text-xs font-bold rounded hover:bg-canon-bg-light/40 transition-colors"
                      >
-                       Download full scene JSON (atoms + calculations)
+                       Скачать всю сцену (JSON)
                      </button>
                      <div className="text-[10px] text-canon-text-light italic mt-1">
                        Includes: world, participants, manual atoms, overrides, scene control, pipeline snapshot, goals.
