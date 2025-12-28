@@ -736,6 +736,19 @@ export function buildGoalLabContext(
     (agentForPipeline as any).affect = synthesized;
     (snapshot as any).contextMindAffect = synthesized;
     if (contextMind && typeof contextMind === 'object') (contextMind as any).affect = synthesized;
+
+    // IMPORTANT: materialize synthesized affect back into atoms so export/import sees non-zero affect.
+    const synthesizedAffectAtoms = atomizeAffect(selfId, synthesized, 'derived');
+    if (Array.isArray(synthesizedAffectAtoms) && synthesizedAffectAtoms.length) {
+      // remove stale affect:* (usually coming from agent.affect==0) and replace with synthesized
+      const withoutAffect = (snapshot.atoms || []).filter(
+        (a: any) => !String(a?.id || '').startsWith('affect:')
+      );
+      snapshot.atoms = dedupeAtomsById([...withoutAffect, ...synthesizedAffectAtoms])
+        .map(normalizeAtom)
+        .filter((a: any) => !String(a?.id || '').startsWith('scene:'));
+      snapshot.coverage = computeCoverageReport(snapshot.atoms as any);
+    }
   } catch {}
 
   snapshot.contextMind = contextMind;

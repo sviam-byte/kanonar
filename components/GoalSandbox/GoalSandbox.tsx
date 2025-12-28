@@ -176,6 +176,7 @@ export const GoalSandbox: React.FC = () => {
     {}
   );
   const actorPositionsRef = useRef<Record<string, { x: number; y: number }>>({});
+  const importInputRef = useRef<HTMLInputElement | null>(null);
   // IMPORTANT: must be synchronous to avoid “previous scene positions” leaking into rebuild
   actorPositionsRef.current = actorPositions;
   const [rebuildNonce, setRebuildNonce] = useState(0);
@@ -1236,6 +1237,27 @@ export const GoalSandbox: React.FC = () => {
     downloadJson(sceneDumpV2, `goal-lab-scene__${castTag}__persp-${pid}__${exportedAt}.json`);
   }, [perspectiveId, sceneDumpV2, selectedAgentId, participantIds]);
 
+  const handleImportSceneClick = useCallback(() => {
+    importInputRef.current?.click();
+  }, []);
+
+  const handleImportSceneFile = useCallback(
+    async (file: File) => {
+      try {
+        const text = await file.text();
+        const payload = JSON.parse(text);
+        if (!payload || payload.schemaVersion !== 2) {
+          throw new Error('Invalid scene dump: expected schemaVersion=2');
+        }
+        handleImportSceneDumpV2(payload);
+      } catch (e: any) {
+        console.error('[GoalLab] failed to import scene JSON', e);
+        setRuntimeError(String(e?.message || e));
+      }
+    },
+    [handleImportSceneDumpV2]
+  );
+
   const handleResetSim = useCallback(() => {
     const base = baselineWorldRef.current;
     if (!base) return;
@@ -1361,8 +1383,21 @@ export const GoalSandbox: React.FC = () => {
               snapshotV1={snapshotV1 as any}
               sceneDump={sceneDumpV2 as any}
               onDownloadScene={onDownloadScene}
+              onImportScene={handleImportSceneClick}
               manualAtoms={manualAtoms}
               onChangeManualAtoms={setManualAtoms}
+            />
+
+            <input
+              ref={importInputRef}
+              type="file"
+              accept="application/json"
+              style={{ display: 'none' }}
+              onChange={e => {
+                const file = e.target.files?.[0];
+                if (file) handleImportSceneFile(file);
+                e.currentTarget.value = '';
+              }}
             />
 
           {snapshotV1 && (

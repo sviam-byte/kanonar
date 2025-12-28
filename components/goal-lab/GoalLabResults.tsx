@@ -47,6 +47,7 @@ interface Props {
   tomRows?: Array<{ me: string; other: string; dyad: any }> | null;
   sceneDump?: any;
   onDownloadScene?: () => void;
+  onImportScene?: () => void;
   manualAtoms?: ContextAtom[];
   onChangeManualAtoms?: (atoms: ContextAtom[]) => void;
 }
@@ -341,6 +342,7 @@ export const GoalLabResults: React.FC<Props> = ({
   tomRows,
   sceneDump,
   onDownloadScene,
+  onImportScene,
   manualAtoms,
   onChangeManualAtoms,
 }) => {
@@ -827,14 +829,24 @@ export const GoalLabResults: React.FC<Props> = ({
                                 </button>
                             ))}
                         </div>
-                        {canDownload && (
-                            <button
-                                onClick={handleDownloadScene}
-                                className="px-3 py-1 text-[11px] font-semibold border border-canon-border/60 rounded bg-canon-bg-light hover:bg-canon-bg-light/70 transition-colors"
-                            >
-                                Download scene JSON
-                            </button>
-                        )}
+                        <div className="flex items-center gap-2">
+                            {canDownload && (
+                                <button
+                                    onClick={handleDownloadScene}
+                                    className="px-3 py-1 text-[11px] font-semibold border border-canon-border/60 rounded bg-canon-bg-light hover:bg-canon-bg-light/70 transition-colors"
+                                >
+                                    Скачать всю сцену (JSON)
+                                </button>
+                            )}
+                            {onImportScene && (
+                                <button
+                                    onClick={onImportScene}
+                                    className="px-3 py-1 text-[11px] font-semibold border border-canon-border/60 rounded bg-canon-bg-light hover:bg-canon-bg-light/70 transition-colors"
+                                >
+                                    Импорт сцены (JSON)
+                                </button>
+                            )}
+                        </div>
                     </div>
                     <div className="flex-1 min-h-0 relative">
                         {renderContent()}
