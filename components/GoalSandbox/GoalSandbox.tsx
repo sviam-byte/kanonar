@@ -797,6 +797,9 @@ export const GoalSandbox: React.FC = () => {
       const ctx = buildGoalLabContext(worldForCtx, pid, {
         snapshotOptions: {
           activeEvents,
+          // Ensure ToM/affect are computed for the exact scene cast,
+          // so every agent has ToM-on-every-agent for the current scene.
+          participantIds,
           overrideLocation: loc,
           manualAtoms,
           gridMap: activeMap,
@@ -1118,8 +1121,9 @@ export const GoalSandbox: React.FC = () => {
 
     const exportedAt = new Date().toISOString().replace(/[:.]/g, '-');
     const pid = perspectiveId || selectedAgentId || 'unknown';
-    downloadJson(sceneDumpV2, `goal-lab-scene__character-${pid}__${exportedAt}.json`);
-  }, [perspectiveId, sceneDumpV2, selectedAgentId]);
+    const castTag = Array.isArray(participantIds) && participantIds.length ? `cast-${participantIds.length}` : 'cast';
+    downloadJson(sceneDumpV2, `goal-lab-scene__${castTag}__persp-${pid}__${exportedAt}.json`);
+  }, [perspectiveId, sceneDumpV2, selectedAgentId, participantIds]);
 
   const handleResetSim = useCallback(() => {
     const base = baselineWorldRef.current;
