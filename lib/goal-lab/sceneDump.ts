@@ -77,9 +77,15 @@ export function buildGoalLabSceneDumpV2(input: SceneDumpInput) {
         for (const a of atoms) {
           const id = a?.id;
           if (typeof id !== 'string') continue;
-          if (id.startsWith(`tom:dyad:${selfId}:`)) {
+          if (id.startsWith(`tom:dyad:${selfId}:`) || id.startsWith(`tom:effective:dyad:${selfId}:`)) {
             const parts = id.split(':');
-            if (parts.length >= 5) dyads.add(`${parts[2]}->${parts[3]}`);
+            // tom:dyad:self:other:metric
+            // tom:effective:dyad:self:other:metric
+            if (parts.length >= 5) {
+              const selfIdx = parts[1] === 'effective' ? 3 : 2;
+              const otherIdx = parts[1] === 'effective' ? 4 : 3;
+              dyads.add(`${parts[selfIdx]}->${parts[otherIdx]}`);
+            }
           } else if (id.startsWith('affect:')) affectAtoms += 1;
           else if (id.startsWith('emo:')) emoAtoms += 1;
         }

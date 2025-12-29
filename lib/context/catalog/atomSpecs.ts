@@ -195,6 +195,30 @@ export const ATOM_SPECS: AtomSpec[] = [
     tags: ['rel']
   },
   {
+    specId: 'rel.base.metric',
+    idPattern: /^rel:base:(?<selfId>[a-zA-Z0-9_-]+):(?<otherId>[a-zA-Z0-9_-]+):(?<metric>[a-zA-Z0-9_-]+)$/,
+    title: p => `REL(base): ${p.metric} (${p.otherId})`,
+    meaning: p =>
+      `Базовый (биографический) prior отношения ${p.selfId}→${p.otherId} по метрике ${p.metric}. ` +
+      `Это не ToM и не текущая реакция — это "как обычно" (память/история).`,
+    scale: { min: 0, max: 1, lowMeans: 'низко', highMeans: 'высоко' },
+    producedBy: ['lib/relations/atomize.ts'],
+    consumedBy: ['lib/relations/deriveState.ts', 'lib/decision/*', 'lib/emotion/*', 'lib/context/stage1/socialProximity.ts'],
+    tags: ['rel', 'base']
+  },
+  {
+    specId: 'rel.state.metric',
+    idPattern: /^rel:state:(?<selfId>[a-zA-Z0-9_-]+):(?<otherId>[a-zA-Z0-9_-]+):(?<metric>[a-zA-Z0-9_-]+)$/,
+    title: p => `REL(state): ${p.metric} (${p.otherId})`,
+    meaning: p =>
+      `Текущее состояние отношения ${p.selfId}→${p.otherId} по метрике ${p.metric}, ` +
+      `полученное из rel:base + контекста + событий + ToM. Это слой, который должен влиять на ToM/эмоции/решения.`,
+    scale: { min: 0, max: 1, lowMeans: 'низко', highMeans: 'высоко' },
+    producedBy: ['lib/relations/deriveState.ts', 'lib/context/pipeline/stage0.ts'],
+    consumedBy: ['lib/context/stage1/socialProximity.ts', 'lib/decision/*', 'lib/emotion/*', 'lib/threat/*'],
+    tags: ['rel', 'state']
+  },
+  {
     specId: 'soc.proximity',
     idPattern: /^prox:(?<kind>friend|enemy|neutral):(?<selfId>[a-zA-Z0-9_-]+):(?<otherId>[a-zA-Z0-9_-]+)$/,
     title: p => `Социальная близость: ${p.kind} рядом (${p.otherId})`,
