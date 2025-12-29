@@ -669,9 +669,16 @@ export function buildGoalLabContext(
 
       const atomsAfterThreat = mergeKeepingOverrides(atomsForThreat, [...threatAtoms, threatAtom]).merged;
 
+      // --- CLOSE THE LOOP: social proximity must see final ToM/rel/effective layers ---
+      // We derive proximity again *after* ToM effective metrics + policy + priors have been materialized,
+      // so that appraisal/emotion react to "trusted ally nearby" / "threatening other nearby" in a
+      // character-specific way.
+      const socProxPostTom = deriveSocialProximityAtoms({ selfId, atoms: atomsAfterThreat });
+      const atomsAfterSocialLoop = mergeKeepingOverrides(atomsAfterThreat, socProxPostTom.atoms).merged;
+
       // appraisal -> emotions -> dyadic emotions
-      const appRes = deriveAppraisalAtoms({ selfId, atoms: atomsAfterThreat, agent: agentForPipeline });
-      const atomsAfterApp = mergeKeepingOverrides(atomsAfterThreat, appRes.atoms).merged;
+      const appRes = deriveAppraisalAtoms({ selfId, atoms: atomsAfterSocialLoop, agent: agentForPipeline });
+      const atomsAfterApp = mergeKeepingOverrides(atomsAfterSocialLoop, appRes.atoms).merged;
       const emoRes = deriveEmotionAtoms({ selfId, atoms: atomsAfterApp });
       const atomsAfterEmo = mergeKeepingOverrides(atomsAfterApp, emoRes.atoms).merged;
       const dyadEmo = deriveDyadicEmotionAtoms({ selfId, atoms: atomsAfterEmo });

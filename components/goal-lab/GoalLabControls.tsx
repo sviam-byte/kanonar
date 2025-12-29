@@ -453,20 +453,43 @@ export const GoalLabControls: React.FC<Props> = ({
       {/* Tab Content */}
       <div className="flex-1 min-h-0 flex flex-col p-2 bg-canon-bg overflow-y-auto custom-scrollbar">
 
-        {onDownloadScene && (
+        {(onDownloadScene || onImportSceneDumpV2) && (
           <div className="mb-2 p-2 rounded border border-canon-border/60 bg-canon-bg-light/20">
             <div className="text-[10px] font-bold text-canon-text uppercase tracking-wider mb-1">
-              Экспорт сцены
+              Сцена (импорт/экспорт)
             </div>
-            <button
-              type="button"
-              onClick={onDownloadScene}
-              className="w-full px-4 py-2 bg-canon-bg border border-canon-border text-canon-text text-xs font-bold rounded hover:bg-canon-bg-light/40 transition-colors"
-            >
-              Скачать всю сцену (JSON)
-            </button>
+
+            {/* Hidden input lives here so the button is always reachable */}
+            <input
+              ref={importInputRef}
+              type="file"
+              accept="application/json"
+              className="hidden"
+              onChange={(e) => handleImportFile(e.target.files?.[0] ?? null)}
+            />
+
+            {onImportSceneDumpV2 && (
+              <button
+                type="button"
+                onClick={handleImportClick}
+                className="w-full px-4 py-2 bg-canon-bg border border-canon-border text-canon-text text-xs font-bold rounded hover:bg-canon-bg-light/40 transition-colors"
+              >
+                Импортировать сцену (JSON)
+              </button>
+            )}
+
+            {onDownloadScene && (
+              <button
+                type="button"
+                onClick={onDownloadScene}
+                className={`w-full px-4 py-2 bg-canon-bg border border-canon-border text-canon-text text-xs font-bold rounded hover:bg-canon-bg-light/40 transition-colors ${onImportSceneDumpV2 ? 'mt-2' : ''}`}
+              >
+                Скачать всю сцену (JSON)
+              </button>
+            )}
+
             <div className="text-[10px] text-canon-text-light italic mt-1">
-              world + cast + atoms + overrides + расчёты (ToM/affect) + scene control
+              В файле: world + cast snapshots (у каждого ToM на каждого + affect/emotions) + overrides + events + scene control.
             </div>
           </div>
         )}
@@ -554,44 +577,8 @@ export const GoalLabControls: React.FC<Props> = ({
                     Running ticks updates internal state (affect, stress traces) and advances world time.
                 </div>
 
-                 <input
-                   ref={importInputRef}
-                   type="file"
-                   accept="application/json"
-                   className="hidden"
-                   onChange={(e) => handleImportFile(e.target.files?.[0] ?? null)}
-                 />
-
-                 {onImportSceneDumpV2 && (
-                   <div className="pt-2 border-t border-canon-border/60">
-                     <button
-                       type="button"
-                       onClick={handleImportClick}
-                       className="w-full px-4 py-2 bg-canon-bg border border-canon-border text-canon-text text-xs font-bold rounded hover:bg-canon-bg-light/40 transition-colors"
-                     >
-                       Import scene JSON (full snapshot)
-                     </button>
-                     <div className="text-[10px] text-canon-text-light italic mt-1">
-                       Loads: world + cast + ToM + affect + overrides + events + scene control.
-                     </div>
-                   </div>
-                 )}
-
-                 {onDownloadScene && (
-                   <div className="pt-2 border-t border-canon-border/60">
-                     <button
-                       type="button"
-                       onClick={onDownloadScene}
-                       className="w-full px-4 py-2 bg-canon-bg border border-canon-border text-canon-text text-xs font-bold rounded hover:bg-canon-bg-light/40 transition-colors"
-                     >
-                       Скачать всю сцену (JSON)
-                     </button>
-                     <div className="text-[10px] text-canon-text-light italic mt-1">
-                       Includes: world, participants, manual atoms, overrides, scene control, pipeline snapshot, goals.
-                     </div>
-                   </div>
-                 )}
-             </div>
+                 {/* Import/export buttons are pinned at the top of this panel (Scene (импорт/экспорт)). */}
+              </div>
         )}
         
         {activeTab === 'mods' && world && onWorldChange && (
