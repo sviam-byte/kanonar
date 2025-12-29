@@ -38,6 +38,52 @@ const createGrid = (
   return cells;
 };
 
+// --- TEST MAPS (for atom codex / hazards / axes debugging) ---
+const buildTestSafeRoomMap = (): LocationMap => {
+  const width = 10, height = 10;
+  const cells = createGrid(width, height, true, { defaultMaxOccupancy: 1 });
+  // walls
+  for (const c of cells) {
+    if (c.x === 0 || c.y === 0 || c.x === width - 1 || c.y === height - 1) {
+      c.walkable = false;
+      c.maxOccupancy = 0;
+      c.tags?.push('wall');
+      c.cover = 0.9;
+    }
+  }
+  const exits: LocationMapExit[] = [{ x: 5, y: height - 2, targetId: 'test.minefield', label: 'To Minefield' }];
+  return { id: 'test_safe_room_map', width, height, cells, visuals: [], exits };
+};
+
+const buildTestMinefieldMap = (): LocationMap => {
+  const width = 14, height = 10;
+  const cells = createGrid(width, height, true, { defaultMaxOccupancy: 1 });
+  // corridor with mines (hazards on cells)
+  for (const c of cells) {
+    // outer walls
+    if (c.x === 0 || c.y === 0 || c.x === width - 1 || c.y === height - 1) {
+      c.walkable = false;
+      c.maxOccupancy = 0;
+      c.tags?.push('wall');
+      continue;
+    }
+    // mine stripe in the middle
+    if (c.x >= 5 && c.x <= 8 && c.y >= 2 && c.y <= height - 3) {
+      c.tags?.push('hazard');
+      c.danger = Math.max(c.danger || 0, 0.7);
+      c.hazards = c.hazards || [];
+      c.hazards.push({ kind: 'mine', intensity: 0.9 });
+    }
+    // some cover objects
+    if ((c.x === 3 && c.y === 3) || (c.x === 10 && c.y === 6)) {
+      c.cover = 0.7;
+      c.tags?.push('cover');
+    }
+  }
+  const exits: LocationMapExit[] = [{ x: 2, y: height - 2, targetId: 'test.safe_room', label: 'Back to Safe Room' }];
+  return { id: 'test_minefield_map', width, height, cells, visuals: [], exits };
+};
+
 // 1. Throne Hall Map
 const buildThroneHallMap = (): LocationMap => {
     const width = 20;
@@ -688,6 +734,60 @@ export const allLocations: LocationEntity[] = [
     schedule: [],
     timeModes: [],
     history: { events: [], isTainted: false, isSanctuary: false }
+  },
+  // --- TEST LOCATIONS (debug atom codex / hazards / ctx axes) ---
+  {
+    entityId: "test.safe_room",
+    type: EntityType.Location,
+    title: "TEST: Safe Room",
+    versionTags: [Branch.Current],
+    kind: "test_room",
+    geometry: { shape: "rect", area: 80, capacity: 3, zIndex: 10 },
+    properties: {
+      privacy: "private",
+      control_level: 0.1,
+      visibility: 0.2,
+      noise: 0.05,
+      // explicit fields used by locationAtoms.ts fallbacks:
+      social_visibility: 0.05,
+      normative_pressure: 0.05,
+    } as any,
+    state: { locked: false, damaged: false, crowd_level: 0, alert_level: 0 } as any,
+    connections: { "test.minefield": { distance: 5, difficulty: 1 } } as any,
+    affordances: { allowedActions: ["rest", "hide", "observe"], forbiddenActions: [] } as any,
+    map: buildTestSafeRoomMap(),
+    physics: { mobilityCost: 1, collisionRisk: 0, climbable: false, jumpable: false, crawlable: false, weightLimit: 300, environmentalStress: 0 } as any,
+    hazards: [],
+    triggers: [],
+    crowd: { populationDensity: 0, npcNoiseLevel: 0, behaviors: [] } as any,
+    tomModifier: { noise: 0.05, authorityBias: 0, misinterpretationChance: 0.02, privacyBias: 0.6 } as any,
+    riskReward: { riskIndex: 0.05, rewardIndex: 0.2, safePaths: [], dangerPaths: [], resourceOpportunities: [] } as any,
+  },
+  {
+    entityId: "test.minefield",
+    type: EntityType.Location,
+    title: "TEST: Minefield",
+    versionTags: [Branch.Current],
+    kind: "test_hazard_zone",
+    geometry: { shape: "open", area: 160, capacity: 10, zIndex: 10 },
+    properties: {
+      privacy: "public",
+      control_level: 0.2,
+      visibility: 0.95,
+      noise: 0.4,
+      social_visibility: 0.9,
+      normative_pressure: 0.2,
+    } as any,
+    state: { locked: false, damaged: false, crowd_level: 0.1, alert_level: 0.2 } as any,
+    connections: { "test.safe_room": { distance: 5, difficulty: 2 } } as any,
+    affordances: { allowedActions: ["observe", "move", "escape"], forbiddenActions: ["rest"] } as any,
+    map: buildTestMinefieldMap(),
+    physics: { mobilityCost: 1.2, collisionRisk: 0.05, climbable: false, jumpable: false, crawlable: false, weightLimit: 300, environmentalStress: 0.2 } as any,
+    hazards: [{ kind: 'minefield', intensity: 0.6 }],
+    triggers: [],
+    crowd: { populationDensity: 0.1, npcNoiseLevel: 0.1, behaviors: [] } as any,
+    tomModifier: { noise: 0.2, authorityBias: 0, misinterpretationChance: 0.08, privacyBias: -0.2 } as any,
+    riskReward: { riskIndex: 0.9, rewardIndex: 0.1, safePaths: [], dangerPaths: [], resourceOpportunities: [] } as any,
   },
   DEMO_LOCATION
 ];

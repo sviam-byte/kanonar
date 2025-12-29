@@ -1,6 +1,7 @@
 
 // lib/context/axes/deriveAxes.ts
 import { ContextAtom, ContextAxesVector, ContextTuning, ContextAtomLike, ContextSignalId } from '../v2/types';
+import { normalizeAtom } from '../v2/infer';
 
 function clamp01(x: number) {
   if (!Number.isFinite(x)) return 0;
@@ -47,7 +48,7 @@ function atom(
   kind: string = 'ctx_axis',
   notes: string[] = ['axis from deriveAxes'],
 ): ContextAtom {
-  return {
+  return normalizeAtom({
     id,
     ns: 'ctx',
     kind,
@@ -57,7 +58,7 @@ function atom(
     confidence: 1,
     trace: { usedAtomIds, parts, notes },
     label: `${id.split(':')[1]}:${Math.round(clamp01(magnitude) * 100)}%`
-  } as any;
+  } as any);
 }
 
 const AXES = [

@@ -8,6 +8,10 @@ import { resolveAtomSpec } from '../catalog/atomSpecs';
 function codeFromResolvedSpec(specId: string, params: Record<string, string>): string {
   // “кварк” = стабильный код смысла (не уникальный), удобный для законов/молекул позже
   switch (specId) {
+    case 'world.tick':
+      return 'world.tick';
+    case 'world.location.ref':
+      return 'world.location';
     case 'ctx.axis':
       return `ctx.axis.${params.axis}`;
     case 'ctx.source':
@@ -20,10 +24,49 @@ function codeFromResolvedSpec(specId: string, params: Record<string, string>): s
       return `world.map.${params.metric}`;
     case 'world.env.hazard':
       return 'world.env.hazard';
+    case 'tom.dyad.threat':
+      return 'tom.dyad.threat';
+    case 'tom.dyad.metric':
+      return `tom.dyad.${params.metric}`;
+    case 'tom.effective.dyad.metric':
+      return `tom.effective.dyad.${params.metric}`;
+    case 'rel.tag':
+      return 'rel.tag';
+    case 'rel.base.metric':
+      return `rel.base.${params.metric}`;
+    case 'rel.state.metric':
+      return `rel.state.${params.metric}`;
+    case 'rel.prior.metric':
+      return `rel.prior.${params.metric}`;
+    case 'rel.label':
+      return 'rel.label';
+    case 'cap.metric':
+      return `cap.${params.key}`;
+    case 'feat.metric':
+      return `feat.${params.scope}.${params.key}`;
     case 'obs.nearby':
       return 'obs.nearby';
     case 'obs.generic':
       return `obs.${params.channel}`;
+    // appraisals/emotions (canonical)
+    case 'appraisal.metric':
+      return `app.${params.key}`;
+    case 'emotion.core':
+      return `emo.${params.key}`;
+    case 'emotion.axis':
+      return `emo.${params.key}`;
+    case 'emotion.axis.valence':
+      return `emo.valence`;
+    case 'emotion.dyad':
+      return `emo.dyad.${params.key}`;
+    // mind/lens/trace
+    case 'mind.metric':
+      return `mind.metric.${params.key}`;
+    case 'lens.suspicion':
+      return `lens.suspicion`;
+    case 'trace.metric':
+      return `trace.${params.key}`;
+    // legacy fallback (old snapshots)
     case 'app.generic':
       return `app.${params.channel}`;
     case 'emo.generic':
@@ -42,6 +85,7 @@ function fallbackCodeFromId(ns: AtomNamespace, kind: string, id: string): string
   if (parts[0] === 'obs' && parts[1]) return `obs.${parts[1]}`;
   if (parts[0] === 'emo' && parts[1]) return `emo.${parts[1]}`;
   if (parts[0] === 'app' && parts[1]) return `app.${parts[1]}`;
+  if (parts[0] === 'mind' && parts[1]) return `mind.${parts[1]}`;
   if (parts[0] === 'tom' && parts[1]) return `tom.${parts[1]}`;
   return `${ns}.${kind || 'atom'}`;
 }

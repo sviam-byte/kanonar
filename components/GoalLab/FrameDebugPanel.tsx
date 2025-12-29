@@ -22,6 +22,12 @@ export function FrameDebugPanel({
       threat?: { env: number; soc: number; auth: number; unc: number; body: number; sc: number; final: number };
       ctx?: any;
     };
+    diagnostics?: {
+      totalAtoms: number;
+      missingSpec: number;
+      missingCode: number;
+      unknownQuark: number;
+    };
   } | null;
 }) {
   const [selected, setSelected] = useState<Atom | null>(null);
@@ -37,10 +43,30 @@ export function FrameDebugPanel({
 
   if (!frame) return null;
 
+  const diag = frame.diagnostics;
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 p-4 bg-canon-bg-light border border-canon-border rounded-xl">
       <div className="lg:col-span-7 flex flex-col gap-4">
-        <h3 className="text-xl font-bold text-canon-accent uppercase tracking-wider px-1">Context Atoms</h3>
+        <div className="flex items-end justify-between gap-3 px-1">
+          <h3 className="text-xl font-bold text-canon-accent uppercase tracking-wider">Context Atoms</h3>
+          {diag ? (
+            <div className="flex gap-2 text-[10px] font-mono">
+              <span className="px-2 py-1 rounded border border-white/10 bg-black/30">
+                total: <b className="text-white">{diag.totalAtoms}</b>
+              </span>
+              <span className="px-2 py-1 rounded border border-white/10 bg-black/30">
+                missingSpec: <b className={diag.missingSpec ? "text-red-400" : "text-green-400"}>{diag.missingSpec}</b>
+              </span>
+              <span className="px-2 py-1 rounded border border-white/10 bg-black/30">
+                missingCode: <b className={diag.missingCode ? "text-red-400" : "text-green-400"}>{diag.missingCode}</b>
+              </span>
+              <span className="px-2 py-1 rounded border border-white/10 bg-black/30">
+                unknownQuark: <b className={diag.unknownQuark ? "text-amber-400" : "text-green-400"}>{diag.unknownQuark}</b>
+              </span>
+            </div>
+          ) : null}
+        </div>
         <AtomExplorer
           atoms={frame.atoms}
           onSelect={(a) => setSelected(a)}

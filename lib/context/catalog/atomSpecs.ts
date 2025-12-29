@@ -88,6 +88,17 @@ export const ATOM_SPECS: AtomSpec[] = [
     tags: ['world','location']
   },
   {
+    specId: 'world.tick',
+    idPattern: /^world:tick:(?<tick>[0-9]+)$/,
+    title: p => `Мир: тик ${p.tick}`,
+    meaning: p =>
+      `Текущий дискретный тик симуляции. Используется как якорь воспроизводимости и для временных правил позже.`,
+    scale: { min: 0, max: 1, lowMeans: 'N/A', highMeans: 'N/A' },
+    producedBy: ['lib/context/pipeline/worldFacts.ts'],
+    consumedBy: ['lib/goal-lab/*'],
+    tags: ['world','time']
+  },
+  {
     // Covers ids emitted by:
     // - lib/context/sources/locationAtoms.ts
     // - lib/context/pipeline/worldFacts.ts (world:loc:* seeds)
@@ -207,27 +218,6 @@ export const ATOM_SPECS: AtomSpec[] = [
     tags: ['obs']
   },
   {
-    specId: 'app.generic',
-    idPattern: /^app:(?<channel>[a-zA-Z0-9_-]+):(?<selfId>[a-zA-Z0-9_-]+)$/,
-    title: p => `Appraisal: ${p.channel} (${p.selfId})`,
-    meaning: p =>
-      `Оценка ситуации (appraisal) для агента ${p.selfId}: канал "${p.channel}". ` +
-      `Appraisal — промежуточный слой между контекстом (ctx/threat/mind/world) и эмоциями (emo:*).`,
-    scale: { min: 0, max: 1, lowMeans: 'низко', highMeans: 'высоко' },
-    tags: ['app','emotionLayer']
-  },
-  {
-    specId: 'emo.generic',
-    idPattern: /^emo:(?<channel>[a-zA-Z0-9_-]+):(?<selfId>[a-zA-Z0-9_-]+)$/,
-    title: p => `Emotion: ${p.channel} (${p.selfId})`,
-    meaning: p =>
-      `Эмоция/аффективный канал для агента ${p.selfId}: "${p.channel}". ` +
-      `Считается из appraisal-атомов (app:*), которые, в свою очередь, считаются из ctx/threat/mind/world. ` +
-      `Диапазон по умолчанию 0..1 (valence может храниться как 0..1 при внутреннем -1..1).`,
-    scale: { min: 0, max: 1, lowMeans: 'нет/слабо', highMeans: 'сильно' },
-    tags: ['emo','emotionLayer']
-  },
-  {
     specId: 'tom.dyad.trust',
     idPattern: /^tom:dyad:(?<selfId>[a-zA-Z0-9_-]+):(?<otherId>[a-zA-Z0-9_-]+):trust$/,
     title: p => `ToM: доверие к ${p.otherId}`,
@@ -299,6 +289,53 @@ export const ATOM_SPECS: AtomSpec[] = [
     producedBy: ['lib/relations/deriveState.ts', 'lib/context/pipeline/stage0.ts'],
     consumedBy: ['lib/context/stage1/socialProximity.ts', 'lib/decision/*', 'lib/emotion/*', 'lib/threat/*'],
     tags: ['rel', 'state']
+  },
+  {
+    specId: 'rel.prior.metric',
+    idPattern: /^rel:prior:(?<selfId>[a-zA-Z0-9_-]+):(?<otherId>[a-zA-Z0-9_-]+):(?<metric>[a-zA-Z0-9_-]+)$/,
+    title: p => `REL(prior): ${p.metric} (${p.otherId})`,
+    meaning: p =>
+      `Быстрый prior для отношения ${p.selfId}→${p.otherId} по метрике ${p.metric} (обычно trust/threat), ` +
+      `используется как семя для rel:state или как короткий путь в отсутствие памяти.`,
+    scale: { min: 0, max: 1, lowMeans: 'низко', highMeans: 'высоко' },
+    producedBy: ['lib/relations/atomizeRelations.ts'],
+    consumedBy: ['lib/relations/deriveState.ts', 'lib/decision/*', 'lib/emotion/*'],
+    tags: ['rel', 'prior']
+  },
+  {
+    specId: 'rel.label',
+    idPattern: /^rel:label:(?<selfId>[a-zA-Z0-9_-]+):(?<otherId>[a-zA-Z0-9_-]+)$/,
+    title: p => `REL(label): ярлык для ${p.otherId}`,
+    meaning: p =>
+      `Краткий человеко-читаемый ярлык отношений ${p.selfId}→${p.otherId} (например “boss”, “ally”). ` +
+      `Это не числовая метрика, magnitude обычно 1.`,
+    scale: { min: 0, max: 1, lowMeans: 'не используется', highMeans: 'активно' },
+    producedBy: ['lib/relations/atomizeRelations.ts'],
+    consumedBy: ['components/goal-lab/*'],
+    tags: ['rel', 'label']
+  },
+  {
+    specId: 'cap.metric',
+    idPattern: /^cap:(?<key>[a-zA-Z0-9_.-]+):(?<selfId>[a-zA-Z0-9_-]+)$/,
+    title: p => `CAP: ${p.key} (${p.selfId})`,
+    meaning: p =>
+      `Способность/компетенция агента ${p.selfId} по каналу ${p.key} (0..1).`,
+    scale: { min: 0, max: 1, lowMeans: 'слабо', highMeans: 'сильно' },
+    producedBy: ['lib/capabilities/atomizeCapabilities.ts'],
+    consumedBy: ['lib/decision/*'],
+    tags: ['cap']
+  },
+  {
+    specId: 'feat.metric',
+    idPattern: /^feat:(?<scope>char|loc|scene):(?<entityId>[a-zA-Z0-9_-]+):(?<key>[a-zA-Z0-9_.-]+)$/,
+    title: p => `FEAT(${p.scope}): ${p.key} (${p.entityId})`,
+    meaning: p =>
+      `Нормированная “фича” (черта/состояние/контекстный параметр) уровня ${p.scope} ` +
+      `для сущности ${p.entityId} по ключу ${p.key}.`,
+    scale: { min: 0, max: 1, lowMeans: 'низко', highMeans: 'высоко' },
+    producedBy: ['lib/features/atomize.ts'],
+    consumedBy: ['lib/context/lens/*', 'lib/context/axes/*', 'lib/emotion/*', 'lib/threat/*', 'lib/decision/*'],
+    tags: ['feat']
   },
   {
     specId: 'soc.proximity',

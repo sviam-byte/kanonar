@@ -1,6 +1,7 @@
 // lib/context/v2/describeAtom.ts
 import type { ContextAtom } from './types';
 import { resolveAtomSpec } from '../catalog/atomSpecs';
+import { describeQuark } from '../codex/quarkRegistry';
 
 export type AtomDescription = {
   id: string;
@@ -21,6 +22,14 @@ export type AtomDescription = {
   kind?: string;
   origin?: string;
   source?: string;
+  quark?: {
+    code: string;
+    title: string;
+    meaning: string;
+    family: string;
+    tags?: string[];
+    scale?: any;
+  };
 };
 
 export function describeAtom(atom: ContextAtom): AtomDescription {
@@ -28,6 +37,8 @@ export function describeAtom(atom: ContextAtom): AtomDescription {
   const title = resolved ? resolved.spec.title(resolved.params) : (atom.label || atom.id);
   const meaning = resolved ? resolved.spec.meaning(resolved.params) : 'Нет спецификации для этого атома (нужен AtomSpec).';
   const formula = resolved?.spec.formula ? resolved.spec.formula(resolved.params) : undefined;
+
+  const q = describeQuark((atom as any).code);
 
   return {
     id: atom.id,
@@ -42,5 +53,13 @@ export function describeAtom(atom: ContextAtom): AtomDescription {
     kind: (atom as any).kind,
     origin: (atom as any).origin,
     source: (atom as any).source,
+    quark: {
+      code: q.code,
+      title: q.title,
+      meaning: q.meaning,
+      family: q.family,
+      tags: q.tags,
+      scale: q.scale
+    }
   };
 }
