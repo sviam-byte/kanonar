@@ -90,9 +90,92 @@ export function deriveAppraisalAtoms(args: { selfId: string; atoms: ContextAtom[
   const pressureAdj = clamp01((0.5 + (pressure - 0.5) * pressureGain) + 0.30 * (trSensitive - 0.5));
   const controlAdj = clamp01(0.5 + (control - 0.5) * controlGain - 0.10 * (uncAdj - 0.5));
 
+  // ---------- social layer (ToM -> appraisal) ----------
+  // If a supportive person is nearby, it should reduce threat & boost control/attachment.
+  // If a threatening person is nearby, it should do the opposite.
+  const usedSocial: string[] = [];
+  type DyadSlot = { trust?: number; support?: number; threat?: number };
+  const dyads = new Map<string, DyadSlot>();
+
+  for (const a of atoms) {
+    const id = String((a as any)?.id ?? '');
+    if (!id.startsWith(`tom:effective:dyad:${selfId}:`)) continue;
+    const parts = id.split(':'); // tom:effective:dyad:self:other:metric
+    if (parts.length < 6) continue;
+    const otherId = parts[4];
+    const metric = parts[5];
+    const m = (a as any)?.magnitude;
+    if (typeof m !== 'number') continue;
+    const slot = dyads.get(otherId) ?? (dyads.set(otherId, {}), dyads.get(otherId)!);
+    if (metric === 'trust') slot.trust = m;
+    if (metric === 'support') slot.support = m;
+    if (metric === 'threat') slot.threat = m;
+    usedSocial.push(id);
+  }
+
+  const proximity01 = (otherId: string): number => {
+    // Prefer explicit observation, then proximity atoms, then relationship closeness.
+    const idObs = `obs:nearby:${selfId}:${otherId}`;
+    const obs = getMag(atoms, idObs, null as any);
+    if (typeof obs === 'number') {
+      usedSocial.push(idObs);
+      return clamp01(obs);
+    }
+
+    let best = 0;
+    for (const a of atoms) {
+      const id = String((a as any)?.id ?? '');
+      const m = (a as any)?.magnitude;
+      if (typeof m !== 'number') continue;
+      if ((id.startsWith('prox:') || id.startsWith('soc:')) && id.includes(`:${selfId}:`) && id.endsWith(`:${otherId}`)) {
+        best = Math.max(best, m);
+        usedSocial.push(id);
+      }
+    }
+
+    if (best > 0) return clamp01(best);
+    const idRel = `rel:base:${selfId}:${otherId}:closeness`;
+    const rel = getMag(atoms, idRel, 0);
+    if (typeof rel === 'number') usedSocial.push(idRel);
+    return clamp01(rel);
+  };
+
+  let pNoSupport = 1;
+  let pNoThreat = 1;
+  for (const [otherId, slot] of dyads.entries()) {
+    const close = proximity01(otherId);
+    if (close <= 0) continue;
+    const trust = clamp01(slot.trust ?? 0.5);
+    const support = clamp01(slot.support ?? 0);
+    const threatToMe = clamp01(slot.threat ?? 0);
+
+    const s_i = clamp01(close * support * (0.35 + 0.65 * trust));
+    const t_i = clamp01(close * threatToMe * (0.30 + 0.70 * (1 - trust)));
+
+    pNoSupport *= (1 - s_i);
+    pNoThreat *= (1 - t_i);
+  }
+
+  const socialSupport01 = clamp01(1 - pNoSupport);
+  const socialThreat01 = clamp01(1 - pNoThreat);
+
+  const threatAdj2 = clamp01(threatAdj + 0.45 * socialThreat01 - 0.30 * socialSupport01);
+  const uncAdj2 = clamp01(uncAdj + 0.10 * socialThreat01 - 0.08 * socialSupport01);
+  const controlAdj2 = clamp01(controlAdj + 0.25 * socialSupport01 - 0.20 * socialThreat01);
+
+  // pressure is mostly normative/contextual, but social threat slightly increases it
+  const pressureAdj2 = clamp01(pressureAdj + 0.10 * socialThreat01);
+
   // attachment: keep mostly contextual, but allow mild stress erosion
   const attachment0 = clamp01(0.75 * intimacy0 + 0.25 * (1 - pub0));
-  const attachment = amp01(attachment0, lerp(1.00, 0.80, bStress));
+  const attachmentBase = amp01(attachment0, lerp(1.00, 0.80, bStress));
+  const attachment = clamp01(
+    attachmentBase
+    - 0.12 * (threatAdj2 - 0.5)
+    - 0.05 * (pressureAdj2 - 0.5)
+    + 0.35 * socialSupport01
+    - 0.15 * socialThreat01
+  );
 
   const grief0 = getMag(atoms, `ctx:grief:${selfId}`, 0);
   const pain0 = getMag(atoms, `ctx:pain:${selfId}`, 0);
@@ -121,6 +204,7 @@ export function deriveAppraisalAtoms(args: { selfId: string; atoms: ContextAtom[
     `feat:char:${selfId}:body.fatigue`,
     `feat:char:${selfId}:body.pain`,
     `feat:char:${selfId}:body.sleepDebt`,
+    ...usedSocial,
   ].filter(Boolean) as string[];
 
   const mk = (key: string, v: number, parts: any) =>
@@ -146,17 +230,29 @@ export function deriveAppraisalAtoms(args: { selfId: string; atoms: ContextAtom[
   };
 
   const atomsOut: ContextAtom[] = [
-    mk('threat', threatAdj, { ...partsBase, threat0, threat, threatAdj }),
-    mk('uncertainty', uncAdj, { ...partsBase, unc0, unc, uncAdj }),
-    mk('control', controlAdj, { ...partsBase, cover0, escape0, control0, control, controlAdj }),
-    mk('pressure', pressureAdj, { ...partsBase, norm0, pub0, pressure0, pressure, pressureAdj }),
-    mk('attachment', attachment, { ...partsBase, intimacy0, pub0, attachment0, attachment }),
+    mk('socialSupport', socialSupport01, { note: 'from tom:effective dyads + proximity' }),
+    mk('socialThreat', socialThreat01, { note: 'from tom:effective dyads + proximity' }),
+    mk('threat', threatAdj2, { ...partsBase, threat0, threat, threatAdj: threatAdj2, socialSupport01, socialThreat01 }),
+    mk('uncertainty', uncAdj2, { ...partsBase, unc0, unc, uncAdj: uncAdj2, socialSupport01, socialThreat01 }),
+    mk('control', controlAdj2, { ...partsBase, cover0, escape0, control0, control, controlAdj: controlAdj2, socialSupport01, socialThreat01 }),
+    mk('pressure', pressureAdj2, { ...partsBase, norm0, pub0, pressure0, pressure, pressureAdj: pressureAdj2, socialThreat01 }),
+    mk('attachment', attachment, { ...partsBase, intimacy0, pub0, attachment0, attachmentBase, attachment, socialSupport01, socialThreat01 }),
     mk('loss', loss, { grief0, pain0, loss }),
     mk('goalBlock', goalBlock, { tp0, sc0, goalBlock }),
   ];
 
   return {
-    appraisal: { threat: threatAdj, uncertainty: uncAdj, control: controlAdj, pressure: pressureAdj, attachment, loss, goalBlock },
+    appraisal: {
+      socialSupport: socialSupport01,
+      socialThreat: socialThreat01,
+      threat: threatAdj2,
+      uncertainty: uncAdj2,
+      control: controlAdj2,
+      pressure: pressureAdj2,
+      attachment,
+      loss,
+      goalBlock,
+    },
     atoms: atomsOut,
     usedAtomIds: used,
   };
