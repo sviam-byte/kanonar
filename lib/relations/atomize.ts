@@ -8,13 +8,50 @@ function clamp01(x: number) {
   return Math.max(0, Math.min(1, x));
 }
 
-export function atomizeRelBase(selfId: string, rel: RelationMemory): ContextAtom[] {
+export function atomizeRelBase(selfId: string, rel: RelationMemory, otherIds?: string[]): ContextAtom[] {
   const out: ContextAtom[] = [];
-  if (!rel?.edges) return out;
+  const edges = rel?.edges || {};
 
-  for (const otherId of Object.keys(rel.edges)) {
-    const e = rel.edges[otherId];
+  // iterate requested dyads first, then explicit edges
+  const ordered: string[] = [];
+  const seen = new Set<string>();
+  const push = (id: string) => {
+    if (id && !seen.has(id)) {
+      seen.add(id);
+      ordered.push(id);
+    }
+  };
+  for (const id of (otherIds || [])) push(String(id));
+  for (const id of Object.keys(edges)) push(String(id));
+
+  const defaultEdge = () => ({
+    closeness: 0.10,
+    loyalty: 0.08,
+    hostility: 0.02,
+    dependency: 0.05,
+    authority: 0.50,
+    tags: [],
+    sources: [{ type: 'default', ref: 'seed' }]
+  });
+
+  const deriveHierarchy = (e: any) => clamp01(e.authority ?? 0.50); // neutral=0.5
+  const deriveIntimacy = (e: any) => {
+    const c = clamp01(e.closeness ?? 0.10);
+    const base = 0.05 + 0.90 * Math.pow(c, 1.15);
+    const tags = new Set((e.tags || []).map(String));
+    const bonus =
+      (tags.has('lover') ? 0.25 : 0) +
+      (tags.has('family') ? 0.18 : 0) +
+      (tags.has('friend') ? 0.10 : 0) +
+      (tags.has('protector') ? 0.05 : 0);
+    return clamp01(base + bonus);
+  };
+
+  for (const otherId of ordered) {
+    const e = (edges as any)[otherId] || defaultEdge();
     const used = (e.sources || []).map(s => `src:${s.type}:${s.ref || ''}`).slice(0, 6);
+    const hasRealSource = (e.sources || []).some((s: any) => s?.type && s.type !== 'default');
+    const confidence = hasRealSource ? 1 : 0.35;
 
     const emit = (name: string, v: number) => out.push(normalizeAtom({
       id: `rel:base:${selfId}:${otherId}:${name}`,
@@ -23,7 +60,7 @@ export function atomizeRelBase(selfId: string, rel: RelationMemory): ContextAtom
       origin: 'world',
       source: 'rel_base',
       magnitude: clamp01(v),
-      confidence: 1,
+      confidence,
       subject: selfId,
       target: otherId,
       tags: ['rel', 'base', name, ...(e.tags || [])],
@@ -36,6 +73,8 @@ export function atomizeRelBase(selfId: string, rel: RelationMemory): ContextAtom
     emit('hostility', e.hostility ?? 0.0);
     emit('dependency', e.dependency ?? 0.0);
     emit('authority', e.authority ?? 0.0);
+    emit('hierarchy', deriveHierarchy(e));
+    emit('intimacy', deriveIntimacy(e));
 
     // also emit tag flags for fast gates (0/1)
     for (const t of (e.tags || [])) {

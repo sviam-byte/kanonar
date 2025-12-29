@@ -60,6 +60,9 @@ export function applyCharacterLens(args: {
   const paranoia = getMag(atoms, `feat:char:${selfId}:trait.paranoia`, 0.5);
   const sensitivity = getMag(atoms, `feat:char:${selfId}:trait.sensitivity`, 0.5);
   const experience = getMag(atoms, `feat:char:${selfId}:trait.experience`, 0.2);
+  const ambiguityTol = getMag(atoms, `feat:char:${selfId}:trait.ambiguityTolerance`, 0.5);
+  const hpaReactivity = getMag(atoms, `feat:char:${selfId}:trait.hpaReactivity`, 0.5);
+  const normSens = getMag(atoms, `feat:char:${selfId}:trait.normSensitivity`, sensitivity);
   const stress = getMag(atoms, `feat:char:${selfId}:body.stress`, 0.3);
   const fatigue = getMag(atoms, `feat:char:${selfId}:body.fatigue`, 0.3);
 
@@ -84,9 +87,9 @@ export function applyCharacterLens(args: {
   const amplify = (x: number, k: number) => clamp01(0.5 + (x - 0.5) * k);
 
   // коэффициенты усиления (чтобы персонажи реально расходились)
-  const kDanger = 1.0 + 1.2 * (paranoia - 0.5) + 0.6 * (stress - 0.5);           // паранойя ↑ => danger субъективно ↑
-  const kUnc = 1.0 + 0.8 * (0.5 - experience) + 0.5 * (fatigue - 0.5);        // опыт ↓/усталость ↑ => uncertainty ↑
-  const kNorm = 1.0 + 1.4 * (sensitivity - 0.5) + 0.4 * (pub0 - 0.5);          // чувствит. к репутации ↑ => normPressure ↑
+  const kDanger = 1.0 + 1.2 * (paranoia - 0.5) + 0.6 * (stress - 0.5) + 0.45 * (hpaReactivity - 0.5); // паранойя ↑ => danger субъективно ↑
+  const kUnc = 1.0 + 0.9 * (0.5 - ambiguityTol) + 0.8 * (0.5 - experience) + 0.5 * (fatigue - 0.5); // опыт ↓/усталость ↑ => uncertainty ↑
+  const kNorm = 1.0 + 1.4 * (normSens - 0.5) + 0.4 * (pub0 - 0.5);          // чувствит. к репутации ↑ => normPressure ↑
   const kPub = 1.0 + 0.8 * (sensitivity - 0.5);                               // социальная чувствит. ↑ => publicness “ощущается” выше
   const kSurv = 1.0 + 1.1 * (paranoia - 0.5);                                  // паранойя ↑ => surveillance субъективно выше
   const kCrowd = 1.0 + 0.7 * (stress - 0.5) + 0.7 * (paranoia - 0.5);            // стресс/паранойя ↑ => crowd “давит” сильнее
@@ -104,6 +107,9 @@ export function applyCharacterLens(args: {
     `feat:char:${selfId}:trait.paranoia`,
     `feat:char:${selfId}:trait.sensitivity`,
     `feat:char:${selfId}:trait.experience`,
+    `feat:char:${selfId}:trait.ambiguityTolerance`,
+    `feat:char:${selfId}:trait.hpaReactivity`,
+    `feat:char:${selfId}:trait.normSensitivity`,
     `feat:char:${selfId}:body.stress`,
     `feat:char:${selfId}:body.fatigue`,
     `ctx:danger:${selfId}`,
