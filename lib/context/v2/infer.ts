@@ -8,6 +8,10 @@ import { resolveAtomSpec } from '../catalog/atomSpecs';
 function codeFromResolvedSpec(specId: string, params: Record<string, string>): string {
   // “кварк” = стабильный код смысла (не уникальный), удобный для законов/молекул позже
   switch (specId) {
+    case 'world.tick':
+      return 'world.tick';
+    case 'world.location.ref':
+      return 'world.location';
     case 'ctx.axis':
       return `ctx.axis.${params.axis}`;
     case 'ctx.source':
@@ -20,6 +24,26 @@ function codeFromResolvedSpec(specId: string, params: Record<string, string>): s
       return `world.map.${params.metric}`;
     case 'world.env.hazard':
       return 'world.env.hazard';
+    case 'tom.dyad.threat':
+      return 'tom.dyad.threat';
+    case 'tom.dyad.metric':
+      return `tom.dyad.${params.metric}`;
+    case 'tom.effective.dyad.metric':
+      return `tom.effective.dyad.${params.metric}`;
+    case 'rel.tag':
+      return 'rel.tag';
+    case 'rel.base.metric':
+      return `rel.base.${params.metric}`;
+    case 'rel.state.metric':
+      return `rel.state.${params.metric}`;
+    case 'rel.prior.metric':
+      return `rel.prior.${params.metric}`;
+    case 'rel.label':
+      return 'rel.label';
+    case 'cap.metric':
+      return `cap.${params.key}`;
+    case 'feat.metric':
+      return `feat.${params.scope}.${params.key}`;
     case 'obs.nearby':
       return 'obs.nearby';
     case 'obs.generic':

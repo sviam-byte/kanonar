@@ -437,7 +437,11 @@ export const GoalLabResults: React.FC<Props> = ({
               onSelectedAtomIdChange={setSelectedAtomId}
               renderDetails={(atom) => (
                 <div className="p-4">
-                  <AtomInspector atom={atom} allAtoms={currentAtoms} />
+                  <AtomInspector
+                    atom={atom}
+                    allAtoms={currentAtoms}
+                    onJumpToAtomId={(id) => setSelectedAtomId(id)}
+                  />
                 </div>
               )}
             />
