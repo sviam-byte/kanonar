@@ -112,6 +112,17 @@ export const ATOM_SPECS: AtomSpec[] = [
     tags: ['world','time']
   },
   {
+    specId: 'world.tick',
+    idPattern: /^world:tick:(?<tick>[0-9]+)$/,
+    title: p => `Мир: тик ${p.tick}`,
+    meaning: p =>
+      `Текущий дискретный тик симуляции. Используется как якорь воспроизводимости и для временных правил позже.`,
+    scale: { min: 0, max: 1, lowMeans: 'N/A', highMeans: 'N/A' },
+    producedBy: ['lib/context/pipeline/worldFacts.ts'],
+    consumedBy: ['lib/goal-lab/*'],
+    tags: ['world','time']
+  },
+  {
     // Covers ids emitted by:
     // - lib/context/sources/locationAtoms.ts
     // - lib/context/pipeline/worldFacts.ts (world:loc:* seeds)

@@ -37,6 +37,23 @@ export function buildDebugFrameFromSnapshot(snapshot: GoalLabSnapshotV1) {
       meta: (norm as any).trace ?? null,
     };
   });
+  const atoms = (snapshot.atoms || []).map(a => ({
+    id: String((a as any).id),
+    m: Number((a as any).magnitude ?? 0),
+    c: Number((a as any).confidence ?? 1),
+    o: ((a as any).origin ?? 'derived') as AtomOrigin,
+    // keep codex-decode fields for UI explain/debug
+    code: (a as any).code ?? null,
+    specId: (a as any).specId ?? null,
+    params: (a as any).params ?? null,
+    label: (a as any).label ?? null,
+    kind: (a as any).kind ?? null,
+    ns: (a as any).ns ?? null,
+    source: (a as any).source ?? null,
+
+    // trace/meta (shape in repo is usually trace:{usedAtomIds,parts,notes...})
+    meta: (a as any).trace ?? (a as any).meta ?? null,
+  }));
 
   const index: Record<string, any> = {};
   for (const a of atoms) index[a.id] = a;
