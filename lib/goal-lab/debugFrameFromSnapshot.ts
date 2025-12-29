@@ -1,6 +1,7 @@
 import type { GoalLabSnapshotV1 } from './snapshotTypes';
 import { normalizeAtom } from '../context/v2/infer';
 import { describeQuark } from '../context/codex/quarkRegistry';
+import { resolveAtomSpec } from '../context/catalog/atomSpecs';
 
 type AtomOrigin = 'world' | 'obs' | 'override' | 'derived';
 
@@ -77,11 +78,33 @@ export function buildDebugFrameFromSnapshot(snapshot: GoalLabSnapshotV1) {
     final: index[`threat:final:${selfId}`]?.m ?? 0,
   };
 
+  // Coverage diagnostics: which atoms lack AtomSpec / code / known quark definition
+  const missingSpecIds: string[] = [];
+  const missingCodeIds: string[] = [];
+  const unknownQuarkCodes: string[] = [];
+
+  for (const a of atoms) {
+    const resolved = resolveAtomSpec(a.id);
+    const hasSpec = !!(a.specId || resolved);
+    if (!hasSpec) missingSpecIds.push(a.id);
+    if (!a.code) missingCodeIds.push(a.id);
+    const q = describeQuark(a.code);
+    if (q.family === 'missing' && a.code) unknownQuarkCodes.push(String(a.code));
+  }
+
+  const uniq = (xs: string[]) => Array.from(new Set(xs));
+  const sortAlpha = (xs: string[]) => uniq(xs).sort((a, b) => a.localeCompare(b));
+
   const diag = {
     totalAtoms: atoms.length,
-    missingSpec: atoms.filter(a => !a.specId).length,
-    missingCode: atoms.filter(a => !a.code).length,
-    unknownQuark: atoms.filter(a => describeQuark(a.code).family === 'missing').length
+    missingSpec: missingSpecIds.length,
+    missingCode: missingCodeIds.length,
+    unknownQuark: unknownQuarkCodes.length,
+
+    // lists for UI (Pipeline Debug Area)
+    missingSpecIds: sortAlpha(missingSpecIds).slice(0, 120),
+    missingCodeIds: sortAlpha(missingCodeIds).slice(0, 120),
+    unknownQuarkCodes: sortAlpha(unknownQuarkCodes).slice(0, 120),
   };
 
   return {

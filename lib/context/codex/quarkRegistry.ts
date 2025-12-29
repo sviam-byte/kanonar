@@ -49,6 +49,10 @@ const BASE: QuarkDef[] = [
     tags: ['hazard','world'],
     scale: { min: 0, max: 1, lowMeans: 'безопасно', highMeans: 'крайне опасно', typical: '0.0–0.8' }
   }),
+  mk('world.map.hazardMax', 'world.map', 'Макс. опасность на карте', 'Максимальная интенсивность опасности по клеткам (hazards/tag).', {
+    tags: ['hazard','world','map'],
+    scale: { min: 0, max: 1, lowMeans: 'нет', highMeans: 'макс', typical: '0.0–1.0' }
+  }),
 
   mk('lens.suspicion', 'lens', 'Подозрительность линзы', 'Множитель линзы: насколько агент интерпретирует сигналы как угрозу.', {
     tags: ['lens','tom'],

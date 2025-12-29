@@ -54,6 +54,8 @@ export type AtomSpec = {
   idPattern: RegExp;               // матчим по id
   title: (p: Record<string, string>) => string;
   meaning: (p: Record<string, string>) => string;
+  // Optional: human-readable formula for UI/debug. Use for derived atoms or key metrics.
+  // For “raw observations” formula can be omitted.
   scale?: AtomScale;
   formula?: (p: Record<string, string>) => string;
   producedBy?: string[];
@@ -76,6 +78,7 @@ function matchPattern(id: string, re: RegExp): Record<string, string> | null {
 // Основные спеки (ядро). Дальше расширяется.
 export const ATOM_SPECS: AtomSpec[] = [
   // NOTE: ordering matters. Keep specific patterns BEFORE generic catch-alls.
+  // Tip: use GoalLab -> Coverage -> Export to generate AtomSpec stubs for missing ids.
   {
     specId: 'world.location.ref',
     idPattern: /^world:location:(?<selfId>[a-zA-Z0-9_-]+)$/,

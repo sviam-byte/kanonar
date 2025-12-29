@@ -1,4 +1,6 @@
 import React, { useMemo, useState } from 'react';
+import { describeQuark } from '../../lib/context/codex/quarkRegistry';
+import { generateAtomSpecStubs } from '../../lib/context/catalog/generateMissingSpecs';
 import { AtomExplorer } from './AtomExplorer';
 import { TraceDrawer } from './TraceDrawer';
 
@@ -27,6 +29,9 @@ export function FrameDebugPanel({
       missingSpec: number;
       missingCode: number;
       unknownQuark: number;
+      missingSpecIds?: string[];
+      missingCodeIds?: string[];
+      unknownQuarkCodes?: string[];
     };
   } | null;
 }) {
@@ -44,6 +49,55 @@ export function FrameDebugPanel({
   if (!frame) return null;
 
   const diag = frame.diagnostics;
+  const [showCoverage, setShowCoverage] = useState(false);
+  const [coverageTab, setCoverageTab] = useState<'missingSpec' | 'missingCode' | 'unknownQuark'>('missingSpec');
+
+  const coverageList = useMemo(() => {
+    if (!diag) return [];
+    if (coverageTab === 'missingSpec') return diag.missingSpecIds || [];
+    if (coverageTab === 'missingCode') return diag.missingCodeIds || [];
+    return diag.unknownQuarkCodes || [];
+  }, [diag, coverageTab]);
+
+  const coverageTitle = useMemo(() => {
+    if (coverageTab === 'missingSpec') return 'Missing AtomSpec (id not matched)';
+    if (coverageTab === 'missingCode') return 'Missing atom.code (normalize/spec needed)';
+    return 'Unknown quark codes (not in quarkRegistry)';
+  }, [coverageTab]);
+
+  const onExportCoverage = () => {
+    if (!diag) return;
+    const payload =
+      coverageTab === 'missingSpec'
+        ? (diag.missingSpecIds || [])
+        : coverageTab === 'missingCode'
+          ? (diag.missingCodeIds || [])
+          : (diag.unknownQuarkCodes || []);
+
+    // eslint-disable-next-line no-console
+    console.log(`[GoalLab Coverage] ${coverageTab} count=${payload.length}`, payload);
+
+    if (coverageTab === 'missingSpec') {
+      const stubs = generateAtomSpecStubs(payload, { prefix: 'auto' });
+      // eslint-disable-next-line no-console
+      console.log('[GoalLab Coverage] AtomSpec stubs (paste into atomSpecs.ts):\n', stubs);
+      try {
+        navigator.clipboard?.writeText?.(stubs);
+        // eslint-disable-next-line no-console
+        console.log('[GoalLab Coverage] Copied AtomSpec stubs to clipboard.');
+      } catch {
+        // ignore clipboard failures
+      }
+    } else {
+      try {
+        navigator.clipboard?.writeText?.(JSON.stringify(payload, null, 2));
+        // eslint-disable-next-line no-console
+        console.log('[GoalLab Coverage] Copied list to clipboard.');
+      } catch {
+        // ignore
+      }
+    }
+  };
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 p-4 bg-canon-bg-light border border-canon-border rounded-xl">
@@ -64,9 +118,65 @@ export function FrameDebugPanel({
               <span className="px-2 py-1 rounded border border-white/10 bg-black/30">
                 unknownQuark: <b className={diag.unknownQuark ? "text-amber-400" : "text-green-400"}>{diag.unknownQuark}</b>
               </span>
+              <button
+                onClick={() => setShowCoverage(v => !v)}
+                className="px-2 py-1 rounded border border-white/10 bg-black/30 hover:bg-white/5 transition-colors font-bold uppercase"
+                title="Show codex coverage details"
+              >
+                {showCoverage ? 'Hide' : 'Coverage'}
+              </button>
             </div>
           ) : null}
         </div>
+        {showCoverage && diag ? (
+          <div className="p-3 rounded border border-canon-border bg-black/25">
+            <div className="flex items-center justify-between gap-3 mb-2">
+              <div className="text-[10px] uppercase tracking-wider font-bold text-canon-text-light">
+                Codex Coverage
+              </div>
+              <div className="flex gap-2 text-[10px] font-mono">
+                <button onClick={() => setCoverageTab('missingSpec')} className={`px-2 py-1 rounded border border-white/10 ${coverageTab==='missingSpec' ? 'bg-white/10' : 'bg-black/30 hover:bg-white/5'}`}>missingSpec</button>
+                <button onClick={() => setCoverageTab('missingCode')} className={`px-2 py-1 rounded border border-white/10 ${coverageTab==='missingCode' ? 'bg-white/10' : 'bg-black/30 hover:bg-white/5'}`}>missingCode</button>
+                <button onClick={() => setCoverageTab('unknownQuark')} className={`px-2 py-1 rounded border border-white/10 ${coverageTab==='unknownQuark' ? 'bg-white/10' : 'bg-black/30 hover:bg-white/5'}`}>unknownQuark</button>
+              </div>
+            </div>
+            <div className="text-[11px] text-canon-text-light mb-2">{coverageTitle}</div>
+            <div className="flex items-center justify-between gap-3 mb-2">
+              <div className="text-[10px] text-canon-text-light/70">
+                Export: prints to console; for missingSpec also generates AtomSpec stubs and tries to copy to clipboard.
+              </div>
+              <button
+                onClick={onExportCoverage}
+                className="px-2 py-1 rounded border border-white/10 bg-black/30 hover:bg-white/5 transition-colors text-[10px] font-mono"
+              >
+                Export
+              </button>
+            </div>
+            <div className="max-h-[220px] overflow-y-auto rounded border border-white/10 bg-black/30">
+              {coverageList.length ? (
+                <ul className="divide-y divide-white/5">
+                  {coverageList.map((x, i) => (
+                    <li key={i} className="p-2">
+                      {coverageTab === 'unknownQuark' ? (
+                        <>
+                          <div className="font-mono text-[10px] text-white">{x}</div>
+                          <div className="text-[10px] text-canon-text-light/80">{describeQuark(x).meaning}</div>
+                        </>
+                      ) : (
+                        <div className="font-mono text-[10px] text-white break-all">{x}</div>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <div className="p-3 text-xs text-canon-text-light italic">Nothing here.</div>
+              )}
+            </div>
+            <div className="mt-2 text-[10px] text-canon-text-light/70">
+              Показаны первые 120 элементов (чтобы UI не умирал). Полный список можно вывести в console при необходимости.
+            </div>
+          </div>
+        ) : null}
         <AtomExplorer
           atoms={frame.atoms}
           onSelect={(a) => setSelected(a)}

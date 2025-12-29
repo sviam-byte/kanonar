@@ -21,6 +21,8 @@ type Atom = {
   meta?: any;
 };
 
+const clamp01 = (x: number) => (x < 0 ? 0 : x > 1 ? 1 : x);
+
 function extractTrace(meta: any) {
   if (!meta) return null;
   // newer wrapper
@@ -133,7 +135,24 @@ export function TraceDrawer({
     }
     const m = Number(atom.m ?? 0);
     const diff = sum - m;
-    return { sum, m, diff, absDiff: Math.abs(diff) };
+    const sumClamped = clamp01(sum);
+    const diffClamped = sumClamped - m;
+    return { sum, m, diff, absDiff: Math.abs(diff), sumClamped, diffClamped };
+  }, [partsList, atom.m]);
+
+  const recon2 = useMemo(() => {
+    // Optional hint: if formula uses clamp01 after sum, show it too
+    let sum = 0;
+    for (const p of partsList as any[]) {
+      const v = Number(p?.value ?? p?.v ?? 0);
+      const w = Number(p?.weight ?? p?.w ?? 1);
+      if (!Number.isFinite(v) || !Number.isFinite(w)) continue;
+      sum += v * w;
+    }
+    const sumClamped = clamp01(sum);
+    const m = Number(atom.m ?? 0);
+    const diff = sumClamped - m;
+    return { sumClamped, diff, absDiff: Math.abs(diff) };
   }, [partsList, atom.m]);
 
   const usedIds: string[] = (tr?.usedAtomIds ?? []) as any;
@@ -232,8 +251,15 @@ export function TraceDrawer({
               {recon.diff.toFixed(4)}
             </span>
           </div>
+          <div className="text-[10px] font-mono text-canon-text-light/80 mt-1">
+            clamp01(Σ) = <span className="text-white font-bold">{recon2.sumClamped.toFixed(4)}</span>
+            {'  '}· diffClamp ={' '}
+            <span className={recon2.absDiff > 0.02 ? "text-amber-400 font-bold" : "text-green-400 font-bold"}>
+              {recon2.diff.toFixed(4)}
+            </span>
+          </div>
           <div className="text-[10px] text-canon-text-light/70 mt-1">
-            Если diff большой — parts/веса не соответствуют реальной формуле или есть clamp/нелинейность после суммирования.
+            Если diff большой — parts/веса не соответствуют реальной формуле ИЛИ есть clamp/нелинейность после суммирования (последнее тогда стоит явно фиксировать в trace.notes).
           </div>
         </div>
         {topParts.length ? (
