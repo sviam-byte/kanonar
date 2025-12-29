@@ -1,8 +1,42 @@
 import type { GoalLabSnapshotV1 } from './snapshotTypes';
+import { normalizeAtom } from '../context/v2/infer';
+import { describeQuark } from '../context/codex/quarkRegistry';
+import { resolveAtomSpec } from '../context/catalog/atomSpecs';
 
 type AtomOrigin = 'world' | 'obs' | 'override' | 'derived';
 
 export function buildDebugFrameFromSnapshot(snapshot: GoalLabSnapshotV1) {
+  const atoms = (snapshot.atoms || []).map(a => {
+    const raw: any = {
+      id: String((a as any).id),
+      magnitude: Number((a as any).magnitude ?? 0),
+      confidence: Number((a as any).confidence ?? 1),
+      origin: ((a as any).origin ?? 'derived') as AtomOrigin,
+      kind: (a as any).kind ?? null,
+      ns: (a as any).ns ?? null,
+      source: (a as any).source ?? null,
+      label: (a as any).label ?? null,
+      code: (a as any).code ?? null,
+      specId: (a as any).specId ?? null,
+      params: (a as any).params ?? null,
+      trace: (a as any).trace ?? (a as any).meta ?? null,
+    };
+    const norm = normalizeAtom(raw);
+    return {
+      id: String(norm.id),
+      m: Number((norm as any).magnitude ?? 0),
+      c: Number((norm as any).confidence ?? 1),
+      o: ((norm as any).origin ?? 'derived') as AtomOrigin,
+      code: (norm as any).code ?? null,
+      specId: (norm as any).specId ?? null,
+      params: (norm as any).params ?? null,
+      label: (norm as any).label ?? null,
+      kind: (norm as any).kind ?? null,
+      ns: (norm as any).ns ?? null,
+      source: (norm as any).source ?? null,
+      meta: (norm as any).trace ?? null,
+    };
+  });
   const atoms = (snapshot.atoms || []).map(a => ({
     id: String((a as any).id),
     m: Number((a as any).magnitude ?? 0),
@@ -61,9 +95,39 @@ export function buildDebugFrameFromSnapshot(snapshot: GoalLabSnapshotV1) {
     final: index[`threat:final:${selfId}`]?.m ?? 0,
   };
 
+  // Coverage diagnostics: which atoms lack AtomSpec / code / known quark definition
+  const missingSpecIds: string[] = [];
+  const missingCodeIds: string[] = [];
+  const unknownQuarkCodes: string[] = [];
+
+  for (const a of atoms) {
+    const resolved = resolveAtomSpec(a.id);
+    const hasSpec = !!(a.specId || resolved);
+    if (!hasSpec) missingSpecIds.push(a.id);
+    if (!a.code) missingCodeIds.push(a.id);
+    const q = describeQuark(a.code);
+    if (q.family === 'missing' && a.code) unknownQuarkCodes.push(String(a.code));
+  }
+
+  const uniq = (xs: string[]) => Array.from(new Set(xs));
+  const sortAlpha = (xs: string[]) => uniq(xs).sort((a, b) => a.localeCompare(b));
+
+  const diag = {
+    totalAtoms: atoms.length,
+    missingSpec: missingSpecIds.length,
+    missingCode: missingCodeIds.length,
+    unknownQuark: unknownQuarkCodes.length,
+
+    // lists for UI (Pipeline Debug Area)
+    missingSpecIds: sortAlpha(missingSpecIds).slice(0, 120),
+    missingCodeIds: sortAlpha(missingCodeIds).slice(0, 120),
+    unknownQuarkCodes: sortAlpha(unknownQuarkCodes).slice(0, 120),
+  };
+
   return {
     atoms,
     index,
     panels: { mind, threat, ctx: null },
+    diagnostics: diag,
   };
 }

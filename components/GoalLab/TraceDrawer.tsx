@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { describeAtom } from '../../lib/context/v2/describeAtom';
 import { resolveAtomSpec } from '../../lib/context/catalog/atomSpecs';
+import { describeQuark } from '../../lib/context/codex/quarkRegistry';
 
 type Atom = {
   id: string;
@@ -19,6 +20,8 @@ type Atom = {
   // trace/meta (repo uses trace object directly, but old UI expected meta.trace)
   meta?: any;
 };
+
+const clamp01 = (x: number) => (x < 0 ? 0 : x > 1 ? 1 : x);
 
 function extractTrace(meta: any) {
   if (!meta) return null;
@@ -42,6 +45,8 @@ function quarkCodeFromSpec(specId?: string | null, params?: Record<string, any> 
     case 'world.tick': return 'world.tick';
     case 'world.location.ref': return 'world.location';
     case 'ctx.axis': return `ctx.axis.${p.axis}`;
+    case 'ctx.source': return `ctx.src.${p.name}`;
+    case 'ctx.source.scoped': return `ctx.src.${p.group}.${p.name}`;
     case 'ctx.source': return `ctx.src.${p.key}`;
     case 'world.loc.metric': return `world.loc.${p.metric}`;
     case 'world.map.metric': return `world.map.${p.metric}`;
@@ -55,6 +60,14 @@ function quarkCodeFromSpec(specId?: string | null, params?: Record<string, any> 
     case 'cap.metric': return `cap.${p.key}`;
     case 'obs.nearby': return 'obs.nearby';
     case 'obs.generic': return `obs.${p.channel}`;
+    case 'appraisal.metric': return `app.${p.key}`;
+    case 'emotion.core': return `emo.${p.key}`;
+    case 'emotion.axis': return `emo.${p.key}`;
+    case 'emotion.axis.valence': return `emo.valence`;
+    case 'emotion.dyad': return `emo.dyad.${p.key}`;
+    case 'mind.metric': return `mind.metric.${p.key}`;
+    case 'lens.suspicion': return `lens.suspicion`;
+    case 'trace.metric': return `trace.${p.key}`;
     default: return specId;
   }
 }
@@ -78,6 +91,8 @@ export function TraceDrawer({
   const specId = atom.specId ?? resolved?.spec.specId ?? null;
   const params = atom.params ?? (resolved?.params as any) ?? null;
   const code = atom.code ?? quarkCodeFromSpec(specId, params);
+  const desc = useMemo(() => describeAtom({ id: atom.id, label: atom.label ?? atom.id, code } as any), [atom.id, atom.label, code]);
+  const quark = useMemo(() => describeQuark(code), [code]);
   const desc = useMemo(() => describeAtom({ id: atom.id, label: atom.label ?? atom.id } as any), [atom.id, atom.label]);
 
   const notes = normalizeNotes(tr?.notes);
@@ -111,6 +126,37 @@ export function TraceDrawer({
     return scored.slice(0, 6);
   }, [partsList]);
 
+  // Reconstruction check: sum(val * w) vs atom.m
+  const recon = useMemo(() => {
+    let sum = 0;
+    for (const p of partsList as any[]) {
+      const v = Number(p?.value ?? p?.v ?? 0);
+      const w = Number(p?.weight ?? p?.w ?? 1);
+      if (!Number.isFinite(v) || !Number.isFinite(w)) continue;
+      sum += v * w;
+    }
+    const m = Number(atom.m ?? 0);
+    const diff = sum - m;
+    const sumClamped = clamp01(sum);
+    const diffClamped = sumClamped - m;
+    return { sum, m, diff, absDiff: Math.abs(diff), sumClamped, diffClamped };
+  }, [partsList, atom.m]);
+
+  const recon2 = useMemo(() => {
+    // Optional hint: if formula uses clamp01 after sum, show it too
+    let sum = 0;
+    for (const p of partsList as any[]) {
+      const v = Number(p?.value ?? p?.v ?? 0);
+      const w = Number(p?.weight ?? p?.w ?? 1);
+      if (!Number.isFinite(v) || !Number.isFinite(w)) continue;
+      sum += v * w;
+    }
+    const sumClamped = clamp01(sum);
+    const m = Number(atom.m ?? 0);
+    const diff = sumClamped - m;
+    return { sumClamped, diff, absDiff: Math.abs(diff) };
+  }, [partsList, atom.m]);
+
   const usedIds: string[] = (tr?.usedAtomIds ?? []) as any;
 
   return (
@@ -123,6 +169,24 @@ export function TraceDrawer({
           <div className="text-[10px] uppercase tracking-wider font-bold text-canon-text-light mb-1">What it is</div>
           <div className="text-xs font-bold text-white">{desc.title}</div>
           <div className="mt-1 text-[11px] text-canon-text-light leading-relaxed">{desc.meaning}</div>
+          <div className="mt-3 p-2 rounded border border-white/10 bg-black/40">
+            <div className="text-[10px] uppercase tracking-wider font-bold text-canon-text-light mb-1">Quark</div>
+            <div className="text-[11px] text-white font-bold">{quark.title}</div>
+            <div className="text-[11px] text-canon-text-light leading-relaxed">{quark.meaning}</div>
+            <div className="mt-1 flex flex-wrap gap-2 text-[10px] font-mono text-canon-text-light/80">
+              <span className="px-2 py-1 rounded border border-white/10 bg-white/5">code: {String(quark.code)}</span>
+              <span className="px-2 py-1 rounded border border-white/10 bg-white/5">family: {String(quark.family)}</span>
+              {Array.isArray(quark.tags) ? (
+                <span className="px-2 py-1 rounded border border-white/10 bg-white/5">tags: {quark.tags.join(', ')}</span>
+              ) : null}
+            </div>
+            {quark.scale ? (
+              <div className="mt-1 text-[10px] text-canon-text-light/80">
+                scale: [{quark.scale.min}..{quark.scale.max}] {quark.scale.unit || ''} · low: {quark.scale.lowMeans} · high: {quark.scale.highMeans}
+                {quark.scale.typical ? ` · typical: ${quark.scale.typical}` : ''}
+              </div>
+            ) : null}
+          </div>
           <div className="mt-2 flex flex-wrap gap-2 text-[10px] font-mono">
             {specId ? <span className="px-2 py-1 rounded border border-white/10 bg-white/5">spec: {String(specId)}</span> : null}
             {code ? <span className="px-2 py-1 rounded border border-white/10 bg-white/5">quark: {String(code)}</span> : null}
@@ -179,6 +243,27 @@ export function TraceDrawer({
       {/* CAUSAL SUMMARY (WHY) */}
       <div className="bg-canon-bg p-4 rounded border border-canon-border">
         <div className="text-[10px] font-bold text-canon-accent uppercase mb-2">Why this value</div>
+        <div className="mb-3 p-2 bg-black/30 border border-white/10 rounded">
+          <div className="text-[10px] uppercase tracking-wider font-bold text-canon-text-light mb-1">Reconstruction</div>
+          <div className="text-[11px] font-mono text-canon-text-light">
+            Σ(val·w) = <span className="text-white font-bold">{recon.sum.toFixed(4)}</span>
+            {'  '}· atom.m = <span className="text-white font-bold">{recon.m.toFixed(4)}</span>
+            {'  '}· diff ={' '}
+            <span className={recon.absDiff > 0.02 ? "text-red-400 font-bold" : "text-green-400 font-bold"}>
+              {recon.diff.toFixed(4)}
+            </span>
+          </div>
+          <div className="text-[10px] font-mono text-canon-text-light/80 mt-1">
+            clamp01(Σ) = <span className="text-white font-bold">{recon2.sumClamped.toFixed(4)}</span>
+            {'  '}· diffClamp ={' '}
+            <span className={recon2.absDiff > 0.02 ? "text-amber-400 font-bold" : "text-green-400 font-bold"}>
+              {recon2.diff.toFixed(4)}
+            </span>
+          </div>
+          <div className="text-[10px] text-canon-text-light/70 mt-1">
+            Если diff большой — parts/веса не соответствуют реальной формуле ИЛИ есть clamp/нелинейность после суммирования (последнее тогда стоит явно фиксировать в trace.notes).
+          </div>
+        </div>
         {topParts.length ? (
           <>
             <div className="text-[11px] text-canon-text-light mb-2">

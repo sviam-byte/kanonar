@@ -24,6 +24,16 @@ function norm01(x: any, fb = 0) {
   return clamp01(v);
 }
 
+function hazardFromCellLoose(c: any): number {
+  const tags: string[] = Array.isArray(c?.tags) ? c.tags : [];
+  if (tags.includes('hazard')) return 1;
+  let hz = 0;
+  const arr: any[] = Array.isArray(c?.hazards) ? c.hazards : [];
+  for (const h of arr) hz = Math.max(hz, norm01(h?.intensity, 0));
+  // fallback: danger is treated as soft hazard intensity
+  return clamp01(Math.max(hz, norm01(c?.danger, 0)));
+}
+
 function atom(
   id: string,
   magnitude: number,
@@ -61,15 +71,18 @@ function computeMapAggregates(map: LocationMap | undefined) {
       hasMap: 0,
       coverMean: 0,
       dangerMean: 0,
+      hazardMax: 0,
       walkableFrac: 0,
       exitsCountNorm: 0
     };
   }
 
   let coverSum = 0, dangerSum = 0, walkable = 0, exits = 0;
+  let hazardMax = 0;
   for (const c of cells) {
     coverSum += norm01(c.cover, 0);
     dangerSum += norm01(c.danger, 0);
+    hazardMax = Math.max(hazardMax, hazardFromCellLoose(c));
     walkable += (c.walkable === false) ? 0 : 1;
     // Heuristic: check if cell is an exit? 
     // In current types, exits are separate in map.exits, but let's check legacy/future cell props just in case
@@ -89,6 +102,7 @@ function computeMapAggregates(map: LocationMap | undefined) {
     hasMap: 1,
     coverMean: clamp01(coverSum / n),
     dangerMean: clamp01(dangerSum / n),
+    hazardMax: clamp01(hazardMax),
     walkableFrac: clamp01(walkable / n),
     exitsCountNorm
   };
@@ -127,6 +141,7 @@ export function extractLocationAtoms(args: {
 
   const map = location.map;
   const agg = computeMapAggregates(map);
+  envHazard = Math.max(envHazard, agg.hazardMax);
   const tags = safeArr<string>(location.tags).map(String);
   const kind = String(location.kind || location.type || 'location');
   const owner = location.ownership?.ownerFaction ? String(location.ownership.ownerFaction) : null;
@@ -155,6 +170,7 @@ export function extractLocationAtoms(args: {
   out.push(atom(`world:map:hasMap:${selfId}`, agg.hasMap, { locId }));
   out.push(atom(`world:map:cover:${selfId}`, agg.coverMean, { locId }));
   out.push(atom(`world:map:danger:${selfId}`, agg.dangerMean, { locId }));
+  out.push(atom(`world:map:hazardMax:${selfId}`, agg.hazardMax, { locId }));
   out.push(atom(`world:map:walkableFrac:${selfId}`, agg.walkableFrac, { locId }));
   out.push(atom(`world:map:exits:${selfId}`, agg.exitsCountNorm, { locId }));
 

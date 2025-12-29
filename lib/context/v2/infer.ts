@@ -22,6 +22,8 @@ function codeFromResolvedSpec(specId: string, params: Record<string, string>): s
       return `world.loc.${params.metric}`;
     case 'world.map.metric':
       return `world.map.${params.metric}`;
+    case 'world.map.hazardMax':
+      return `world.map.hazardMax`;
     case 'world.env.hazard':
       return 'world.env.hazard';
     case 'tom.dyad.threat':
@@ -48,6 +50,25 @@ function codeFromResolvedSpec(specId: string, params: Record<string, string>): s
       return 'obs.nearby';
     case 'obs.generic':
       return `obs.${params.channel}`;
+    // appraisals/emotions (canonical)
+    case 'appraisal.metric':
+      return `app.${params.key}`;
+    case 'emotion.core':
+      return `emo.${params.key}`;
+    case 'emotion.axis':
+      return `emo.${params.key}`;
+    case 'emotion.axis.valence':
+      return `emo.valence`;
+    case 'emotion.dyad':
+      return `emo.dyad.${params.key}`;
+    // mind/lens/trace
+    case 'mind.metric':
+      return `mind.metric.${params.key}`;
+    case 'lens.suspicion':
+      return `lens.suspicion`;
+    case 'trace.metric':
+      return `trace.${params.key}`;
+    // legacy fallback (old snapshots)
     case 'app.generic':
       return `app.${params.channel}`;
     case 'emo.generic':
@@ -66,6 +87,7 @@ function fallbackCodeFromId(ns: AtomNamespace, kind: string, id: string): string
   if (parts[0] === 'obs' && parts[1]) return `obs.${parts[1]}`;
   if (parts[0] === 'emo' && parts[1]) return `emo.${parts[1]}`;
   if (parts[0] === 'app' && parts[1]) return `app.${parts[1]}`;
+  if (parts[0] === 'mind' && parts[1]) return `mind.${parts[1]}`;
   if (parts[0] === 'tom' && parts[1]) return `tom.${parts[1]}`;
   return `${ns}.${kind || 'atom'}`;
 }

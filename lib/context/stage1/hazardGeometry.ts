@@ -137,11 +137,21 @@ function hazardFromCell(cell: any, dangerThreshold: number): number {
   const tags: string[] = Array.isArray(cell?.tags) ? cell.tags : [];
   if (tags.includes('hazard')) return 1;
 
+  // NEW: prefer explicit cell.hazards (fine-grained hazard encoding)
+  const hzArr: any[] = Array.isArray(cell?.hazards) ? cell.hazards : [];
+  let hz = 0;
+  for (const h of hzArr) {
+    const v = Number(h?.intensity);
+    if (Number.isFinite(v)) hz = Math.max(hz, clamp01(v));
+  }
+
   const d = typeof cell?.danger === 'number' ? cell.danger : 0;
   const dn = clamp01(d);
   const eps = clamp01(dangerThreshold);
-  if (dn <= eps) return 0;
-  return clamp01((dn - eps) / Math.max(1e-6, (1 - eps)));
+  const dangerSoft = (dn <= eps) ? 0 : clamp01((dn - eps) / Math.max(1e-6, (1 - eps)));
+
+  // Combine: explicit hazards win; danger acts as weaker “implicit hazard”
+  return clamp01(Math.max(hz, dangerSoft));
 }
 
 function safePos(pos: any, w: number, h: number): { x: number; y: number } | null {
