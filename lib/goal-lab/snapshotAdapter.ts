@@ -1,6 +1,7 @@
 
 import { GoalLabSnapshotV1 } from './snapshotTypes';
 import { ContextAtom } from '../context/v2/types';
+import { normalizeAtom } from '../context/v2/infer';
 
 function safeTick(x: any) {
   const t = Number(x);
@@ -20,6 +21,7 @@ export function adaptToSnapshotV1(raw: any, args: { selfId: string }): GoalLabSn
     (raw?.frame?.atoms as ContextAtom[]) ||
     (raw?.v4Atoms as ContextAtom[]) ||
     [];
+  const normalizedAtoms = atoms.map(a => normalizeAtom(a as any));
 
   const tick =
     safeTick(raw?.tick) ||
@@ -33,7 +35,7 @@ export function adaptToSnapshotV1(raw: any, args: { selfId: string }): GoalLabSn
     schemaVersion: 1,
     tick,
     selfId: args.selfId,
-    atoms,
+    atoms: normalizedAtoms,
 
     warnings: raw?.warnings || snapshot?.warnings,
     atomDiff: raw?.atomDiff || snapshot?.atomDiff,

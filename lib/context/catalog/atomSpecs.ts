@@ -75,27 +75,37 @@ function matchPattern(id: string, re: RegExp): Record<string, string> | null {
 
 // Основные спеки (ядро). Дальше расширяется.
 export const ATOM_SPECS: AtomSpec[] = [
+  // NOTE: ordering matters. Keep specific patterns BEFORE generic catch-alls.
   {
     specId: 'world.location.ref',
     idPattern: /^world:location:(?<selfId>[a-zA-Z0-9_-]+)$/,
-    title: p => `Мир: текущая локация (${p.selfId})`,
-    meaning: p =>
-      `Ссылочный атом: где находится агент ${p.selfId} в текущем тике. ` +
-      `magnitude всегда 1, а конкретный locationId хранится в atom.target / atom.meta.locationId и в label.`,
-    scale: { min: 0, max: 1, lowMeans: 'не используется', highMeans: 'активно' },
+    title: p => `Мир: локация (${p.selfId})`,
+    meaning: p => `Якорь: текущая локация агента ${p.selfId} (reference atom).`,
+    scale: { min: 0, max: 1, lowMeans: '—', highMeans: '—' },
     producedBy: ['lib/context/pipeline/worldFacts.ts'],
-    consumedBy: ['lib/context/sources/locationAtoms.ts', 'lib/context/pipeline/stage0.ts'],
-    tags: ['world','location']
+    consumedBy: ['lib/context/sources/locationAtoms.ts', 'lib/context/axes/deriveAxes.ts'],
+    tags: ['world']
+  },
+  // Explicit doc for hazardMax too (kept above generic world.map.metric)
+  {
+    specId: 'world.map.hazardMax',
+    idPattern: /^world:map:hazardMax:(?<selfId>[a-zA-Z0-9_-]+)$/,
+    title: p => `Карта: hazardMax (${p.selfId})`,
+    meaning: p => `Максимальная опасность на карте локации вокруг ${p.selfId}.`,
+    formula: _ => `max_cell( max(tagHazard, max(hazards[].intensity), danger) )`,
+    scale: { min: 0, max: 1, lowMeans: 'нет', highMeans: 'макс', typical: '0.0–1.0' },
+    producedBy: ['lib/context/sources/locationAtoms.ts'],
+    consumedBy: ['lib/context/axes/deriveAxes.ts', 'lib/threat/*'],
+    tags: ['world','map','hazard']
   },
   {
     specId: 'world.tick',
     idPattern: /^world:tick:(?<tick>[0-9]+)$/,
     title: p => `Мир: тик ${p.tick}`,
-    meaning: p =>
-      `Текущий дискретный тик симуляции. Используется как якорь воспроизводимости и для временных правил позже.`,
-    scale: { min: 0, max: 1, lowMeans: 'N/A', highMeans: 'N/A' },
+    meaning: p => `Текущий дискретный тик симуляции (якорь воспроизводимости и временных правил).`,
+    scale: { min: 0, max: 1, lowMeans: '—', highMeans: '—' },
     producedBy: ['lib/context/pipeline/worldFacts.ts'],
-    consumedBy: ['lib/goal-lab/*'],
+    consumedBy: ['lib/goals/*', 'components/GoalLab/*'],
     tags: ['world','time']
   },
   {
@@ -119,14 +129,14 @@ export const ATOM_SPECS: AtomSpec[] = [
     // - lib/context/sources/locationAtoms.ts (world:map:* and world:map:escape:*:* )
     // - lib/context/pipeline/worldFacts.ts (world:map:* seeds)
     specId: 'world.map.metric',
-    idPattern: /^world:map:(?<metric>[a-zA-Z0-9_-]+):(?<selfId>[a-zA-Z0-9_-]+)(?::(?<value>[a-zA-Z0-9_-]+))?$/,
+    idPattern: /^world:map:(?<metric>[a-zA-Z0-9_.-]+):(?<selfId>[a-zA-Z0-9_-]+)(?::(?<value>[a-zA-Z0-9_-]+))?$/,
     title: p => `Мир/Карта: ${(WORLD_MAP_METRIC_RU[p.metric] ?? p.metric)} (${p.selfId})${p.value ? ` = ${p.value}` : ''}`,
     meaning: p =>
       `Картографический/геометрический сигнал вокруг агента ${p.selfId}. ` +
       `metric="${p.metric}"${p.value ? `, value="${p.value}"` : ''}. ` +
       `Обычно magnitude 0..1 (опасность/укрытия/выходы), а escape может кодировать конкретный выход через value.`,
     scale: { min: 0, max: 1, lowMeans: 'низко/нет', highMeans: 'высоко/есть' },
-    producedBy: ['lib/context/sources/locationAtoms.ts', 'lib/context/pipeline/worldFacts.ts'],
+    producedBy: ['lib/context/sources/locationAtoms.ts', 'lib/context/stage1/hazardGeometry.ts'],
     consumedBy: ['lib/context/axes/deriveAxes.ts', 'lib/threat/*'],
     tags: ['world','map']
   },
@@ -134,12 +144,12 @@ export const ATOM_SPECS: AtomSpec[] = [
     // Emitted by lib/context/sources/locationAtoms.ts
     specId: 'world.env.hazard',
     idPattern: /^world:env:hazard:(?<selfId>[a-zA-Z0-9_-]+)$/,
-    title: p => `Среда: опасность рядом (${p.selfId})`,
-    meaning: p => `Есть значимый hazard рядом с агентом ${p.selfId} (magnitude 0..1).`,
-    scale: { min: 0, max: 1, lowMeans: 'нет', highMeans: 'есть/сильно' },
+    title: p => `Опасность среды (${p.selfId})`,
+    meaning: p => `Сводная опасность локации вокруг ${p.selfId}: max(location.hazards, map.hazardMax).`,
+    scale: { min: 0, max: 1, lowMeans: 'безопасно', highMeans: 'крайне опасно', typical: '0.0–0.9' },
     producedBy: ['lib/context/sources/locationAtoms.ts'],
-    consumedBy: ['lib/threat/*', 'lib/context/axes/deriveAxes.ts'],
-    tags: ['world','env','hazard']
+    consumedBy: ['lib/context/axes/deriveAxes.ts', 'lib/threat/*'],
+    tags: ['world','hazard']
   },
   {
     specId: 'ctx.axis',
@@ -154,24 +164,28 @@ export const ATOM_SPECS: AtomSpec[] = [
     tags: ['ctx']
   },
   {
-    specId: 'ctx.source',
-    idPattern: /^ctx:src:(?<name>[a-zA-Z0-9_-]+)(?::(?<selfId>[a-zA-Z0-9_-]+))?$/,
-    title: p => `Источник контекста: ${p.name}`,
-    meaning: _p => `Вклад/фича, которая участвует в сборке контекстных осей (ctx:*).`,
-    scale: { min: 0, max: 1, lowMeans: 'не влияет', highMeans: 'сильно влияет' },
-    tags: ['ctx','src']
-  },
-  {
     specId: 'ctx.source.scoped',
     idPattern: /^ctx:src:(?<group>[a-zA-Z0-9_-]+):(?<name>[a-zA-Z0-9_-]+):(?<selfId>[a-zA-Z0-9_-]+)$/,
-    title: p => `Источник контекста: ${p.group}.${p.name} (${p.selfId})`,
+    title: p => `Источник ctx: ${p.group}.${p.name} (${p.selfId})`,
     meaning: p =>
-      `Агент-скоупнутый вход в сборку ctx-осей: группа="${p.group}", имя="${p.name}". ` +
-      `Как правило, это “сырые” входы из сцены/норм/мира вида ctx:src:${p.group}:${p.name}:${p.selfId}.`,
-    scale: { min: 0, max: 1, lowMeans: 'не влияет', highMeans: 'сильно влияет' },
-    producedBy: ['lib/scene/applyScene.ts', 'lib/context/pipeline/worldFacts.ts'],
-    consumedBy: ['lib/context/axes/deriveAxes.ts'],
-    tags: ['ctx','src']
+      `Сырой контекстный сигнал из группы "${p.group}" с именем "${p.name}" для агента ${p.selfId}. ` +
+      `Используется как вход для deriveAxes и/или линзы.`,
+    scale: { min: 0, max: 1, lowMeans: 'низко', highMeans: 'высоко' },
+    producedBy: ['lib/context/pipeline/worldFacts.ts', 'lib/context/pipeline/stage0.ts'],
+    consumedBy: ['lib/context/axes/deriveAxes.ts', 'lib/context/lens/characterLens.ts'],
+    tags: ['ctx','source']
+  },
+  {
+    specId: 'ctx.source',
+    idPattern: /^ctx:src:(?<name>[a-zA-Z0-9_-]+):(?<selfId>[a-zA-Z0-9_-]+)$/,
+    title: p => `Источник ctx: ${p.name} (${p.selfId})`,
+    meaning: p =>
+      `Сырой контекстный сигнал "${p.name}" для агента ${p.selfId}. ` +
+      `Используется как вход для deriveAxes и/или линзы.`,
+    scale: { min: 0, max: 1, lowMeans: 'низко', highMeans: 'высоко' },
+    producedBy: ['lib/context/pipeline/worldFacts.ts', 'lib/context/pipeline/stage0.ts'],
+    consumedBy: ['lib/context/axes/deriveAxes.ts', 'lib/context/lens/characterLens.ts'],
+    tags: ['ctx','source']
   },
   {
     specId: 'ctx.scene.mode',
@@ -216,6 +230,89 @@ export const ATOM_SPECS: AtomSpec[] = [
     producedBy: ['lib/context/sources/observationAtoms.ts'],
     consumedBy: ['lib/context/stage1/socialProximity.ts', 'lib/threat/*', 'lib/context/axes/deriveAxes.ts'],
     tags: ['obs']
+  },
+
+  // --- APPRAISALS (specific; must be before any app:* generic) ---
+  {
+    specId: 'appraisal.metric',
+    idPattern: /^app:(?<key>[a-zA-Z0-9_.-]+):(?<selfId>[a-zA-Z0-9_-]+)$/,
+    title: p => `Appraisal: ${p.key} (${p.selfId})`,
+    meaning: p =>
+      `Оценка (appraisal) по каналу "${p.key}" для агента ${p.selfId}. ` +
+      `Appraisal — промежуточный слой между ctx/threat/mind/world и эмоциями.`,
+    scale: { min: 0, max: 1, lowMeans: 'низко', highMeans: 'высоко', typical: '0.1–0.8' },
+    producedBy: ['lib/emotion/appraisal/*', 'lib/threat/*', 'lib/contextMind/*'],
+    consumedBy: ['lib/emotion/*'],
+    tags: ['app','emotionLayer']
+  },
+
+  // --- EMOTIONS (specific; must be before any emo:* generic) ---
+  {
+    specId: 'emotion.dyad',
+    idPattern: /^emo:dyad:(?<selfId>[a-zA-Z0-9_-]+):(?<otherId>[a-zA-Z0-9_-]+):(?<key>[a-zA-Z0-9_.-]+)$/,
+    title: p => `Emotion(dyad): ${p.key} (${p.selfId}→${p.otherId})`,
+    meaning: p =>
+      `Двухсубъектная эмоция/установка агента ${p.selfId} к ${p.otherId} по каналу "${p.key}". ` +
+      `Обычно производная от app:* + tom/rel сигналов.`,
+    scale: { min: 0, max: 1, lowMeans: 'слабо', highMeans: 'сильно', typical: '0.0–0.8' },
+    producedBy: ['lib/emotion/*'],
+    consumedBy: ['lib/decision/*', 'lib/contextMind/*', 'lib/threat/*'],
+    tags: ['emo','dyad']
+  },
+  {
+    specId: 'emotion.axis.valence',
+    idPattern: /^emo:valence:(?<selfId>[a-zA-Z0-9_-]+)$/,
+    title: p => `Emotion axis: valence (${p.selfId})`,
+    meaning: p =>
+      `Ось валентности (негативно/позитивно) для агента ${p.selfId}. ` +
+      `Если хранится как 0..1, интерпретация: 0=негативно, 1=позитивно.`,
+    scale: { min: 0, max: 1, lowMeans: 'негативно', highMeans: 'позитивно', typical: '0.3–0.7' },
+    producedBy: ['lib/emotion/*'],
+    consumedBy: ['lib/decision/*'],
+    tags: ['emo','axis']
+  },
+  {
+    specId: 'emotion.axis',
+    idPattern: /^emo:(?<key>arousal|tension|calm|activation):(?<selfId>[a-zA-Z0-9_-]+)$/,
+    title: p => `Emotion axis: ${p.key} (${p.selfId})`,
+    meaning: p =>
+      `Ось эмоционального состояния "${p.key}" для агента ${p.selfId}.`,
+    scale: { min: 0, max: 1, lowMeans: 'низко', highMeans: 'высоко', typical: '0.1–0.8' },
+    producedBy: ['lib/emotion/*'],
+    consumedBy: ['lib/decision/*', 'lib/contextMind/*'],
+    tags: ['emo','axis']
+  },
+  {
+    specId: 'emotion.core',
+    idPattern: /^emo:(?<key>[a-zA-Z0-9_.-]+):(?<selfId>[a-zA-Z0-9_-]+)$/,
+    title: p => `Emotion: ${p.key} (${p.selfId})`,
+    meaning: p =>
+      `Базовая эмоция/аффект "${p.key}" для агента ${p.selfId}. ` +
+      `Считается из appraisal-атомов (app:*).`,
+    scale: { min: 0, max: 1, lowMeans: 'нет/слабо', highMeans: 'сильно', typical: '0.0–0.7' },
+    producedBy: ['lib/emotion/*'],
+    consumedBy: ['lib/decision/*', 'lib/contextMind/*', 'lib/threat/*'],
+    tags: ['emo','emotionLayer']
+  },
+
+  // --- LEGACY GENERIC (keep at the end of these blocks; for old snapshots only) ---
+  {
+    specId: 'app.generic',
+    idPattern: /^app:(?<channel>[a-zA-Z0-9_-]+):(?<selfId>[a-zA-Z0-9_-]+)$/,
+    title: p => `Appraisal(legacy): ${p.channel} (${p.selfId})`,
+    meaning: p =>
+      `Legacy appraisal id. Prefer app:<key>:<selfId> with specId=appraisal.metric.`,
+    scale: { min: 0, max: 1, lowMeans: 'низко', highMeans: 'высоко' },
+    tags: ['app','legacy']
+  },
+  {
+    specId: 'emo.generic',
+    idPattern: /^emo:(?<channel>[a-zA-Z0-9_-]+):(?<selfId>[a-zA-Z0-9_-]+)$/,
+    title: p => `Emotion(legacy): ${p.channel} (${p.selfId})`,
+    meaning: p =>
+      `Legacy emotion id. Prefer emo:<key>:<selfId> with specId=emotion.core/axis.`,
+    scale: { min: 0, max: 1, lowMeans: 'нет', highMeans: 'сильно' },
+    tags: ['emo','legacy']
   },
   {
     specId: 'tom.dyad.trust',
@@ -448,53 +545,6 @@ export const ATOM_SPECS: AtomSpec[] = [
     scale: { min: 0, max: 1 },
     producedBy: ['lib/context/stage1/hazardGeometry.ts'],
     tags: ['misc','danger']
-  },
-  {
-    specId: 'appraisal.metric',
-    idPattern: /^app:(?<key>[a-zA-Z0-9_-]+):(?<selfId>[a-zA-Z0-9_-]+)$/,
-    title: p => `Appraisal: ${p.key}`,
-    meaning: p => `Ситуационная оценка (0..1), вход для эмоций/аффекта и контекстного ToM.`,
-    scale: { min: 0, max: 1, lowMeans: 'низко', highMeans: 'высоко', typical: '0.1–0.8' },
-    producedBy: ['lib/emotion/appraisals.ts'],
-    tags: ['appraisal','emotion_input']
-  },
-  {
-    specId: 'emotion.core',
-    idPattern: /^emo:(?<key>fear|anger|shame|relief|resolve|care):(?<selfId>[a-zA-Z0-9_-]+)$/,
-    title: p => `Emotion: ${p.key}`,
-    meaning: p => `Базовая эмоция (0..1), вычисленная из appraisal.`,
-    scale: { min: 0, max: 1, lowMeans: 'нет/слабо', highMeans: 'сильно', typical: '0.0–0.7' },
-    producedBy: ['lib/emotion/emotions.ts'],
-    consumedBy: ['lib/decision/*', 'lib/tom/*'],
-    tags: ['emotion','core']
-  },
-  {
-    specId: 'emotion.axis',
-    idPattern: /^emo:(?<key>arousal):(?<selfId>[a-zA-Z0-9_-]+)$/,
-    title: p => `Affect axis: ${p.key}`,
-    meaning: p => `Ось аффекта (0..1).`,
-    scale: { min: 0, max: 1, lowMeans: 'низко', highMeans: 'высоко', typical: '0.1–0.9' },
-    producedBy: ['lib/emotion/emotions.ts'],
-    tags: ['emotion','axis']
-  },
-  {
-    specId: 'emotion.axis.valence',
-    idPattern: /^emo:(?<key>valence):(?<selfId>[a-zA-Z0-9_-]+)$/,
-    title: () => `Affect axis: valence`,
-    meaning: () => `Валентность (-1..1): отрицательно/положительно.`,
-    scale: { min: -1, max: 1, lowMeans: 'негативно', highMeans: 'позитивно', typical: '-0.4..0.4' },
-    producedBy: ['lib/emotion/emotions.ts'],
-    tags: ['emotion','axis']
-  },
-  {
-    specId: 'emotion.dyad',
-    idPattern: /^emo:dyad:(?<key>[a-zA-Z0-9_-]+):(?<selfId>[a-zA-Z0-9_-]+):(?<otherId>[a-zA-Z0-9_-]+)$/,
-    title: p => `Dyadic emotion: ${p.key} → ${p.otherId}`,
-    meaning: p => `Эмоция/установка ${p.selfId} к ${p.otherId} (0..1) на базе ToM effective + близости.`,
-    scale: { min: 0, max: 1, lowMeans: 'нет/слабо', highMeans: 'сильно', typical: '0.0–0.8' },
-    producedBy: ['lib/emotion/dyadic.ts'],
-    consumedBy: ['lib/decision/*', 'lib/contextMind/*'],
-    tags: ['emotion','dyad']
   },
   {
     specId: 'threat.final',

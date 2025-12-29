@@ -22,6 +22,8 @@ function codeFromResolvedSpec(specId: string, params: Record<string, string>): s
       return `world.loc.${params.metric}`;
     case 'world.map.metric':
       return `world.map.${params.metric}`;
+    case 'world.map.hazardMax':
+      return `world.map.hazardMax`;
     case 'world.env.hazard':
       return 'world.env.hazard';
     case 'tom.dyad.threat':
