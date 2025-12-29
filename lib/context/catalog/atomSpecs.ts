@@ -1,4 +1,29 @@
 // lib/context/catalog/atomSpecs.ts
+
+// Human titles for common parametric families (optional; fallback is metric/channel itself)
+const WORLD_LOC_METRIC_RU: Record<string, string> = {
+  privacy: 'Приватность',
+  visibility: 'Видимость',
+  noise: 'Шум',
+  social_visibility: 'Социальная видимость',
+  normative_pressure: 'Норм-давление',
+  control_level: 'Контроль',
+  normPressure: 'Норм-давление (alias)',
+  control: 'Контроль (alias)',
+  crowd: 'Толпа',
+  kind: 'Тип локации',
+  owner: 'Владелец локации',
+  tag: 'Тег локации',
+};
+
+const WORLD_MAP_METRIC_RU: Record<string, string> = {
+  danger: 'Опасность (карта)',
+  cover: 'Укрытия (карта)',
+  obstacles: 'Препятствия (карта)',
+  exits: 'Выходы (карта)',
+  escape: 'Маршрут/выход (escape)',
+};
+
 const AXIS_RU: Record<string, { title: string; low: string; high: string }> = {
   danger:       { title: 'Опасность',        low: 'безопасно',                high: 'опасно' },
   intimacy:     { title: 'Интимность',       low: 'дистанция',                high: 'близость' },
@@ -63,6 +88,49 @@ export const ATOM_SPECS: AtomSpec[] = [
     tags: ['world','location']
   },
   {
+    // Covers ids emitted by:
+    // - lib/context/sources/locationAtoms.ts
+    // - lib/context/pipeline/worldFacts.ts (world:loc:* seeds)
+    specId: 'world.loc.metric',
+    idPattern: /^world:loc:(?<metric>[a-zA-Z0-9_-]+):(?<selfId>[a-zA-Z0-9_-]+)(?::(?<value>[a-zA-Z0-9_-]+))?$/,
+    title: p => `Мир/Локация: ${(WORLD_LOC_METRIC_RU[p.metric] ?? p.metric)} (${p.selfId})${p.value ? ` = ${p.value}` : ''}`,
+    meaning: p =>
+      `Параметр/факт, “подаваемый локацией” для агента ${p.selfId}. ` +
+      `metric="${p.metric}"${p.value ? `, value="${p.value}"` : ''}. ` +
+      `Обычно magnitude 0..1 (нормированная интенсивность), а для маркеров kind/owner/tag magnitude часто = 1.`,
+    scale: { min: 0, max: 1, lowMeans: 'низко/нет', highMeans: 'высоко/есть' },
+    producedBy: ['lib/context/sources/locationAtoms.ts', 'lib/context/pipeline/worldFacts.ts'],
+    consumedBy: ['lib/context/axes/deriveAxes.ts', 'lib/threat/*', 'lib/emotion/*'],
+    tags: ['world','loc']
+  },
+  {
+    // Covers ids emitted by:
+    // - lib/context/sources/locationAtoms.ts (world:map:* and world:map:escape:*:* )
+    // - lib/context/pipeline/worldFacts.ts (world:map:* seeds)
+    specId: 'world.map.metric',
+    idPattern: /^world:map:(?<metric>[a-zA-Z0-9_-]+):(?<selfId>[a-zA-Z0-9_-]+)(?::(?<value>[a-zA-Z0-9_-]+))?$/,
+    title: p => `Мир/Карта: ${(WORLD_MAP_METRIC_RU[p.metric] ?? p.metric)} (${p.selfId})${p.value ? ` = ${p.value}` : ''}`,
+    meaning: p =>
+      `Картографический/геометрический сигнал вокруг агента ${p.selfId}. ` +
+      `metric="${p.metric}"${p.value ? `, value="${p.value}"` : ''}. ` +
+      `Обычно magnitude 0..1 (опасность/укрытия/выходы), а escape может кодировать конкретный выход через value.`,
+    scale: { min: 0, max: 1, lowMeans: 'низко/нет', highMeans: 'высоко/есть' },
+    producedBy: ['lib/context/sources/locationAtoms.ts', 'lib/context/pipeline/worldFacts.ts'],
+    consumedBy: ['lib/context/axes/deriveAxes.ts', 'lib/threat/*'],
+    tags: ['world','map']
+  },
+  {
+    // Emitted by lib/context/sources/locationAtoms.ts
+    specId: 'world.env.hazard',
+    idPattern: /^world:env:hazard:(?<selfId>[a-zA-Z0-9_-]+)$/,
+    title: p => `Среда: опасность рядом (${p.selfId})`,
+    meaning: p => `Есть значимый hazard рядом с агентом ${p.selfId} (magnitude 0..1).`,
+    scale: { min: 0, max: 1, lowMeans: 'нет', highMeans: 'есть/сильно' },
+    producedBy: ['lib/context/sources/locationAtoms.ts'],
+    consumedBy: ['lib/threat/*', 'lib/context/axes/deriveAxes.ts'],
+    tags: ['world','env','hazard']
+  },
+  {
     specId: 'ctx.axis',
     idPattern: /^ctx:(?<axis>[a-zA-Z0-9_-]+):(?<selfId>[a-zA-Z0-9_-]+)(?::(?<otherId>[a-zA-Z0-9_-]+))?$/,
     title: p => `Контекст: ${(AXIS_RU[p.axis]?.title ?? p.axis)}${p.otherId ? ` (${p.otherId})` : ''}`,
@@ -123,6 +191,20 @@ export const ATOM_SPECS: AtomSpec[] = [
     producedBy: ['lib/context/sources/observationAtoms.ts'],
     consumedBy: ['lib/context/stage1/socialProximity.ts', 'lib/threat/*'],
     tags: ['obs','social']
+  },
+  {
+    // Generic obs:* family (los/audio/infoAdequacy/etc) emitted by lib/context/sources/observationAtoms.ts
+    // Must go AFTER obs.nearby so the specific one wins.
+    specId: 'obs.generic',
+    idPattern: /^obs:(?<channel>[a-zA-Z0-9_-]+):(?<selfId>[a-zA-Z0-9_-]+)(?::(?<otherId>[a-zA-Z0-9_-]+))?$/,
+    title: p => `Наблюдение: ${p.channel} (${p.selfId})${p.otherId ? ` → ${p.otherId}` : ''}`,
+    meaning: p =>
+      `Перцептивный сигнал канала "${p.channel}" для агента ${p.selfId}` +
+      (p.otherId ? ` относительно ${p.otherId}` : '') + `. magnitude 0..1.`,
+    scale: { min: 0, max: 1, lowMeans: 'низко/нет', highMeans: 'высоко/есть' },
+    producedBy: ['lib/context/sources/observationAtoms.ts'],
+    consumedBy: ['lib/context/stage1/socialProximity.ts', 'lib/threat/*', 'lib/context/axes/deriveAxes.ts'],
+    tags: ['obs']
   },
   {
     specId: 'app.generic',

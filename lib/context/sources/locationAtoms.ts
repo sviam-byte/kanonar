@@ -1,5 +1,6 @@
 
 import { ContextAtom } from '../v2/types';
+import { normalizeAtom } from '../v2/infer';
 import { LocationEntity, LocationMap, LocationMapCell } from '../../../types';
 
 type AnyLocation = LocationEntity;
@@ -180,5 +181,8 @@ export function extractLocationAtoms(args: {
     }
   ));
 
-  return out;
+  // IMPORTANT: always normalize at source.
+  // This guarantees atom.code/atom.params are available for downstream computations
+  // (axes/appraisal/emotions/ToM), not only after epistemic merge.
+  return out.map(a => normalizeAtom(a as any));
 }

@@ -3,6 +3,48 @@
 
 import { AtomNamespace, AtomOrigin, ContextAtom, ContextSource } from './types';
 import { matchAtomSpec } from '../catalog/atomCatalog';
+import { resolveAtomSpec } from '../catalog/atomSpecs';
+
+function codeFromResolvedSpec(specId: string, params: Record<string, string>): string {
+  // “кварк” = стабильный код смысла (не уникальный), удобный для законов/молекул позже
+  switch (specId) {
+    case 'ctx.axis':
+      return `ctx.axis.${params.axis}`;
+    case 'ctx.source':
+      return `ctx.src.${params.name}`;
+    case 'ctx.source.scoped':
+      return `ctx.src.${params.group}.${params.name}`;
+    case 'world.loc.metric':
+      return `world.loc.${params.metric}`;
+    case 'world.map.metric':
+      return `world.map.${params.metric}`;
+    case 'world.env.hazard':
+      return 'world.env.hazard';
+    case 'obs.nearby':
+      return 'obs.nearby';
+    case 'obs.generic':
+      return `obs.${params.channel}`;
+    case 'app.generic':
+      return `app.${params.channel}`;
+    case 'emo.generic':
+      return `emo.${params.channel}`;
+    default:
+      // tom.dyad.* / threat.* / emotion.* etc: specId уже достаточно “кварковый”
+      return specId;
+  }
+}
+
+function fallbackCodeFromId(ns: AtomNamespace, kind: string, id: string): string {
+  const parts = id.split(':');
+  if (parts[0] === 'world' && parts[1] === 'loc' && parts[2]) return `world.loc.${parts[2]}`;
+  if (parts[0] === 'world' && parts[1] === 'map' && parts[2]) return `world.map.${parts[2]}`;
+  if (parts[0] === 'ctx' && parts[1]) return `ctx.${parts[1]}`;
+  if (parts[0] === 'obs' && parts[1]) return `obs.${parts[1]}`;
+  if (parts[0] === 'emo' && parts[1]) return `emo.${parts[1]}`;
+  if (parts[0] === 'app' && parts[1]) return `app.${parts[1]}`;
+  if (parts[0] === 'tom' && parts[1]) return `tom.${parts[1]}`;
+  return `${ns}.${kind || 'atom'}`;
+}
 
 export function inferAtomNamespace(atom: Pick<ContextAtom, 'kind' | 'id' | 'source' | 'tags'>): AtomNamespace {
   const m = matchAtomSpec(atom as any);
@@ -81,6 +123,18 @@ export function normalizeAtom<T extends ContextAtom>(atom: T): T {
   const origin = atom.origin ?? inferAtomOrigin(atom.source, atom.id);
   const out: any = { ...atom, ns, origin };
   const id = String(out.id || '');
+
+  // ---- AtomSpec resolve -> quark codex fields ----
+  // Единственный источник правды: atomSpecs.ts (через resolveAtomSpec)
+  const resolved = resolveAtomSpec(id);
+  if (resolved) {
+    out.specId = out.specId ?? resolved.spec.specId;
+    out.params = out.params ?? resolved.params;
+    out.code = out.code ?? codeFromResolvedSpec(resolved.spec.specId, resolved.params);
+  }
+  if (!out.code) {
+    out.code = fallbackCodeFromId(ns, String(out.kind || ''), id);
+  }
 
   // Ensure trace exists with sensible defaults (prevents “empty air” in Debug Area)
   if (!out.trace) {

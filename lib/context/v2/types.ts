@@ -5,7 +5,7 @@ import { CharacterGoalId, ContextAxesVector, ContextTuning } from '../../types';
 
 export { ContextAxesVector, ContextTuning };
 
-export type ContextSource =
+export type KnownContextSource =
   | 'life'
   | 'location_base'
   | 'location_scenario'
@@ -33,7 +33,38 @@ export type ContextSource =
   | 'why'
   | 'relationship'
   | 'relations'
-  | 'possibilities'; // Added possibilities source
+  | 'possibilities'
+  // observed in repo (сейчас часто идут через any-cast)
+  | 'world'
+  | 'scene'
+  | 'observationExtractor'
+  | 'locationExtractor'
+  | 'perception'
+  | 'rumor'
+  | 'summaries'
+  | 'alias'
+  | 'emotionLayer'
+  | 'emotion_appraisal'
+  | 'emotion_dyadic'
+  | 'emotion_core'
+  | 'emotion_axes'
+  | 'features'
+  | 'rel_base'
+  | 'rel_state'
+  | 'character_lens'
+  | 'deriveAxes'
+  | 'deriveContextVectors'
+  | 'hazardGeometry'
+  | 'socialProximity'
+  | 'capabilities'
+  | 'affect'
+  | 'access'
+  | 'action'
+  | 'system'
+  | 'agent_state';
+
+// allow new producers without постоянно расширять union, но оставить автокомплит
+export type ContextSource = KnownContextSource | (string & {});
 
 // Context atom kinds/ids we will read as signal sources (for GoalLab + debug)
 export type ContextSignalId =
@@ -140,6 +171,16 @@ export interface ContextAtomBase {
   ns?: AtomNamespace;
   origin?: AtomOrigin;
   trace?: AtomTrace;
+
+  /**
+   * Quark-codex fields (единый “кодификатор” поверх ID):
+   * - specId: какая AtomSpec сработала (если есть)
+   * - params: распарсенные группы из idPattern (selfId/otherId/metric/etc)
+   * - code: стабильный “кварковый” ключ (не уникальный), по которому будут строиться “молекулы/законы” позже
+   */
+  specId?: string;
+  params?: Record<string, string>;
+  code?: string;
   
   // Specific fields
   fromId?: string;
