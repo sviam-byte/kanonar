@@ -73,7 +73,16 @@ export const AtomBrowser: React.FC<Props> = ({ atoms, className, selectedAtomId,
     if (originFilter !== 'all') out = out.filter(a => a.origin === originFilter);
     if (qq) {
       out = out.filter(a => {
-        const hay = [a.id, a.kind, a.source, a.label, ...(a.tags || [])].join(' ').toLowerCase();
+        const paramsStr =
+          (a as any).params && typeof (a as any).params === 'object'
+            ? JSON.stringify((a as any).params)
+            : '';
+        const hay = [
+          a.id, a.kind, a.source, a.label,
+          (a as any).code, (a as any).specId,
+          paramsStr,
+          ...(a.tags || [])
+        ].join(' ').toLowerCase();
         return hay.includes(qq);
       });
     }
@@ -172,6 +181,7 @@ export const AtomBrowser: React.FC<Props> = ({ atoms, className, selectedAtomId,
                 <div className="text-xs font-mono font-bold text-canon-accent">{Math.round((a.magnitude ?? 0) * 100)}%</div>
               </div>
               <div className="text-xs font-bold truncate text-canon-text">{a.label || a.kind}</div>
+              {(a as any).code && <div className="text-[9px] font-mono text-canon-text-light/70 truncate">{String((a as any).code)}</div>}
               <div className="text-[9px] font-mono text-canon-text-light/50 truncate" title={a.id}>{a.id}</div>
             </button>
           ))}

@@ -7,6 +7,13 @@ type Atom = {
   c: number;
   o: AtomOrigin;
   meta?: any;
+  code?: string | null;
+  specId?: string | null;
+  params?: Record<string, any> | null;
+  label?: string | null;
+  kind?: string | null;
+  ns?: string | null;
+  source?: string | null;
 };
 
 export function AtomExplorer({
@@ -28,7 +35,24 @@ export function AtomExplorer({
       .filter(a => (origin === 'all' ? true : a.o === origin))
       .filter(a => (nss ? a.id.toLowerCase().startsWith(nss) : true))
       .filter(a => a.c >= minC)
-      .filter(a => (qq ? a.id.toLowerCase().includes(qq) : true))
+      .filter(a => {
+        if (!qq) return true;
+        const paramsStr =
+          a.params && typeof a.params === 'object'
+            ? JSON.stringify(a.params)
+            : '';
+        const hay = [
+          a.id,
+          a.code ?? '',
+          a.specId ?? '',
+          a.label ?? '',
+          paramsStr,
+          a.kind ?? '',
+          a.ns ?? '',
+          a.source ?? ''
+        ].join(' ').toLowerCase();
+        return hay.includes(qq);
+      })
       .sort((a, b) => a.id.localeCompare(b.id));
   }, [atoms, q, origin, ns, minC]);
 
@@ -89,7 +113,14 @@ export function AtomExplorer({
                 onClick={() => onSelect(a)}
                 className="border-b border-canon-border/30 hover:bg-canon-accent/10 cursor-pointer transition-colors"
               >
-                <td className="p-2 font-mono truncate max-w-[240px]" title={a.id}>{a.id}</td>
+                <td className="p-2">
+                  <div className="font-mono truncate max-w-[240px]" title={a.id}>{a.id}</div>
+                  {a.code ? (
+                    <div className="mt-0.5 text-[9px] font-mono text-canon-text-light/70 truncate max-w-[240px]" title={a.code}>
+                      {a.code}
+                    </div>
+                  ) : null}
+                </td>
                 <td className="p-2 text-center font-mono font-bold text-canon-accent">{a.m.toFixed(2)}</td>
                 <td className="p-2 text-center font-mono">{a.c.toFixed(2)}</td>
                 <td className="p-2 font-mono text-[10px] text-canon-text-light">{a.o}</td>
