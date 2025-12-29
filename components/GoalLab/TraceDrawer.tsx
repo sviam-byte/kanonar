@@ -47,7 +47,6 @@ function quarkCodeFromSpec(specId?: string | null, params?: Record<string, any> 
     case 'ctx.axis': return `ctx.axis.${p.axis}`;
     case 'ctx.source': return `ctx.src.${p.name}`;
     case 'ctx.source.scoped': return `ctx.src.${p.group}.${p.name}`;
-    case 'ctx.source': return `ctx.src.${p.key}`;
     case 'world.loc.metric': return `world.loc.${p.metric}`;
     case 'world.map.metric': return `world.map.${p.metric}`;
     case 'world.env.hazard': return 'world.env.hazard';
@@ -93,7 +92,6 @@ export function TraceDrawer({
   const code = atom.code ?? quarkCodeFromSpec(specId, params);
   const desc = useMemo(() => describeAtom({ id: atom.id, label: atom.label ?? atom.id, code } as any), [atom.id, atom.label, code]);
   const quark = useMemo(() => describeQuark(code), [code]);
-  const desc = useMemo(() => describeAtom({ id: atom.id, label: atom.label ?? atom.id } as any), [atom.id, atom.label]);
 
   const notes = normalizeNotes(tr?.notes);
 
