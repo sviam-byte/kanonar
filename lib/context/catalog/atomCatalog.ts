@@ -1,7 +1,6 @@
 
 // lib/context/catalog/atomCatalog.ts
 import { AtomNamespace, AtomOrigin, ContextAtom } from '../v2/types';
-import { normalizeAtom } from '../v2/infer';
 
 export type AtomSpec = {
   idPrefix?: string;        // e.g., "rel:label:" or "ctx:"

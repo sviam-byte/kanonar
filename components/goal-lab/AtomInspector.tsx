@@ -17,6 +17,16 @@ export function AtomInspector({ atom, allAtoms: _allAtoms }: { atom: ContextAtom
 
       <div style={{ marginTop: 10, fontSize: 12, opacity: 0.75 }}>
         <div><b>ID:</b> {d.id}</div>
+        {(atom as any).code && <div><b>Code:</b> {(atom as any).code}</div>}
+        {(atom as any).specId && <div><b>Spec:</b> {(atom as any).specId}</div>}
+        {(atom as any).params && (
+          <div>
+            <b>Params:</b>{' '}
+            <pre style={{ whiteSpace: 'pre-wrap', display: 'inline-block', margin: 0 }}>
+              {JSON.stringify((atom as any).params, null, 2)}
+            </pre>
+          </div>
+        )}
         {typeof atom.magnitude === 'number' && <div><b>Value:</b> {atom.magnitude.toFixed(3)}</div>}
         {d.scale && (
           <div style={{ marginTop: 6 }}>

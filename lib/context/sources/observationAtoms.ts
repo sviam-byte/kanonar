@@ -1,6 +1,7 @@
 
 // lib/context/sources/observationAtoms.ts
 import { ContextAtom } from '../v2/types';
+import { normalizeAtom } from '../v2/infer';
 
 function clamp01(x: number) {
   if (!Number.isFinite(x)) return 0;
@@ -183,5 +184,7 @@ export function extractObservationAtoms(args: {
     label: `infoAdequacy:${Math.round(infoAdequacy * 100)}%`
   }));
 
-  return out;
+  // IMPORTANT: normalize at source so downstream derived layers
+  // can rely on atom.code/atom.params even before epistemic merge.
+  return out.map(a => normalizeAtom(a as any));
 }
