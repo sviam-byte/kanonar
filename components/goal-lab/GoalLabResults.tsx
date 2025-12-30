@@ -427,7 +427,7 @@ export const GoalLabResults: React.FC<Props> = ({
             };
         });
 
-    const pipelineStages = (snapshotV1 as any)?.meta?.pipeline || [];
+    const pipelineStages = (snapshotV1 as any)?.meta?.pipelineDeltas || [];
     const pipelineStageId = pipelineStageIdProp || pipelineStages[pipelineStages.length - 1]?.id || 'S5';
 
     if (!context) {

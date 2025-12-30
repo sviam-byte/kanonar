@@ -1241,11 +1241,11 @@ export const GoalSandbox: React.FC = () => {
 
   const handleExportPipelineAll = useCallback(() => {
     if (!snapshotV1) return;
-    const payload = {
+      const payload = {
       schema: 'GoalLabPipelineExportV1',
       tick: snapshotV1.tick,
       selfId: snapshotV1.selfId,
-      pipeline: (snapshotV1 as any).meta?.pipeline || [],
+      pipelineDeltas: (snapshotV1 as any).meta?.pipelineDeltas || [],
       finalAtoms: snapshotV1.atoms,
     };
     downloadJson(payload, `goal-lab__pipeline__${snapshotV1.selfId}__t${snapshotV1.tick}.json`);
@@ -1254,7 +1254,7 @@ export const GoalSandbox: React.FC = () => {
   const handleExportPipelineStage = useCallback(
     (stageId: string) => {
       if (!snapshotV1) return;
-      const stages = (snapshotV1 as any).meta?.pipeline || [];
+      const stages = (snapshotV1 as any).meta?.pipelineDeltas || [];
       const st = stages.find((s: any) => s.id === stageId);
       if (!st) return;
       downloadJson(st, `goal-lab__stage-${stageId}__${snapshotV1.selfId}__t${snapshotV1.tick}.json`);
