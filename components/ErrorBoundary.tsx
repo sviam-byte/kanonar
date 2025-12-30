@@ -34,6 +34,12 @@ function downloadJson(obj: any, name: string) {
   } catch {}
 }
 
+function copyText(text: string) {
+  try {
+    navigator.clipboard?.writeText?.(text);
+  } catch {}
+}
+
 export class ErrorBoundary extends React.Component<Props, State> {
   state: State = { error: null, info: null, eventLog: [] };
 
@@ -53,13 +59,14 @@ export class ErrorBoundary extends React.Component<Props, State> {
     const { error, info } = this.state;
     if (!error) return this.props.children;
 
+    const diag = getDiag();
     const report = {
       schema: 'KanonarCrashReportV1',
       time: new Date().toISOString(),
       message: String(error.message || error),
       stack: String((error as any).stack || ''),
       componentStack: String(info?.componentStack || ''),
-      diag: this.state.eventLog,
+      diag,
       userAgent: navigator.userAgent,
       location: String(window.location.href),
     };
@@ -86,6 +93,12 @@ export class ErrorBoundary extends React.Component<Props, State> {
               style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.2)', background: 'rgba(0,0,0,0.2)', color: 'white' }}
             >
               Download crash report
+            </button>
+            <button
+              onClick={() => copyText(JSON.stringify(report, null, 2))}
+              style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.2)', background: 'rgba(0,0,0,0.2)', color: 'white' }}
+            >
+              Copy crash report
             </button>
           </div>
         </div>

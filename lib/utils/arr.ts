@@ -18,7 +18,7 @@ export function arr<T = any>(x: any): T[] {
         kind: 'arr.nonArray',
         type: typeof x,
         ctor: (x as any)?.constructor?.name,
-        keys: typeof x === 'object' ? Object.keys(x).slice(0, 12) : null,
+        keys: typeof x === 'object' ? Object.keys(x).slice(0, 24) : null,
       });
       if (b.length > 200) b.splice(0, b.length - 200);
     } catch {}

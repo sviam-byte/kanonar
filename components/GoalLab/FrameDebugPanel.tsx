@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { arr } from '../../lib/utils/arr';
 import { describeQuark } from '../../lib/context/codex/quarkRegistry';
 import { generateAtomSpecStubs } from '../../lib/context/catalog/generateMissingSpecs';
 import { AtomExplorer } from './AtomExplorer';
@@ -39,7 +40,7 @@ export function FrameDebugPanel({
   const index = useMemo(() => {
     if (frame?.index) return frame.index;
     const obj: Record<string, Atom> = {};
-    (frame?.atoms ?? []).forEach(a => (obj[a.id] = a));
+    arr(frame?.atoms).forEach(a => (obj[a.id] = a));
     return obj;
   }, [frame]);
 
@@ -54,9 +55,9 @@ export function FrameDebugPanel({
 
   const coverageList = useMemo(() => {
     if (!diag) return [];
-    if (coverageTab === 'missingSpec') return diag.missingSpecIds || [];
-    if (coverageTab === 'missingCode') return diag.missingCodeIds || [];
-    return diag.unknownQuarkCodes || [];
+    if (coverageTab === 'missingSpec') return arr(diag.missingSpecIds);
+    if (coverageTab === 'missingCode') return arr(diag.missingCodeIds);
+    return arr(diag.unknownQuarkCodes);
   }, [diag, coverageTab]);
 
   const coverageTitle = useMemo(() => {
@@ -155,7 +156,7 @@ export function FrameDebugPanel({
             <div className="max-h-[220px] overflow-y-auto rounded border border-white/10 bg-black/30">
               {coverageList.length ? (
                 <ul className="divide-y divide-white/5">
-                  {coverageList.map((x, i) => (
+                  {arr(coverageList).slice(0, 120).map((x, i) => (
                     <li key={i} className="p-2">
                       {coverageTab === 'unknownQuark' ? (
                         <>
@@ -178,7 +179,7 @@ export function FrameDebugPanel({
           </div>
         ) : null}
         <AtomExplorer
-          atoms={frame.atoms}
+          atoms={arr(frame.atoms)}
           onSelect={(a) => setSelected(a)}
         />
       </div>
