@@ -190,6 +190,7 @@ export const GoalSandbox: React.FC = () => {
   const [affectOverrides, setAffectOverrides] = useState<Partial<AffectState>>({});
   const [selectedEventIds, setSelectedEventIds] = useState<Set<string>>(new Set());
   const [manualAtoms, setManualAtoms] = useState<ContextAtom[]>([]);
+  const [pipelineStageId, setPipelineStageId] = useState<string>('S5');
 
   // NOTE: Do not mutate worldState via affect overrides. Affect is materialized as atoms inside buildGoalLabContext.
 
@@ -1238,6 +1239,29 @@ export const GoalSandbox: React.FC = () => {
     downloadJson(sceneDumpV2, `goal-lab-scene__${castTag}__persp-${pid}__${exportedAt}.json`);
   }, [perspectiveId, sceneDumpV2, selectedAgentId, participantIds]);
 
+  const handleExportPipelineAll = useCallback(() => {
+    if (!snapshotV1) return;
+    const payload = {
+      schema: 'GoalLabPipelineExportV1',
+      tick: snapshotV1.tick,
+      selfId: snapshotV1.selfId,
+      pipeline: (snapshotV1 as any).meta?.pipeline || [],
+      finalAtoms: snapshotV1.atoms,
+    };
+    downloadJson(payload, `goal-lab__pipeline__${snapshotV1.selfId}__t${snapshotV1.tick}.json`);
+  }, [snapshotV1]);
+
+  const handleExportPipelineStage = useCallback(
+    (stageId: string) => {
+      if (!snapshotV1) return;
+      const stages = (snapshotV1 as any).meta?.pipeline || [];
+      const st = stages.find((s: any) => s.id === stageId);
+      if (!st) return;
+      downloadJson(st, `goal-lab__stage-${stageId}__${snapshotV1.selfId}__t${snapshotV1.tick}.json`);
+    },
+    [snapshotV1]
+  );
+
   const handleImportSceneClick = useCallback(() => {
     importInputRef.current?.click();
   }, []);
@@ -1408,6 +1432,10 @@ export const GoalSandbox: React.FC = () => {
               tom={(worldState as any)?.tom?.[perspectiveId]}
               atomDiff={atomDiff as any}
               snapshotV1={snapshotV1 as any}
+              pipelineStageId={pipelineStageId}
+              onChangePipelineStageId={setPipelineStageId}
+              onExportPipelineStage={handleExportPipelineStage}
+              onExportPipelineAll={handleExportPipelineAll}
               sceneDump={sceneDumpV2 as any}
               onDownloadScene={onDownloadScene}
               onImportScene={handleImportSceneClick}

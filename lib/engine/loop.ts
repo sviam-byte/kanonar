@@ -112,7 +112,6 @@ export async function runSimulationTick(world: WorldState): Promise<SimulationEv
         
         if (!ctxWorld.contextEx && world.scenario?.contextConfig) {
              const locationOf: Record<string, string> = {};
-             const agentLocationTags: import('../context/types').AgentLocationTags = {};
 
              // Populate location data
              for (const agent of world.agents) {
@@ -121,15 +120,6 @@ export async function runSimulationTick(world: WorldState): Promise<SimulationEv
 
                  if (locId) {
                      locationOf[charId] = locId;
-                     const loc = findLocation(world.locations, locId);
-                     if (loc) {
-                         // Simple schema: location tag = location kind
-                         const tags: string[] = [];
-                         if ((loc as any).kind) tags.push((loc as any).kind);
-                         // If location has tags, add them
-                         if (loc.tags) tags.push(...loc.tags);
-                         agentLocationTags[charId] = tags;
-                     }
                  }
              }
 
@@ -144,7 +134,7 @@ export async function runSimulationTick(world: WorldState): Promise<SimulationEv
                 scenarioId: world.scenario.id,
                 scenarioConfig: world.scenario.contextConfig as any,
                 logs: [],
-                agentLocationTags
+                agentLocationTags: {}
             };
         }
         

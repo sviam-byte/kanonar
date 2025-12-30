@@ -18,6 +18,7 @@ import {
   CommitmentAtom,
   CommitmentStatus
 } from './types';
+import type { TickContext } from './engineTypes';
 import type { AgentState, WorldState, DomainEvent } from '../../types';
 import { applyDomainEventsToWorldContext } from './contextEngine';
 
@@ -68,24 +69,34 @@ export function pushLog(w: ContextWorldState, entry: Omit<LogEntry, 'tick'>) {
  */
 export function hardAvailable(
   intent: ActionIntent,
-  def: ActionDef,
-  w: ContextWorldState,
-  scenario: ScenarioConfig
+  ctx: TickContext,
+  w: ContextWorldState
 ): boolean {
+  const { scenario, agentLocationTags } = ctx;
   const stage = scenario.stages.find(s => s.id === w.contextEx.stageId);
+  const def = ctx.actionCatalog[intent.actionId];
+  if (!def) return false;
 
-  // карта аффордансов по локации
-  const locId = w.contextEx.locationOf[intent.actorId];
-  // For now simplified assumption: all actions afforded unless restricted by location tags logic which is partial
-  const afforded = scenario.affordances.some(aff => {
-    if (aff.requiresLocationTags?.length) {
-      // тут можно будет смотреть на теги локации из scenario.map
-      // пока просто пропускаем проверку тегов
+  const affs = scenario.affordances ?? [];
+  if (!affs.length) {
+    // Если affordances нет — ничего не режем
+  } else {
+    const tags = agentLocationTags[intent.actorId] ?? [];
+    const applicable = affs.filter(aff =>
+      !aff.requiresLocationTags ||
+      aff.requiresLocationTags.every(t => tags.includes(t))
+    );
+    const effective = applicable.length
+      ? applicable
+      : affs.filter(aff => !aff.requiresLocationTags);
+
+    if (effective.length) {
+      const allowed = effective.some(aff =>
+        aff.allowedActions?.includes(intent.actionId)
+      );
+      if (!allowed) return false;
     }
-    return aff.allowedActions.includes(intent.actionId);
-  });
-
-  if (!afforded) return false;
+  }
 
   // стадия: белый / чёрный список
   if (stage?.allowedActions && !stage.allowedActions.includes(intent.actionId)) {
@@ -226,6 +237,15 @@ export function hardAvailable(
   }
 
   return true;
+}
+
+function computeAgentLocationTags(
+  actorId: string,
+  ctx: TickContext
+): string[] {
+  const locId = ctx.locationOf[actorId];
+  const loc = ctx.scenario.map.locations.find((item) => item.id === locId);
+  return loc?.tags ?? [];
 }
 
 /**
@@ -407,15 +427,8 @@ export interface TickConfig {
   actionCatalog: Record<string, ActionDef>;
   goalDefs: Record<GoalId, GoalDef>;
   resolutionRules: ResolutionRules;
-  proposalGenerator: (
-    agent: AgentState,
-    w: ContextWorldState
-  ) => ActionIntent[];
-  pickIntent: (
-    agent: AgentState,
-    candidates: ActionIntent[],
-    w: ContextWorldState
-  ) => ActionIntent | null;
+  proposalGenerator: (ctx: TickContext) => ActionIntent[];
+  pickIntent: (candidates: ActionIntent[], ctx: TickContext) => ActionIntent | null;
   exclusiveMandates?: MandateId[];
 }
 
@@ -444,6 +457,9 @@ export function tickContext(
           logs: []
        };
   }
+  if (!w.contextEx.agentLocationTags) {
+    w.contextEx.agentLocationTags = {};
+  }
 
   // 1) stage transition
   const currentStage = scenario.stages.find(s => s.id === w.contextEx.stageId);
@@ -459,17 +475,36 @@ export function tickContext(
   }
 
   // 2) generate intents (все агенты)
+  const participants = w.agents.map(agent => agent.entityId);
   let allIntents: ActionIntent[] = [];
   for (const agent of w.agents) {
-    const candidates = cfg.proposalGenerator(agent, w);
-    // фильтрация hard-gates
-    const valid = candidates.filter(intent => {
-      const def = cfg.actionCatalog[intent.actionId];
-      return def && hardAvailable(intent, def, w, scenario);
+    const ctx: TickContext = {
+      actorId: agent.entityId,
+      participants,
+      actionCatalog: cfg.actionCatalog,
+      scenario,
+      world: w,
+      locationOf: w.contextEx.locationOf,
+      agentLocationTags: w.contextEx.agentLocationTags,
+      goalWeights: agent.goalWeights ?? {},
+    };
+    ctx.agentLocationTags[ctx.actorId] = computeAgentLocationTags(ctx.actorId, ctx);
+    const proposals = cfg.proposalGenerator(ctx);
+    const valid = proposals.filter(intent => hardAvailable(intent, ctx, w));
+
+    pushLog(w, {
+      kind: 'proposal',
+      actorId: ctx.actorId,
+      message: `Намерения: ${valid.length}/${proposals.length}`,
+      data: {
+        total: proposals.length,
+        valid: valid.length,
+        sample: valid.slice(0, 5),
+      },
     });
 
     // выбор одного намерения
-    const picked = cfg.pickIntent(agent, valid, w);
+    const picked = cfg.pickIntent(valid, ctx);
     if (picked) allIntents.push(picked);
   }
 

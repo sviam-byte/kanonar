@@ -262,6 +262,41 @@ export function buildGoalLabContext(
 
   // --- Pipeline Execution Helper ---
   const runPipeline = (sceneAtoms: ContextAtom[], sceneSnapshotForStage0: any) => {
+      // --- Pipeline stage tracing (S0..Sn) ---
+      const pipelineStages: Array<{
+        id: string;
+        label: string;
+        atoms: ContextAtom[];
+        notes?: string[];
+        delta?: { addedIds?: string[]; removedIds?: string[] };
+      }> = [];
+
+      const pushStage = (
+        id: string,
+        label: string,
+        atoms: ContextAtom[],
+        opts?: { notes?: string[]; baseAtoms?: ContextAtom[] }
+      ) => {
+        const next = dedupeAtomsById(atoms).map(normalizeAtom);
+
+        let delta: any = undefined;
+        if (opts?.baseAtoms) {
+          const base = new Set(dedupeAtomsById(opts.baseAtoms).map((a: any) => String(a.id)));
+          const cur = new Set(next.map((a: any) => String(a.id)));
+          const addedIds = Array.from(cur).filter(x => !base.has(x));
+          const removedIds = Array.from(base).filter(x => !cur.has(x));
+          delta = { addedIds, removedIds };
+        }
+
+        pipelineStages.push({
+          id,
+          label,
+          atoms: next,
+          notes: opts?.notes,
+          delta
+        });
+      };
+
       // Canonical affect atoms (bridge for UI knobs -> threat/goals explanations)
       const affectAtoms = atomizeAffect(
         selfId,
@@ -289,6 +324,7 @@ export function buildGoalLabContext(
         events: eventsAll,
         sceneSnapshot: sceneSnapshotForStage0
       });
+      pushStage('S0', 'S0 • stage0.mergedAtoms (world facts + overrides + events)', stage0.mergedAtoms);
 
       // Add compatibility aliases (ctx:danger -> ctx:danger:selfId, threat:final -> threat:final:selfId, ...)
       const aliasAtoms = buildSelfAliases(stage0.mergedAtoms, selfId);
@@ -305,6 +341,12 @@ export function buildGoalLabContext(
         atoms: atomsPreAxes
       });
       atomsPreAxes = mergeKeepingOverrides(atomsPreAxes, hazGeo.atoms).merged;
+      pushStage(
+        'S0a',
+        'S0a • stage0 + aliases + socProx + hazardGeometry (pre-axes)',
+        atomsPreAxes,
+        { baseAtoms: stage0.mergedAtoms }
+      );
 
       // 5. Derive Axes
       const axesRes = deriveContextVectors({
@@ -314,11 +356,13 @@ export function buildGoalLabContext(
       });
       // IMPORTANT: axes must be materialized into the atom stream, otherwise access/threat/goals won't see them.
       const atomsWithAxes = mergeKeepingOverrides(atomsPreAxes, axesRes.atoms).merged;
+      pushStage('S1', 'S1 • axes materialized (ctx vectors)', atomsWithAxes, { baseAtoms: atomsPreAxes });
 
       // 5.5 Constraints & Access
       const locId = (agentForPipeline as any).locationId || getLocationForAgent(worldForPipeline, selfId)?.entityId;
       const accessPack = deriveAccess(atomsWithAxes, selfId, locId);
       const atomsAfterAccess = mergeKeepingOverrides(atomsWithAxes, accessPack.atoms).merged;
+      pushStage('S1a', 'S1a • access constraints', atomsAfterAccess, { baseAtoms: atomsWithAxes });
 
       // 6. Rumor Generation
       const seed =
@@ -333,14 +377,28 @@ export function buildGoalLabContext(
           seed
       });
       const atomsAfterBeliefGen = [...atomsAfterAccess, ...rumorBeliefs];
+      pushStage('S1b', 'S1b • rumor beliefs injected', atomsAfterBeliefGen, { baseAtoms: atomsAfterAccess });
       
       // 7. Apply Relation Priors
       const priorsApplied = applyRelationPriorsToDyads(atomsAfterBeliefGen, selfId);
       const atomsAfterPriors = mergeKeepingOverrides(atomsAfterBeliefGen, priorsApplied.atoms).merged;
+      pushStage('S2', 'S2 • relation priors applied', atomsAfterPriors, { baseAtoms: atomsAfterBeliefGen });
 
       // --- Character lens (subjective interpretation) ---
       const lensRes = applyCharacterLens({ selfId, atoms: atomsAfterPriors, agent: agentForPipeline });
       const atomsAfterLens = mergeKeepingOverrides(atomsAfterPriors, lensRes.atoms).merged;
+      pushStage(
+        'S2a',
+        'S2a • character lens (subjective interpretation)',
+        atomsAfterLens,
+        {
+          baseAtoms: atomsAfterPriors,
+          notes: [
+            `lensAdded=${lensRes.atoms?.length ?? 0}`,
+            'Delta shows what lens injected/removed vs priors.'
+          ]
+        }
+      );
 
       // 8. ToM Context Bias
       const biasPack = buildBeliefToMBias(atomsAfterLens, selfId);
@@ -675,6 +733,12 @@ export function buildGoalLabContext(
       // character-specific way.
       const socProxPostTom = deriveSocialProximityAtoms({ selfId, atoms: atomsAfterThreat });
       const atomsAfterSocialLoop = mergeKeepingOverrides(atomsAfterThreat, socProxPostTom.atoms).merged;
+      pushStage(
+        'S2b',
+        'S2b • ToM ctx/effective/policy + threat + social loop closed',
+        atomsAfterSocialLoop,
+        { baseAtoms: atomsAfterLens }
+      );
 
       // appraisal -> emotions -> dyadic emotions
       const appRes = deriveAppraisalAtoms({ selfId, atoms: atomsAfterSocialLoop, agent: agentForPipeline });
@@ -683,6 +747,7 @@ export function buildGoalLabContext(
       const atomsAfterEmo = mergeKeepingOverrides(atomsAfterApp, emoRes.atoms).merged;
       const dyadEmo = deriveDyadicEmotionAtoms({ selfId, atoms: atomsAfterEmo });
       const atomsAfterDyadEmo = mergeKeepingOverrides(atomsAfterEmo, dyadEmo.atoms).merged;
+      pushStage('S3', 'S3 • appraisal + emotions + dyadic emotions', atomsAfterDyadEmo, { baseAtoms: atomsAfterSocialLoop });
 
       // 10. Possibility Graph (Registry-based)
       const atomsForPossibilities = atomsAfterDyadEmo;
@@ -690,6 +755,7 @@ export function buildGoalLabContext(
       const possAtoms = atomizePossibilities(possibilities);
 
       const atomsAfterPoss = mergeKeepingOverrides(atomsForPossibilities, possAtoms).merged;
+      pushStage('S3a', 'S3a • possibilities materialized', atomsAfterPoss, { baseAtoms: atomsAfterDyadEmo });
 
       return {
           atoms: atomsAfterPoss,
@@ -697,7 +763,8 @@ export function buildGoalLabContext(
           accessPack,
           provenance: stage0.provenance,
           rumorBeliefs,
-          axesRes 
+          axesRes,
+          pipelineStages
       };
   };
 
@@ -736,6 +803,24 @@ export function buildGoalLabContext(
 
   const mindAtoms = atomizeContextMindMetrics(selfId, contextMind);
   const atomsWithMind = dedupeAtomsById([...atomsForMind, ...mindAtoms]).map(normalizeAtom);
+
+  const tracedPipeline = Array.isArray((result as any).pipelineStages) ? (result as any).pipelineStages : [];
+  const pipelineAll = [...tracedPipeline];
+
+  pipelineAll.push({
+    id: 'S4',
+    label: 'S4 • contextMind metrics materialized',
+    atoms: dedupeAtomsById(atomsWithMind).map(normalizeAtom),
+    delta: (() => {
+      const prev = tracedPipeline[tracedPipeline.length - 1]?.atoms || [];
+      const base = new Set(dedupeAtomsById(prev).map((a: any) => String(a.id)));
+      const cur = new Set(dedupeAtomsById(atomsWithMind).map((a: any) => String(a.id)));
+      return {
+        addedIds: Array.from(cur).filter(x => !base.has(x)),
+        removedIds: Array.from(base).filter(x => !cur.has(x))
+      };
+    })()
+  });
 
   // Decide AFTER mind metrics exist in the atom stream
   const decision = decideAction({
@@ -779,6 +864,23 @@ export function buildGoalLabContext(
   } catch {}
 
   snapshot.contextMind = contextMind;
+
+  pipelineAll.push({
+    id: 'S5',
+    label: 'S5 • final snapshot.atoms (export truth)',
+    atoms: dedupeAtomsById(snapshot.atoms || []).map(normalizeAtom),
+    delta: (() => {
+      const prev = pipelineAll[pipelineAll.length - 2]?.atoms || [];
+      const base = new Set(dedupeAtomsById(prev).map((a: any) => String(a.id)));
+      const cur = new Set(dedupeAtomsById(snapshot.atoms || []).map((a: any) => String(a.id)));
+      return {
+        addedIds: Array.from(cur).filter(x => !base.has(x)),
+        removedIds: Array.from(base).filter(x => !cur.has(x))
+      };
+    })()
+  });
+
+  (snapshot as any).meta = { ...((snapshot as any).meta || {}), pipeline: pipelineAll };
   
   (snapshot as any).debug = {
       legacyAtoms: legacyFrameAtoms,
