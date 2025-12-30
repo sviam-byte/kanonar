@@ -1,4 +1,5 @@
 import React, { useMemo } from 'react';
+import { arr } from '../../lib/utils/arr';
 
 import type { AffectState } from '../../types';
 import type { ContextualMindReport } from '../../lib/tom/contextual/types';
@@ -50,7 +51,7 @@ export function NarrativePanel(props: {
             <div className="mt-2">
               <div className="text-[11px] font-semibold text-canon-text-light mb-1">Активные приоритеты</div>
               <div className="flex flex-wrap gap-2">
-                {goalPreview.goals.slice(0, 6).map((g: any) => (
+                {arr(goalPreview?.goals).slice(0, 6).map((g: any) => (
                   <div key={g.id} className="px-2 py-1 rounded border border-canon-border/30 bg-black/30">
                     <div className="text-[11px] font-semibold text-canon-text truncate max-w-[320px]" title={g.id}>{g.label}</div>
                     <div className="text-[9px] font-mono text-canon-text-light/70">p={fmt2(g.priority)} • a={fmt2(g.activation)}</div>
@@ -77,7 +78,7 @@ export function NarrativePanel(props: {
             <div className="mt-2">
               <div className="text-[11px] font-semibold text-canon-text-light mb-1">Топ эмоций (0..1)</div>
               <div className="flex flex-wrap gap-2">
-                {topE.map(e => (
+                {arr(topE).map(e => (
                   <span key={e.id} className="px-2 py-0.5 rounded bg-black/30 border border-canon-border/30 text-[11px]">
                     <span className="font-semibold">{e.id}</span>
                     <span className="font-mono opacity-80 ml-2">{fmt2(e.v)}</span>
@@ -104,7 +105,7 @@ export function NarrativePanel(props: {
         <div className="text-xs font-bold text-canon-text uppercase tracking-wider mb-2">Что я думаю о других (ToM)</div>
         {dyads.length ? (
           <div className="space-y-2">
-            {dyads.map((d: any) => (
+            {arr(dyads).map((d: any) => (
               <div key={d.targetId} className="border border-canon-border/30 rounded bg-black/25 p-2">
                 <div className="text-[12px] font-semibold text-canon-text">
                   {d.targetName || d.targetId}

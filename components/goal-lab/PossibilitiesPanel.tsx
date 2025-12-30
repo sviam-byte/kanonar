@@ -1,6 +1,7 @@
 
 import React from 'react';
 import { Possibility } from '../../lib/context/possibilities/types';
+import { arr } from '../../lib/utils/arr';
 
 interface Props {
     possibilities?: Possibility[];
@@ -25,12 +26,12 @@ const Item: React.FC<ItemProps> = ({ p, onJumpToAtom }) => (
         </div>
         
         <div className="flex flex-wrap gap-1 mt-1">
-            {p.whyAtomIds?.map(id => (
+            {arr(p?.whyAtomIds).map(id => (
                 <span key={id} className="text-[9px] bg-blue-900/20 text-blue-200 px-1 rounded border border-blue-500/30 cursor-pointer hover:bg-blue-900/40" onClick={() => onJumpToAtom?.(id)}>
                     {id}
                 </span>
             ))}
-            {p.blockedBy?.map(id => (
+            {arr(p?.blockedBy).map(id => (
                 <span key={id} className="text-[9px] bg-red-900/20 text-red-200 px-1 rounded border border-red-500/30 cursor-pointer hover:bg-red-900/40" onClick={() => onJumpToAtom?.(id)}>
                     ⛔ {id}
                 </span>
@@ -63,14 +64,14 @@ export const PossibilitiesPanel: React.FC<Props> = ({ possibilities, onJumpToAto
                 {enabled.length > 0 && (
                     <div>
                         <div className="bg-green-900/20 px-3 py-1 text-[10px] font-bold text-green-300 uppercase tracking-wider">Available</div>
-                        {enabled.map(p => <Item key={p.id} p={p} onJumpToAtom={onJumpToAtom} />)}
+                        {arr(enabled).map(p => <Item key={p.id} p={p} onJumpToAtom={onJumpToAtom} />)}
                     </div>
                 )}
                 
                 {disabled.length > 0 && (
                      <div>
                         <div className="bg-red-900/20 px-3 py-1 text-[10px] font-bold text-red-300 uppercase tracking-wider mt-2">Blocked / Unavailable</div>
-                        {disabled.map(p => <Item key={p.id} p={p} onJumpToAtom={onJumpToAtom} />)}
+                        {arr(disabled).map(p => <Item key={p.id} p={p} onJumpToAtom={onJumpToAtom} />)}
                     </div>
                 )}
             </div>

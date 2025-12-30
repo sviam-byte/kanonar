@@ -2,6 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import { computeContextMindScoreboard } from '../../lib/contextMind/scoreboard';
 import { ContextAtom } from '../../lib/context/v2/types';
+import { arr } from '../../lib/utils/arr';
 
 export const ContextMindPanel: React.FC<{ cm?: any; atoms: ContextAtom[]; selfId?: string }> = ({ cm, atoms, selfId = 'unknown' }) => {
   
@@ -23,7 +24,7 @@ export const ContextMindPanel: React.FC<{ cm?: any; atoms: ContextAtom[]; selfId
           <div className="text-xs text-canon-text-light mt-1">{cm ? 'from snapshot' : 'computed from atoms'}</div>
         </div>
 
-        {metrics.map((m: any, i: number) => (
+        {arr(metrics).map((m: any, i: number) => (
           <button
             key={m.key || i}
             className={`w-full text-left p-3 border-b border-canon-border/50 hover:bg-canon-bg-light/20 transition-colors ${i===sel ? 'bg-canon-bg-light/10 border-l-2 border-l-canon-accent' : ''}`}

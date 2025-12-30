@@ -2,6 +2,7 @@ import React from 'react';
 import type { ContextAtom } from '../../lib/context/v2/types';
 import { describeAtom } from '../../lib/context/v2/describeAtom';
 import { resolveAtomSpec } from '../../lib/context/catalog/atomSpecs';
+import { arr } from '../../lib/utils/arr';
 
 type Props = {
   atom: ContextAtom | null;
@@ -18,7 +19,7 @@ function pct(v: any): string {
 function asPartsList(parts: any): Array<{ name: string; value: number; weight?: number }> {
   if (!parts) return [];
   if (Array.isArray(parts)) {
-    return parts.map((p: any) => ({
+    return arr(parts).map((p: any) => ({
       name: String(p?.name ?? p?.key ?? 'part'),
       value: Number(p?.value ?? p?.val ?? 0),
       weight: p?.weight !== undefined ? Number(p.weight) : (p?.w !== undefined ? Number(p.w) : undefined),
@@ -130,7 +131,7 @@ export function AtomInspector({ atom, allAtoms, onJumpToAtomId }: Props) {
         <div className="p-3 rounded-lg border border-canon-border bg-black/20">
           <div className="text-[10px] uppercase tracking-wider text-canon-text-light font-bold">Family decode</div>
           <div className="mt-2 flex flex-wrap gap-1">
-            {tokens.slice(0, 10).map((t, i) => (
+            {arr(tokens).slice(0, 10).map((t, i) => (
               <span key={i} className="px-1.5 py-0.5 rounded bg-white/5 border border-white/10 text-[10px] font-mono text-canon-text-light">
                 {t}
               </span>
@@ -180,7 +181,7 @@ export function AtomInspector({ atom, allAtoms, onJumpToAtomId }: Props) {
           </div>
         ) : (
           <div className="mt-2 space-y-1">
-            {used.slice(0, 80).map(id => {
+            {arr(used).slice(0, 80).map(id => {
               const a = index.get(id);
               const m = a ? Number((a as any).magnitude ?? 0) : null;
               return (
@@ -214,7 +215,7 @@ export function AtomInspector({ atom, allAtoms, onJumpToAtomId }: Props) {
                 <div className="col-span-3 p-2 text-right">value</div>
                 <div className="col-span-2 p-2 text-right">w</div>
               </div>
-              {partsList.slice(0, 60).map((p, i) => (
+              {arr(partsList).slice(0, 60).map((p, i) => (
                 <div key={i} className="grid grid-cols-12 border-t border-white/5 bg-black/20 text-[10px] font-mono">
                   <div className="col-span-7 p-2 truncate" title={p.name}>{p.name}</div>
                   <div className="col-span-3 p-2 text-right text-canon-accent">{Number(p.value ?? 0).toFixed(2)}</div>

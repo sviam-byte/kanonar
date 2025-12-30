@@ -65,7 +65,7 @@ export const RelationsPanel: React.FC<Props> = ({ selfId, graph, className, onSe
             className="px-2 py-2 rounded bg-canon-bg border border-canon-border text-xs focus:outline-none focus:border-canon-accent"
           >
             <option value="all">all tags</option>
-            {edges.allTags.map(t => (
+            {arr(edges?.allTags).map(t => (
               <option key={t} value={t}>{t}</option>
             ))}
           </select>

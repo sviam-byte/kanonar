@@ -1,4 +1,5 @@
 import React from 'react';
+import { arr } from '../lib/utils/arr';
 
 type Props = { children: React.ReactNode };
 
@@ -41,7 +42,9 @@ export class ErrorBoundary extends React.Component<Props, State> {
   }
 
   componentDidCatch(error: Error, info: any) {
-    this.setState({ error, info, eventLog: getDiag() });
+    try { arr(null); } catch {}
+    const diag = getDiag();
+    this.setState({ error, info, eventLog: diag });
     // eslint-disable-next-line no-console
     console.error('[ErrorBoundary]', error, info);
   }

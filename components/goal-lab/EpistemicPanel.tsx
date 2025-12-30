@@ -2,6 +2,7 @@
 // components/goal-lab/EpistemicPanel.tsx
 import React, { useMemo, useState } from 'react';
 import { ContextAtom } from '../../lib/context/v2/types';
+import { arr } from '../../lib/utils/arr';
 
 type Layer = 'world' | 'obs' | 'belief' | 'override' | 'derived';
 
@@ -73,7 +74,7 @@ export const EpistemicPanel: React.FC<Props> = ({ atoms, provenance, onSelectAto
         {rows.length === 0 && (
             <div className="p-4 text-xs text-canon-text-light italic text-center">No atoms found for this layer/filter.</div>
         )}
-        {rows.map(({ a, layer }, idx) => (
+        {arr(rows).map(({ a, layer }, idx) => (
           <div key={idx} className="p-3 border-b border-canon-border/50 hover:bg-canon-bg-light/20 transition-colors">
             <div className="flex items-center gap-2">
               <span className={`px-2 py-0.5 text-[9px] uppercase font-bold rounded border ${layerBadge(layer)}`}>{layer}</span>
