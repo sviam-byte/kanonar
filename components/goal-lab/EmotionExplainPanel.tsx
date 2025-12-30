@@ -139,7 +139,11 @@ export const EmotionExplainPanel: React.FC<{
       { id: ids.valence, label: 'emo.valence', value: valenceAtom, origin: getOrigin(atoms, ids.valence) },
     ];
 
-    return { inputs, app, emo };
+    return {
+      inputs: Array.isArray(inputs) ? inputs : [],
+      app: Array.isArray(app) ? app : [],
+      emo: Array.isArray(emo) ? emo : [],
+    };
   }, [atoms, selfId]);
 
   const RowView = ({ r, showRef }: { r: any; showRef?: boolean }) => {
@@ -182,7 +186,7 @@ export const EmotionExplainPanel: React.FC<{
 
   const setOverride = (id: string, v01: number) => {
     if (!onChangeManualAtoms) return;
-    const list = manualAtoms || [];
+    const list = arr(manualAtoms);
     const a: ContextAtom = {
       id,
       ns: id.startsWith('app:') ? 'app' : 'emo',
@@ -224,7 +228,7 @@ export const EmotionExplainPanel: React.FC<{
             </button>
             <button
               className="px-2 py-1 text-[11px] rounded border border-orange-500/50 bg-orange-500/10 text-orange-200 hover:bg-orange-500/20"
-              onClick={() => onChangeManualAtoms((manualAtoms || []).filter(a => !a.id.endsWith(`:${selfId}`) || (!a.id.startsWith('app:') && !a.id.startsWith('emo:'))))}
+              onClick={() => onChangeManualAtoms(arr(manualAtoms).filter(a => !a.id.endsWith(`:${selfId}`) || (!a.id.startsWith('app:') && !a.id.startsWith('emo:'))))}
               title="Удалить manual overrides для app/emo по selfId"
             >
               Clear app/emo overrides

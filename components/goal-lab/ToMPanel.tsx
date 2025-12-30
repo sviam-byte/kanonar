@@ -85,22 +85,43 @@ export const ToMPanel: React.FC<{ atoms: ContextAtom[] }> = ({ atoms }) => {
             }
         }
 
+        const otherBySelf = Array.from(otherIdsBySelf.entries()).map(([selfId, otherIds]) => ({
+            selfId,
+            others: Array.from(otherIds).sort(),
+        }));
+        const selfIdList = Array.from(selfIds).sort();
+        if (!Array.isArray(selfIdList)) {
+            console.error('Expected array, got', selfIdList);
+            return {
+                baseDyads: [],
+                ctxDyads: [],
+                effectiveDyads: [],
+                bias: [],
+                policy: [],
+                selfIds: [],
+                otherBySelf: [],
+            };
+        }
         return {
             baseDyads,
             ctxDyads,
             effectiveDyads,
             bias,
             policy,
-            selfIds: Array.from(selfIds).sort(),
-            otherIdsBySelf,
+            selfIds: selfIdList,
+            otherBySelf,
         };
     }, [atoms]);
 
     const [selfId, setSelfId] = useState<string>(() => data.selfIds[0] || '');
     const otherOptions = useMemo(() => {
-        const set = data.otherIdsBySelf.get(selfId) || new Set<string>();
-        return Array.from(set).sort();
-    }, [data.otherIdsBySelf, selfId]);
+        const next = data.otherBySelf.find(entry => entry.selfId === selfId)?.others ?? [];
+        if (!Array.isArray(next)) {
+            console.error('Expected array, got', next);
+            return [];
+        }
+        return next;
+    }, [data.otherBySelf, selfId]);
     const [otherId, setOtherId] = useState<string>(() => otherOptions[0] || '');
 
     // keep state consistent when atoms update
@@ -148,7 +169,12 @@ export const ToMPanel: React.FC<{ atoms: ContextAtom[] }> = ({ atoms }) => {
             list.sort((a, b) => a.metric.localeCompare(b.metric));
             return list;
         };
-        return { base: collect('base'), state: collect('state') };
+        const base = collect('base');
+        const state = collect('state');
+        return {
+            base: Array.isArray(base) ? base : [],
+            state: Array.isArray(state) ? state : [],
+        };
     }, [atoms, selfId, otherId]);
 
     const policyForDyad = useMemo(() => {
@@ -169,15 +195,26 @@ export const ToMPanel: React.FC<{ atoms: ContextAtom[] }> = ({ atoms }) => {
         // sort affordances by magnitude desc
         afford.sort((a, b) => (b.magnitude ?? 0) - (a.magnitude ?? 0));
 
-        return { predict, att, help, afford, affordEU };
+        return {
+            predict: Array.isArray(predict) ? predict : [],
+            att: Array.isArray(att) ? att : [],
+            help: Array.isArray(help) ? help : [],
+            afford: Array.isArray(afford) ? afford : [],
+            affordEU: Array.isArray(affordEU) ? affordEU : [],
+        };
     }, [data.policy, selfId, otherId]);
 
     const keyMetrics = useMemo(() => {
         const metrics = ['trust', 'threat', 'support', 'intimacy', 'respect', 'alignment', 'dominance', 'uncertainty'];
-        return metrics.map(m => {
+        const next = metrics.map(m => {
             const a = dyadFor('tom:effective:dyad', m);
             return { metric: m, value: a?.magnitude ?? null, id: a?.id ?? `tom:effective:dyad:${selfId}:${otherId}:${m}` };
         });
+        if (!Array.isArray(next)) {
+            console.error('Expected array, got', next);
+            return [];
+        }
+        return next;
     }, [atoms, selfId, otherId]);
 
     return (

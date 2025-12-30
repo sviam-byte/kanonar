@@ -7,7 +7,7 @@ export const ThreatPanel: React.FC<{ atoms: ContextAtom[] }> = ({ atoms }) => {
   const data = useMemo(() => {
     const threatFinal = atoms.find(a => String(a.id).startsWith(`threat:final`))?.magnitude ?? 0;
     const channels = atoms.filter(a => String(a.id).startsWith('threat:ch:')).sort((a,b) => (b.magnitude||0) - (a.magnitude||0));
-    return { threatFinal, channels };
+    return { threatFinal, channels: Array.isArray(channels) ? channels : [] };
   }, [atoms]);
 
   return (

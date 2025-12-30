@@ -558,7 +558,10 @@ export const GoalLabResults: React.FC<Props> = ({
           })
           .filter(x => x.otherId);
 
-        const dyadTargets = Array.from(new Set(arr(dyadAll).map(x => x.otherId))).sort();
+        const dyadTargets = arr(dyadAll)
+          .map(x => x.otherId)
+          .filter((id, idx, list) => id && list.indexOf(id) === idx)
+          .sort();
         const [dyadOtherId, setDyadOtherId] = useState<string>(() => dyadTargets[0] || '');
         React.useEffect(() => {
           if (!dyadOtherId && dyadTargets[0]) setDyadOtherId(dyadTargets[0]);

@@ -229,7 +229,7 @@ export const GoalLabControls: React.FC<Props> = ({
   };
 
   const selfComputed = React.useMemo(() => {
-    const atoms = computedAtoms || [];
+    const atoms = arr(computedAtoms);
     const sid = selectedAgentId;
     const metric = (a: any) => a.magnitude ?? (a as any)?.m ?? 0;
     const app = atoms.filter(a => a.id?.startsWith('app:') && a.id.endsWith(`:${sid}`));
@@ -239,8 +239,8 @@ export const GoalLabControls: React.FC<Props> = ({
       return found?.magnitude ?? (found as any)?.m ?? fallback;
     };
     return {
-      app: app.sort((x, y) => metric(y) - metric(x)),
-      emo: emo.sort((x, y) => metric(y) - metric(x)),
+      app: Array.isArray(app) ? app.sort((x, y) => metric(y) - metric(x)) : [],
+      emo: Array.isArray(emo) ? emo.sort((x, y) => metric(y) - metric(x)) : [],
       core: {
         valence: get(`emo:valence:${sid}`, 0),
         arousal: get(`emo:arousal:${sid}`, 0),
@@ -284,30 +284,48 @@ export const GoalLabControls: React.FC<Props> = ({
       // но НЕ тащим world.agents, чтобы сцена была единственным источником правды.
       if (selectedAgentId) ids.add(selectedAgentId);
       if (perspectiveAgentId) ids.add(perspectiveAgentId);
-      return Array.from(ids);
+      const next = Array.from(ids);
+      if (!Array.isArray(next)) {
+        console.error('Expected array, got', next);
+        return [];
+      }
+      return next;
   }, [participantIds, selectedAgentId, perspectiveAgentId]);
-
-  const sceneIdSet = React.useMemo(() => new Set(sceneIds), [sceneIds]);
 
   // Calculate who is in scene but not the active agent
   const activeSceneActors = React.useMemo(() => {
-      return sceneIds.map(id => {
+      const next = sceneIds.map(id => {
           const char = allCharacters.find(c => c.entityId === id);
           return { id, label: char?.title || id };
       });
+      if (!Array.isArray(next)) {
+        console.error('Expected array, got', next);
+        return [];
+      }
+      return next;
   }, [sceneIds, allCharacters]);
 
   // Main agent dropdown: Show only current scene/world participants
   const activeAgentOptions = React.useMemo(() => {
-      return allCharacters
-          .filter(c => sceneIdSet.has(c.entityId))
+      const next = allCharacters
+          .filter(c => sceneIds.includes(c.entityId))
           .map(c => ({ ...c, inScene: true }));
-  }, [allCharacters, sceneIdSet]);
+      if (!Array.isArray(next)) {
+        console.error('Expected array, got', next);
+        return [];
+      }
+      return next;
+  }, [allCharacters, sceneIds]);
   
   // Add Character Dropdown: exclude those already in scene
   const availableToAdd = React.useMemo(() => {
-      return allCharacters.filter(c => !sceneIdSet.has(c.entityId));
-  }, [allCharacters, sceneIdSet]);
+      const next = allCharacters.filter(c => !sceneIds.includes(c.entityId));
+      if (!Array.isArray(next)) {
+        console.error('Expected array, got', next);
+        return [];
+      }
+      return next;
+  }, [allCharacters, sceneIds]);
 
   return (
     <div className="flex flex-col h-full bg-canon-bg border-t border-canon-border">
@@ -526,7 +544,7 @@ export const GoalLabControls: React.FC<Props> = ({
         {activeTab === 'scene' && sceneControl && onSceneControlChange && (
             <ScenePanel 
                 control={sceneControl} 
-                presets={scenePresets || []} 
+                presets={arr(scenePresets)} 
                 onChange={onSceneControlChange} 
             />
         )}

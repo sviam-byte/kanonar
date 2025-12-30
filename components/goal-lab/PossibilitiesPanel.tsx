@@ -46,7 +46,7 @@ const Item: React.FC<ItemProps> = ({ p, onJumpToAtom }) => (
 );
 
 export const PossibilitiesPanel: React.FC<Props> = ({ possibilities, onJumpToAtom }) => {
-    const list = possibilities || [];
+    const list = arr(possibilities);
     const enabled = list.filter(p => p.enabled).sort((a,b) => b.magnitude - a.magnitude);
     const disabled = list.filter(p => !p.enabled).sort((a,b) => b.magnitude - a.magnitude);
 

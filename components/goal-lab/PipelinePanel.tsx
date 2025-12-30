@@ -83,7 +83,7 @@ export const PipelinePanel: React.FC<{
       </div>
 
       <div className="flex-1 min-h-0">
-        <AtomBrowser atoms={atoms || []} className="h-full min-h-0 flex flex-col" />
+        <AtomBrowser atoms={arr(atoms)} className="h-full min-h-0 flex flex-col" />
       </div>
     </div>
   );

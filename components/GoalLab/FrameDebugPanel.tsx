@@ -37,12 +37,7 @@ export function FrameDebugPanel({
   } | null;
 }) {
   const [selected, setSelected] = useState<Atom | null>(null);
-  const index = useMemo(() => {
-    if (frame?.index) return frame.index;
-    const obj: Record<string, Atom> = {};
-    arr(frame?.atoms).forEach(a => (obj[a.id] = a));
-    return obj;
-  }, [frame]);
+  const atoms = arr(frame?.atoms);
 
   const mind = frame?.panels?.mind;
   const threat = frame?.panels?.threat;
@@ -55,9 +50,17 @@ export function FrameDebugPanel({
 
   const coverageList = useMemo(() => {
     if (!diag) return [];
-    if (coverageTab === 'missingSpec') return arr(diag.missingSpecIds);
-    if (coverageTab === 'missingCode') return arr(diag.missingCodeIds);
-    return arr(diag.unknownQuarkCodes);
+    const next =
+      coverageTab === 'missingSpec'
+        ? arr(diag.missingSpecIds)
+        : coverageTab === 'missingCode'
+          ? arr(diag.missingCodeIds)
+          : arr(diag.unknownQuarkCodes);
+    if (!Array.isArray(next)) {
+      console.error('Expected array, got', next);
+      return [];
+    }
+    return next;
   }, [diag, coverageTab]);
 
   const coverageTitle = useMemo(() => {
@@ -70,10 +73,10 @@ export function FrameDebugPanel({
     if (!diag) return;
     const payload =
       coverageTab === 'missingSpec'
-        ? (diag.missingSpecIds || [])
+        ? arr(diag.missingSpecIds)
         : coverageTab === 'missingCode'
-          ? (diag.missingCodeIds || [])
-          : (diag.unknownQuarkCodes || []);
+          ? arr(diag.missingCodeIds)
+          : arr(diag.unknownQuarkCodes);
 
     // eslint-disable-next-line no-console
     console.log(`[GoalLab Coverage] ${coverageTab} count=${payload.length}`, payload);
@@ -179,7 +182,7 @@ export function FrameDebugPanel({
           </div>
         ) : null}
         <AtomExplorer
-          atoms={arr(frame.atoms)}
+          atoms={atoms}
           onSelect={(a) => setSelected(a)}
         />
       </div>
@@ -231,8 +234,7 @@ export function FrameDebugPanel({
           <h3 className="text-xs font-bold text-canon-text-light uppercase tracking-widest mb-4 border-b border-canon-border/30 pb-2">Derivation Trace</h3>
           <TraceDrawer
             atom={selected}
-            index={index}
-            onJump={(id) => setSelected(index[id] ?? null)}
+            onJump={(id) => setSelected(atoms.find(a => a.id === id) ?? null)}
           />
         </div>
       </div>

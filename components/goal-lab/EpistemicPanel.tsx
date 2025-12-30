@@ -25,21 +25,36 @@ function layerBadge(layer: Layer) {
 }
 
 export const EpistemicPanel: React.FC<Props> = ({ atoms, provenance, onSelectAtomId, className }) => {
-  const provMap = useMemo(() => new Map(provenance || []), [provenance]);
+  const provEntries = useMemo(() => {
+    const next = arr(provenance);
+    if (!Array.isArray(next)) {
+      console.error('Expected array, got', next);
+      return [];
+    }
+    return next as Array<[string, Layer]>;
+  }, [provenance]);
   const [filter, setFilter] = useState<Layer | 'all'>('all');
   const [q, setQ] = useState('');
 
   const rows = useMemo(() => {
     const s = q.trim().toLowerCase();
-    return atoms
-      .map(a => ({ a, layer: (provMap.get(a.id) || (a.origin as Layer) || 'derived') as Layer }))
-      .filter(r => filter === 'all' ? true : r.layer === filter)
+    const list = atoms
+      .map(a => ({
+        a,
+        layer: (provEntries.find(([id]) => id === a.id)?.[1] || (a.origin as Layer) || 'derived') as Layer,
+      }))
+      .filter(r => (filter === 'all' ? true : r.layer === filter))
       .filter(r => {
         if (!s) return true;
         return (r.a.id || '').toLowerCase().includes(s) || (r.a.label || '').toLowerCase().includes(s);
       })
       .sort((x, y) => x.layer.localeCompare(y.layer) || (x.a.id || '').localeCompare(y.a.id || ''));
-  }, [atoms, provMap, filter, q]);
+    if (!Array.isArray(list)) {
+      console.error('Expected array, got', list);
+      return [];
+    }
+    return list;
+  }, [atoms, provEntries, filter, q]);
 
   return (
     <div className={className ?? 'h-full min-h-0 flex flex-col bg-canon-bg text-canon-text'}>

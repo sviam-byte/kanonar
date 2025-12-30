@@ -16,6 +16,14 @@ export function normalizeArray<T>(x: unknown): T[] {
 }
 
 export function normalizeSnapshot(raw: GoalLabSnapshotV1): GoalLabSnapshotV1 {
+  if (import.meta.env.DEV) {
+    // eslint-disable-next-line no-console
+    console.log({
+      atoms: Array.isArray(raw.atoms),
+      events: Array.isArray(raw.events),
+      actions: Array.isArray(raw.actions),
+    });
+  }
   return {
     ...raw,
     atoms: normalizeArray(raw.atoms),

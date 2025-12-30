@@ -2,6 +2,7 @@
 // components/goal-lab/SummariesPanel.tsx
 import React, { useMemo } from 'react';
 import { ContextAtom } from '../../lib/context/v2/types';
+import { arr } from '../../lib/utils/arr';
 
 type Props = {
   atoms: ContextAtom[];
@@ -10,15 +11,27 @@ type Props = {
 };
 
 function isBanner(a: ContextAtom) {
-  return (a.tags || []).includes('banner') || a.id.endsWith(':banner') || a.id.includes(':banner:') || a.id === 'ctx:banner' || a.id === 'threat:banner' || a.id === 'emo:banner';
+  return arr(a.tags).includes('banner') || a.id.endsWith(':banner') || a.id.includes(':banner:') || a.id === 'ctx:banner' || a.id === 'threat:banner' || a.id === 'emo:banner';
 }
 
 export const SummariesPanel: React.FC<Props> = ({ atoms, onSelectAtomId, className }) => {
   const banners = useMemo(() => {
-    return atoms.filter(isBanner).sort((a, b) => (a.ns || '').localeCompare(b.ns || ''));
+    const next = atoms.filter(isBanner).sort((a, b) => (a.ns || '').localeCompare(b.ns || ''));
+    if (!Array.isArray(next)) {
+      console.error('Expected array, got', next);
+      return [];
+    }
+    return next;
   }, [atoms]);
 
-  const tomBanners = useMemo(() => banners.filter(b => b.id.startsWith('tom:banner:')), [banners]);
+  const tomBanners = useMemo(() => {
+    const next = banners.filter(b => b.id.startsWith('tom:banner:'));
+    if (!Array.isArray(next)) {
+      console.error('Expected array, got', next);
+      return [];
+    }
+    return next;
+  }, [banners]);
 
   return (
     <div className={className ?? 'h-full min-h-0 flex flex-col bg-canon-bg text-canon-text'}>

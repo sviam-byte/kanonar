@@ -5,7 +5,7 @@ import { arr } from '../../lib/utils/arr';
 
 export const DecisionPanel: React.FC<{ decision: any }> = ({ decision }) => {
   const [sel, setSel] = useState(0);
-  const ranked = decision?.ranked || [];
+  const ranked = arr(decision?.ranked);
   const current = ranked[sel] || null;
 
   return (
@@ -72,8 +72,8 @@ export const DecisionPanel: React.FC<{ decision: any }> = ({ decision }) => {
             <div className="p-3 rounded bg-black/20 border border-canon-border/30 text-xs">
               <div className="font-bold text-canon-text-light mb-2 uppercase tracking-wider">Used Atoms</div>
               <div className="font-mono text-[10px] text-canon-text-light break-all leading-relaxed">
-                {(current.why?.usedAtomIds || []).slice(0, 80).join('  ')}
-                {(current.why?.usedAtomIds || []).length > 80 && ' ...'}
+                {arr(current.why?.usedAtomIds).slice(0, 80).join('  ')}
+                {arr(current.why?.usedAtomIds).length > 80 && ' ...'}
               </div>
             </div>
           </div>

@@ -4,6 +4,7 @@ import React, { useMemo, useState } from 'react';
 import { ContextAtom } from '../../lib/context/v2/types';
 import { normalizeAtom } from '../../lib/context/v2/infer';
 import { AtomOverrideLayer, AtomOverrideOp } from '../../lib/context/overrides/types';
+import { arr } from '../../lib/utils/arr';
 
 type Props = {
   baseAtoms: ContextAtom[];
@@ -29,17 +30,22 @@ export const AtomOverridesEditor: React.FC<Props> = ({ baseAtoms, layer, onChang
 
   const [deleteId, setDeleteId] = useState<string>('');
 
-  const ops = layer.ops || [];
+  const ops = arr(layer.ops);
 
   const opsPreview = useMemo(() => {
-    return ops.slice().reverse().slice(0, 50);
+    const next = ops.slice().reverse().slice(0, 50);
+    if (!Array.isArray(next)) {
+      console.error('Expected array, got', next);
+      return [];
+    }
+    return next;
   }, [ops]);
 
   function pushOp(op: AtomOverrideOp) {
     const next: AtomOverrideLayer = {
       ...layer,
       updatedAt: now(),
-      ops: [...(layer.ops || []), op]
+      ops: [...arr(layer.ops), op]
     };
     onChange(next);
   }
@@ -53,7 +59,7 @@ export const AtomOverridesEditor: React.FC<Props> = ({ baseAtoms, layer, onChang
       const parsed = JSON.parse(jsonText);
       if (!parsed || typeof parsed.id !== 'string') throw new Error('Atom must have string id');
       const atom = normalizeAtom({ ...parsed, source: parsed.source ?? 'manual' }) as any as ContextAtom;
-      pushOp({ op: 'upsert', atom: { ...atom, origin: 'override', tags: [...(atom.tags || []), 'override'] } });
+      pushOp({ op: 'upsert', atom: { ...atom, origin: 'override', tags: [...arr(atom.tags), 'override'] } });
     } catch (e: any) {
       alert(`Invalid JSON: ${e?.message || String(e)}`);
     }

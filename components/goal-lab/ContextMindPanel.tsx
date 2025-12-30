@@ -13,7 +13,7 @@ export const ContextMindPanel: React.FC<{ cm?: any; atoms: ContextAtom[]; selfId
   }, [cm, atoms, selfId]);
   
   const [sel, setSel] = useState(0);
-  const metrics = computedCm?.metrics || [];
+  const metrics = arr(computedCm?.metrics);
   const cur = metrics[sel] || null;
 
   return (
@@ -57,8 +57,8 @@ export const ContextMindPanel: React.FC<{ cm?: any; atoms: ContextAtom[]; selfId
             <div className="p-3 rounded bg-black/20 border border-canon-border/30 text-xs">
               <div className="font-bold text-canon-text-light mb-2 uppercase tracking-wider">Used Atoms</div>
               <div className="font-mono text-[10px] text-canon-text-light break-all leading-relaxed">
-                {(cur.usedAtomIds || []).slice(0, 80).join('  ')}
-                {(cur.usedAtomIds || []).length > 80 && ' ...'}
+                {arr(cur.usedAtomIds).slice(0, 80).join('  ')}
+                {arr(cur.usedAtomIds).length > 80 && ' ...'}
               </div>
             </div>
           </div>

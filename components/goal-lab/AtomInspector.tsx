@@ -55,7 +55,7 @@ export function AtomInspector({ atom, allAtoms, onJumpToAtomId }: Props) {
   const code = (atom as any).code;
   const params = (atom as any).params ?? resolved?.params ?? null;
 
-  const used: string[] = (atom as any).trace?.usedAtomIds || [];
+  const used: string[] = arr((atom as any).trace?.usedAtomIds);
   const partsRaw = (atom as any).trace?.parts || null;
   const partsList = asPartsList(partsRaw);
   const isDerived = (atom as any).origin === 'derived';
@@ -64,8 +64,7 @@ export function AtomInspector({ atom, allAtoms, onJumpToAtomId }: Props) {
   const origin = String((atom as any).origin ?? '');
   const source = String((atom as any).source ?? '');
 
-  const index = new Map<string, ContextAtom>();
-  for (const a of allAtoms) index.set(a.id, a);
+  const findAtom = (id: string) => allAtoms.find(a => a.id === id);
 
   const isQuark = !isDerived && used.length === 0;
   const typeLabel = isDerived ? 'MOLECULE (derived)' : (isQuark ? 'QUARK (primitive)' : 'ATOM');
@@ -182,7 +181,7 @@ export function AtomInspector({ atom, allAtoms, onJumpToAtomId }: Props) {
         ) : (
           <div className="mt-2 space-y-1">
             {arr(used).slice(0, 80).map(id => {
-              const a = index.get(id);
+              const a = findAtom(id);
               const m = a ? Number((a as any).magnitude ?? 0) : null;
               return (
                 <div key={id} className="flex items-center gap-2 border border-white/10 rounded bg-black/30 px-2 py-1">
