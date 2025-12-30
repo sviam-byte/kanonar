@@ -6,7 +6,11 @@ import { resolveAtomSpec } from '../context/catalog/atomSpecs';
 type AtomOrigin = 'world' | 'obs' | 'override' | 'derived';
 
 export function buildDebugFrameFromSnapshot(snapshot: GoalLabSnapshotV1) {
-  const atoms = (snapshot.atoms || []).map(a => {
+  const rawAtoms: any[] = Array.isArray((snapshot as any).atoms)
+    ? ((snapshot as any).atoms as any[])
+    : [];
+
+  const atoms = rawAtoms.map(a => {
     const raw: any = {
       id: String((a as any).id),
       magnitude: Number((a as any).magnitude ?? 0),
@@ -45,9 +49,10 @@ export function buildDebugFrameFromSnapshot(snapshot: GoalLabSnapshotV1) {
   // mind panel
   let mind = null as any;
   const cm = (snapshot as any).contextMind || (snapshot as any).snapshot?.contextMind;
-  if (cm?.metrics?.length) {
+  const metrics = Array.isArray(cm?.metrics) ? cm.metrics : [];
+  if (metrics.length) {
     const byKey: Record<string, number> = {};
-    for (const m of cm.metrics) byKey[m.key] = m.value;
+    for (const m of metrics) byKey[m.key] = m.value;
     mind = {
       threat: Number(byKey.threat ?? 0),
       pressure: Number(byKey.pressure ?? 0),
