@@ -1,13 +1,17 @@
 import React from 'react';
 import { AtomBrowser } from './AtomBrowser';
-import type { ContextAtom } from '../../lib/context/v2/types';
+import { materializeStageAtoms } from './materializePipeline';
 
 type Stage = {
   id: string;
   label: string;
-  atoms: ContextAtom[];
+  atomCount: number;
+  baseId?: string;
+  full?: any[];
+  added?: any[];
+  changed?: any[];
+  removedIds?: string[];
   notes?: string[];
-  delta?: { addedIds?: string[]; removedIds?: string[] };
 };
 
 export const PipelinePanel: React.FC<{
@@ -17,6 +21,7 @@ export const PipelinePanel: React.FC<{
   onExportStage?: (stageId: string) => void;
 }> = ({ stages, selectedId, onSelect, onExportStage }) => {
   const stage = stages.find(s => s.id === selectedId) || stages[stages.length - 1] || null;
+  const atoms = materializeStageAtoms(stages as any, stage?.id || '');
 
   return (
     <div className="h-full min-h-0 flex flex-col">
@@ -52,17 +57,18 @@ export const PipelinePanel: React.FC<{
             </div>
           ) : null}
 
-          {stage?.delta ? (
+          {stage?.added || stage?.changed || stage?.removedIds ? (
             <div className="text-[10px] text-canon-text-light/70 flex flex-wrap gap-2">
-              <span className="font-mono">+{stage.delta.addedIds?.length ?? 0}</span>
-              <span className="font-mono">-{stage.delta.removedIds?.length ?? 0}</span>
+              <span className="font-mono">+{stage?.added?.length ?? 0}</span>
+              <span className="font-mono">~{stage?.changed?.length ?? 0}</span>
+              <span className="font-mono">-{stage?.removedIds?.length ?? 0}</span>
             </div>
           ) : null}
         </div>
 
         <div className="shrink-0 flex flex-col gap-2 items-end">
           <div className="text-[10px] font-mono text-canon-text-light/70">
-            atoms: {stage?.atoms?.length ?? 0}
+            atoms: {stage?.atomCount ?? 0}
           </div>
           {onExportStage && stage ? (
             <button
@@ -76,7 +82,7 @@ export const PipelinePanel: React.FC<{
       </div>
 
       <div className="flex-1 min-h-0">
-        <AtomBrowser atoms={stage?.atoms || []} className="h-full min-h-0 flex flex-col" />
+        <AtomBrowser atoms={atoms || []} className="h-full min-h-0 flex flex-col" />
       </div>
     </div>
   );

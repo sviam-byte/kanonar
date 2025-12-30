@@ -263,38 +263,139 @@ export function buildGoalLabContext(
   // --- Pipeline Execution Helper ---
   const runPipeline = (sceneAtoms: ContextAtom[], sceneSnapshotForStage0: any) => {
       // --- Pipeline stage tracing (S0..Sn) ---
-      const pipelineStages: Array<{
+      type PipelineAtomStub = {
+        id: string;
+        magnitude?: number;
+        confidence?: number;
+        origin?: any;
+        ns?: any;
+        kind?: any;
+        source?: any;
+        label?: any;
+        code?: any;
+        trace?: { usedAtomIds?: string[]; parts?: any };
+      };
+
+      type PipelineStageDelta = {
         id: string;
         label: string;
-        atoms: ContextAtom[];
+        baseId?: string;
+        atomCount: number;
+        full?: PipelineAtomStub[];
+        added?: PipelineAtomStub[];
+        changed?: PipelineAtomStub[];
+        removedIds?: string[];
         notes?: string[];
-        delta?: { addedIds?: string[]; removedIds?: string[] };
-      }> = [];
+      };
+
+      const pipelineStages: PipelineStageDelta[] = [];
+
+      const compactAtom = (a: ContextAtom): PipelineAtomStub => {
+        const id = String((a as any).id ?? '');
+        const stub: PipelineAtomStub = {
+          id,
+          magnitude: Number((a as any).magnitude ?? 0),
+          confidence: Number((a as any).confidence ?? 1),
+          origin: (a as any).origin ?? undefined,
+          ns: (a as any).ns ?? undefined,
+          kind: (a as any).kind ?? undefined,
+          source: (a as any).source ?? undefined,
+          label: (a as any).label ?? undefined,
+          code: (a as any).code ?? undefined,
+        };
+
+        const tr = (a as any).trace;
+        if (tr) {
+          const used = Array.isArray(tr.usedAtomIds) ? tr.usedAtomIds.map(String) : undefined;
+
+          const keepParts =
+            stub.ns === 'ctx' || stub.ns === 'lens' || stub.ns === 'tom' ||
+            stub.ns === 'emo' || stub.ns === 'app' || stub.ns === 'goal' ||
+            stub.ns === 'drv' || stub.ns === 'action';
+
+          stub.trace = {
+            usedAtomIds: used,
+            parts: keepParts ? tr.parts : undefined,
+          };
+        }
+
+        return stub;
+      };
+
+      const atomSig = (a: ContextAtom) => {
+        const tr = (a as any).trace;
+        const used = Array.isArray(tr?.usedAtomIds) ? tr.usedAtomIds.length : 0;
+        return [
+          (a as any).id,
+          (a as any).magnitude ?? 0,
+          (a as any).confidence ?? 1,
+          (a as any).origin ?? '',
+          (a as any).ns ?? '',
+          (a as any).kind ?? '',
+          (a as any).source ?? '',
+          used,
+        ].join('|');
+      };
+
+      let prevStageId: string | undefined = undefined;
+      let prevAtoms: ContextAtom[] | null = null;
+      let prevMap: Map<string, string> | null = null;
 
       const pushStage = (
         id: string,
         label: string,
         atoms: ContextAtom[],
-        opts?: { notes?: string[]; baseAtoms?: ContextAtom[] }
+        opts?: { notes?: string[] }
       ) => {
         const next = dedupeAtomsById(atoms).map(normalizeAtom);
+        const atomCount = next.length;
 
-        let delta: any = undefined;
-        if (opts?.baseAtoms) {
-          const base = new Set(dedupeAtomsById(opts.baseAtoms).map((a: any) => String(a.id)));
-          const cur = new Set(next.map((a: any) => String(a.id)));
-          const addedIds = Array.from(cur).filter(x => !base.has(x));
-          const removedIds = Array.from(base).filter(x => !cur.has(x));
-          delta = { addedIds, removedIds };
+        if (!prevAtoms || !prevMap) {
+          pipelineStages.push({
+            id,
+            label,
+            atomCount,
+            full: next.map(compactAtom),
+            notes: opts?.notes,
+          });
+          prevAtoms = next;
+          prevMap = new Map(next.map(a => [String((a as any).id), atomSig(a)]));
+          prevStageId = id;
+          return;
         }
+
+        const curMap = new Map(next.map(a => [String((a as any).id), atomSig(a)]));
+        const prevIds = new Set(prevMap.keys());
+        const curIds = new Set(curMap.keys());
+
+        const addedIds: string[] = [];
+        const removedIds: string[] = [];
+        const changedIds: string[] = [];
+
+        for (const id0 of curIds) {
+          if (!prevIds.has(id0)) addedIds.push(id0);
+          else if (prevMap.get(id0) !== curMap.get(id0)) changedIds.push(id0);
+        }
+        for (const id0 of prevIds) {
+          if (!curIds.has(id0)) removedIds.push(id0);
+        }
+
+        const byId = new Map(next.map(a => [String((a as any).id), a]));
 
         pipelineStages.push({
           id,
           label,
-          atoms: next,
+          baseId: prevStageId,
+          atomCount,
+          added: addedIds.map(id0 => compactAtom(byId.get(id0)!)),
+          changed: changedIds.map(id0 => compactAtom(byId.get(id0)!)),
+          removedIds,
           notes: opts?.notes,
-          delta
         });
+
+        prevAtoms = next;
+        prevMap = curMap;
+        prevStageId = id;
       };
 
       // Canonical affect atoms (bridge for UI knobs -> threat/goals explanations)
@@ -344,8 +445,7 @@ export function buildGoalLabContext(
       pushStage(
         'S0a',
         'S0a • stage0 + aliases + socProx + hazardGeometry (pre-axes)',
-        atomsPreAxes,
-        { baseAtoms: stage0.mergedAtoms }
+        atomsPreAxes
       );
 
       // 5. Derive Axes
@@ -356,13 +456,13 @@ export function buildGoalLabContext(
       });
       // IMPORTANT: axes must be materialized into the atom stream, otherwise access/threat/goals won't see them.
       const atomsWithAxes = mergeKeepingOverrides(atomsPreAxes, axesRes.atoms).merged;
-      pushStage('S1', 'S1 • axes materialized (ctx vectors)', atomsWithAxes, { baseAtoms: atomsPreAxes });
+      pushStage('S1', 'S1 • axes materialized (ctx vectors)', atomsWithAxes);
 
       // 5.5 Constraints & Access
       const locId = (agentForPipeline as any).locationId || getLocationForAgent(worldForPipeline, selfId)?.entityId;
       const accessPack = deriveAccess(atomsWithAxes, selfId, locId);
       const atomsAfterAccess = mergeKeepingOverrides(atomsWithAxes, accessPack.atoms).merged;
-      pushStage('S1a', 'S1a • access constraints', atomsAfterAccess, { baseAtoms: atomsWithAxes });
+      pushStage('S1a', 'S1a • access constraints', atomsAfterAccess);
 
       // 6. Rumor Generation
       const seed =
@@ -377,12 +477,12 @@ export function buildGoalLabContext(
           seed
       });
       const atomsAfterBeliefGen = [...atomsAfterAccess, ...rumorBeliefs];
-      pushStage('S1b', 'S1b • rumor beliefs injected', atomsAfterBeliefGen, { baseAtoms: atomsAfterAccess });
+      pushStage('S1b', 'S1b • rumor beliefs injected', atomsAfterBeliefGen);
       
       // 7. Apply Relation Priors
       const priorsApplied = applyRelationPriorsToDyads(atomsAfterBeliefGen, selfId);
       const atomsAfterPriors = mergeKeepingOverrides(atomsAfterBeliefGen, priorsApplied.atoms).merged;
-      pushStage('S2', 'S2 • relation priors applied', atomsAfterPriors, { baseAtoms: atomsAfterBeliefGen });
+      pushStage('S2', 'S2 • relation priors applied', atomsAfterPriors);
 
       // --- Character lens (subjective interpretation) ---
       const lensRes = applyCharacterLens({ selfId, atoms: atomsAfterPriors, agent: agentForPipeline });
@@ -392,7 +492,6 @@ export function buildGoalLabContext(
         'S2a • character lens (subjective interpretation)',
         atomsAfterLens,
         {
-          baseAtoms: atomsAfterPriors,
           notes: [
             `lensAdded=${lensRes.atoms?.length ?? 0}`,
             'Delta shows what lens injected/removed vs priors.'
@@ -736,8 +835,7 @@ export function buildGoalLabContext(
       pushStage(
         'S2b',
         'S2b • ToM ctx/effective/policy + threat + social loop closed',
-        atomsAfterSocialLoop,
-        { baseAtoms: atomsAfterLens }
+        atomsAfterSocialLoop
       );
 
       // appraisal -> emotions -> dyadic emotions
@@ -747,7 +845,7 @@ export function buildGoalLabContext(
       const atomsAfterEmo = mergeKeepingOverrides(atomsAfterApp, emoRes.atoms).merged;
       const dyadEmo = deriveDyadicEmotionAtoms({ selfId, atoms: atomsAfterEmo });
       const atomsAfterDyadEmo = mergeKeepingOverrides(atomsAfterEmo, dyadEmo.atoms).merged;
-      pushStage('S3', 'S3 • appraisal + emotions + dyadic emotions', atomsAfterDyadEmo, { baseAtoms: atomsAfterSocialLoop });
+      pushStage('S3', 'S3 • appraisal + emotions + dyadic emotions', atomsAfterDyadEmo);
 
       // 10. Possibility Graph (Registry-based)
       const atomsForPossibilities = atomsAfterDyadEmo;
@@ -755,7 +853,7 @@ export function buildGoalLabContext(
       const possAtoms = atomizePossibilities(possibilities);
 
       const atomsAfterPoss = mergeKeepingOverrides(atomsForPossibilities, possAtoms).merged;
-      pushStage('S3a', 'S3a • possibilities materialized', atomsAfterPoss, { baseAtoms: atomsAfterDyadEmo });
+      pushStage('S3a', 'S3a • possibilities materialized', atomsAfterPoss);
 
       return {
           atoms: atomsAfterPoss,
@@ -804,23 +902,129 @@ export function buildGoalLabContext(
   const mindAtoms = atomizeContextMindMetrics(selfId, contextMind);
   const atomsWithMind = dedupeAtomsById([...atomsForMind, ...mindAtoms]).map(normalizeAtom);
 
+  type PipelineAtomStub = {
+    id: string;
+    magnitude?: number;
+    confidence?: number;
+    origin?: any;
+    ns?: any;
+    kind?: any;
+    source?: any;
+    label?: any;
+    code?: any;
+    trace?: { usedAtomIds?: string[]; parts?: any };
+  };
+
+  type PipelineStageDelta = {
+    id: string;
+    label: string;
+    baseId?: string;
+    atomCount: number;
+    full?: PipelineAtomStub[];
+    added?: PipelineAtomStub[];
+    changed?: PipelineAtomStub[];
+    removedIds?: string[];
+    notes?: string[];
+  };
+
+  const compactPipelineAtom = (a: ContextAtom): PipelineAtomStub => {
+    const id = String((a as any).id ?? '');
+    const stub: PipelineAtomStub = {
+      id,
+      magnitude: Number((a as any).magnitude ?? 0),
+      confidence: Number((a as any).confidence ?? 1),
+      origin: (a as any).origin ?? undefined,
+      ns: (a as any).ns ?? undefined,
+      kind: (a as any).kind ?? undefined,
+      source: (a as any).source ?? undefined,
+      label: (a as any).label ?? undefined,
+      code: (a as any).code ?? undefined,
+    };
+
+    const tr = (a as any).trace;
+    if (tr) {
+      const used = Array.isArray(tr.usedAtomIds) ? tr.usedAtomIds.map(String) : undefined;
+      const keepParts =
+        stub.ns === 'ctx' || stub.ns === 'lens' || stub.ns === 'tom' ||
+        stub.ns === 'emo' || stub.ns === 'app' || stub.ns === 'goal' ||
+        stub.ns === 'drv' || stub.ns === 'action';
+
+      stub.trace = {
+        usedAtomIds: used,
+        parts: keepParts ? tr.parts : undefined,
+      };
+    }
+
+    return stub;
+  };
+
+  const pipelineAtomSig = (a: ContextAtom) => {
+    const tr = (a as any).trace;
+    const used = Array.isArray(tr?.usedAtomIds) ? tr.usedAtomIds.length : 0;
+    return [
+      (a as any).id,
+      (a as any).magnitude ?? 0,
+      (a as any).confidence ?? 1,
+      (a as any).origin ?? '',
+      (a as any).ns ?? '',
+      (a as any).kind ?? '',
+      (a as any).source ?? '',
+      used,
+    ].join('|');
+  };
+
+  const buildDeltaStage = (
+    id: string,
+    label: string,
+    atoms: ContextAtom[],
+    prevAtoms: ContextAtom[],
+    prevStageId?: string,
+    opts?: { notes?: string[] }
+  ): PipelineStageDelta => {
+    const next = dedupeAtomsById(atoms).map(normalizeAtom);
+    const atomCount = next.length;
+    const prevMap = new Map(dedupeAtomsById(prevAtoms).map(a => [String((a as any).id), pipelineAtomSig(a)]));
+    const curMap = new Map(next.map(a => [String((a as any).id), pipelineAtomSig(a)]));
+    const prevIds = new Set(prevMap.keys());
+    const curIds = new Set(curMap.keys());
+
+    const addedIds: string[] = [];
+    const removedIds: string[] = [];
+    const changedIds: string[] = [];
+
+    for (const id0 of curIds) {
+      if (!prevIds.has(id0)) addedIds.push(id0);
+      else if (prevMap.get(id0) !== curMap.get(id0)) changedIds.push(id0);
+    }
+    for (const id0 of prevIds) {
+      if (!curIds.has(id0)) removedIds.push(id0);
+    }
+
+    const byId = new Map(next.map(a => [String((a as any).id), a]));
+
+    return {
+      id,
+      label,
+      baseId: prevStageId,
+      atomCount,
+      added: addedIds.map(id0 => compactPipelineAtom(byId.get(id0)!)),
+      changed: changedIds.map(id0 => compactPipelineAtom(byId.get(id0)!)),
+      removedIds,
+      notes: opts?.notes,
+    };
+  };
+
   const tracedPipeline = Array.isArray((result as any).pipelineStages) ? (result as any).pipelineStages : [];
   const pipelineAll = [...tracedPipeline];
 
-  pipelineAll.push({
-    id: 'S4',
-    label: 'S4 • contextMind metrics materialized',
-    atoms: dedupeAtomsById(atomsWithMind).map(normalizeAtom),
-    delta: (() => {
-      const prev = tracedPipeline[tracedPipeline.length - 1]?.atoms || [];
-      const base = new Set(dedupeAtomsById(prev).map((a: any) => String(a.id)));
-      const cur = new Set(dedupeAtomsById(atomsWithMind).map((a: any) => String(a.id)));
-      return {
-        addedIds: Array.from(cur).filter(x => !base.has(x)),
-        removedIds: Array.from(base).filter(x => !cur.has(x))
-      };
-    })()
-  });
+  const s4Stage = buildDeltaStage(
+    'S4',
+    'S4 • contextMind metrics materialized',
+    atomsWithMind,
+    result.atoms,
+    pipelineAll[pipelineAll.length - 1]?.id
+  );
+  pipelineAll.push(s4Stage);
 
   // Decide AFTER mind metrics exist in the atom stream
   const decision = decideAction({
@@ -865,22 +1069,18 @@ export function buildGoalLabContext(
 
   snapshot.contextMind = contextMind;
 
-  pipelineAll.push({
-    id: 'S5',
-    label: 'S5 • final snapshot.atoms (export truth)',
-    atoms: dedupeAtomsById(snapshot.atoms || []).map(normalizeAtom),
-    delta: (() => {
-      const prev = pipelineAll[pipelineAll.length - 2]?.atoms || [];
-      const base = new Set(dedupeAtomsById(prev).map((a: any) => String(a.id)));
-      const cur = new Set(dedupeAtomsById(snapshot.atoms || []).map((a: any) => String(a.id)));
-      return {
-        addedIds: Array.from(cur).filter(x => !base.has(x)),
-        removedIds: Array.from(base).filter(x => !cur.has(x))
-      };
-    })()
-  });
+  pipelineAll.push(buildDeltaStage(
+    'S5',
+    'S5 • final snapshot.atoms (export truth)',
+    snapshot.atoms || [],
+    atomsWithMind,
+    s4Stage.id
+  ));
 
-  (snapshot as any).meta = { ...((snapshot as any).meta || {}), pipeline: pipelineAll };
+  (snapshot as any).meta = {
+    ...((snapshot as any).meta || {}),
+    pipelineDeltas: pipelineAll,
+  };
   
   (snapshot as any).debug = {
       legacyAtoms: legacyFrameAtoms,
