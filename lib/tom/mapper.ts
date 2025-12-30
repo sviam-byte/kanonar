@@ -11,6 +11,7 @@ import { computeProfileSummary } from './profileSummary';
 import { getNestedValue } from '../param-utils';
 import { inferLifeGoalsFromTraits } from '../life-goals'; // Correct import for infer function
 import { computeTraits } from '../traits'; // Correct import for computeTraits
+import { arr } from '../utils/arr';
 
 // Use the 9 Archetype Metrics as the "Type Space" for ToM
 export const GENERIC_TYPE_SPACE = Object.keys(ARCH_METRIC_NAMES);
@@ -265,7 +266,7 @@ export function convertAgentToDossier(agent: CharacterEntity | AgentState): Char
         arch_self: agent.identity.arch_self
       },
       tags: agent.tags,
-      history: (agent.historicalEvents || []).map(e => ({
+      history: arr(agent.historicalEvents).map(e => ({
         id: e.id,
         name: e.name,
         years_ago: e.years_ago ?? 0,

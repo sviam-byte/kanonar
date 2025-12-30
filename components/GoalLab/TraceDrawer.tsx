@@ -1,4 +1,5 @@
 import React, { useMemo } from 'react';
+import { arr } from '../../lib/utils/arr';
 import { describeAtom } from '../../lib/context/v2/describeAtom';
 import { resolveAtomSpec } from '../../lib/context/catalog/atomSpecs';
 import { describeQuark } from '../../lib/context/codex/quarkRegistry';
@@ -155,7 +156,7 @@ export function TraceDrawer({
     return { sumClamped, diff, absDiff: Math.abs(diff) };
   }, [partsList, atom.m]);
 
-  const usedIds: string[] = (tr?.usedAtomIds ?? []) as any;
+  const usedIds: string[] = arr(tr?.usedAtomIds).map(String);
 
   return (
     <div className="flex flex-col gap-6 animate-fade-in">
@@ -232,7 +233,7 @@ export function TraceDrawer({
           <div className="mt-2 p-2 bg-blue-900/10 border border-blue-500/20 rounded text-[11px] text-blue-200">
             <div className="font-bold text-[10px] uppercase tracking-wider mb-1">Notes</div>
             <ul className="list-disc pl-5 space-y-0.5">
-              {notes.slice(0, 8).map((n, i) => <li key={i}>{n}</li>)}
+              {arr(notes).slice(0, 8).map((n, i) => <li key={i}>{n}</li>)}
             </ul>
           </div>
         ) : null}
@@ -317,7 +318,7 @@ export function TraceDrawer({
         <h4 className="text-[10px] font-bold text-canon-text-light uppercase mb-2 px-1">Derivation Path (Used Atoms)</h4>
         <div className="space-y-1">
           {usedIds.length === 0 && <div className="text-xs text-canon-text-light italic px-2">None</div>}
-          {usedIds.map(id => {
+          {arr(usedIds).map(id => {
             const exists = index?.[id];
             return (
               <div key={id} className="flex gap-2 items-center bg-canon-bg border border-canon-border/30 p-2 rounded hover:bg-canon-bg-light/30 transition-colors">

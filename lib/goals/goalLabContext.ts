@@ -41,6 +41,7 @@ import { applyCharacterLens } from '../context/lens/characterLens';
 import { deriveAppraisalAtoms } from '../emotion/appraisals';
 import { deriveEmotionAtoms } from '../emotion/emotions';
 import { deriveDyadicEmotionAtoms } from '../emotion/dyadic';
+import { arr } from '../utils/arr';
 
 // Scene Engine
 import { SCENE_PRESETS } from '../scene/presets';
@@ -165,7 +166,7 @@ export function buildGoalLabContext(
 
   // 3. Prepare Override Atoms (GoalLab Manual)
   const overridesLayer = opts.snapshotOptions?.atomOverridesLayer;
-  const manualAtomsRaw = (opts.snapshotOptions?.manualAtoms || []).map(normalizeAtom);
+  const manualAtomsRaw = arr(opts.snapshotOptions?.manualAtoms).map(normalizeAtom);
   const { atoms: appliedOverrides } = extractApplied(manualAtomsRaw, overridesLayer);
 
   // Apply affect overrides from UI knobs (must affect ALL downstream calculations).
@@ -210,7 +211,7 @@ export function buildGoalLabContext(
     // "everything influences everything" loops will appear broken.
     const participantIds = Array.isArray((opts.snapshotOptions as any)?.participantIds)
       ? (opts.snapshotOptions as any).participantIds
-      : (world?.agents || []).map((a: any) => a.entityId || a.id).filter(Boolean);
+      : arr(world?.agents).map((a: any) => a.entityId || a.id).filter(Boolean);
 
     sceneInst = createSceneInstance({
       presetId: sc.presetId,
@@ -246,10 +247,10 @@ export function buildGoalLabContext(
 
       // Ensure the overridden location exists in world.locations so stage0 can resolve features/observations.
       if (typeof overrideLocation === 'object' && overrideLocation.entityId) {
-        const existing = (worldForPipeline.locations || []).find((l: any) => l.entityId === overrideLocation.entityId);
+        const existing = arr(worldForPipeline.locations).find((l: any) => l.entityId === overrideLocation.entityId);
         const nextLocs = existing
-          ? (worldForPipeline.locations || []).map((l: any) => (l.entityId === overrideLocation.entityId ? overrideLocation : l))
-          : [...(worldForPipeline.locations || []), overrideLocation];
+          ? arr(worldForPipeline.locations).map((l: any) => (l.entityId === overrideLocation.entityId ? overrideLocation : l))
+          : [...arr(worldForPipeline.locations), overrideLocation];
         worldForPipeline = { ...worldForPipeline, locations: nextLocs };
       }
 

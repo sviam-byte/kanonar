@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { UnifiedEventView } from '../../lib/events/unifiedEvents';
 import { Link } from 'react-router-dom';
+import { arr } from '../../lib/utils/arr';
 
 interface Props {
     event: UnifiedEventView;
@@ -162,7 +163,7 @@ export const EventDeepDive: React.FC<Props> = ({ event }) => {
                      </div>
                      <div className="flex flex-wrap gap-1">
                          {/* Check both legacy 'observers' and new 'witnesses' due to unified type */}
-                         {(event.epistemics.witnesses || event.epistemics.observers?.map((o: any) => o.actorId) || []).map((id: string) => (
+                         {arr(event.epistemics.witnesses || event.epistemics.observers?.map((o: any) => o.actorId)).map((id: string) => (
                              <span key={id} className="px-2 py-1 bg-blue-900/20 text-blue-300 border border-blue-500/30 rounded text-[10px]">
                                  {id}
                              </span>

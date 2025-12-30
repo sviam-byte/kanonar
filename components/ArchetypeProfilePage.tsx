@@ -4,6 +4,7 @@ import {
   ArchetypeDefinition,
   ArchetypeLatentMetrics,
 } from '../lib/archetypes/view-model';
+import { arr } from '../lib/utils/arr';
 
 interface ArchetypeProfilePageProps {
   archetype: ArchetypeDefinition;
@@ -58,7 +59,7 @@ export const ArchetypeProfilePage: React.FC<ArchetypeProfilePageProps> = ({
                     <div>
                         <h3 className="text-[10px] font-bold text-canon-text-light uppercase mb-1">Цели</h3>
                         <ul className="list-disc list-inside text-xs text-canon-text space-y-0.5">
-                        {(archetype.core_goals || []).map((goal, i) => (
+                        {arr(archetype.core_goals).map((goal, i) => (
                             <li key={i}>{goal}</li>
                         ))}
                         </ul>
@@ -68,7 +69,7 @@ export const ArchetypeProfilePage: React.FC<ArchetypeProfilePageProps> = ({
                     <div>
                         <h3 className="text-[10px] font-bold text-canon-text-light uppercase mb-1">Роли</h3>
                         <div className="flex flex-wrap gap-1">
-                        {(archetype.typical_roles || []).map(role => (
+                        {arr(archetype.typical_roles).map(role => (
                             <span
                             key={role}
                             className="px-2 py-0.5 rounded bg-canon-bg border border-canon-border text-[10px] text-canon-text-light"

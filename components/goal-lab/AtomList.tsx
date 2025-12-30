@@ -1,6 +1,7 @@
 
 import React from 'react';
 import { ContextAtom, ContextAtomKind } from '../../lib/context/v2/types';
+import { arr } from '../../lib/utils/arr';
 
 interface Props {
     atoms: ContextAtom[];
@@ -39,7 +40,7 @@ export const AtomList: React.FC<Props> = ({ atoms }) => {
                     </tr>
                 </thead>
                 <tbody className="divide-y divide-canon-border/10">
-                    {sorted.map(atom => {
+                    {arr(sorted).map(atom => {
                         const style = getStyle(atom.kind);
                         return (
                             <tr key={atom.id} className={`hover:bg-white/5 transition-colors`}>

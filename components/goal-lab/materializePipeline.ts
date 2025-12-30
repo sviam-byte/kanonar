@@ -1,3 +1,5 @@
+import { arr } from '../../lib/utils/arr';
+
 type PipelineStageDelta = {
   id: string;
   label: string;
@@ -9,10 +11,6 @@ type PipelineStageDelta = {
   removedIds?: string[];
   notes?: string[];
 };
-
-function arr<T = any>(x: any): T[] {
-  return Array.isArray(x) ? x : [];
-}
 
 export function materializeStageAtoms(
   pipeline: PipelineStageDelta[] | any,

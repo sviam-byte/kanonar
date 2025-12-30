@@ -2,6 +2,7 @@
 import { RelationMemory } from './types';
 import { ContextAtom } from '../context/v2/types';
 import { normalizeAtom } from '../context/v2/infer';
+import { arr } from '../utils/arr';
 
 function clamp01(x: number) {
   if (!Number.isFinite(x)) return 0;
@@ -21,7 +22,7 @@ export function atomizeRelBase(selfId: string, rel: RelationMemory, otherIds?: s
       ordered.push(id);
     }
   };
-  for (const id of (otherIds || [])) push(String(id));
+  for (const id of arr(otherIds)) push(String(id));
   for (const id of Object.keys(edges)) push(String(id));
 
   const defaultEdge = () => ({
@@ -38,7 +39,7 @@ export function atomizeRelBase(selfId: string, rel: RelationMemory, otherIds?: s
   const deriveIntimacy = (e: any) => {
     const c = clamp01(e.closeness ?? 0.10);
     const base = 0.05 + 0.90 * Math.pow(c, 1.15);
-    const tags = new Set((e.tags || []).map(String));
+    const tags = new Set(arr(e.tags).map(String));
     const bonus =
       (tags.has('lover') ? 0.25 : 0) +
       (tags.has('family') ? 0.18 : 0) +
@@ -49,8 +50,8 @@ export function atomizeRelBase(selfId: string, rel: RelationMemory, otherIds?: s
 
   for (const otherId of ordered) {
     const e = (edges as any)[otherId] || defaultEdge();
-    const used = (e.sources || []).map(s => `src:${s.type}:${s.ref || ''}`).slice(0, 6);
-    const hasRealSource = (e.sources || []).some((s: any) => s?.type && s.type !== 'default');
+    const used = arr(e.sources).map(s => `src:${s.type}:${s.ref || ''}`).slice(0, 6);
+    const hasRealSource = arr(e.sources).some((s: any) => s?.type && s.type !== 'default');
     const confidence = hasRealSource ? 1 : 0.35;
 
     const emit = (name: string, v: number) => out.push(normalizeAtom({
@@ -63,7 +64,7 @@ export function atomizeRelBase(selfId: string, rel: RelationMemory, otherIds?: s
       confidence,
       subject: selfId,
       target: otherId,
-      tags: ['rel', 'base', name, ...(e.tags || [])],
+      tags: ['rel', 'base', name, ...arr(e.tags)],
       label: `rel.${name}=${Math.round(clamp01(v) * 100)}%`,
       trace: { usedAtomIds: used, notes: ['from rel_base'], parts: { tags: e.tags, lastUpdatedTick: e.lastUpdatedTick } }
     } as any));
@@ -77,7 +78,7 @@ export function atomizeRelBase(selfId: string, rel: RelationMemory, otherIds?: s
     emit('intimacy', deriveIntimacy(e));
 
     // also emit tag flags for fast gates (0/1)
-    for (const t of (e.tags || [])) {
+    for (const t of arr(e.tags)) {
       out.push(normalizeAtom({
         id: `rel:tag:${selfId}:${otherId}:${t}`,
         ns: 'rel',

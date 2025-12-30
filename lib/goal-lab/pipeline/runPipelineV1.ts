@@ -26,6 +26,7 @@ import { atomizePossibilities } from '../../possibilities/atomize';
 import { deriveAccess } from '../../access/deriveAccess';
 import { deriveActionPriors } from '../../decision/actionPriors';
 import { decideAction } from '../../decision/decide';
+import { arr } from '../../utils/arr';
 
 export type GoalLabStageId = 'S0'|'S1'|'S2'|'S3'|'S4'|'S5'|'S6'|'S7'|'S8';
 
@@ -117,6 +118,8 @@ function computeQuarks(atoms: ContextAtom[]) {
   return quarks;
 }
 
+import { arr } from '../../utils/arr';
+
 export function runGoalLabPipelineV1(input: {
   world: WorldState;
   agentId: string;
@@ -130,7 +133,7 @@ export function runGoalLabPipelineV1(input: {
 }): GoalLabPipelineV1 | null {
   const { world, agentId, participantIds } = input;
   const tick = Number(input.tickOverride ?? (world as any)?.tick ?? 0);
-  const agent = (world.agents || []).find((a: any) => a?.entityId === agentId) as AgentState | undefined;
+  const agent = arr((world as any)?.agents).find((a: any) => a?.entityId === agentId) as AgentState | undefined;
   if (!agent) return null;
   const selfId = agent.entityId;
 
@@ -143,13 +146,16 @@ export function runGoalLabPipelineV1(input: {
     agent,
     selfId,
     mapMetrics: input.mapMetrics,
-    beliefAtoms: (agent as any)?.memory?.beliefAtoms || [],
-    overrideAtoms: (input.manualAtoms || []).map(normalizeAtom),
-    events: [...(input.injectedEvents || []), ...(((world as any)?.eventLog?.events) || [])],
+    beliefAtoms: arr((agent as any)?.memory?.beliefAtoms),
+    overrideAtoms: arr(input.manualAtoms).map(normalizeAtom),
+    events: [
+      ...arr(input.injectedEvents),
+      ...arr((world as any)?.eventLog?.events),
+    ],
     sceneSnapshot: (world as any).sceneSnapshot,
     includeAxes: false
   });
-  atoms = s0.mergedAtoms.map(normalizeAtom);
+  atoms = arr((s0 as any)?.mergedAtoms).map(normalizeAtom);
   stages.push({
     stage: 'S0',
     title: 'S0 Canonicalization (world/obs/mem/override)',
@@ -157,7 +163,7 @@ export function runGoalLabPipelineV1(input: {
     atomsAddedIds: atoms.map(a => String((a as any).id)).filter(Boolean),
     warnings: [],
     stats: { atomCount: atoms.length, addedCount: atoms.length, ...stageStats(atoms) },
-    artifacts: { obsAtomsCount: (s0.obsAtoms || []).length, provenanceSize: (s0.provenance as any)?.size ?? 0 }
+    artifacts: { obsAtomsCount: arr((s0 as any)?.obsAtoms).length, provenanceSize: ((s0 as any)?.provenance as any)?.size ?? 0 }
   });
 
   // S1: Normalize -> Quarks (минимально)
@@ -175,9 +181,9 @@ export function runGoalLabPipelineV1(input: {
   // S2: контекстные сигналы + базовые ctx оси
   const sp = deriveSocialProximityAtoms({ selfId, atoms });
   const hz = deriveHazardGeometryAtoms({ selfId, atoms });
-  const atomsS2in = [...atoms, ...(sp?.atoms || []), ...(hz?.atoms || [])].map(normalizeAtom);
+  const atomsS2in = [...atoms, ...arr((sp as any)?.atoms), ...arr((hz as any)?.atoms)].map(normalizeAtom);
   const ctx = deriveAxes({ selfId, atoms: atomsS2in });
-  const ctxAtoms = (ctx?.atoms || []).map(normalizeAtom);
+  const ctxAtoms = arr((ctx as any)?.atoms).map(normalizeAtom);
   const ctxBaseCopies = cloneAsBaseCtxAtoms(ctxAtoms, selfId);
   const atomsS2 = [...atomsS2in, ...ctxAtoms, ...ctxBaseCopies].map(normalizeAtom);
   const s2Added = computeAdded(atoms, atomsS2);
@@ -194,7 +200,7 @@ export function runGoalLabPipelineV1(input: {
 
   // S3: lens (субъективные поправки)
   const lens = applyCharacterLens({ selfId, atoms, agent });
-  const atomsS3 = [...atoms, ...(lens?.atoms || [])].map(normalizeAtom);
+  const atomsS3 = [...atoms, ...arr((lens as any)?.atoms)].map(normalizeAtom);
   const s3Added = computeAdded(atoms, atomsS3);
   atoms = atomsS3;
   stages.push({
@@ -209,9 +215,9 @@ export function runGoalLabPipelineV1(input: {
 
   // S4: appraisal -> emotions
   const app = deriveAppraisalAtoms({ selfId, atoms });
-  const emo = deriveEmotionAtoms({ selfId, atoms: [...atoms, ...(app?.atoms || [])] });
-  const dy = deriveDyadicEmotionAtoms({ selfId, atoms: [...atoms, ...(app?.atoms || []), ...(emo?.atoms || [])] });
-  const atomsS4 = [...atoms, ...(app?.atoms || []), ...(emo?.atoms || []), ...(dy?.atoms || [])].map(normalizeAtom);
+  const emo = deriveEmotionAtoms({ selfId, atoms: [...atoms, ...arr((app as any)?.atoms)] });
+  const dy = deriveDyadicEmotionAtoms({ selfId, atoms: [...atoms, ...arr((app as any)?.atoms), ...arr((emo as any)?.atoms)] });
+  const atomsS4 = [...atoms, ...arr((app as any)?.atoms), ...arr((emo as any)?.atoms), ...arr((dy as any)?.atoms)].map(normalizeAtom);
   const s4Added = computeAdded(atoms, atomsS4);
   atoms = atomsS4;
   stages.push({

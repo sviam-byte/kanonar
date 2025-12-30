@@ -26,6 +26,7 @@ import { AtomInspector } from './AtomInspector';
 import { EmotionExplainPanel } from './EmotionExplainPanel';
 import { PipelinePanel } from './PipelinePanel';
 import { materializeStageAtoms } from './materializePipeline';
+import { arr } from '../../lib/utils/arr';
 
 interface Props {
   context: ContextSnapshot | null;
@@ -134,7 +135,7 @@ export const ContextRibbon: React.FC<{ atoms: ContextAtom[] }> = ({ atoms }) => 
     return (
         <div className="w-full bg-black/20 border-y border-canon-border/30 p-2 overflow-x-auto custom-scrollbar">
             <div className="flex gap-2">
-                {sorted.map((atom) => (
+                {arr(sorted).map((atom) => (
                     <AtomBadge key={atom.id} atom={atom} />
                 ))}
             </div>
@@ -276,14 +277,14 @@ export const EcologyView: React.FC<{ goals: ContextualGoalScore[], onSelect: (id
         <div className="p-3 space-y-4 pb-12">
              <div>
                 <h4 className="text-[10px] font-bold text-canon-green uppercase mb-2 px-1">Execute ({activeGoals.length})</h4>
-                {activeGoals.map(g => (
+                {arr(activeGoals).map(g => (
                     <GoalRow key={g.goalId + (g.targetAgentId||'')} score={g} onSelect={() => onSelect(g.goalId)} isSelected={selectedId === g.goalId} />
                 ))}
                 {activeGoals.length === 0 && <div className="text-xs text-canon-text-light italic px-2">No active goals.</div>}
              </div>
              <div>
                 <h4 className="text-[10px] font-bold text-yellow-400 uppercase mb-2 px-1 border-t border-canon-border/20 pt-2">Latent / Queue ({latentGoals.length})</h4>
-                {latentGoals.map(g => (
+                {arr(latentGoals).map(g => (
                     <GoalRow key={g.goalId + (g.targetAgentId||'')} score={g} onSelect={() => onSelect(g.goalId)} isSelected={selectedId === g.goalId} />
                 ))}
              </div>
@@ -409,7 +410,7 @@ export const GoalLabResults: React.FC<Props> = ({
         crowd: snapshotV1?.contextMind?.metrics?.find((m: any) => m.key === 'crowd')?.value ?? context?.aggregates?.crowding ?? context?.summary.crowding ?? 0
     };
 
-    const tomSummaries = (tomRows || [])
+    const tomSummaries = arr(tomRows)
         .slice(0, 8)
         .map(row => {
             const dyad = (row as any)?.dyad || row;
@@ -557,7 +558,7 @@ export const GoalLabResults: React.FC<Props> = ({
           })
           .filter(x => x.otherId);
 
-        const dyadTargets = Array.from(new Set(dyadAll.map(x => x.otherId))).sort();
+        const dyadTargets = Array.from(new Set(arr(dyadAll).map(x => x.otherId))).sort();
         const [dyadOtherId, setDyadOtherId] = useState<string>(() => dyadTargets[0] || '');
         React.useEffect(() => {
           if (!dyadOtherId && dyadTargets[0]) setDyadOtherId(dyadTargets[0]);
@@ -650,7 +651,7 @@ export const GoalLabResults: React.FC<Props> = ({
                     disabled={!dyadTargets.length}
                   >
                     {!dyadTargets.length ? <option value="">(none)</option> : null}
-                    {dyadTargets.map(id => (
+                    {arr(dyadTargets).map(id => (
                       <option key={id} value={id}>
                         {actorLabels?.[id] ? `${actorLabels[id]} (${id})` : id}
                       </option>
@@ -662,7 +663,7 @@ export const GoalLabResults: React.FC<Props> = ({
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-3">
                 {dyadTargets.length ? (
                   dyadForOther.length ? (
-                    dyadForOther.map(x => <Row key={x.a.id} a={x.a} />)
+                    arr(dyadForOther).map(x => <Row key={x.a.id} a={x.a} />)
                   ) : (
                     <div className="text-[12px] text-canon-text-light/70">Нет dyadic эмоций для выбранного target.</div>
                   )
@@ -678,11 +679,11 @@ export const GoalLabResults: React.FC<Props> = ({
 
             <div className="text-xs font-bold text-canon-text uppercase tracking-wider">Appraisals (app:*)</div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-              {app.length ? app.map(a => <Row key={a.id} a={a} />) : <div className="text-[12px] text-canon-text-light/70">Нет app:* атомов.</div>}
+              {arr(app).length ? arr(app).map(a => <Row key={a.id} a={a} />) : <div className="text-[12px] text-canon-text-light/70">Нет app:* атомов.</div>}
             </div>
             <div className="text-xs font-bold text-canon-text uppercase tracking-wider mt-4">Emotions (emo:*)</div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-              {emo.length ? emo.map(a => <Row key={a.id} a={a} />) : <div className="text-[12px] text-canon-text-light/70">Нет emo:* атомов.</div>}
+              {arr(emo).length ? arr(emo).map(a => <Row key={a.id} a={a} />) : <div className="text-[12px] text-canon-text-light/70">Нет emo:* атомов.</div>}
             </div>
           </div>
         );
@@ -740,7 +741,7 @@ export const GoalLabResults: React.FC<Props> = ({
                 <div className="text-xs font-bold text-canon-text uppercase tracking-wider mb-2">Топ атомов (по magnitude)</div>
                 {topAtoms.length ? (
                     <div className="flex flex-wrap gap-2">
-                        {topAtoms.map(atom => (
+                        {arr(topAtoms).map(atom => (
                             <AtomBadge key={atom.id} atom={atom} />
                         ))}
                     </div>
@@ -753,7 +754,7 @@ export const GoalLabResults: React.FC<Props> = ({
                 <div className="text-xs font-bold text-canon-text uppercase tracking-wider mb-2">Восприятие других (ToM)</div>
                 {tomSummaries.length ? (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                        {tomSummaries.map(row => (
+                        {arr(tomSummaries).map(row => (
                             <div key={row.id} className="border border-canon-border/40 rounded bg-black/30 p-2">
                                 <div className="text-sm font-semibold text-canon-text">{row.label}</div>
                                 <div className="text-[10px] font-mono text-canon-text-light/80 mt-1">trust: {fmt(row.trust)} • threat: {fmt(row.threat)}</div>
@@ -842,7 +843,7 @@ export const GoalLabResults: React.FC<Props> = ({
                 <div className="bg-canon-bg border-b border-canon-border/30 p-2 shrink-0">
                     <div className="text-[11px] font-bold mb-2">ToM (X думает про Y)</div>
                     <div className="flex flex-col gap-1">
-                        {tomRows.map(r => (
+                        {arr(tomRows).map(r => (
                             <div key={`${r.me}__${r.other}`} className="text-[10px] border border-canon-border/30 rounded p-1">
                                 <div className="font-semibold">{r.me} → {r.other}</div>
                                 <div className="opacity-80">
@@ -857,7 +858,7 @@ export const GoalLabResults: React.FC<Props> = ({
             {goalPreview?.goals?.length ? (
                 <div className="bg-canon-bg border-b border-canon-border/30 p-2 shrink-0">
                     <button onClick={() => setPreviewOpen(!isPreviewOpen)} className="w-full flex items-center justify-between text-[10px] font-bold text-canon-text-light uppercase tracking-wider hover:text-canon-accent transition-colors">
-                        <div className="flex items-center gap-2"><span>Contextual priorities</span><span className="font-mono text-[9px] opacity-70 bg-black/30 px-1 rounded">{goalPreview.goals.length}</span></div>
+                        <div className="flex items-center gap-2"><span>Contextual priorities</span><span className="font-mono text-[9px] opacity-70 bg-black/30 px-1 rounded">{arr(goalPreview?.goals).length}</span></div>
                         <span>{isPreviewOpen ? '▼' : '▶'}</span>
                     </button>
                     {isPreviewOpen && (
@@ -870,7 +871,7 @@ export const GoalLabResults: React.FC<Props> = ({
                                 </div>
                             ) : null}
                             <div className="flex flex-wrap gap-2">
-                                {goalPreview.goals.slice(0, 10).map(g => (
+                                {arr(goalPreview?.goals).slice(0, 10).map(g => (
                                     <div key={g.id} className="px-2 py-1 rounded border border-canon-border/40 bg-black/20">
                                         <div className="text-[11px] font-semibold text-canon-text truncate max-w-[220px]" title={g.id}>{g.label}</div>
                                         <div className="text-[9px] font-mono text-canon-text-light/70">p={g.priority.toFixed(2)} • a={g.activation.toFixed(2)}</div>
@@ -899,7 +900,7 @@ export const GoalLabResults: React.FC<Props> = ({
                 <div className="flex-1 flex flex-col overflow-hidden bg-canon-bg">
                     <div className="border-b border-canon-border flex-shrink-0 flex items-center justify-between gap-2 px-2">
                         <div className="flex overflow-x-auto custom-scrollbar no-scrollbar">
-                            {tabsList.map((label, index) => (
+                            {arr(tabsList).map((label, index) => (
                                 <button key={label} onClick={() => setActiveTabIndex(index)} className={`px-4 py-2 text-sm font-medium transition-colors whitespace-nowrap ${activeTabIndex === index ? 'border-b-2 border-canon-accent text-canon-accent' : 'text-canon-text-light hover:text-white'}`}>
                                 {label}
                                 </button>

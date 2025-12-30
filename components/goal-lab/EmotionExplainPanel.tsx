@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import type { ContextAtom } from '../../lib/context/v2/types';
+import { arr } from '../../lib/utils/arr';
 
 const clamp01 = (x: number) => Math.max(0, Math.min(1, Number.isFinite(x) ? x : 0));
 
@@ -235,21 +236,21 @@ export const EmotionExplainPanel: React.FC<{
       <div>
         <div className="text-xs font-bold text-canon-text uppercase tracking-wider mb-2">Inputs</div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-          {model.inputs.map(r => <RowView key={r.id} r={r} />)}
+          {arr(model?.inputs).map(r => <RowView key={r.id} r={r} />)}
         </div>
       </div>
 
       <div>
         <div className="text-xs font-bold text-canon-text uppercase tracking-wider mb-2">Appraisals (app:*)</div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-          {model.app.map(r => <RowView key={r.id} r={r} showRef />)}
+          {arr(model?.app).map(r => <RowView key={r.id} r={r} showRef />)}
         </div>
       </div>
 
       <div>
         <div className="text-xs font-bold text-canon-text uppercase tracking-wider mb-2">Emotions (emo:*)</div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-          {model.emo.map(r => <RowView key={r.id} r={r} showRef />)}
+          {arr(model?.emo).map(r => <RowView key={r.id} r={r} showRef />)}
         </div>
       </div>
     </div>

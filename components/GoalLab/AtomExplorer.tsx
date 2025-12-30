@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { arr } from '../../lib/utils/arr';
 
 type AtomOrigin = 'world' | 'obs' | 'override' | 'derived';
 type Atom = {
@@ -31,7 +32,7 @@ export function AtomExplorer({
   const list = useMemo(() => {
     const qq = q.trim().toLowerCase();
     const nss = ns.trim().toLowerCase();
-    return atoms
+    return arr(atoms)
       .filter(a => (origin === 'all' ? true : a.o === origin))
       .filter(a => (nss ? a.id.toLowerCase().startsWith(nss) : true))
       .filter(a => a.c >= minC)
@@ -107,7 +108,7 @@ export function AtomExplorer({
             </tr>
           </thead>
           <tbody>
-            {list.map(a => (
+            {arr(list).map(a => (
               <tr 
                 key={a.id} 
                 onClick={() => onSelect(a)}

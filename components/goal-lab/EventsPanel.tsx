@@ -1,6 +1,7 @@
 
 // components/goal-lab/EventsPanel.tsx
 import React, { useMemo, useState } from 'react';
+import { arr } from '../../lib/utils/arr';
 
 type EventKind =
   | 'helped' | 'saved' | 'hurt' | 'attacked' | 'betrayed' | 'lied'
@@ -135,7 +136,7 @@ export const EventsPanel: React.FC<Props> = ({
       </div>
 
       <div className="flex-1 min-h-0 overflow-auto custom-scrollbar">
-        {combined.map(ev => {
+        {arr(combined).map(ev => {
           const injected = (eventsInjected || []).some(x => x.id === ev.id);
           return (
             <div key={ev.id} className={`p-3 border-b border-canon-border/50 ${injected ? 'bg-orange-900/10' : 'hover:bg-canon-bg-light/20'} transition-colors`}>

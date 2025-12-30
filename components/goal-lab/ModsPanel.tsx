@@ -1,6 +1,7 @@
 
 // components/goal-lab/ModsPanel.tsx
 import React, { useMemo, useState } from 'react';
+import { arr } from '../../lib/utils/arr';
 
 export const ModsPanel: React.FC<{
   world: any;
@@ -52,7 +53,7 @@ export const ModsPanel: React.FC<{
 
       <div className="flex-1 min-h-0 overflow-auto custom-scrollbar p-2">
         {keys.length === 0 && <div className="text-xs text-canon-text-light italic text-center p-4">No active mods.</div>}
-        {keys.map(k => (
+        {arr(keys).map(k => (
           <div key={k} className="p-2 border-b border-canon-border/30 flex items-center justify-between hover:bg-canon-bg-light/10">
             <div className="text-xs font-mono text-canon-text-light">{k}</div>
             <div className="flex items-center gap-2">

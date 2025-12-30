@@ -1,6 +1,7 @@
 import React from 'react';
 import { AtomBrowser } from './AtomBrowser';
 import { materializeStageAtoms } from './materializePipeline';
+import { arr } from '../../lib/utils/arr';
 
 type Stage = {
   id: string;
@@ -29,7 +30,7 @@ export const PipelinePanel: React.FC<{
         <div className="flex flex-col gap-2 min-w-0">
           <div className="text-[10px] font-bold text-canon-text-light uppercase tracking-wider">Pipeline stages</div>
           <div className="flex flex-wrap gap-1">
-            {stages.map(s => (
+            {arr(stages).map(s => (
               <button
                 key={s.id}
                 onClick={() => onSelect(s.id)}

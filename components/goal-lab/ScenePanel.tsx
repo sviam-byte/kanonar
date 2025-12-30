@@ -1,5 +1,6 @@
 
 import React from 'react';
+import { arr } from '../../lib/utils/arr';
 
 type SceneControl = {
   presetId: string;
@@ -70,7 +71,7 @@ export const ScenePanel: React.FC<Props> = ({ control, presets, onChange }) => {
                 className="w-full px-2 py-2 rounded bg-canon-bg border border-canon-border text-xs focus:outline-none focus:border-canon-accent"
               >
                 <option value="">(auto / entry)</option>
-                {(preset?.phases || []).map(ph => <option key={ph.id} value={ph.id}>{ph.label}</option>)}
+                {arr(preset?.phases).map(ph => <option key={ph.id} value={ph.id}>{ph.label}</option>)}
               </select>
           </div>
         </div>

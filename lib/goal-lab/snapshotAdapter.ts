@@ -2,6 +2,7 @@
 import { GoalLabSnapshotV1 } from './snapshotTypes';
 import { ContextAtom } from '../context/v2/types';
 import { normalizeAtom } from '../context/v2/infer';
+import { arr } from '../utils/arr';
 
 function safeTick(x: any) {
   const t = Number(x);
@@ -16,12 +17,12 @@ export function adaptToSnapshotV1(raw: any, args: { selfId: string }): GoalLabSn
   // - v4Atoms (legacy/debug, часто без appraisal/emotion и с другими id-шниками)
   // Для инспекторов/панелей GoalLab нам нужен именно snapshot.atoms.
   const atoms: ContextAtom[] =
-    (raw?.snapshot?.atoms as ContextAtom[]) ||
-    (raw?.atoms as ContextAtom[]) ||
-    (raw?.frame?.atoms as ContextAtom[]) ||
-    (raw?.v4Atoms as ContextAtom[]) ||
+    arr(raw?.snapshot?.atoms) ||
+    arr(raw?.atoms) ||
+    arr(raw?.frame?.atoms) ||
+    arr(raw?.v4Atoms) ||
     [];
-  const normalizedAtoms = atoms.map(a => normalizeAtom(a as any));
+  const normalizedAtoms = arr(atoms).map(a => normalizeAtom(a as any));
 
   const tick =
     safeTick(raw?.tick) ||

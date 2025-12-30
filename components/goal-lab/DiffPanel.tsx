@@ -1,6 +1,7 @@
 
 import React from 'react';
 import { AtomDiff } from '../../lib/snapshot/diffAtoms';
+import { arr } from '../../lib/utils/arr';
 
 export const DiffPanel: React.FC<{ diffs: AtomDiff[] }> = ({ diffs }) => {
   if (!diffs || diffs.length === 0) {
@@ -9,7 +10,7 @@ export const DiffPanel: React.FC<{ diffs: AtomDiff[] }> = ({ diffs }) => {
 
   return (
     <div className="h-full min-h-0 overflow-auto custom-scrollbar p-2 space-y-1">
-      {diffs.map((d) => {
+      {arr(diffs).map((d) => {
           let color = 'text-canon-text';
           let bg = 'bg-canon-bg';
           let sign = '';

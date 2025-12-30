@@ -3,6 +3,7 @@
 import React, { useMemo, useState } from 'react';
 import { ContextAtom, AtomNamespace, AtomOrigin } from '../../lib/context/v2/types';
 import { inferAtomNamespace, inferAtomOrigin, normalizeAtom } from '../../lib/context/v2/infer';
+import { arr } from '../../lib/utils/arr';
 
 type Props = {
   atoms: ContextAtom[];
@@ -63,7 +64,7 @@ export const AtomBrowser: React.FC<Props> = ({ atoms, className, selectedAtomId,
   };
 
   const normalized = useMemo(() => {
-    return atoms.map(a => normalizeAtom(a));
+    return arr(atoms).map(a => normalizeAtom(a));
   }, [atoms]);
 
   const filtered = useMemo(() => {
@@ -167,7 +168,7 @@ export const AtomBrowser: React.FC<Props> = ({ atoms, className, selectedAtomId,
         {/* List */}
         <div className="min-h-0 overflow-auto border-r border-canon-border custom-scrollbar">
           {filtered.length === 0 && <div className="p-4 text-xs text-canon-text-light italic">No atoms found.</div>}
-          {filtered.map(a => (
+          {arr(filtered).map(a => (
             <button
               key={a.id}
               onClick={() => setSelectedId(a.id)}

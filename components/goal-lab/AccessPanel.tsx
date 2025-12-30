@@ -1,9 +1,10 @@
 
 import React from 'react';
 import { AccessDecision } from '../../lib/access/types';
+import { arr } from '../../lib/utils/arr';
 
 export const AccessPanel: React.FC<{ decisions?: AccessDecision[] }> = ({ decisions }) => {
-  const d = decisions || [];
+  const d = arr(decisions);
   
   return (
     <div className="h-full min-h-0 flex flex-col bg-canon-bg text-canon-text">
@@ -15,7 +16,7 @@ export const AccessPanel: React.FC<{ decisions?: AccessDecision[] }> = ({ decisi
       <div className="flex-1 min-h-0 overflow-auto custom-scrollbar">
         {d.length === 0 && <div className="p-4 text-xs text-canon-text-light italic text-center">No access decisions recorded.</div>}
         
-        {d.map((x, i) => (
+        {arr(d).map((x, i) => (
           <div key={i} className="p-3 border-b border-canon-border/50 hover:bg-canon-bg-light/20 transition-colors">
             <div className="flex justify-between items-center mb-1">
                  <div className="text-sm font-bold text-canon-text capitalize">{x.kind.replace('_', ' ')}</div>
@@ -29,11 +30,11 @@ export const AccessPanel: React.FC<{ decisions?: AccessDecision[] }> = ({ decisi
             
             <div className="text-xs text-canon-text-light mt-1 mb-2">{x.reason}</div>
             
-            {(x.usedAtomIds || []).length > 0 && (
+            {arr(x?.usedAtomIds).length > 0 && (
               <div className="bg-black/20 p-2 rounded border border-canon-border/20">
                   <div className="text-[9px] text-canon-text-light uppercase font-bold mb-1">Contributors</div>
                   <div className="flex flex-wrap gap-1">
-                      {(x.usedAtomIds || []).map(id => (
+                      {arr(x?.usedAtomIds).map(id => (
                           <span key={id} className="text-[9px] font-mono bg-canon-bg px-1 rounded border border-canon-border/30 text-canon-text-light/80">
                               {id}
                           </span>

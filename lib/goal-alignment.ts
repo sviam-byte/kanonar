@@ -2,6 +2,7 @@
 // lib/goal-alignment.ts
 import { GoalEcology, GoalAlignmentMetrics, ActiveGoal } from '../types';
 import { allGoals as allGoalTemplates } from '../data/goals/index';
+import { arr } from './utils/arr';
 
 const SPEARMAN_6_DIVISOR = 6 / (allGoalTemplates.length * (Math.pow(allGoalTemplates.length, 2) - 1));
 
@@ -59,8 +60,8 @@ export function calculateGoalAlignment(ecology1: GoalEcology | null, ecology2: G
     const rankCorrelation = 1 - (SPEARMAN_6_DIVISOR * rankDiffSq);
 
     // 3. Feasible Overlap
-    const activeGoals1 = new Set((ecology1?.execute || []).map(g => g.id));
-    const activeGoals2 = new Set((ecology2?.execute || []).map(g => g.id));
+    const activeGoals1 = new Set(arr(ecology1?.execute).map(g => g.id));
+    const activeGoals2 = new Set(arr(ecology2?.execute).map(g => g.id));
     const intersection = new Set([...activeGoals1].filter(id => activeGoals2.has(id)));
     const union = new Set([...activeGoals1, ...activeGoals2]);
     const feasibleOverlap = union.size > 0 ? intersection.size / union.size : 1; // Jaccard Index

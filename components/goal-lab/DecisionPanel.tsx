@@ -1,6 +1,7 @@
 
 // components/goal-lab/DecisionPanel.tsx
 import React, { useState } from 'react';
+import { arr } from '../../lib/utils/arr';
 
 export const DecisionPanel: React.FC<{ decision: any }> = ({ decision }) => {
   const [sel, setSel] = useState(0);
@@ -14,7 +15,7 @@ export const DecisionPanel: React.FC<{ decision: any }> = ({ decision }) => {
           <div className="text-sm font-semibold">Decision</div>
           <div className="text-xs text-canon-text-light mt-1">Top actions</div>
         </div>
-        {ranked.map((a: any, i: number) => (
+        {arr(ranked).map((a: any, i: number) => (
           <button
             key={a.id || i}
             className={`w-full text-left p-3 border-b border-canon-border/50 hover:bg-canon-bg-light/20 transition-colors ${i === sel ? 'bg-canon-accent/10 border-l-2 border-l-canon-accent' : ''}`}
