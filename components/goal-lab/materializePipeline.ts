@@ -11,10 +11,10 @@ type PipelineStageDelta = {
 };
 
 export function materializeStageAtoms(
-  pipeline: PipelineStageDelta[],
+  pipeline: PipelineStageDelta[] | any,
   stageId: string
 ): any[] {
-  if (!pipeline?.length) return [];
+  if (!Array.isArray(pipeline) || !pipeline.length) return [];
 
   const byId = new Map(pipeline.map(s => [s.id, s]));
   const target = byId.get(stageId);

@@ -1277,7 +1277,8 @@ export const GoalSandbox: React.FC = () => {
       return;
     }
     if (!snapshotV1) return;
-    const pipelineDeltas = (snapshotV1 as any).meta?.pipelineDeltas || [];
+    const pipelineDeltasRaw = (snapshotV1 as any).meta?.pipelineDeltas;
+    const pipelineDeltas = Array.isArray(pipelineDeltasRaw) ? pipelineDeltasRaw : [];
     const materializedByStage: Record<string, any[]> = {};
     try {
       for (const st of pipelineDeltas) {
@@ -1312,7 +1313,8 @@ export const GoalSandbox: React.FC = () => {
         return;
       }
       if (!snapshotV1) return;
-      const stages = (snapshotV1 as any).meta?.pipelineDeltas || [];
+      const stagesRaw = (snapshotV1 as any).meta?.pipelineDeltas;
+      const stages = Array.isArray(stagesRaw) ? stagesRaw : [];
       const st = stages.find((s: any) => s.id === stageId);
       if (!st) return;
       const materialized = materializeStageAtoms(stages, stageId);

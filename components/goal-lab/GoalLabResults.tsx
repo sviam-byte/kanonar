@@ -454,9 +454,13 @@ export const GoalLabResults: React.FC<Props> = ({
             }
             return out;
         }
-        return ((snapshotV1 as any)?.meta?.pipelineDeltas || []) as any[];
+        const pipelineStagesRaw = (snapshotV1 as any)?.meta?.pipelineDeltas;
+        return Array.isArray(pipelineStagesRaw) ? pipelineStagesRaw : [];
     })();
-    const pipelineStageId = pipelineStageIdProp || pipelineStages[pipelineStages.length - 1]?.id || 'S5';
+    const pipelineStageId =
+        pipelineStageIdProp ||
+        (pipelineStages.length ? pipelineStages[pipelineStages.length - 1]?.id : null) ||
+        'S5';
     const currentAtoms = (() => {
         try {
             if (pipelineV1 && Array.isArray((pipelineV1 as any).stages) && pipelineStageId) {
