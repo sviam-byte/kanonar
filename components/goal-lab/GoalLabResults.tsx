@@ -25,6 +25,7 @@ import { GoalLabSnapshotV1 } from '../../lib/goal-lab/snapshotTypes';
 import { AtomInspector } from './AtomInspector';
 import { EmotionExplainPanel } from './EmotionExplainPanel';
 import { PipelinePanel } from './PipelinePanel';
+import { materializeStageAtoms } from './materializePipeline';
 
 interface Props {
   context: ContextSnapshot | null;
@@ -456,17 +457,22 @@ export const GoalLabResults: React.FC<Props> = ({
         return ((snapshotV1 as any)?.meta?.pipelineDeltas || []) as any[];
     })();
     const pipelineStageId = pipelineStageIdProp || pipelineStages[pipelineStages.length - 1]?.id || 'S5';
-    const effectiveAtoms = (() => {
-        // If staged pipeline provided, show the selected stage atoms everywhere.
-        if (pipelineV1 && Array.isArray((pipelineV1 as any).stages) && pipelineStageId) {
-            const st = (pipelineV1 as any).stages.find((s: any) => String(s?.stage || s?.id) === String(pipelineStageId));
-            if (st && Array.isArray(st.atoms)) return st.atoms;
-        }
+    const currentAtoms = (() => {
+        try {
+            if (pipelineV1 && Array.isArray((pipelineV1 as any).stages) && pipelineStageId) {
+                const st = (pipelineV1 as any).stages.find((s: any) => String(s?.stage || s?.id) === String(pipelineStageId));
+                if (st && Array.isArray(st.atoms)) return st.atoms;
+            }
+            if (Array.isArray(pipelineStages) && pipelineStages.length && pipelineStageId) {
+                const mat = materializeStageAtoms(pipelineStages as any, String(pipelineStageId));
+                if (Array.isArray(mat) && mat.length) return mat;
+            }
+        } catch {}
         const a = (snapshotV1 as any)?.atoms ?? context?.atoms;
         return Array.isArray(a) ? a : [];
     })();
 
-    const topAtoms = [...effectiveAtoms]
+    const topAtoms = [...currentAtoms]
         .sort((a, b) => (b.magnitude ?? 0) - (a.magnitude ?? 0))
         .slice(0, 12);
 
@@ -479,19 +485,19 @@ export const GoalLabResults: React.FC<Props> = ({
     );
     
     const AtomsTab = () => {
-        const selectedAtom = effectiveAtoms.find(a => a.id === selectedAtomId) || null;
+        const selectedAtom = currentAtoms.find(a => a.id === selectedAtomId) || null;
 
         return (
           <div className="h-full min-h-0">
             <AtomBrowser
-              atoms={effectiveAtoms}
+              atoms={currentAtoms}
               selectedAtomId={selectedAtomId}
               onSelectedAtomIdChange={setSelectedAtomId}
               renderDetails={(atom) => (
                 <div className="p-4">
                   <AtomInspector
                     atom={atom}
-                    allAtoms={effectiveAtoms}
+                    allAtoms={currentAtoms}
                     onJumpToAtomId={(id) => setSelectedAtomId(id)}
                   />
                 </div>
@@ -511,30 +517,30 @@ export const GoalLabResults: React.FC<Props> = ({
     );
 
     const ThreatTab = () => (
-        <ThreatPanel atoms={effectiveAtoms} />
+        <ThreatPanel atoms={currentAtoms} />
     );
 
     const ToMTab = () => (
-        <ToMPanel atoms={effectiveAtoms} />
+        <ToMPanel atoms={currentAtoms} />
     );
 
     const MindTab = () => (
-        <ContextMindPanel cm={snapshotV1?.contextMind} atoms={effectiveAtoms} selfId={snapshotV1?.selfId} />
+        <ContextMindPanel cm={snapshotV1?.contextMind} atoms={currentAtoms} selfId={snapshotV1?.selfId} />
     );
 
     const EmotionsTab = () => {
         const selfId = (snapshotV1 as any)?.selfId || (context as any)?.agentId;
-        const get = (id: string, fb = 0) => effectiveAtoms.find(a => a.id === id)?.magnitude ?? fb;
+        const get = (id: string, fb = 0) => currentAtoms.find(a => a.id === id)?.magnitude ?? fb;
         const metric = (a: any) => a.magnitude ?? (a as any)?.m ?? 0;
-        const app = effectiveAtoms
+        const app = currentAtoms
           .filter(a => typeof a.id === 'string' && a.id.startsWith('app:') && a.id.endsWith(`:${selfId}`))
           .sort((x, y) => metric(y) - metric(x));
-        const emo = effectiveAtoms
+        const emo = currentAtoms
           .filter(a => typeof a.id === 'string' && a.id.startsWith('emo:') && a.id.endsWith(`:${selfId}`))
           .sort((x, y) => metric(y) - metric(x));
 
         // Dyadic emotions: emo:dyad:<key>:<selfId>:<otherId>
-        const dyadAll = effectiveAtoms
+        const dyadAll = currentAtoms
           .filter(a => {
             const id = String((a as any)?.id || '');
             if (!id.startsWith('emo:dyad:')) return false;
@@ -684,7 +690,7 @@ export const GoalLabResults: React.FC<Props> = ({
         <div className="absolute inset-0 overflow-y-auto custom-scrollbar p-4 pb-20">
           <EmotionExplainPanel
             selfId={selfId}
-            atoms={effectiveAtoms}
+            atoms={currentAtoms}
             manualAtoms={manualAtoms || []}
             onChangeManualAtoms={onChangeManualAtoms}
           />
@@ -824,7 +830,7 @@ export const GoalLabResults: React.FC<Props> = ({
             </div>
 
             <div className="bg-black/30 border-b border-canon-border/50 shrink-0">
-                <ContextRibbon atoms={effectiveAtoms} />
+                <ContextRibbon atoms={currentAtoms} />
             </div>
 
 

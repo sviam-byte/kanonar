@@ -34,6 +34,7 @@ import { diffAtoms } from '../../lib/snapshot/diffAtoms';
 import { adaptToSnapshotV1 } from '../../lib/goal-lab/snapshotAdapter';
 import { buildGoalLabSceneDumpV2, downloadJson } from '../../lib/goal-lab/sceneDump';
 import { runGoalLabPipelineV1 } from '../../lib/goal-lab/pipeline/runPipelineV1';
+import { materializeStageAtoms } from '../goal-lab/materializePipeline';
 import { CastPerspectivePanel } from '../goal-lab/CastPerspectivePanel';
 import { allScenarioDefs } from '../../data/scenarios/index';
 import { useAccess } from '../../contexts/AccessContext';
@@ -1276,11 +1277,22 @@ export const GoalSandbox: React.FC = () => {
       return;
     }
     if (!snapshotV1) return;
+    const pipelineDeltas = (snapshotV1 as any).meta?.pipelineDeltas || [];
+    const materializedByStage: Record<string, any[]> = {};
+    try {
+      for (const st of pipelineDeltas) {
+        const id = String((st as any)?.id || '');
+        if (!id) continue;
+        materializedByStage[id] = materializeStageAtoms(pipelineDeltas, id);
+      }
+    } catch {}
+
     const payload = {
-      schema: 'GoalLabPipelineExportV1',
+      schema: 'GoalLabPipelineExportV2',
       tick: snapshotV1.tick,
       selfId: snapshotV1.selfId,
-      pipelineDeltas: (snapshotV1 as any).meta?.pipelineDeltas || [],
+      pipelineDeltas,
+      materializedByStage,
       finalAtoms: snapshotV1.atoms,
     };
     downloadJson(payload, `goal-lab__pipeline__${snapshotV1.selfId}__t${snapshotV1.tick}.json`);
@@ -1303,7 +1315,16 @@ export const GoalSandbox: React.FC = () => {
       const stages = (snapshotV1 as any).meta?.pipelineDeltas || [];
       const st = stages.find((s: any) => s.id === stageId);
       if (!st) return;
-      downloadJson(st, `goal-lab__stage-${stageId}__${snapshotV1.selfId}__t${snapshotV1.tick}.json`);
+      const materialized = materializeStageAtoms(stages, stageId);
+      const payload = {
+        schema: 'GoalLabPipelineStageExportV2',
+        tick: snapshotV1.tick,
+        selfId: snapshotV1.selfId,
+        stageId,
+        delta: st,
+        materializedAtoms: materialized,
+      };
+      downloadJson(payload, `goal-lab__stage-${stageId}__${snapshotV1.selfId}__t${snapshotV1.tick}.json`);
     },
     [snapshotV1, pipelineV1]
   );
