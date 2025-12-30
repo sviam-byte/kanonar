@@ -8,6 +8,10 @@ function safeTick(x: any) {
   return Number.isFinite(t) ? t : 0;
 }
 
+function arr<T = any>(x: any): T[] {
+  return Array.isArray(x) ? x : [];
+}
+
 export function adaptToSnapshotV1(raw: any, args: { selfId: string }): GoalLabSnapshotV1 {
   // raw can be GoalLabContextResult or similar structure
   // IMPORTANT:
@@ -16,12 +20,12 @@ export function adaptToSnapshotV1(raw: any, args: { selfId: string }): GoalLabSn
   // - v4Atoms (legacy/debug, часто без appraisal/emotion и с другими id-шниками)
   // Для инспекторов/панелей GoalLab нам нужен именно snapshot.atoms.
   const atoms: ContextAtom[] =
-    (raw?.snapshot?.atoms as ContextAtom[]) ||
-    (raw?.atoms as ContextAtom[]) ||
-    (raw?.frame?.atoms as ContextAtom[]) ||
-    (raw?.v4Atoms as ContextAtom[]) ||
+    arr(raw?.snapshot?.atoms) ||
+    arr(raw?.atoms) ||
+    arr(raw?.frame?.atoms) ||
+    arr(raw?.v4Atoms) ||
     [];
-  const normalizedAtoms = atoms.map(a => normalizeAtom(a as any));
+  const normalizedAtoms = arr(atoms).map(a => normalizeAtom(a as any));
 
   const tick =
     safeTick(raw?.tick) ||
