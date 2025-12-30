@@ -126,7 +126,10 @@ export function runTicks(args: {
       const next = snap;
       diffs.push({
         tick: world.tick,
-        atoms: shallowAtomDiff(prev?.atoms || [], next?.atoms || [])
+        atoms: shallowAtomDiff(
+          Array.isArray(prev?.atoms) ? prev.atoms : [],
+          Array.isArray(next?.atoms) ? next.atoms : []
+        )
       });
     }
   }
@@ -225,7 +228,13 @@ export function runTicksForCast(args: {
 
       if (withDiffs && arr.length >= 2) {
         const prev = arr[arr.length - 2];
-        (diffsByAgentId[selfId] || (diffsByAgentId[selfId] = [])).push({ tick: world.tick, atoms: shallowAtomDiff(prev?.atoms || [], snap?.atoms || []) });
+        (diffsByAgentId[selfId] || (diffsByAgentId[selfId] = [])).push({
+          tick: world.tick,
+          atoms: shallowAtomDiff(
+            Array.isArray(prev?.atoms) ? prev.atoms : [],
+            Array.isArray(snap?.atoms) ? snap.atoms : []
+          )
+        });
       }
     }
   }

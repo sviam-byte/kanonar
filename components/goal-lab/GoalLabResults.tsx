@@ -25,6 +25,7 @@ import { GoalLabSnapshotV1 } from '../../lib/goal-lab/snapshotTypes';
 import { AtomInspector } from './AtomInspector';
 import { EmotionExplainPanel } from './EmotionExplainPanel';
 import { PipelinePanel } from './PipelinePanel';
+import { materializeStageAtoms } from './materializePipeline';
 
 interface Props {
   context: ContextSnapshot | null;
@@ -44,6 +45,7 @@ interface Props {
   contextualMind?: ContextualMindReport | null;
   atomDiff?: AtomDiff[];
   snapshotV1?: GoalLabSnapshotV1 | null;
+  pipelineV1?: any | null;
   perspectiveAgentId?: string | null;
   tomRows?: Array<{ me: string; other: string; dyad: any }> | null;
   sceneDump?: any;
@@ -343,6 +345,7 @@ export const GoalLabResults: React.FC<Props> = ({
   tom,
   atomDiff,
   snapshotV1,
+  pipelineV1,
   perspectiveAgentId,
   tomRows,
   sceneDump,
@@ -398,9 +401,6 @@ export const GoalLabResults: React.FC<Props> = ({
     const effectiveSelectedId = selectedGoalId || (goalScores.length > 0 ? goalScores[0].goalId : null);
     const selectedScore = goalScores.find(g => g.goalId === effectiveSelectedId);
 
-    // Use unified snapshot if available, else legacy context
-    const currentAtoms = snapshotV1?.atoms ?? context?.atoms ?? [];
-
     // Aggregates from snapshot or legacy context
     const stats = {
         threat: snapshotV1?.contextMind?.metrics?.find((m: any) => m.key === 'threat')?.value ?? context?.aggregates?.threatLevel ?? context?.summary.physicalRisk ?? 0,
@@ -408,10 +408,6 @@ export const GoalLabResults: React.FC<Props> = ({
         pressure: snapshotV1?.contextMind?.metrics?.find((m: any) => m.key === 'pressure')?.value ?? ((context?.summary.timePressure ?? 0) + (context?.summary.normPressure ?? 0)) / 2,
         crowd: snapshotV1?.contextMind?.metrics?.find((m: any) => m.key === 'crowd')?.value ?? context?.aggregates?.crowding ?? context?.summary.crowding ?? 0
     };
-
-    const topAtoms = [...currentAtoms]
-        .sort((a, b) => (b.magnitude ?? 0) - (a.magnitude ?? 0))
-        .slice(0, 12);
 
     const tomSummaries = (tomRows || [])
         .slice(0, 8)
@@ -427,8 +423,62 @@ export const GoalLabResults: React.FC<Props> = ({
             };
         });
 
-    const pipelineStages = (snapshotV1 as any)?.meta?.pipelineDeltas || [];
-    const pipelineStageId = pipelineStageIdProp || pipelineStages[pipelineStages.length - 1]?.id || 'S5';
+    const pipelineStages = ((): any[] => {
+        // Prefer staged debug pipeline (pipelineV1) if provided; fallback to snapshotV1.meta.pipelineDeltas
+        if (pipelineV1 && Array.isArray((pipelineV1 as any).stages)) {
+            const frames = (pipelineV1 as any).stages as any[];
+            const out: any[] = [];
+            for (let i = 0; i < frames.length; i++) {
+                const f = frames[i];
+                const id = String(f?.stage || f?.id || `S${i}`);
+                const label = String(f?.title || f?.label || id);
+                const atoms = Array.isArray(f?.atoms) ? f.atoms : [];
+                const addedIds = Array.isArray(f?.atomsAddedIds) ? f.atomsAddedIds : [];
+                const added = addedIds.length ? atoms.filter((a: any) => addedIds.includes(String(a?.id))) : [];
+                out.push({
+                    id,
+                    label,
+                    baseId: i > 0 ? String(frames[i - 1]?.stage || frames[i - 1]?.id || `S${i-1}`) : undefined,
+                    atomCount: atoms.length,
+                    full: i === 0 ? atoms : undefined,
+                    added: i === 0 ? undefined : added,
+                    changed: [],
+                    removedIds: [],
+                    notes: [
+                        ...(Array.isArray(f?.warnings) ? f.warnings : []),
+                        f?.stats
+                            ? `atoms=${f.stats.atomCount}, +${f.stats.addedCount}, missingCode=${f.stats.missingCodeCount}, missingTraceDerived=${f.stats.missingTraceDerivedCount}`
+                            : ''
+                    ].filter(Boolean)
+                });
+            }
+            return out;
+        }
+        const pipelineStagesRaw = (snapshotV1 as any)?.meta?.pipelineDeltas;
+        return Array.isArray(pipelineStagesRaw) ? pipelineStagesRaw : [];
+    })();
+    const pipelineStageId =
+        pipelineStageIdProp ||
+        (pipelineStages.length ? pipelineStages[pipelineStages.length - 1]?.id : null) ||
+        'S5';
+    const currentAtoms = (() => {
+        try {
+            if (pipelineV1 && Array.isArray((pipelineV1 as any).stages) && pipelineStageId) {
+                const st = (pipelineV1 as any).stages.find((s: any) => String(s?.stage || s?.id) === String(pipelineStageId));
+                if (st && Array.isArray(st.atoms)) return st.atoms;
+            }
+            if (Array.isArray(pipelineStages) && pipelineStages.length && pipelineStageId) {
+                const mat = materializeStageAtoms(pipelineStages as any, String(pipelineStageId));
+                if (Array.isArray(mat) && mat.length) return mat;
+            }
+        } catch {}
+        const a = (snapshotV1 as any)?.atoms ?? context?.atoms;
+        return Array.isArray(a) ? a : [];
+    })();
+
+    const topAtoms = [...currentAtoms]
+        .sort((a, b) => (b.magnitude ?? 0) - (a.magnitude ?? 0))
+        .slice(0, 12);
 
     if (!context) {
         return <div className="flex items-center justify-center h-full text-canon-text-light text-xs opacity-50">Выберите агента для анализа.</div>;

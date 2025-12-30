@@ -30,6 +30,12 @@ export type Stage0Input = {
   agent: AgentState;
   selfId: string;
 
+  /**
+   * Legacy convenience: stage0 historically produced ctx:* axes.
+   * For a strict staged pipeline (S0 raw atoms -> S3 axes), disable this.
+   */
+  includeAxes?: boolean;
+
   // optional local map metrics (precomputed)
   mapMetrics?: any;
 
@@ -233,10 +239,14 @@ export function buildStage0Atoms(input: Stage0Input): Stage0Output {
   ];
 
   // 8. Derive Context Axes Atoms (Strictly from canonical atoms)
-  const ctxAtoms = deriveAxes({
-      selfId: input.selfId,
-      atoms: atomsForAxes // Pass the accumulated atoms to derive axes
-  }).atoms;
+  // NOTE: stage0 historically included ctx axes.
+  // For strict staged pipelines, disable via input.includeAxes=false and compute axes at Stage 2/3.
+  const ctxAtoms = input.includeAxes === false
+    ? []
+    : deriveAxes({
+        selfId: input.selfId,
+        atoms: atomsForAxes // Pass the accumulated atoms to derive axes
+      }).atoms;
 
   // World layer: only facts (plus extras). Obs goes into obs layer. Ctx goes into derived layer.
   const worldAtomsPlus = [
