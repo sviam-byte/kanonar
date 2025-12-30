@@ -3,13 +3,13 @@ function isObj(x: any) {
   return x && typeof x === 'object' && !Array.isArray(x);
 }
 
-function toArray(x: any): any[] {
+function arr<T = any>(x: any): T[] {
   return Array.isArray(x) ? x : [];
 }
 
 export function shallowAtomDiff(prevAtoms: any[] | any = [], nextAtoms: any[] | any = []) {
-  const prev = toArray(prevAtoms);
-  const next = toArray(nextAtoms);
+  const prev = arr(prevAtoms);
+  const next = arr(nextAtoms);
 
   const p = new Map(prev.map((a) => [a?.id, a]).filter(([id]) => id != null));
   const n = new Map(next.map((a) => [a?.id, a]).filter(([id]) => id != null));

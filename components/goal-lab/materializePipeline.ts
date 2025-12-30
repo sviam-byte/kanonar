@@ -10,17 +10,21 @@ type PipelineStageDelta = {
   notes?: string[];
 };
 
+function arr<T = any>(x: any): T[] {
+  return Array.isArray(x) ? x : [];
+}
+
 export function materializeStageAtoms(
   pipeline: PipelineStageDelta[] | any,
   stageId: string
 ): any[] {
   if (!Array.isArray(pipeline) || !pipeline.length) return [];
 
-  const byId = new Map(pipeline.map(s => [s.id, s]));
+  const byId = new Map(arr(pipeline).map(s => [s.id, s]));
   const target = byId.get(stageId);
   if (!target) return [];
 
-  let s0: PipelineStageDelta | undefined = pipeline.find(s => Array.isArray(s.full));
+  let s0: PipelineStageDelta | undefined = arr(pipeline).find(s => Array.isArray((s as any).full));
   if (!s0) return [];
 
   const chain: PipelineStageDelta[] = [];
@@ -36,14 +40,18 @@ export function materializeStageAtoms(
   }
   chain.reverse();
 
-  const m = new Map<string, any>((s0.full || []).map((a: any) => [String(a.id), a]));
+  const m = new Map<string, any>(
+    arr((s0 as any).full)
+      .map((a: any) => [String(a?.id), a])
+      .filter(([id]) => id)
+  );
 
   for (const st of chain) {
     if (st.id === s0.id) continue;
 
-    for (const rid of st.removedIds || []) m.delete(String(rid));
-    for (const a of st.added || []) m.set(String(a.id), a);
-    for (const a of st.changed || []) m.set(String(a.id), a);
+    for (const rid of arr((st as any).removedIds)) m.delete(String(rid));
+    for (const a of arr((st as any).added)) m.set(String(a?.id), a);
+    for (const a of arr((st as any).changed)) m.set(String(a?.id), a);
   }
 
   return Array.from(m.values());
