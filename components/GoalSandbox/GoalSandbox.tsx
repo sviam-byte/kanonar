@@ -433,9 +433,9 @@ export const GoalSandbox: React.FC = () => {
       });
 
       const locId = getActiveLocationId();
-      w.agents = w.agents.map(a => ({ ...(a as any), locationId: locId } as AgentState));
+      w.agents = arr((w as any)?.agents).map((a: any) => ({ ...(a as any), locationId: locId } as AgentState));
 
-      const allIds = w.agents.map(a => a.entityId);
+      const allIds = arr((w as any)?.agents).map((a: any) => a.entityId);
       (w as any).initialRelations = ensureCompleteInitialRelations(allIds, (w as any).initialRelations);
 
       const roleMap = assignRoles(w.agents as any, w.scenario as any, w as any);
@@ -594,9 +594,9 @@ export const GoalSandbox: React.FC = () => {
       });
 
       const locId = getActiveLocationId();
-      w.agents = w.agents.map(a => ({ ...(a as any), locationId: locId } as AgentState));
+      w.agents = arr((w as any)?.agents).map((a: any) => ({ ...(a as any), locationId: locId } as AgentState));
 
-      const agentIds = w.agents.map(a => a.entityId);
+      const agentIds = arr((w as any)?.agents).map((a: any) => a.entityId);
       (w as any).initialRelations = ensureCompleteInitialRelations(agentIds, (w as any).initialRelations);
 
       const roleMap = assignRoles(w.agents as any, w.scenario as any, w as any);
@@ -1371,7 +1371,7 @@ export const GoalSandbox: React.FC = () => {
 
   const mapHighlights = useMemo(() => {
     if (!worldState) return [];
-    return worldState.agents.map(a => ({
+    return arr((worldState as any)?.agents).map((a: any) => ({
       x: (a as any).position?.x ?? 0,
       y: (a as any).position?.y ?? 0,
       color: a.entityId === selectedAgentId ? '#00aaff' : (a as any).hp < 70 ? '#ff4444' : '#33ff99',
