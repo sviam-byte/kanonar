@@ -411,7 +411,8 @@ export interface LogEntry {
     | 'resolution'
     | 'action'
     | 'norm'
-    | 'outcome';
+    | 'outcome'
+    | 'proposal';
   actorId?: AgentId;
   message: string;
   data?: any;
@@ -431,6 +432,14 @@ export interface ContextSlice {
   scenarioConfig?: ScenarioConfig;
   logs: LogEntry[];
   agentLocationTags?: AgentLocationTags;
+  /**
+   * Canonical action dictionary for the current world snapshot.
+   * If absent, the engine falls back to the built-in default catalog.
+   *
+   * This lives on the WORLD SNAPSHOT (not UI state): GoalLab should be reproducible
+   * from a single JSON.
+   */
+  actionCatalog?: Record<ActionId, ActionDef>;
 }
 
 export interface ContextWorldState extends WorldState {
