@@ -3,10 +3,11 @@
 import { ScenePreset, SceneSnapshot } from './types';
 import { ContextAtom } from '../context/v2/types';
 import { normalizeAtom } from '../context/v2/infer';
+import { arr } from '../utils/arr';
 
 export function applyScenePresetToSnapshot(preset: ScenePreset, snapshot: SceneSnapshot): SceneSnapshot {
   // Map globalInjections to world atoms
-  const worldInj = (preset.globalInjections || []).map(a => 
+  const worldInj = arr(preset.globalInjections).map(a => 
     normalizeAtom({ 
       ...a, 
       source: 'scene', 
@@ -30,7 +31,7 @@ export function applyScenePresetToSnapshot(preset: ScenePreset, snapshot: SceneS
 
 export function getSceneInjections(snapshot?: SceneSnapshot): { worldAtoms: ContextAtom[]; beliefAtoms: ContextAtom[] } {
   return {
-    worldAtoms: (snapshot?.activeWorldInjections || []).map(normalizeAtom),
-    beliefAtoms: (snapshot?.activeBeliefInjections || []).map(normalizeAtom),
+    worldAtoms: arr(snapshot?.activeWorldInjections).map(normalizeAtom),
+    beliefAtoms: arr(snapshot?.activeBeliefInjections).map(normalizeAtom),
   };
 }

@@ -26,6 +26,7 @@ import { atomizePossibilities } from '../../possibilities/atomize';
 import { deriveAccess } from '../../access/deriveAccess';
 import { deriveActionPriors } from '../../decision/actionPriors';
 import { decideAction } from '../../decision/decide';
+import { arr } from '../../utils/arr';
 
 export type GoalLabStageId = 'S0'|'S1'|'S2'|'S3'|'S4'|'S5'|'S6'|'S7'|'S8';
 
@@ -117,9 +118,7 @@ function computeQuarks(atoms: ContextAtom[]) {
   return quarks;
 }
 
-function arr<T = any>(x: any): T[] {
-  return Array.isArray(x) ? x : [];
-}
+import { arr } from '../../utils/arr';
 
 export function runGoalLabPipelineV1(input: {
   world: WorldState;

@@ -53,6 +53,7 @@ import { buildDebugFrameFromSnapshot } from '../../lib/goal-lab/debugFrameFromSn
 import { EmotionInspector } from '../GoalLab/EmotionInspector';
 import { normalizeAtom } from '../../lib/context/v2/infer';
 import { lintActionsAndLocations } from '../../lib/linter/actionsAndLocations';
+import { arr } from '../../lib/utils/arr';
 
 function createCustomLocationEntity(map: LocationMap): LocationEntity {
   const cells = map.cells || [];
@@ -816,7 +817,7 @@ export const GoalSandbox: React.FC = () => {
         const focusParticipants =
           Array.isArray(focus.participantIds) && focus.participantIds.length
             ? focus.participantIds.map(String)
-            : (w.agents || []).map(a => String((a as any).entityId)).filter(Boolean);
+            : arr(w.agents).map(a => String((a as any).entityId)).filter(Boolean);
 
         // Keep invariant: sceneParticipants excludes selectedAgentId (participantIds memo adds it back)
         const nextSceneParticipants = new Set<string>(

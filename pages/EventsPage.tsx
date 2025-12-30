@@ -9,6 +9,7 @@ import { Event } from '../lib/events/types';
 import { buildUnifiedEventsView } from '../lib/events/unifiedEvents';
 import { getAllSocialEvents, getEntitiesByType } from '../data';
 import { EntityType, CharacterEntity } from '../types';
+import { arr } from '../lib/utils/arr';
 
 // --- Subcomponent: Registry List ---
 
@@ -133,7 +134,7 @@ const UnifiedLogView: React.FC = () => {
     []);
 
     const personalEvents = useMemo(() => {
-        return characters.flatMap(c => (c.historicalEvents || []).map(ev => ({...ev, participants: ev.participants || [c.entityId]})));
+        return characters.flatMap(c => arr(c.historicalEvents).map(ev => ({...ev, participants: ev.participants || [c.entityId]})));
     }, [characters]);
 
     const unifiedEvents = useMemo(() => {

@@ -10,6 +10,7 @@ import { TEST_SCENES, ScenePreset } from '../../data/presets/scenes';
 import { CONTEXT_ATOM_KIND_CATALOG, DEFAULT_MANUAL_KINDS } from '../../lib/context/v2/catalog';
 import { ModsPanel } from './ModsPanel'; 
 import { ScenePanel } from './ScenePanel';
+import { arr } from '../../lib/utils/arr';
 
 interface Props {
   allCharacters: CharacterEntity[];
@@ -278,7 +279,7 @@ export const GoalLabControls: React.FC<Props> = ({
   const filteredAtomKinds = CONTEXT_ATOM_KIND_CATALOG.filter(k => k.includes(customAtomSearch));
   
   const sceneIds = React.useMemo(() => {
-      const ids = new Set<string>(participantIds || []);
+      const ids = new Set<string>(arr(participantIds));
       // страховка: active/perspective всегда должны быть в списке,
       // но НЕ тащим world.agents, чтобы сцена была единственным источником правды.
       if (selectedAgentId) ids.add(selectedAgentId);
@@ -847,7 +848,7 @@ export const GoalLabControls: React.FC<Props> = ({
               <div className="text-[11px] font-bold mb-2">Perspective (для кого считаем)</div>
 
               <div className="flex flex-wrap gap-1">
-                {(participantIds || []).map(id => {
+                {arr(participantIds).map(id => {
                   const label = allCharacters.find(c => c.entityId === id)?.title || id;
                   return (
                     <button

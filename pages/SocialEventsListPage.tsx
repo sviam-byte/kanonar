@@ -4,6 +4,7 @@ import { getAllSocialEvents, getEntitiesByType } from '../data';
 import { CharacterEntity, EntityType } from '../types';
 import { buildUnifiedEventsView } from '../lib/events/unifiedEvents';
 import { EventsPanel } from '../components/events/EventsPanel';
+import { arr } from '../lib/utils/arr';
 
 export const SocialEventsListPage: React.FC = () => {
     // 1. Get Data
@@ -16,7 +17,7 @@ export const SocialEventsListPage: React.FC = () => {
 
     // 2. Aggregate Personal Events from Characters
     const personalEvents = useMemo(() => {
-        return characters.flatMap(c => (c.historicalEvents || []).map(ev => ({...ev, participants: ev.participants || [c.entityId]})));
+        return characters.flatMap(c => arr(c.historicalEvents).map(ev => ({...ev, participants: ev.participants || [c.entityId]})));
     }, [characters]);
 
     // 3. Build Unified View

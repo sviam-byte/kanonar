@@ -9,6 +9,7 @@ import { extractEvidenceFromEvents } from '../evidence/extract';
 import { applyEvidenceToTomBase } from '../tom/memory/update';
 import { updateRelationshipGraphFromEvents } from '../relations/updateFromEvents';
 import { WorldEvent } from '../events/types';
+import { arr } from '../utils/arr';
 
 export function ensureWorldTick(world: any) {
   if (typeof world.tick !== 'number') world.tick = 0;
@@ -149,9 +150,9 @@ export function runTicksForCast(args: {
   const steps = cfg.steps ?? 1;
 
   const ids: string[] =
-    Array.isArray(participantIds) && participantIds.length
-      ? participantIds
-      : (world?.agents || world?.entities || []).map((a: any) => a?.entityId).filter(Boolean);
+    arr(participantIds).length
+      ? arr(participantIds)
+      : arr(world?.agents || world?.entities).map((a: any) => a?.entityId).filter(Boolean);
 
   const snapshotsByAgentId: Record<string, any[]> = {};
   const diffsByAgentId: Record<string, any[]> = {};

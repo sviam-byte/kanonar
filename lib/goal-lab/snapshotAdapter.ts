@@ -2,14 +2,11 @@
 import { GoalLabSnapshotV1 } from './snapshotTypes';
 import { ContextAtom } from '../context/v2/types';
 import { normalizeAtom } from '../context/v2/infer';
+import { arr } from '../utils/arr';
 
 function safeTick(x: any) {
   const t = Number(x);
   return Number.isFinite(t) ? t : 0;
-}
-
-function arr<T = any>(x: any): T[] {
-  return Array.isArray(x) ? x : [];
 }
 
 export function adaptToSnapshotV1(raw: any, args: { selfId: string }): GoalLabSnapshotV1 {

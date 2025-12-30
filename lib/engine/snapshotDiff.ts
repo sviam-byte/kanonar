@@ -1,10 +1,8 @@
 
+import { arr } from '../utils/arr';
+
 function isObj(x: any) {
   return x && typeof x === 'object' && !Array.isArray(x);
-}
-
-function arr<T = any>(x: any): T[] {
-  return Array.isArray(x) ? x : [];
 }
 
 export function shallowAtomDiff(prevAtoms: any[] | any = [], nextAtoms: any[] | any = []) {

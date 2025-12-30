@@ -1,11 +1,12 @@
 
 // components/goal-lab/CoveragePanel.tsx
 import React, { useMemo, useState } from 'react';
+import { arr } from '../../lib/utils/arr';
 
 export const CoveragePanel: React.FC<{ coverage: any }> = ({ coverage }) => {
   const [groupIdx, setGroupIdx] = useState(0);
 
-  const groups = coverage?.groups || [];
+  const groups = arr(coverage?.groups);
   const cur = groups[groupIdx] || null;
 
   const header = useMemo(() => {
@@ -26,7 +27,7 @@ export const CoveragePanel: React.FC<{ coverage: any }> = ({ coverage }) => {
         </div>
 
         {groups.map((g: any, i: number) => {
-          const miss = (g.hits || []).filter((h: any) => !h.ok).length;
+          const miss = arr(g.hits).filter((h: any) => !h.ok).length;
           const isSelected = i === groupIdx;
           return (
             <button
@@ -46,7 +47,7 @@ export const CoveragePanel: React.FC<{ coverage: any }> = ({ coverage }) => {
           <>
             <div className="text-lg font-bold text-canon-accent mb-4 border-b border-canon-border/30 pb-2">{cur.title}</div>
             <div className="space-y-2">
-              {(cur.hits || []).map((h: any, idx: number) => (
+              {arr(cur.hits).map((h: any, idx: number) => (
                 <div key={h.expectationId || idx} className={`p-3 rounded border ${h.ok ? 'border-green-500/20 bg-green-900/10' : 'border-red-500/20 bg-red-900/10'}`}>
                   <div className="flex items-center justify-between mb-1">
                     <div className="flex items-center gap-2">
