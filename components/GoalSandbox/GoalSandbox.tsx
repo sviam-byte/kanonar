@@ -50,6 +50,7 @@ import { ensureMapCells } from '../../lib/world/ensureMapCells';
 import { buildDebugFrameFromSnapshot } from '../../lib/goal-lab/debugFrameFromSnapshot';
 import { EmotionInspector } from '../GoalLab/EmotionInspector';
 import { normalizeAtom } from '../../lib/context/v2/infer';
+import { lintActionsAndLocations } from '../../lib/linter/actionsAndLocations';
 
 function createCustomLocationEntity(map: LocationMap): LocationEntity {
   const cells = map.cells || [];
@@ -1283,6 +1284,32 @@ export const GoalSandbox: React.FC = () => {
     }));
   }, [worldState, selectedAgentId]);
 
+  const actionsLocLint = useMemo(() => {
+    try {
+      return lintActionsAndLocations();
+    } catch (e) {
+      return {
+        issues: [
+          {
+            severity: 'error',
+            kind: 'unknown_action_token',
+            locationId: '(lint)',
+            path: '(lint)',
+            message: `Lint failed: ${(e as any)?.message ?? String(e)}`,
+          },
+        ],
+        stats: {
+          locations: 0,
+          locationsWithAffordances: 0,
+          errors: 1,
+          warnings: 0,
+          knownActionIds: 0,
+          knownTags: 0,
+        },
+      };
+    }
+  }, []);
+
   return (
     <div className="h-full flex flex-col bg-canon-bg text-canon-text overflow-hidden">
       <div className="flex-1 grid grid-cols-12 min-h-0">
@@ -1418,6 +1445,48 @@ export const GoalSandbox: React.FC = () => {
               <FrameDebugPanel frame={pipelineFrame as any} />
             </div>
           )}
+
+          <div className="mt-4">
+            <h3 className="text-lg font-bold text-canon-accent uppercase tracking-widest mb-4 border-b border-canon-border/40 pb-2">
+              Actions × Locations Lint
+            </h3>
+
+            <div className="text-sm opacity-80 mb-2">
+              Locations: {actionsLocLint.stats.locations} • with affordances:{' '}
+              {actionsLocLint.stats.locationsWithAffordances} • known actionIds:{' '}
+              {actionsLocLint.stats.knownActionIds} • known tags:{' '}
+              {actionsLocLint.stats.knownTags}
+            </div>
+
+            {(actionsLocLint.stats.errors + actionsLocLint.stats.warnings) === 0 ? (
+              <div className="text-sm">No issues.</div>
+            ) : (
+              <div className="space-y-2">
+                <div className="text-sm">
+                  Errors: <b>{actionsLocLint.stats.errors}</b> • Warnings:{' '}
+                  <b>{actionsLocLint.stats.warnings}</b>
+                </div>
+
+                <div className="max-h-72 overflow-auto border border-canon-border/40 rounded p-2">
+                  {actionsLocLint.issues.map((it, idx) => (
+                    <div
+                      key={idx}
+                      className="text-xs py-1 border-b border-canon-border/20 last:border-b-0"
+                    >
+                      <div>
+                        <b>{it.severity.toUpperCase()}</b> • {it.locationId}
+                      </div>
+                      <div className="opacity-80">
+                        {it.path}
+                        {it.token ? ` :: ${it.token}` : ''}
+                      </div>
+                      <div>{it.message}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
           </div>
         </div>
       </div>

@@ -11,6 +11,7 @@ import {
   LocationEntity,
 } from '../../types';
 import { evaluateNormGate } from '../context/normGate';
+import { resolveActionTokenToIds } from "../actions/catalog";
 import { getLocationForAgent, getLocationMapCell } from "../world/locations";
 
 function getLocationById(
@@ -69,7 +70,7 @@ export function checkActionByNormsAndLocation(
     norms: allNorms,
   };
 
-  const normRes = evaluateNormGate(input);
+  let normRes = evaluateNormGate(input);
 
   let utilityMultiplier = getActionMultiplier(ctx, action.actionId);
 
@@ -77,27 +78,40 @@ export function checkActionByNormsAndLocation(
   utilityMultiplier *= 1 / (1 + normRes.sanctionScore);
   utilityMultiplier *= 1 + normRes.rewardScore;
 
-  // проверка affordances локации: если явно запрещено — приравниваем к forbid (soft)
+  // проверка affordances локации: whitelist/blacklist по actionId ИЛИ по tag
   if (loc && loc.affordances) {
-    const allowed = loc.affordances.allowedActions as (string[] | undefined);
-    const forbidden = loc.affordances.forbiddenActions as (string[] | undefined);
+    const allowedTokens = (loc.affordances.allowedActions as (string[] | undefined)) ?? [];
+    const forbiddenTokens = (loc.affordances.forbiddenActions as (string[] | undefined)) ?? [];
 
-    if (allowed && allowed.length > 0) {
-      const ok =
-        allowed.includes(action.actionId) ||
-        action.tags.some((t) => allowed.includes(t));
+    if (allowedTokens.length > 0) {
+      const allowIds = new Set<string>();
+      for (const token of allowedTokens) {
+        for (const id of resolveActionTokenToIds(token)) allowIds.add(id);
+      }
+      const ok = allowIds.has(action.actionId) || action.tags.some((t) => allowedTokens.includes(t));
       if (!ok) {
         // не жёсткий запрет, но сильный штраф
         utilityMultiplier *= 0.1;
       }
     }
 
-    if (forbidden && forbidden.length > 0) {
+    if (forbiddenTokens.length > 0) {
+      const forbidIds = new Set<string>();
+      for (const token of forbiddenTokens) {
+        for (const id of resolveActionTokenToIds(token)) forbidIds.add(id);
+      }
       const bad =
-        forbidden.includes(action.actionId) ||
-        action.tags.some((t) => forbidden.includes(t));
+        forbidIds.has(action.actionId) || action.tags.some((t) => forbiddenTokens.includes(t));
       if (bad) {
-        utilityMultiplier *= 0.05;
+        // локация запретила действие жёстко: форсим hard forbid
+        utilityMultiplier *= 0.01;
+        normRes = {
+          ...normRes,
+          decision: "forbid",
+          hard: true,
+          reasonIds: [...(normRes.reasonIds ?? []), "loc:forbidden_action"],
+          sanctionScore: (normRes.sanctionScore ?? 0) + 10,
+        };
       }
     }
   }
