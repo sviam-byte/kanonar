@@ -15,6 +15,7 @@ import {
 import { useSandbox } from '../../contexts/SandboxContext';
 import { getAllCharactersWithRuntime } from '../../data';
 import { createInitialWorld } from '../../lib/world/initializer';
+import { normalizeWorldShape } from '../../lib/world/normalizeWorldShape';
 import { scoreContextualGoals } from '../../lib/context/v2/scoring';
 import type { ContextAtom } from '../../lib/context/v2/types';
 import { GoalLabResults } from '../goal-lab/GoalLabResults';
@@ -813,7 +814,7 @@ export const GoalSandbox: React.FC = () => {
         // Reset transient UI layers first (but then apply imported inputs)
         resetTransientForNewScene('importSceneDumpV2');
 
-        const w = cloneWorld(dump.world) as WorldState;
+        const w = normalizeWorldShape(cloneWorld(dump.world));
 
         // Focus
         const focus = dump.focus || {};
@@ -1469,7 +1470,7 @@ export const GoalSandbox: React.FC = () => {
               onDownloadScene={onDownloadScene}
               onImportSceneDumpV2={handleImportSceneDumpV2}
               world={worldState as any}
-              onWorldChange={setWorldState as any}
+              onWorldChange={(w: any) => setWorldState(normalizeWorldShape(w)) as any}
               participantIds={participantIds}
               onAddParticipant={handleAddParticipant}
               onRemoveParticipant={handleRemoveParticipant}
