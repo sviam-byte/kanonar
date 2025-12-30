@@ -44,6 +44,7 @@ interface Props {
   contextualMind?: ContextualMindReport | null;
   atomDiff?: AtomDiff[];
   snapshotV1?: GoalLabSnapshotV1 | null;
+  pipelineV1?: any | null;
   perspectiveAgentId?: string | null;
   tomRows?: Array<{ me: string; other: string; dyad: any }> | null;
   sceneDump?: any;
@@ -343,6 +344,7 @@ export const GoalLabResults: React.FC<Props> = ({
   tom,
   atomDiff,
   snapshotV1,
+  pipelineV1,
   perspectiveAgentId,
   tomRows,
   sceneDump,
@@ -398,9 +400,6 @@ export const GoalLabResults: React.FC<Props> = ({
     const effectiveSelectedId = selectedGoalId || (goalScores.length > 0 ? goalScores[0].goalId : null);
     const selectedScore = goalScores.find(g => g.goalId === effectiveSelectedId);
 
-    // Use unified snapshot if available, else legacy context
-    const currentAtoms = snapshotV1?.atoms ?? context?.atoms ?? [];
-
     // Aggregates from snapshot or legacy context
     const stats = {
         threat: snapshotV1?.contextMind?.metrics?.find((m: any) => m.key === 'threat')?.value ?? context?.aggregates?.threatLevel ?? context?.summary.physicalRisk ?? 0,
@@ -408,10 +407,6 @@ export const GoalLabResults: React.FC<Props> = ({
         pressure: snapshotV1?.contextMind?.metrics?.find((m: any) => m.key === 'pressure')?.value ?? ((context?.summary.timePressure ?? 0) + (context?.summary.normPressure ?? 0)) / 2,
         crowd: snapshotV1?.contextMind?.metrics?.find((m: any) => m.key === 'crowd')?.value ?? context?.aggregates?.crowding ?? context?.summary.crowding ?? 0
     };
-
-    const topAtoms = [...currentAtoms]
-        .sort((a, b) => (b.magnitude ?? 0) - (a.magnitude ?? 0))
-        .slice(0, 12);
 
     const tomSummaries = (tomRows || [])
         .slice(0, 8)
@@ -427,8 +422,53 @@ export const GoalLabResults: React.FC<Props> = ({
             };
         });
 
-    const pipelineStages = (snapshotV1 as any)?.meta?.pipelineDeltas || [];
+    const pipelineStages = ((): any[] => {
+        // Prefer staged debug pipeline (pipelineV1) if provided; fallback to snapshotV1.meta.pipelineDeltas
+        if (pipelineV1 && Array.isArray((pipelineV1 as any).stages)) {
+            const frames = (pipelineV1 as any).stages as any[];
+            const out: any[] = [];
+            for (let i = 0; i < frames.length; i++) {
+                const f = frames[i];
+                const id = String(f?.stage || f?.id || `S${i}`);
+                const label = String(f?.title || f?.label || id);
+                const atoms = Array.isArray(f?.atoms) ? f.atoms : [];
+                const addedIds = Array.isArray(f?.atomsAddedIds) ? f.atomsAddedIds : [];
+                const added = addedIds.length ? atoms.filter((a: any) => addedIds.includes(String(a?.id))) : [];
+                out.push({
+                    id,
+                    label,
+                    baseId: i > 0 ? String(frames[i - 1]?.stage || frames[i - 1]?.id || `S${i-1}`) : undefined,
+                    atomCount: atoms.length,
+                    full: i === 0 ? atoms : undefined,
+                    added: i === 0 ? undefined : added,
+                    changed: [],
+                    removedIds: [],
+                    notes: [
+                        ...(Array.isArray(f?.warnings) ? f.warnings : []),
+                        f?.stats
+                            ? `atoms=${f.stats.atomCount}, +${f.stats.addedCount}, missingCode=${f.stats.missingCodeCount}, missingTraceDerived=${f.stats.missingTraceDerivedCount}`
+                            : ''
+                    ].filter(Boolean)
+                });
+            }
+            return out;
+        }
+        return ((snapshotV1 as any)?.meta?.pipelineDeltas || []) as any[];
+    })();
     const pipelineStageId = pipelineStageIdProp || pipelineStages[pipelineStages.length - 1]?.id || 'S5';
+    const effectiveAtoms = (() => {
+        // If staged pipeline provided, show the selected stage atoms everywhere.
+        if (pipelineV1 && Array.isArray((pipelineV1 as any).stages) && pipelineStageId) {
+            const st = (pipelineV1 as any).stages.find((s: any) => String(s?.stage || s?.id) === String(pipelineStageId));
+            if (st && Array.isArray(st.atoms)) return st.atoms;
+        }
+        const a = (snapshotV1 as any)?.atoms ?? context?.atoms;
+        return Array.isArray(a) ? a : [];
+    })();
+
+    const topAtoms = [...effectiveAtoms]
+        .sort((a, b) => (b.magnitude ?? 0) - (a.magnitude ?? 0))
+        .slice(0, 12);
 
     if (!context) {
         return <div className="flex items-center justify-center h-full text-canon-text-light text-xs opacity-50">Выберите агента для анализа.</div>;
@@ -439,19 +479,19 @@ export const GoalLabResults: React.FC<Props> = ({
     );
     
     const AtomsTab = () => {
-        const selectedAtom = currentAtoms.find(a => a.id === selectedAtomId) || null;
+        const selectedAtom = effectiveAtoms.find(a => a.id === selectedAtomId) || null;
 
         return (
           <div className="h-full min-h-0">
             <AtomBrowser
-              atoms={currentAtoms}
+              atoms={effectiveAtoms}
               selectedAtomId={selectedAtomId}
               onSelectedAtomIdChange={setSelectedAtomId}
               renderDetails={(atom) => (
                 <div className="p-4">
                   <AtomInspector
                     atom={atom}
-                    allAtoms={currentAtoms}
+                    allAtoms={effectiveAtoms}
                     onJumpToAtomId={(id) => setSelectedAtomId(id)}
                   />
                 </div>
@@ -471,30 +511,30 @@ export const GoalLabResults: React.FC<Props> = ({
     );
 
     const ThreatTab = () => (
-        <ThreatPanel atoms={currentAtoms} />
+        <ThreatPanel atoms={effectiveAtoms} />
     );
 
     const ToMTab = () => (
-        <ToMPanel atoms={currentAtoms} />
+        <ToMPanel atoms={effectiveAtoms} />
     );
 
     const MindTab = () => (
-        <ContextMindPanel cm={snapshotV1?.contextMind} atoms={currentAtoms} selfId={snapshotV1?.selfId} />
+        <ContextMindPanel cm={snapshotV1?.contextMind} atoms={effectiveAtoms} selfId={snapshotV1?.selfId} />
     );
 
     const EmotionsTab = () => {
         const selfId = (snapshotV1 as any)?.selfId || (context as any)?.agentId;
-        const get = (id: string, fb = 0) => currentAtoms.find(a => a.id === id)?.magnitude ?? fb;
+        const get = (id: string, fb = 0) => effectiveAtoms.find(a => a.id === id)?.magnitude ?? fb;
         const metric = (a: any) => a.magnitude ?? (a as any)?.m ?? 0;
-        const app = currentAtoms
+        const app = effectiveAtoms
           .filter(a => typeof a.id === 'string' && a.id.startsWith('app:') && a.id.endsWith(`:${selfId}`))
           .sort((x, y) => metric(y) - metric(x));
-        const emo = currentAtoms
+        const emo = effectiveAtoms
           .filter(a => typeof a.id === 'string' && a.id.startsWith('emo:') && a.id.endsWith(`:${selfId}`))
           .sort((x, y) => metric(y) - metric(x));
 
         // Dyadic emotions: emo:dyad:<key>:<selfId>:<otherId>
-        const dyadAll = currentAtoms
+        const dyadAll = effectiveAtoms
           .filter(a => {
             const id = String((a as any)?.id || '');
             if (!id.startsWith('emo:dyad:')) return false;
@@ -644,7 +684,7 @@ export const GoalLabResults: React.FC<Props> = ({
         <div className="absolute inset-0 overflow-y-auto custom-scrollbar p-4 pb-20">
           <EmotionExplainPanel
             selfId={selfId}
-            atoms={currentAtoms}
+            atoms={effectiveAtoms}
             manualAtoms={manualAtoms || []}
             onChangeManualAtoms={onChangeManualAtoms}
           />
@@ -784,7 +824,7 @@ export const GoalLabResults: React.FC<Props> = ({
             </div>
 
             <div className="bg-black/30 border-b border-canon-border/50 shrink-0">
-                <ContextRibbon atoms={currentAtoms} />
+                <ContextRibbon atoms={effectiveAtoms} />
             </div>
 
 

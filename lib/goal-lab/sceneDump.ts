@@ -4,6 +4,7 @@ import { buildGoalLabExplain } from './explain';
 
 type SceneDumpInput = {
   world: WorldState | null;
+  pipelineV1?: any;
   selectedAgentId?: string | null;
   perspectiveId?: string | null;
   selectedLocationId?: string | null;
@@ -36,6 +37,7 @@ export function buildGoalLabSceneDumpV2(input: SceneDumpInput) {
   const exportedAt = new Date().toISOString();
   const {
     world,
+    pipelineV1,
     selectedAgentId,
     perspectiveId,
     selectedLocationId,
@@ -100,10 +102,27 @@ export function buildGoalLabSceneDumpV2(input: SceneDumpInput) {
   })();
 
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     exportedAt,
     quality,
     tick: (world as any)?.tick ?? 0,
+    provenance: {
+      inputPaths: {
+        perspectiveId: 'components/GoalSandbox/GoalSandbox.tsx::perspectiveId',
+        participantIds: 'components/GoalSandbox/GoalSandbox.tsx::participantIds',
+        manualAtoms: 'components/GoalSandbox/GoalSandbox.tsx::manualAtoms',
+        injectedEvents: 'components/GoalSandbox/GoalSandbox.tsx::selectedEventIds + world.eventRegistry',
+        overrides: 'components/GoalSandbox/GoalSandbox.tsx::{atomOverridesLayer,sceneControl,affectOverrides}'
+      },
+      worldPaths: {
+        agents: 'worldState.agents',
+        locations: 'worldState.map.locations',
+        eventLog: 'worldState.eventLog.events'
+      },
+      pipeline: {
+        pipelineV1: 'lib/goal-lab/pipeline/runPipelineV1.ts::runGoalLabPipelineV1'
+      }
+    },
     focus: {
       selectedAgentId: selectedAgentId ?? null,
       perspectiveId: perspectiveId ?? null,
@@ -132,6 +151,7 @@ export function buildGoalLabSceneDumpV2(input: SceneDumpInput) {
       goalPreview,
       contextualMind,
       pipelineFrame,
+      pipelineV1,
     },
     explain: buildGoalLabExplain(snapshot ?? null),
     tomMatrixForPerspective,

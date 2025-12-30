@@ -33,6 +33,7 @@ import type { AtomDiff } from '../../lib/snapshot/diffAtoms';
 import { diffAtoms } from '../../lib/snapshot/diffAtoms';
 import { adaptToSnapshotV1 } from '../../lib/goal-lab/snapshotAdapter';
 import { buildGoalLabSceneDumpV2, downloadJson } from '../../lib/goal-lab/sceneDump';
+import { runGoalLabPipelineV1 } from '../../lib/goal-lab/pipeline/runPipelineV1';
 import { CastPerspectivePanel } from '../goal-lab/CastPerspectivePanel';
 import { allScenarioDefs } from '../../data/scenarios/index';
 import { useAccess } from '../../contexts/AccessContext';
@@ -1030,6 +1031,30 @@ export const GoalSandbox: React.FC = () => {
     return adaptToSnapshotV1(glCtx as any, { selfId: perspectiveId } as any);
   }, [glCtx, perspectiveId]);
 
+  const pipelineV1 = useMemo(() => {
+    if (!worldState) return null;
+    if (!perspectiveId) return null;
+
+    return runGoalLabPipelineV1({
+      world: worldState as any,
+      agentId: perspectiveId,
+      participantIds,
+      manualAtoms,
+      injectedEvents,
+      sceneControl,
+      affectOverrides,
+      tickOverride: (worldState as any)?.tick,
+    } as any);
+  }, [
+    worldState,
+    perspectiveId,
+    participantIds,
+    manualAtoms,
+    injectedEvents,
+    sceneControl,
+    affectOverrides,
+  ]);
+
   const pipelineFrame = useMemo(() => {
     if (!snapshotV1) return null;
     return buildDebugFrameFromSnapshot(snapshotV1 as any);
@@ -1133,6 +1158,7 @@ export const GoalSandbox: React.FC = () => {
       goalPreview,
       contextualMind,
       pipelineFrame,
+      pipelineV1,
       tomMatrixForPerspective,
       castRows,
     });
@@ -1160,6 +1186,7 @@ export const GoalSandbox: React.FC = () => {
     goalPreview,
     contextualMind,
     pipelineFrame,
+    pipelineV1,
     tomMatrixForPerspective,
     castRows,
   ]);
@@ -1240,8 +1267,16 @@ export const GoalSandbox: React.FC = () => {
   }, [perspectiveId, sceneDumpV2, selectedAgentId, participantIds]);
 
   const handleExportPipelineAll = useCallback(() => {
+    if (pipelineV1) {
+      const exportedAt = new Date().toISOString().replace(/[:.]/g, '-');
+      downloadJson(
+        pipelineV1,
+        `goal-lab__pipelineV1__${(pipelineV1 as any).selfId || 'self'}__t${(pipelineV1 as any).tick || 0}__${exportedAt}.json`
+      );
+      return;
+    }
     if (!snapshotV1) return;
-      const payload = {
+    const payload = {
       schema: 'GoalLabPipelineExportV1',
       tick: snapshotV1.tick,
       selfId: snapshotV1.selfId,
@@ -1249,17 +1284,28 @@ export const GoalSandbox: React.FC = () => {
       finalAtoms: snapshotV1.atoms,
     };
     downloadJson(payload, `goal-lab__pipeline__${snapshotV1.selfId}__t${snapshotV1.tick}.json`);
-  }, [snapshotV1]);
+  }, [snapshotV1, pipelineV1]);
 
   const handleExportPipelineStage = useCallback(
     (stageId: string) => {
+      if (pipelineV1 && Array.isArray((pipelineV1 as any).stages)) {
+        const st = (pipelineV1 as any).stages.find(
+          (s: any) => String(s?.stage || s?.id) === String(stageId)
+        );
+        if (!st) return;
+        downloadJson(
+          st,
+          `goal-lab__pipelineV1__stage-${stageId}__${(pipelineV1 as any).selfId || 'self'}__t${(pipelineV1 as any).tick || 0}.json`
+        );
+        return;
+      }
       if (!snapshotV1) return;
       const stages = (snapshotV1 as any).meta?.pipelineDeltas || [];
       const st = stages.find((s: any) => s.id === stageId);
       if (!st) return;
       downloadJson(st, `goal-lab__stage-${stageId}__${snapshotV1.selfId}__t${snapshotV1.tick}.json`);
     },
-    [snapshotV1]
+    [snapshotV1, pipelineV1]
   );
 
   const handleImportSceneClick = useCallback(() => {
@@ -1271,8 +1317,8 @@ export const GoalSandbox: React.FC = () => {
       try {
         const text = await file.text();
         const payload = JSON.parse(text);
-        if (!payload || payload.schemaVersion !== 2) {
-          throw new Error('Invalid scene dump: expected schemaVersion=2');
+        if (!payload || ![2, 3].includes(payload.schemaVersion)) {
+          throw new Error('Invalid scene dump: expected schemaVersion=2 or 3');
         }
         handleImportSceneDumpV2(payload);
       } catch (e: any) {
@@ -1397,6 +1443,19 @@ export const GoalSandbox: React.FC = () => {
         </div>
 
         <div className="col-span-9 flex flex-col min-h-0 overflow-y-auto custom-scrollbar p-6 space-y-6">
+          <div className="sticky top-0 z-20 -mx-6 px-6 py-3 bg-canon-bg/90 backdrop-blur border-b border-canon-border flex items-center gap-3">
+            <button
+              className="px-4 py-2 rounded bg-canon-accent text-black font-semibold text-sm"
+              onClick={onDownloadScene}
+              title="Export full scene dump (world + all pipeline artifacts + cast)"
+            >
+              EXPORT DEBUG JSON
+            </button>
+            <div className="ml-auto flex items-center gap-3">
+              <div className="text-xs opacity-70">staged pipe:</div>
+              <div className="text-xs font-mono opacity-90">{pipelineV1 ? 'on' : 'off'}</div>
+            </div>
+          </div>
           <div className="grid grid-cols-1 gap-6">
             {fatalError && (
               <div className="bg-red-900/40 border border-red-500/60 text-red-200 p-4 rounded">
@@ -1432,6 +1491,7 @@ export const GoalSandbox: React.FC = () => {
               tom={(worldState as any)?.tom?.[perspectiveId]}
               atomDiff={atomDiff as any}
               snapshotV1={snapshotV1 as any}
+              pipelineV1={pipelineV1 as any}
               pipelineStageId={pipelineStageId}
               onChangePipelineStageId={setPipelineStageId}
               onExportPipelineStage={handleExportPipelineStage}
