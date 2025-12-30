@@ -24,6 +24,7 @@ import { CoveragePanel } from './CoveragePanel';
 import { GoalLabSnapshotV1 } from '../../lib/goal-lab/snapshotTypes';
 import { AtomInspector } from './AtomInspector';
 import { EmotionExplainPanel } from './EmotionExplainPanel';
+import { PipelinePanel } from './PipelinePanel';
 
 interface Props {
   context: ContextSnapshot | null;
@@ -50,6 +51,10 @@ interface Props {
   onImportScene?: () => void;
   manualAtoms?: ContextAtom[];
   onChangeManualAtoms?: (atoms: ContextAtom[]) => void;
+  pipelineStageId?: string;
+  onChangePipelineStageId?: (id: string) => void;
+  onExportPipelineStage?: (stageId: string) => void;
+  onExportPipelineAll?: () => void;
 }
 
 interface AtomStyle {
@@ -345,6 +350,10 @@ export const GoalLabResults: React.FC<Props> = ({
   onImportScene,
   manualAtoms,
   onChangeManualAtoms,
+  pipelineStageId: pipelineStageIdProp,
+  onChangePipelineStageId,
+  onExportPipelineStage,
+  onExportPipelineAll,
 }) => {
   const [selectedGoalId, setSelectedGoalId] = useState<string | null>(null);
   const [isPreviewOpen, setPreviewOpen] = useState(false);
@@ -418,6 +427,9 @@ export const GoalLabResults: React.FC<Props> = ({
             };
         });
 
+    const pipelineStages = (snapshotV1 as any)?.meta?.pipeline || [];
+    const pipelineStageId = pipelineStageIdProp || pipelineStages[pipelineStages.length - 1]?.id || 'S5';
+
     if (!context) {
         return <div className="flex items-center justify-center h-full text-canon-text-light text-xs opacity-50">Выберите агента для анализа.</div>;
     }
@@ -448,6 +460,15 @@ export const GoalLabResults: React.FC<Props> = ({
           </div>
         );
     };
+
+    const PipelineTab = () => (
+        <PipelinePanel
+            stages={pipelineStages}
+            selectedId={pipelineStageId}
+            onSelect={(id) => onChangePipelineStageId?.(id)}
+            onExportStage={(id) => onExportPipelineStage?.(id)}
+        />
+    );
 
     const ThreatTab = () => (
         <ThreatPanel atoms={currentAtoms} />
@@ -701,22 +722,23 @@ export const GoalLabResults: React.FC<Props> = ({
             case 0: return <ExplainTab />;
             case 1: return <AnalysisTab />;
             case 2: return <AtomsTab />;
-            case 3: return <ThreatTab />;
-            case 4: return <ToMTab />;
-            case 5: return <MindTab />;
-            case 6: return <EmotionsTab />;
-            case 7: return <CoverageTab />;
-            case 8: return <PossibilitiesTab />;
-            case 9: return <DecisionTab />;
-            case 10: return <AccessTab />;
-            case 11: return <DiffTab />;
-            case 12: return <EmotionExplainTab />;
-            case 13: return <DebugTab />;
+            case 3: return <PipelineTab />;
+            case 4: return <ThreatTab />;
+            case 5: return <ToMTab />;
+            case 6: return <MindTab />;
+            case 7: return <EmotionsTab />;
+            case 8: return <CoverageTab />;
+            case 9: return <PossibilitiesTab />;
+            case 10: return <DecisionTab />;
+            case 11: return <AccessTab />;
+            case 12: return <DiffTab />;
+            case 13: return <EmotionExplainTab />;
+            case 14: return <DebugTab />;
             default: return <ExplainTab />;
         }
     };
 
-  const tabsList = ['Explain', 'Analysis', 'Atoms', 'Threat', 'ToM', 'CtxMind', 'Emotions', 'Coverage', 'Possibilities', 'Decision', 'Access', 'Diff', 'EmotionExplain', 'Debug'];
+  const tabsList = ['Explain', 'Analysis', 'Atoms', 'Pipeline', 'Threat', 'ToM', 'CtxMind', 'Emotions', 'Coverage', 'Possibilities', 'Decision', 'Access', 'Diff', 'EmotionExplain', 'Debug'];
 
   const focusId = (context as any)?.agentId;
   const focusLabel = (focusId && actorLabels?.[focusId]) ? actorLabels[focusId] : focusId;
@@ -834,6 +856,14 @@ export const GoalLabResults: React.FC<Props> = ({
                             ))}
                         </div>
                         <div className="flex items-center gap-2">
+                            {onExportPipelineAll && (
+                                <button
+                                    onClick={onExportPipelineAll}
+                                    className="px-3 py-1 text-[11px] font-semibold border border-canon-border/60 rounded bg-canon-bg-light hover:bg-canon-bg-light/70 transition-colors"
+                                >
+                                    Экспорт pipeline (JSON)
+                                </button>
+                            )}
                             {canDownload && (
                                 <button
                                     onClick={handleDownloadScene}
