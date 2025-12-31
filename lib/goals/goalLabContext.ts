@@ -184,9 +184,7 @@ export function buildGoalLabContext(
   }
   
   // Belief Atoms
-  const beliefAtoms = [
-      ...((agent as any).memory?.beliefAtoms || []),
-  ];
+  const beliefAtoms = arr((agent as any)?.memory?.beliefAtoms).map(normalizeAtom);
   
   // Events
   const tick = world?.tick ?? 0;

@@ -6,6 +6,7 @@ import { LifeGoalVector, LifeGoalId } from '../life-goals/types-life';
 import { getLocationForAgent, getAgentMapCell, getLocalMapMetrics } from "../world/locations";
 import { hydrateLocation } from '../adapters/rich-location'; 
 import { AgentContextFrame } from '../context/frame/types';
+import { arr } from '../utils/arr';
 
 // --- 1.1. Compute Domain Vector from Nearby Actors ---
 function initZeroDomains(): Record<GoalAxisId, number> {
@@ -102,7 +103,9 @@ export function buildContextV2FromFrame(
     frame: AgentContextFrame,
     world?: WorldState
 ): ContextV2 {
-    const nearby: LocalActorRef[] = frame.what.nearbyAgents.map(a => {
+    const nearbyAgents = arr((frame as any)?.what?.nearbyAgents);
+    const locTags = arr((frame as any)?.where?.locationTags);
+    const nearby: LocalActorRef[] = nearbyAgents.map(a => {
         let kind: 'ally' | 'enemy' | 'neutral' = 'neutral';
         // Simple heuristic mapping
         // In a real system, frame.tom.relations would determine 'kind'
@@ -129,7 +132,7 @@ export function buildContextV2FromFrame(
     const kingPresent = nearby.some(a => a.role === 'leader' || a.role === 'king');
     
     const ctx: ContextV2 = {
-        locationType: frame.where.locationTags.includes('hall') ? 'hall' : 'corridor',
+        locationType: locTags.includes('hall') ? 'hall' : 'corridor',
         visibility: frame.where.map.cover > 0.5 ? 0.4 : 0.9, // Inverse of cover roughly
         noise: (frame.what.sceneThreatRaw ?? 0) * 0.5,
         panic: (frame.what.sceneThreatRaw ?? 0) > 0.7 ? 0.8 : 0.1,
@@ -142,7 +145,7 @@ export function buildContextV2FromFrame(
         timePressure: 0, // Not explicitly in frame usually, default 0
         scenarioKind: 'routine', // Could be inferred from meta.scenarioId
         cover: frame.where.map.cover,
-        exitsNearby: frame.where.map.exits.length,
+        exitsNearby: arr((frame as any)?.where?.map?.exits).length,
         obstacles: frame.where.map.hazard,
         groupDensity: nearby.length / 10,
         hierarchyPressure: kingPresent ? 0.8 : 0.2,
