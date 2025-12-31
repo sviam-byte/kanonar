@@ -8,7 +8,7 @@
  * - Older dumps (or accidental Set/Map serialization) may turn arrays into objects.
  * - UI/pipeline code frequently calls `.map()`/`.filter()`; a plain object would crash.
  */
-export function listify<T = any>(input: any): T[] {
+export function listify<T = any>(input: any, source?: string): T[] {
   if (Array.isArray(input)) return input as T[];
   if (input == null) return [];
 
@@ -19,6 +19,7 @@ export function listify<T = any>(input: any): T[] {
       buf.push({
         t: Date.now(),
         kind: 'listify.nonArray',
+        source,
         type: typeof input,
         ctor: (input as any)?.constructor?.name,
         keys: typeof input === 'object' ? Object.keys(input).slice(0, 24) : null,

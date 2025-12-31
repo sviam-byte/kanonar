@@ -6,6 +6,7 @@ import { DomainEvent } from '../../types';
 import { ContextualGoalScore } from '../context/v2/types';
 import { updateTomGoals, GoalObservation } from "./update.goals";
 import { updateTomTraits, TraitObservation } from "./update.traits";
+import { listify } from "../utils/listify";
 
 function clamp01(x: number): number {
   return Math.max(0, Math.min(1, x));
@@ -195,27 +196,67 @@ export function updateTomFromEvent(
   world: WorldState,
   event: DomainEvent
 ): void {
-  const { actorId, targetId, tags, intensity } = event;
-  if (!actorId || !targetId || actorId === targetId) return;
+  const tags = listify<string>((event as any)?.tags, "event.tags");
+  if (!tags.some((t) => t === "harm" || t === "attack" || t === "violence")) return;
 
-  const w = intensity ?? 0.5;
+  const actorId = String((event as any).actorId ?? (event as any).actor ?? "");
+  const targetId = String((event as any).targetId ?? (event as any).target ?? "");
 
-  if (tags?.includes('harm') || tags?.includes('attack')) {
-      const witnesses = event.epistemics?.observers?.map(o => o.actorId) || [];
-      for (const obsId of witnesses) {
-          if (obsId === actorId) continue;
-          const prev = getTomView(world, obsId, actorId);
-          const newTrust = prev ? Math.max(0, prev.trust - 0.3 * w) : 0.3;
-          
-          patchTomView(world, obsId, actorId, {
-              trust: newTrust,
-              emotions: { anger: 0.7 * w } 
-          });
-      }
-      
-      patchTomView(world, actorId, targetId, {
-          emotions: { fear: 0.8 * w } 
-      });
+  const wRaw = Number((event as any).intensity ?? 0.7);
+  const w = Number.isFinite(wRaw) ? Math.max(0, Math.min(1, wRaw)) : 0.7;
+
+  const observers = listify<any>((world as any).agents, "world.agents")
+    .map((a) => (a as any)?.entityId ?? (a as any)?.id)
+    .filter(Boolean)
+    .map(String);
+
+  // Поддержка разных форматов:
+  // - epistemics.witnesses: string[]
+  // - epistemics.observers: [{actorId: string}] | string[] | object-map
+  // - event.witnesses: string[] (если кто-то так писал)
+  const ep: any = (event as any).epistemics;
+
+  const witnessIds = Array.from(
+    new Set(
+      [
+        ...listify<any>(ep?.witnesses, "event.epistemics.witnesses")
+          .map((x: any) => String(x))
+          .filter(Boolean),
+
+        ...listify<any>(ep?.observers, "event.epistemics.observers")
+          .map((o: any) =>
+            typeof o === "string" ? o : o?.actorId ?? o?.id ?? o?.entityId ?? o?.observerId
+          )
+          .filter(Boolean)
+          .map((x: any) => String(x)),
+
+        ...listify<any>((event as any).witnesses, "event.witnesses")
+          .map((x: any) => String(x))
+          .filter(Boolean),
+      ].filter(Boolean)
+    )
+  );
+
+  for (const observerId of observers) {
+    if (!witnessIds.includes(observerId)) continue;
+    if (!actorId) continue;
+    if (observerId === actorId) continue;
+
+    const prev = getTomView(world, observerId, actorId);
+    const newTrust = prev ? Math.max(0, prev.trust - 0.5 * w) : 0.2;
+
+    patchTomView(world, observerId, actorId, {
+      trust: newTrust,
+      emotions: {
+        ...(prev?.emotions ?? {}),
+        anger: Math.min(1, (prev?.emotions?.anger ?? 0) + 0.7 * w),
+      },
+    });
+  }
+
+  // Сохраняю твою исходную семантику: actor -> target страх
+  if (actorId && targetId) {
+    patchTomView(world, actorId, targetId, { emotions: { fear: 0.8 * w } });
   }
 }
 
