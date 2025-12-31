@@ -15,6 +15,7 @@ import {
 import { useSandbox } from '../../contexts/SandboxContext';
 import { getAllCharactersWithRuntime } from '../../data';
 import { createInitialWorld } from '../../lib/world/initializer';
+import { normalizeWorldShape } from '../../lib/world/normalizeWorldShape';
 import { scoreContextualGoals } from '../../lib/context/v2/scoring';
 import type { ContextAtom } from '../../lib/context/v2/types';
 import { GoalLabResults } from '../goal-lab/GoalLabResults';
@@ -31,7 +32,7 @@ import { AtomOverrideLayer } from '../../lib/context/overrides/types';
 import { runTicksForCast } from '../../lib/engine/tick';
 import type { AtomDiff } from '../../lib/snapshot/diffAtoms';
 import { diffAtoms } from '../../lib/snapshot/diffAtoms';
-import { adaptToSnapshotV1 } from '../../lib/goal-lab/snapshotAdapter';
+import { adaptToSnapshotV1, normalizeSnapshot } from '../../lib/goal-lab/snapshotAdapter';
 import { buildGoalLabSceneDumpV2, downloadJson } from '../../lib/goal-lab/sceneDump';
 import { runGoalLabPipelineV1 } from '../../lib/goal-lab/pipeline/runPipelineV1';
 import { materializeStageAtoms } from '../goal-lab/materializePipeline';
@@ -104,6 +105,13 @@ const dedupeAtomsById = (arr: ContextAtom[]) => {
   }
   return out;
 };
+
+function assertArray(name: string, v: unknown) {
+  if (!Array.isArray(v)) {
+    console.error(`[GoalLab invariant violated] ${name} is not array`, v);
+    throw new Error(`${name} must be array`);
+  }
+}
 
 const positionsEqual = (
   a: Record<string, { x: number; y: number }>,
@@ -806,7 +814,7 @@ export const GoalSandbox: React.FC = () => {
         // Reset transient UI layers first (but then apply imported inputs)
         resetTransientForNewScene('importSceneDumpV2');
 
-        const w = cloneWorld(dump.world) as WorldState;
+        const w = normalizeWorldShape(cloneWorld(dump.world));
 
         // Focus
         const focus = dump.focus || {};
@@ -1030,7 +1038,13 @@ export const GoalSandbox: React.FC = () => {
 
   const snapshotV1 = useMemo(() => {
     if (!glCtx) return null;
-    return adaptToSnapshotV1(glCtx as any, { selfId: perspectiveId } as any);
+    const adapted = adaptToSnapshotV1(glCtx as any, { selfId: perspectiveId } as any);
+    const normalized = normalizeSnapshot(adapted);
+    if (import.meta.env.DEV) {
+      assertArray('snapshot.atoms', normalized.atoms);
+      assertArray('snapshot.events', normalized.events);
+    }
+    return normalized;
   }, [glCtx, perspectiveId]);
 
   const pipelineV1 = useMemo(() => {
@@ -1059,7 +1073,11 @@ export const GoalSandbox: React.FC = () => {
 
   const pipelineFrame = useMemo(() => {
     if (!snapshotV1) return null;
-    return buildDebugFrameFromSnapshot(snapshotV1 as any);
+    const frame = buildDebugFrameFromSnapshot(snapshotV1 as any);
+    if (import.meta.env.DEV) {
+      assertArray('frame.atoms', (frame as any)?.atoms);
+    }
+    return frame;
   }, [snapshotV1]);
 
   const tomMatrixForPerspective = useMemo(() => {
@@ -1423,7 +1441,7 @@ export const GoalSandbox: React.FC = () => {
               allCharacters={allCharacters}
               allLocations={allLocations as any}
               allEvents={eventRegistry.getAll() as any}
-              computedAtoms={(snapshotV1 as any)?.atoms ?? (snapshot as any)?.atoms ?? []}
+              computedAtoms={snapshotV1?.atoms ?? (snapshot as any)?.atoms}
               selectedAgentId={selectedAgentId}
               onSelectAgent={handleSelectAgent}
               selectedLocationId={selectedLocationId}
@@ -1452,7 +1470,7 @@ export const GoalSandbox: React.FC = () => {
               onDownloadScene={onDownloadScene}
               onImportSceneDumpV2={handleImportSceneDumpV2}
               world={worldState as any}
-              onWorldChange={setWorldState as any}
+              onWorldChange={(w: any) => setWorldState(normalizeWorldShape(w)) as any}
               participantIds={participantIds}
               onAddParticipant={handleAddParticipant}
               onRemoveParticipant={handleRemoveParticipant}
@@ -1543,7 +1561,7 @@ export const GoalSandbox: React.FC = () => {
             <div className="mt-4">
               <EmotionInspector
                 selfId={perspectiveId}
-                atoms={(snapshotV1 as any)?.atoms || []}
+                atoms={snapshotV1.atoms}
                 setManualAtom={setManualAtom}
               />
             </div>

@@ -50,13 +50,18 @@ export const EventsPanel: React.FC<Props> = ({
   const [q, setQ] = useState('');
 
   const combined = useMemo(() => {
-    const all = [...(eventsWorld || []), ...(eventsInjected || [])]
+    const all = [...arr(eventsWorld), ...arr(eventsInjected)]
       // Sort newest first
       .sort((a, b) => (b.tick - a.tick));
     const s = q.trim().toLowerCase();
-    return all.filter(ev => !s ? true : (
+    const next = all.filter(ev => !s ? true : (
       `${ev.kind} ${ev.actorId} ${ev.targetId || ''} ${ev.id}`.toLowerCase().includes(s)
     ));
+    if (!Array.isArray(next)) {
+      console.error('Expected array, got', next);
+      return [];
+    }
+    return next;
   }, [eventsWorld, eventsInjected, q]);
 
   return (
@@ -137,7 +142,7 @@ export const EventsPanel: React.FC<Props> = ({
 
       <div className="flex-1 min-h-0 overflow-auto custom-scrollbar">
         {arr(combined).map(ev => {
-          const injected = (eventsInjected || []).some(x => x.id === ev.id);
+          const injected = arr(eventsInjected).some(x => x.id === ev.id);
           return (
             <div key={ev.id} className={`p-3 border-b border-canon-border/50 ${injected ? 'bg-orange-900/10' : 'hover:bg-canon-bg-light/20'} transition-colors`}>
               <div className="flex items-center gap-2 mb-1">

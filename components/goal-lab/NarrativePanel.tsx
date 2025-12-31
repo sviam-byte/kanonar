@@ -16,11 +16,16 @@ function fmt2(x: any) {
 
 function topEmotions(a: AffectState | null | undefined, n = 5) {
   const e = a?.e || ({} as any);
-  return Object.entries(e)
+  const list = Object.entries(e)
     .filter(([, v]) => Number.isFinite(v as any))
     .sort((a, b) => Number(b[1]) - Number(a[1]))
     .slice(0, n)
     .map(([k, v]) => ({ id: k, v: clamp01(Number(v)) }));
+  if (!Array.isArray(list)) {
+    console.error('Expected array, got', list);
+    return [];
+  }
+  return list;
 }
 
 export function NarrativePanel(props: {
@@ -31,8 +36,23 @@ export function NarrativePanel(props: {
   const { situation, goalPreview, contextualMind } = props;
 
   const affect = contextualMind?.affect as any;
-  const topE = useMemo(() => topEmotions(affect, 7), [affect]);
-  const dyads = (contextualMind?.dyads || []).slice(0, 6);
+  const topE = useMemo(() => {
+    const next = topEmotions(affect, 7);
+    if (!Array.isArray(next)) {
+      console.error('Expected array, got', next);
+      return [];
+    }
+    return next;
+  }, [affect]);
+  const dyads = arr(contextualMind?.dyads).slice(0, 6);
+  const toDeltaPairs = (delta: Record<string, any>) => {
+    const next = Object.entries(delta).map(([key, value]) => ({ key, value }));
+    if (!Array.isArray(next)) {
+      console.error('Expected array, got', next);
+      return [];
+    }
+    return next;
+  };
 
   return (
     <div className="p-4 space-y-4 h-full overflow-y-auto custom-scrollbar pb-20 absolute inset-0">
@@ -122,9 +142,9 @@ export function NarrativePanel(props: {
                 {d.contextual?.deltaFromBase ? (
                   <div className="mt-1 text-[10px] font-mono text-canon-text-light/70">
                     Δ base→ctx:{' '}
-                    {Object.entries(d.contextual.deltaFromBase)
+                    {toDeltaPairs(d.contextual.deltaFromBase)
                       .slice(0, 6)
-                      .map(([k, v]) => `${k}:${fmt2(v)}`)
+                      .map(pair => `${pair.key}:${fmt2(pair.value)}`)
                       .join(' · ')}
                   </div>
                 ) : null}

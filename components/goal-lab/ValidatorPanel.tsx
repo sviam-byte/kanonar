@@ -2,6 +2,7 @@
 // components/goal-lab/ValidatorPanel.tsx
 import React, { useMemo } from 'react';
 import { ValidationReport } from '../../lib/context/v2/types';
+import { arr } from '../../lib/utils/arr';
 
 type Props = {
   report?: ValidationReport | null;
@@ -16,12 +17,17 @@ function badge(sev: string) {
 }
 
 export const ValidatorPanel: React.FC<Props> = ({ report, onSelectAtomId, className }) => {
-  const issues = report?.issues || [];
+  const issues = arr(report?.issues);
   const counts = report?.counts || { error: 0, warn: 0, info: 0 };
 
   const sorted = useMemo(() => {
     const w = (s: string) => (s === 'error' ? 0 : s === 'warn' ? 1 : 2);
-    return [...issues].sort((a, b) => w(a.severity) - w(b.severity));
+    const next = [...issues].sort((a, b) => w(a.severity) - w(b.severity));
+    if (!Array.isArray(next)) {
+      console.error('Expected array, got', next);
+      return [];
+    }
+    return next;
   }, [issues]);
 
   return (

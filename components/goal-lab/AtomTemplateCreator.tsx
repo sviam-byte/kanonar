@@ -4,6 +4,7 @@ import React, { useMemo, useState } from 'react';
 import { getCatalogTemplates } from '../../lib/context/catalog/catalogTemplates';
 import { AtomOverrideLayer } from '../../lib/context/overrides/types';
 import { ContextAtom } from '../../lib/context/v2/types';
+import { arr } from '../../lib/utils/arr';
 
 type Props = {
   layer: AtomOverrideLayer;
@@ -14,15 +15,29 @@ type Props = {
 function now() { return Date.now(); }
 
 export const AtomTemplateCreator: React.FC<Props> = ({ layer, onChange, className }) => {
-  const templates = useMemo(() => getCatalogTemplates(), []);
+  const templates = useMemo(() => {
+    const next = getCatalogTemplates();
+    if (!Array.isArray(next)) {
+      console.error('Expected array, got', next);
+      return [];
+    }
+    return next;
+  }, []);
   const groups = useMemo(() => {
     const m = new Map<string, typeof templates>();
     for (const t of templates) {
-      const arr = m.get(t.group) || [];
-      arr.push(t);
-      m.set(t.group, arr);
+      const items = arr(m.get(t.group));
+      items.push(t);
+      m.set(t.group, items);
     }
-    return Array.from(m.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+    const next = Array.from(m.entries())
+      .map(([key, items]) => ({ key, items }))
+      .sort((a, b) => a.key.localeCompare(b.key));
+    if (!Array.isArray(next)) {
+      console.error('Expected array, got', next);
+      return [];
+    }
+    return next;
   }, [templates]);
 
   const first = templates[0];
@@ -51,7 +66,7 @@ export const AtomTemplateCreator: React.FC<Props> = ({ layer, onChange, classNam
     onChange({
       ...layer,
       updatedAt: now(),
-      ops: [...(layer.ops || []), { op: 'upsert', atom }]
+      ops: [...arr(layer.ops), { op: 'upsert', atom }]
     });
   }
 
@@ -70,9 +85,9 @@ export const AtomTemplateCreator: React.FC<Props> = ({ layer, onChange, classNam
             onChange={e => { setTemplateKey(e.target.value); resetArgs(e.target.value); }}
             className="px-2 py-2 rounded bg-canon-bg border border-canon-border text-sm w-full focus:outline-none focus:border-canon-accent"
           >
-            {groups.map(([g, items]) => (
-              <optgroup key={g} label={g}>
-                {items.map(t => <option key={t.key} value={t.key}>{t.title}</option>)}
+            {groups.map(group => (
+              <optgroup key={group.key} label={group.key}>
+                {group.items.map(t => <option key={t.key} value={t.key}>{t.title}</option>)}
               </optgroup>
             ))}
           </select>

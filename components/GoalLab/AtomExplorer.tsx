@@ -32,7 +32,7 @@ export function AtomExplorer({
   const list = useMemo(() => {
     const qq = q.trim().toLowerCase();
     const nss = ns.trim().toLowerCase();
-    return arr(atoms)
+    const next = arr(atoms)
       .filter(a => (origin === 'all' ? true : a.o === origin))
       .filter(a => (nss ? a.id.toLowerCase().startsWith(nss) : true))
       .filter(a => a.c >= minC)
@@ -55,6 +55,11 @@ export function AtomExplorer({
         return hay.includes(qq);
       })
       .sort((a, b) => a.id.localeCompare(b.id));
+    if (!Array.isArray(next)) {
+      console.error('Expected array, got', next);
+      return [];
+    }
+    return next;
   }, [atoms, q, origin, ns, minC]);
 
   return (

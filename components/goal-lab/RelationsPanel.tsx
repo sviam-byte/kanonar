@@ -47,7 +47,10 @@ export const RelationsPanel: React.FC<Props> = ({ selfId, graph, className, onSe
 
     const allTags = Array.from(new Set(out.flatMap(e => arr(e.tags)))).sort();
 
-    return { filtered, allTags };
+    return {
+      filtered: Array.isArray(filtered) ? filtered : [],
+      allTags: Array.isArray(allTags) ? allTags : [],
+    };
   }, [graph, selfId, q, tagFilter]);
 
   return (

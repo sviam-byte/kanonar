@@ -558,7 +558,10 @@ export const GoalLabResults: React.FC<Props> = ({
           })
           .filter(x => x.otherId);
 
-        const dyadTargets = Array.from(new Set(arr(dyadAll).map(x => x.otherId))).sort();
+        const dyadTargets = arr(dyadAll)
+          .map(x => x.otherId)
+          .filter((id, idx, list) => id && list.indexOf(id) === idx)
+          .sort();
         const [dyadOtherId, setDyadOtherId] = useState<string>(() => dyadTargets[0] || '');
         React.useEffect(() => {
           if (!dyadOtherId && dyadTargets[0]) setDyadOtherId(dyadTargets[0]);
@@ -696,7 +699,7 @@ export const GoalLabResults: React.FC<Props> = ({
           <EmotionExplainPanel
             selfId={selfId}
             atoms={currentAtoms}
-            manualAtoms={manualAtoms || []}
+            manualAtoms={manualAtoms ?? []}
             onChangeManualAtoms={onChangeManualAtoms}
           />
         </div>
@@ -715,10 +718,14 @@ export const GoalLabResults: React.FC<Props> = ({
          </div>
     );
 
-    const AccessTab = () => <AccessPanel decisions={(context as any).access || []} />;
-    const PossibilitiesTab = () => <PossibilitiesPanel possibilities={(context as any).possibilities || snapshotV1?.possibilities || []} />;
-    const DiffTab = () => <DiffPanel diffs={atomDiff || snapshotV1?.atomDiff || []} />;
-    const DecisionTab = () => <DecisionPanel decision={(context as any).decision || snapshotV1?.decision} />;
+    const accessDecisions = (context as any).access ?? [];
+    const possibilities = (context as any).possibilities ?? snapshotV1?.possibilities;
+    const diffs = atomDiff ?? snapshotV1?.atomDiff;
+    const decision = (context as any).decision ?? snapshotV1?.decision;
+    const AccessTab = () => <AccessPanel decisions={accessDecisions} />;
+    const PossibilitiesTab = () => <PossibilitiesPanel possibilities={possibilities} />;
+    const DiffTab = () => <DiffPanel diffs={diffs} />;
+    const DecisionTab = () => <DecisionPanel decision={decision} />;
     const explainStats = {
         threat: Number(stats.threat) || 0,
         pressure: Number(stats.pressure) || 0,

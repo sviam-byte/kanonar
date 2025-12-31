@@ -10,6 +10,7 @@ import { TomDyadReport } from '../../tom/v3/types';
 import { computeThreatStack, ThreatInputs } from '../../threat/threatStack';
 import { computeProximity, AgentLite } from '../../spatial/proximity';
 import { computeProprioFromBody, updateAffect as updateAffectNew, Appraisal } from '../../affect/affectEngine';
+import { listify } from '../../utils/listify';
 
 function clamp01(x: number) { return Math.max(0, Math.min(1, x)); }
 
@@ -131,8 +132,9 @@ function buildTomPhysicalSelf(agent: AgentState): TomPhysicalSelf {
 
 function buildTomPhysicalOthers(nearby: NearbyAgentSummary[], world: WorldState): TomPhysicalOther[] {
   const result: TomPhysicalOther[] = [];
+  const agents = listify<any>((world as any).agents);
   for (const nb of nearby) {
-      const other = world.agents.find(a => a.entityId === nb.id);
+      const other = agents.find(a => a.entityId === nb.id);
       const trueHp = other?.hp ?? 100;
       const hpNorm = clamp01(trueHp / 100);
       const pain = clamp01((other?.body?.acute?.pain_now ?? 0) / 100);
@@ -170,7 +172,9 @@ export function buildFullAgentContextFrame(
       persistAffect?: boolean;
     }
 ): AgentContextFrame | null {
-    const agent = world.agents.find(a => a.entityId === agentId);
+    const agents = listify<any>((world as any).agents);
+    const orders = listify<any>((world as any).orders);
+    const agent = agents.find(a => a.entityId === agentId);
     if (!agent) return null;
 
     const loc = getLocationForAgent(world, agent);
@@ -183,7 +187,7 @@ export function buildFullAgentContextFrame(
     const locationId = (loc as any)?.entityId || loc?.id || null;
 
     // --- Build Active Orders including Oaths and Group Goals ---
-    const activeOrders: ActiveOrder[] = (world.orders || [])
+    const activeOrders: ActiveOrder[] = orders
         .filter(o => o.toId === agentId && o.status === 'pending')
         .map(o => ({
             id: o.id,
@@ -275,7 +279,7 @@ export function buildFullAgentContextFrame(
         },
         why: {
             activeOrders: activeOrders,
-            longTermGoals: agent.goalEcology?.execute.map(g => g.id) || [],
+            longTermGoals: listify<any>(agent.goalEcology?.execute).map(g => g?.id),
             narrativeFlags: []
         },
         social: {
@@ -303,7 +307,7 @@ export function buildFullAgentContextFrame(
 
     const roleRels: { other_id: string; role: string }[] = agent.roles?.relations ?? [];
 
-    for (const other of world.agents) {
+    for (const other of agents) {
         if (other.entityId === agentId) continue;
 
         const otherLocationId = (other as any).locationId ?? null;
@@ -494,20 +498,22 @@ export function buildFullAgentContextFrame(
       frame.what.sceneThreatRaw = frame.what.sceneThreatRaw * 0.2;
     }
 
-    const recentEvents = (agent.narrativeState?.episodes || []).slice(-5).map(ep => ({
-        id: ep.id,
-        kind: ep.tags[0] || 'generic',
-        tick: ep.ticks.start,
-        tags: ep.tags,
-        actors: ep.mainActors,
-        intensity: ep.intensity
-    }));
+    const recentEvents = listify<any>(agent.narrativeState?.episodes)
+        .slice(-5)
+        .map(ep => ({
+            id: ep?.id,
+            kind: listify(ep?.tags)[0] || 'generic',
+            tick: ep?.ticks?.start,
+            tags: listify(ep?.tags),
+            actors: listify(ep?.mainActors),
+            intensity: ep?.intensity
+        }));
     frame.what.recentEvents = recentEvents;
 
     // --- NEW: Unified Threat & Affect ---
 
     // 1. Proximity
-    const agentLites: AgentLite[] = world.agents.map(a => ({
+    const agentLites: AgentLite[] = agents.map(a => ({
         id: a.entityId,
         pos: (a as any).position || {x:0, y:0},
         // We can pull trust/hostile from ToM if available, simplified here

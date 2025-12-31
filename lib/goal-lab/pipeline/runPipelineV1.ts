@@ -276,23 +276,65 @@ export function runGoalLabPipelineV1(input: {
   });
 
   // S8: actions
-  const possReg = derivePossibilitiesRegistry({ world, selfId, atoms, participantIds });
-  const possAtoms = atomizePossibilities({ selfId, registry: possReg, atoms });
-  const access = deriveAccess({ world, selfId, atoms, participantIds });
-  const priors = deriveActionPriors({ selfId, atoms: [...atoms, ...possAtoms], possibilities: possReg as any, access: access as any });
-  const choice = decideAction({ selfId, priors: priors as any, atoms, access: access as any, possibilities: possReg as any });
-  const atomsS8 = [...atoms, ...possAtoms].map(normalizeAtom);
-  const s8Added = computeAdded(atoms, atomsS8);
-  atoms = atomsS8;
-  stages.push({
-    stage: 'S8',
-    title: 'S8 Decision / actions',
-    atoms,
-    atomsAddedIds: s8Added,
-    warnings: [],
-    stats: { atomCount: atoms.length, addedCount: s8Added.length, ...stageStats(atoms) },
-    artifacts: { access, actionPriors: priors, choice }
-  });
+  // IMPORTANT: keep this stage strictly typed + non-throwing.
+  // A pipeline crash should never take down the UI.
+  try {
+    const possList = derivePossibilitiesRegistry({ selfId, atoms });
+    const possAtoms = atomizePossibilities(possList);
+
+    const locationId = (agent as any)?.locationId;
+    const accessPack = deriveAccess(atoms, selfId, locationId);
+
+    const otherIds = participantIds.filter(id => id && id !== selfId);
+    const priorsAtoms = deriveActionPriors({
+      selfId,
+      otherIds,
+      atoms: [...atoms, ...possAtoms, ...(accessPack?.atoms || [])],
+    });
+
+    const decision = decideAction({
+      selfId,
+      atoms: [...atoms, ...possAtoms, ...(accessPack?.atoms || []), ...priorsAtoms],
+      possibilities: possList,
+      topK: 10,
+    });
+
+    const atomsS8 = [...atoms, ...possAtoms, ...(accessPack?.atoms || []), ...priorsAtoms].map(normalizeAtom);
+    const s8Added = computeAdded(atoms, atomsS8);
+    atoms = atomsS8;
+
+    stages.push({
+      stage: 'S8',
+      title: 'S8 Decision / actions',
+      atoms,
+      atomsAddedIds: s8Added,
+      warnings: [],
+      stats: { atomCount: atoms.length, addedCount: s8Added.length, ...stageStats(atoms) },
+      artifacts: {
+        // Keep artifacts light: export is dominated by atoms; store only top scoring + access decisions.
+        accessDecisions: (accessPack as any)?.decisions || [],
+        ranked: (decision as any)?.ranked?.slice?.(0, 10) || [],
+        best: (decision as any)?.best || null,
+        priorsAtomIds: (priorsAtoms || []).map(a => String((a as any)?.id || '')),
+      }
+    });
+  } catch (e: any) {
+    stages.push({
+      stage: 'S8',
+      title: 'S8 Decision / actions (FAILED)',
+      atoms,
+      atomsAddedIds: [],
+      warnings: [String(e?.message || e)],
+      stats: { atomCount: atoms.length, addedCount: 0, ...stageStats(atoms) },
+      artifacts: {
+        error: {
+          name: String(e?.name || ''),
+          message: String(e?.message || e),
+          stack: String(e?.stack || ''),
+        }
+      }
+    });
+  }
 
   return { schemaVersion: 1, selfId, tick, participantIds: participantIds.slice(), stages };
 }

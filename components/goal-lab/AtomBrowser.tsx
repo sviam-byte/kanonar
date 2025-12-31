@@ -64,7 +64,12 @@ export const AtomBrowser: React.FC<Props> = ({ atoms, className, selectedAtomId,
   };
 
   const normalized = useMemo(() => {
-    return arr(atoms).map(a => normalizeAtom(a));
+    const next = arr(atoms).map(a => normalizeAtom(a));
+    if (!Array.isArray(next)) {
+      console.error('Expected array, got', next);
+      return [];
+    }
+    return next;
   }, [atoms]);
 
   const filtered = useMemo(() => {
@@ -82,13 +87,17 @@ export const AtomBrowser: React.FC<Props> = ({ atoms, className, selectedAtomId,
           a.id, a.kind, a.source, a.label,
           (a as any).code, (a as any).specId,
           paramsStr,
-          ...(a.tags || [])
+          ...arr(a.tags)
         ].join(' ').toLowerCase();
         return hay.includes(qq);
       });
     }
     if (sortBy === 'magnitude') out = [...out].sort((a, b) => (b.magnitude ?? 0) - (a.magnitude ?? 0));
     else out = [...out].sort((a, b) => (a.id || '').localeCompare(b.id || ''));
+    if (!Array.isArray(out)) {
+      console.error('Expected array, got', out);
+      return [];
+    }
     return out;
   }, [normalized, q, nsFilter, originFilter, sortBy]);
 
@@ -100,13 +109,23 @@ export const AtomBrowser: React.FC<Props> = ({ atoms, className, selectedAtomId,
   const nsCounts = useMemo(() => {
     const map = new Map<string, number>();
     for (const a of normalized) map.set(a.ns || 'misc', (map.get(a.ns || 'misc') || 0) + 1);
-    return map;
+    const next = Array.from(map.entries()).map(([key, count]) => ({ key, count }));
+    if (!Array.isArray(next)) {
+      console.error('Expected array, got', next);
+      return [];
+    }
+    return next;
   }, [normalized]);
 
   const originCounts = useMemo(() => {
     const map = new Map<string, number>();
     for (const a of normalized) map.set(a.origin || 'world', (map.get(a.origin || 'world') || 0) + 1);
-    return map;
+    const next = Array.from(map.entries()).map(([key, count]) => ({ key, count }));
+    if (!Array.isArray(next)) {
+      console.error('Expected array, got', next);
+      return [];
+    }
+    return next;
   }, [normalized]);
 
   return (
@@ -127,7 +146,7 @@ export const AtomBrowser: React.FC<Props> = ({ atoms, className, selectedAtomId,
         >
           <option value="all">ns: all ({normalized.length})</option>
           {NS_ORDER.map(ns => {
-             const count = nsCounts.get(ns);
+             const count = nsCounts.find(entry => entry.key === ns)?.count;
              if (!count) return null;
              return (
                 <option key={ns} value={ns}>
@@ -144,11 +163,11 @@ export const AtomBrowser: React.FC<Props> = ({ atoms, className, selectedAtomId,
         >
           <option value="all">origin: all</option>
           {ORIGIN_ORDER.map(o => {
-             const count = originCounts.get(o);
-             if (!count) return null;
-             return (
-                <option key={o} value={o}>
-                  origin: {o} ({count})
+            const count = originCounts.find(entry => entry.key === o)?.count;
+            if (!count) return null;
+            return (
+              <option key={o} value={o}>
+                origin: {o} ({count})
                 </option>
              )
           })}

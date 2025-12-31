@@ -74,11 +74,9 @@ function quarkCodeFromSpec(specId?: string | null, params?: Record<string, any> 
 
 export function TraceDrawer({
   atom,
-  index,
   onJump,
 }: {
   atom: Atom | null;
-  index?: Record<string, Atom>;
   onJump?: (id: string) => void;
 }) {
   if (!atom) {
@@ -99,9 +97,11 @@ export function TraceDrawer({
   // parts normalization
   const partsRaw = tr?.parts;
   const partsList = useMemo(() => {
-    if (Array.isArray(partsRaw)) return partsRaw as any[];
-    if (partsRaw && typeof partsRaw === 'object') {
-      return Object.entries(partsRaw).map(([name, value]) => {
+    let next: any[] = [];
+    if (Array.isArray(partsRaw)) {
+      next = partsRaw as any[];
+    } else if (partsRaw && typeof partsRaw === 'object') {
+      next = Object.entries(partsRaw).map(([name, value]) => {
         const v = (value as any) || {};
         return {
           name,
@@ -110,7 +110,11 @@ export function TraceDrawer({
         };
       });
     }
-    return [];
+    if (!Array.isArray(next)) {
+      console.error('Expected array, got', next);
+      return [];
+    }
+    return next;
   }, [partsRaw]);
 
   // causal summary (top contributors)
@@ -122,7 +126,12 @@ export function TraceDrawer({
       return { ...p, v, w, score };
     });
     scored.sort((a, b) => b.score - a.score);
-    return scored.slice(0, 6);
+    const next = scored.slice(0, 6);
+    if (!Array.isArray(next)) {
+      console.error('Expected array, got', next);
+      return [];
+    }
+    return next;
   }, [partsList]);
 
   // Reconstruction check: sum(val * w) vs atom.m

@@ -16,7 +16,14 @@ export const ModsPanel: React.FC<{
   const [key, setKey] = useState('trait.paranoia');
   const [val, setVal] = useState('0.5');
 
-  const keys = useMemo(() => Object.keys(layer.overrides || {}).sort(), [layer]);
+  const keys = useMemo(() => {
+    const next = Object.keys(layer.overrides || {}).sort();
+    if (!Array.isArray(next)) {
+      console.error('Expected array, got', next);
+      return [];
+    }
+    return next;
+  }, [layer]);
 
   const apply = () => {
     // Basic clone for MVP. In prod use structuredClone or immutability helper

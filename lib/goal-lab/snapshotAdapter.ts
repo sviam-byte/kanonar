@@ -9,6 +9,30 @@ function safeTick(x: any) {
   return Number.isFinite(t) ? t : 0;
 }
 
+export function normalizeArray<T>(x: unknown): T[] {
+  if (Array.isArray(x)) return x;
+  if (x == null) return [];
+  return [];
+}
+
+export function normalizeSnapshot(raw: GoalLabSnapshotV1): GoalLabSnapshotV1 {
+  if (import.meta.env.DEV) {
+    // eslint-disable-next-line no-console
+    console.log({
+      atoms: Array.isArray(raw.atoms),
+      events: Array.isArray(raw.events),
+      actions: Array.isArray(raw.actions),
+    });
+  }
+  return {
+    ...raw,
+    atoms: normalizeArray(raw.atoms),
+    events: normalizeArray(raw.events),
+    actions: normalizeArray(raw.actions),
+    stages: normalizeArray(raw.stages),
+  };
+}
+
 export function adaptToSnapshotV1(raw: any, args: { selfId: string }): GoalLabSnapshotV1 {
   // raw can be GoalLabContextResult or similar structure
   // IMPORTANT:
@@ -32,11 +56,15 @@ export function adaptToSnapshotV1(raw: any, args: { selfId: string }): GoalLabSn
     
   const snapshot = raw?.snapshot || {};
 
-  return {
+  const adapted: GoalLabSnapshotV1 = {
     schemaVersion: 1,
     tick,
     selfId: args.selfId,
     atoms: normalizedAtoms,
+
+    events: raw?.events || snapshot?.events,
+    actions: raw?.actions || snapshot?.actions,
+    stages: raw?.stages || snapshot?.stages,
 
     warnings: raw?.warnings || snapshot?.warnings,
     atomDiff: raw?.atomDiff || snapshot?.atomDiff,
@@ -52,4 +80,6 @@ export function adaptToSnapshotV1(raw: any, args: { selfId: string }): GoalLabSn
 
     meta: raw?.meta || snapshot?.meta
   };
+
+  return normalizeSnapshot(adapted);
 }

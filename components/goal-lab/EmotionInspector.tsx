@@ -47,6 +47,10 @@ export const EmotionInspector: React.FC<Props> = ({
       })
       .sort((x, y) => `${x.group}:${x.channel}`.localeCompare(`${y.group}:${y.channel}`));
 
+    if (!Array.isArray(interesting)) {
+      console.error('Expected array, got', interesting);
+      return [];
+    }
     return interesting;
   }, [atoms, manualAtoms, selfId]);
 

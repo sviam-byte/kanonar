@@ -7,6 +7,9 @@ export type GoalLabSnapshotV1 = {
   selfId: string;
 
   atoms: ContextAtom[];                 // SINGLE source of truth for panels
+  events?: any[];
+  actions?: any[];
+  stages?: any[];
   warnings?: any[];
   atomDiff?: any[];
 
