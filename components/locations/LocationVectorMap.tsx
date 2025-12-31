@@ -2,7 +2,8 @@
 // components/locations/LocationVectorMap.tsx
 
 import React, { useMemo } from 'react';
-import { LocationMap, SvgShape } from '../../types';
+import { LocationMap, LocationMapCell, LocationMapExit, SvgShape } from '../../types';
+import { listify } from '../../lib/utils/listify';
 
 interface Props {
     map: LocationMap;
@@ -25,13 +26,21 @@ const renderSvgShape = (shape: SvgShape, keyPrefix: string): React.ReactNode => 
     return (
         <Tag key={keyPrefix} {...props}>
             {shape.content}
-            {shape.children?.map((child, i) => renderSvgShape(child, `${keyPrefix}-${i}`))}
+            {listify<SvgShape>((shape as any).children).map((child, i) =>
+                renderSvgShape(child, `${keyPrefix}-${i}`)
+            )}
         </Tag>
     );
 };
 
 export const LocationVectorMap: React.FC<Props> = ({ map, showGrid = true, scale = 30, highlightCells = [], onCellClick }) => {
-    const { width, height, visuals, cells, exits } = map;
+    // scene import/export может превратить массивы в объекты — не падаем на этом.
+    const width = Number((map as any)?.width) || 1;
+    const height = Number((map as any)?.height) || 1;
+    const visuals = useMemo(() => listify<SvgShape>((map as any)?.visuals).filter(Boolean), [map]);
+    const exits = useMemo(() => listify<LocationMapExit>((map as any)?.exits).filter(Boolean), [map]);
+    const cells = useMemo(() => listify<LocationMapCell>((map as any)?.cells).filter(Boolean), [map]);
+    const safeHighlights = useMemo(() => listify<any>(highlightCells).filter(Boolean), [highlightCells]);
 
     // Grid Overlay - Always render interactive layer if onCellClick is present
     const gridOverlay = useMemo(() => {
@@ -133,7 +142,7 @@ export const LocationVectorMap: React.FC<Props> = ({ map, showGrid = true, scale
     }, [cells, showGrid, scale, onCellClick]);
 
     const highlightOverlay = useMemo(() => {
-        return highlightCells.map((h, i) => {
+        return safeHighlights.map((h, i) => {
             if (!h) return null;
             // Apply scale multiplier for body size (default 0.6)
             const sizeMultiplier = h.size || 0.6; 
@@ -157,7 +166,7 @@ export const LocationVectorMap: React.FC<Props> = ({ map, showGrid = true, scale
                 />
             );
         });
-    }, [highlightCells, scale]);
+    }, [safeHighlights, scale]);
 
     return (
         <div 
@@ -172,9 +181,9 @@ export const LocationVectorMap: React.FC<Props> = ({ map, showGrid = true, scale
                 preserveAspectRatio="none"
                 className="absolute inset-0 z-0 pointer-events-none"
             >
-                {visuals?.map((shape, i) => renderSvgShape(shape, `vec-${i}`))}
+                {visuals.map((shape, i) => renderSvgShape(shape, `vec-${i}`))}
                 
-                {exits?.map((exit, i) => (
+                {exits.map((exit, i) => (
                     <g key={`exit-${i}`} transform={`translate(${exit.x}, ${exit.y})`}>
                         <rect x="0.1" y="0.1" width="0.8" height="0.8" fill="none" stroke="#00aaff" strokeWidth="0.05" strokeDasharray="0.1 0.05" rx="0.1" />
                         <text x="0.5" y="0.6" fontSize="0.25" fill="#00aaff" textAnchor="middle" style={{ pointerEvents: 'none', fontWeight: 'bold' }}>EXIT</text>

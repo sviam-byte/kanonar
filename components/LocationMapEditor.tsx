@@ -3,6 +3,7 @@
 
 import React, { useState } from "react";
 import { LocationMap, LocationMapCell } from "../types";
+import { listify } from "../lib/utils/listify";
 import { LocationVectorMap } from "./locations/LocationVectorMap";
 
 type Brush =
@@ -77,7 +78,7 @@ export const LocationMapEditor: React.FC<Props> = ({ map, onChange, cellSize = 1
       updated.elevation = Math.max(-5, (updated.elevation ?? 0) - 0.5);
     }
 
-    const cells = map.cells.map(c =>
+    const cells = listify<LocationMapCell>((map as any).cells).map(c =>
       c.x === cell.x && c.y === cell.y ? updated : c
     );
 
@@ -147,7 +148,7 @@ export const LocationMapEditor: React.FC<Props> = ({ map, onChange, cellSize = 1
            )}
 
            {/* Interactive Grid Layer */}
-           {map.cells.map(cell => {
+           {listify<LocationMapCell>((map as any).cells).map(cell => {
                 // Only show cells on active level? Or simple overlay?
                 // For simplified 2.5D, we show all, but visually distinct
                 const left = cell.x * cellSize;
