@@ -1092,7 +1092,7 @@ export function buildGoalLabContext(
   (snapshot as any).scene = sceneInst;
   (snapshot as any).epistemic = { provenance: [...Array.from(result.provenance.entries())] };
   (snapshot as any).epistemicGenerated = {
-      rumorBeliefs: result.rumorBeliefs.map(a => ({ id: a.id, magnitude: a.magnitude, confidence: a.confidence, source: a.source, label: a.label }))
+      rumorBeliefs: arr(result.rumorBeliefs).map(a => ({ id: a.id, magnitude: a.magnitude, confidence: a.confidence, source: a.source, label: a.label }))
   };
 
   const ctxV2 = frame 
@@ -1105,7 +1105,7 @@ export function buildGoalLabContext(
   const plan = computeGoalPriorities(agent, planningGoals, world, { skipBioShift: true }, situation);
   
   const goalPreview = {
-    goals: planningGoals
+    goals: arr(planningGoals)
       .map((g, i) => ({
         id: g.id,
         label: g.label,
