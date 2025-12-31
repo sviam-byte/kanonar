@@ -3,6 +3,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { LocationMap } from '../../types';
 import { LocationVectorMap } from './LocationVectorMap';
 import { LocationMapEditor } from '../LocationMapEditor';
+import { arr } from '../../lib/utils/arr';
 
 interface MapViewerProps {
     map: LocationMap;
@@ -71,11 +72,11 @@ export const MapViewer: React.FC<MapViewerProps> = ({ map, onCellClick, highligh
                          <div className="relative">
                             <LocationMapEditor map={map} onChange={onMapChange} cellSize={32} />
                             <div className="absolute inset-0 pointer-events-none">
-                                <LocationVectorMap map={map} showGrid={false} scale={32} highlightCells={highlights} />
+                                <LocationVectorMap map={map} showGrid={false} scale={32} highlightCells={arr(highlights)} />
                             </div>
                          </div>
                      ) : (
-                         <LocationVectorMap map={map} showGrid={true} scale={32} highlightCells={highlights} onCellClick={onCellClick} />
+                         <LocationVectorMap map={map} showGrid={true} scale={32} highlightCells={arr(highlights)} onCellClick={onCellClick} />
                      )}
                 </div>
             </div>

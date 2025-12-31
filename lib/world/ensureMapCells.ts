@@ -1,6 +1,7 @@
 import { LocationMap, LocationMapCell } from "../../types";
 
 export function ensureMapCells(map: LocationMap): LocationMap {
+  const rawCells: any[] = Array.isArray((map as any).cells) ? (map as any).cells : [];
   const w = Math.max(1, map.width || 1);
   const h = Math.max(1, map.height || 1);
 
@@ -9,7 +10,7 @@ export function ensureMapCells(map: LocationMap): LocationMap {
   const defCover = map.defaultCover ?? 0;
 
   const existing = new Map<string, LocationMapCell>();
-  for (const c of (map.cells || [])) {
+  for (const c of rawCells) {
     if (!c) continue;
     if (!Number.isFinite((c as any).x) || !Number.isFinite((c as any).y)) continue;
     existing.set(`${(c as any).x},${(c as any).y}`, c as any);

@@ -12,6 +12,21 @@ export function listify<T = any>(input: any): T[] {
   if (Array.isArray(input)) return input as T[];
   if (input == null) return [];
 
+  if (input) {
+    try {
+      const g: any = globalThis as any;
+      const buf = Array.isArray(g.__KANONAR_DIAG__) ? g.__KANONAR_DIAG__ : (g.__KANONAR_DIAG__ = []);
+      buf.push({
+        t: Date.now(),
+        kind: 'listify.nonArray',
+        type: typeof input,
+        ctor: (input as any)?.constructor?.name,
+        keys: typeof input === 'object' ? Object.keys(input).slice(0, 24) : null,
+      });
+      if (buf.length > 200) buf.splice(0, buf.length - 200);
+    } catch {}
+  }
+
   // Preserve iterables when possible.
   if (typeof input === 'object') {
     if (input instanceof Set) return Array.from(input.values()) as T[];

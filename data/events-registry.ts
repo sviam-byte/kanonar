@@ -1,6 +1,7 @@
 
 import { Event } from '../lib/events/types';
 import { createEventFactory } from '../lib/events/factory';
+import { listify } from '../lib/utils/listify';
 
 // Инициализируем фабрику с простым генератором ID
 const factory = createEventFactory({
@@ -30,18 +31,18 @@ const initialEvents: Event[] = [
 export const eventRegistry = {
     events: initialEvents,
     
-    getAll: () => eventRegistry.events,
+    getAll: () => listify(eventRegistry.events),
     
     add: (evt: Event) => {
-        eventRegistry.events = [...eventRegistry.events, evt];
+        eventRegistry.events = [...listify(eventRegistry.events), evt];
     },
     
     update: (updated: Event) => {
-        eventRegistry.events = eventRegistry.events.map(e => e.id === updated.id ? updated : e);
+        eventRegistry.events = listify(eventRegistry.events).map(e => e.id === updated.id ? updated : e);
     },
     
     remove: (id: string) => {
-        eventRegistry.events = eventRegistry.events.filter(e => e.id !== id);
+        eventRegistry.events = listify(eventRegistry.events).filter(e => e.id !== id);
     },
     
     createDefault: () => factory.makeBase({ kind: 'system', tags: ['new'] })
