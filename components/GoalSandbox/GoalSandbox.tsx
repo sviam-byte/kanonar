@@ -55,9 +55,10 @@ import { EmotionInspector } from '../GoalLab/EmotionInspector';
 import { normalizeAtom } from '../../lib/context/v2/infer';
 import { lintActionsAndLocations } from '../../lib/linter/actionsAndLocations';
 import { arr } from '../../lib/utils/arr';
+import { listify } from '../../lib/utils/listify';
 
 function createCustomLocationEntity(map: LocationMap): LocationEntity {
-  const cells = map.cells || [];
+  const cells = listify(map.cells);
   const avgDanger =
     cells.length > 0 ? cells.reduce((s, c) => s + (c as any).danger, 0) / cells.length : 0;
 
@@ -147,16 +148,16 @@ export const GoalSandbox: React.FC = () => {
 
   const allCharacters = useMemo(() => {
     // Единый источник правды: реестр + runtime-characters (и essences внутри).
-    const base = getAllCharactersWithRuntime();
+    const base = listify(getAllCharactersWithRuntime());
     const map = new Map<string, CharacterEntity>();
-    [...base, ...sandboxCharacters].forEach(c => map.set(c.entityId, c));
+    [...base, ...listify(sandboxCharacters)].forEach(c => map.set(c.entityId, c));
     const merged = Array.from(map.values());
     return filterCharactersForActiveModule(merged, activeModule);
   }, [sandboxCharacters, activeModule]);
 
   const actorLabels = useMemo(() => {
     const m: Record<string, string> = {};
-    allCharacters.forEach(c => {
+    listify(allCharacters).forEach(c => {
       m[c.entityId] = c.title;
     });
     return m;
@@ -366,9 +367,9 @@ export const GoalSandbox: React.FC = () => {
   const refreshWorldDerived = useCallback(
     (prev: WorldState, nextAgents: AgentState[]) => {
       const locId = getActiveLocationId();
-      const agentIds = nextAgents.map(a => a.entityId);
+      const agentIds = listify(nextAgents).map(a => a.entityId);
 
-      const agentsWithLoc = nextAgents.map(a => {
+      const agentsWithLoc = listify(nextAgents).map(a => {
         const pos = actorPositionsRef.current[a.entityId] || (a as any).position || { x: 5, y: 5 };
         return { ...(a as any), locationId: locId, position: pos } as AgentState;
       });
@@ -382,16 +383,16 @@ export const GoalSandbox: React.FC = () => {
       };
 
       const roleMap = assignRoles(worldBase.agents, worldBase.scenario, worldBase);
-      worldBase.agents = worldBase.agents.map(
+      worldBase.agents = listify(worldBase.agents).map(
         a => ({ ...(a as any), effectiveRole: (roleMap as any)[a.entityId] } as AgentState)
       );
 
       worldBase.tom = initTomForCharacters(
-        worldBase.agents as any,
+        listify(worldBase.agents) as any,
         worldBase as any,
         runtimeDyadConfigs || undefined
       ) as any;
-      (worldBase as any).gilParams = constructGil(worldBase.agents as any) as any;
+      (worldBase as any).gilParams = constructGil(listify(worldBase.agents) as any) as any;
 
       return { ...(worldBase as any) };
     },
@@ -400,14 +401,14 @@ export const GoalSandbox: React.FC = () => {
 
   const rebuildWorldFromParticipants = useCallback(
     (idsInput: Set<string>) => {
-      const subject = allCharacters.find(c => c.entityId === selectedAgentId);
+      const subject = listify(allCharacters).find(c => c.entityId === selectedAgentId);
       if (!subject) return;
 
       const ids = new Set(idsInput);
       if (selectedAgentId) ids.add(selectedAgentId);
 
       const participants = Array.from(ids)
-        .map(id => allCharacters.find(c => c.entityId === id))
+        .map(id => listify(allCharacters).find(c => c.entityId === id))
         .filter(Boolean) as CharacterEntity[];
 
       if (participants.length === 0) return;
@@ -416,7 +417,7 @@ export const GoalSandbox: React.FC = () => {
       if (!w) return;
 
       w.groupGoalId = undefined;
-      w.locations = [getSelectedLocationEntity(), ...allLocations].map(loc => {
+      w.locations = [getSelectedLocationEntity(), ...listify(allLocations)].map(loc => {
         const m = (loc as any)?.map;
         if (!m) return loc as any;
         try {
@@ -427,7 +428,7 @@ export const GoalSandbox: React.FC = () => {
       });
 
       const nextPositions = { ...actorPositionsRef.current };
-      w.agents.forEach((a, i) => {
+      listify(w.agents).forEach((a, i) => {
         if (actorPositionsRef.current[a.entityId]) {
           (a as any).position = actorPositionsRef.current[a.entityId];
           nextPositions[a.entityId] = actorPositionsRef.current[a.entityId];
@@ -447,12 +448,12 @@ export const GoalSandbox: React.FC = () => {
       (w as any).initialRelations = ensureCompleteInitialRelations(allIds, (w as any).initialRelations);
 
       const roleMap = assignRoles(w.agents as any, w.scenario as any, w as any);
-      w.agents = w.agents.map(
+      w.agents = listify(w.agents).map(
         a => ({ ...(a as any), effectiveRole: (roleMap as any)[a.entityId] } as AgentState)
       );
 
-      w.tom = initTomForCharacters(w.agents as any, w as any, runtimeDyadConfigs || undefined) as any;
-      (w as any).gilParams = constructGil(w.agents as any) as any;
+      w.tom = initTomForCharacters(listify(w.agents) as any, w as any, runtimeDyadConfigs || undefined) as any;
+      (w as any).gilParams = constructGil(listify(w.agents) as any) as any;
 
       setActorPositions(prev => (positionsEqual(prev, nextPositions) ? prev : nextPositions));
       setWorldState(w);
@@ -554,7 +555,7 @@ export const GoalSandbox: React.FC = () => {
 
     // Если в сцене лежат id, которых нет среди зарегистрированных сущностей,
     // результат будет выглядеть как "не добавляется" (id просто отфильтруется).
-    const missingIds = Array.from(ids).filter(id => !allCharacters.some(c => c.entityId === id));
+    const missingIds = Array.from(ids).filter(id => !listify(allCharacters).some(c => c.entityId === id));
     if (missingIds.length) {
       setRuntimeError(`Scene contains unknown character ids: ${missingIds.join(', ')}`);
     } else {
@@ -563,7 +564,7 @@ export const GoalSandbox: React.FC = () => {
     }
 
     const participants = Array.from(ids)
-      .map(id => allCharacters.find(c => c.entityId === id))
+      .map(id => listify(allCharacters).find(c => c.entityId === id))
       .filter(Boolean) as CharacterEntity[];
 
     if (participants.length === 0) return;
@@ -576,7 +577,7 @@ export const GoalSandbox: React.FC = () => {
       }
 
       w.groupGoalId = undefined;
-      w.locations = [getSelectedLocationEntity(), ...allLocations].map(loc => {
+      w.locations = [getSelectedLocationEntity(), ...listify(allLocations)].map(loc => {
         const m = (loc as any)?.map;
         if (!m) return loc as any;
         try {
@@ -588,7 +589,7 @@ export const GoalSandbox: React.FC = () => {
 
       const nextPositions = { ...actorPositionsRef.current };
 
-      w.agents.forEach((a, i) => {
+      listify(w.agents).forEach((a, i) => {
         if (actorPositionsRef.current[a.entityId]) {
           (a as any).position = actorPositionsRef.current[a.entityId];
           nextPositions[a.entityId] = actorPositionsRef.current[a.entityId];
@@ -608,12 +609,12 @@ export const GoalSandbox: React.FC = () => {
       (w as any).initialRelations = ensureCompleteInitialRelations(agentIds, (w as any).initialRelations);
 
       const roleMap = assignRoles(w.agents as any, w.scenario as any, w as any);
-      w.agents = w.agents.map(
+      w.agents = listify(w.agents).map(
         a => ({ ...(a as any), effectiveRole: (roleMap as any)[a.entityId] } as AgentState)
       );
 
-      w.tom = initTomForCharacters(w.agents as any, w as any, runtimeDyadConfigs || undefined) as any;
-      (w as any).gilParams = constructGil(w.agents as any) as any;
+      w.tom = initTomForCharacters(listify(w.agents) as any, w as any, runtimeDyadConfigs || undefined) as any;
+      (w as any).gilParams = constructGil(listify(w.agents) as any) as any;
 
       setActorPositions(prev => (positionsEqual(prev, nextPositions) ? prev : nextPositions));
       setWorldState(w);
@@ -639,9 +640,9 @@ export const GoalSandbox: React.FC = () => {
   useEffect(() => {
     if (!worldState) return;
     if (!selectedAgentId) return;
-    const exists = worldState.agents.some(a => a.entityId === selectedAgentId);
+    const exists = listify(worldState.agents).some(a => a.entityId === selectedAgentId);
     if (!exists) {
-      const next = worldState.agents[0]?.entityId || allCharacters[0]?.entityId || '';
+      const next = listify(worldState.agents)[0]?.entityId || listify(allCharacters)[0]?.entityId || '';
       if (next) setSelectedAgentId(next);
     }
   }, [worldState, selectedAgentId, allCharacters]);
@@ -661,23 +662,23 @@ export const GoalSandbox: React.FC = () => {
     const ids = Array.from(sceneParticipants).filter(id => id !== selectedAgentId);
 
     const mePos =
-      (worldState?.agents.find(a => a.entityId === selectedAgentId) as any)?.position ||
+      (listify(worldState?.agents).find(a => a.entityId === selectedAgentId) as any)?.position ||
       actorPositions[selectedAgentId] ||
       { x: 0, y: 0 };
 
     return ids
       .map(id => {
-        const char = allCharacters.find(c => c.entityId === id);
+        const char = listify(allCharacters).find(c => c.entityId === id);
         if (!char) return null;
 
         const agentPos =
-          (worldState?.agents.find(a => a.entityId === id) as any)?.position ||
+          (listify(worldState?.agents).find(a => a.entityId === id) as any)?.position ||
           actorPositions[id] ||
           { x: 6, y: 6 };
 
         const dist = Math.hypot(mePos.x - agentPos.x, mePos.y - agentPos.y);
 
-        const roleFromWorld = (worldState?.agents.find(a => a.entityId === id) as any)?.effectiveRole;
+        const roleFromWorld = (listify(worldState?.agents).find(a => a.entityId === id) as any)?.effectiveRole;
 
         return {
           id,
@@ -693,7 +694,7 @@ export const GoalSandbox: React.FC = () => {
 
   const handleNearbyActorsChange = (newActors: LocalActorRef[]) => {
     setWorldSource('derived');
-    const next = new Set<string>(newActors.map(a => a.id));
+    const next = new Set<string>(listify(newActors).map(a => a.id));
     if (selectedAgentId) next.add(selectedAgentId); // always keep focus inside the scene
     setSceneParticipants(next);
     persistActorPositions();
@@ -710,11 +711,13 @@ export const GoalSandbox: React.FC = () => {
       resetTransientForNewScene(`loadScene:${scene.id}`);
 
       const resolvedChars = scene.characters
-        .map(id => resolveCharacterId(id))
+        ? listify(scene.characters).map(id => resolveCharacterId(id))
+        : []
         .filter(Boolean) as string[];
 
-      const fallbackId = allCharacters[0]?.entityId || '';
-      const nextSelected = resolvedChars[0] || resolveCharacterId(scene.characters[0]) || fallbackId;
+      const fallbackId = listify(allCharacters)[0]?.entityId || '';
+      const firstSceneChar = listify(scene.characters)[0];
+      const nextSelected = resolvedChars[0] || resolveCharacterId(firstSceneChar || '') || fallbackId;
 
       const nextParticipants = new Set<string>(resolvedChars);
       if (nextSelected) nextParticipants.add(nextSelected);
@@ -782,9 +785,9 @@ export const GoalSandbox: React.FC = () => {
     const locId = getActiveLocationId();
     setWorldState(prev => {
       if (!prev) return prev;
-      const already = prev.agents.every(a => (a as any).locationId === locId);
+      const already = listify(prev.agents).every(a => (a as any).locationId === locId);
       if (already) return prev;
-      const nextAgents = prev.agents.map(a => ({ ...(a as any), locationId: locId } as AgentState));
+      const nextAgents = listify(prev.agents).map(a => ({ ...(a as any), locationId: locId } as AgentState));
       return { ...(prev as any), agents: nextAgents };
     });
   }, [getActiveLocationId, worldState]);
@@ -794,7 +797,7 @@ export const GoalSandbox: React.FC = () => {
       setActorPositions(prev => ({ ...prev, [placingActorId]: { x, y } }));
       if (worldState) {
         const nextWorld = { ...worldState };
-        const agent = nextWorld.agents.find(a => a.entityId === placingActorId);
+        const agent = listify(nextWorld.agents).find(a => a.entityId === placingActorId);
         if (agent) (agent as any).position = { x, y };
         setWorldState(nextWorld);
       }
@@ -818,13 +821,17 @@ export const GoalSandbox: React.FC = () => {
 
         // Focus
         const focus = dump.focus || {};
-        const selected = focus.selectedAgentId || focus.perspectiveId || w.agents?.[0]?.entityId || '';
+        const selected =
+          focus.selectedAgentId ||
+          focus.perspectiveId ||
+          listify(w.agents)[0]?.entityId ||
+          '';
         const persp = focus.perspectiveId || selected || null;
 
         // Participants: if absent, fall back to all agents in world
         const focusParticipants =
-          Array.isArray(focus.participantIds) && focus.participantIds.length
-            ? focus.participantIds.map(String)
+          listify(focus.participantIds).length
+            ? listify(focus.participantIds).map(String)
             : arr(w.agents).map(a => String((a as any).entityId)).filter(Boolean);
 
         // Keep invariant: sceneParticipants excludes selectedAgentId (participantIds memo adds it back)
@@ -844,14 +851,14 @@ export const GoalSandbox: React.FC = () => {
 
         // Inputs (overrides)
         const inputs = dump.inputs || {};
-        setSelectedEventIds(new Set(Array.isArray(inputs.selectedEventIds) ? inputs.selectedEventIds.map(String) : []));
-        setInjectedEvents(Array.isArray(inputs.injectedEvents) ? inputs.injectedEvents : []);
+        setSelectedEventIds(new Set(listify(inputs.selectedEventIds).map(String)));
+        setInjectedEvents(listify(inputs.injectedEvents));
         setSceneControl(
           inputs.sceneControl && typeof inputs.sceneControl === 'object' ? inputs.sceneControl : { presetId: 'safe_hub' }
         );
 
         // manualAtoms should be normalized to avoid missing fields
-        const importedManual = Array.isArray(inputs.manualAtoms) ? inputs.manualAtoms : [];
+        const importedManual = listify(inputs.manualAtoms);
         setManualAtoms(importedManual.map((a: any) => normalizeAtom(a)));
 
         // atomOverridesLayer
@@ -866,14 +873,14 @@ export const GoalSandbox: React.FC = () => {
 
         // Import map (prefer custom-lab-location map if present)
         try {
-          const cl = (w.locations || []).find((l: any) => l?.entityId === 'custom-lab-location');
+          const cl = listify(w.locations).find((l: any) => l?.entityId === 'custom-lab-location');
           const m = cl?.map;
           if (m?.width && m?.height) setMap(ensureMapCells(m));
         } catch {}
 
         // Import positions from agents into actorPositions (and ref!)
         const pos: Record<string, { x: number; y: number }> = {};
-        (w.agents || []).forEach((a: any) => {
+        listify(w.agents).forEach((a: any) => {
           const p = a?.position || a?.pos;
           if (p && Number.isFinite(p.x) && Number.isFinite(p.y)) {
             pos[String(a.entityId)] = { x: Number(p.x), y: Number(p.y) };
@@ -1084,11 +1091,11 @@ export const GoalSandbox: React.FC = () => {
     if (!worldState?.tom) return null;
     if (!perspectiveId) return null;
 
-    const ids = participantIds;
+    const ids = listify(participantIds);
     const tomRoot = (worldState as any).tom;
     const dyads = (tomRoot as any)?.dyads || tomRoot;
 
-    const rows = ids
+    const rows = listify(ids)
       .filter(otherId => otherId !== perspectiveId)
       .map(otherId => {
         const dyad =
@@ -1105,12 +1112,12 @@ export const GoalSandbox: React.FC = () => {
   const castRows = useMemo(() => {
     if (!worldState) return [];
 
-    const activeEvents = eventRegistry.getAll().filter(e => selectedEventIds.has(e.id));
+    const activeEvents = listify(eventRegistry.getAll()).filter(e => selectedEventIds.has(e.id));
     const loc = getSelectedLocationEntity();
-    const ids = participantIds; // control perf removed; export needs full cast
+    const ids = listify(participantIds); // control perf removed; export needs full cast
 
-    return ids.map(id => {
-      const char = allCharacters.find(c => c.entityId === id);
+    return listify(ids).map(id => {
+      const char = listify(allCharacters).find(c => c.entityId === id);
       let snap: any = null;
 
       try {
@@ -1598,7 +1605,7 @@ export const GoalSandbox: React.FC = () => {
                 </div>
 
                 <div className="max-h-72 overflow-auto border border-canon-border/40 rounded p-2">
-                  {actionsLocLint.issues.map((it, idx) => (
+                  {listify(actionsLocLint.issues).map((it, idx) => (
                     <div
                       key={idx}
                       className="text-xs py-1 border-b border-canon-border/20 last:border-b-0"
