@@ -8,6 +8,7 @@ import { betaConfidence, betaMean, betaUpdate, clamp01, initBetaFromMeanExact, m
 import type { BetaCell, ContextualMindInputs, ContextualMindResult, ContextualMindReport, ContextualMindState, DyadBeliefMemory, ContextualMindHistoryPoint, ContextSignals } from './types';
 import { normalizeAffectState } from '../../affect/normalize';
 import { deriveContextAxes, axesForDyad } from './axes';
+import { listify } from '../../utils/listify';
 
 // ... existing helpers (as01, avg01, pushHistory, getOrCreateMemory) ...
 
@@ -300,7 +301,7 @@ export function computeContextualMind(inputs: ContextualMindInputs): ContextualM
   const fromWorldTomKeys = Boolean(world.tom?.[agent.entityId]);
 
   // Signal debug info
-  const locTags: string[] = frame?.where?.locationTags ?? [];
+  const locTags: string[] = listify(frame?.where?.locationTags);
   const safeHub = locTags.includes('safe_hub');
   const privateSpace = locTags.includes('private') || safeHub;
 

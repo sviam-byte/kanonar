@@ -3,6 +3,7 @@
 import React, { useMemo } from 'react';
 import { ContextAtom } from '../../lib/context/v2/types';
 import { arr } from '../../lib/utils/arr';
+import { listify } from '../../lib/utils/listify';
 
 type Props = {
   atoms: ContextAtom[];
@@ -16,21 +17,13 @@ function isBanner(a: ContextAtom) {
 
 export const SummariesPanel: React.FC<Props> = ({ atoms, onSelectAtomId, className }) => {
   const banners = useMemo(() => {
-    const next = atoms.filter(isBanner).sort((a, b) => (a.ns || '').localeCompare(b.ns || ''));
-    if (!Array.isArray(next)) {
-      console.error('Expected array, got', next);
-      return [];
-    }
-    return next;
+    const next = listify(atoms).filter(isBanner).sort((a, b) => (a.ns || '').localeCompare(b.ns || ''));
+    return listify(next);
   }, [atoms]);
 
   const tomBanners = useMemo(() => {
-    const next = banners.filter(b => b.id.startsWith('tom:banner:'));
-    if (!Array.isArray(next)) {
-      console.error('Expected array, got', next);
-      return [];
-    }
-    return next;
+    const next = listify(banners).filter(b => b.id.startsWith('tom:banner:'));
+    return listify(next);
   }, [banners]);
 
   return (
@@ -44,7 +37,7 @@ export const SummariesPanel: React.FC<Props> = ({ atoms, onSelectAtomId, classNa
         {banners.length === 0 && <div className="p-4 text-xs text-canon-text-light italic text-center">No summaries generated.</div>}
 
         {/* Global Banners */}
-        {banners.filter(b => !b.id.startsWith('tom:banner:')).map((b, idx) => (
+        {listify(banners).filter(b => !b.id.startsWith('tom:banner:')).map((b, idx) => (
           <div key={idx} className="p-3 border-b border-canon-border/50 hover:bg-canon-bg-light/20 transition-colors">
             <div className="flex items-center gap-2 mb-1">
               <span className="text-xs text-canon-accent font-bold uppercase tracking-wider">{b.ns}</span>
@@ -70,7 +63,7 @@ export const SummariesPanel: React.FC<Props> = ({ atoms, onSelectAtomId, classNa
           </div>
         )}
 
-        {tomBanners.map((b, idx) => (
+        {listify(tomBanners).map((b, idx) => (
           <div key={`tom-${idx}`} className="p-3 border-b border-canon-border/50 hover:bg-canon-bg-light/20 transition-colors">
             <div className="flex items-center gap-2 mb-1">
               <span className="text-xs text-purple-400 font-bold uppercase tracking-wider">tom</span>

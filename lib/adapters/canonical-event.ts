@@ -1,6 +1,7 @@
 
 import { Event, EventKind, EventChannel } from '../events/types';
 import { DomainEvent, SocialEventEntity, PersonalEvent } from '../../types';
+import { listify } from '../utils/listify';
 
 export type AnyEventType = DomainEvent | Event | SocialEventEntity | PersonalEvent;
 
@@ -25,11 +26,11 @@ export function toCanonicalEvent(e: AnyEventType): Event {
         timestamp: legacy.t ?? legacy.tick ?? 0,
         locationId: legacy.locationId || null,
         
-        actors: legacy.actorId ? [legacy.actorId] : (legacy.participants || []),
+        actors: legacy.actorId ? [legacy.actorId] : listify(legacy.participants),
         targets: legacy.targetId ? [legacy.targetId] : [],
         objects: [],
         
-        tags: legacy.tags || [],
+        tags: listify(legacy.tags),
         facts: [],
         goalTags: [], // Would need inference
         
@@ -42,7 +43,9 @@ export function toCanonicalEvent(e: AnyEventType): Event {
         },
         
         epistemics: {
-            witnesses: legacy.witnessIds || legacy.epistemics?.observers?.map((o:any) => o.actorId) || [],
+            witnesses: listify(legacy.witnessIds).length
+              ? listify(legacy.witnessIds)
+              : listify(legacy.epistemics?.observers).map((o: any) => o.actorId),
             visibility: 1,
         },
         

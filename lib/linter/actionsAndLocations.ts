@@ -1,6 +1,7 @@
 import { socialActions } from '../../data/actions-social';
 import { allLocations } from '../../data/locations';
 import type { LocationEntity } from '../types';
+import { listify } from '../utils/listify';
 
 export type LintSeverity = 'error' | 'warn';
 
@@ -19,7 +20,7 @@ function buildKnownSets() {
 
   for (const a of socialActions) {
     knownActionIds.add(a.id);
-    for (const t of a.tags ?? []) knownTags.add(t);
+    for (const t of listify(a.tags)) knownTags.add(t);
   }
   return { knownActionIds, knownTags };
 }
@@ -37,11 +38,11 @@ function lintLocation(
   const aff = (loc as any).affordances;
   if (!aff) return issues;
 
-  const allowed = (aff.allowedActions ?? []) as string[];
-  const forbidden = (aff.forbiddenActions ?? []) as string[];
+  const allowed = listify(aff.allowedActions) as string[];
+  const forbidden = listify(aff.forbiddenActions) as string[];
 
   // optional: allowlist present but empty (common “forgot to fill”)
-  if (Array.isArray(aff.allowedActions) && allowed.length === 0) {
+  if (aff.allowedActions != null && allowed.length === 0) {
     issues.push({
       severity: 'warn',
       kind: 'empty_allowlist',

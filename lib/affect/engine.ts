@@ -2,6 +2,7 @@ import { AffectState, EmotionAppraisal, EmotionAtom, EmotionId, AppraisalTrace }
 import { AgentState, WorldState } from '../types';
 import { AgentContextFrame } from '../context/frame/types';
 import { normalizeAffectState } from '../affect/normalize';
+import { listify } from '../utils/listify';
 
 // Local helpers
 const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
@@ -85,7 +86,7 @@ export function appraise(agent: AgentState, world: WorldState, frame: AgentConte
     ? clamp01((frame as any).derived.envDangerIndex)
     : clamp01(Math.max(sceneThreat01, mapHazard01, 0.6 * sceneChaos01));
 
-  const locTags: string[] = frame?.where?.locationTags ?? [];
+  const locTags: string[] = listify(frame?.where?.locationTags);
   const isSafeHub = locTags.includes('safe_hub');
   const isPrivate = locTags.includes('private') || isSafeHub;
   const role = (frame as any)?.self?.role || (frame as any)?.what?.selfRole || agent.effectiveRole || 'none';

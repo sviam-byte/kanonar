@@ -5,6 +5,7 @@ import { ContextAtom } from '../../lib/context/v2/types';
 import { normalizeAtom } from '../../lib/context/v2/infer';
 import { AtomOverrideLayer, AtomOverrideOp } from '../../lib/context/overrides/types';
 import { arr } from '../../lib/utils/arr';
+import { listify } from '../../lib/utils/listify';
 
 type Props = {
   baseAtoms: ContextAtom[];
@@ -30,10 +31,10 @@ export const AtomOverridesEditor: React.FC<Props> = ({ baseAtoms, layer, onChang
 
   const [deleteId, setDeleteId] = useState<string>('');
 
-  const ops = arr(layer.ops);
+  const ops = listify(layer.ops);
 
   const opsPreview = useMemo(() => {
-    const next = ops.slice().reverse().slice(0, 50);
+    const next = listify(ops).slice().reverse().slice(0, 50);
     if (!Array.isArray(next)) {
       console.error('Expected array, got', next);
       return [];
@@ -45,7 +46,7 @@ export const AtomOverridesEditor: React.FC<Props> = ({ baseAtoms, layer, onChang
     const next: AtomOverrideLayer = {
       ...layer,
       updatedAt: now(),
-      ops: [...arr(layer.ops), op]
+      ops: [...listify(layer.ops), op]
     };
     onChange(next);
   }
@@ -113,9 +114,9 @@ export const AtomOverridesEditor: React.FC<Props> = ({ baseAtoms, layer, onChang
         </div>
 
         <div className="space-y-2">
-          <div className="text-xs text-canon-text-light font-bold uppercase">Recent ops ({ops.length} total)</div>
+          <div className="text-xs text-canon-text-light font-bold uppercase">Recent ops ({listify(ops).length} total)</div>
           <div className="rounded border border-canon-border overflow-hidden bg-canon-bg/30">
-            {opsPreview.map((op, idx) => (
+            {listify(opsPreview).map((op, idx) => (
               <div key={idx} className="px-2 py-2 border-b border-canon-border text-[10px] font-mono last:border-0 flex justify-between">
                 <span className={op.op === 'delete' ? 'text-red-400' : 'text-green-400'}>{op.op.toUpperCase()}</span>
                 {op.op === 'delete'
@@ -123,7 +124,7 @@ export const AtomOverridesEditor: React.FC<Props> = ({ baseAtoms, layer, onChang
                   : <span className="text-canon-text">{op.atom.id} (Mag: {(op.atom.magnitude ?? 0).toFixed(2)})</span>}
               </div>
             ))}
-            {opsPreview.length === 0 && <div className="px-2 py-4 text-xs text-canon-text-light text-center italic">No ops applied.</div>}
+            {listify(opsPreview).length === 0 && <div className="px-2 py-4 text-xs text-canon-text-light text-center italic">No ops applied.</div>}
           </div>
         </div>
       </div>

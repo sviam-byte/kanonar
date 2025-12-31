@@ -2,6 +2,7 @@
 
 // lib/social/group.ts
 import { AgentState, WorldState, CharacterGoalId, SocialActionId, ScenarioDef, GoalState } from '../../types';
+import { listify } from '../utils/listify';
 
 /**
  * Calculates how aligned an agent is with the group collective based on latent personality traits.
@@ -84,7 +85,7 @@ export function maybeUpdateDetachment(
     // Check active goal weights for loyalty signals
     // Use priority instead of weight, as GoalState usually relies on priority for sorting
     // ActiveGoal (which extends GoalState) has weight, so we cast if needed or rely on priority
-    const executeGoals = agent.goalEcology?.execute as (GoalState & { weight: number })[] ?? [];
+    const executeGoals = listify(agent.goalEcology?.execute) as (GoalState & { weight: number })[];
     
     const followOrderWeight = executeGoals.find(g => g.id === 'follow_order')?.weight ?? 0;
     const cohesionWeight = executeGoals.find(g => g.id === 'maintain_cohesion')?.weight ?? 0;

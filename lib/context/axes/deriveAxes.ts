@@ -2,6 +2,7 @@
 // lib/context/axes/deriveAxes.ts
 import { ContextAtom, ContextAxesVector, ContextTuning, ContextAtomLike, ContextSignalId } from '../v2/types';
 import { normalizeAtom } from '../v2/infer';
+import { listify } from '../../utils/listify';
 
 function clamp01(x: number) {
   if (!Number.isFinite(x)) return 0;
@@ -359,7 +360,7 @@ function normKey(s: any) {
 function buildAtomIndex(atoms: ContextAtomLike[] | null | undefined): AtomIndex {
   const byKindId = new Map<string, ContextAtomLike>();
   const byId = new Map<string, ContextAtomLike>();
-  for (const a of atoms ?? []) {
+  for (const a of listify(atoms)) {
     const kind = normKey((a as any).kind);
     const id = normKey((a as any).id);
     if (id) byId.set(id, a);
@@ -433,7 +434,7 @@ export function deriveContextVectors(args: {
   // Infer selfId from any ctx:* atom id (ctx:axis:self), skipping ctx:src:* atoms
   const inferSelfId = (): string | null => {
     if (args.selfId) return args.selfId;
-    for (const a of atoms ?? []) {
+    for (const a of listify(atoms)) {
       const id = String((a as any)?.id || '');
       if (!id.startsWith('ctx:')) continue;
       if (id.startsWith('ctx:src:')) continue;

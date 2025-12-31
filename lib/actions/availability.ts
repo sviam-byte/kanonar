@@ -1,5 +1,6 @@
 import type { Action, LocationEntity } from '../types';
 import { getActionCatalog, resolveActionTokenToIds } from './catalog';
+import { listify } from '../utils/listify';
 
 export interface ComputeAvailableActionsInput {
   roleId?: string | null;
@@ -10,7 +11,7 @@ export interface ComputeAvailableActionsInput {
 }
 
 function actionAllowedForRole(action: Action, roleId?: string | null): boolean {
-  const allowedFor = action.allowedFor ?? ['any'];
+  const allowedFor = listify(action.allowedFor);
   if (allowedFor.includes('any')) return true;
   if (!roleId) return false;
   return allowedFor.includes(roleId);
@@ -21,7 +22,7 @@ function passesTagFilters(
   allowedTags?: string[] | null,
   bannedTags?: string[] | null
 ): boolean {
-  const tags = action.tags ?? [];
+  const tags = listify(action.tags);
 
   if (bannedTags && bannedTags.length > 0) {
     if (tags.some((t) => bannedTags.includes(t))) return false;
@@ -40,8 +41,8 @@ function applyLocationTrim(ids: string[], location?: LocationEntity | null): str
   if (!location || !(location as any).affordances) return ids;
   const aff = (location as any).affordances;
 
-  const allowedTokens = (aff.allowedActions ?? []) as string[];
-  const forbiddenTokens = (aff.forbiddenActions ?? []) as string[];
+  const allowedTokens = listify(aff.allowedActions) as string[];
+  const forbiddenTokens = listify(aff.forbiddenActions) as string[];
 
   let out = ids;
 
@@ -76,10 +77,11 @@ function applyLocationTrim(ids: string[], location?: LocationEntity | null): str
 export function computeAvailableActionIds(input: ComputeAvailableActionsInput): string[] {
   const { all, byId } = getActionCatalog();
   const roleId = input.roleId ?? null;
-  const allowedTags = input.allowedActionTags ?? null;
-  const bannedTags = input.bannedActionTags ?? null;
+  const allowedTags = listify(input.allowedActionTags);
+  const bannedTags = listify(input.bannedActionTags);
 
-  const alwaysAllow = new Set<string>(input.alwaysAllowIds ?? ['wait', 'observe']);
+  const alwaysAllowIds = listify(input.alwaysAllowIds);
+  const alwaysAllow = new Set<string>(alwaysAllowIds.length ? alwaysAllowIds : ['wait', 'observe']);
 
   // Role + phase filters
   const base = all

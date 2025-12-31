@@ -7,6 +7,7 @@ import {
   StoryTime,
 } from '../../types';
 import { emptyContextAtoms, addSimpleFact } from './contextAtoms';
+import { listify } from '../utils/listify';
 
 export function initScenarioContext(now: StoryTime): ScenarioContextState {
   const atoms: ContextAtomsState = emptyContextAtoms();
@@ -71,27 +72,29 @@ export function applyDomainEventToContext(
       (next.sceneMetrics.social_tension ?? 0) + tensionDelta;
   }
   
-  if (ev.tags?.includes("support") || ev.tags?.includes("cooperate")) {
+  const tags = listify(ev.tags);
+
+  if (tags.includes("support") || tags.includes("cooperate")) {
     next.sceneMetrics.cooperation = Math.min(1, Math.max(0,
       (next.sceneMetrics.cooperation ?? 0) + ev.intensity * Math.abs(ev.polarity) * 0.2
     ));
   }
 
-  if (ev.tags?.includes("disobey") || ev.tags?.includes("mutiny")) {
+  if (tags.includes("disobey") || tags.includes("mutiny")) {
     next.sceneMetrics.disobedience_count =
       (next.sceneMetrics.disobedience_count ?? 0) + 1;
   }
 
   // 4) добавим простой факт "actor совершил действие domain" для последующего анализа
   const now = ev.t;
-  if (ev.actorId && ev.tags?.includes("action")) {
+  if (ev.actorId && tags.includes("action")) {
     addSimpleFact(
         next.atoms,
         now,
         'did_action',
         {
           domain: ev.domain,
-          tags: ev.tags ?? [],
+          tags,
         },
         0.8,
         ev.actorId,
@@ -100,7 +103,7 @@ export function applyDomainEventToContext(
     );
   }
   
-  if (ev.tags?.includes("norm_violation") && ev.actorId) {
+  if (tags.includes("norm_violation") && ev.actorId) {
     addSimpleFact(
         next.atoms,
         now,

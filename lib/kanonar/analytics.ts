@@ -6,6 +6,7 @@ import {
     WorldEpisode,
     KanonarMetricSnapshot,
 } from '../../types';
+import { listify } from '../utils/listify';
 
 const mean = (arr: number[]) =>
     arr.length ? arr.reduce((s, x) => s + x, 0) / arr.length : 0;
@@ -16,7 +17,7 @@ export interface KanonarAnalyticsConfig {
 
 export function collectEpisodesWindow(world: WorldState, cfg: KanonarAnalyticsConfig): WorldEpisode[] {
     const { windowSize } = cfg;
-    const episodes = world.worldEpisodes ?? [];
+    const episodes = listify(world.worldEpisodes);
     if (!episodes.length) return [];
 
     const currentTick = world.tick;
@@ -41,7 +42,7 @@ export function computeMetricSnapshot(windowEpisodes: WorldEpisode[], world: Wor
 
     // если эпизоды пустые/бедные — fallback к текущему world.agents
     if (!Svals.length || !stressVals.length || !darkShares.length) {
-        const agents = world.agents ?? [];
+        const agents = listify(world.agents);
         const sArr: number[] = [];
         const stArr: number[] = [];
         let darkCount = 0;

@@ -1,5 +1,6 @@
 import React from 'react';
 import { ContextSnapshot } from '../../lib/context/v2/types';
+import { listify } from '../../lib/utils/listify';
 
 type CastRow = {
   id: string;
@@ -19,7 +20,7 @@ export const CastPerspectivePanel: React.FC<{
       </div>
 
       <div className="flex flex-wrap gap-2">
-        {rows.map(r => {
+        {listify(rows).map(r => {
           const s = r.snapshot?.summary;
           const threat = s?.threatLevel ?? 0;
           const pressure = s?.normPressure ?? 0;

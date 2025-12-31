@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { ContextAtom } from '../../lib/context/v2/types';
 import { Slider } from '../Slider';
+import { listify } from '../../lib/utils/listify';
 
 type Props = {
   selfId: string;
@@ -32,10 +33,10 @@ export const EmotionInspector: React.FC<Props> = ({
   const rows = useMemo(() => {
     const isForSelf = (id: string) => id.endsWith(`:${selfId}`) || id.includes(`:${selfId}:`);
 
-    const interesting = atoms
+    const interesting = listify(atoms)
       .filter(a => a?.id && (a.id.startsWith('app:') || a.id.startsWith('emo:')) && isForSelf(a.id))
       .map(a => {
-        const ov = manualAtoms.find(m => m.id === a.id);
+        const ov = listify(manualAtoms).find(m => m.id === a.id);
         return {
           id: a.id,
           group: a.id.startsWith('app:') ? 'app' : 'emo',
@@ -47,11 +48,7 @@ export const EmotionInspector: React.FC<Props> = ({
       })
       .sort((x, y) => `${x.group}:${x.channel}`.localeCompare(`${y.group}:${y.channel}`));
 
-    if (!Array.isArray(interesting)) {
-      console.error('Expected array, got', interesting);
-      return [];
-    }
-    return interesting;
+    return listify(interesting);
   }, [atoms, manualAtoms, selfId]);
 
   const setOverride = (id: string, v01: number) => {
@@ -69,15 +66,15 @@ export const EmotionInspector: React.FC<Props> = ({
       label: `Override ${id}`,
       trace: { usedAtomIds: [id], notes: ['manual override (EmotionInspector)'], parts: {} },
     } as any;
-    onChangeManualAtoms(upsert(manualAtoms, a));
+    onChangeManualAtoms(upsert(listify(manualAtoms), a));
   };
 
   const clearOverride = (id: string) => {
-    onChangeManualAtoms(manualAtoms.filter(a => a.id !== id));
+    onChangeManualAtoms(listify(manualAtoms).filter(a => a.id !== id));
   };
 
   const Section = ({ title, group }: { title: string; group: 'app' | 'emo' }) => {
-    const items = rows.filter(r => r.group === group);
+    const items = listify(rows).filter(r => r.group === group);
     return (
       <div className="border border-canon-border/40 rounded-lg bg-black/20 p-3">
         <div className="flex items-center justify-between mb-2">
@@ -88,7 +85,7 @@ export const EmotionInspector: React.FC<Props> = ({
           <div className="text-[12px] text-canon-text-light/70">Нет атомов.</div>
         ) : (
           <div className="space-y-2">
-            {items.map(r => (
+            {listify(items).map(r => (
               <div key={r.id} className="border border-canon-border/30 rounded bg-black/30 p-2">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">

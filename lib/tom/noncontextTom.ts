@@ -10,6 +10,7 @@ import { allArchetypes } from '../../data/archetypes';
 import { METRIC_NAMES } from '../archetypes/metrics';
 import { computeSecondOrderSelf, TomSecondOrderSelf } from './second_order';
 import { LIFE_TO_PREGOAL } from '../life-goals/life-to-pregoal';
+import { listify } from '../utils/listify';
 
 // --- Type Definitions ---
 
@@ -434,14 +435,14 @@ function read01(obj: Record<string, any> | undefined, k: string, fb: number): nu
 }
 
 export function deriveDyadFeaturesFromObserverHistory(observer: CharacterDossier, targetId: Id): DyadFeatures {
-  const hist = observer.raw_data?.history ?? [];
+  const hist = listify(observer.raw_data?.history);
   let bond=0, betrayal=0, sharedCombat=0, dependence=0, traumaLinked=0, conflict=0, perceivedAuthority=0;
   for (const e of hist) {
-    const part = e.participants ?? [];
+    const part = listify(e.participants);
     if (!part.includes(targetId)) continue;
     const inten = clamp01(e.intensity ?? 0.5);
     const val = Math.max(-1, Math.min(1, e.valence ?? 0));
-    const tags = e.tags ?? [];
+    const tags = listify(e.tags);
     if (val > 0) bond += inten * val;
     if (val < 0) {
         conflict += inten * (-val);
@@ -449,14 +450,14 @@ export function deriveDyadFeaturesFromObserverHistory(observer: CharacterDossier
     }
     if (tags.includes("combat") || tags.includes("defense")) sharedCombat += inten;
     if (tags.includes("oath") || tags.includes("service")) dependence += inten;
-    if ((e.traumaTags ?? []).length > 0 || tags.includes("trauma")) traumaLinked += inten;
+    if (listify(e.traumaTags).length > 0 || tags.includes("trauma")) traumaLinked += inten;
     if (tags.includes("leader") || tags.includes("mentor")) perceivedAuthority += inten;
   }
   bond = 1 - Math.exp(-bond); betrayal = 1 - Math.exp(-betrayal); sharedCombat = 1 - Math.exp(-sharedCombat);
   dependence = 1 - Math.exp(-dependence); traumaLinked = 1 - Math.exp(-traumaLinked); conflict = 1 - Math.exp(-conflict);
   perceivedAuthority = 1 - Math.exp(-perceivedAuthority);
   
-  const isIngroup = hist.some(e => (e.participants||[]).includes(targetId) && (e.tags||[]).includes("ingroup"));
+  const isIngroup = hist.some(e => listify(e.participants).includes(targetId) && listify(e.tags).includes("ingroup"));
   const myClearance = observer.raw_data?.identity?.self_concept ? 3 : 1;
   const dominanceByI = myClearance > 2 ? 0.6 : 0.4;
   return { bond, betrayal, sharedCombat, dependence, perceivedAuthorityOfTarget: perceivedAuthority, ingroup: isIngroup?1:0, outgroup: isIngroup?0:0.5, traumaLinked, isIngroup, isOutgroup: !isIngroup, dominanceByI, conflict };

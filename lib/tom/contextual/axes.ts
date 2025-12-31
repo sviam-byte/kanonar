@@ -1,5 +1,6 @@
 
 import type { ContextAxesVector, ContextAxisId, ContextTuning, ContextAtomLike, ContextSignalId } from './types';
+import { listify } from '../../utils/listify';
 
 const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
 const clamp = (x: number, a: number, b: number) => Math.max(a, Math.min(b, x));
@@ -37,7 +38,7 @@ function normKey(s: any) {
 function buildAtomIndex(atoms: ContextAtomLike[] | null | undefined): AtomIndex {
   const byKindId = new Map<string, ContextAtomLike>();
   const byId = new Map<string, ContextAtomLike>();
-  for (const a of atoms ?? []) {
+  for (const a of listify(atoms)) {
     const kind = normKey((a as any).kind);
     const id = normKey((a as any).id);
     if (id) byId.set(id, a);
@@ -84,7 +85,7 @@ export function deriveContextAxes(args: {
   const idx = buildAtomIndex(atoms ?? null);
 
   // ---- location tags / situation flags
-  const locTags: string[] = frame?.where?.locationTags ?? [];
+  const locTags: string[] = listify(frame?.where?.locationTags);
   const isSafeHub = locTags.includes('safe_hub');
   const isPrivateTag = locTags.includes('private') || isSafeHub;
   const isFormal = !!(world?.situation?.isFormal ?? frame?.what?.isFormal);

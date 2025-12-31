@@ -1,6 +1,7 @@
 // lib/social/orders.ts
 import { WorldState, AgentState, Order, CharacterGoalId, SocialActionId, Intention } from '../../types';
 import { computeGroupAlignment } from './group';
+import { listify } from '../utils/listify';
 
 // Helpers to analyze group state
 function computeGroupStats(world: WorldState) {
@@ -16,7 +17,7 @@ function isSafeLocation(world: WorldState, locId?: string | null): boolean {
     const loc = world.locations.find(l => l.entityId === locId);
     if (!loc) return false;
 
-    const tags: string[] = (loc as any).tags ?? [];
+    const tags: string[] = listify((loc as any).tags);
     const riskIndex = (loc as any).riskReward?.riskIndex ?? 0;
     const alert = (loc as any).state?.alert_level ?? 0;
 

@@ -2,6 +2,7 @@ import { buildStage0Atoms } from './stage0/buildStage0';
 import { applyStage1Ctx } from './stage1/buildStage1';
 import { applyStage2Emotions } from './stage2/buildStage2';
 import { applyStage3Threat } from './stage3/buildStage3';
+import { listify } from '../utils/listify';
 
 export function buildFrameMvp(scene: any, tuning?: any) {
   const bag = buildStage0Atoms(scene);
@@ -11,7 +12,7 @@ export function buildFrameMvp(scene: any, tuning?: any) {
   applyStage3Threat(
     bag,
     scene.agent.id,
-    (scene.otherAgents ?? []).map((x: any) => x.id),
+    listify(scene.otherAgents).map((x: any) => x.id),
     tuning,
   );
 

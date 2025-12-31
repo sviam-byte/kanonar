@@ -2,7 +2,7 @@
 // components/goal-lab/ValidatorPanel.tsx
 import React, { useMemo } from 'react';
 import { ValidationReport } from '../../lib/context/v2/types';
-import { arr } from '../../lib/utils/arr';
+import { listify } from '../../lib/utils/listify';
 
 type Props = {
   report?: ValidationReport | null;
@@ -17,17 +17,13 @@ function badge(sev: string) {
 }
 
 export const ValidatorPanel: React.FC<Props> = ({ report, onSelectAtomId, className }) => {
-  const issues = arr(report?.issues);
+  const issues = listify(report?.issues);
   const counts = report?.counts || { error: 0, warn: 0, info: 0 };
 
   const sorted = useMemo(() => {
     const w = (s: string) => (s === 'error' ? 0 : s === 'warn' ? 1 : 2);
-    const next = [...issues].sort((a, b) => w(a.severity) - w(b.severity));
-    if (!Array.isArray(next)) {
-      console.error('Expected array, got', next);
-      return [];
-    }
-    return next;
+    const next = [...listify(issues)].sort((a, b) => w(a.severity) - w(b.severity));
+    return listify(next);
   }, [issues]);
 
   return (
@@ -43,7 +39,7 @@ export const ValidatorPanel: React.FC<Props> = ({ report, onSelectAtomId, classN
         {sorted.length === 0 ? (
           <div className="p-4 text-sm text-canon-text-light italic text-center">No issues found.</div>
         ) : (
-          sorted.map((it, idx) => (
+          listify(sorted).map((it, idx) => (
             <div key={idx} className="p-3 border-b border-canon-border/50 hover:bg-canon-bg-light/20 transition-colors">
               <div className="flex items-center gap-2 mb-1">
                 <span className={`px-2 py-0.5 text-[10px] uppercase font-bold rounded border ${badge(it.severity)}`}>{it.severity}</span>

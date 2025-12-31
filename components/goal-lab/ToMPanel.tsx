@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { ContextAtom } from '../../lib/context/v2/types';
+import { listify } from '../../lib/utils/listify';
 
 export const ToMPanel: React.FC<{ atoms: ContextAtom[] }> = ({ atoms }) => {
     const parseDyad = (id: string) => {
@@ -47,12 +48,13 @@ export const ToMPanel: React.FC<{ atoms: ContextAtom[] }> = ({ atoms }) => {
     };
 
     const data = useMemo(() => {
-        const baseDyads = atoms.filter(a => a.id.startsWith('tom:dyad:') && !a.id.includes('_ctx'));
-        const ctxDyads = atoms.filter(a => a.id.startsWith('tom:dyad:') && a.id.includes('_ctx'));
-        const effectiveDyads = atoms.filter(a => a.id.startsWith('tom:effective:dyad:'));
-        const bias = atoms.filter(a => a.id.startsWith('tom:ctx:') || a.id.includes(':bias:') || a.id.startsWith('tom:bias:'));
+        const atomList = listify(atoms);
+        const baseDyads = atomList.filter(a => a.id.startsWith('tom:dyad:') && !a.id.includes('_ctx'));
+        const ctxDyads = atomList.filter(a => a.id.startsWith('tom:dyad:') && a.id.includes('_ctx'));
+        const effectiveDyads = atomList.filter(a => a.id.startsWith('tom:effective:dyad:'));
+        const bias = atomList.filter(a => a.id.startsWith('tom:ctx:') || a.id.includes(':bias:') || a.id.startsWith('tom:bias:'));
 
-        const policy = atoms.filter(a =>
+        const policy = atomList.filter(a =>
             a.id.startsWith('tom:mode:') ||
             a.id.startsWith('tom:predict:') ||
             a.id.startsWith('tom:att:') ||
@@ -113,24 +115,22 @@ export const ToMPanel: React.FC<{ atoms: ContextAtom[] }> = ({ atoms }) => {
         };
     }, [atoms]);
 
-    const [selfId, setSelfId] = useState<string>(() => data.selfIds[0] || '');
+    const [selfId, setSelfId] = useState<string>(() => listify(data.selfIds)[0] || '');
     const otherOptions = useMemo(() => {
-        const next = data.otherBySelf.find(entry => entry.selfId === selfId)?.others ?? [];
-        if (!Array.isArray(next)) {
-            console.error('Expected array, got', next);
-            return [];
-        }
-        return next;
+        const next = listify(data.otherBySelf).find(entry => entry.selfId === selfId)?.others ?? [];
+        return listify(next);
     }, [data.otherBySelf, selfId]);
-    const [otherId, setOtherId] = useState<string>(() => otherOptions[0] || '');
+    const [otherId, setOtherId] = useState<string>(() => listify(otherOptions)[0] || '');
 
     // keep state consistent when atoms update
     React.useEffect(() => {
-        if (!selfId && data.selfIds[0]) setSelfId(data.selfIds[0]);
+        const ids = listify(data.selfIds);
+        if (!selfId && ids[0]) setSelfId(ids[0]);
     }, [data.selfIds, selfId]);
     React.useEffect(() => {
-        if (!otherId && otherOptions[0]) setOtherId(otherOptions[0]);
-        if (otherId && otherOptions.length > 0 && !otherOptions.includes(otherId)) setOtherId(otherOptions[0]);
+        const options = listify(otherOptions);
+        if (!otherId && options[0]) setOtherId(options[0]);
+        if (otherId && options.length > 0 && !options.includes(otherId)) setOtherId(options[0]);
     }, [otherOptions, otherId]);
 
     const atomRow = (a: ContextAtom) => (
@@ -143,26 +143,26 @@ export const ToMPanel: React.FC<{ atoms: ContextAtom[] }> = ({ atoms }) => {
     const renderList = (title: string, list: ContextAtom[]) => (
         <div className="mb-5">
             <h4 className="text-xs font-bold text-canon-accent uppercase mb-2 border-b border-canon-border/30 pb-1">
-                {title} ({list.length})
+                {title} ({listify(list).length})
             </h4>
             <div className="space-y-1">
-                {list.length === 0 && <div className="text-[10px] italic text-canon-text-light">None</div>}
-                {list.map(atomRow)}
+                {listify(list).length === 0 && <div className="text-[10px] italic text-canon-text-light">None</div>}
+                {listify(list).map(atomRow)}
             </div>
         </div>
     );
 
     const dyadFor = (prefix: string, metric: string) => {
         const id = `${prefix}:${selfId}:${otherId}:${metric}`;
-        return atoms.find(a => a.id === id);
+        return listify(atoms).find(a => a.id === id);
     };
 
-    const modeAtom = atoms.find(a => a.id === `tom:mode:${selfId}`);
+    const modeAtom = listify(atoms).find(a => a.id === `tom:mode:${selfId}`);
 
     const relPairs = useMemo(() => {
         const collect = (kind: 'base' | 'state') => {
             const prefix = `rel:${kind}:${selfId}:${otherId}:`;
-            const list = atoms
+            const list = listify(atoms)
                 .filter(a => typeof a.id === 'string' && a.id.startsWith(prefix))
                 .map(a => ({ metric: String(a.id).split(':')[4] ?? '', value: a.magnitude ?? null }))
                 .filter(x => !!x.metric);
@@ -172,8 +172,8 @@ export const ToMPanel: React.FC<{ atoms: ContextAtom[] }> = ({ atoms }) => {
         const base = collect('base');
         const state = collect('state');
         return {
-            base: Array.isArray(base) ? base : [],
-            state: Array.isArray(state) ? state : [],
+            base: listify(base),
+            state: listify(state),
         };
     }, [atoms, selfId, otherId]);
 
@@ -184,7 +184,7 @@ export const ToMPanel: React.FC<{ atoms: ContextAtom[] }> = ({ atoms }) => {
             if (p.type === 'mode') return p.self === selfId;
             return (p as any).self === selfId && (p as any).other === otherId;
         };
-        const list = data.policy.filter(isTarget);
+        const list = listify(data.policy).filter(isTarget);
 
         const predict = list.filter(a => a.id.startsWith('tom:predict:'));
         const att = list.filter(a => a.id.startsWith('tom:att:'));
@@ -196,11 +196,11 @@ export const ToMPanel: React.FC<{ atoms: ContextAtom[] }> = ({ atoms }) => {
         afford.sort((a, b) => (b.magnitude ?? 0) - (a.magnitude ?? 0));
 
         return {
-            predict: Array.isArray(predict) ? predict : [],
-            att: Array.isArray(att) ? att : [],
-            help: Array.isArray(help) ? help : [],
-            afford: Array.isArray(afford) ? afford : [],
-            affordEU: Array.isArray(affordEU) ? affordEU : [],
+            predict: listify(predict),
+            att: listify(att),
+            help: listify(help),
+            afford: listify(afford),
+            affordEU: listify(affordEU),
         };
     }, [data.policy, selfId, otherId]);
 
@@ -210,11 +210,7 @@ export const ToMPanel: React.FC<{ atoms: ContextAtom[] }> = ({ atoms }) => {
             const a = dyadFor('tom:effective:dyad', m);
             return { metric: m, value: a?.magnitude ?? null, id: a?.id ?? `tom:effective:dyad:${selfId}:${otherId}:${m}` };
         });
-        if (!Array.isArray(next)) {
-            console.error('Expected array, got', next);
-            return [];
-        }
-        return next;
+        return listify(next);
     }, [atoms, selfId, otherId]);
 
     return (
@@ -227,8 +223,8 @@ export const ToMPanel: React.FC<{ atoms: ContextAtom[] }> = ({ atoms }) => {
                         value={selfId}
                         onChange={e => setSelfId(e.target.value)}
                     >
-                        {data.selfIds.length === 0 && <option value="">(none)</option>}
-                        {data.selfIds.map(id => <option key={id} value={id}>{id}</option>)}
+                        {listify(data.selfIds).length === 0 && <option value="">(none)</option>}
+                        {listify(data.selfIds).map(id => <option key={id} value={id}>{id}</option>)}
                     </select>
                 </div>
                 <div className="flex-1 min-w-0">
@@ -238,8 +234,8 @@ export const ToMPanel: React.FC<{ atoms: ContextAtom[] }> = ({ atoms }) => {
                         value={otherId}
                         onChange={e => setOtherId(e.target.value)}
                     >
-                        {otherOptions.length === 0 && <option value="">(none)</option>}
-                        {otherOptions.map(id => <option key={id} value={id}>{id}</option>)}
+                        {listify(otherOptions).length === 0 && <option value="">(none)</option>}
+                        {listify(otherOptions).map(id => <option key={id} value={id}>{id}</option>)}
                     </select>
                 </div>
             </div>
@@ -266,7 +262,7 @@ export const ToMPanel: React.FC<{ atoms: ContextAtom[] }> = ({ atoms }) => {
                     Effective dyad (key metrics)
                 </h4>
                 <div className="grid grid-cols-2 gap-2">
-                    {keyMetrics.map(k => (
+                    {listify(keyMetrics).map(k => (
                         <div key={k.metric} className="p-2 rounded bg-white/5 border border-canon-border/30">
                             <div className="text-[10px] uppercase text-canon-text-light">{k.metric}</div>
                             <div className="flex justify-between items-center">
@@ -289,7 +285,7 @@ export const ToMPanel: React.FC<{ atoms: ContextAtom[] }> = ({ atoms }) => {
                         <div className="text-[11px] font-semibold text-canon-text mb-1">rel:base</div>
                         {relPairs.base.length === 0 ? (
                             <div className="text-[11px] text-canon-text-light">—</div>
-                        ) : relPairs.base.map(x => (
+                        ) : listify(relPairs.base).map(x => (
                             <div key={`relbase:${x.metric}`} className="flex items-center justify-between text-[11px]">
                                 <span className="text-canon-text">{x.metric}</span>
                                 <span className="text-canon-text-light tabular-nums">{x.value == null ? '—' : x.value.toFixed(2)}</span>
@@ -300,7 +296,7 @@ export const ToMPanel: React.FC<{ atoms: ContextAtom[] }> = ({ atoms }) => {
                         <div className="text-[11px] font-semibold text-canon-text mb-1">rel:state</div>
                         {relPairs.state.length === 0 ? (
                             <div className="text-[11px] text-canon-text-light">—</div>
-                        ) : relPairs.state.map(x => (
+                        ) : listify(relPairs.state).map(x => (
                             <div key={`relstate:${x.metric}`} className="flex items-center justify-between text-[11px]">
                                 <span className="text-canon-text">{x.metric}</span>
                                 <span className="text-canon-text-light tabular-nums">{x.value == null ? '—' : x.value.toFixed(2)}</span>

@@ -42,6 +42,7 @@ import { deriveAppraisalAtoms } from '../emotion/appraisals';
 import { deriveEmotionAtoms } from '../emotion/emotions';
 import { deriveDyadicEmotionAtoms } from '../emotion/dyadic';
 import { arr } from '../utils/arr';
+import { listify } from '../utils/listify';
 
 // Scene Engine
 import { SCENE_PRESETS } from '../scene/presets';
@@ -97,7 +98,7 @@ function buildSituationContextForLab(
   v4Atoms: ContextAtom[],
   ctxV2: ContextV2,
 ): SituationContext {
-  const tags = new Set<string>((frame?.where?.locationTags ?? []) as any);
+  const tags = new Set<string>(listify(frame?.where?.locationTags) as any);
 
   const isPrivate = tags.has('private');
   const isFormal = tags.has('formal') || ctxV2.scenarioKind === 'strategic_council';
@@ -122,12 +123,12 @@ function buildSituationContextForLab(
     else if (isPrivate) scenarioKind = 'domestic_scene';
   }
 
-  const crowdSize = (frame?.what?.nearbyAgents?.length ?? 0) + 1;
+  const crowdSize = listify(frame?.what?.nearbyAgents).length + 1;
 
   const leaderId = world.leadership?.currentLeaderId;
   const leaderPresent = !!leaderId && (
     leaderId === agent.entityId ||
-    (frame?.what?.nearbyAgents ?? []).some(a => a?.id === leaderId)
+    listify(frame?.what?.nearbyAgents).some(a => a?.id === leaderId)
   );
 
   return {
@@ -184,9 +185,7 @@ export function buildGoalLabContext(
   }
   
   // Belief Atoms
-  const beliefAtoms = [
-      ...((agent as any).memory?.beliefAtoms || []),
-  ];
+  const beliefAtoms = listify((agent as any)?.memory?.beliefAtoms).map(normalizeAtom);
   
   // Events
   const tick = world?.tick ?? 0;

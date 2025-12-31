@@ -21,6 +21,7 @@ import type {
   GoalTag,
   FactID,
 } from "../location/types";
+import { listify } from '../utils/listify';
 
 // Внешние зависимости фабрики
 export interface EventFactoryDeps {
@@ -83,7 +84,7 @@ export function createEventFactory(deps: EventFactoryDeps) {
     };
 
     const epistemics: EventEpistemics = {
-      witnesses: params.epistemics?.witnesses ?? [],
+      witnesses: listify(params.epistemics?.witnesses),
       visibility: params.epistemics?.visibility ?? 1,
       beliefByAgent: params.epistemics?.beliefByAgent,
     };
@@ -101,17 +102,17 @@ export function createEventFactory(deps: EventFactoryDeps) {
       zoneId: params.zoneId,
       position: params.position,
 
-      actors: params.actors ?? [],
-      targets: params.targets ?? [],
+      actors: listify(params.actors),
+      targets: listify(params.targets),
       objects: params.objects,
 
       affordanceId: undefined,
       normsViolated: [],
       normsSatisfied: [],
 
-      tags: params.tags ?? [],
-      facts: params.facts ?? [],
-      goalTags: params.goalTags ?? [],
+      tags: listify(params.tags),
+      facts: listify(params.facts),
+      goalTags: listify(params.goalTags),
 
       effects,
       epistemics,
@@ -162,7 +163,7 @@ export function createEventFactory(deps: EventFactoryDeps) {
       kind: "action",
       locationId: params.locationId,
       actors: params.actors,
-      targets: params.targets ?? [],
+      targets: listify(params.targets),
       objects: params.objects,
       tags: params.tags,
       facts: params.facts,

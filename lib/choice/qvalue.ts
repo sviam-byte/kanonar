@@ -14,6 +14,7 @@ import { computeArchetypeEffects } from '../archetypes/effects';
 import { getMassFieldForAgentMulti } from '../mass/context_multi';
 import { getAgentRole, ACTIONS_FOR_ROLE } from '../social/role_mechanics';
 import { goalUtility } from '../context/engine'; 
+import { listify } from '../utils/listify';
 
 function normalizeComponent(raw: number, [min, max]: [number, number]): number {
   return clamp(raw, min, max);
@@ -322,7 +323,7 @@ export function computeQ(
       sPart += world.scenarioProcedures[agent.entityId][action.id] ?? 0;
   }
   if (world.scenario && world.scene?.currentPhaseId) {
-      const priors = world.scenario.phasePriorities?.[world.scene.currentPhaseId] ?? [];
+      const priors = listify(world.scenario.phasePriorities?.[world.scene.currentPhaseId]);
       if (priors.includes(action.id as SocialActionId)) sPart += 1.5;
   }
   sPart += computeDynamicScenarioUtility(agent, action, world);
