@@ -27,6 +27,7 @@ import { EmotionExplainPanel } from './EmotionExplainPanel';
 import { PipelinePanel } from './PipelinePanel';
 import { materializeStageAtoms } from './materializePipeline';
 import { arr } from '../../lib/utils/arr';
+import { listify } from '../../lib/utils/listify';
 
 interface Props {
   context: ContextSnapshot | null;
@@ -183,9 +184,10 @@ const ContributionRow: React.FC<{ contrib: ContextualGoalContribution }> = ({ co
 }
 
 export const AnalysisView: React.FC<{ score: ContextualGoalScore }> = ({ score }) => {
+    const contributions = listify(score.contributions);
     const groups = {
-        'Внешние Факторы (Атомы)': score.contributions.filter(c => c.source !== 'life'),
-        'Внутренние (Личность)': score.contributions.filter(c => c.source === 'life')
+        'Внешние Факторы (Атомы)': contributions.filter(c => c.source !== 'life'),
+        'Внутренние (Личность)': contributions.filter(c => c.source === 'life')
     };
 
     return (
@@ -208,7 +210,7 @@ export const AnalysisView: React.FC<{ score: ContextualGoalScore }> = ({ score }
                     <div>
                         <h5 className="text-[10px] font-bold text-canon-text-light uppercase mb-2 px-1">Контекст и Окружение</h5>
                         <div className="space-y-1">
-                            {groups['Внешние Факторы (Атомы)'].sort((a,b) => Math.abs(b.value) - Math.abs(a.value)).map((c, i) => (
+                            {listify(groups['Внешние Факторы (Атомы)']).sort((a,b) => Math.abs(b.value) - Math.abs(a.value)).map((c, i) => (
                                 <ContributionRow key={i} contrib={c} />
                             ))}
                         </div>
@@ -219,7 +221,7 @@ export const AnalysisView: React.FC<{ score: ContextualGoalScore }> = ({ score }
                      <div>
                         <h5 className="text-[10px] font-bold text-canon-text-light uppercase mb-2 px-1 border-t border-canon-border/20 pt-4">Личность и Драйвы</h5>
                         <div className="space-y-1">
-                            {groups['Внутренние (Личность)'].sort((a,b) => Math.abs(b.value) - Math.abs(a.value)).map((c, i) => (
+                            {listify(groups['Внутренние (Личность)']).sort((a,b) => Math.abs(b.value) - Math.abs(a.value)).map((c, i) => (
                                 <ContributionRow key={i} contrib={c} />
                             ))}
                         </div>
@@ -260,7 +262,7 @@ const GoalRow: React.FC<{
              
              {/* Key Contributors Dots */}
              <div className="flex gap-1 mt-1.5 h-1.5">
-                 {score.contributions.filter(c => c.value > 0.5).slice(0, 5).map((c, i) => {
+                 {listify(score.contributions).filter(c => c.value > 0.5).slice(0, 5).map((c, i) => {
                       const style = getAtomStyle(c.atomKind || 'default');
                       return <div key={i} className={`w-1.5 h-1.5 rounded-full ${style.bg.replace('/40', '')}`} title={c.explanation} />
                  })}
@@ -270,8 +272,9 @@ const GoalRow: React.FC<{
 }
 
 export const EcologyView: React.FC<{ goals: ContextualGoalScore[], onSelect: (id: string) => void, selectedId: string | null }> = ({ goals, onSelect, selectedId }) => {
-    const activeGoals = goals.filter(g => g.probability > 0.05).sort((a,b) => b.probability - a.probability);
-    const latentGoals = goals.filter(g => g.probability <= 0.05 && g.probability > 0.01).sort((a,b) => b.probability - a.probability);
+    const goalList = listify(goals);
+    const activeGoals = goalList.filter(g => g.probability > 0.05).sort((a,b) => b.probability - a.probability);
+    const latentGoals = goalList.filter(g => g.probability <= 0.05 && g.probability > 0.01).sort((a,b) => b.probability - a.probability);
     
     return (
         <div className="p-3 space-y-4 pb-12">
@@ -363,6 +366,8 @@ export const GoalLabResults: React.FC<Props> = ({
   const [isPreviewOpen, setPreviewOpen] = useState(false);
   const [activeTabIndex, setActiveTabIndex] = useState(0);
   const [selectedAtomId, setSelectedAtomId] = useState<string | null>(null);
+  const goalScoreList = listify(goalScores);
+  const tomRowsList = listify(tomRows);
 
     const canDownload = Boolean(onDownloadScene || sceneDump);
 
@@ -399,8 +404,8 @@ export const GoalLabResults: React.FC<Props> = ({
         }
     };
 
-    const effectiveSelectedId = selectedGoalId || (goalScores.length > 0 ? goalScores[0].goalId : null);
-    const selectedScore = goalScores.find(g => g.goalId === effectiveSelectedId);
+    const effectiveSelectedId = selectedGoalId || (goalScoreList.length > 0 ? goalScoreList[0].goalId : null);
+    const selectedScore = goalScoreList.find(g => g.goalId === effectiveSelectedId);
 
     // Aggregates from snapshot or legacy context
     const stats = {
@@ -410,7 +415,7 @@ export const GoalLabResults: React.FC<Props> = ({
         crowd: snapshotV1?.contextMind?.metrics?.find((m: any) => m.key === 'crowd')?.value ?? context?.aggregates?.crowding ?? context?.summary.crowding ?? 0
     };
 
-    const tomSummaries = arr(tomRows)
+    const tomSummaries = listify(tomRowsList)
         .slice(0, 8)
         .map(row => {
             const dyad = (row as any)?.dyad || row;
@@ -466,15 +471,15 @@ export const GoalLabResults: React.FC<Props> = ({
         try {
             if (pipelineV1 && Array.isArray((pipelineV1 as any).stages) && pipelineStageId) {
                 const st = (pipelineV1 as any).stages.find((s: any) => String(s?.stage || s?.id) === String(pipelineStageId));
-                if (st && Array.isArray(st.atoms)) return st.atoms;
+                if (st) return listify(st.atoms);
             }
             if (Array.isArray(pipelineStages) && pipelineStages.length && pipelineStageId) {
                 const mat = materializeStageAtoms(pipelineStages as any, String(pipelineStageId));
-                if (Array.isArray(mat) && mat.length) return mat;
+                if (listify(mat).length) return listify(mat);
             }
         } catch {}
         const a = (snapshotV1 as any)?.atoms ?? context?.atoms;
-        return Array.isArray(a) ? a : [];
+        return listify(a);
     })();
 
     const topAtoms = [...currentAtoms]
@@ -846,11 +851,11 @@ export const GoalLabResults: React.FC<Props> = ({
             </div>
 
 
-            {tomRows && tomRows.length > 0 && (
+            {tomRowsList.length > 0 && (
                 <div className="bg-canon-bg border-b border-canon-border/30 p-2 shrink-0">
                     <div className="text-[11px] font-bold mb-2">ToM (X думает про Y)</div>
                     <div className="flex flex-col gap-1">
-                        {arr(tomRows).map(r => (
+                        {listify(tomRowsList).map(r => (
                             <div key={`${r.me}__${r.other}`} className="text-[10px] border border-canon-border/30 rounded p-1">
                                 <div className="font-semibold">{r.me} → {r.other}</div>
                                 <div className="opacity-80">

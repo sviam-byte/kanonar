@@ -3,6 +3,7 @@ import { WorldState, AgentState, LocationEntity, ScenarioContextState } from '..
 import { ContextAtom, ContextSnapshot, ContextAtomKind, ContextSummary, TemporalContextConfig } from './types';
 import { computeDomainsFromAtoms } from './domains';
 import { deriveAppraisalAndEmotionAtomsV2 } from './derive/deriveEmotionLayer';
+import { listify } from '../../utils/listify';
 // Fix import - Event might conflict with DOM Event if not careful, but here we just use it as type in options
 import { Event } from '../../events/types'; 
 
@@ -119,7 +120,7 @@ export function buildContextSnapshot(
         crowding: summary.crowding
     },
     meta: {
-      manualAtomIds: options.manualAtoms?.map(a => a.id)
+      manualAtomIds: listify(options.manualAtoms).map(a => a.id)
     }
   };
 }

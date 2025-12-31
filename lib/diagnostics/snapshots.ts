@@ -1,6 +1,7 @@
 
 import { WorldState, AgentState, CharacterDebugSnapshot, WorldDebugSnapshot } from '../../types';
 import { getTomView } from '../tom/view';
+import { listify } from '../utils/listify';
 
 export function makeCharacterDebugSnapshot(agent: AgentState, world: WorldState): CharacterDebugSnapshot {
     const topRelations = world.agents
@@ -51,28 +52,29 @@ export function makeWorldDebugSnapshot(world: WorldState): WorldDebugSnapshot {
     const meanInstitutionLegitimacy = world.scene?.metrics?.legitimacy ? world.scene.metrics.legitimacy / 100 : 0.7;
     const meanSystemStability = 0.8; // Placeholder
 
-    const systems: any[] = world.systemEntities?.map(s => ({
+    const systems: any[] = listify(world.systemEntities).map(s => ({
         id: 'sys-1', // Mock
         name: 'Oxygen',
         kind: 'resource',
         health: s.health,
         stability: s.stability,
         complexity: 0.5
-    })) || [];
+    }));
 
-    const factions = world.factions?.map(f => ({
+    const factions = listify(world.factions).map(f => ({
         id: f.id,
         name: f.name,
         legitimacy: 0.8, // Mock
         leaderId: f.leaderId,
         membersCount: agents.filter(a => a.factionId === f.id).length,
         hostility: f.hostility
-    })) || [];
+    }));
 
     const characters = agents.map(a => makeCharacterDebugSnapshot(a, world));
 
-    const lastWorldEpisode = world.worldEpisodes && world.worldEpisodes.length > 0
-        ? world.worldEpisodes[world.worldEpisodes.length - 1]
+    const worldEpisodes = listify(world.worldEpisodes);
+    const lastWorldEpisode = worldEpisodes.length > 0
+        ? worldEpisodes[worldEpisodes.length - 1]
         : undefined;
 
     return {

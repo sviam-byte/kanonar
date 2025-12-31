@@ -6,7 +6,7 @@ import { LifeGoalVector, LifeGoalId } from '../life-goals/types-life';
 import { getLocationForAgent, getAgentMapCell, getLocalMapMetrics } from "../world/locations";
 import { hydrateLocation } from '../adapters/rich-location'; 
 import { AgentContextFrame } from '../context/frame/types';
-import { arr } from '../utils/arr';
+import { listify } from '../utils/listify';
 
 // --- 1.1. Compute Domain Vector from Nearby Actors ---
 function initZeroDomains(): Record<GoalAxisId, number> {
@@ -103,8 +103,8 @@ export function buildContextV2FromFrame(
     frame: AgentContextFrame,
     world?: WorldState
 ): ContextV2 {
-    const nearbyAgents = arr((frame as any)?.what?.nearbyAgents);
-    const locTags = arr((frame as any)?.where?.locationTags);
+    const nearbyAgents = listify((frame as any)?.what?.nearbyAgents);
+    const locTags = listify((frame as any)?.where?.locationTags);
     const nearby: LocalActorRef[] = nearbyAgents.map(a => {
         let kind: 'ally' | 'enemy' | 'neutral' = 'neutral';
         // Simple heuristic mapping
@@ -145,7 +145,7 @@ export function buildContextV2FromFrame(
         timePressure: 0, // Not explicitly in frame usually, default 0
         scenarioKind: 'routine', // Could be inferred from meta.scenarioId
         cover: frame.where.map.cover,
-        exitsNearby: arr((frame as any)?.where?.map?.exits).length,
+        exitsNearby: listify((frame as any)?.where?.map?.exits).length,
         obstacles: frame.where.map.hazard,
         groupDensity: nearby.length / 10,
         hierarchyPressure: kingPresent ? 0.8 : 0.2,

@@ -1,6 +1,7 @@
 import { Atom } from '../../atoms/types';
 import { getM, used } from '../../atoms/read';
 import { clamp01 } from '../../math/normalize';
+import { listify } from '../../utils/listify';
 
 function clampNegPos1(x: number) {
   return Math.max(-1, Math.min(1, x));
@@ -44,7 +45,7 @@ export function deriveAppraisalAndEmotionAtoms(agentId: string, resolved: Map<st
     meta: {
       trace: {
         usedAtomIds: usedIds,
-        parts: parts ?? [],
+        parts: listify(parts),
         formulaId,
       },
     },

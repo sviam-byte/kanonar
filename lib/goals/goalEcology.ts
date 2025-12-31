@@ -2,6 +2,7 @@
 import { GoalEcology, GoalState } from "../../types";
 import type { ContextualGoalScore } from "../context/v2/locationGoals";
 import type { TomGoalContextScore } from "../context/v2/tomGoals";
+import { listify } from '../utils/listify';
 
 /**
  * Применить контекст локации (ContextualGoalScore[]) к GoalEcology.
@@ -66,7 +67,7 @@ function applyToGoalList(goals: GoalState[], scoresMap: Map<string, { contextDel
         priority: final, 
         weight: final,   
         contextSources: [
-          ...(g.contextSources ?? []),
+          ...listify(g.contextSources),
           ...score.sources,
         ],
       };

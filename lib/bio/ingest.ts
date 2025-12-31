@@ -1,7 +1,9 @@
 
+import { listify } from '../utils/listify';
+
 export function priorFromHistory(history: any[]): Record<string, number> {
   const acc: Record<string, number> = {};
-  for (const ev of history ?? []) {
+  for (const ev of listify(history)) {
     const w = (ev.lifeGoalWeights ?? {}) as Record<string, number>;
     if (!w || !Object.keys(w).length) continue;
     

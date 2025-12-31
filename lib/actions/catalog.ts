@@ -1,5 +1,6 @@
 import { socialActions } from '../../data/actions-social';
 import type { Action, LocationEntity } from '../types';
+import { listify } from '../utils/listify';
 
 export interface ActionCatalog {
   all: Action[];
@@ -17,7 +18,7 @@ export function getActionCatalog(): ActionCatalog {
 
   for (const a of socialActions) {
     byId[a.id] = a;
-    for (const t of a.tags ?? []) {
+    for (const t of listify(a.tags)) {
       (tagsToIds[t] ??= []).push(a.id);
     }
   }
@@ -60,8 +61,8 @@ export function validateLocationAffordances(
   const aff = (loc as any).affordances;
   if (!aff) return issues;
 
-  const allowed = (aff.allowedActions ?? []) as string[];
-  const forbidden = (aff.forbiddenActions ?? []) as string[];
+  const allowed = listify(aff.allowedActions) as string[];
+  const forbidden = listify(aff.forbiddenActions) as string[];
 
   for (const token of allowed) {
     if (!isKnownActionToken(token)) {

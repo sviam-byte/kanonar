@@ -12,6 +12,7 @@ import {
 import { clamp } from "../util/math";
 import { TRUST_ALPHA, EVENT_INTENSITY } from "../social/tuning";
 import { socialActions } from "../../data/actions-social";
+import { listify } from '../utils/listify';
 
 export interface TraitUpdateContext {
   effectiveIntensity: number;
@@ -33,7 +34,7 @@ function extractFeatures(
   intensity: number = 0.5
 ): EventFeatures {
   const action = socialActions.find(a => a.id === actionId);
-  const tags: string[] = action?.tags ?? [];
+  const tags: string[] = listify(action?.tags);
 
   const isSupport =
     tags.includes("support") || tags.includes("help") || tags.includes("protect")

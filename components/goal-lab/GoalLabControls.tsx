@@ -11,6 +11,7 @@ import { CONTEXT_ATOM_KIND_CATALOG, DEFAULT_MANUAL_KINDS } from '../../lib/conte
 import { ModsPanel } from './ModsPanel'; 
 import { ScenePanel } from './ScenePanel';
 import { arr } from '../../lib/utils/arr';
+import { listify } from '../../lib/utils/listify';
 
 interface Props {
   allCharacters: CharacterEntity[];
@@ -279,52 +280,32 @@ export const GoalLabControls: React.FC<Props> = ({
   const filteredAtomKinds = CONTEXT_ATOM_KIND_CATALOG.filter(k => k.includes(customAtomSearch));
   
   const sceneIds = React.useMemo(() => {
-      const ids = new Set<string>(arr(participantIds));
+      const ids = new Set<string>(listify(participantIds));
       // страховка: active/perspective всегда должны быть в списке,
       // но НЕ тащим world.agents, чтобы сцена была единственным источником правды.
       if (selectedAgentId) ids.add(selectedAgentId);
       if (perspectiveAgentId) ids.add(perspectiveAgentId);
-      const next = Array.from(ids);
-      if (!Array.isArray(next)) {
-        console.error('Expected array, got', next);
-        return [];
-      }
-      return next;
+      return listify(Array.from(ids));
   }, [participantIds, selectedAgentId, perspectiveAgentId]);
 
   // Calculate who is in scene but not the active agent
   const activeSceneActors = React.useMemo(() => {
-      const next = sceneIds.map(id => {
-          const char = allCharacters.find(c => c.entityId === id);
+      return listify(sceneIds).map(id => {
+          const char = listify(allCharacters).find(c => c.entityId === id);
           return { id, label: char?.title || id };
       });
-      if (!Array.isArray(next)) {
-        console.error('Expected array, got', next);
-        return [];
-      }
-      return next;
   }, [sceneIds, allCharacters]);
 
   // Main agent dropdown: Show only current scene/world participants
   const activeAgentOptions = React.useMemo(() => {
-      const next = allCharacters
-          .filter(c => sceneIds.includes(c.entityId))
+      return listify(allCharacters)
+          .filter(c => listify(sceneIds).includes(c.entityId))
           .map(c => ({ ...c, inScene: true }));
-      if (!Array.isArray(next)) {
-        console.error('Expected array, got', next);
-        return [];
-      }
-      return next;
   }, [allCharacters, sceneIds]);
   
   // Add Character Dropdown: exclude those already in scene
   const availableToAdd = React.useMemo(() => {
-      const next = allCharacters.filter(c => !sceneIds.includes(c.entityId));
-      if (!Array.isArray(next)) {
-        console.error('Expected array, got', next);
-        return [];
-      }
-      return next;
+      return listify(allCharacters).filter(c => !listify(sceneIds).includes(c.entityId));
   }, [allCharacters, sceneIds]);
 
   return (
@@ -343,8 +324,8 @@ export const GoalLabControls: React.FC<Props> = ({
           )}
 
           <div className="space-y-1">
-            {sceneIds.map(id => {
-              const ch = allCharacters.find(c => c.entityId === id);
+            {listify(sceneIds).map(id => {
+              const ch = listify(allCharacters).find(c => c.entityId === id);
               const label = ch?.title ?? id;
 
               const isActive = id === selectedAgentId;
@@ -418,7 +399,7 @@ export const GoalLabControls: React.FC<Props> = ({
           value={selectedAgentId}
           onChange={e => onSelectAgent(e.target.value)}
         >
-          {activeAgentOptions.map(c => (
+          {listify(activeAgentOptions).map(c => (
             <option key={c.entityId} value={c.entityId} className={c.inScene ? 'font-bold' : ''}>
               {c.title} {c.inScene ? '(In Scene)' : ''}
             </option>
@@ -451,14 +432,14 @@ export const GoalLabControls: React.FC<Props> = ({
                 disabled={locationMode === 'custom'}
             >
                 <option value="">[ Custom / Default ]</option>
-                {allLocations.map(l => <option key={l.entityId} value={l.entityId}>{l.title}</option>)}
+                {listify(allLocations).map(l => <option key={l.entityId} value={l.entityId}>{l.title}</option>)}
             </select>
             {locationMode === 'custom' && <div className="text-[9px] text-canon-text-light italic mt-1 text-center">Map Editor Active</div>}
       </div>
 
       {/* Tabs */}
       <div className="flex border-b border-canon-border/50 overflow-x-auto no-scrollbar">
-          {['scenes', 'scene', 'events', 'sim', 'affect', 'emotions', 'manual', 'mods'].map(tab => (
+          {listify(['scenes', 'scene', 'events', 'sim', 'affect', 'emotions', 'manual', 'mods']).map(tab => (
             <button
                key={tab}
                className={`flex-1 py-1 px-2 text-[10px] font-bold uppercase whitespace-nowrap ${activeTab === tab ? 'text-canon-accent border-b-2 border-canon-accent' : 'text-canon-text-light'}`}
@@ -518,7 +499,7 @@ export const GoalLabControls: React.FC<Props> = ({
                 <div className="text-xs font-bold text-canon-text uppercase tracking-wider mb-2 flex items-center gap-2">
                     <span>🎬</span> Quick Presets
                 </div>
-                {TEST_SCENES.map(scene => (
+                {listify(TEST_SCENES).map(scene => (
                     <div
                         key={scene.id}
                         className="w-full text-left bg-canon-bg-light/30 border border-canon-border/50 rounded p-2 hover:border-canon-accent hover:bg-canon-bg-light/60 transition-all group"
@@ -621,7 +602,7 @@ export const GoalLabControls: React.FC<Props> = ({
                     </h3>
                     <span className="text-[10px] bg-canon-accent/10 text-canon-accent px-1.5 rounded">{selectedEventIds.size}</span>
                 </div>
-                {allEvents.map(ev => {
+                {listify(allEvents).map(ev => {
                     const isActive = selectedEventIds.has(ev.id);
                     return (
                         <label 
@@ -645,13 +626,13 @@ export const GoalLabControls: React.FC<Props> = ({
                                     {ev.kind.toUpperCase()}
                                 </div>
                                 <div className="text-[10px] text-canon-text-light truncate opacity-70">
-                                    {ev.tags.join(', ')}
+                                    {listify(ev.tags).join(', ')}
                                 </div>
                             </div>
                         </label>
                     )
                 })}
-                {allEvents.length === 0 && <div className="text-xs italic text-canon-text-light text-center py-10">No events found.</div>}
+                {listify(allEvents).length === 0 && <div className="text-xs italic text-canon-text-light text-center py-10">No events found.</div>}
             </div>
         )}
 
@@ -670,7 +651,7 @@ export const GoalLabControls: React.FC<Props> = ({
                      Discrete emotions (affect.e)
                    </div>
 
-                   {(['fear','anger','shame','trust','sadness','joy','curiosity','hope','loneliness','attachment','guilt','pride','disgust'] as const).map((k) => (
+                   {listify(['fear','anger','shame','trust','sadness','joy','curiosity','hope','loneliness','attachment','guilt','pride','disgust'] as const).map((k) => (
                      <div key={k} className="mb-2">
                        <div className="flex justify-between text-[11px] mb-1">
                          <span className="opacity-80">{k}</span>
@@ -693,7 +674,7 @@ export const GoalLabControls: React.FC<Props> = ({
                      Regulation (affect.regulation)
                    </div>
 
-                   {(['suppression','reappraisal','rumination','threatBias','moralRumination'] as const).map((k) => (
+                   {listify(['suppression','reappraisal','rumination','threatBias','moralRumination'] as const).map((k) => (
                      <div key={k} className="mb-2">
                        <div className="flex justify-between text-[11px] mb-1">
                          <span className="opacity-80">{k}</span>
@@ -757,13 +738,13 @@ export const GoalLabControls: React.FC<Props> = ({
               <div>
                 <div className="text-[11px] font-bold text-canon-text uppercase tracking-wider mb-2">app:*</div>
                 <div className="grid grid-cols-1 gap-2">
-                  {selfComputed.app.length ? selfComputed.app.slice(0, 12).map(a => <MiniBar key={a.id} label={a.id} value={a.magnitude ?? (a as any)?.m ?? 0} />) : <div className="text-[11px] text-canon-text-light/70">Нет app:*.</div>}
+                  {listify(selfComputed.app).length ? listify(selfComputed.app).slice(0, 12).map(a => <MiniBar key={a.id} label={a.id} value={a.magnitude ?? (a as any)?.m ?? 0} />) : <div className="text-[11px] text-canon-text-light/70">Нет app:*.</div>}
                 </div>
               </div>
               <div>
                 <div className="text-[11px] font-bold text-canon-text uppercase tracking-wider mb-2">emo:*</div>
                 <div className="grid grid-cols-1 gap-2">
-                  {selfComputed.emo.length ? selfComputed.emo.slice(0, 12).map(a => <MiniBar key={a.id} label={a.id} value={a.magnitude ?? (a as any)?.m ?? 0} />) : <div className="text-[11px] text-canon-text-light/70">Нет emo:*.</div>}
+                  {listify(selfComputed.emo).length ? listify(selfComputed.emo).slice(0, 12).map(a => <MiniBar key={a.id} label={a.id} value={a.magnitude ?? (a as any)?.m ?? 0} />) : <div className="text-[11px] text-canon-text-light/70">Нет emo:*.</div>}
                 </div>
               </div>
             </div>
@@ -777,7 +758,7 @@ export const GoalLabControls: React.FC<Props> = ({
                  <div>
                     <h3 className="text-xs font-bold text-canon-text uppercase tracking-wider mb-2">Quick Access</h3>
                     <div className="space-y-1">
-                        {DEFAULT_MANUAL_KINDS.map(kind => {
+                        {listify(DEFAULT_MANUAL_KINDS).map(kind => {
                             const val = getManualValue(kind);
                             return (
                                 <Slider 
@@ -808,7 +789,7 @@ export const GoalLabControls: React.FC<Props> = ({
                             value={customAtomKind}
                             onChange={e => setCustomAtomKind(e.target.value as ContextAtomKind)}
                         >
-                            {filteredAtomKinds.map(k => <option key={k} value={k}>{k}</option>)}
+                            {listify(filteredAtomKinds).map(k => <option key={k} value={k}>{k}</option>)}
                         </select>
                         <input 
                             type="text" 
@@ -822,14 +803,14 @@ export const GoalLabControls: React.FC<Props> = ({
                  </div>
                  
                  {/* Active Manual List */}
-                 {manualAtoms.length > 0 && (
+                 {listify(manualAtoms).length > 0 && (
                      <div className="border-t border-canon-border/30 pt-3">
                         <div className="flex justify-between items-center mb-2">
                             <h3 className="text-xs font-bold text-canon-text uppercase tracking-wider">Active Manual</h3>
                             <button type="button" onClick={() => onChangeManualAtoms([])} className="text-[9px] text-red-400 hover:underline">Clear All</button>
                         </div>
                         <div className="space-y-2">
-                            {manualAtoms.map(atom => (
+                            {listify(manualAtoms).map(atom => (
                                 <div key={atom.id} className="bg-canon-bg/30 p-2 rounded border border-canon-border/20">
                                     <div className="flex justify-between text-[10px] mb-1">
                                         <span className="font-bold truncate">{atom.label}</span>
@@ -866,8 +847,8 @@ export const GoalLabControls: React.FC<Props> = ({
               <div className="text-[11px] font-bold mb-2">Perspective (для кого считаем)</div>
 
               <div className="flex flex-wrap gap-1">
-                {arr(participantIds).map(id => {
-                  const label = allCharacters.find(c => c.entityId === id)?.title || id;
+                {listify(participantIds).map(id => {
+                  const label = listify(allCharacters).find(c => c.entityId === id)?.title || id;
                   return (
                     <button
                       key={id}
@@ -893,7 +874,7 @@ export const GoalLabControls: React.FC<Props> = ({
                     onChange={e => setSelectedActorToAdd(e.target.value)}
                 >
                     <option value="">+ Add Character...</option>
-                    {availableToAdd.map(c => (
+                    {listify(availableToAdd).map(c => (
                         <option key={c.entityId} value={c.entityId}>{c.title}</option>
                     ))}
                 </select>
@@ -907,11 +888,11 @@ export const GoalLabControls: React.FC<Props> = ({
                 </button>
             </div>
             <div className="text-[9px] text-canon-text-light mt-1">
-              participantIds: {(participantIds?.length ?? 0)} | nearbyActors: {nearbyActors.length}
+              participantIds: {listify(participantIds).length} | nearbyActors: {listify(nearbyActors).length}
             </div>
             
             <div className="space-y-1">
-                 {activeSceneActors.map((actor) => (
+                 {listify(activeSceneActors).map((actor) => (
                      <div
                        key={actor.id}
                        className={`flex items-center gap-2 p-1 rounded text-[10px] border ${

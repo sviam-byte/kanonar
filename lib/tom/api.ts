@@ -6,6 +6,7 @@ import { DomainEvent } from '../../types';
 import { ContextualGoalScore } from '../context/v2/types';
 import { updateTomGoals, GoalObservation } from "./update.goals";
 import { updateTomTraits, TraitObservation } from "./update.traits";
+import { listify } from '../utils/listify';
 
 function clamp01(x: number): number {
   return Math.max(0, Math.min(1, x));
@@ -195,13 +196,14 @@ export function updateTomFromEvent(
   world: WorldState,
   event: DomainEvent
 ): void {
-  const { actorId, targetId, tags, intensity } = event;
+  const { actorId, targetId, intensity } = event;
+  const tags = listify(event.tags);
   if (!actorId || !targetId || actorId === targetId) return;
 
   const w = intensity ?? 0.5;
 
-  if (tags?.includes('harm') || tags?.includes('attack')) {
-      const witnesses = event.epistemics?.observers?.map(o => o.actorId) || [];
+  if (tags.includes('harm') || tags.includes('attack')) {
+      const witnesses = listify(event.epistemics?.observers).map(o => o.actorId);
       for (const obsId of witnesses) {
           if (obsId === actorId) continue;
           const prev = getTomView(world, obsId, actorId);

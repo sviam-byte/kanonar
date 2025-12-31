@@ -305,7 +305,7 @@ export function buildFullAgentContextFrame(
     const selfLocationId = (agent as any).locationId ?? null;
     const MAX_NEARBY_DIST = 20;
 
-    const roleRels: { other_id: string; role: string }[] = agent.roles?.relations ?? [];
+    const roleRels: { other_id: string; role: string }[] = listify(agent.roles?.relations);
 
     for (const other of agents) {
         if (other.entityId === agentId) continue;

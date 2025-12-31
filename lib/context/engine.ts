@@ -21,6 +21,7 @@ import {
 import type { TickContext } from './engineTypes';
 import type { AgentState, WorldState, DomainEvent } from '../../types';
 import { applyDomainEventsToWorldContext } from './contextEngine';
+import { listify } from '../utils/listify';
 
 export function updateScenarioContextFromEvents(world: WorldState, events: DomainEvent[]): WorldState {
   return applyDomainEventsToWorldContext(world, events);
@@ -77,32 +78,32 @@ export function hardAvailable(
   const def = ctx.actionCatalog[intent.actionId];
   if (!def) return false;
 
-  const affs = scenario.affordances ?? [];
+  const affs = listify(scenario.affordances);
   if (!affs.length) {
     // Если affordances нет — ничего не режем
   } else {
-    const tags = agentLocationTags[intent.actorId] ?? [];
+    const tags = listify(agentLocationTags[intent.actorId]);
     const applicable = affs.filter(aff =>
       !aff.requiresLocationTags ||
-      aff.requiresLocationTags.every(t => tags.includes(t))
+      listify(aff.requiresLocationTags).every(t => tags.includes(t))
     );
     const effective = applicable.length
       ? applicable
-      : affs.filter(aff => !aff.requiresLocationTags);
+      : affs.filter(aff => listify(aff.requiresLocationTags).length === 0);
 
     if (effective.length) {
       const allowed = effective.some(aff =>
-        aff.allowedActions?.includes(intent.actionId)
+        listify(aff.allowedActions).includes(intent.actionId)
       );
       if (!allowed) return false;
     }
   }
 
   // стадия: белый / чёрный список
-  if (stage?.allowedActions && !stage.allowedActions.includes(intent.actionId)) {
+  if (stage?.allowedActions && !listify(stage.allowedActions).includes(intent.actionId)) {
     return false;
   }
-  if (stage?.forbiddenActions && stage.forbiddenActions.includes(intent.actionId)) {
+  if (stage?.forbiddenActions && listify(stage.forbiddenActions).includes(intent.actionId)) {
     return false;
   }
 
@@ -180,7 +181,7 @@ export function hardAvailable(
       case 'locationTagRequired': {
         const tag = gate.tag;
         const locTagsByAgent = w.contextEx?.agentLocationTags;
-        const tags = locTagsByAgent?.[intent.actorId] ?? [];
+        const tags = listify(locTagsByAgent?.[intent.actorId]);
         // Если у актёра нет нужного тега локации — действие недоступно
         if (!tags.includes(tag)) {
           return false;
@@ -218,7 +219,7 @@ export function hardAvailable(
         const loc = scenario.map.locations.find((l) => l.id === actorLocId);
         if (!loc) return false;
 
-        const tags = new Set(loc.tags ?? []);
+        const tags = new Set(listify(loc.tags));
 
         if (gatePred.requires && gatePred.requires.length > 0) {
             for (const t of gatePred.requires) {
@@ -245,7 +246,7 @@ function computeAgentLocationTags(
 ): string[] {
   const locId = ctx.locationOf[actorId];
   const loc = ctx.scenario.map.locations.find((item) => item.id === locId);
-  return loc?.tags ?? [];
+  return listify(loc?.tags);
 }
 
 /**

@@ -4,6 +4,7 @@
 
 
 import { WorldState, AnyEntity, CharacterEntity, SystemEpisode } from '../../types';
+import { listify } from '../utils/listify';
 
 export interface ObservationContext {
   tick: number;
@@ -55,7 +56,7 @@ export function recordEpisode(
   const avgDark = count > 0 ? totalDark / count : 0;
   const avgRisk = count > 0 ? totalRisk / count : 0;
 
-  const actors = ctx.actionsThisTick?.map(a => a.actorId) ?? [];
+  const actors = listify(ctx.actionsThisTick).map(a => a.actorId);
 
   const episode: SystemEpisode = {
     tick: ctx.tick,
@@ -73,7 +74,7 @@ export function recordEpisode(
   // Use type assertion or optional chaining on input, but since we return a new object 
   // matching the interface that includes systemEpisodes (per types.ts update), it's safer.
   // We need to ensure the property exists on the input type if we read it.
-  const episodes = (world.systemEpisodes ?? []).concat(episode);
+  const episodes = listify(world.systemEpisodes).concat(episode);
   const trimmed =
     episodes.length > maxEpisodes
       ? episodes.slice(episodes.length - maxEpisodes)

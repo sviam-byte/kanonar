@@ -1,6 +1,7 @@
 import type { AtomOverrideLayer } from '../context/overrides/types';
 import type { WorldState } from '../../types';
 import { buildGoalLabExplain } from './explain';
+import { listify } from '../utils/listify';
 
 type SceneDumpInput = {
   world: WorldState | null;
@@ -128,11 +129,11 @@ export function buildGoalLabSceneDumpV2(input: SceneDumpInput) {
       perspectiveId: perspectiveId ?? null,
       selectedLocationId: selectedLocationId ?? null,
       locationMode,
-      participantIds: participantIds ? participantIds.slice() : [],
+      participantIds: listify(participantIds).slice(),
     },
     inputs: {
       activeMapId: (activeMap as any)?.id ?? null,
-      selectedEventIds: Array.from(selectedEventIds ?? []),
+      selectedEventIds: listify(selectedEventIds),
       manualAtoms,
       atomOverridesLayer,
       affectOverrides,

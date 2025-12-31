@@ -6,6 +6,7 @@ import {
   PersonalEvent,
 } from '../types';
 import { defaultFemaleBody } from './body.presets';
+import { listify } from './utils/listify';
 
 export interface EncodedCharacterPayloadV1 {
   v: 'kanonar4-char-v1';
@@ -152,8 +153,8 @@ export function encodeCharacterToSnippet(
     vector_base: ch.vector_base,
     body: ch.body ?? defaultBody,
     identity: {
-      oaths: ch.oaths ?? ch.identity?.oaths ?? [],
-      sacred_set: ch.sacred_set ?? ch.identity?.sacred_set ?? [],
+      oaths: listify(ch.oaths).length ? listify(ch.oaths) : listify(ch.identity?.oaths),
+      sacred_set: listify(ch.sacred_set).length ? listify(ch.sacred_set) : listify(ch.identity?.sacred_set),
       taboos: ch.taboos,
       raw_identity: ch.identity ?? defaultIdentity,
     },
@@ -168,7 +169,7 @@ export function encodeCharacterToSnippet(
         competencies: ch.competencies
     },
     legacy: {
-      historicalEvents: ch.events ?? [],
+      historicalEvents: listify(ch.events),
     },
   };
 
@@ -239,10 +240,10 @@ export function decodeSnippetToCharacter(snippet: string): CharacterEntity {
     identity: {
       ...defaultIdentity,
       ...identityRaw,
-      oaths: payload.identity.oaths ?? identityRaw.oaths ?? [],
-      sacred_set: payload.identity.sacred_set ?? identityRaw.sacred_set ?? [],
+      oaths: listify(payload.identity.oaths).length ? listify(payload.identity.oaths) : listify(identityRaw.oaths),
+      sacred_set: listify(payload.identity.sacred_set).length ? listify(payload.identity.sacred_set) : listify(identityRaw.sacred_set),
     },
-    historicalEvents: payload.legacy?.historicalEvents ?? [],
+    historicalEvents: listify(payload.legacy?.historicalEvents),
     
     // Populate system blocks from payload if available, else defaults
     cognitive: { 

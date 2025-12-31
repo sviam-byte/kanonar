@@ -5,6 +5,7 @@ import { getCatalogTemplates } from '../../lib/context/catalog/catalogTemplates'
 import { AtomOverrideLayer } from '../../lib/context/overrides/types';
 import { ContextAtom } from '../../lib/context/v2/types';
 import { arr } from '../../lib/utils/arr';
+import { listify } from '../../lib/utils/listify';
 
 type Props = {
   layer: AtomOverrideLayer;
@@ -16,12 +17,7 @@ function now() { return Date.now(); }
 
 export const AtomTemplateCreator: React.FC<Props> = ({ layer, onChange, className }) => {
   const templates = useMemo(() => {
-    const next = getCatalogTemplates();
-    if (!Array.isArray(next)) {
-      console.error('Expected array, got', next);
-      return [];
-    }
-    return next;
+    return listify(getCatalogTemplates());
   }, []);
   const groups = useMemo(() => {
     const m = new Map<string, typeof templates>();
@@ -33,11 +29,7 @@ export const AtomTemplateCreator: React.FC<Props> = ({ layer, onChange, classNam
     const next = Array.from(m.entries())
       .map(([key, items]) => ({ key, items }))
       .sort((a, b) => a.key.localeCompare(b.key));
-    if (!Array.isArray(next)) {
-      console.error('Expected array, got', next);
-      return [];
-    }
-    return next;
+    return listify(next);
   }, [templates]);
 
   const first = templates[0];
@@ -85,9 +77,9 @@ export const AtomTemplateCreator: React.FC<Props> = ({ layer, onChange, classNam
             onChange={e => { setTemplateKey(e.target.value); resetArgs(e.target.value); }}
             className="px-2 py-2 rounded bg-canon-bg border border-canon-border text-sm w-full focus:outline-none focus:border-canon-accent"
           >
-            {groups.map(group => (
+            {listify(groups).map(group => (
               <optgroup key={group.key} label={group.key}>
-                {group.items.map(t => <option key={t.key} value={t.key}>{t.title}</option>)}
+                {listify(group.items).map(t => <option key={t.key} value={t.key}>{t.title}</option>)}
               </optgroup>
             ))}
           </select>
@@ -95,7 +87,7 @@ export const AtomTemplateCreator: React.FC<Props> = ({ layer, onChange, classNam
         </div>
 
         <div className="rounded border border-canon-border p-3 space-y-3 bg-canon-bg/30">
-          {template?.fields?.map(f => (
+          {listify(template?.fields).map(f => (
             <div key={f.key} className="space-y-1">
               <div className="text-xs text-canon-text-light font-bold">{f.label}</div>
               {f.type === 'number' ? (

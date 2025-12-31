@@ -1,6 +1,7 @@
 // /lib/social/roles.ts
 
 import { CharacterEntity } from '../../types';
+import { listify } from '../utils/listify';
 
 // --- TYPE DEFINITIONS ---
 
@@ -114,7 +115,7 @@ export function applyGlobalRoles(
   let phiMaxBoost = 0;
   const baseGoalBoosts: Record<string, number> = {};
 
-  for (const roleId of character.roles?.global ?? []) {
+  for (const roleId of listify(character.roles?.global)) {
     const effects = GLOBAL_ROLE_EFFECTS[roleId as GlobalRoleId];
     if (!effects) continue;
 

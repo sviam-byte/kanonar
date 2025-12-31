@@ -9,6 +9,7 @@ import { planForGoal } from '../context/Planner';
 import { effectiveAtomConfidence } from '../context/engine';
 import { OfferAtom, FactAtom } from '../context/types';
 import { isPlanActive, isPlanExhausted, advancePlanStep, failPlan } from '../planning/engine';
+import { listify } from '../utils/listify';
 
 // Сколько тиков предложение помощи считается "актуальным" для отказа.
 const HELP_OFFER_TTL_TICKS = 5;
@@ -93,7 +94,8 @@ export const listPossibleActions = (agent: AgentState, world: WorldState): Actio
 
     const stress = (agent.body?.acute?.stress ?? 0) / 100;
     const shame = agent.psych?.moral?.shame ?? 0;
-    const nAgents = world.agents?.length ?? 0;
+    const agents = listify(world.agents);
+    const nAgents = agents.length;
     const nowTick = world.tick ?? 0;
 
     // Filter actions
@@ -105,7 +107,7 @@ export const listPossibleActions = (agent: AgentState, world: WorldState): Actio
         
         // Special case for refuse_help: only if help was offered
         if (action.id === 'refuse_help') {
-            const hasRecentOffer = (world.helpOffers ?? []).some((offer) => {
+            const hasRecentOffer = listify(world.helpOffers).some((offer) => {
                 // Поля HelpOffer: fromId, toId, actionId, tick, kind.
                 if (offer.toId !== agent.entityId) return false;
 
@@ -115,7 +117,7 @@ export const listPossibleActions = (agent: AgentState, world: WorldState): Actio
                     return false;
                 }
 
-                const offerActor = world.agents.find(a => a.entityId === offer.fromId);
+                const offerActor = agents.find(a => a.entityId === offer.fromId);
                 if (!offerActor) return false;
                 
                 return true;

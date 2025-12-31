@@ -1,6 +1,7 @@
 
 import React from 'react';
 import { arr } from '../../lib/utils/arr';
+import { listify } from '../../lib/utils/listify';
 
 type SceneControl = {
   presetId: string;
@@ -20,7 +21,8 @@ type Props = {
 function clamp01(x: number) { return Math.max(0, Math.min(1, x)); }
 
 export const ScenePanel: React.FC<Props> = ({ control, presets, onChange }) => {
-  const preset = presets.find(p => (p.id ?? p.presetId) === control.presetId) || presets[0];
+  const presetList = listify(presets);
+  const preset = presetList.find(p => (p.id ?? p.presetId) === control.presetId) || presetList[0];
 
   const keysMetrics = ['crowd','hostility','chaos','urgency','scarcity','loss','novelty','resourceAccess'];
   const keysNorms = ['publicExposure','privacy','surveillance','normPressure','proceduralStrict'];
@@ -56,7 +58,7 @@ export const ScenePanel: React.FC<Props> = ({ control, presets, onChange }) => {
                 onChange={e => handlePresetChange(e.target.value)}
                 className="w-full px-2 py-2 rounded bg-canon-bg border border-canon-border text-xs focus:outline-none focus:border-canon-accent"
               >
-                {presets.map(p => {
+                {listify(presetList).map(p => {
                   const pid = (p.id ?? p.presetId) as string;
                   return <option key={pid} value={pid}>{p.title}</option>;
                 })}

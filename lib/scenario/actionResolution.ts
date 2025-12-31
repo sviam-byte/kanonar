@@ -13,6 +13,7 @@ import {
 import { evaluateNormGate } from '../context/normGate';
 import { resolveActionTokenToIds } from "../actions/catalog";
 import { getLocationForAgent, getLocationMapCell } from "../world/locations";
+import { listify } from '../utils/listify';
 
 function getLocationById(
   world: WorldState,
@@ -29,7 +30,7 @@ function getLocationTags(
 ): string[] {
   const loc = getLocationById(world, locationId);
   if (!loc) return [];
-  return loc.properties?.tags ?? [];
+  return listify(loc.properties?.tags);
 }
 
 function getActionMultiplier(
@@ -55,16 +56,17 @@ export function checkActionByNormsAndLocation(
   const loc = getLocationById(world, action.locationId);
   const locationTags = getLocationTags(world, action.locationId);
 
-  const phaseNorms = ctx.activePhase?.normOverrides ?? [];
+  const phaseNorms = listify(ctx.activePhase?.normOverrides);
   const allNorms = [...ctx.norms, ...phaseNorms];
+  const actionTags = listify(action.tags);
 
   const input: NormGateInput = {
     actorId: action.actorId,
     actionId: action.actionId,
-    actionTags: action.tags,
+    actionTags,
     locationId: action.locationId,
     locationTags,
-    roleIds: action.actorRoleIds ?? [],
+    roleIds: listify(action.actorRoleIds),
     phaseId: ctx.activePhase?.id,
     atoms: ctx.atoms,
     norms: allNorms,
@@ -80,15 +82,15 @@ export function checkActionByNormsAndLocation(
 
   // проверка affordances локации: whitelist/blacklist по actionId ИЛИ по tag
   if (loc && loc.affordances) {
-    const allowedTokens = (loc.affordances.allowedActions as (string[] | undefined)) ?? [];
-    const forbiddenTokens = (loc.affordances.forbiddenActions as (string[] | undefined)) ?? [];
+    const allowedTokens = listify(loc.affordances.allowedActions as (string[] | undefined));
+    const forbiddenTokens = listify(loc.affordances.forbiddenActions as (string[] | undefined));
 
     if (allowedTokens.length > 0) {
       const allowIds = new Set<string>();
       for (const token of allowedTokens) {
         for (const id of resolveActionTokenToIds(token)) allowIds.add(id);
       }
-      const ok = allowIds.has(action.actionId) || action.tags.some((t) => allowedTokens.includes(t));
+      const ok = allowIds.has(action.actionId) || actionTags.some((t) => allowedTokens.includes(t));
       if (!ok) {
         // не жёсткий запрет, но сильный штраф
         utilityMultiplier *= 0.1;
@@ -101,7 +103,7 @@ export function checkActionByNormsAndLocation(
         for (const id of resolveActionTokenToIds(token)) forbidIds.add(id);
       }
       const bad =
-        forbidIds.has(action.actionId) || action.tags.some((t) => forbiddenTokens.includes(t));
+        forbidIds.has(action.actionId) || actionTags.some((t) => forbiddenTokens.includes(t));
       if (bad) {
         // локация запретила действие жёстко: форсим hard forbid
         utilityMultiplier *= 0.01;
@@ -109,7 +111,7 @@ export function checkActionByNormsAndLocation(
           ...normRes,
           decision: "forbid",
           hard: true,
-          reasonIds: [...(normRes.reasonIds ?? []), "loc:forbidden_action"],
+          reasonIds: [...listify(normRes.reasonIds), "loc:forbidden_action"],
           sanctionScore: (normRes.sanctionScore ?? 0) + 10,
         };
       }
@@ -148,7 +150,7 @@ export function computeActionConsequences(
     locationId: action.locationId,
     actorId: action.actorId,
     targetId: action.targetId,
-    tags: ["action", ...(action.tags ?? [])],
+    tags: ["action", ...actionTags],
     domain: `action/${action.actionId}`,
     polarity: 0,
     intensity: 1,

@@ -8,6 +8,7 @@ import { normalizeAtom } from '../v2/infer';
 import { computeRelationshipLabels } from '../../relations/relationshipLabels';
 import { deriveRelationshipLabel } from '../../social/relationshipLabels';
 import { extractLocationAtoms } from '../sources/locationAtoms';
+import { listify } from '../../utils/listify';
 
 function clamp01(x: number): number {
   if (Number.isNaN(x)) return 0;
@@ -217,7 +218,7 @@ export function atomizeFrame(frame: AgentContextFrame, t: number, world?: WorldS
     add('location', 1, where.locationName ?? where.locationId, 'where');
   }
 
-  const tagsList: string[] = where?.locationTags ?? [];
+  const tagsList: string[] = listify(where?.locationTags);
   for (const tag of tagsList) {
     add('location_tag', 1, tag, 'where');
   }
@@ -309,7 +310,7 @@ export function atomizeFrame(frame: AgentContextFrame, t: number, world?: WorldS
   // ==================================================================================
   // 3. WHAT/WHO: Nearby Agents & Social Context
   // ==================================================================================
-  const nearby = frame.what?.nearbyAgents ?? [];
+  const nearby = listify(frame.what?.nearbyAgents);
   let woundedCount = 0;
 
   for (const a of nearby) {
@@ -457,8 +458,8 @@ export function atomizeFrame(frame: AgentContextFrame, t: number, world?: WorldS
       // Relations (Expanded)
       if (frame.tom.relations) {
         // --- ToM atoms (surface dyadic state into context atoms for GoalLab) ---
-        const rels = frame.tom?.relations ?? [];
-        const nearby = frame.what?.nearbyAgents ?? [];
+        const rels = listify(frame.tom?.relations);
+        const nearby = listify(frame.what?.nearbyAgents);
         const distMap = new Map<string, number>();
         for (const n of nearby as any[]) distMap.set(n.id, typeof n.distanceNorm === 'number' ? n.distanceNorm : 1);
         
@@ -525,7 +526,7 @@ export function atomizeFrame(frame: AgentContextFrame, t: number, world?: WorldS
         }
         
 
-        for (const rel of frame.tom.relations) {
+        for (const rel of listify(frame.tom.relations)) {
             const other = rel.targetId;
 
             // Role Tags

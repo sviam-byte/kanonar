@@ -18,6 +18,7 @@ import {
   EventEffects as NewEventEffects, 
   EventEpistemics as NewEventEpistemics 
 } from './types'; 
+import { listify } from '../utils/listify';
 
 export type UnifiedEventKind = 'social' | 'personal' | 'domain' | 'system';
 
@@ -83,13 +84,15 @@ export function buildUnifiedEventsView(params: {
 
   // 1. Social Events (Legacy)
   for (const ev of socialEvents) {
+    const socialTags = listify(ev.tags);
+    const socialObservers = listify(ev.epistemics?.observers);
     list.push({
       id: ev.entityId,
       kind: 'social',
       t: ev.t,
       label: ev.title || ev.domain,
       domain: ev.domain,
-      tags: ev.tags ?? [],
+      tags: socialTags,
       actorId: ev.actorId,
       targetId: ev.targetId,
       locationId: ev.locationId as LocationId | undefined,
@@ -101,7 +104,7 @@ export function buildUnifiedEventsView(params: {
       epistemics: ev.epistemics ? {
           ...ev.epistemics,
           // Polyfill new fields
-          witnesses: ev.epistemics.observers?.map(o => o.actorId) || [],
+          witnesses: socialObservers.map(o => o.actorId),
           visibility: 1
       } : undefined,
       structure: ev.structure,
@@ -114,16 +117,17 @@ export function buildUnifiedEventsView(params: {
 
   // 2. Personal Events (Legacy Bio)
   for (const ev of personalEvents) {
+    const participants = listify(ev.participants);
     list.push({
       id: ev.id,
       kind: 'personal',
       t: ev.t,
       label: ev.name,
       domain: ev.domain,
-      tags: ev.tags ?? [],
-      actorId: ev.participants?.[0],
+      tags: listify(ev.tags),
+      actorId: participants[0],
       locationId: ev.locationId as LocationId | undefined,
-      actorName: resolveName(characters, ev.participants?.[0]),
+      actorName: resolveName(characters, participants[0]),
       intensity: ev.intensity,
       valence: ev.valence,
       effects: ev.effects as Partial<UnifiedEventEffects>,
@@ -134,13 +138,14 @@ export function buildUnifiedEventsView(params: {
 
   // 3. Domain Events (Scenario Engine)
   for (const ev of domainEvents) {
+    const domainObservers = listify(ev.epistemics?.observers);
     list.push({
       id: ev.id,
       kind: 'domain',
       t: ev.t ?? 0,
       label: ev.actionId,
       domain: ev.ctx?.scenarioKind ?? 'scenario',
-      tags: ev.tags || [],
+      tags: listify(ev.tags),
       actorId: ev.actorId,
       targetId: ev.targetId,
       locationId: ev.locationId as LocationId | undefined,
@@ -152,7 +157,7 @@ export function buildUnifiedEventsView(params: {
       epistemics: ev.epistemics ? {
           ...ev.epistemics,
            // Polyfill new fields
-          witnesses: ev.epistemics.observers?.map(o => o.actorId) || [],
+          witnesses: domainObservers.map(o => o.actorId),
           visibility: 1
       } : undefined,
       raw: ev,
@@ -161,25 +166,28 @@ export function buildUnifiedEventsView(params: {
 
   // 4. System Events (New Event Layer)
   for (const ev of systemEvents) {
+      const actors = listify(ev.actors);
+      const targets = listify(ev.targets);
+      const witnesses = listify(ev.epistemics?.witnesses);
       list.push({
           id: ev.id,
           kind: 'system',
           t: ev.timestamp,
           label: ev.kind.toUpperCase(), 
           domain: ev.channel,
-          tags: ev.tags,
-          actorId: ev.actors[0],
-          targetId: ev.targets[0],
+          tags: listify(ev.tags),
+          actorId: actors[0],
+          targetId: targets[0],
           locationId: ev.locationId,
-          actorName: resolveName(characters, ev.actors[0]),
-          targetName: resolveName(characters, ev.targets[0]),
+          actorName: resolveName(characters, actors[0]),
+          targetName: resolveName(characters, targets[0]),
           intensity: 1.0, // Default for now
           importance: ev.importance,
           effects: ev.effects as Partial<UnifiedEventEffects>,
           epistemics: ev.epistemics ? {
               ...ev.epistemics,
               // Polyfill legacy fields
-              observers: ev.epistemics.witnesses?.map(w => ({ actorId: w, channel: 'visual' })) || []
+              observers: witnesses.map(w => ({ actorId: w, channel: 'visual' }))
           } : undefined,
           check: ev.check,
           causedBy: ev.causedBy,

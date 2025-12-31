@@ -1,5 +1,6 @@
 
 import type { WorldState, AgentState } from "../../types";
+import { listify } from '../../utils/listify';
 
 export interface LocationMapCell {
   x: number;
@@ -63,7 +64,7 @@ export function getCurrentLocation(world: WorldState): LocationWithMap | null {
 export function getLocationForAgent(world: WorldState, agent: AgentState): LocationWithMap | null {
   const locId = (agent as any).locationId as string | undefined;
   if (locId) {
-    const loc = (world.locations || []).find(
+    const loc = listify(world.locations).find(
       (l: any) => l.entityId === locId && l.map && Array.isArray(l.map.cells)
     ) as any;
     if (loc) return loc as LocationWithMap;
@@ -73,7 +74,7 @@ export function getLocationForAgent(world: WorldState, agent: AgentState): Locat
 
 export function indexLocationMapCells(loc: LocationWithMap): Map<string, LocationMapCell> {
   const map = new Map<string, LocationMapCell>();
-  const cells = loc.map?.cells ?? [];
+  const cells = listify(loc.map?.cells);
   for (const cell of cells as any[]) {
     if (!cell) continue;
     if (!Number.isFinite(cell.x) || !Number.isFinite(cell.y)) continue;

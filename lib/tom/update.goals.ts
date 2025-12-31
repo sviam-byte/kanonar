@@ -10,6 +10,7 @@ import { GOAL_DEFS } from "../goals/space";
 import { socialActions } from "../../data/actions-social";
 import { clamp01 } from "../util/safe";
 import { GOAL_ALPHA, EVENT_INTENSITY } from "../social/tuning";
+import { listify } from '../utils/listify';
 
 export interface GoalObservation {
   observerId: string; // i
@@ -106,7 +107,7 @@ export function updateTomGoals(
   goalIds.forEach((gId, idx) => {
     const def = (GOAL_DEFS as any)[gId];
     if (!def) return;
-    const allowed: string[] = def.allowedActions ?? [];
+    const allowed: string[] = listify(def.allowedActions);
     if (allowed.includes(actionId)) {
       // успех усиливает, провал — ослабляет
       const s = success; 

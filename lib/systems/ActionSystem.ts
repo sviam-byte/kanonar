@@ -12,6 +12,7 @@ import { ContextWorldState, FactAtom, OfferAtom, ContextSlice, CommitmentAtom, P
 import { socialActions } from '../../data/actions-social';
 import { registerCommitmentAtom } from '../context/engine';
 import { createPlanFromSteps } from '../planning/engine';
+import { listify } from '../utils/listify';
 
 const SIGNIFICANT_CHANGE_THRESHOLD = 0.1;
 
@@ -270,7 +271,7 @@ export const ActionSystem = {
         // Manage Help Offers: пишем и в WorldState, и в ContextAtoms
         if (intention.id === 'offer_private_support' || intention.id === 'offer_practical_help') {
             const worldState = world;
-            worldState.helpOffers = worldState.helpOffers ?? [];
+            worldState.helpOffers = listify(worldState.helpOffers);
 
             const newOffer: HelpOffer = {
                 id: `${worldState.tick}-${agent.entityId}-${intention.id}`,
@@ -338,7 +339,7 @@ export const ActionSystem = {
                         tick: world.tick ?? 0,
                         actionId: intention.id,
                     };
-                    if (!world.helpOffers) world.helpOffers = [];
+                    world.helpOffers = listify(world.helpOffers);
                     world.helpOffers.push(offer);
                 }
                 break;
@@ -347,7 +348,7 @@ export const ActionSystem = {
                 // Clean up offers to this agent in legacy system
                  const actorId = agent.entityId;
                  if (world.helpOffers && actorId) {
-                    world.helpOffers = world.helpOffers.filter(
+                    world.helpOffers = listify(world.helpOffers).filter(
                         (o) => o.toId !== actorId
                     );
                  }
@@ -571,18 +572,18 @@ export const ActionSystem = {
                 break;
             case 'propose_leadership':
                 if(target) {
-                    world.leadershipOffers = world.leadershipOffers ?? [];
+                    world.leadershipOffers = listify(world.leadershipOffers);
                     world.leadershipOffers.push({ from: agent.entityId, to: target.entityId, tick: world.tick });
                     description = `${agent.title} предлагает лидерство ${target.title}.`;
                     if(world.flags) world.flags['leadership_proposed'] = true;
                 }
                 break;
             case 'accept_leadership':
-                 const offer = (world.leadershipOffers ?? []).find(o => o.to === agent.entityId);
+                 const offer = listify(world.leadershipOffers).find(o => o.to === agent.entityId);
                  if (offer && world.leadership) {
                     world.leadership.currentLeaderId = agent.entityId;
                     description = `${agent.title} принимает предложение и становится лидером.`;
-                    world.leadershipOffers = world.leadershipOffers!.filter(o => o.from !== offer.from || o.to !== offer.to);
+                    world.leadershipOffers = listify(world.leadershipOffers).filter(o => o.from !== offer.from || o.to !== offer.to);
                     if(world.flags) world.flags['leadership_accepted'] = true;
                  } else {
                      success_val = 0.0;

@@ -11,7 +11,7 @@ import { computeProfileSummary } from './profileSummary';
 import { getNestedValue } from '../param-utils';
 import { inferLifeGoalsFromTraits } from '../life-goals'; // Correct import for infer function
 import { computeTraits } from '../traits'; // Correct import for computeTraits
-import { arr } from '../utils/arr';
+import { listify } from '../utils/listify';
 
 // Use the 9 Archetype Metrics as the "Type Space" for ToM
 export const GENERIC_TYPE_SPACE = Object.keys(ARCH_METRIC_NAMES);
@@ -266,7 +266,7 @@ export function convertAgentToDossier(agent: CharacterEntity | AgentState): Char
         arch_self: agent.identity.arch_self
       },
       tags: agent.tags,
-      history: arr(agent.historicalEvents).map(e => ({
+      history: listify(agent.historicalEvents).map(e => ({
         id: e.id,
         name: e.name,
         years_ago: e.years_ago ?? 0,
@@ -341,21 +341,21 @@ export function convertEventToObservation(event: SocialEventEntity, currentTick:
 }
 
 export function buildObservationsFromHistory(observer: CharacterDossier, targetId: string): Observation[] {
-    const hist = observer.raw_data?.history ?? [];
+    const hist = listify(observer.raw_data?.history);
     const obs: Observation[] = [];
     let t = -hist.length; 
 
     const sorted = [...hist].sort((a, b) => b.years_ago - a.years_ago);
 
     for (const e of sorted) {
-        if (!e.participants?.includes(targetId)) continue;
+        if (!listify(e.participants).includes(targetId)) continue;
         
         const intensity = Math.max(0, Math.min(1, e.intensity ?? 0.5));
         const valence = Math.max(-1, Math.min(1, e.valence ?? 0));
         
         let kind: Observation['kind'] = valence >= 0 ? 'help' : 'harm';
         
-        const tags = e.tags || [];
+        const tags = listify(e.tags);
         if (tags.includes('betrayal')) kind = 'betray';
         else if (tags.includes('support') || tags.includes('bond_formed')) kind = 'support';
         else if (tags.includes('oath')) kind = 'promise';

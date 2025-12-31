@@ -2,12 +2,14 @@
 import React, { useMemo } from 'react';
 import { ContextAtom } from '../../lib/context/v2/types';
 import { MetricBar } from '../tom/MetricBar';
+import { listify } from '../../lib/utils/listify';
 
 export const ThreatPanel: React.FC<{ atoms: ContextAtom[] }> = ({ atoms }) => {
   const data = useMemo(() => {
-    const threatFinal = atoms.find(a => String(a.id).startsWith(`threat:final`))?.magnitude ?? 0;
-    const channels = atoms.filter(a => String(a.id).startsWith('threat:ch:')).sort((a,b) => (b.magnitude||0) - (a.magnitude||0));
-    return { threatFinal, channels: Array.isArray(channels) ? channels : [] };
+    const atomList = listify(atoms);
+    const threatFinal = atomList.find(a => String(a.id).startsWith(`threat:final`))?.magnitude ?? 0;
+    const channels = atomList.filter(a => String(a.id).startsWith('threat:ch:')).sort((a,b) => (b.magnitude||0) - (a.magnitude||0));
+    return { threatFinal, channels: listify(channels) };
   }, [atoms]);
 
   return (
@@ -20,7 +22,7 @@ export const ThreatPanel: React.FC<{ atoms: ContextAtom[] }> = ({ atoms }) => {
        <div className="space-y-4">
            <h4 className="text-sm font-semibold text-canon-text-light">Threat Channels</h4>
            {data.channels.length === 0 && <div className="text-xs italic text-canon-text-light">No active threat channels.</div>}
-           {data.channels.map(ch => (
+           {listify(data.channels).map(ch => (
                <div key={ch.id} className="p-2 border border-canon-border/30 rounded bg-canon-bg/30">
                    <MetricBar label={ch.label || ch.id} value={ch.magnitude ?? 0} />
                    <div className="text-[10px] text-canon-text-light font-mono mt-1">{ch.id}</div>
