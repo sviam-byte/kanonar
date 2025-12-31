@@ -2,8 +2,7 @@
 // components/locations/LocationVectorMap.tsx
 
 import React, { useMemo } from 'react';
-import { LocationMap, LocationMapCell, LocationMapExit, SvgShape } from '../../types';
-import { listify } from '../../lib/utils/listify';
+import { LocationMap, SvgShape } from '../../types';
 
 interface Props {
     map: LocationMap;
@@ -26,25 +25,22 @@ const renderSvgShape = (shape: SvgShape, keyPrefix: string): React.ReactNode => 
     return (
         <Tag key={keyPrefix} {...props}>
             {shape.content}
-            {listify<SvgShape>((shape as any).children).map((child, i) =>
-                renderSvgShape(child, `${keyPrefix}-${i}`)
-            )}
+            {(Array.isArray((shape as any).children) ? (shape as any).children : [])
+                .map((child: any, i: number) => renderSvgShape(child, `${keyPrefix}-${i}`))}
         </Tag>
     );
 };
 
 export const LocationVectorMap: React.FC<Props> = ({ map, showGrid = true, scale = 30, highlightCells = [], onCellClick }) => {
-    // scene import/export может превратить массивы в объекты — не падаем на этом.
-    const width = Number((map as any)?.width) || 1;
-    const height = Number((map as any)?.height) || 1;
-    const visuals = useMemo(() => listify<SvgShape>((map as any)?.visuals).filter(Boolean), [map]);
-    const exits = useMemo(() => listify<LocationMapExit>((map as any)?.exits).filter(Boolean), [map]);
-    const cells = useMemo(() => listify<LocationMapCell>((map as any)?.cells).filter(Boolean), [map]);
-    const safeHighlights = useMemo(() => listify<any>(highlightCells).filter(Boolean), [highlightCells]);
+    const { width, height, visuals, cells, exits } = map;
+    const safeCells = Array.isArray(cells) ? cells : [];
+    const safeHighlights = Array.isArray(highlightCells) ? highlightCells : [];
+    const safeVisuals = Array.isArray(visuals) ? visuals : [];
+    const safeExits = Array.isArray(exits) ? exits : [];
 
     // Grid Overlay - Always render interactive layer if onCellClick is present
     const gridOverlay = useMemo(() => {
-        return cells.map((cell) => {
+        return safeCells.map((cell) => {
             const elevation = cell.elevation || 0;
             const isWalkable = cell.walkable;
 
@@ -139,7 +135,7 @@ export const LocationVectorMap: React.FC<Props> = ({ map, showGrid = true, scale
                 </div>
             );
         });
-    }, [cells, showGrid, scale, onCellClick]);
+    }, [safeCells, showGrid, scale, onCellClick]);
 
     const highlightOverlay = useMemo(() => {
         return safeHighlights.map((h, i) => {
@@ -181,9 +177,9 @@ export const LocationVectorMap: React.FC<Props> = ({ map, showGrid = true, scale
                 preserveAspectRatio="none"
                 className="absolute inset-0 z-0 pointer-events-none"
             >
-                {visuals.map((shape, i) => renderSvgShape(shape, `vec-${i}`))}
+                {safeVisuals.map((shape, i) => renderSvgShape(shape, `vec-${i}`))}
                 
-                {exits.map((exit, i) => (
+                {safeExits.map((exit, i) => (
                     <g key={`exit-${i}`} transform={`translate(${exit.x}, ${exit.y})`}>
                         <rect x="0.1" y="0.1" width="0.8" height="0.8" fill="none" stroke="#00aaff" strokeWidth="0.05" strokeDasharray="0.1 0.05" rx="0.1" />
                         <text x="0.5" y="0.6" fontSize="0.25" fill="#00aaff" textAnchor="middle" style={{ pointerEvents: 'none', fontWeight: 'bold' }}>EXIT</text>

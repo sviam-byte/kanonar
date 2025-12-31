@@ -15,6 +15,7 @@ interface MapViewerProps {
 export const MapViewer: React.FC<MapViewerProps> = ({ map, onCellClick, highlights, isEditor, onMapChange }) => {
     const [scale, setScale] = useState(1);
     const containerRef = useRef<HTMLDivElement>(null);
+    const safeHighlights = Array.isArray(highlights) ? highlights : [];
     
     // Auto-fit on mount/resize
     useEffect(() => {
@@ -71,11 +72,11 @@ export const MapViewer: React.FC<MapViewerProps> = ({ map, onCellClick, highligh
                          <div className="relative">
                             <LocationMapEditor map={map} onChange={onMapChange} cellSize={32} />
                             <div className="absolute inset-0 pointer-events-none">
-                                <LocationVectorMap map={map} showGrid={false} scale={32} highlightCells={highlights} />
+                                <LocationVectorMap map={map} showGrid={false} scale={32} highlightCells={safeHighlights} />
                             </div>
                          </div>
                      ) : (
-                         <LocationVectorMap map={map} showGrid={true} scale={32} highlightCells={highlights} onCellClick={onCellClick} />
+                         <LocationVectorMap map={map} showGrid={true} scale={32} highlightCells={safeHighlights} onCellClick={onCellClick} />
                      )}
                 </div>
             </div>
