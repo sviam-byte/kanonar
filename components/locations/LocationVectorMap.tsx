@@ -3,6 +3,7 @@
 
 import React, { useMemo } from 'react';
 import { LocationMap, SvgShape } from '../../types';
+import { arr } from '../../lib/utils/arr';
 
 interface Props {
     map: LocationMap;
@@ -17,7 +18,12 @@ const renderSvgShape = (shape: SvgShape, keyPrefix: string): React.ReactNode => 
     
     // Convert hyphenated attributes to camelCase for React
     const props: any = {};
-    for (const [k, v] of Object.entries(shape.attrs)) {
+    const attrs = (shape as any)?.attrs;
+    const entries =
+      attrs && typeof attrs === 'object'
+        ? Object.entries(attrs as Record<string, any>)
+        : [];
+    for (const [k, v] of entries) {
         const camelKey = k.replace(/-([a-z])/g, (g) => g[1].toUpperCase());
         props[camelKey] = v;
     }
@@ -25,22 +31,21 @@ const renderSvgShape = (shape: SvgShape, keyPrefix: string): React.ReactNode => 
     return (
         <Tag key={keyPrefix} {...props}>
             {shape.content}
-            {(Array.isArray((shape as any).children) ? (shape as any).children : [])
-                .map((child: any, i: number) => renderSvgShape(child, `${keyPrefix}-${i}`))}
+            {arr((shape as any).children)
+                .filter(Boolean)
+                .map((child, i) => renderSvgShape(child as any, `${keyPrefix}-${i}`))}
         </Tag>
     );
 };
 
 export const LocationVectorMap: React.FC<Props> = ({ map, showGrid = true, scale = 30, highlightCells = [], onCellClick }) => {
     const { width, height, visuals, cells, exits } = map;
-    const safeCells = Array.isArray(cells) ? cells : [];
-    const safeHighlights = Array.isArray(highlightCells) ? highlightCells : [];
-    const safeVisuals = Array.isArray(visuals) ? visuals : [];
-    const safeExits = Array.isArray(exits) ? exits : [];
 
     // Grid Overlay - Always render interactive layer if onCellClick is present
     const gridOverlay = useMemo(() => {
-        return safeCells.map((cell) => {
+        return arr(cells)
+            .filter(Boolean)
+            .map((cell: any) => {
             const elevation = cell.elevation || 0;
             const isWalkable = cell.walkable;
 
@@ -135,10 +140,12 @@ export const LocationVectorMap: React.FC<Props> = ({ map, showGrid = true, scale
                 </div>
             );
         });
-    }, [safeCells, showGrid, scale, onCellClick]);
+    }, [cells, showGrid, scale, onCellClick]);
 
     const highlightOverlay = useMemo(() => {
-        return safeHighlights.map((h, i) => {
+        return arr(highlightCells)
+            .filter(Boolean)
+            .map((h: any, i: number) => {
             if (!h) return null;
             // Apply scale multiplier for body size (default 0.6)
             const sizeMultiplier = h.size || 0.6; 
@@ -162,7 +169,7 @@ export const LocationVectorMap: React.FC<Props> = ({ map, showGrid = true, scale
                 />
             );
         });
-    }, [safeHighlights, scale]);
+    }, [highlightCells, scale]);
 
     return (
         <div 
@@ -177,9 +184,13 @@ export const LocationVectorMap: React.FC<Props> = ({ map, showGrid = true, scale
                 preserveAspectRatio="none"
                 className="absolute inset-0 z-0 pointer-events-none"
             >
-                {safeVisuals.map((shape, i) => renderSvgShape(shape, `vec-${i}`))}
+                {arr(visuals)
+                    .filter(Boolean)
+                    .map((shape: any, i: number) => renderSvgShape(shape, `vec-${i}`))}
                 
-                {safeExits.map((exit, i) => (
+                {arr(exits)
+                    .filter(Boolean)
+                    .map((exit: any, i: number) => (
                     <g key={`exit-${i}`} transform={`translate(${exit.x}, ${exit.y})`}>
                         <rect x="0.1" y="0.1" width="0.8" height="0.8" fill="none" stroke="#00aaff" strokeWidth="0.05" strokeDasharray="0.1 0.05" rx="0.1" />
                         <text x="0.5" y="0.6" fontSize="0.25" fill="#00aaff" textAnchor="middle" style={{ pointerEvents: 'none', fontWeight: 'bold' }}>EXIT</text>
