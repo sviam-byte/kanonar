@@ -10,7 +10,7 @@ import { TEST_SCENES, ScenePreset } from '../../data/presets/scenes';
 import { CONTEXT_ATOM_KIND_CATALOG, DEFAULT_MANUAL_KINDS } from '../../lib/context/v2/catalog';
 import { ModsPanel } from './ModsPanel'; 
 import { ScenePanel } from './ScenePanel';
-import { arr } from '../../lib/utils/arr';
+import { listify } from '../../lib/utils/listify';
 
 interface Props {
   allCharacters: CharacterEntity[];
@@ -96,6 +96,14 @@ export const GoalLabControls: React.FC<Props> = ({
   
   const [selectedActorToAdd, setSelectedActorToAdd] = React.useState<string>('');
   const [activeTab, setActiveTab] = React.useState<'events' | 'affect' | 'manual' | 'emotions' | 'scenes' | 'sim' | 'mods' | 'scene'>('scenes');
+  const characters = listify(allCharacters);
+  const locations = listify(allLocations);
+  const events = listify(allEvents);
+  const participants = listify(participantIds);
+  const presets = listify(scenePresets);
+  const nearby = listify(nearbyActors);
+  const manual = listify(manualAtoms);
+  const computed = listify(computedAtoms);
   
   // Custom atom form state
   const [customAtomKind, setCustomAtomKind] = React.useState<ContextAtomKind>('threat');
@@ -119,8 +127,8 @@ export const GoalLabControls: React.FC<Props> = ({
 
   const handleSliderChange = (kind: ContextAtomKind, val: number, id?: string) => {
       const atomId = id || `manual:${kind}`;
-      const existingIdx = manualAtoms.findIndex(a => a.id === atomId);
-      let newAtoms = [...manualAtoms];
+      const existingIdx = manual.findIndex(a => a.id === atomId);
+      let newAtoms = [...manual];
       
       if (val === 0 && !id) { // Only remove if it's a quick slider and 0
           if (existingIdx >= 0) newAtoms.splice(existingIdx, 1);
@@ -130,7 +138,7 @@ export const GoalLabControls: React.FC<Props> = ({
               kind,
               source: 'manual',
               magnitude: val,
-              label: manualAtoms[existingIdx]?.label || customAtomLabel || `Manual ${kind}`
+              label: manual[existingIdx]?.label || customAtomLabel || `Manual ${kind}`
           };
           if (existingIdx >= 0) newAtoms[existingIdx] = atom;
           else newAtoms.push(atom);
@@ -139,11 +147,11 @@ export const GoalLabControls: React.FC<Props> = ({
   };
   
   const handleRemoveAtom = (id: string) => {
-      onChangeManualAtoms(manualAtoms.filter(a => a.id !== id));
+      onChangeManualAtoms(manual.filter(a => a.id !== id));
   };
   
   const getManualValue = (kind: ContextAtomKind) => {
-      return manualAtoms.find(a => a.kind === kind && a.source === 'manual')?.magnitude ?? 0;
+      return manual.find(a => a.kind === kind && a.source === 'manual')?.magnitude ?? 0;
   };
   
   const handleAddCustomAtom = () => {
@@ -155,7 +163,7 @@ export const GoalLabControls: React.FC<Props> = ({
           magnitude: 0.5,
           label: customAtomLabel || customAtomKind
       };
-      onChangeManualAtoms([...manualAtoms, atom]);
+      onChangeManualAtoms([...manual, atom]);
       setCustomAtomLabel('');
   };
 
@@ -173,7 +181,7 @@ export const GoalLabControls: React.FC<Props> = ({
       }
 
       // Fallback: old behavior via nearbyActors
-      const char = allCharacters.find(c => c.entityId === selectedActorToAdd);
+      const char = characters.find(c => c.entityId === selectedActorToAdd);
       if (!char) return;
 
       const newActor: LocalActorRef = {
@@ -186,8 +194,8 @@ export const GoalLabControls: React.FC<Props> = ({
       };
       
       // We append to nearbyActors because that triggers the injection logic in parent
-      if (!nearbyActors.some(a => a.id === newActor.id)) {
-          onNearbyActorsChange([...nearbyActors, newActor]);
+      if (!nearby.some(a => a.id === newActor.id)) {
+          onNearbyActorsChange([...nearby, newActor]);
       }
       setSelectedActorToAdd('');
   };
@@ -202,7 +210,7 @@ export const GoalLabControls: React.FC<Props> = ({
           onRemoveParticipant(id);
           return;
       }
-      onNearbyActorsChange(nearbyActors.filter(a => a.id !== id));
+      onNearbyActorsChange(nearby.filter(a => a.id !== id));
   };
   
   const handleLocationSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -216,8 +224,8 @@ export const GoalLabControls: React.FC<Props> = ({
   const toggleEditMode = () => {
       if (locationMode === 'custom') {
            onLocationModeChange('preset');
-           if (!selectedLocationId && allLocations.length > 0) {
-               onSelectLocation(allLocations[0].entityId);
+           if (!selectedLocationId && locations.length > 0) {
+               onSelectLocation(locations[0].entityId);
            }
       } else {
            onLocationModeChange('custom');
@@ -229,7 +237,7 @@ export const GoalLabControls: React.FC<Props> = ({
   };
 
   const selfComputed = React.useMemo(() => {
-    const atoms = arr(computedAtoms);
+    const atoms = computed;
     const sid = selectedAgentId;
     const metric = (a: any) => a.magnitude ?? (a as any)?.m ?? 0;
     const app = atoms.filter(a => a.id?.startsWith('app:') && a.id.endsWith(`:${sid}`));
@@ -246,7 +254,7 @@ export const GoalLabControls: React.FC<Props> = ({
         arousal: get(`emo:arousal:${sid}`, 0),
       },
     };
-  }, [computedAtoms, selectedAgentId]);
+  }, [computed, selectedAgentId]);
 
   const clearAffectOverrides = () => onAffectOverridesChange({});
 
@@ -279,7 +287,7 @@ export const GoalLabControls: React.FC<Props> = ({
   const filteredAtomKinds = CONTEXT_ATOM_KIND_CATALOG.filter(k => k.includes(customAtomSearch));
   
   const sceneIds = React.useMemo(() => {
-      const ids = new Set<string>(arr(participantIds));
+      const ids = new Set<string>(participants);
       // страховка: active/perspective всегда должны быть в списке,
       // но НЕ тащим world.agents, чтобы сцена была единственным источником правды.
       if (selectedAgentId) ids.add(selectedAgentId);
@@ -290,12 +298,12 @@ export const GoalLabControls: React.FC<Props> = ({
         return [];
       }
       return next;
-  }, [participantIds, selectedAgentId, perspectiveAgentId]);
+  }, [participants, selectedAgentId, perspectiveAgentId]);
 
   // Calculate who is in scene but not the active agent
   const activeSceneActors = React.useMemo(() => {
       const next = sceneIds.map(id => {
-          const char = allCharacters.find(c => c.entityId === id);
+          const char = characters.find(c => c.entityId === id);
           return { id, label: char?.title || id };
       });
       if (!Array.isArray(next)) {
@@ -303,11 +311,11 @@ export const GoalLabControls: React.FC<Props> = ({
         return [];
       }
       return next;
-  }, [sceneIds, allCharacters]);
+  }, [sceneIds, characters]);
 
   // Main agent dropdown: Show only current scene/world participants
   const activeAgentOptions = React.useMemo(() => {
-      const next = allCharacters
+      const next = characters
           .filter(c => sceneIds.includes(c.entityId))
           .map(c => ({ ...c, inScene: true }));
       if (!Array.isArray(next)) {
@@ -315,17 +323,17 @@ export const GoalLabControls: React.FC<Props> = ({
         return [];
       }
       return next;
-  }, [allCharacters, sceneIds]);
+  }, [characters, sceneIds]);
   
   // Add Character Dropdown: exclude those already in scene
   const availableToAdd = React.useMemo(() => {
-      const next = allCharacters.filter(c => !sceneIds.includes(c.entityId));
+      const next = characters.filter(c => !sceneIds.includes(c.entityId));
       if (!Array.isArray(next)) {
         console.error('Expected array, got', next);
         return [];
       }
       return next;
-  }, [allCharacters, sceneIds]);
+  }, [characters, sceneIds]);
 
   return (
     <div className="flex flex-col h-full bg-canon-bg border-t border-canon-border">
@@ -344,7 +352,7 @@ export const GoalLabControls: React.FC<Props> = ({
 
           <div className="space-y-1">
             {sceneIds.map(id => {
-              const ch = allCharacters.find(c => c.entityId === id);
+              const ch = characters.find(c => c.entityId === id);
               const label = ch?.title ?? id;
 
               const isActive = id === selectedAgentId;
@@ -451,7 +459,7 @@ export const GoalLabControls: React.FC<Props> = ({
                 disabled={locationMode === 'custom'}
             >
                 <option value="">[ Custom / Default ]</option>
-                {allLocations.map(l => <option key={l.entityId} value={l.entityId}>{l.title}</option>)}
+                {locations.map(l => <option key={l.entityId} value={l.entityId}>{l.title}</option>)}
             </select>
             {locationMode === 'custom' && <div className="text-[9px] text-canon-text-light italic mt-1 text-center">Map Editor Active</div>}
       </div>
@@ -544,7 +552,7 @@ export const GoalLabControls: React.FC<Props> = ({
         {activeTab === 'scene' && sceneControl && onSceneControlChange && (
             <ScenePanel 
                 control={sceneControl} 
-                presets={arr(scenePresets)} 
+                presets={presets} 
                 onChange={onSceneControlChange} 
             />
         )}
@@ -621,7 +629,7 @@ export const GoalLabControls: React.FC<Props> = ({
                     </h3>
                     <span className="text-[10px] bg-canon-accent/10 text-canon-accent px-1.5 rounded">{selectedEventIds.size}</span>
                 </div>
-                {allEvents.map(ev => {
+                {events.map(ev => {
                     const isActive = selectedEventIds.has(ev.id);
                     return (
                         <label 
@@ -651,7 +659,7 @@ export const GoalLabControls: React.FC<Props> = ({
                         </label>
                     )
                 })}
-                {allEvents.length === 0 && <div className="text-xs italic text-canon-text-light text-center py-10">No events found.</div>}
+                {events.length === 0 && <div className="text-xs italic text-canon-text-light text-center py-10">No events found.</div>}
             </div>
         )}
 
@@ -822,14 +830,14 @@ export const GoalLabControls: React.FC<Props> = ({
                  </div>
                  
                  {/* Active Manual List */}
-                 {manualAtoms.length > 0 && (
+                 {manual.length > 0 && (
                      <div className="border-t border-canon-border/30 pt-3">
                         <div className="flex justify-between items-center mb-2">
                             <h3 className="text-xs font-bold text-canon-text uppercase tracking-wider">Active Manual</h3>
                             <button type="button" onClick={() => onChangeManualAtoms([])} className="text-[9px] text-red-400 hover:underline">Clear All</button>
                         </div>
                         <div className="space-y-2">
-                            {manualAtoms.map(atom => (
+                            {manual.map(atom => (
                                 <div key={atom.id} className="bg-canon-bg/30 p-2 rounded border border-canon-border/20">
                                     <div className="flex justify-between text-[10px] mb-1">
                                         <span className="font-bold truncate">{atom.label}</span>
@@ -866,8 +874,8 @@ export const GoalLabControls: React.FC<Props> = ({
               <div className="text-[11px] font-bold mb-2">Perspective (для кого считаем)</div>
 
               <div className="flex flex-wrap gap-1">
-                {arr(participantIds).map(id => {
-                  const label = allCharacters.find(c => c.entityId === id)?.title || id;
+                {participants.map(id => {
+                  const label = characters.find(c => c.entityId === id)?.title || id;
                   return (
                     <button
                       key={id}
@@ -907,7 +915,7 @@ export const GoalLabControls: React.FC<Props> = ({
                 </button>
             </div>
             <div className="text-[9px] text-canon-text-light mt-1">
-              participantIds: {(participantIds?.length ?? 0)} | nearbyActors: {nearbyActors.length}
+              participantIds: {participants.length} | nearbyActors: {nearby.length}
             </div>
             
             <div className="space-y-1">
