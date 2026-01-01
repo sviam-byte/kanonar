@@ -30,6 +30,34 @@ function clamp01(x: number) {
   return Math.max(0, Math.min(1, x));
 }
 
+function makeBaseId(outId: string): string {
+  if (outId.startsWith('tom:dyad:')) return outId.replace(/^tom:dyad:/, 'tom:base:dyad:');
+  if (outId.startsWith('tom:')) return outId.replace(/^tom:/, 'tom:base:');
+  return `tom:base:${outId}`;
+}
+
+function ensureBaseCopyAtom(lookupAtoms: ContextAtom[], outAtoms: ContextAtom[], outId: string, sourceNote: string): string {
+  const baseId = makeBaseId(outId);
+  if (lookupAtoms.some(a => a && a.id === baseId) || outAtoms.some(a => a && a.id === baseId)) return baseId;
+  const current = lookupAtoms.find(a => a && a.id === outId);
+  if (!current) return baseId;
+
+  outAtoms.push({
+    ...current,
+    id: baseId,
+    origin: 'derived',
+    source: `base_copy:${sourceNote}`,
+    label: `${(current as any).label ?? outId} (base)`,
+    trace: {
+      usedAtomIds: [outId],
+      notes: ['base copy before override', sourceNote],
+      parts: { from: outId }
+    },
+  } as any);
+
+  return baseId;
+}
+
 function sanitizeUsedAtomIds(outId: string, usedAtomIds: unknown): string[] {
   if (!Array.isArray(usedAtomIds)) return [];
   const out: string[] = [];
@@ -267,7 +295,7 @@ export function applyRelationPriorsToDyads(
       label: `${metric} (rel-prior)`,
       trace: {
         usedAtomIds: sanitizeUsedAtomIds(outId, [
-          d.id, // may equal outId in overlay patterns; sanitize removes it
+          ensureBaseCopyAtom([...atoms, ...out], out, outId, 'tom_rel_priors'),
           `rel:state:${selfId}:${otherId}:closeness`,
           `rel:state:${selfId}:${otherId}:trust`,
           `rel:state:${selfId}:${otherId}:hostility`,
