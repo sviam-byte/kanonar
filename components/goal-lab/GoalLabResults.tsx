@@ -438,6 +438,9 @@ export const GoalLabResults: React.FC<Props> = ({
                 const atoms = Array.isArray(f?.atoms) ? f.atoms : [];
                 const addedIds = Array.isArray(f?.atomsAddedIds) ? f.atomsAddedIds : [];
                 const added = addedIds.length ? atoms.filter((a: any) => addedIds.includes(String(a?.id))) : [];
+                const overriddenIds = Array.isArray((f as any)?.artifacts?.overriddenIds)
+                    ? ((f as any).artifacts.overriddenIds as any[]).map((x: any) => String(x)).filter(Boolean)
+                    : [];
                 out.push({
                     id,
                     label,
@@ -447,8 +450,10 @@ export const GoalLabResults: React.FC<Props> = ({
                     added: i === 0 ? undefined : added,
                     changed: [],
                     removedIds: [],
+                    artifacts: (f as any)?.artifacts ?? null,
                     notes: [
                         ...(Array.isArray(f?.warnings) ? f.warnings : []),
+                        overriddenIds.length ? `overrides=${overriddenIds.length}` : '',
                         f?.stats
                             ? `atoms=${f.stats.atomCount}, +${f.stats.addedCount}, missingCode=${f.stats.missingCodeCount}, missingTraceDerived=${f.stats.missingTraceDerivedCount}`
                             : ''
