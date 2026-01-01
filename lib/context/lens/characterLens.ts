@@ -3,6 +3,20 @@ import { normalizeAtom } from '../v2/infer';
 
 const clamp01 = (x: number) => (Number.isFinite(x) ? Math.max(0, Math.min(1, x)) : 0);
 
+function sanitizeUsedAtomIds(outId: string, usedAtomIds: unknown): string[] {
+  if (!Array.isArray(usedAtomIds)) return [];
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const x of usedAtomIds) {
+    if (typeof x !== 'string' || x.length === 0) continue;
+    if (x === outId) continue; // critical: no self-cycles
+    if (seen.has(x)) continue;
+    seen.add(x);
+    out.push(x);
+  }
+  return out;
+}
+
 function getMag(atoms: ContextAtom[], id: string, fb = 0) {
   const a = atoms.find(x => x.id === id);
   const m = (a as any)?.magnitude;
@@ -10,7 +24,6 @@ function getMag(atoms: ContextAtom[], id: string, fb = 0) {
 }
 
 function mkDerived(id: string, selfId: string, magnitude: number, usedAtomIds: string[], parts: any, tags: string[]) {
-  const used = (usedAtomIds || []).filter(x => typeof x === 'string' && x.length > 0 && x !== id);
   return normalizeAtom({
     id,
     ns: 'ctx' as any,
@@ -23,12 +36,11 @@ function mkDerived(id: string, selfId: string, magnitude: number, usedAtomIds: s
     target: selfId,
     tags,
     label: `lens:${id.split(':').slice(0, 2).join(':')}:${Math.round(clamp01(magnitude) * 100)}%`,
-    trace: { usedAtomIds: used, notes: ['subjective lens override'], parts },
+    trace: { usedAtomIds: sanitizeUsedAtomIds(id, usedAtomIds), notes: ['subjective lens override'], parts },
   } as any);
 }
 
 function mkDyadDerived(id: string, selfId: string, otherId: string, metric: string, magnitude: number, usedAtomIds: string[], parts: any) {
-  const used = (usedAtomIds || []).filter(x => typeof x === 'string' && x.length > 0 && x !== id);
   return normalizeAtom({
     id,
     ns: 'tom' as any,
@@ -41,7 +53,7 @@ function mkDyadDerived(id: string, selfId: string, otherId: string, metric: stri
     target: otherId,
     tags: ['tom', 'dyad', metric, 'lens'],
     label: `lens.${metric}:${Math.round(clamp01(magnitude) * 100)}%`,
-    trace: { usedAtomIds: used, notes: ['dyad lens'], parts },
+    trace: { usedAtomIds: sanitizeUsedAtomIds(id, usedAtomIds), notes: ['dyad lens'], parts },
   } as any);
 }
 

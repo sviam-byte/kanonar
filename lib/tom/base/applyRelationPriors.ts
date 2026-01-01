@@ -30,6 +30,20 @@ function clamp01(x: number) {
   return Math.max(0, Math.min(1, x));
 }
 
+function sanitizeUsedAtomIds(outId: string, usedAtomIds: unknown): string[] {
+  if (!Array.isArray(usedAtomIds)) return [];
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const x of usedAtomIds) {
+    if (typeof x !== 'string' || x.length === 0) continue;
+    if (x === outId) continue; // critical: no self-cycles
+    if (seen.has(x)) continue;
+    seen.add(x);
+    out.push(x);
+  }
+  return out;
+}
+
 function getMag(atoms: ContextAtom[], id: string, fallback = 0) {
   const a = atoms.find(x => x.id === id);
   const m = a?.magnitude;
@@ -170,6 +184,7 @@ export function applyRelationPriorsToDyads(
 
   const dyads = [...atoms, ...out].filter(a => typeof a.id === 'string' && a.id.startsWith(`tom:dyad:${selfId}:`));
   for (const d of dyads) {
+    const outId = d.id;
     const parsed = parseDyadId(d.id);
     if (!parsed) continue;
 
@@ -251,7 +266,8 @@ export function applyRelationPriorsToDyads(
       tags: Array.from(new Set([...(d.tags || []), 'prior', 'rel'])),
       label: `${metric} (rel-prior)`,
       trace: {
-        usedAtomIds: [
+        usedAtomIds: sanitizeUsedAtomIds(outId, [
+          d.id, // may equal outId in overlay patterns; sanitize removes it
           `rel:state:${selfId}:${otherId}:closeness`,
           `rel:state:${selfId}:${otherId}:trust`,
           `rel:state:${selfId}:${otherId}:hostility`,
@@ -262,7 +278,7 @@ export function applyRelationPriorsToDyads(
           `rel:base:${selfId}:${otherId}:hostility`,
           `rel:base:${selfId}:${otherId}:dependency`,
           `rel:base:${selfId}:${otherId}:authority`,
-        ],
+        ]),
         notes: [`rel priors applied: floor=${floor.toFixed(2)} cap=${cap.toFixed(2)} base=${base.toFixed(2)} -> ${eff.toFixed(2)}`],
         parts: { metric, base, floor, cap, rel: r }
       }

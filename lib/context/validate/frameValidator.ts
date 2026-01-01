@@ -84,24 +84,25 @@ export function validateAtoms(atoms: ContextAtom[], opts?: { autofix?: boolean }
           push('info', 'trace.parts.missing', 'derived atom missing trace.parts', atomId);
         }
 
-        // Autofix: normalize usedAtomIds to keep the trace graph DAG-friendly.
+        // Autofix: normalize usedAtomIds so the trace graph remains DAG-friendly.
+        // - keep only non-empty strings
+        // - remove self id
+        // - deduplicate
         if (fixed && fixed[i].trace && Array.isArray((fixed[i].trace as any).usedAtomIds)) {
-          const u0 = (fixed[i].trace as any).usedAtomIds as any[];
-          const u1 = u0
-            .filter(x => typeof x === 'string' && x.length > 0)
-            .filter(x => x !== atomId);
-
-          const dedup: string[] = [];
-          const seenU = new Set<string>();
-          for (const x of u1) {
-            if (seenU.has(x)) continue;
-            seenU.add(x);
-            dedup.push(x);
+          const before = (fixed[i].trace as any).usedAtomIds as any[];
+          const out: string[] = [];
+          const seen = new Set<string>();
+          for (const x of before) {
+            if (typeof x !== 'string' || x.length === 0) continue;
+            if (x === atomId) continue;
+            if (seen.has(x)) continue;
+            seen.add(x);
+            out.push(x);
           }
 
-          if (dedup.length !== u0.length) {
-            (fixed[i].trace as any).usedAtomIds = dedup;
-            push('info', 'trace.used.autofix', 'Normalized usedAtomIds (dedup/self-filter)', atomId, { before: u0, after: dedup });
+          if (out.length !== before.length) {
+            (fixed[i].trace as any).usedAtomIds = out;
+            push('info', 'trace.used.autofix', 'Normalized usedAtomIds (dedup/self-filter)', atomId, { before, after: out });
           }
         }
       }
