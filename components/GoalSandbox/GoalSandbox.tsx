@@ -1430,8 +1430,8 @@ export const GoalSandbox: React.FC = () => {
     }
   }, []);
 
-  // Prefer staged pipeline ids, fallback to snapshot deltas for legacy data.
-  const pipelineStageIds = useMemo(() => {
+  // Prefer staged pipeline ids, fallback to snapshot deltas (or a safe default list) for legacy data.
+  const pipelineStageOptions = useMemo(() => {
     if (pipelineV1 && Array.isArray((pipelineV1 as any).stages)) {
       return (pipelineV1 as any).stages
         .map((s: any, idx: number) => String(s?.stage || s?.id || `S${idx}`))
@@ -1439,27 +1439,45 @@ export const GoalSandbox: React.FC = () => {
     }
     const deltasRaw = (snapshotV1 as any)?.meta?.pipelineDeltas;
     const deltas = Array.isArray(deltasRaw) ? deltasRaw : [];
-    return deltas.map((d: any, idx: number) => String(d?.id || `S${idx}`)).filter((x: string) => !!x);
+    const ids = deltas.map((d: any, idx: number) => String(d?.id || `S${idx}`)).filter((x: string) => !!x);
+    return ids.length ? ids : ['S0', 'S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8'];
   }, [pipelineV1, snapshotV1]);
 
+  const pipelineStageLabelById = useMemo(() => {
+    const m = new Map<string, string>();
+    if (pipelineV1 && Array.isArray((pipelineV1 as any).stages)) {
+      for (const s of (pipelineV1 as any).stages) {
+        const id = String(s?.stage || s?.id || '');
+        const label = String(s?.title || s?.label || id);
+        if (id) m.set(id, label);
+      }
+    }
+    return m;
+  }, [pipelineV1]);
+
   const pipelineStageIndex = useMemo(() => {
-    const i = pipelineStageIds.indexOf(String(pipelineStageId));
-    return i >= 0 ? i : pipelineStageIds.length - 1;
-  }, [pipelineStageIds, pipelineStageId]);
+    const i = pipelineStageOptions.indexOf(String(pipelineStageId));
+    return i >= 0 ? i : pipelineStageOptions.length - 1;
+  }, [pipelineStageOptions, pipelineStageId]);
+
+  const currentPipelineStageId = useMemo(() => {
+    if (pipelineStageIndex < 0) return pipelineStageId;
+    return pipelineStageOptions[pipelineStageIndex] || pipelineStageId;
+  }, [pipelineStageIndex, pipelineStageOptions, pipelineStageId]);
 
   const handlePrevStage = useCallback(() => {
-    if (!pipelineStageIds.length) return;
+    if (!pipelineStageOptions.length) return;
     const next = Math.max(0, pipelineStageIndex - 1);
-    const id = pipelineStageIds[next];
+    const id = pipelineStageOptions[next];
     if (id) setPipelineStageId(id);
-  }, [pipelineStageIds, pipelineStageIndex]);
+  }, [pipelineStageOptions, pipelineStageIndex]);
 
   const handleNextStage = useCallback(() => {
-    if (!pipelineStageIds.length) return;
-    const next = Math.min(pipelineStageIds.length - 1, pipelineStageIndex + 1);
-    const id = pipelineStageIds[next];
+    if (!pipelineStageOptions.length) return;
+    const next = Math.min(pipelineStageOptions.length - 1, pipelineStageIndex + 1);
+    const id = pipelineStageOptions[next];
     if (id) setPipelineStageId(id);
-  }, [pipelineStageIds, pipelineStageIndex]);
+  }, [pipelineStageOptions, pipelineStageIndex]);
 
   return (
     <div className="h-full flex flex-col bg-canon-bg text-canon-text overflow-hidden">
@@ -1546,25 +1564,30 @@ export const GoalSandbox: React.FC = () => {
               <button
                 className="px-2 py-1 text-[11px] rounded border border-canon-border/60 hover:bg-white/5 disabled:opacity-40"
                 onClick={handlePrevStage}
-                disabled={!pipelineStageIds.length || pipelineStageIndex <= 0}
+                disabled={!pipelineStageOptions.length || pipelineStageIndex <= 0}
                 title="Предыдущая стадия"
               >
                 ◀
               </button>
               <select
                 className="px-2 py-1 text-[11px] rounded border border-canon-border/60 bg-canon-bg min-w-[88px]"
-                value={pipelineStageIds[pipelineStageIndex] || pipelineStageId}
+                value={currentPipelineStageId}
                 onChange={(e) => setPipelineStageId(e.target.value)}
                 title="Выбор стадии пайплайна"
               >
-                {pipelineStageIds.map(id => (
-                  <option key={id} value={id}>{id}</option>
-                ))}
+                {pipelineStageOptions.map(id => {
+                  const label = pipelineStageLabelById.get(id) || id;
+                  return (
+                    <option key={id} value={id}>
+                      {id} — {label}
+                    </option>
+                  );
+                })}
               </select>
               <button
                 className="px-2 py-1 text-[11px] rounded border border-canon-border/60 hover:bg-white/5 disabled:opacity-40"
                 onClick={handleNextStage}
-                disabled={!pipelineStageIds.length || pipelineStageIndex >= pipelineStageIds.length - 1}
+                disabled={!pipelineStageOptions.length || pipelineStageIndex >= pipelineStageOptions.length - 1}
                 title="Следующая стадия"
               >
                 ▶
@@ -1596,23 +1619,23 @@ export const GoalSandbox: React.FC = () => {
               onFocus={setPerspectiveAgentId}
             />
 
-            <GoalLabResults
-              context={snapshot as any}
-              actorLabels={actorLabels}
-              perspectiveAgentId={perspectiveId}
-              tomRows={tomMatrixForPerspective}
+              <GoalLabResults
+                context={snapshot as any}
+                actorLabels={actorLabels}
+                perspectiveAgentId={perspectiveId}
+                tomRows={tomMatrixForPerspective}
               goalScores={goals as any}
-              situation={situation as any}
-              goalPreview={goalPreview as any}
-              contextualMind={contextualMind as any}
-              locationScores={locationScores as any}
-              tomScores={tomScores as any}
-              tom={(worldState as any)?.tom?.[perspectiveId]}
-              atomDiff={atomDiff as any}
-              snapshotV1={snapshotV1 as any}
-              pipelineV1={pipelineV1 as any}
-              pipelineStageId={pipelineStageId}
-              onChangePipelineStageId={setPipelineStageId}
+                situation={situation as any}
+                goalPreview={goalPreview as any}
+                contextualMind={contextualMind as any}
+                locationScores={locationScores as any}
+                tomScores={tomScores as any}
+                tom={(worldState as any)?.tom?.[perspectiveId]}
+                atomDiff={atomDiff as any}
+                snapshotV1={snapshotV1 as any}
+                pipelineV1={pipelineV1 as any}
+                pipelineStageId={currentPipelineStageId}
+                onChangePipelineStageId={setPipelineStageId}
               onExportPipelineStage={handleExportPipelineStage}
               onExportPipelineAll={handleExportPipelineAll}
               sceneDump={sceneDumpV2 as any}
