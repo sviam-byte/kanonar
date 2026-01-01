@@ -158,7 +158,8 @@ export const DEFAULT_POSSIBILITY_DEFS: PossibilityDef[] = [
         magnitude,
         confidence: 1,
         subjectId: selfId,
-        trace: { usedAtomIds: [help], notes: ['from scene/offers'] }
+        // Critical: avoid self-references in usedAtomIds; store the id in parts instead.
+        trace: { usedAtomIds: [], notes: ['from scene/offers'], parts: { offerAtomId: help } }
       };
     }
   }

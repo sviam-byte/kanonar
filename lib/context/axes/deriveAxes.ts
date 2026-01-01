@@ -2,6 +2,7 @@
 // lib/context/axes/deriveAxes.ts
 import { ContextAtom, ContextAxesVector, ContextTuning, ContextAtomLike, ContextSignalId } from '../v2/types';
 import { normalizeAtom } from '../v2/infer';
+import { buildQuarkIndex, getQuark } from '../quarks/quarkIndex';
 
 function clamp01(x: number) {
   if (!Number.isFinite(x)) return 0;
@@ -77,51 +78,70 @@ export function defaultAxes(): ContextAxesVector {
 export function deriveAxes(args: { selfId: string; atoms: ContextAtom[]; tuning?: any }): { atoms: ContextAtom[] } {
   const { selfId, atoms } = args;
 
+  // Quark layer (atom.code) as a standardized read interface.
+  // Safe: every read falls back to the legacy id-based getter.
+  const qIdx = buildQuarkIndex(atoms);
+  const q = (code: string, legacyId: string, def: number) => {
+    // prefer quark code, fallback to legacy atom id
+    const vq = getQuark(qIdx, code, NaN);
+    if (Number.isFinite(vq)) return vq;
+    return get(atoms, legacyId, def);
+  };
+  const qAny = (pairs: { code: string; id: string }[], def: number) => {
+    for (const p of pairs) {
+      const vq = getQuark(qIdx, p.code, NaN);
+      if (Number.isFinite(vq)) return vq;
+      const vid = get(atoms, p.id, NaN);
+      if (Number.isFinite(vid)) return vid;
+    }
+    return def;
+  };
+
   // Inputs (canonical from patch 52 + patch 54)
-  const locPrivacy = get(atoms, `world:loc:privacy:${selfId}`, 0);
-  const locControl = getAny(atoms, [
-    `world:loc:control_level:${selfId}`,
-    `world:loc:control:${selfId}`
+  const locPrivacy = q('world.loc.privacy', `world:loc:privacy:${selfId}`, 0);
+  const locControl = qAny([
+    { code: 'world.loc.control_level', id: `world:loc:control_level:${selfId}` },
+    { code: 'world.loc.control', id: `world:loc:control:${selfId}` },
   ], 0);
-  const locCrowd = get(atoms, `world:loc:crowd:${selfId}`, 0);
-  const locNormPressure = getAny(atoms, [
-    `world:loc:normative_pressure:${selfId}`,
-    `world:loc:normPressure:${selfId}`
+  const locCrowd = q('world.loc.crowd', `world:loc:crowd:${selfId}`, 0);
+  const locNormPressure = qAny([
+    { code: 'world.loc.normative_pressure', id: `world:loc:normative_pressure:${selfId}` },
+    { code: 'world.loc.normPressure', id: `world:loc:normPressure:${selfId}` },
   ], 0);
 
-  const scCrowd = get(atoms, `ctx:src:scene:crowd:${selfId}`, 0);
-  const scHostility = get(atoms, `ctx:src:scene:hostility:${selfId}`, 0);
-  const scUrgency = get(atoms, `ctx:src:scene:urgency:${selfId}`, 0);
-  const scScarcity = get(atoms, `ctx:src:scene:scarcity:${selfId}`, 0);
-  const scChaos = get(atoms, `ctx:src:scene:chaos:${selfId}`, 0);
-  const scNovelty = get(atoms, `ctx:src:scene:novelty:${selfId}`, 0);
-  const scLoss = get(atoms, `ctx:src:scene:loss:${selfId}`, 0);
-  const scResourceAccess = get(atoms, `ctx:src:scene:resourceAccess:${selfId}`, 0);
-  const scThreat = get(atoms, `ctx:src:scene:threat:${selfId}`, 0);
+  const scCrowd = q('ctx.src.scene.crowd', `ctx:src:scene:crowd:${selfId}`, 0);
+  const scHostility = q('ctx.src.scene.hostility', `ctx:src:scene:hostility:${selfId}`, 0);
+  const scUrgency = q('ctx.src.scene.urgency', `ctx:src:scene:urgency:${selfId}`, 0);
+  const scScarcity = q('ctx.src.scene.scarcity', `ctx:src:scene:scarcity:${selfId}`, 0);
+  const scChaos = q('ctx.src.scene.chaos', `ctx:src:scene:chaos:${selfId}`, 0);
+  const scNovelty = q('ctx.src.scene.novelty', `ctx:src:scene:novelty:${selfId}`, 0);
+  const scLoss = q('ctx.src.scene.loss', `ctx:src:scene:loss:${selfId}`, 0);
+  const scResourceAccess = q('ctx.src.scene.resourceAccess', `ctx:src:scene:resourceAccess:${selfId}`, 0);
+  const scThreat = q('ctx.src.scene.threat', `ctx:src:scene:threat:${selfId}`, 0);
 
-  const normPrivacy = get(atoms, `ctx:src:norm:privacy:${selfId}`, 0);
-  const normPublicExposure = get(atoms, `ctx:src:norm:publicExposure:${selfId}`, 0);
-  const normSurveillance = get(atoms, `ctx:src:norm:surveillance:${selfId}`, 0);
-  const normNormPressure = get(atoms, `ctx:src:norm:normPressure:${selfId}`, 0);
-  const normProceduralStrict = get(atoms, `ctx:src:norm:proceduralStrict:${selfId}`, 0);
+  const normPrivacy = q('ctx.src.norm.privacy', `ctx:src:norm:privacy:${selfId}`, 0);
+  const normPublicExposure = q('ctx.src.norm.publicExposure', `ctx:src:norm:publicExposure:${selfId}`, 0);
+  const normSurveillance = q('ctx.src.norm.surveillance', `ctx:src:norm:surveillance:${selfId}`, 0);
+  const normNormPressure = q('ctx.src.norm.normPressure', `ctx:src:norm:normPressure:${selfId}`, 0);
+  const normProceduralStrict = q('ctx.src.norm.proceduralStrict', `ctx:src:norm:proceduralStrict:${selfId}`, 0);
 
-  const cover = get(atoms, `world:map:cover:${selfId}`, 0);
+  const cover = q('world.map.cover', `world:map:cover:${selfId}`, 0);
   // escape может отсутствовать, тогда берём exits как прокси (если есть)
-  const exits = get(atoms, `world:map:exits:${selfId}`, NaN);
+  const exits = q('world.map.exits', `world:map:exits:${selfId}`, NaN);
   const escape = Number.isFinite(exits)
-    ? clamp01(Math.max(get(atoms, `world:map:escape:${selfId}`, 0), exits))
-    : get(atoms, `world:map:escape:${selfId}`, 0);
-  const hazardProximity = get(atoms, `world:map:hazardProximity:${selfId}`, 0);
-  const hazardSource = get(atoms, `haz:dangerSourceProximity:${selfId}`, 0);
+    ? clamp01(Math.max(q('world.map.escape', `world:map:escape:${selfId}`, 0), exits))
+    : q('world.map.escape', `world:map:escape:${selfId}`, 0);
+  const hazardProximity = q('world.map.hazardProximity', `world:map:hazardProximity:${selfId}`, 0);
+  const hazardSource = q('haz.dangerSourceProximity', `haz:dangerSourceProximity:${selfId}`, 0);
   const danger = Math.max(
-    get(atoms, `world:map:danger:${selfId}`, 0),
-    get(atoms, `world:env:hazard:${selfId}`, 0),
+    q('world.map.danger', `world:map:danger:${selfId}`, 0),
+    q('world.env.hazard', `world:env:hazard:${selfId}`, 0),
     hazardProximity,
     hazardSource
   );
 
   // Observational quality (from patch 54). If missing -> moderate.
-  const infoAdequacy = get(atoms, `obs:infoAdequacy:${selfId}`, 0.6);
+  const infoAdequacy = q('obs.infoAdequacy', `obs:infoAdequacy:${selfId}`, 0.6);
   const uncertainty = clamp01(1 - infoAdequacy);
 
   // Axes
@@ -446,13 +466,28 @@ export function deriveContextVectors(args: {
     return null;
   };
 
-  const selfId = inferSelfId();
-
+  // NOTE: Historically this function emitted "tuning overlay" ctx:* atoms using the SAME id,
+  // and referenced that id in usedAtomIds, which creates self-cycles once atoms are merged.
+  // To keep snapshots DAG-friendly and avoid accidental overrides, we only emit overlay atoms
+  // when tuning is actually provided AND changes the value. Even then, we do NOT reference
+  // the output id in usedAtomIds.
   const outAtoms: ContextAtom[] = [];
-  if (selfId) {
+
+  const selfId = inferSelfId();
+  const hasTuning = !!tuning && (
+    (tuning as any).gain !== undefined ||
+    (tuning as any).add !== undefined ||
+    (tuning as any).mul !== undefined ||
+    (tuning as any).lock !== undefined
+  );
+
+  if (selfId && hasTuning) {
     for (const k of Object.keys(tuned)) {
+      const vRaw = clamp01((raw as any)[k] ?? 0);
+      const v = clamp01((tuned as any)[k] ?? 0);
+      if (Math.abs(v - vRaw) < 1e-6) continue; // no change => no overlay atom
+
       const id = `ctx:${k}:${selfId}`;
-      const v = clamp01((tuned as any)[k]);
       outAtoms.push({
         id,
         ns: 'ctx',
@@ -463,9 +498,9 @@ export function deriveContextVectors(args: {
         confidence: 1,
         tags: ['ctx', 'axis', 'tuned'],
         trace: {
-          usedAtomIds: [id],
+          usedAtomIds: [], // intentionally empty to avoid self-cycles; see note above
           notes: ['tuning overlay (raw -> tuned)'],
-          parts: { raw: (raw as any)[k] ?? 0, tuned: v, tuning: tuning ?? null },
+          parts: { raw: vRaw, tuned: v, tuning: tuning ?? null },
         },
         label: `${k}:${Math.round(v * 100)}%`
       } as any);

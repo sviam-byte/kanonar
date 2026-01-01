@@ -3,6 +3,57 @@ import { normalizeAtom } from '../v2/infer';
 
 const clamp01 = (x: number) => (Number.isFinite(x) ? Math.max(0, Math.min(1, x)) : 0);
 
+function makeBaseId(outId: string): string {
+  // Keep namespaces recognizable; produce a stable "base copy" id for tracing overrides.
+  if (outId.startsWith('ctx:')) return outId.replace(/^ctx:/, 'ctx:base:');
+  if (outId.startsWith('tom:dyad:')) return outId.replace(/^tom:dyad:/, 'tom:base:dyad:');
+  if (outId.startsWith('tom:')) return outId.replace(/^tom:/, 'tom:base:');
+  return `base:${outId}`;
+}
+
+function hasAtom(atoms: ContextAtom[], id: string): boolean {
+  return atoms.some(a => a && (a as any).id === id);
+}
+
+function ensureBaseCopy(atoms: ContextAtom[], out: ContextAtom[], outId: string, sourceNote: string): string {
+  const baseId = makeBaseId(outId);
+  if (hasAtom(atoms, baseId) || hasAtom(out, baseId)) return baseId;
+
+  // Base copy is taken from the current input atom (pre-override).
+  const current = atoms.find(a => a && (a as any).id === outId) as any;
+  if (!current) return baseId;
+
+  const copied: any = {
+    ...current,
+    id: baseId,
+    origin: 'derived',
+    source: `base_copy:${sourceNote}`,
+    label: `${current.label ?? outId} (base)`,
+    trace: {
+      usedAtomIds: [outId],
+      notes: ['base copy before override', sourceNote],
+      parts: { from: outId }
+    }
+  };
+
+  out.push(normalizeAtom(copied));
+  return baseId;
+}
+
+function sanitizeUsedAtomIds(outId: string, usedAtomIds: unknown): string[] {
+  if (!Array.isArray(usedAtomIds)) return [];
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const x of usedAtomIds) {
+    if (typeof x !== 'string' || x.length === 0) continue;
+    if (x === outId) continue; // critical: no self-cycles
+    if (seen.has(x)) continue;
+    seen.add(x);
+    out.push(x);
+  }
+  return out;
+}
+
 function getMag(atoms: ContextAtom[], id: string, fb = 0) {
   const a = atoms.find(x => x.id === id);
   const m = (a as any)?.magnitude;
@@ -22,7 +73,7 @@ function mkDerived(id: string, selfId: string, magnitude: number, usedAtomIds: s
     target: selfId,
     tags,
     label: `lens:${id.split(':').slice(0, 2).join(':')}:${Math.round(clamp01(magnitude) * 100)}%`,
-    trace: { usedAtomIds, notes: ['subjective lens override'], parts },
+    trace: { usedAtomIds: sanitizeUsedAtomIds(id, usedAtomIds), notes: ['subjective lens override'], parts },
   } as any);
 }
 
@@ -39,7 +90,7 @@ function mkDyadDerived(id: string, selfId: string, otherId: string, metric: stri
     target: otherId,
     tags: ['tom', 'dyad', metric, 'lens'],
     label: `lens.${metric}:${Math.round(clamp01(magnitude) * 100)}%`,
-    trace: { usedAtomIds, notes: ['dyad lens'], parts },
+    trace: { usedAtomIds: sanitizeUsedAtomIds(id, usedAtomIds), notes: ['dyad lens'], parts },
   } as any);
 }
 
@@ -122,15 +173,91 @@ export function applyCharacterLens(args: {
     `ctx:crowd:${selfId}`,
   ].filter(Boolean);
 
-  const out: ContextAtom[] = [
+  const out: ContextAtom[] = [];
+  const usedCtxBase = (axisId: string, baseId: string) => [
+    ...usedCtx.filter(id => id !== axisId),
+    baseId
+  ];
+
+  out.push(
     // перезаписываем ключевые оси, которыми питаются threat/appraisal/tomBias
-    mkDerived(`ctx:danger:${selfId}`, selfId, danger, usedCtx, { danger0, kDanger, paranoia, stress }, ['ctx', 'lens', 'danger']),
-    mkDerived(`ctx:uncertainty:${selfId}`, selfId, unc, usedCtx, { unc0, kUnc, experience, fatigue }, ['ctx', 'lens', 'uncertainty']),
-    mkDerived(`ctx:normPressure:${selfId}`, selfId, norm, usedCtx, { norm0, kNorm, sensitivity, pub0 }, ['ctx', 'lens', 'normPressure']),
-    mkDerived(`ctx:publicness:${selfId}`, selfId, pub, usedCtx, { pub0, kPub, sensitivity }, ['ctx', 'lens', 'publicness']),
-    mkDerived(`ctx:surveillance:${selfId}`, selfId, surv, usedCtx, { surv0, kSurv, paranoia }, ['ctx', 'lens', 'surveillance']),
-    mkDerived(`ctx:crowd:${selfId}`, selfId, crowd, usedCtx, { crowd0, kCrowd, stress, paranoia }, ['ctx', 'lens', 'crowd']),
-    mkDerived(`ctx:intimacy:${selfId}`, selfId, intim, usedCtx, { intim0, kIntim, paranoia, danger0 }, ['ctx', 'lens', 'intimacy']),
+    mkDerived(
+      `ctx:danger:${selfId}`,
+      selfId,
+      danger,
+      usedCtxBase(
+        `ctx:danger:${selfId}`,
+        ensureBaseCopy(atoms, out, `ctx:danger:${selfId}`, 'characterLens.ctx')
+      ),
+      { danger0, kDanger, paranoia, stress },
+      ['ctx', 'lens', 'danger']
+    ),
+    mkDerived(
+      `ctx:uncertainty:${selfId}`,
+      selfId,
+      unc,
+      usedCtxBase(
+        `ctx:uncertainty:${selfId}`,
+        ensureBaseCopy(atoms, out, `ctx:uncertainty:${selfId}`, 'characterLens.ctx')
+      ),
+      { unc0, kUnc, experience, fatigue },
+      ['ctx', 'lens', 'uncertainty']
+    ),
+    mkDerived(
+      `ctx:normPressure:${selfId}`,
+      selfId,
+      norm,
+      usedCtxBase(
+        `ctx:normPressure:${selfId}`,
+        ensureBaseCopy(atoms, out, `ctx:normPressure:${selfId}`, 'characterLens.ctx')
+      ),
+      { norm0, kNorm, sensitivity, pub0 },
+      ['ctx', 'lens', 'normPressure']
+    ),
+    mkDerived(
+      `ctx:publicness:${selfId}`,
+      selfId,
+      pub,
+      usedCtxBase(
+        `ctx:publicness:${selfId}`,
+        ensureBaseCopy(atoms, out, `ctx:publicness:${selfId}`, 'characterLens.ctx')
+      ),
+      { pub0, kPub, sensitivity },
+      ['ctx', 'lens', 'publicness']
+    ),
+    mkDerived(
+      `ctx:surveillance:${selfId}`,
+      selfId,
+      surv,
+      usedCtxBase(
+        `ctx:surveillance:${selfId}`,
+        ensureBaseCopy(atoms, out, `ctx:surveillance:${selfId}`, 'characterLens.ctx')
+      ),
+      { surv0, kSurv, paranoia },
+      ['ctx', 'lens', 'surveillance']
+    ),
+    mkDerived(
+      `ctx:crowd:${selfId}`,
+      selfId,
+      crowd,
+      usedCtxBase(
+        `ctx:crowd:${selfId}`,
+        ensureBaseCopy(atoms, out, `ctx:crowd:${selfId}`, 'characterLens.ctx')
+      ),
+      { crowd0, kCrowd, stress, paranoia },
+      ['ctx', 'lens', 'crowd']
+    ),
+    mkDerived(
+      `ctx:intimacy:${selfId}`,
+      selfId,
+      intim,
+      usedCtxBase(
+        `ctx:intimacy:${selfId}`,
+        ensureBaseCopy(atoms, out, `ctx:intimacy:${selfId}`, 'characterLens.ctx')
+      ),
+      { intim0, kIntim, paranoia, danger0 },
+      ['ctx', 'lens', 'intimacy']
+    ),
 
     // отдельный агрегат — удобно дебажить “почему ToM/эмоции сдвинулись”
     normalizeAtom({
@@ -146,7 +273,7 @@ export function applyCharacterLens(args: {
       label: `suspicion:${Math.round(suspicion * 100)}%`,
       trace: { usedAtomIds: usedCtx, notes: ['suspicion aggregate'], parts: { suspicion, paranoia, stress, surv0, danger0 } },
     } as any),
-  ];
+  );
 
   // ToM-линза: сдвигаем dyad-* в зависимости от suspicion + social sensitivity + публичности/наблюдения
   const dyadIds = atoms
@@ -169,10 +296,13 @@ export function applyCharacterLens(args: {
     const thr = clamp01(thr0 + (1 - thr0) * (0.75 * bias));        // threat растёт к 1
     const uncT = clamp01(uncT0 + (1 - uncT0) * (0.40 * bias));       // uncertainty растёт
 
-    const usedDy = [
-      `tom:dyad:${selfId}:${otherId}:trust`,
-      `tom:dyad:${selfId}:${otherId}:threat`,
-      `tom:dyad:${selfId}:${otherId}:uncertainty`,
+    const usedDyBase = (axisId: string, baseId: string) => [
+      ...[
+        `tom:dyad:${selfId}:${otherId}:trust`,
+        `tom:dyad:${selfId}:${otherId}:threat`,
+        `tom:dyad:${selfId}:${otherId}:uncertainty`,
+      ].filter(id => id !== axisId),
+      baseId,
       `lens:suspicion:${selfId}`,
       `ctx:publicness:${selfId}`,
       `ctx:surveillance:${selfId}`,
@@ -180,9 +310,42 @@ export function applyCharacterLens(args: {
     ];
 
     out.push(
-      mkDyadDerived(`tom:dyad:${selfId}:${otherId}:trust`, selfId, otherId, 'trust', trust, usedDy, { trust0, bias, trust }),
-      mkDyadDerived(`tom:dyad:${selfId}:${otherId}:threat`, selfId, otherId, 'threat', thr, usedDy, { thr0, bias, thr }),
-      mkDyadDerived(`tom:dyad:${selfId}:${otherId}:uncertainty`, selfId, otherId, 'uncertainty', uncT, usedDy, { uncT0, bias, uncT }),
+      mkDyadDerived(
+        `tom:dyad:${selfId}:${otherId}:trust`,
+        selfId,
+        otherId,
+        'trust',
+        trust,
+        usedDyBase(
+          `tom:dyad:${selfId}:${otherId}:trust`,
+          ensureBaseCopy(atoms, out, `tom:dyad:${selfId}:${otherId}:trust`, 'characterLens.tom')
+        ),
+        { trust0, bias, trust }
+      ),
+      mkDyadDerived(
+        `tom:dyad:${selfId}:${otherId}:threat`,
+        selfId,
+        otherId,
+        'threat',
+        thr,
+        usedDyBase(
+          `tom:dyad:${selfId}:${otherId}:threat`,
+          ensureBaseCopy(atoms, out, `tom:dyad:${selfId}:${otherId}:threat`, 'characterLens.tom')
+        ),
+        { thr0, bias, thr }
+      ),
+      mkDyadDerived(
+        `tom:dyad:${selfId}:${otherId}:uncertainty`,
+        selfId,
+        otherId,
+        'uncertainty',
+        uncT,
+        usedDyBase(
+          `tom:dyad:${selfId}:${otherId}:uncertainty`,
+          ensureBaseCopy(atoms, out, `tom:dyad:${selfId}:${otherId}:uncertainty`, 'characterLens.tom')
+        ),
+        { uncT0, bias, uncT }
+      ),
     );
   }
 
