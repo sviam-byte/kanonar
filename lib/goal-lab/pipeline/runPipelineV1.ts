@@ -178,19 +178,28 @@ export function runGoalLabPipelineV1(input: {
   });
 
   // S2: контекстные сигналы + базовые ctx оси
-  // NOTE: hazardGeometry needs access to world (map + agent positions). If world is missing,
-  // it silently produces 0 atoms and the scene becomes "одно и то же".
+  // IMPORTANT: stage-1 enrichers must be computed from the canonical world.
+  // If hazardGeometry doesn't see world (map + positions), it silently produces 0 atoms
+  // and the downstream context becomes "одинаковым" even when hazards exist.
   const s2Warnings: string[] = [];
   const sp = deriveSocialProximityAtoms({ selfId, atoms });
-  const hz = deriveHazardGeometryAtoms({ world, selfId, atoms });
+  const hz = deriveHazardGeometryAtoms({ world, selfId, atoms } as any);
 
   const spAtoms = arr((sp as any)?.atoms).map(normalizeAtom);
   const hzAtoms = arr((hz as any)?.atoms).map(normalizeAtom);
 
+  // Guardrails: detect "input present but module produced nothing".
   const hasNearby = atoms.some(a => typeof (a as any)?.id === 'string' && String((a as any).id).startsWith(`obs:nearby:${selfId}:`));
-  const hasHazardSignal = atoms.some(a => typeof (a as any)?.id === 'string' && String((a as any).id).includes('hazard'));
-  if (hasNearby && spAtoms.length === 0) s2Warnings.push('S2: obs:nearby:* present, but socialProximity produced 0 atoms (check ToM/rel tags + obs magnitudes).');
-  if (hasHazardSignal && hzAtoms.length === 0) s2Warnings.push('S2: hazard signals present, but hazardGeometry produced 0 atoms (check world.locations[].map + agent positions).');
+  const hasAnyHazard = atoms.some(a => {
+    const id = String((a as any)?.id || '');
+    return id.includes('hazard') || id.startsWith('world:env:') || id.startsWith('world:map:');
+  });
+  if (hasNearby && spAtoms.length === 0) {
+    s2Warnings.push('S2: obs:nearby:* present, but socialProximity produced 0 atoms (check obs magnitudes + dyad tags/priors).');
+  }
+  if (hasAnyHazard && hzAtoms.length === 0) {
+    s2Warnings.push('S2: hazard-ish signals present, but hazardGeometry produced 0 atoms (check world.locations[].map + agent positions).');
+  }
 
   const atomsS2in = [...atoms, ...spAtoms, ...hzAtoms].map(normalizeAtom);
   const ctx = deriveAxes({ selfId, atoms: atomsS2in });
@@ -211,8 +220,9 @@ export function runGoalLabPipelineV1(input: {
       hazardGeometry: hz,
       ctxAxisCount: ctxAtoms.length,
       moduleAdds: {
-        socialProximityIds: spAtoms.map(a => String((a as any).id)).slice(0, 160),
-        hazardGeometryIds: hzAtoms.map(a => String((a as any).id)).slice(0, 160),
+        // keep these bounded so export stays sane
+        socialProximityIds: spAtoms.map(a => String((a as any).id)).slice(0, 200),
+        hazardGeometryIds: hzAtoms.map(a => String((a as any).id)).slice(0, 200),
       }
     }
   });
