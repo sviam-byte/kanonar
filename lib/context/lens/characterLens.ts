@@ -23,6 +23,10 @@ function ensureBaseCopy(atoms: ContextAtom[], out: ContextAtom[], outId: string,
   const current = atoms.find(a => a && (a as any).id === outId) as any;
   if (!current) return baseId;
 
+  // Prefer the original atom's own dependencies for the base copy trace.
+  // This keeps the base copy explainable even if `outId` gets overridden and deduped later.
+  const currentUsed = sanitizeUsedAtomIds(outId, current?.trace?.usedAtomIds);
+
   const copied: any = {
     ...current,
     id: baseId,
@@ -30,7 +34,7 @@ function ensureBaseCopy(atoms: ContextAtom[], out: ContextAtom[], outId: string,
     source: `base_copy:${sourceNote}`,
     label: `${current.label ?? outId} (base)`,
     trace: {
-      usedAtomIds: [outId],
+      usedAtomIds: currentUsed.length ? currentUsed : [outId],
       notes: ['base copy before override', sourceNote],
       parts: { from: outId }
     }
