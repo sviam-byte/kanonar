@@ -1430,6 +1430,37 @@ export const GoalSandbox: React.FC = () => {
     }
   }, []);
 
+  // Prefer staged pipeline ids, fallback to snapshot deltas for legacy data.
+  const pipelineStageIds = useMemo(() => {
+    if (pipelineV1 && Array.isArray((pipelineV1 as any).stages)) {
+      return (pipelineV1 as any).stages
+        .map((s: any, idx: number) => String(s?.stage || s?.id || `S${idx}`))
+        .filter((x: string) => !!x);
+    }
+    const deltasRaw = (snapshotV1 as any)?.meta?.pipelineDeltas;
+    const deltas = Array.isArray(deltasRaw) ? deltasRaw : [];
+    return deltas.map((d: any, idx: number) => String(d?.id || `S${idx}`)).filter((x: string) => !!x);
+  }, [pipelineV1, snapshotV1]);
+
+  const pipelineStageIndex = useMemo(() => {
+    const i = pipelineStageIds.indexOf(String(pipelineStageId));
+    return i >= 0 ? i : pipelineStageIds.length - 1;
+  }, [pipelineStageIds, pipelineStageId]);
+
+  const handlePrevStage = useCallback(() => {
+    if (!pipelineStageIds.length) return;
+    const next = Math.max(0, pipelineStageIndex - 1);
+    const id = pipelineStageIds[next];
+    if (id) setPipelineStageId(id);
+  }, [pipelineStageIds, pipelineStageIndex]);
+
+  const handleNextStage = useCallback(() => {
+    if (!pipelineStageIds.length) return;
+    const next = Math.min(pipelineStageIds.length - 1, pipelineStageIndex + 1);
+    const id = pipelineStageIds[next];
+    if (id) setPipelineStageId(id);
+  }, [pipelineStageIds, pipelineStageIndex]);
+
   return (
     <div className="h-full flex flex-col bg-canon-bg text-canon-text overflow-hidden">
       <div className="flex-1 grid grid-cols-12 min-h-0">
@@ -1496,14 +1527,52 @@ export const GoalSandbox: React.FC = () => {
           <div className="sticky top-0 z-20 -mx-6 px-6 py-3 bg-canon-bg/90 backdrop-blur border-b border-canon-border flex items-center gap-3">
             <button
               className="px-4 py-2 rounded bg-canon-accent text-black font-semibold text-sm"
-              onClick={onDownloadScene}
-              title="Export full scene dump (world + all pipeline artifacts + cast)"
+              onClick={handleExportPipelineAll}
+              title="Экспорт детерминированного пайплайна по стадиям (S0..S8)"
             >
-              EXPORT DEBUG JSON
+              EXPORT PIPELINE DEBUG (JSON)
             </button>
-            <div className="ml-auto flex items-center gap-3">
-              <div className="text-xs opacity-70">staged pipe:</div>
-              <div className="text-xs font-mono opacity-90">{pipelineV1 ? 'on' : 'off'}</div>
+
+            <button
+              className="px-4 py-2 rounded border border-canon-border bg-canon-bg-light/30 text-canon-text font-semibold text-sm hover:bg-canon-bg-light/50 transition-colors"
+              onClick={onDownloadScene}
+              title="Экспорт всей сцены (world + cast snapshots + overrides + events + scene control)"
+            >
+              EXPORT SCENE (JSON)
+            </button>
+
+            <div className="ml-auto flex items-center gap-2">
+              <div className="text-[11px] opacity-70">stage</div>
+              <button
+                className="px-2 py-1 text-[11px] rounded border border-canon-border/60 hover:bg-white/5 disabled:opacity-40"
+                onClick={handlePrevStage}
+                disabled={!pipelineStageIds.length || pipelineStageIndex <= 0}
+                title="Предыдущая стадия"
+              >
+                ◀
+              </button>
+              <select
+                className="px-2 py-1 text-[11px] rounded border border-canon-border/60 bg-canon-bg min-w-[88px]"
+                value={pipelineStageIds[pipelineStageIndex] || pipelineStageId}
+                onChange={(e) => setPipelineStageId(e.target.value)}
+                title="Выбор стадии пайплайна"
+              >
+                {pipelineStageIds.map(id => (
+                  <option key={id} value={id}>{id}</option>
+                ))}
+              </select>
+              <button
+                className="px-2 py-1 text-[11px] rounded border border-canon-border/60 hover:bg-white/5 disabled:opacity-40"
+                onClick={handleNextStage}
+                disabled={!pipelineStageIds.length || pipelineStageIndex >= pipelineStageIds.length - 1}
+                title="Следующая стадия"
+              >
+                ▶
+              </button>
+              <div className="ml-3 flex items-center gap-2">
+                <div className="text-[11px] opacity-70">staged pipe</div>
+                <div className="text-[11px] font-mono opacity-90">{pipelineV1 ? 'on' : 'off'}</div>
+              </div>
             </div>
           </div>
           <div className="grid grid-cols-1 gap-6">
