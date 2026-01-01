@@ -2,6 +2,29 @@
 import { ContextAtom } from '../../context/v2/types';
 import { normalizeAtom } from '../../context/v2/infer';
 
+function unpackAtomsAndSelfId(
+  arg1: ContextAtom[] | { atoms?: unknown; selfId?: unknown } | null | undefined,
+  arg2?: unknown
+): { atoms: ContextAtom[]; selfId: string } {
+  if (Array.isArray(arg1)) {
+    return { atoms: arg1 as ContextAtom[], selfId: String(arg2 ?? '') };
+  }
+
+  if (arg1 && typeof arg1 === 'object') {
+    const a: any = arg1;
+    const rawAtoms = a.atoms;
+    const atoms = Array.isArray(rawAtoms)
+      ? rawAtoms
+      : rawAtoms && typeof rawAtoms === 'object'
+        ? Object.values(rawAtoms)
+        : [];
+
+    return { atoms: atoms as ContextAtom[], selfId: String(a.selfId ?? arg2 ?? '') };
+  }
+
+  return { atoms: [] as ContextAtom[], selfId: String(arg2 ?? '') };
+}
+
 function clamp01(x: number) {
   if (!Number.isFinite(x)) return 0;
   return Math.max(0, Math.min(1, x));
@@ -23,9 +46,10 @@ function pickFinite(...vals: Array<number | undefined>) {
  * - tom:ctx:bias:self in [0..1], where higher => more suspicious / threat-biased interpretation.
  */
 export function buildBeliefToMBias(
-  atoms: ContextAtom[],
-  selfId: string
+  arg1: ContextAtom[] | { atoms?: unknown; selfId?: unknown },
+  arg2?: string
 ): { bias: number; atoms: ContextAtom[] } {
+  const { atoms, selfId } = unpackAtomsAndSelfId(arg1 as any, arg2);
   const out: ContextAtom[] = [];
 
   const believedHostility = pickFinite(
