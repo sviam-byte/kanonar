@@ -20,6 +20,7 @@ import { atomizeContextMindMetrics } from '../../contextMind/atomizeMind';
 import { computeContextMindScoreboard } from '../../contextMind/scoreboard';
 
 import { deriveDriversAtoms } from '../../drivers/deriveDrivers';
+import { deriveGoalAtoms } from '../../goals/goalAtoms';
 
 import { derivePossibilitiesRegistry } from '../../possibilities/derive';
 import { atomizePossibilities } from '../../possibilities/atomize';
@@ -117,8 +118,6 @@ function computeQuarks(atoms: ContextAtom[]) {
   }
   return quarks;
 }
-
-import { arr } from '../../utils/arr';
 
 export function runGoalLabPipelineV1(input: {
   world: WorldState;
@@ -265,14 +264,21 @@ export function runGoalLabPipelineV1(input: {
     artifacts: { contextMind: scoreboard, drvCount: (drv?.atoms || []).length }
   });
 
-  // S7: goals (пока не атомизированы)
+  // S7: goals (ecology + active)
+  // Safe: uses only existing atoms; if drv/life are missing it falls back to ctx.
+  const goalRes = deriveGoalAtoms(selfId, atoms as any, { topN: 3 });
+  const goalAtoms = (goalRes?.atoms ?? []) as any[];
+  const atomsS7 = [...atoms, ...goalAtoms].map(normalizeAtom);
+  const s7Added = computeAdded(atoms, atomsS7);
+  atoms = atomsS7;
   stages.push({
     stage: 'S7',
-    title: 'S7 Goals (not yet fully atomized)',
+    title: 'S7 Goals',
     atoms,
-    atomsAddedIds: [],
-    warnings: ['goals currently computed outside pipeline; atomization planned'],
-    stats: { atomCount: atoms.length, addedCount: 0, ...stageStats(atoms) }
+    atomsAddedIds: s7Added,
+    warnings: [],
+    stats: { atomCount: atoms.length, addedCount: s7Added.length, ...stageStats(atoms) },
+    artifacts: { goalAtomsCount: goalAtoms.length }
   });
 
   // S8: actions

@@ -15,6 +15,24 @@ function get(atoms: ContextAtom[], id: string, fb = 0) {
   return (typeof m === 'number' && Number.isFinite(m)) ? m : fb;
 }
 
+function getGoalDomain(atoms: ContextAtom[], selfId: string, domain: string, def = NaN): number {
+  return get(atoms, `goal:domain:${domain}:${selfId}`, def);
+}
+
+function actionDomainHint(actionId: string): string | null {
+  // Minimal, safe heuristic mapping; can be expanded later without breaking.
+  const id = String(actionId || '');
+  if (id.includes('escape') || id.includes('hide') || id.includes('defend')) return 'safety';
+  if (id.includes('restore') || id.includes('repair') || id.includes('stabilize')) return 'control';
+  if (id.includes('talk') || id.includes('help') || id.includes('assist') || id.includes('comfort')) return 'affiliation';
+  if (id.includes('report') || id.includes('comply') || id.includes('challenge') || id.includes('present')) return 'status';
+  if (id.includes('investigate') || id.includes('search') || id.includes('explore')) return 'exploration';
+  if (id.includes('organize') || id.includes('plan') || id.includes('protocol')) return 'order';
+  if (id.includes('rest') || id.includes('sleep') || id.includes('pause')) return 'rest';
+  if (id.includes('trade') || id.includes('buy') || id.includes('sell')) return 'wealth';
+  return null;
+}
+
 export type ScoredAction = {
   id: string;
   label: string;
@@ -32,6 +50,7 @@ export function scorePossibility(args: {
   p: Possibility;
 }): ScoredAction {
   const { selfId, atoms, p } = args;
+  const goalWeightAlpha = 0.15; // small, safe influence; keeps legacy behavior dominant if goals are imperfect.
 
   const gate = gatePossibility({ atoms, p });
   const { cost, parts, usedAtomIds } = computeActionCost({ selfId, atoms, p });
@@ -74,8 +93,12 @@ export function scorePossibility(args: {
 
   const availability = clamp01(p.magnitude);
   const raw = clamp01(availability * (1 - cost) + pref);
+  const dom = actionDomainHint(p.id);
+  const g = dom ? getGoalDomain(atoms, selfId, dom, NaN) : NaN;
+  const goalBoost = Number.isFinite(g) ? goalWeightAlpha * clamp01(g) : 0;
+  const withGoal = clamp01(raw + goalBoost);
   
-  const allowedScore = gate.allowed ? raw : 0;
+  const allowedScore = gate.allowed ? withGoal : 0;
 
   return {
     id: `act:${p.id}`,
@@ -87,13 +110,22 @@ export function scorePossibility(args: {
       usedAtomIds: [
         ...(p.trace?.usedAtomIds || []),
         ...usedAtomIds,
+        ...(goalBoost > 0 && dom ? [`goal:domain:${dom}:${selfId}`] : []),
         ...(targetId ? [
           `world:map:hazardBetween:${selfId}:${targetId}`,
           `soc:allyHazardBetween:${selfId}:${targetId}`,
           `soc:enemyHazardBetween:${selfId}:${targetId}`
         ] : [])
       ],
-      parts: { availability, pref, prefParts, costParts: parts },
+      parts: {
+        availability,
+        pref,
+        prefParts,
+        costParts: parts,
+        goalBoost,
+        goalDomain: dom ?? null,
+        goalAlpha: goalWeightAlpha
+      },
       blockedBy: gate.blockedBy
     },
     p
