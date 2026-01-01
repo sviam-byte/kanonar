@@ -158,7 +158,7 @@ export const DEFAULT_POSSIBILITY_DEFS: PossibilityDef[] = [
         magnitude,
         confidence: 1,
         subjectId: selfId,
-        trace: { usedAtomIds: [help], notes: ['from scene/offers'] }
+        trace: { usedAtomIds: [], notes: ['from scene/offers'], parts: { offerAtomId: help } }
       };
     }
   }

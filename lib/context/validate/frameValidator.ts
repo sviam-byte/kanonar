@@ -83,6 +83,27 @@ export function validateAtoms(atoms: ContextAtom[], opts?: { autofix?: boolean }
         if ((a.trace as any).parts === undefined) {
           push('info', 'trace.parts.missing', 'derived atom missing trace.parts', atomId);
         }
+
+        // Autofix: normalize usedAtomIds to keep the trace graph DAG-friendly.
+        if (fixed && fixed[i].trace && Array.isArray((fixed[i].trace as any).usedAtomIds)) {
+          const u0 = (fixed[i].trace as any).usedAtomIds as any[];
+          const u1 = u0
+            .filter(x => typeof x === 'string' && x.length > 0)
+            .filter(x => x !== atomId);
+
+          const dedup: string[] = [];
+          const seenU = new Set<string>();
+          for (const x of u1) {
+            if (seenU.has(x)) continue;
+            seenU.add(x);
+            dedup.push(x);
+          }
+
+          if (dedup.length !== u0.length) {
+            (fixed[i].trace as any).usedAtomIds = dedup;
+            push('info', 'trace.used.autofix', 'Normalized usedAtomIds (dedup/self-filter)', atomId, { before: u0, after: dedup });
+          }
+        }
       }
     }
   }

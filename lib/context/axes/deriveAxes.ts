@@ -446,13 +446,28 @@ export function deriveContextVectors(args: {
     return null;
   };
 
-  const selfId = inferSelfId();
-
+  // NOTE: Historically this function emitted "tuning overlay" ctx:* atoms using the SAME id,
+  // and referenced that id in usedAtomIds, which creates self-cycles once atoms are merged.
+  // To keep snapshots DAG-friendly and avoid accidental overrides, we only emit overlay atoms
+  // when tuning is actually provided AND changes the value. Even then, we do NOT reference
+  // the output id in usedAtomIds.
   const outAtoms: ContextAtom[] = [];
-  if (selfId) {
+
+  const selfId = inferSelfId();
+  const hasTuning = !!tuning && (
+    (tuning as any).gain !== undefined ||
+    (tuning as any).add !== undefined ||
+    (tuning as any).mul !== undefined ||
+    (tuning as any).lock !== undefined
+  );
+
+  if (selfId && hasTuning) {
     for (const k of Object.keys(tuned)) {
+      const vRaw = clamp01((raw as any)[k] ?? 0);
+      const v = clamp01((tuned as any)[k] ?? 0);
+      if (Math.abs(v - vRaw) < 1e-6) continue; // no change => no overlay atom
+
       const id = `ctx:${k}:${selfId}`;
-      const v = clamp01((tuned as any)[k]);
       outAtoms.push({
         id,
         ns: 'ctx',
@@ -463,9 +478,9 @@ export function deriveContextVectors(args: {
         confidence: 1,
         tags: ['ctx', 'axis', 'tuned'],
         trace: {
-          usedAtomIds: [id],
+          usedAtomIds: [], // intentionally empty to avoid self-cycles; see note above
           notes: ['tuning overlay (raw -> tuned)'],
-          parts: { raw: (raw as any)[k] ?? 0, tuned: v, tuning: tuning ?? null },
+          parts: { raw: vRaw, tuned: v, tuning: tuning ?? null },
         },
         label: `${k}:${Math.round(v * 100)}%`
       } as any);

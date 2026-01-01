@@ -252,7 +252,6 @@ export function applyRelationPriorsToDyads(
       label: `${metric} (rel-prior)`,
       trace: {
         usedAtomIds: [
-          d.id,
           `rel:state:${selfId}:${otherId}:closeness`,
           `rel:state:${selfId}:${otherId}:trust`,
           `rel:state:${selfId}:${otherId}:hostility`,
