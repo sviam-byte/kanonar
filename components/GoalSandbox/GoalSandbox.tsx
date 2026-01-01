@@ -106,6 +106,12 @@ const dedupeAtomsById = (arr: ContextAtom[]) => {
   return out;
 };
 
+function asArray<T>(v: unknown): T[] {
+  if (Array.isArray(v)) return v as T[];
+  if (v && typeof v === 'object') return Object.values(v as Record<string, T>);
+  return [];
+}
+
 function assertArray(name: string, v: unknown) {
   if (!Array.isArray(v)) {
     console.error(`[GoalLab invariant violated] ${name} is not array`, v);
@@ -1377,7 +1383,8 @@ export const GoalSandbox: React.FC = () => {
     const w = cloneWorld(base);
 
     const nextPositions: Record<string, { x: number; y: number }> = {};
-    (w as any)?.agents?.forEach((a: any) => {
+    const agents = asArray<any>((w as any).agents);
+    agents.forEach((a: any) => {
       if (a?.entityId && a?.position) nextPositions[a.entityId] = a.position;
     });
 
@@ -1389,7 +1396,8 @@ export const GoalSandbox: React.FC = () => {
 
   const mapHighlights = useMemo(() => {
     if (!worldState) return [];
-    return arr((worldState as any)?.agents).map((a: any) => ({
+    const agents = asArray<any>((worldState as any)?.agents);
+    return agents.map((a: any) => ({
       x: (a as any).position?.x ?? 0,
       y: (a as any).position?.y ?? 0,
       color: a.entityId === selectedAgentId ? '#00aaff' : (a as any).hp < 70 ? '#ff4444' : '#33ff99',
@@ -1437,11 +1445,11 @@ export const GoalSandbox: React.FC = () => {
           </div>
 
           <div className="p-2">
-            <GoalLabControls
+              <GoalLabControls
               allCharacters={allCharacters}
               allLocations={allLocations as any}
               allEvents={eventRegistry.getAll() as any}
-              computedAtoms={snapshotV1?.atoms ?? (snapshot as any)?.atoms}
+              computedAtoms={asArray<any>((snapshotV1?.atoms ?? (snapshot as any)?.atoms) as any)}
               selectedAgentId={selectedAgentId}
               onSelectAgent={handleSelectAgent}
               selectedLocationId={selectedLocationId}
@@ -1561,7 +1569,7 @@ export const GoalSandbox: React.FC = () => {
             <div className="mt-4">
               <EmotionInspector
                 selfId={perspectiveId}
-                atoms={snapshotV1.atoms}
+                atoms={asArray<any>(snapshotV1.atoms as any)}
                 setManualAtom={setManualAtom}
               />
             </div>

@@ -183,9 +183,10 @@ const ContributionRow: React.FC<{ contrib: ContextualGoalContribution }> = ({ co
 }
 
 export const AnalysisView: React.FC<{ score: ContextualGoalScore }> = ({ score }) => {
+    const contributions = arr(score.contributions);
     const groups = {
-        'Внешние Факторы (Атомы)': score.contributions.filter(c => c.source !== 'life'),
-        'Внутренние (Личность)': score.contributions.filter(c => c.source === 'life')
+        'Внешние Факторы (Атомы)': contributions.filter(c => c.source !== 'life'),
+        'Внутренние (Личность)': contributions.filter(c => c.source === 'life')
     };
 
     return (
@@ -260,7 +261,7 @@ const GoalRow: React.FC<{
              
              {/* Key Contributors Dots */}
              <div className="flex gap-1 mt-1.5 h-1.5">
-                 {score.contributions.filter(c => c.value > 0.5).slice(0, 5).map((c, i) => {
+                 {arr(score.contributions).filter(c => c.value > 0.5).slice(0, 5).map((c, i) => {
                       const style = getAtomStyle(c.atomKind || 'default');
                       return <div key={i} className={`w-1.5 h-1.5 rounded-full ${style.bg.replace('/40', '')}`} title={c.explanation} />
                  })}
@@ -363,6 +364,7 @@ export const GoalLabResults: React.FC<Props> = ({
   const [isPreviewOpen, setPreviewOpen] = useState(false);
   const [activeTabIndex, setActiveTabIndex] = useState(0);
   const [selectedAtomId, setSelectedAtomId] = useState<string | null>(null);
+  const safeGoalScores = arr(goalScores);
 
     const canDownload = Boolean(onDownloadScene || sceneDump);
 
@@ -399,8 +401,8 @@ export const GoalLabResults: React.FC<Props> = ({
         }
     };
 
-    const effectiveSelectedId = selectedGoalId || (goalScores.length > 0 ? goalScores[0].goalId : null);
-    const selectedScore = goalScores.find(g => g.goalId === effectiveSelectedId);
+    const effectiveSelectedId = selectedGoalId || (safeGoalScores.length > 0 ? safeGoalScores[0].goalId : null);
+    const selectedScore = safeGoalScores.find(g => g.goalId === effectiveSelectedId);
 
     // Aggregates from snapshot or legacy context
     const stats = {
@@ -712,7 +714,7 @@ export const GoalLabResults: React.FC<Props> = ({
     
     const DebugTab = () => (
          <div className="p-4 space-y-4 h-full overflow-y-auto custom-scrollbar pb-20 absolute inset-0">
-            <ContextInspector snapshot={context} goals={goalScores} title="Global Inspector (Legacy)"/>
+            <ContextInspector snapshot={context} goals={safeGoalScores} title="Global Inspector (Legacy)"/>
             {locationScores && <LocationGoalsDebugPanel scores={locationScores} />}
             {tomScores && <TomGoalsDebugPanel scores={tomScores} />}
          </div>
@@ -897,10 +899,10 @@ export const GoalLabResults: React.FC<Props> = ({
                 <div className="w-5/12 min-w-[220px] border-r border-canon-border bg-canon-bg/30 flex flex-col overflow-hidden">
                     <div className="p-3 border-b border-canon-border/20 bg-canon-bg/50 shrink-0 flex justify-between items-center">
                         <h4 className="text-[10px] font-bold text-canon-text-light uppercase px-1">Goal Ecology</h4>
-                        <span className="text-[9px] font-mono text-canon-text-light">{goalScores.length} Goals</span>
+                        <span className="text-[9px] font-mono text-canon-text-light">{safeGoalScores.length} Goals</span>
                     </div>
                     <div className="flex-1 overflow-y-auto custom-scrollbar p-2 pb-12">
-                         <EcologyView goals={goalScores} onSelect={setSelectedGoalId} selectedId={effectiveSelectedId} />
+                         <EcologyView goals={safeGoalScores} onSelect={setSelectedGoalId} selectedId={effectiveSelectedId} />
                     </div>
                 </div>
 

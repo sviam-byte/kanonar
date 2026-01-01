@@ -7,6 +7,29 @@ import { ContextAtom } from '../../context/v2/types';
 import { normalizeAtom } from '../../context/v2/infer';
 import { clamp01, entropy01, invLogit, logit, sigmoid, softmax } from './decisionMath';
 
+function unpackAtomsAndSelfId(
+  arg1: ContextAtom[] | { atoms?: unknown; selfId?: unknown } | null | undefined,
+  arg2?: unknown
+): { atoms: ContextAtom[]; selfId: string } {
+  if (Array.isArray(arg1)) {
+    return { atoms: arg1 as ContextAtom[], selfId: String(arg2 ?? '') };
+  }
+
+  if (arg1 && typeof arg1 === 'object') {
+    const a: any = arg1;
+    const rawAtoms = a.atoms;
+    const atoms = Array.isArray(rawAtoms)
+      ? rawAtoms
+      : rawAtoms && typeof rawAtoms === 'object'
+        ? Object.values(rawAtoms)
+        : [];
+
+    return { atoms: atoms as ContextAtom[], selfId: String(a.selfId ?? arg2 ?? '') };
+  }
+
+  return { atoms: [] as ContextAtom[], selfId: String(arg2 ?? '') };
+}
+
 function getMag(atoms: ContextAtom[], id: string, fb = 0) {
   const a = atoms.find(x => x.id === id);
   const m = (a as any)?.magnitude;
@@ -56,7 +79,11 @@ function mkAtom(
   } as any) as any;
 }
 
-export function buildTomPolicyLayer(atoms: ContextAtom[], selfId: string): { atoms: ContextAtom[] } {
+export function buildTomPolicyLayer(
+  arg1: ContextAtom[] | { atoms?: unknown; selfId?: unknown },
+  arg2?: string
+): { atoms: ContextAtom[] } {
+  const { atoms, selfId } = unpackAtomsAndSelfId(arg1 as any, arg2);
   const out: ContextAtom[] = [];
 
   // ---------- Context (self) ----------
