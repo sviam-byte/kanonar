@@ -32,6 +32,12 @@ function normalizeAgentShape(a: any): AgentState {
   } as AgentState;
 }
 
+function normalizeAgents<T>(agents: unknown): T[] {
+  if (Array.isArray(agents)) return agents as T[];
+  if (agents && typeof agents === 'object') return Object.values(agents as Record<string, T>);
+  return [];
+}
+
 /**
  * Normalizes imported/edited WorldState shape so the rest of the pipeline can assume arrays.
  * This is intentionally *loose*: it coerces dict-like objects into arrays via Object.values().
@@ -39,7 +45,7 @@ function normalizeAgentShape(a: any): AgentState {
 export function normalizeWorldShape(input: any): WorldState {
   const w = (input && typeof input === 'object') ? input : {};
 
-  const agents = listify<any>((w as any).agents).map(normalizeAgentShape);
+  const agents = normalizeAgents<any>((w as any).agents).map(normalizeAgentShape);
   const locations = listify<any>((w as any).locations);
   const threats = listify<any>((w as any).threats);
   const orders = listify<any>((w as any).orders);
