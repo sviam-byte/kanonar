@@ -1,6 +1,8 @@
 // lib/tom/ctx/beliefBias.ts
 import { ContextAtom } from '../../context/v2/types';
 import { normalizeAtom } from '../../context/v2/infer';
+import { getCtx, pickCtxId } from '../../context/layers';
+import { getDyadMag } from '../layers';
 
 function unpackAtomsAndSelfId(
   arg1: ContextAtom[] | { atoms?: unknown; selfId?: unknown } | null | undefined,
@@ -41,6 +43,38 @@ function pickFinite(...vals: Array<number | undefined>) {
   return undefined;
 }
 
+function meanDyad(atoms: ContextAtom[], selfId: string, metric: 'trust' | 'threat', fb: number): { mean: number; used: string[] } {
+  const used: string[] = [];
+  const vals: number[] = [];
+  for (const a of atoms as any[]) {
+    const id = String(a?.id ?? '');
+    if (!id.startsWith('tom:dyad:')) continue;
+
+    const parts = id.split(':');
+    let s = '';
+    let t = '';
+    let m = '';
+    if (parts[2] === 'final') {
+      s = parts[3];
+      t = parts[4];
+      m = parts[5];
+    } else {
+      s = parts[2];
+      t = parts[3];
+      m = parts[4];
+    }
+
+    if (s !== selfId || !t || m !== metric) continue;
+
+    const picked = getDyadMag(atoms, selfId, t, metric, fb);
+    if (picked.id !== id) continue;
+    vals.push(clamp01(picked.mag));
+    used.push(picked.id);
+  }
+  if (!vals.length) return { mean: fb, used: [] };
+  return { mean: vals.reduce((a, b) => a + b, 0) / vals.length, used };
+}
+
 /**
  * Output:
  * - tom:ctx:bias:self in [0..1], where higher => more suspicious / threat-biased interpretation.
@@ -65,34 +99,40 @@ export function buildBeliefToMBias(
     getMag(atoms, `belief:norm:publicness`, NaN)
   );
 
-  const uncertainty = clamp01(
-    getMag(atoms, `ctx:uncertainty:${selfId}`, 1 - getMag(atoms, `obs:infoAdequacy:${selfId}`, 0.6))
-  );
-  const danger = clamp01(getMag(atoms, `ctx:danger:${selfId}`, 0));
+  const uncP = getCtx(atoms, selfId, 'uncertainty', 1 - getMag(atoms, `obs:infoAdequacy:${selfId}`, 0.6));
+  const survP = getCtx(atoms, selfId, 'surveillance', 0);
+  const normP = getCtx(atoms, selfId, 'normPressure', 0);
+  const uncertainty = clamp01(uncP.magnitude);
+  const danger = clamp01(getCtx(atoms, selfId, 'danger', 0).magnitude);
 
   const surveillance = clamp01(pickFinite(
     beliefSurv,
-    getMag(atoms, `ctx:surveillance:${selfId}`, NaN),
+    survP.magnitude,
     getMag(atoms, `world:loc:control_level:${selfId}`, NaN),
   ) ?? 0);
 
   const publicness = clamp01(pickFinite(
     beliefPub,
-    getMag(atoms, `ctx:publicness:${selfId}`, NaN),
+    getCtx(atoms, selfId, 'publicness', NaN).magnitude,
     getMag(atoms, `world:loc:publicness:${selfId}`, NaN),
   ) ?? 0);
 
-  const normPressure = clamp01(getMag(atoms, `ctx:normPressure:${selfId}`, getMag(atoms, `world:loc:normative_pressure:${selfId}`, 0)));
+  const normPressure = clamp01(pickFinite(
+    normP.magnitude,
+    getMag(atoms, `world:loc:normative_pressure:${selfId}`, NaN),
+  ) ?? 0);
 
   const hostility = clamp01(believedHostility ?? 0);
+  const meanTrust = meanDyad(atoms, selfId, 'trust', 0.5);
+  const meanThreat = meanDyad(atoms, selfId, 'threat', 0.0);
+  const socialSusp = clamp01(0.50 * (1 - meanTrust.mean) + 0.50 * meanThreat.mean);
 
   const bias = clamp01(
-    0.40 * hostility +
-    0.20 * uncertainty +
+    0.45 * hostility +
+    0.25 * uncertainty +
     0.15 * surveillance +
-    0.10 * publicness +
-    0.10 * normPressure +
-    0.05 * danger
+    0.15 * normPressure +
+    0.25 * socialSusp
   );
 
   out.push(normalizeAtom({
@@ -112,20 +152,20 @@ export function buildBeliefToMBias(
         `belief:scene:hostility:${selfId}`,
         `belief:norm:surveillance:${selfId}`,
         `belief:norm:publicness:${selfId}`,
-        `ctx:uncertainty:${selfId}`,
-        `ctx:danger:${selfId}`,
-        `ctx:surveillance:${selfId}`,
-        `ctx:publicness:${selfId}`,
-        `ctx:normPressure:${selfId}`,
+        ...(uncP.id ? [uncP.id] : pickCtxId('uncertainty', selfId)),
+        ...(survP.id ? [survP.id] : pickCtxId('surveillance', selfId)),
+        ...(normP.id ? [normP.id] : pickCtxId('normPressure', selfId)),
         `world:loc:control_level:${selfId}`,
         `world:loc:publicness:${selfId}`,
         `world:loc:normative_pressure:${selfId}`,
         `obs:infoAdequacy:${selfId}`,
+        ...meanTrust.used,
+        ...meanThreat.used,
       ],
       notes: [
-        'bias = 0.40*hostility + 0.20*unc + 0.15*surv + 0.10*pub + 0.10*norm + 0.05*danger',
+        'bias = 0.45*hostility + 0.25*unc + 0.15*surv + 0.15*norm + 0.25*socialSusp',
       ],
-      parts: { hostility, uncertainty, surveillance, publicness, normPressure, danger }
+      parts: { hostility, uncertainty, surveillance, publicness, normPressure, danger, meanTrust: meanTrust.mean, meanThreat: meanThreat.mean, socialSusp, bias }
     }
   } as any));
 

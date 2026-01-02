@@ -147,6 +147,7 @@ const cloneWorld = <T,>(w: T): T => {
 export const GoalSandbox: React.FC = () => {
   const { characters: sandboxCharacters, setDyadConfigFor } = useSandbox();
   const { activeModule } = useAccess();
+  const devValidateAtoms = import.meta.env?.DEV ?? false;
 
   const [fatalError, setFatalError] = useState<string | null>(null);
   const [runtimeError, setRuntimeError] = useState<string | null>(null);
@@ -936,6 +937,7 @@ export const GoalSandbox: React.FC = () => {
           affectOverrides,
         },
         timeOverride: (worldForCtx as any).tick,
+        devValidateAtoms,
       });
 
       return { ctx, err: null as string | null };
@@ -955,6 +957,7 @@ export const GoalSandbox: React.FC = () => {
     sceneControl,
     getSelectedLocationEntity,
     affectOverrides,
+    devValidateAtoms,
   ]);
 
   const glCtx = glCtxResult.ctx;
@@ -1133,6 +1136,7 @@ export const GoalSandbox: React.FC = () => {
             affectOverrides,
           },
           timeOverride: (worldState as any).tick,
+          devValidateAtoms,
         });
         snap = res?.snapshot ?? null;
       } catch {
@@ -1157,6 +1161,7 @@ export const GoalSandbox: React.FC = () => {
     injectedEvents,
     sceneControl,
     affectOverrides,
+    devValidateAtoms,
   ]);
 
   const sceneDumpV2 = useMemo(() => {
@@ -1291,6 +1296,73 @@ export const GoalSandbox: React.FC = () => {
     const castTag = Array.isArray(participantIds) && participantIds.length ? `cast-${participantIds.length}` : 'cast';
     downloadJson(sceneDumpV2, `goal-lab-scene__${castTag}__persp-${pid}__${exportedAt}.json`);
   }, [perspectiveId, sceneDumpV2, selectedAgentId, participantIds]);
+
+  const handleExportDebugBoth = useCallback(() => {
+    if (!worldState) return;
+
+    const dump = buildGoalLabSceneDumpV2({
+      world: worldState,
+      includePipelineFrames: true,
+      includePipelineDeltas: true,
+      includeViolations: true,
+      selectedAgentId,
+      perspectiveId,
+      selectedLocationId,
+      locationMode,
+      participantIds,
+      activeMap,
+      selectedEventIds,
+      manualAtoms,
+      atomOverridesLayer,
+      affectOverrides,
+      injectedEvents,
+      sceneControl,
+      glCtx,
+      snapshot,
+      snapshotV1,
+      goals,
+      locationScores,
+      tomScores,
+      situation,
+      goalPreview,
+      contextualMind,
+      pipelineFrame,
+      pipelineV1,
+      tomMatrixForPerspective,
+      castRows,
+    });
+
+    if (!dump) return;
+    const exportedAt = new Date().toISOString().replace(/[:.]/g, '-');
+    downloadJson(dump, `goal-debug__${selectedAgentId || 'agent'}__${exportedAt}.json`);
+  }, [
+    worldState,
+    selectedAgentId,
+    perspectiveId,
+    selectedLocationId,
+    locationMode,
+    participantIds,
+    activeMap,
+    selectedEventIds,
+    manualAtoms,
+    atomOverridesLayer,
+    affectOverrides,
+    injectedEvents,
+    sceneControl,
+    glCtx,
+    snapshot,
+    snapshotV1,
+    goals,
+    locationScores,
+    tomScores,
+    situation,
+    goalPreview,
+    contextualMind,
+    pipelineFrame,
+    pipelineV1,
+    tomMatrixForPerspective,
+    castRows,
+  ]);
 
   const handleExportPipelineAll = useCallback(() => {
     if (pipelineV1) {
@@ -1485,11 +1557,11 @@ export const GoalSandbox: React.FC = () => {
         <div className="text-[12px] opacity-80">GoalSandbox</div>
         <div className="flex-1" />
         <button
-          onClick={onDownloadScene}
+          onClick={handleExportDebugBoth}
           className="px-4 py-2 text-[12px] font-extrabold border-2 border-canon-accent rounded bg-canon-accent/20 hover:bg-canon-accent/30 transition-colors"
-          title="Скачать полный debug: input + pipeline stages + atoms + deltas"
+          title="Один файл: input + output + S0..S* atoms + deltas + validations"
         >
-          ⬇ EXPORT DEBUG
+          ⬇ EXPORT DEBUG (BOTH)
         </button>
       </div>
       <div className="flex-1 grid grid-cols-12 min-h-0">
