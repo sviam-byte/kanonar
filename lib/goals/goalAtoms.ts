@@ -1,6 +1,7 @@
 import type { ContextAtom } from '../context/v2/types';
 import { clamp01 } from '../util/math';
 import { normalizeAtom } from '../context/v2/infer';
+import { getCtx, sanitizeUsed } from '../context/layers';
 
 type GoalDomain =
   | 'safety'
@@ -27,20 +28,6 @@ function getAny(atoms: ContextAtom[], ids: string[], def: number): number {
   return def;
 }
 
-function sanitizeUsedAtomIds(outId: string, usedAtomIds: unknown): string[] {
-  if (!Array.isArray(usedAtomIds)) return [];
-  const out: string[] = [];
-  const seen = new Set<string>();
-  for (const x of usedAtomIds) {
-    if (typeof x !== 'string' || x.length === 0) continue;
-    if (x === outId) continue;
-    if (seen.has(x)) continue;
-    seen.add(x);
-    out.push(x);
-  }
-  return out;
-}
-
 function mkGoalAtom(selfId: string, domain: GoalDomain, v: number, usedAtomIds: string[], parts: any, tags: string[] = []) {
   const id = `goal:domain:${domain}:${selfId}`;
   return normalizeAtom({
@@ -55,7 +42,7 @@ function mkGoalAtom(selfId: string, domain: GoalDomain, v: number, usedAtomIds: 
     tags: ['goal', 'domain', domain, ...tags],
     label: `goal.${domain}:${Math.round(clamp01(v) * 100)}%`,
     trace: {
-      usedAtomIds: sanitizeUsedAtomIds(id, usedAtomIds),
+      usedAtomIds: sanitizeUsed(id, usedAtomIds),
       notes: ['goal ecology from drivers + context'],
       parts
     }
@@ -76,7 +63,7 @@ function mkActiveGoal(selfId: string, domain: GoalDomain, v: number, usedAtomIds
     tags: ['goal', 'active', domain],
     label: `active.${domain}:${Math.round(clamp01(v) * 100)}%`,
     trace: {
-      usedAtomIds: sanitizeUsedAtomIds(id, usedAtomIds),
+      usedAtomIds: sanitizeUsed(id, usedAtomIds),
       notes: ['top goals selection'],
       parts
     }
@@ -99,11 +86,11 @@ export function deriveGoalAtoms(selfId: string, atoms: ContextAtom[], opts?: { t
   const drvCur = getAny(atoms, [`drv:curiosityNeed:${selfId}`, `drv:curiosity:${selfId}`], NaN);
 
   // Context fallbacks
-  const ctxThreat = getAny(atoms, [`ctx:danger:${selfId}`, `ctx:threat:${selfId}`], 0);
-  const ctxControl = getAny(atoms, [`ctx:control:${selfId}`], 0);
-  const ctxPublic = getAny(atoms, [`ctx:publicExposure:${selfId}`, `ctx:publicness:${selfId}`], 0);
-  const ctxNorm = getAny(atoms, [`ctx:normPressure:${selfId}`], 0);
-  const ctxUnc = getAny(atoms, [`ctx:uncertainty:${selfId}`], 0);
+  const danger = getCtx(atoms, selfId, 'danger', 0);
+  const controlCtx = getCtx(atoms, selfId, 'control', 0);
+  const publicness = getCtx(atoms, selfId, 'publicness', 0);
+  const normP = getCtx(atoms, selfId, 'normPressure', 0);
+  const unc = getCtx(atoms, selfId, 'uncertainty', 0);
   const fatigue = getAny(atoms, [`cap:fatigue:${selfId}`, `world:body:fatigue:${selfId}`], 0);
 
   // Very light “life weights” (optional). If absent -> 0.5 neutral.
@@ -114,85 +101,85 @@ export function deriveGoalAtoms(selfId: string, atoms: ContextAtom[], opts?: { t
   const lifeOrder = getAny(atoms, [`goal:lifeDomain:order:${selfId}`], 0.5);
 
   const usedCommon = [
-    `ctx:danger:${selfId}`,
-    `ctx:control:${selfId}`,
-    `ctx:uncertainty:${selfId}`,
-    `ctx:normPressure:${selfId}`,
+    danger.id || '',
+    controlCtx.id || '',
+    unc.id || '',
+    normP.id || '',
     `cap:fatigue:${selfId}`
-  ];
+  ].filter(Boolean);
 
   const ecology: { domain: GoalDomain; v: number; used: string[]; parts: any }[] = [];
 
   // Safety: threat + drvSafety (if exists) blended with lifeSafety.
   {
-    const base = clamp01(0.60 * ctxThreat + 0.40 * (Number.isFinite(drvSafety) ? drvSafety : 0));
+    const base = clamp01(0.60 * danger.magnitude + 0.40 * (Number.isFinite(drvSafety) ? drvSafety : 0));
     const v = clamp01(0.55 * base + 0.45 * lifeSafety);
     ecology.push({
       domain: 'safety',
       v,
       used: [...usedCommon, `drv:safetyNeed:${selfId}`, `goal:lifeDomain:safety:${selfId}`],
-      parts: { ctxThreat, drvSafety: Number.isFinite(drvSafety) ? drvSafety : null, lifeSafety, base }
+      parts: { danger: danger.magnitude, dangerLayer: danger.layer, drvSafety: Number.isFinite(drvSafety) ? drvSafety : null, lifeSafety, base }
     });
   }
 
   // Control: (1-control) + drvControl
   {
-    const lack = clamp01(1 - ctxControl);
+    const lack = clamp01(1 - controlCtx.magnitude);
     const base = clamp01(0.60 * lack + 0.40 * (Number.isFinite(drvControl) ? drvControl : 0));
     const v = clamp01(0.55 * base + 0.45 * lifeOrder);
     ecology.push({
       domain: 'control',
       v,
       used: [...usedCommon, `drv:controlNeed:${selfId}`, `goal:lifeDomain:order:${selfId}`],
-      parts: { lackControl: lack, drvControl: Number.isFinite(drvControl) ? drvControl : null, lifeOrder, base }
+      parts: { lackControl: lack, controlLayer: controlCtx.layer, drvControl: Number.isFinite(drvControl) ? drvControl : null, lifeOrder, base }
     });
   }
 
   // Affiliation: drvAff + inverse public/hostility proxies (soft)
   {
-    const base = clamp01(0.55 * (Number.isFinite(drvAff) ? drvAff : 0) + 0.45 * (1 - ctxThreat));
+    const base = clamp01(0.55 * (Number.isFinite(drvAff) ? drvAff : 0) + 0.45 * (1 - danger.magnitude));
     const v = clamp01(0.55 * base + 0.45 * lifeAff);
     ecology.push({
       domain: 'affiliation',
       v,
       used: [...usedCommon, `drv:affiliationNeed:${selfId}`, `goal:lifeDomain:affiliation:${selfId}`],
-      parts: { drvAff: Number.isFinite(drvAff) ? drvAff : null, ctxThreat, lifeAff, base }
+      parts: { drvAff: Number.isFinite(drvAff) ? drvAff : null, danger: danger.magnitude, dangerLayer: danger.layer, lifeAff, base }
     });
   }
 
   // Status: norm/public + drvStatus
   {
-    const base = clamp01(0.55 * clamp01(ctxPublic + ctxNorm) + 0.45 * (Number.isFinite(drvStatus) ? drvStatus : 0));
+    const base = clamp01(0.55 * clamp01(publicness.magnitude + normP.magnitude) + 0.45 * (Number.isFinite(drvStatus) ? drvStatus : 0));
     const v = clamp01(0.55 * base + 0.45 * lifeStatus);
     ecology.push({
       domain: 'status',
       v,
       used: [...usedCommon, `drv:statusNeed:${selfId}`, `goal:lifeDomain:status:${selfId}`],
-      parts: { ctxPublic, ctxNorm, drvStatus: Number.isFinite(drvStatus) ? drvStatus : null, lifeStatus, base }
+      parts: { publicness: publicness.magnitude, publicnessLayer: publicness.layer, normPressure: normP.magnitude, normPressureLayer: normP.layer, drvStatus: Number.isFinite(drvStatus) ? drvStatus : null, lifeStatus, base }
     });
   }
 
   // Exploration: uncertainty + drvCur + lifeExplore
   {
-    const base = clamp01(0.55 * ctxUnc + 0.45 * (Number.isFinite(drvCur) ? drvCur : 0));
+    const base = clamp01(0.55 * unc.magnitude + 0.45 * (Number.isFinite(drvCur) ? drvCur : 0));
     const v = clamp01(0.55 * base + 0.45 * lifeExplore);
     ecology.push({
       domain: 'exploration',
       v,
       used: [...usedCommon, `drv:curiosityNeed:${selfId}`, `goal:lifeDomain:exploration:${selfId}`],
-      parts: { ctxUnc, drvCur: Number.isFinite(drvCur) ? drvCur : null, lifeExplore, base }
+      parts: { uncertainty: unc.magnitude, uncertaintyLayer: unc.layer, drvCur: Number.isFinite(drvCur) ? drvCur : null, lifeExplore, base }
     });
   }
 
   // Order: (1-chaos proxy) + lifeOrder (we reuse ctxControl as a proxy for order)
   {
-    const base = clamp01(0.60 * ctxControl + 0.40 * lifeOrder);
+    const base = clamp01(0.60 * controlCtx.magnitude + 0.40 * lifeOrder);
     const v = clamp01(base);
     ecology.push({
       domain: 'order',
       v,
       used: [...usedCommon, `goal:lifeDomain:order:${selfId}`],
-      parts: { ctxControl, lifeOrder, base }
+      parts: { control: controlCtx.magnitude, controlLayer: controlCtx.layer, lifeOrder, base }
     });
   }
 

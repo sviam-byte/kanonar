@@ -42,6 +42,7 @@ import { deriveAppraisalAtoms } from '../emotion/appraisals';
 import { deriveEmotionAtoms } from '../emotion/emotions';
 import { deriveDyadicEmotionAtoms } from '../emotion/dyadic';
 import { arr } from '../utils/arr';
+import { validateAtomInvariants } from '../context/validate/atomInvariants';
 
 // Scene Engine
 import { SCENE_PRESETS } from '../scene/presets';
@@ -152,6 +153,7 @@ export function buildGoalLabContext(
   opts: {
     snapshotOptions?: ContextBuildOptions & { atomOverridesLayer?: AtomOverrideLayer; overrideEvents?: any[]; sceneControl?: any; affectOverrides?: any };
     timeOverride?: number;
+    devValidateAtoms?: boolean;
   } = {}
 ): GoalLabContextResult | null {
   let agent = world.agents.find(a => a.entityId === agentId);
@@ -287,6 +289,7 @@ export function buildGoalLabContext(
         changed?: PipelineAtomStub[];
         removedIds?: string[];
         notes?: string[];
+        meta?: any;
       };
 
       const pipelineStages: PipelineStageDelta[] = [];
@@ -346,7 +349,7 @@ export function buildGoalLabContext(
         id: string,
         label: string,
         atoms: ContextAtom[],
-        opts?: { notes?: string[] }
+        opts?: { notes?: string[]; meta?: any }
       ) => {
         const next = dedupeAtomsById(atoms).map(normalizeAtom);
         const atomCount = next.length;
@@ -358,6 +361,7 @@ export function buildGoalLabContext(
             atomCount,
             full: next.map(compactAtom),
             notes: opts?.notes,
+            meta: opts?.meta,
           });
           prevAtoms = next;
           prevMap = new Map(next.map(a => [String((a as any).id), atomSig(a)]));
@@ -383,16 +387,17 @@ export function buildGoalLabContext(
 
         const byId = new Map(next.map(a => [String((a as any).id), a]));
 
-        pipelineStages.push({
-          id,
-          label,
-          baseId: prevStageId,
-          atomCount,
-          added: addedIds.map(id0 => compactAtom(byId.get(id0)!)),
-          changed: changedIds.map(id0 => compactAtom(byId.get(id0)!)),
-          removedIds,
-          notes: opts?.notes,
-        });
+          pipelineStages.push({
+            id,
+            label,
+            baseId: prevStageId,
+            atomCount,
+            added: addedIds.map(id0 => compactAtom(byId.get(id0)!)),
+            changed: changedIds.map(id0 => compactAtom(byId.get(id0)!)),
+            removedIds,
+            notes: opts?.notes,
+            meta: opts?.meta,
+          });
 
         prevAtoms = next;
         prevMap = curMap;
@@ -500,89 +505,171 @@ export function buildGoalLabContext(
         }
       );
 
-      // 8. ToM Context Bias
+      if (opts?.devValidateAtoms) {
+        const violations = validateAtomInvariants(atomsAfterLens);
+        const errors = violations.filter(v => v.level === 'error');
+        pushStage(
+          'VALIDATE',
+          'VALIDATE • atom invariants',
+          atomsAfterLens,
+          {
+            notes: [
+              `violations=${violations.length}`,
+              errors.length ? `errors=${errors.length}` : 'errors=0'
+            ],
+            meta: { violations }
+          }
+        );
+        if (errors.length) {
+          throw new Error(`Atom invariant violations: ${errors[0].msg}`);
+        }
+      }
+
+      // 8. ToM Context Bias  (now respects dyad:final:*)
       const biasPack = buildBeliefToMBias(atomsAfterLens, selfId);
       const atomsAfterBias = mergeKeepingOverrides(atomsAfterLens, biasPack.atoms).merged;
       const bias = biasPack.bias;
 
       const tomCtxDyads: ContextAtom[] = [];
-      const dyads = atomsAfterBias.filter(a => a.id.startsWith(`tom:dyad:${selfId}:`));
 
-      for (const a of dyads) {
-          if (a.id.endsWith(':trust')) {
-            const trust = clamp01(a.magnitude ?? 0);
-            const t2 = clamp01(trust * (1 - 0.6 * bias));
-            tomCtxDyads.push(normalizeAtom({
-              id: a.id.replace(':trust', ':trust_ctx'),
-              kind: 'tom_dyad_metric', 
-              ns: 'tom',
-              origin: 'derived',
-              source: 'tom_ctx',
-              magnitude: t2,
-              confidence: 1,
-              tags: ['tom', 'ctx'],
-              subject: selfId,
-              target: a.target,
-              label: `trust_ctx:${Math.round(t2 * 100)}%`,
-              trace: { usedAtomIds: [a.id, `tom:ctx:bias:${selfId}`], notes: ['trust adjusted by ctx bias'], parts: { trust, bias } }
-            } as any));
+      // Collect all dyad entries for selfId from BOTH base + final layers,
+      // and choose final if present for each (target, metric).
+      const dyadEntries = (() => {
+        const entries = atomsAfterBias.filter(a => String(a.id).startsWith('tom:dyad:'));
+        const map = new Map<string, ContextAtom>(); // key = target|metric ; value = chosen atom
+        for (const a of entries) {
+          const id = String(a.id);
+          const parts = id.split(':');
+
+          let isFinal = false;
+          let s = '';
+          let t = '';
+          let m = '';
+
+          if (parts[2] === 'final') {
+            isFinal = true;
+            s = parts[3] || '';
+            t = parts[4] || '';
+            m = parts[5] || '';
+          } else {
+            s = parts[2] || '';
+            t = parts[3] || '';
+            m = parts[4] || '';
           }
-          if (a.id.endsWith(':threat')) {
-            const thr = clamp01(a.magnitude ?? 0);
-            const thr2 = clamp01(thr + 0.6 * bias * (1 - thr));
-            tomCtxDyads.push(normalizeAtom({
-              id: a.id.replace(':threat', ':threat_ctx'),
-              kind: 'tom_dyad_metric',
-              ns: 'tom',
-              origin: 'derived',
-              source: 'tom_ctx',
-              magnitude: thr2,
-              confidence: 1,
-              tags: ['tom', 'ctx'],
-              subject: selfId,
-              target: a.target,
-              label: `threat_ctx:${Math.round(thr2 * 100)}%`,
-              trace: { usedAtomIds: [a.id, `tom:ctx:bias:${selfId}`], notes: ['threat adjusted by ctx bias'], parts: { thr, bias } }
-            } as any));
+          if (s !== selfId || !t || !m) continue;
+
+          const key = `${t}::${m}`;
+          const prev = map.get(key);
+
+          // Prefer final over base if both exist
+          if (!prev) {
+            map.set(key, a);
+          } else {
+            const prevIsFinal = String(prev.id).split(':')[2] === 'final';
+            if (isFinal && !prevIsFinal) {
+              map.set(key, a);
+            }
           }
+        }
+
+        // Return as list
+        const out: Array<{ target: string; metric: string; atom: ContextAtom }> = [];
+        for (const [key, atom] of map.entries()) {
+          const [t, m] = key.split('::');
+          out.push({ target: t, metric: m, atom });
+        }
+        return out;
+      })();
+
+      // Build *_ctx only for trust/threat based on chosen (final→base) atom id
+      for (const e of dyadEntries) {
+        const a = e.atom;
+        const target = e.target;
+
+        if (e.metric === 'trust') {
+          const trust = clamp01((a as any).magnitude ?? 0);
+          const t2 = clamp01(trust * (1 - 0.6 * bias));
+          tomCtxDyads.push(normalizeAtom({
+            id: `tom:dyad:${selfId}:${target}:trust_ctx`,
+            kind: 'tom_dyad_metric',
+            ns: 'tom',
+            origin: 'derived',
+            source: 'tom_ctx',
+            magnitude: t2,
+            confidence: 1,
+            tags: ['tom', 'ctx'],
+            subject: selfId,
+            target,
+            label: `trust_ctx:${Math.round(t2 * 100)}%`,
+            trace: { usedAtomIds: [String(a.id), `tom:ctx:bias:${selfId}`], notes: ['trust adjusted by ctx bias'], parts: { trust, bias, baseId: String(a.id) } }
+          } as any));
+        }
+
+        if (e.metric === 'threat') {
+          const thr = clamp01((a as any).magnitude ?? 0);
+          const thr2 = clamp01(thr + 0.6 * bias * (1 - thr));
+          tomCtxDyads.push(normalizeAtom({
+            id: `tom:dyad:${selfId}:${target}:threat_ctx`,
+            kind: 'tom_dyad_metric',
+            ns: 'tom',
+            origin: 'derived',
+            source: 'tom_ctx',
+            magnitude: thr2,
+            confidence: 1,
+            tags: ['tom', 'ctx'],
+            subject: selfId,
+            target,
+            label: `threat_ctx:${Math.round(thr2 * 100)}%`,
+            trace: { usedAtomIds: [String(a.id), `tom:ctx:bias:${selfId}`], notes: ['threat adjusted by ctx bias'], parts: { thr, bias, baseId: String(a.id) } }
+          } as any));
+        }
       }
 
       // 8.5 Effective ToM dyads (canonical layer)
       const atomsAfterCtx = mergeKeepingOverrides(atomsAfterBias, tomCtxDyads).merged;
-      const baseDyads = atomsAfterCtx.filter(a => a.id.startsWith(`tom:dyad:${selfId}:`));
       const effectiveDyads: ContextAtom[] = [];
+
       const getMag = (atoms: ContextAtom[], id: string, fb = 0) => {
         const a = atoms.find(x => x.id === id);
         const m = (a as any)?.magnitude;
         return (typeof m === 'number' && Number.isFinite(m)) ? m : fb;
       };
 
-      for (const b of baseDyads) {
-        const parts = String(b.id).split(':'); // tom:dyad:self:target:metric
-        const target = b.target || parts[3];
-        const metric = parts[4];
-        if (!target || !metric) continue;
+      // Build effective dyads from dyadEntries (already chosen final→base per (target,metric))
+      for (const e of dyadEntries) {
+        const target = e.target;
+        const metric = e.metric;
+        const baseAtom = e.atom;
 
-        const base = clamp01(b.magnitude ?? 0);
+        const base = clamp01((baseAtom as any).magnitude ?? 0);
         let eff = base;
-        const usedIds: string[] = [b.id];
+        const usedIds: string[] = [String(baseAtom.id)];
 
         if (metric === 'trust' || metric === 'threat') {
           const ctxId = `tom:dyad:${selfId}:${target}:${metric}_ctx`;
           const ctx = atomsAfterCtx.find(a => a.id === ctxId);
           if (ctx) {
-            eff = clamp01(ctx.magnitude ?? base);
+            eff = clamp01((ctx as any).magnitude ?? base);
             usedIds.push(ctxId);
           }
         }
 
         if (metric === 'support') {
-          const baseThreat = getMag(atomsAfterCtx, `tom:dyad:${selfId}:${target}:threat`, 0);
+          // support is damped by threat_ctx shift
+          const baseThreatId = (() => {
+            // find chosen threat base id: final if exists else base
+            const fin = `tom:dyad:final:${selfId}:${target}:threat`;
+            const base = `tom:dyad:${selfId}:${target}:threat`;
+            return atomsAfterCtx.some(a => a.id === fin) ? fin : base;
+          })();
+
+          const baseThreat = getMag(atomsAfterCtx, baseThreatId, 0);
           const effThreat = getMag(atomsAfterCtx, `tom:dyad:${selfId}:${target}:threat_ctx`, baseThreat);
+
           const denom = Math.max(1e-6, 1 - clamp01(baseThreat));
           const factor = clamp01((1 - clamp01(effThreat)) / denom);
           eff = clamp01(base * factor);
-          usedIds.push(`tom:dyad:${selfId}:${target}:threat`, `tom:dyad:${selfId}:${target}:threat_ctx`);
+          usedIds.push(baseThreatId, `tom:dyad:${selfId}:${target}:threat_ctx`);
         }
 
         effectiveDyads.push(normalizeAtom({
@@ -599,8 +686,8 @@ export function buildGoalLabContext(
           label: `${metric}_eff:${Math.round(eff * 100)}%`,
           trace: {
             usedAtomIds: Array.from(new Set(usedIds.filter(Boolean))),
-            notes: ['effective dyad metric'],
-            parts: { base, eff }
+            notes: ['effective dyad metric (final→base aware)'],
+            parts: { base, eff, baseId: String(baseAtom.id) }
           }
         } as any));
       }
@@ -926,6 +1013,7 @@ export function buildGoalLabContext(
     changed?: PipelineAtomStub[];
     removedIds?: string[];
     notes?: string[];
+    meta?: any;
   };
 
   const compactPipelineAtom = (a: ContextAtom): PipelineAtomStub => {
@@ -980,7 +1068,7 @@ export function buildGoalLabContext(
     atoms: ContextAtom[],
     prevAtoms: ContextAtom[],
     prevStageId?: string,
-    opts?: { notes?: string[] }
+    opts?: { notes?: string[]; meta?: any }
   ): PipelineStageDelta => {
     const next = dedupeAtomsById(atoms).map(normalizeAtom);
     const atomCount = next.length;
@@ -1012,6 +1100,7 @@ export function buildGoalLabContext(
       changed: changedIds.map(id0 => compactPipelineAtom(byId.get(id0)!)),
       removedIds,
       notes: opts?.notes,
+      meta: opts?.meta,
     };
   };
 
@@ -1035,14 +1124,17 @@ export function buildGoalLabContext(
     topK: 12
   });
 
+  const decisionAtoms = arr((decision as any)?.atoms).map(normalizeAtom);
+  const atomsWithDecision = dedupeAtomsById([...atomsWithMind, ...decisionAtoms]).map(normalizeAtom);
+
   const snapshot = buildContextSnapshot(world, agent, {
       ...opts.snapshotOptions,
-      manualAtoms: atomsWithMind
+      manualAtoms: atomsWithDecision
   });
   
-  snapshot.coverage = computeCoverageReport(atomsWithMind as any);
+  snapshot.coverage = computeCoverageReport(atomsWithDecision as any);
   // Drop legacy scene:* atoms in favor of canonical ctx:src:scene:* inputs.
-  snapshot.atoms = (atomsWithMind || []).filter(a => !String(a?.id || '').startsWith('scene:'));
+  snapshot.atoms = (atomsWithDecision || []).filter(a => !String(a?.id || '').startsWith('scene:'));
   snapshot.validation = validation;
   snapshot.decision = decision; 
 

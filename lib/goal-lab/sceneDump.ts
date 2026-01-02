@@ -4,6 +4,9 @@ import { buildGoalLabExplain } from './explain';
 
 type SceneDumpInput = {
   world: WorldState | null;
+  includePipelineFrames?: boolean;
+  includePipelineDeltas?: boolean;
+  includeViolations?: boolean;
   pipelineV1?: any;
   selectedAgentId?: string | null;
   perspectiveId?: string | null;
@@ -37,6 +40,9 @@ export function buildGoalLabSceneDumpV2(input: SceneDumpInput) {
   const exportedAt = new Date().toISOString();
   const {
     world,
+    includePipelineFrames,
+    includePipelineDeltas,
+    includeViolations,
     pipelineV1,
     selectedAgentId,
     perspectiveId,
@@ -101,6 +107,21 @@ export function buildGoalLabSceneDumpV2(input: SceneDumpInput) {
     }
   })();
 
+  const pipelineFrames = includePipelineFrames
+    ? (pipelineV1?.stages || []).map((s: any) => ({
+      name: s.title || s.stage || s.id,
+      atoms: s.atoms || []
+    }))
+    : null;
+
+  const pipelineDeltas = includePipelineDeltas
+    ? (snapshot as any)?.meta?.pipelineDeltas ?? null
+    : null;
+
+  const pipelineViolations = includeViolations
+    ? (Array.isArray(pipelineDeltas) ? pipelineDeltas.filter((s: any) => s?.id === 'VALIDATE' || s?.meta?.violations) : [])
+    : null;
+
   return {
     schemaVersion: 3,
     exportedAt,
@@ -153,6 +174,9 @@ export function buildGoalLabSceneDumpV2(input: SceneDumpInput) {
       pipelineFrame,
       pipelineV1,
     },
+    pipelineFrames,
+    pipelineDeltas,
+    pipelineViolations,
     explain: buildGoalLabExplain(snapshot ?? null),
     tomMatrixForPerspective,
     castRows,

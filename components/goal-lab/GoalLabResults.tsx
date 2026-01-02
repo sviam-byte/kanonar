@@ -924,9 +924,10 @@ export const GoalLabResults: React.FC<Props> = ({
                             {onExportPipelineAll && (
                                 <button
                                     onClick={onExportPipelineAll}
-                                    className="px-3 py-1 text-[11px] font-semibold border border-canon-border/60 rounded bg-canon-bg-light hover:bg-canon-bg-light/70 transition-colors"
+                                    className="px-4 py-2 text-[12px] font-extrabold border-2 border-canon-accent rounded bg-canon-accent/20 hover:bg-canon-accent/30 transition-colors"
+                                    title="Скачать полный debug: все стадии пайплайна + дельты"
                                 >
-                                    Экспорт pipeline (JSON)
+                                    ⬇ EXPORT DEBUG (pipeline JSON)
                                 </button>
                             )}
                             {canDownload && (

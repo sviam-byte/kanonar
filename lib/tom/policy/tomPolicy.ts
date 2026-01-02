@@ -5,6 +5,7 @@
 // - Actions via Expected Utility + softmax to probabilities
 import { ContextAtom } from '../../context/v2/types';
 import { normalizeAtom } from '../../context/v2/infer';
+import { getCtx, pickCtxId } from '../../context/layers';
 import { clamp01, entropy01, invLogit, logit, sigmoid, softmax } from './decisionMath';
 
 function unpackAtomsAndSelfId(
@@ -87,12 +88,19 @@ export function buildTomPolicyLayer(
   const out: ContextAtom[] = [];
 
   // ---------- Context (self) ----------
-  const danger = clamp01(getMag(atoms, `ctx:danger:${selfId}`, 0));
-  const crowd = clamp01(getMag(atoms, `ctx:crowd:${selfId}`, 0));
-  const publicness = clamp01(getMag(atoms, `ctx:publicness:${selfId}`, 0));
-  const surveillance = clamp01(getMag(atoms, `ctx:surveillance:${selfId}`, 0));
-  const normPressure = clamp01(getMag(atoms, `ctx:normPressure:${selfId}`, 0));
-  const uncertaintyCtx = clamp01(getMag(atoms, `ctx:uncertainty:${selfId}`, 0));
+  const dangerP = getCtx(atoms, selfId, 'danger', 0);
+  const crowdP = getCtx(atoms, selfId, 'crowd', 0);
+  const publicP = getCtx(atoms, selfId, 'publicness', 0);
+  const survP = getCtx(atoms, selfId, 'surveillance', 0);
+  const normP = getCtx(atoms, selfId, 'normPressure', 0);
+  const uncP = getCtx(atoms, selfId, 'uncertainty', 0);
+
+  const danger = clamp01(dangerP.magnitude);
+  const crowd = clamp01(crowdP.magnitude);
+  const publicness = clamp01(publicP.magnitude);
+  const surveillance = clamp01(survP.magnitude);
+  const normPressure = clamp01(normP.magnitude);
+  const uncertaintyCtx = clamp01(uncP.magnitude);
 
   // ---------- Self traits (personalize policy) ----------
   const paranoia = clamp01(getMag(atoms, `feat:char:${selfId}:trait.paranoia`, 0.5));
@@ -125,12 +133,12 @@ export function buildTomPolicyLayer(
     label: S2 >= 0.55 ? 'System-2' : 'System-1',
     trace: {
       usedAtomIds: [
-        `ctx:danger:${selfId}`,
-        `ctx:crowd:${selfId}`,
-        `ctx:publicness:${selfId}`,
-        `ctx:surveillance:${selfId}`,
-        `ctx:normPressure:${selfId}`,
-        `ctx:uncertainty:${selfId}`,
+        ...(dangerP.id ? [dangerP.id] : pickCtxId('danger', selfId)),
+        ...(crowdP.id ? [crowdP.id] : pickCtxId('crowd', selfId)),
+        ...(publicP.id ? [publicP.id] : pickCtxId('publicness', selfId)),
+        ...(survP.id ? [survP.id] : pickCtxId('surveillance', selfId)),
+        ...(normP.id ? [normP.id] : pickCtxId('normPressure', selfId)),
+        ...(uncP.id ? [uncP.id] : pickCtxId('uncertainty', selfId)),
       ],
       parts: { danger, crowd, publicness, surveillance, normPressure, uncertaintyCtx, stakes, timePressure, voi, S2 }
     }

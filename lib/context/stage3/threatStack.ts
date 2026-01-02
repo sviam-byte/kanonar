@@ -1,6 +1,7 @@
 import { Atom } from '../../atoms/types';
 import { getM, used } from '../../atoms/read';
 import { clamp01, linMix, noisyOr } from '../../math/normalize';
+import { pickCtxId } from '../layers';
 
 type ThreatWeights = {
   env: number; soc: number; auth: number; unc: number; body: number; sc: number;
@@ -33,27 +34,35 @@ export function deriveThreatStack(
 ): Atom[] {
   const W: ThreatWeights = { ...DEFAULT_W, ...weights };
   const P: ThreatParams = { ...DEFAULT_P, ...params };
+  // Prefer subjective ctx:final:* axes when present.
+  const ctxKey = (axis: string) => {
+    const candidates = pickCtxId(axis, agentId);
+    for (const id of candidates) {
+      if (resolved.has(id)) return id;
+    }
+    return `ctx:${axis}:${agentId}`;
+  };
 
   // Environment
   const T_env = clamp01(Math.max(
     getM(resolved, `world:map:danger:${agentId}`, 0),
     getM(resolved, `world:env:hazard:${agentId}`, 0),
-    getM(resolved, `ctx:danger:${agentId}`, 0)
+    getM(resolved, ctxKey('danger'), 0)
   ));
 
   // Authority
   const authMix = linMix([
     { name: 'locControl', value: getM(resolved, `world:loc:control:${agentId}`, 0), weight: 0.60 },
-    { name: 'normPressure', value: getM(resolved, `ctx:normPressure:${agentId}`, 0), weight: 0.40 },
+    { name: 'normPressure', value: getM(resolved, ctxKey('normPressure'), 0), weight: 0.40 },
   ]);
   const T_auth = authMix.value;
 
   // Uncertainty
-  const T_unc = getM(resolved, `ctx:uncertainty:${agentId}`, 0.5);
+  const T_unc = getM(resolved, ctxKey('uncertainty'), 0.5);
 
   // Scenario
   const scMix = linMix([
-    { name: 'crowd', value: getM(resolved, `ctx:crowd:${agentId}`, 0), weight: 0.55 },
+    { name: 'crowd', value: getM(resolved, ctxKey('crowd'), 0), weight: 0.55 },
     { name: 'urgency', value: getM(resolved, `scene:urgency:${agentId}`, 0), weight: 0.45 },
   ]);
   const T_sc = scMix.value;
@@ -96,10 +105,10 @@ export function deriveThreatStack(
   const T_final = finalMix.value;
 
   // mind:* atoms for panel
-  const surv = getM(resolved, `ctx:surveillance:${agentId}`, 0);
+  const surv = getM(resolved, ctxKey('surveillance'), 0);
   const pressureMix = linMix([
     { name: 'surveillance', value: surv, weight: 0.5 },
-    { name: 'normPressure', value: getM(resolved, `ctx:normPressure:${agentId}`, 0), weight: 0.2 },
+    { name: 'normPressure', value: getM(resolved, ctxKey('normPressure'), 0), weight: 0.2 },
   ]);
 
   return [
@@ -113,12 +122,12 @@ export function deriveThreatStack(
           usedAtomIds: [
             `world:map:danger:${agentId}`,
             `world:env:hazard:${agentId}`,
-            `ctx:danger:${agentId}`
+            ctxKey('danger')
           ],
           parts: [
             { name: 'mapDanger', value: getM(resolved, `world:map:danger:${agentId}`, 0), weight: 1 },
             { name: 'envHazard', value: getM(resolved, `world:env:hazard:${agentId}`, 0), weight: 1 },
-            { name: 'ctxDanger', value: getM(resolved, `ctx:danger:${agentId}`, 0), weight: 1 },
+            { name: 'ctxDanger', value: getM(resolved, ctxKey('danger'), 0), weight: 1 },
           ],
           notes: 'env threat = max(mapDanger, envHazard, ctxDanger)'
         }
@@ -146,7 +155,7 @@ export function deriveThreatStack(
         trace: {
           usedAtomIds: [
             `world:loc:control:${agentId}`,
-            `ctx:normPressure:${agentId}`
+            ctxKey('normPressure')
           ],
           parts: authMix.parts.map(p => ({ name: p.name || 'part', value: p.value, weight: p.weight })),
           notes: 'authority mix from control + normPressure'
@@ -160,7 +169,7 @@ export function deriveThreatStack(
       o: 'derived',
       meta: {
         trace: {
-          usedAtomIds: [`ctx:uncertainty:${agentId}`],
+          usedAtomIds: [ctxKey('uncertainty')],
           parts: [{ name: 'uncertainty', value: T_unc, weight: 1 }],
           notes: 'threat uncertainty from ctx:uncertainty'
         }
@@ -190,7 +199,7 @@ export function deriveThreatStack(
       o: 'derived',
       meta: {
         trace: {
-          usedAtomIds: [`ctx:crowd:${agentId}`, `scene:urgency:${agentId}`],
+          usedAtomIds: [ctxKey('crowd'), `scene:urgency:${agentId}`],
           parts: scMix.parts.map(p => ({ name: p.name || 'part', value: p.value, weight: p.weight })),
           notes: 'scenario mix from crowd and urgency'
         }
@@ -225,7 +234,7 @@ export function deriveThreatStack(
       o: 'derived',
       meta: {
         trace: {
-          usedAtomIds: [`ctx:surveillance:${agentId}`, `ctx:normPressure:${agentId}`],
+          usedAtomIds: [ctxKey('surveillance'), ctxKey('normPressure')],
           parts: pressureMix.parts.map(p => ({ name: p.name || 'part', value: p.value, weight: p.weight })),
           notes: 'pressure mix from surveillance and normPressure'
         }
@@ -246,13 +255,13 @@ export function deriveThreatStack(
     },
     {
       id: `mind:crowd:${agentId}`,
-      m: getM(resolved, `ctx:crowd:${agentId}`, 0),
+      m: getM(resolved, ctxKey('crowd'), 0),
       c: 1,
       o: 'derived',
       meta: {
         trace: {
-          usedAtomIds: [`ctx:crowd:${agentId}`],
-          parts: [{ name: 'ctxCrowd', value: getM(resolved, `ctx:crowd:${agentId}`, 0), weight: 1 }],
+          usedAtomIds: [ctxKey('crowd')],
+          parts: [{ name: 'ctxCrowd', value: getM(resolved, ctxKey('crowd'), 0), weight: 1 }],
           notes: 'mind.crowd mirrors ctx:crowd'
         }
       }

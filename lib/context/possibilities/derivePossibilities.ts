@@ -3,6 +3,7 @@ import { ContextAtom } from '../v2/types';
 import { normalizeAtom } from '../v2/infer';
 import { Possibility } from './types';
 import { computeActionCost } from '../../cost/model';
+import { getCtx, pickCtxId } from '../layers';
 
 function clamp01(x: number) {
   if (!Number.isFinite(x)) return 0;
@@ -38,7 +39,9 @@ export function derivePossibilities(atoms: ContextAtom[], selfId: string): { pos
   
   const cover = getMag(atoms, `ctx:cover:${selfId}`, getMag(atoms, 'map_cover', 0));
   const escape = getMag(atoms, `ctx:escape:${selfId}`, 0);
-  const publicness = getMag(atoms, `ctx:publicness:${selfId}`, 0);
+  const publicness = getCtx(atoms, selfId, 'publicness', 0);
+  const surveillance = getCtx(atoms, selfId, 'surveillance', 0);
+  const normPressure = getCtx(atoms, selfId, 'normPressure', 0);
   const protocolStrict = getMag(atoms, `ctx:proceduralStrict:${selfId}`, 0);
 
   // constraints
@@ -127,7 +130,7 @@ export function derivePossibilities(atoms: ContextAtom[], selfId: string): { pos
     const trustBase = getMag(atoms, `rel:base:${selfId}:${other}:loyalty`, 0); // using loyalty as trust proxy
     const trustPrior = Math.max(trustBase, getMag(atoms, `rel:prior:${selfId}:${other}:trust`, 0.5));
     
-    const secretOk = publicness < 0.35 && trustPrior > 0.7;
+    const secretOk = publicness.magnitude < 0.35 && surveillance.magnitude < 0.5 && normPressure.magnitude < 0.6 && trustPrior > 0.7;
 
     poss.push({
       id: `aff:share_secret:${other}`,
@@ -137,7 +140,12 @@ export function derivePossibilities(atoms: ContextAtom[], selfId: string): { pos
       label: `Share secret with ${other}`,
       magnitude: secretOk ? clamp01(0.6 + 0.4 * closeness) : 0.05,
       enabled: secretOk && closeness > 0.2,
-      whyAtomIds: [`ctx:publicness:${selfId}`, `rel:base:${selfId}:${other}:loyalty`].filter(id => has(atoms, id)),
+      whyAtomIds: [
+        ...(publicness.id ? [publicness.id] : pickCtxId('publicness', selfId)),
+        ...(surveillance.id ? [surveillance.id] : pickCtxId('surveillance', selfId)),
+        ...(normPressure.id ? [normPressure.id] : pickCtxId('normPressure', selfId)),
+        `rel:base:${selfId}:${other}:loyalty`
+      ].filter(id => has(atoms, id)),
       blockedBy: !secretOk ? ['con:context:noPrivacyOrTrust'] : []
     });
 
