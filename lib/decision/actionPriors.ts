@@ -1,5 +1,6 @@
 import { ContextAtom } from '../context/v2/types';
 import { normalizeAtom } from '../context/v2/infer';
+import { getCtx } from '../context/layers';
 
 const clamp01 = (x: number) => (Number.isFinite(x) ? Math.max(0, Math.min(1, x)) : 0);
 
@@ -34,10 +35,10 @@ export function deriveActionPriors(args: {
   const { selfId, otherIds, atoms } = args;
   const out: ContextAtom[] = [];
 
-  const danger = clamp01(getMag(atoms, `ctx:danger:${selfId}`, 0));
-  const norm = clamp01(getMag(atoms, `ctx:normPressure:${selfId}`, 0));
-  const pub = clamp01(getMag(atoms, `ctx:publicness:${selfId}`, 0));
-  const surv = clamp01(getMag(atoms, `ctx:surveillance:${selfId}`, 0));
+  const danger = getCtx(atoms, selfId, 'danger', 0);
+  const norm = getCtx(atoms, selfId, 'normPressure', 0);
+  const pub = getCtx(atoms, selfId, 'publicness', 0);
+  const surv = getCtx(atoms, selfId, 'surveillance', 0);
 
   for (const otherId of otherIds) {
     if (!otherId || otherId === selfId) continue;
@@ -55,11 +56,11 @@ export function deriveActionPriors(args: {
 
     // База: помочь / навредить / запросить инфо / избегать / конфронтировать
     // Важно: норм/публичность/наблюдение сдвигают в сторону “безопасных” действий.
-    const socialRisk = clamp01(0.45 * pub + 0.35 * surv + 0.20 * norm);
+    const socialRisk = clamp01(0.45 * pub.magnitude + 0.35 * surv.magnitude + 0.20 * norm.magnitude);
 
     const help = clamp01(
       0.55 * trust + 0.20 * clos + 0.20 * oblig + 0.10 * tomTrust - 0.30 * tomThreat
-    ) * clamp01(1 - 0.45 * danger);
+    ) * clamp01(1 - 0.45 * danger.magnitude);
 
     const harm = clamp01(
       0.70 * host + 0.25 * tomThreat - 0.20 * trust
@@ -67,21 +68,21 @@ export function deriveActionPriors(args: {
 
     const askInfo = clamp01(
       0.35 + 0.25 * (1 - tomTrust) + 0.25 * (1 - clos) + 0.15 * respe
-    ) * clamp01(1 - 0.25 * danger);
+    ) * clamp01(1 - 0.25 * danger.magnitude);
 
     const avoid = clamp01(
-      0.25 + 0.55 * tomThreat + 0.25 * danger + 0.15 * socialRisk - 0.25 * oblig
+      0.25 + 0.55 * tomThreat + 0.25 * danger.magnitude + 0.15 * socialRisk - 0.25 * oblig
     );
 
     const confront = clamp01(
-      0.20 + 0.50 * host + 0.25 * (1 - socialRisk) + 0.15 * respe - 0.35 * danger
+      0.20 + 0.50 * host + 0.25 * (1 - socialRisk) + 0.15 * respe - 0.35 * danger.magnitude
     );
 
     const used = [
-      `ctx:danger:${selfId}`,
-      `ctx:normPressure:${selfId}`,
-      `ctx:publicness:${selfId}`,
-      `ctx:surveillance:${selfId}`,
+      ...(danger.id ? [danger.id] : []),
+      ...(norm.id ? [norm.id] : []),
+      ...(pub.id ? [pub.id] : []),
+      ...(surv.id ? [surv.id] : []),
       `rel:state:${selfId}:${otherId}:trust`,
       `rel:state:${selfId}:${otherId}:hostility`,
       `rel:state:${selfId}:${otherId}:closeness`,
@@ -94,11 +95,11 @@ export function deriveActionPriors(args: {
     ].filter(id => atoms.some(a => a?.id === id));
 
     out.push(
-      mk(selfId, otherId, 'help', help, used, { trust, clos, oblig, tomTrust, tomThreat, danger }),
+      mk(selfId, otherId, 'help', help, used, { trust, clos, oblig, tomTrust, tomThreat, danger: danger.magnitude, dangerLayer: danger.layer }),
       mk(selfId, otherId, 'harm', harm, used, { host, tomThreat, trust, socialRisk }),
-      mk(selfId, otherId, 'ask_info', askInfo, used, { tomTrust, clos, respe, danger }),
-      mk(selfId, otherId, 'avoid', avoid, used, { tomThreat, danger, socialRisk, oblig }),
-      mk(selfId, otherId, 'confront', confront, used, { host, socialRisk, respe, danger }),
+      mk(selfId, otherId, 'ask_info', askInfo, used, { tomTrust, clos, respe, danger: danger.magnitude, dangerLayer: danger.layer }),
+      mk(selfId, otherId, 'avoid', avoid, used, { tomThreat, danger: danger.magnitude, dangerLayer: danger.layer, socialRisk, oblig }),
+      mk(selfId, otherId, 'confront', confront, used, { host, socialRisk, respe, danger: danger.magnitude, dangerLayer: danger.layer }),
     );
   }
 

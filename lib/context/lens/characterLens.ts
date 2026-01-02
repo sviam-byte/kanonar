@@ -101,7 +101,7 @@ function mkDyadDerived(id: string, selfId: string, otherId: string, metric: stri
 /**
  * CharacterLens:
  * - НЕ трогает world/obs факты.
- * - Пишет (derived) субъективные ctx:final:* и tom:dyad:* на основе:
+ * - Пишет (derived) субъективные ctx:final:* и tom:dyad:final:* на основе:
  *   trait.paranoia, trait.sensitivity, trait.experience, body.stress/fatigue, ctx:*.
  */
 export function applyCharacterLens(args: {
@@ -121,7 +121,7 @@ export function applyCharacterLens(args: {
   const stress = getMag(atoms, `feat:char:${selfId}:body.stress`, 0.3);
   const fatigue = getMag(atoms, `feat:char:${selfId}:body.fatigue`, 0.3);
 
-  // базовые контекстные оси (как “сырьё” линзы)
+  // базовые контекстные оси (как “сырьё” линзы) — это base-слой
   const danger0 = getMag(atoms, `ctx:danger:${selfId}`, 0);
   const unc0 = getMag(atoms, `ctx:uncertainty:${selfId}`, 0);
   const norm0 = getMag(atoms, `ctx:normPressure:${selfId}`, 0);
@@ -184,14 +184,14 @@ export function applyCharacterLens(args: {
   ];
 
   out.push(
-    // НЕ перетираем базовые ctx:* оси. Линза пишет ТОЛЬКО в ctx:final:*
+    // ВАЖНО: линза НЕ перетирает ctx:*, а создаёт ctx:final:*
     mkDerived(
       `ctx:final:danger:${selfId}`,
       selfId,
       danger,
       usedCtxBase(
-        `ctx:danger:${selfId}`,
-        `ctx:danger:${selfId}`
+        `ctx:final:danger:${selfId}`,
+        ensureBaseCopy(atoms, out, `ctx:danger:${selfId}`, 'characterLens.ctx')
       ),
       { danger0, kDanger, paranoia, stress },
       ['ctx', 'lens', 'danger']
@@ -201,8 +201,8 @@ export function applyCharacterLens(args: {
       selfId,
       unc,
       usedCtxBase(
-        `ctx:uncertainty:${selfId}`,
-        `ctx:uncertainty:${selfId}`
+        `ctx:final:uncertainty:${selfId}`,
+        ensureBaseCopy(atoms, out, `ctx:uncertainty:${selfId}`, 'characterLens.ctx')
       ),
       { unc0, kUnc, experience, fatigue },
       ['ctx', 'lens', 'uncertainty']
@@ -212,8 +212,8 @@ export function applyCharacterLens(args: {
       selfId,
       norm,
       usedCtxBase(
-        `ctx:normPressure:${selfId}`,
-        `ctx:normPressure:${selfId}`
+        `ctx:final:normPressure:${selfId}`,
+        ensureBaseCopy(atoms, out, `ctx:normPressure:${selfId}`, 'characterLens.ctx')
       ),
       { norm0, kNorm, sensitivity, pub0 },
       ['ctx', 'lens', 'normPressure']
@@ -223,8 +223,8 @@ export function applyCharacterLens(args: {
       selfId,
       pub,
       usedCtxBase(
-        `ctx:publicness:${selfId}`,
-        `ctx:publicness:${selfId}`
+        `ctx:final:publicness:${selfId}`,
+        ensureBaseCopy(atoms, out, `ctx:publicness:${selfId}`, 'characterLens.ctx')
       ),
       { pub0, kPub, sensitivity },
       ['ctx', 'lens', 'publicness']
@@ -234,8 +234,8 @@ export function applyCharacterLens(args: {
       selfId,
       surv,
       usedCtxBase(
-        `ctx:surveillance:${selfId}`,
-        `ctx:surveillance:${selfId}`
+        `ctx:final:surveillance:${selfId}`,
+        ensureBaseCopy(atoms, out, `ctx:surveillance:${selfId}`, 'characterLens.ctx')
       ),
       { surv0, kSurv, paranoia },
       ['ctx', 'lens', 'surveillance']
@@ -245,8 +245,8 @@ export function applyCharacterLens(args: {
       selfId,
       crowd,
       usedCtxBase(
-        `ctx:crowd:${selfId}`,
-        `ctx:crowd:${selfId}`
+        `ctx:final:crowd:${selfId}`,
+        ensureBaseCopy(atoms, out, `ctx:crowd:${selfId}`, 'characterLens.ctx')
       ),
       { crowd0, kCrowd, stress, paranoia },
       ['ctx', 'lens', 'crowd']
@@ -256,8 +256,8 @@ export function applyCharacterLens(args: {
       selfId,
       intim,
       usedCtxBase(
-        `ctx:intimacy:${selfId}`,
-        `ctx:intimacy:${selfId}`
+        `ctx:final:intimacy:${selfId}`,
+        ensureBaseCopy(atoms, out, `ctx:intimacy:${selfId}`, 'characterLens.ctx')
       ),
       { intim0, kIntim, paranoia, danger0 },
       ['ctx', 'lens', 'intimacy']
@@ -300,6 +300,8 @@ export function applyCharacterLens(args: {
     const thr = clamp01(thr0 + (1 - thr0) * (0.75 * bias));        // threat растёт к 1
     const uncT = clamp01(uncT0 + (1 - uncT0) * (0.40 * bias));       // uncertainty растёт
 
+    // dyad-линза должна ссылаться на итоговые ctx:final оси,
+    // иначе дебаг будет врать “почему” сдвинулось
     const usedDyBase = (axisId: string, baseId: string) => [
       ...[
         `tom:dyad:${selfId}:${otherId}:trust`,
@@ -308,44 +310,45 @@ export function applyCharacterLens(args: {
       ].filter(id => id !== axisId),
       baseId,
       `lens:suspicion:${selfId}`,
-      `ctx:publicness:${selfId}`,
-      `ctx:surveillance:${selfId}`,
-      `ctx:normPressure:${selfId}`,
+      `ctx:final:publicness:${selfId}`,
+      `ctx:final:surveillance:${selfId}`,
+      `ctx:final:normPressure:${selfId}`,
     ];
 
     out.push(
+      // ВАЖНО: не перетирать tom:dyad:* (это prior/base), а писать final-слой
       mkDyadDerived(
-        `tom:dyad:${selfId}:${otherId}:trust`,
+        `tom:dyad:final:${selfId}:${otherId}:trust`,
         selfId,
         otherId,
         'trust',
         trust,
         usedDyBase(
-          `tom:dyad:${selfId}:${otherId}:trust`,
+          `tom:dyad:final:${selfId}:${otherId}:trust`,
           ensureBaseCopy(atoms, out, `tom:dyad:${selfId}:${otherId}:trust`, 'characterLens.tom')
         ),
         { trust0, bias, trust }
       ),
       mkDyadDerived(
-        `tom:dyad:${selfId}:${otherId}:threat`,
+        `tom:dyad:final:${selfId}:${otherId}:threat`,
         selfId,
         otherId,
         'threat',
         thr,
         usedDyBase(
-          `tom:dyad:${selfId}:${otherId}:threat`,
+          `tom:dyad:final:${selfId}:${otherId}:threat`,
           ensureBaseCopy(atoms, out, `tom:dyad:${selfId}:${otherId}:threat`, 'characterLens.tom')
         ),
         { thr0, bias, thr }
       ),
       mkDyadDerived(
-        `tom:dyad:${selfId}:${otherId}:uncertainty`,
+        `tom:dyad:final:${selfId}:${otherId}:uncertainty`,
         selfId,
         otherId,
         'uncertainty',
         uncT,
         usedDyBase(
-          `tom:dyad:${selfId}:${otherId}:uncertainty`,
+          `tom:dyad:final:${selfId}:${otherId}:uncertainty`,
           ensureBaseCopy(atoms, out, `tom:dyad:${selfId}:${otherId}:uncertainty`, 'characterLens.tom')
         ),
         { uncT0, bias, uncT }

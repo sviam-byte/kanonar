@@ -39,7 +39,7 @@ export function derivePossibilities(atoms: ContextAtom[], selfId: string): { pos
   
   const cover = getMag(atoms, `ctx:cover:${selfId}`, getMag(atoms, 'map_cover', 0));
   const escape = getMag(atoms, `ctx:escape:${selfId}`, 0);
-  const publicness = getCtx(atoms, 'publicness', selfId, 0);
+  const publicness = getCtx(atoms, selfId, 'publicness', 0);
   const protocolStrict = getMag(atoms, `ctx:proceduralStrict:${selfId}`, 0);
 
   // constraints
@@ -138,7 +138,10 @@ export function derivePossibilities(atoms: ContextAtom[], selfId: string): { pos
       label: `Share secret with ${other}`,
       magnitude: secretOk ? clamp01(0.6 + 0.4 * closeness) : 0.05,
       enabled: secretOk && closeness > 0.2,
-      whyAtomIds: [pickCtxId(atoms, 'publicness', selfId), `rel:base:${selfId}:${other}:loyalty`].filter(id => has(atoms, id)),
+      whyAtomIds: [
+        ...(publicness.id ? [publicness.id] : pickCtxId('publicness', selfId)),
+        `rel:base:${selfId}:${other}:loyalty`
+      ].filter(id => has(atoms, id)),
       blockedBy: !secretOk ? ['con:context:noPrivacyOrTrust'] : []
     });
 

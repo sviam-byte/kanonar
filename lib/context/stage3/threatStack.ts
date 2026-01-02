@@ -1,6 +1,7 @@
 import { Atom } from '../../atoms/types';
 import { getM, used } from '../../atoms/read';
 import { clamp01, linMix, noisyOr } from '../../math/normalize';
+import { pickCtxId } from '../layers';
 
 type ThreatWeights = {
   env: number; soc: number; auth: number; unc: number; body: number; sc: number;
@@ -35,8 +36,11 @@ export function deriveThreatStack(
   const P: ThreatParams = { ...DEFAULT_P, ...params };
   // Prefer subjective ctx:final:* axes when present.
   const ctxKey = (axis: string) => {
-    const fin = `ctx:final:${axis}:${agentId}`;
-    return resolved.has(fin) ? fin : `ctx:${axis}:${agentId}`;
+    const candidates = pickCtxId(axis, agentId);
+    for (const id of candidates) {
+      if (resolved.has(id)) return id;
+    }
+    return `ctx:${axis}:${agentId}`;
   };
 
   // Environment

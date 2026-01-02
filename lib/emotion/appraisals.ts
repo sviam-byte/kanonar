@@ -1,5 +1,6 @@
 import type { ContextAtom } from '../context/v2/types';
 import { normalizeAtom } from '../context/v2/infer';
+import { getCtx, pickCtxId } from '../context/layers';
 
 const clamp01 = (x: number) => (Number.isFinite(x) ? Math.max(0, Math.min(1, x)) : 0);
 const lerp = (a: number, b: number, t: number) => a + (b - a) * clamp01(t);
@@ -47,11 +48,11 @@ export function deriveAppraisalAtoms(args: { selfId: string; atoms: ContextAtom[
   // ---------- base context inputs ----------
   const threatId = `threat:final:${selfId}`;
   const threat0 = getMag(atoms, threatId, getMag(atoms, 'threat:final', 0));
-
-  const unc0 = getMag(atoms, `ctx:uncertainty:${selfId}`, 0);
-  const norm0 = getMag(atoms, `ctx:normPressure:${selfId}`, 0);
-  const pub0 = getMag(atoms, `ctx:publicness:${selfId}`, 0);
-  const intimacy0 = getMag(atoms, `ctx:intimacy:${selfId}`, 0);
+  const danger = getCtx(atoms, selfId, 'danger', 0);
+  const unc0 = getCtx(atoms, selfId, 'uncertainty', 0);
+  const norm0 = getCtx(atoms, selfId, 'normPressure', 0);
+  const pub0 = getCtx(atoms, selfId, 'publicness', 0);
+  const intimacy0 = getCtx(atoms, selfId, 'intimacy', 0);
 
   const coverId =
     firstIdByPrefix(atoms, `world:map:cover:${selfId}`) ||
@@ -67,12 +68,12 @@ export function deriveAppraisalAtoms(args: { selfId: string; atoms: ContextAtom[
 
   // ---------- personalized appraisal ----------
   const threat = amp01(threat0, kThreat);
-  const unc = amp01(unc0, kUnc);
+  const unc = amp01(unc0.magnitude, kUnc);
 
-  const control0 = clamp01(0.45 * cover0 + 0.35 * escape0 + 0.20 * (1 - unc0));
+  const control0 = clamp01(0.45 * cover0 + 0.35 * escape0 + 0.20 * (1 - unc0.magnitude));
   const control = amp01(control0, kCtrl);
 
-  const pressure0 = clamp01(0.65 * norm0 + 0.35 * pub0);
+  const pressure0 = clamp01(0.65 * norm0.magnitude + 0.35 * pub0.magnitude);
   const pressure = amp01(pressure0, kPress);
 
   // после базового расчёта — “персонажные” сдвиги (делают различимость)
@@ -167,7 +168,7 @@ export function deriveAppraisalAtoms(args: { selfId: string; atoms: ContextAtom[
   const pressureAdj2 = clamp01(pressureAdj + 0.10 * socialThreat01);
 
   // attachment: keep mostly contextual, but allow mild stress erosion
-  const attachment0 = clamp01(0.75 * intimacy0 + 0.25 * (1 - pub0));
+  const attachment0 = clamp01(0.75 * intimacy0.magnitude + 0.25 * (1 - pub0.magnitude));
   const attachmentBase = amp01(attachment0, lerp(1.00, 0.80, bStress));
   const attachment = clamp01(
     attachmentBase
@@ -177,9 +178,9 @@ export function deriveAppraisalAtoms(args: { selfId: string; atoms: ContextAtom[
     - 0.15 * socialThreat01
   );
 
-  const grief0 = getMag(atoms, `ctx:grief:${selfId}`, 0);
-  const pain0 = getMag(atoms, `ctx:pain:${selfId}`, 0);
-  const loss = clamp01(0.65 * grief0 + 0.35 * pain0);
+  const grief0 = getCtx(atoms, selfId, 'grief', 0);
+  const pain0 = getCtx(atoms, selfId, 'pain', 0);
+  const loss = clamp01(0.65 * grief0.magnitude + 0.35 * pain0.magnitude);
 
   const tp0 = getMag(atoms, `ctx:timePressure:${selfId}`, 0);
   const sc0 = getMag(atoms, `ctx:scarcity:${selfId}`, 0);
@@ -187,14 +188,15 @@ export function deriveAppraisalAtoms(args: { selfId: string; atoms: ContextAtom[
 
   const used = [
     threatId,
-    `ctx:uncertainty:${selfId}`,
-    `ctx:normPressure:${selfId}`,
-    `ctx:publicness:${selfId}`,
-    `ctx:intimacy:${selfId}`,
+    ...(danger.id ? [danger.id] : pickCtxId('danger', selfId)),
+    ...(unc0.id ? [unc0.id] : pickCtxId('uncertainty', selfId)),
+    ...(norm0.id ? [norm0.id] : pickCtxId('normPressure', selfId)),
+    ...(pub0.id ? [pub0.id] : pickCtxId('publicness', selfId)),
+    ...(intimacy0.id ? [intimacy0.id] : pickCtxId('intimacy', selfId)),
     coverId,
     escapeId,
-    `ctx:grief:${selfId}`,
-    `ctx:pain:${selfId}`,
+    ...(grief0.id ? [grief0.id] : pickCtxId('grief', selfId)),
+    ...(pain0.id ? [pain0.id] : pickCtxId('pain', selfId)),
     `ctx:timePressure:${selfId}`,
     `ctx:scarcity:${selfId}`,
     `feat:char:${selfId}:trait.paranoia`,
@@ -205,7 +207,7 @@ export function deriveAppraisalAtoms(args: { selfId: string; atoms: ContextAtom[
     `feat:char:${selfId}:body.pain`,
     `feat:char:${selfId}:body.sleepDebt`,
     ...usedSocial,
-  ].filter(Boolean) as string[];
+  ].filter(id => typeof id === 'string' && atoms.some(a => a?.id === id));
 
   const mk = (key: string, v: number, parts: any) =>
     normalizeAtom({
@@ -232,12 +234,12 @@ export function deriveAppraisalAtoms(args: { selfId: string; atoms: ContextAtom[
   const atomsOut: ContextAtom[] = [
     mk('socialSupport', socialSupport01, { note: 'from tom:effective dyads + proximity' }),
     mk('socialThreat', socialThreat01, { note: 'from tom:effective dyads + proximity' }),
-    mk('threat', threatAdj2, { ...partsBase, threat0, threat, threatAdj: threatAdj2, socialSupport01, socialThreat01 }),
-    mk('uncertainty', uncAdj2, { ...partsBase, unc0, unc, uncAdj: uncAdj2, socialSupport01, socialThreat01 }),
+    mk('threat', threatAdj2, { ...partsBase, threat0, threat, danger: danger.magnitude, dangerLayer: danger.layer, threatAdj: threatAdj2, socialSupport01, socialThreat01 }),
+    mk('uncertainty', uncAdj2, { ...partsBase, unc0: unc0.magnitude, uncLayer: unc0.layer, unc, uncAdj: uncAdj2, socialSupport01, socialThreat01 }),
     mk('control', controlAdj2, { ...partsBase, cover0, escape0, control0, control, controlAdj: controlAdj2, socialSupport01, socialThreat01 }),
-    mk('pressure', pressureAdj2, { ...partsBase, norm0, pub0, pressure0, pressure, pressureAdj: pressureAdj2, socialThreat01 }),
-    mk('attachment', attachment, { ...partsBase, intimacy0, pub0, attachment0, attachmentBase, attachment, socialSupport01, socialThreat01 }),
-    mk('loss', loss, { grief0, pain0, loss }),
+    mk('pressure', pressureAdj2, { ...partsBase, norm0: norm0.magnitude, normLayer: norm0.layer, pub0: pub0.magnitude, pubLayer: pub0.layer, pressure0, pressure, pressureAdj: pressureAdj2, socialThreat01 }),
+    mk('attachment', attachment, { ...partsBase, intimacy0: intimacy0.magnitude, intimacyLayer: intimacy0.layer, pub0: pub0.magnitude, pubLayer: pub0.layer, attachment0, attachmentBase, attachment, socialSupport01, socialThreat01 }),
+    mk('loss', loss, { grief0: grief0.magnitude, griefLayer: grief0.layer, pain0: pain0.magnitude, painLayer: pain0.layer, loss }),
     mk('goalBlock', goalBlock, { tp0, sc0, goalBlock }),
   ];
 
