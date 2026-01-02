@@ -1481,6 +1481,17 @@ export const GoalSandbox: React.FC = () => {
 
   return (
     <div className="h-full flex flex-col bg-canon-bg text-canon-text overflow-hidden">
+      <div className="sticky top-0 z-40 backdrop-blur bg-black/40 border-b border-white/10 px-3 py-2 flex items-center gap-2">
+        <div className="text-[12px] opacity-80">GoalSandbox</div>
+        <div className="flex-1" />
+        <button
+          onClick={onDownloadScene}
+          className="px-4 py-2 text-[12px] font-extrabold border-2 border-canon-accent rounded bg-canon-accent/20 hover:bg-canon-accent/30 transition-colors"
+          title="Скачать полный debug: input + pipeline stages + atoms + deltas"
+        >
+          ⬇ EXPORT DEBUG
+        </button>
+      </div>
       <div className="flex-1 grid grid-cols-12 min-h-0">
         <div className="col-span-3 border-r border-canon-border bg-canon-bg-light/30 flex flex-col min-h-0 overflow-y-auto custom-scrollbar">
           <div className="h-64 border-b border-canon-border relative bg-black">

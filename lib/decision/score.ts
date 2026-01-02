@@ -1,5 +1,7 @@
 
 import { ContextAtom } from '../context/v2/types';
+import { normalizeAtom } from '../context/v2/infer';
+import { getCtx, pickCtxId } from '../context/layers';
 import { Possibility } from '../possibilities/catalog';
 import { computeActionCost } from './costModel';
 import { gatePossibility } from './gating';
@@ -40,6 +42,7 @@ export type ScoredAction = {
   allowed: boolean;
   cost: number;
   why: { usedAtomIds: string[]; parts: any; blockedBy?: string[] };
+  atoms: ContextAtom[];
   p: Possibility;
 };
 
@@ -53,10 +56,11 @@ export function scorePossibility(args: {
   const goalWeightAlpha = 0.15; // small, safe influence; keeps legacy behavior dominant if goals are imperfect.
 
   const gate = gatePossibility({ atoms, p });
-  const { cost, parts, usedAtomIds } = computeActionCost({ selfId, atoms, p });
+  const { cost, parts, usedAtomIds: costUsedAtomIds } = computeActionCost({ selfId, atoms, p });
 
   // Basic preference: if threat high, prefer escape/hide
-  const threatFinal = get(atoms, `threat:final:${selfId}`, get(atoms, 'threat:final', 0));
+  const dangerCtx = getCtx(atoms, selfId, 'danger', 0);
+  const threatFinal = get(atoms, `threat:final:${selfId}`, get(atoms, 'threat:final', dangerCtx.magnitude));
   const fear = get(atoms, `emo:fear:${selfId}`, 0);
   const anger = get(atoms, `emo:anger:${selfId}`, 0);
   const shame = get(atoms, `emo:shame:${selfId}`, 0);
@@ -100,6 +104,48 @@ export function scorePossibility(args: {
   
   const allowedScore = gate.allowed ? withGoal : 0;
 
+  const usedAtomIds = [
+    ...(p.trace?.usedAtomIds || []),
+    ...costUsedAtomIds,
+    ...(goalBoost > 0 && dom ? [`goal:domain:${dom}:${selfId}`] : []),
+    ...(dangerCtx.id ? [dangerCtx.id] : pickCtxId('danger', selfId)),
+    ...(targetId ? [
+      `world:map:hazardBetween:${selfId}:${targetId}`,
+      `soc:allyHazardBetween:${selfId}:${targetId}`,
+      `soc:enemyHazardBetween:${selfId}:${targetId}`
+    ] : [])
+  ].filter(id => atoms.some(a => a?.id === id));
+
+  const actionAtoms: ContextAtom[] = [
+    normalizeAtom({
+      id: `action:utility:${selfId}:${p.id}`,
+      ns: 'action',
+      kind: 'utility',
+      origin: 'derived',
+      source: 'decision_score',
+      subject: selfId,
+      magnitude: clamp01(allowedScore),
+      confidence: 1,
+      label: `utility:${p.id}=${allowedScore.toFixed(3)}`,
+      trace: {
+        usedAtomIds,
+        notes: ['action utility from goals + risk + norms'],
+        parts: {
+          availability,
+          pref,
+          prefParts,
+          costParts: parts,
+          goalBoost,
+          goalDomain: dom ?? null,
+          goalAlpha: goalWeightAlpha,
+          danger: dangerCtx.magnitude,
+          dangerLayer: dangerCtx.layer,
+          allowed: gate.allowed,
+        }
+      }
+    } as any)
+  ];
+
   return {
     id: `act:${p.id}`,
     label: p.label,
@@ -107,16 +153,7 @@ export function scorePossibility(args: {
     allowed: gate.allowed,
     cost,
     why: {
-      usedAtomIds: [
-        ...(p.trace?.usedAtomIds || []),
-        ...usedAtomIds,
-        ...(goalBoost > 0 && dom ? [`goal:domain:${dom}:${selfId}`] : []),
-        ...(targetId ? [
-          `world:map:hazardBetween:${selfId}:${targetId}`,
-          `soc:allyHazardBetween:${selfId}:${targetId}`,
-          `soc:enemyHazardBetween:${selfId}:${targetId}`
-        ] : [])
-      ],
+      usedAtomIds,
       parts: {
         availability,
         pref,
@@ -128,6 +165,7 @@ export function scorePossibility(args: {
       },
       blockedBy: gate.blockedBy
     },
+    atoms: actionAtoms,
     p
   };
 }

@@ -42,6 +42,7 @@ import { deriveAppraisalAtoms } from '../emotion/appraisals';
 import { deriveEmotionAtoms } from '../emotion/emotions';
 import { deriveDyadicEmotionAtoms } from '../emotion/dyadic';
 import { arr } from '../utils/arr';
+import { validateAtomInvariants } from '../context/validate/atomInvariants';
 
 // Scene Engine
 import { SCENE_PRESETS } from '../scene/presets';
@@ -152,6 +153,7 @@ export function buildGoalLabContext(
   opts: {
     snapshotOptions?: ContextBuildOptions & { atomOverridesLayer?: AtomOverrideLayer; overrideEvents?: any[]; sceneControl?: any; affectOverrides?: any };
     timeOverride?: number;
+    devValidateAtoms?: boolean;
   } = {}
 ): GoalLabContextResult | null {
   let agent = world.agents.find(a => a.entityId === agentId);
@@ -287,6 +289,7 @@ export function buildGoalLabContext(
         changed?: PipelineAtomStub[];
         removedIds?: string[];
         notes?: string[];
+        meta?: any;
       };
 
       const pipelineStages: PipelineStageDelta[] = [];
@@ -346,7 +349,7 @@ export function buildGoalLabContext(
         id: string,
         label: string,
         atoms: ContextAtom[],
-        opts?: { notes?: string[] }
+        opts?: { notes?: string[]; meta?: any }
       ) => {
         const next = dedupeAtomsById(atoms).map(normalizeAtom);
         const atomCount = next.length;
@@ -358,6 +361,7 @@ export function buildGoalLabContext(
             atomCount,
             full: next.map(compactAtom),
             notes: opts?.notes,
+            meta: opts?.meta,
           });
           prevAtoms = next;
           prevMap = new Map(next.map(a => [String((a as any).id), atomSig(a)]));
@@ -383,16 +387,17 @@ export function buildGoalLabContext(
 
         const byId = new Map(next.map(a => [String((a as any).id), a]));
 
-        pipelineStages.push({
-          id,
-          label,
-          baseId: prevStageId,
-          atomCount,
-          added: addedIds.map(id0 => compactAtom(byId.get(id0)!)),
-          changed: changedIds.map(id0 => compactAtom(byId.get(id0)!)),
-          removedIds,
-          notes: opts?.notes,
-        });
+          pipelineStages.push({
+            id,
+            label,
+            baseId: prevStageId,
+            atomCount,
+            added: addedIds.map(id0 => compactAtom(byId.get(id0)!)),
+            changed: changedIds.map(id0 => compactAtom(byId.get(id0)!)),
+            removedIds,
+            notes: opts?.notes,
+            meta: opts?.meta,
+          });
 
         prevAtoms = next;
         prevMap = curMap;
@@ -499,6 +504,26 @@ export function buildGoalLabContext(
           ]
         }
       );
+
+      if (opts?.devValidateAtoms) {
+        const violations = validateAtomInvariants(atomsAfterLens);
+        const errors = violations.filter(v => v.level === 'error');
+        pushStage(
+          'VALIDATE',
+          'VALIDATE • atom invariants',
+          atomsAfterLens,
+          {
+            notes: [
+              `violations=${violations.length}`,
+              errors.length ? `errors=${errors.length}` : 'errors=0'
+            ],
+            meta: { violations }
+          }
+        );
+        if (errors.length) {
+          throw new Error(`Atom invariant violations: ${errors[0].msg}`);
+        }
+      }
 
       // 8. ToM Context Bias  (now respects dyad:final:*)
       const biasPack = buildBeliefToMBias(atomsAfterLens, selfId);
@@ -988,6 +1013,7 @@ export function buildGoalLabContext(
     changed?: PipelineAtomStub[];
     removedIds?: string[];
     notes?: string[];
+    meta?: any;
   };
 
   const compactPipelineAtom = (a: ContextAtom): PipelineAtomStub => {
@@ -1042,7 +1068,7 @@ export function buildGoalLabContext(
     atoms: ContextAtom[],
     prevAtoms: ContextAtom[],
     prevStageId?: string,
-    opts?: { notes?: string[] }
+    opts?: { notes?: string[]; meta?: any }
   ): PipelineStageDelta => {
     const next = dedupeAtomsById(atoms).map(normalizeAtom);
     const atomCount = next.length;
@@ -1074,6 +1100,7 @@ export function buildGoalLabContext(
       changed: changedIds.map(id0 => compactPipelineAtom(byId.get(id0)!)),
       removedIds,
       notes: opts?.notes,
+      meta: opts?.meta,
     };
   };
 
@@ -1097,14 +1124,17 @@ export function buildGoalLabContext(
     topK: 12
   });
 
+  const decisionAtoms = arr((decision as any)?.atoms).map(normalizeAtom);
+  const atomsWithDecision = dedupeAtomsById([...atomsWithMind, ...decisionAtoms]).map(normalizeAtom);
+
   const snapshot = buildContextSnapshot(world, agent, {
       ...opts.snapshotOptions,
-      manualAtoms: atomsWithMind
+      manualAtoms: atomsWithDecision
   });
   
-  snapshot.coverage = computeCoverageReport(atomsWithMind as any);
+  snapshot.coverage = computeCoverageReport(atomsWithDecision as any);
   // Drop legacy scene:* atoms in favor of canonical ctx:src:scene:* inputs.
-  snapshot.atoms = (atomsWithMind || []).filter(a => !String(a?.id || '').startsWith('scene:'));
+  snapshot.atoms = (atomsWithDecision || []).filter(a => !String(a?.id || '').startsWith('scene:'));
   snapshot.validation = validation;
   snapshot.decision = decision; 
 

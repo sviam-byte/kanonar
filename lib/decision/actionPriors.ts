@@ -1,6 +1,7 @@
 import { ContextAtom } from '../context/v2/types';
 import { normalizeAtom } from '../context/v2/infer';
-import { getCtx } from '../context/layers';
+import { getCtx, pickCtxId } from '../context/layers';
+import { getDyadMag } from '../tom/layers';
 
 const clamp01 = (x: number) => (Number.isFinite(x) ? Math.max(0, Math.min(1, x)) : 0);
 
@@ -35,10 +36,24 @@ export function deriveActionPriors(args: {
   const { selfId, otherIds, atoms } = args;
   const out: ContextAtom[] = [];
 
-  const danger = getCtx(atoms, selfId, 'danger', 0);
-  const norm = getCtx(atoms, selfId, 'normPressure', 0);
-  const pub = getCtx(atoms, selfId, 'publicness', 0);
-  const surv = getCtx(atoms, selfId, 'surveillance', 0);
+  const dangerP = getCtx(atoms, selfId, 'danger', 0);
+  const normP = getCtx(atoms, selfId, 'normPressure', 0);
+  const pubP = getCtx(atoms, selfId, 'publicness', 0);
+  const survP = getCtx(atoms, selfId, 'surveillance', 0);
+
+  const danger = clamp01(dangerP.magnitude);
+  const norm = clamp01(normP.magnitude);
+  const pub = clamp01(pubP.magnitude);
+  const surv = clamp01(survP.magnitude);
+
+  function getEffectiveOrDyad(otherId: string, metric: string, fb = 0): { id: string; mag: number } {
+    const effId = `tom:effective:dyad:${selfId}:${otherId}:${metric}`;
+    const eff = atoms.find(a => a.id === effId) as any;
+    if (eff && typeof eff.magnitude === 'number' && Number.isFinite(eff.magnitude)) {
+      return { id: effId, mag: eff.magnitude };
+    }
+    return getDyadMag(atoms, selfId, otherId, metric, fb);
+  }
 
   for (const otherId of otherIds) {
     if (!otherId || otherId === selfId) continue;
@@ -51,16 +66,18 @@ export function deriveActionPriors(args: {
     const respe = clamp01(getMag(atoms, `rel:state:${selfId}:${otherId}:respect`, 0.0));
 
     // ToM если есть — уточняет priors, но не обязателен
-    const tomThreat = clamp01(getMag(atoms, `tom:effective:dyad:${selfId}:${otherId}:threat`, getMag(atoms, `tom:dyad:${selfId}:${otherId}:threat`, 0.2)));
-    const tomTrust = clamp01(getMag(atoms, `tom:effective:dyad:${selfId}:${otherId}:trust`, getMag(atoms, `tom:dyad:${selfId}:${otherId}:trust`, 0.5)));
+    const tomThreatP = getEffectiveOrDyad(otherId, 'threat', 0.2);
+    const tomTrustP = getEffectiveOrDyad(otherId, 'trust', 0.5);
+    const tomThreat = clamp01(tomThreatP.mag);
+    const tomTrust = clamp01(tomTrustP.mag);
 
     // База: помочь / навредить / запросить инфо / избегать / конфронтировать
     // Важно: норм/публичность/наблюдение сдвигают в сторону “безопасных” действий.
-    const socialRisk = clamp01(0.45 * pub.magnitude + 0.35 * surv.magnitude + 0.20 * norm.magnitude);
+    const socialRisk = clamp01(0.45 * pub + 0.35 * surv + 0.20 * norm);
 
     const help = clamp01(
       0.55 * trust + 0.20 * clos + 0.20 * oblig + 0.10 * tomTrust - 0.30 * tomThreat
-    ) * clamp01(1 - 0.45 * danger.magnitude);
+    ) * clamp01(1 - 0.45 * danger);
 
     const harm = clamp01(
       0.70 * host + 0.25 * tomThreat - 0.20 * trust
@@ -68,38 +85,36 @@ export function deriveActionPriors(args: {
 
     const askInfo = clamp01(
       0.35 + 0.25 * (1 - tomTrust) + 0.25 * (1 - clos) + 0.15 * respe
-    ) * clamp01(1 - 0.25 * danger.magnitude);
+    ) * clamp01(1 - 0.25 * danger);
 
     const avoid = clamp01(
-      0.25 + 0.55 * tomThreat + 0.25 * danger.magnitude + 0.15 * socialRisk - 0.25 * oblig
+      0.25 + 0.55 * tomThreat + 0.25 * danger + 0.15 * socialRisk - 0.25 * oblig
     );
 
     const confront = clamp01(
-      0.20 + 0.50 * host + 0.25 * (1 - socialRisk) + 0.15 * respe - 0.35 * danger.magnitude
+      0.20 + 0.50 * host + 0.25 * (1 - socialRisk) + 0.15 * respe - 0.35 * danger
     );
 
     const used = [
-      ...(danger.id ? [danger.id] : []),
-      ...(norm.id ? [norm.id] : []),
-      ...(pub.id ? [pub.id] : []),
-      ...(surv.id ? [surv.id] : []),
+      ...(dangerP.id ? [dangerP.id] : pickCtxId('danger', selfId)),
+      ...(normP.id ? [normP.id] : pickCtxId('normPressure', selfId)),
+      ...(pubP.id ? [pubP.id] : pickCtxId('publicness', selfId)),
+      ...(survP.id ? [survP.id] : pickCtxId('surveillance', selfId)),
       `rel:state:${selfId}:${otherId}:trust`,
       `rel:state:${selfId}:${otherId}:hostility`,
       `rel:state:${selfId}:${otherId}:closeness`,
       `rel:state:${selfId}:${otherId}:obligation`,
       `rel:state:${selfId}:${otherId}:respect`,
-      `tom:effective:dyad:${selfId}:${otherId}:trust`,
-      `tom:effective:dyad:${selfId}:${otherId}:threat`,
-      `tom:dyad:${selfId}:${otherId}:trust`,
-      `tom:dyad:${selfId}:${otherId}:threat`,
+      tomTrustP.id,
+      tomThreatP.id,
     ].filter(id => atoms.some(a => a?.id === id));
 
     out.push(
-      mk(selfId, otherId, 'help', help, used, { trust, clos, oblig, tomTrust, tomThreat, danger: danger.magnitude, dangerLayer: danger.layer }),
+      mk(selfId, otherId, 'help', help, used, { trust, clos, oblig, tomTrust, tomThreat, danger, dangerLayer: dangerP.layer }),
       mk(selfId, otherId, 'harm', harm, used, { host, tomThreat, trust, socialRisk }),
-      mk(selfId, otherId, 'ask_info', askInfo, used, { tomTrust, clos, respe, danger: danger.magnitude, dangerLayer: danger.layer }),
-      mk(selfId, otherId, 'avoid', avoid, used, { tomThreat, danger: danger.magnitude, dangerLayer: danger.layer, socialRisk, oblig }),
-      mk(selfId, otherId, 'confront', confront, used, { host, socialRisk, respe, danger: danger.magnitude, dangerLayer: danger.layer }),
+      mk(selfId, otherId, 'ask_info', askInfo, used, { tomTrust, clos, respe, danger, dangerLayer: dangerP.layer }),
+      mk(selfId, otherId, 'avoid', avoid, used, { tomThreat, danger, dangerLayer: dangerP.layer, socialRisk, oblig }),
+      mk(selfId, otherId, 'confront', confront, used, { host, socialRisk, respe, danger, dangerLayer: dangerP.layer }),
     );
   }
 

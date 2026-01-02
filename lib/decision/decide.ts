@@ -7,6 +7,7 @@ import { arr } from '../utils/arr';
 export type DecisionResult = {
   best: ScoredAction | null;
   ranked: ScoredAction[];
+  atoms: ContextAtom[];
 };
 
 export function decideAction(args: {
@@ -22,5 +23,7 @@ export function decideAction(args: {
     .sort((a, b) => b.score - a.score);
 
   const topK = args.topK ?? 10;
-  return { best: ranked[0] || null, ranked: ranked.slice(0, topK) };
+  const topRanked = ranked.slice(0, topK);
+  const atoms = topRanked.flatMap(item => item.atoms || []);
+  return { best: topRanked[0] || null, ranked: topRanked, atoms };
 }

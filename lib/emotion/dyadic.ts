@@ -1,5 +1,6 @@
 import type { ContextAtom } from '../context/v2/types';
 import { normalizeAtom } from '../context/v2/infer';
+import { collectDyadEntries, getDyadMag } from '../tom/layers';
 
 const clamp01 = (x: number) => (Number.isFinite(x) ? Math.max(0, Math.min(1, x)) : 0);
 
@@ -27,7 +28,7 @@ function effId(selfId: string, otherId: string, metric: string) {
 export function deriveDyadicEmotionAtoms(args: { selfId: string; atoms: ContextAtom[] }) {
   const { selfId, atoms } = args;
 
-  // собрать всех target’ов из effective dyads
+  // собрать всех target’ов из effective dyads и tom:dyad:* (final→base)
   const targets = new Set<string>();
   for (const a of atoms) {
     const id = String((a as any)?.id || '');
@@ -35,17 +36,24 @@ export function deriveDyadicEmotionAtoms(args: { selfId: string; atoms: ContextA
     const parts = id.split(':'); // tom:effective:dyad:self:target:metric
     if (parts.length >= 6) targets.add(parts[4]);
   }
+  for (const entry of collectDyadEntries(atoms, selfId)) {
+    if (entry?.target) targets.add(entry.target);
+  }
 
   const control = getMag(atoms, `app:control:${selfId}`, 0.4);
   const globalFear = getMag(atoms, `emo:fear:${selfId}`, 0);
 
   const out: ContextAtom[] = [];
   for (const otherId of targets) {
-    const trust = getMag(atoms, effId(selfId, otherId, 'trust'), 0);
-    const threat = getMag(atoms, effId(selfId, otherId, 'threat'), 0);
+    const trustP = getDyadMag(atoms, selfId, otherId, 'trust', 0.5);
+    const threatP = getDyadMag(atoms, selfId, otherId, 'threat', 0.0);
+    const supportP = getDyadMag(atoms, selfId, otherId, 'support', 0.0);
+
+    const trust = clamp01(trustP.mag);
+    const threat = clamp01(threatP.mag);
+    const support = clamp01(supportP.mag);
     const respect = getMag(atoms, effId(selfId, otherId, 'respect'), 0);
     const intimacy = getMag(atoms, effId(selfId, otherId, 'intimacy'), 0);
-    const support = getMag(atoms, effId(selfId, otherId, 'support'), 0);
 
     const close = clamp01(maxProximity(atoms, selfId, otherId));
 
@@ -56,14 +64,14 @@ export function deriveDyadicEmotionAtoms(args: { selfId: string; atoms: ContextA
     const gratitude = clamp01(close * support * trust);
 
     const used = [
-      effId(selfId, otherId, 'trust'),
-      effId(selfId, otherId, 'threat'),
+      trustP.id,
+      threatP.id,
+      supportP.id,
       effId(selfId, otherId, 'respect'),
       effId(selfId, otherId, 'intimacy'),
-      effId(selfId, otherId, 'support'),
       `app:control:${selfId}`,
       `emo:fear:${selfId}`,
-    ];
+    ].filter(id => atoms.some(a => a.id === id));
 
     const mk = (key: string, v: number, parts: any) =>
       normalizeAtom({

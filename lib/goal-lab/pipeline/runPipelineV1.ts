@@ -439,9 +439,11 @@ export function runGoalLabPipelineV1(input: {
       topK: 10,
     });
 
-    const atomsS8 = mS8c.atoms;
-    const s8Added = uniqStrings([...mS8a.newIds, ...mS8b.newIds, ...mS8c.newIds]);
-    const s8Overridden = uniqStrings([...mS8a.overriddenIds, ...mS8b.overriddenIds, ...mS8c.overriddenIds]);
+    const decisionAtoms = arr((decision as any)?.atoms).map(normalizeAtom);
+    const mS8d = mergeAtomsPreferNewer(mS8c.atoms, decisionAtoms);
+    const atomsS8 = mS8d.atoms;
+    const s8Added = uniqStrings([...mS8a.newIds, ...mS8b.newIds, ...mS8c.newIds, ...mS8d.newIds]);
+    const s8Overridden = uniqStrings([...mS8a.overriddenIds, ...mS8b.overriddenIds, ...mS8c.overriddenIds, ...mS8d.overriddenIds]);
     atoms = atomsS8;
 
     stages.push({
@@ -458,6 +460,7 @@ export function runGoalLabPipelineV1(input: {
         best: (decision as any)?.best || null,
         overriddenIds: s8Overridden,
         priorsAtomIds: (priorsAtoms || []).map(a => String((a as any)?.id || '')),
+        decisionAtomIds: decisionAtoms.map(a => String((a as any)?.id || '')),
       }
     });
   } catch (e: any) {
