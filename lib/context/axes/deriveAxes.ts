@@ -63,7 +63,7 @@ function atom(
 }
 
 const AXES = [
-  'danger', 'intimacy', 'hierarchy', 'publicness',
+  'danger', 'control', 'intimacy', 'hierarchy', 'publicness',
   'normPressure', 'surveillance', 'scarcity', 'timePressure',
   'uncertainty', 'legitimacy', 'secrecy', 'grief', 'pain'
 ];
@@ -158,6 +158,7 @@ export function deriveAxes(args: { selfId: string; atoms: ContextAtom[]; tuning?
   const ctxDanger = clamp01(0.75 * dangerBase + 0.25 * dangerSocial);
   const ctxCrowd = crowd;
   const ctxNormPressure = clamp01(0.45 * normPressure + 0.30 * surveillance + 0.15 * publicness + 0.10 * normProceduralStrict);
+  const ctxControl = clamp01(0.45 * control + 0.20 * escape + 0.15 * cover + 0.20 * scResourceAccess);
   const ctxIntimacy = clamp01(privacy * 0.7 + (1 - surveillance) * 0.3);
 
   const ctxTimePressure = clamp01(0.7 * scUrgency + 0.3 * (1 - escape));
@@ -197,6 +198,22 @@ export function deriveAxes(args: { selfId: string; atoms: ContextAtom[]; tuning?
         { name: 'publicnessFromLoc', val: publicnessFromLoc, w: 0.7 },
         { name: 'normPublicExposure', val: normPublicExposure, w: 0.3 },
       ], 'publicness = 0.7*(1-privacy) + 0.3*normPublicExposure')
+    ),
+    atom(
+      `ctx:control:${selfId}`,
+      ctxControl,
+      [
+        `world:loc:control_level:${selfId}`,
+        `world:map:escape:${selfId}`,
+        `world:map:cover:${selfId}`,
+        `ctx:src:scene:resourceAccess:${selfId}`
+      ],
+      buildParts([
+        { name: 'controlLevel', val: control, w: 0.45 },
+        { name: 'escape', val: escape, w: 0.20 },
+        { name: 'cover', val: cover, w: 0.15 },
+        { name: 'resourceAccess', val: scResourceAccess, w: 0.20 },
+      ], 'control = 0.45*controlLevel + 0.20*escape + 0.15*cover + 0.20*resourceAccess')
     ),
     atom(
       `ctx:surveillance:${selfId}`,

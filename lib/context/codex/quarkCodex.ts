@@ -33,7 +33,7 @@ export type QuarkDef = {
 };
 
 export const CTX_AXIS_IDS: ContextAxisId[] = [
-  'danger','intimacy','hierarchy','publicness','normPressure','surveillance',
+  'danger','control','intimacy','hierarchy','publicness','normPressure','surveillance',
   'scarcity','timePressure','uncertainty','legitimacy','secrecy','grief','pain'
 ];
 

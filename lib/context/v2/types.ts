@@ -72,6 +72,7 @@ export type ContextSignalId =
   | 'soc_surveillance'
   | 'soc_norm_pressure'
   | 'ctx_danger'
+  | 'ctx_control'
   | 'ctx_intimacy'
   | 'ctx_hierarchy'
   | 'ctx_scarcity'

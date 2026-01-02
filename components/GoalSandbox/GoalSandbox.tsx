@@ -34,9 +34,9 @@ import type { AtomDiff } from '../../lib/snapshot/diffAtoms';
 import { diffAtoms } from '../../lib/snapshot/diffAtoms';
 import { adaptToSnapshotV1, normalizeSnapshot } from '../../lib/goal-lab/snapshotAdapter';
 import { buildGoalLabSceneDumpV2, downloadJson } from '../../lib/goal-lab/sceneDump';
-import { runGoalLabPipelineV1 } from '../../lib/goal-lab/pipeline/runPipelineV1';
 import { materializeStageAtoms } from '../goal-lab/materializePipeline';
 import { CastPerspectivePanel } from '../goal-lab/CastPerspectivePanel';
+import { CastComparePanel } from '../goal-lab/CastComparePanel';
 import { allScenarioDefs } from '../../data/scenarios/index';
 import { useAccess } from '../../contexts/AccessContext';
 import { filterCharactersForActiveModule } from '../../lib/modules/visibility';
@@ -208,7 +208,56 @@ export const GoalSandbox: React.FC = () => {
   const [affectOverrides, setAffectOverrides] = useState<Partial<AffectState>>({});
   const [selectedEventIds, setSelectedEventIds] = useState<Set<string>>(new Set());
   const [manualAtoms, setManualAtoms] = useState<ContextAtom[]>([]);
-  const [pipelineStageId, setPipelineStageId] = useState<string>('S5');
+  const [pipelineStageId, setPipelineStageId] = useState<string>('S8');
+
+  // UI panel visibility (persisted)
+  const [uiPanels, setUiPanels] = useState(() => {
+    try {
+      const raw = localStorage.getItem('goalsandbox.uiPanels.v1');
+      if (raw) return JSON.parse(raw);
+    } catch {}
+    return { left: true, cast: true, compare: true, results: true, emo: false, frame: false, lint: false };
+  });
+
+  // Top toolbar collapse (persisted)
+  const [toolbarCollapsed, setToolbarCollapsed] = useState(() => {
+    try {
+      const raw = localStorage.getItem('goalsandbox.toolbarCollapsed.v1');
+      if (raw === '1') return true;
+    } catch {}
+    return false;
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('goalsandbox.toolbarCollapsed.v1', toolbarCollapsed ? '1' : '0');
+    } catch {}
+  }, [toolbarCollapsed]);
+
+  // Stage bar collapse (persisted)
+  const [stageBarCollapsed, setStageBarCollapsed] = useState(() => {
+    try {
+      const raw = localStorage.getItem('goalsandbox.stageBarCollapsed.v1');
+      if (raw === '1') return true;
+    } catch {}
+    return false;
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('goalsandbox.stageBarCollapsed.v1', stageBarCollapsed ? '1' : '0');
+    } catch {}
+  }, [stageBarCollapsed]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('goalsandbox.uiPanels.v1', JSON.stringify(uiPanels));
+    } catch {}
+  }, [uiPanels]);
+
+  const togglePanel = useCallback((key: string) => {
+    setUiPanels((p: any) => ({ ...p, [key]: !p?.[key] }));
+  }, []);
 
   // NOTE: Do not mutate worldState via affect overrides. Affect is materialized as atoms inside buildGoalLabContext.
 
@@ -1057,28 +1106,16 @@ export const GoalSandbox: React.FC = () => {
   }, [glCtx, perspectiveId]);
 
   const pipelineV1 = useMemo(() => {
-    if (!worldState) return null;
-    if (!perspectiveId) return null;
-
-    return runGoalLabPipelineV1({
-      world: worldState as any,
+    if (!snapshotV1) return null;
+    const stages = arr((snapshotV1 as any)?.meta?.pipelineDeltas);
+    return {
+      schema: 'GoalLabPipelineV1',
       agentId: perspectiveId,
-      participantIds,
-      manualAtoms,
-      injectedEvents,
-      sceneControl,
-      affectOverrides,
-      tickOverride: (worldState as any)?.tick,
-    } as any);
-  }, [
-    worldState,
-    perspectiveId,
-    participantIds,
-    manualAtoms,
-    injectedEvents,
-    sceneControl,
-    affectOverrides,
-  ]);
+      selfId: perspectiveId,
+      tick: (snapshotV1 as any)?.meta?.tick ?? 0,
+      stages,
+    } as any;
+  }, [snapshotV1, perspectiveId]);
 
   const pipelineFrame = useMemo(() => {
     if (!snapshotV1) return null;
@@ -1554,132 +1591,201 @@ export const GoalSandbox: React.FC = () => {
   return (
     <div className="h-full flex flex-col bg-canon-bg text-canon-text overflow-hidden">
       <div className="sticky top-0 z-40 backdrop-blur bg-black/40 border-b border-white/10 px-3 py-2 flex items-center gap-2">
+        <button
+          onClick={() => setToolbarCollapsed(v => !v)}
+          className="w-7 h-7 flex items-center justify-center rounded border border-white/10 bg-white/5 hover:bg-white/10 text-[12px]"
+          title={toolbarCollapsed ? 'Expand toolbar' : 'Collapse toolbar'}
+        >
+          {toolbarCollapsed ? '▾' : '▴'}
+        </button>
         <div className="text-[12px] opacity-80">GoalSandbox</div>
+        {!toolbarCollapsed ? (
+          <div className="flex items-center gap-1 ml-2">
+            {([
+              ['left', 'LEFT'],
+              ['cast', 'CAST'],
+              ['compare', 'COMPARE'],
+              ['results', 'RESULTS'],
+              ['emo', 'EMO'],
+              ['frame', 'FRAME'],
+              ['lint', 'LINT'],
+            ] as const).map(([k, label]) => (
+              <button
+                key={k}
+                onClick={() => togglePanel(k)}
+                className={`px-2 py-1 text-[11px] rounded border border-white/10 transition-colors ${uiPanels?.[k] ? 'bg-white/10 hover:bg-white/15' : 'bg-transparent opacity-60 hover:opacity-100 hover:bg-white/10'}`}
+                title={k}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div className="text-[11px] opacity-60 ml-2">toolbar collapsed</div>
+        )}
         <div className="flex-1" />
         <button
           onClick={handleExportDebugBoth}
-          className="px-4 py-2 text-[12px] font-extrabold border-2 border-canon-accent rounded bg-canon-accent/20 hover:bg-canon-accent/30 transition-colors"
+          className={toolbarCollapsed
+            ? 'px-3 py-2 text-[11px] font-extrabold border border-canon-accent rounded bg-canon-accent/20 hover:bg-canon-accent/30 transition-colors'
+            : 'px-4 py-2 text-[12px] font-extrabold border-2 border-canon-accent rounded bg-canon-accent/20 hover:bg-canon-accent/30 transition-colors'}
           title="Один файл: input + output + S0..S* atoms + deltas + validations"
         >
-          ⬇ EXPORT DEBUG (BOTH)
+          ⬇ EXPORT DEBUG
         </button>
       </div>
       <div className="flex-1 grid grid-cols-12 min-h-0">
-        <div className="col-span-3 border-r border-canon-border bg-canon-bg-light/30 flex flex-col min-h-0 overflow-y-auto custom-scrollbar">
-          <div className="h-64 border-b border-canon-border relative bg-black">
-            <MapViewer
-              map={activeMap}
-              isEditor={locationMode === 'custom' && !placingActorId}
-              onMapChange={setMap}
-              onCellClick={handleActorClick}
-              highlights={mapHighlights as any}
-            />
-          </div>
+        {uiPanels.left ? (
+          <div className="col-span-3 border-r border-canon-border bg-canon-bg-light/30 flex flex-col min-h-0 overflow-y-auto custom-scrollbar">
+            <div className="h-64 border-b border-canon-border relative bg-black">
+              <MapViewer
+                map={activeMap}
+                isEditor={locationMode === 'custom' && !placingActorId}
+                onMapChange={setMap}
+                onCellClick={handleActorClick}
+                highlights={mapHighlights as any}
+              />
+            </div>
 
-          <div className="p-2">
+            <div className="p-2">
               <GoalLabControls
-              allCharacters={allCharacters}
-              allLocations={allLocations as any}
-              allEvents={eventRegistry.getAll() as any}
-              computedAtoms={asArray<any>((snapshotV1?.atoms ?? (snapshot as any)?.atoms) as any)}
-              selectedAgentId={selectedAgentId}
-              onSelectAgent={handleSelectAgent}
-              selectedLocationId={selectedLocationId}
-              onSelectLocation={setSelectedLocationId}
-              locationMode={locationMode}
-              onLocationModeChange={setLocationMode}
-              selectedEventIds={selectedEventIds}
-              onToggleEvent={id =>
-                setSelectedEventIds(prev => {
-                  const n = new Set(prev);
-                  if (n.has(id)) n.delete(id);
-                  else n.add(id);
-                  return n;
-                })
-              }
-              manualAtoms={manualAtoms}
-              onChangeManualAtoms={setManualAtoms}
-              nearbyActors={nearbyActors}
-              onNearbyActorsChange={handleNearbyActorsChange}
-              placingActorId={placingActorId}
-              onStartPlacement={setPlacingActorId}
-              affectOverrides={affectOverrides}
-              onAffectOverridesChange={setAffectOverrides}
-              onRunTicks={handleRunTicks}
-              onResetSim={handleResetSim}
-              onDownloadScene={onDownloadScene}
-              onImportSceneDumpV2={handleImportSceneDumpV2}
-              world={worldState as any}
-              onWorldChange={(w: any) => setWorldState(normalizeWorldShape(w)) as any}
-              participantIds={participantIds}
-              onAddParticipant={handleAddParticipant}
-              onRemoveParticipant={handleRemoveParticipant}
-              onLoadScene={handleLoadScene}
-              perspectiveAgentId={perspectiveId}
-              onSelectPerspective={setPerspectiveAgentId}
-              sceneControl={sceneControl}
-              onSceneControlChange={setSceneControl}
-              scenePresets={Object.values(SCENE_PRESETS) as any}
-            />
+                allCharacters={allCharacters}
+                allLocations={allLocations as any}
+                allEvents={eventRegistry.getAll() as any}
+                computedAtoms={asArray<any>((snapshotV1?.atoms ?? (snapshot as any)?.atoms) as any)}
+                selectedAgentId={selectedAgentId}
+                onSelectAgent={handleSelectAgent}
+                selectedLocationId={selectedLocationId}
+                onSelectLocation={setSelectedLocationId}
+                locationMode={locationMode}
+                onLocationModeChange={setLocationMode}
+                selectedEventIds={selectedEventIds}
+                onToggleEvent={id =>
+                  setSelectedEventIds(prev => {
+                    const n = new Set(prev);
+                    if (n.has(id)) n.delete(id);
+                    else n.add(id);
+                    return n;
+                  })
+                }
+                manualAtoms={manualAtoms}
+                onChangeManualAtoms={setManualAtoms}
+                nearbyActors={nearbyActors}
+                onNearbyActorsChange={handleNearbyActorsChange}
+                placingActorId={placingActorId}
+                onStartPlacement={setPlacingActorId}
+                affectOverrides={affectOverrides}
+                onAffectOverridesChange={setAffectOverrides}
+                onRunTicks={handleRunTicks}
+                onResetSim={handleResetSim}
+                onDownloadScene={onDownloadScene}
+                onImportSceneDumpV2={handleImportSceneDumpV2}
+                world={worldState as any}
+                onWorldChange={(w: any) => setWorldState(normalizeWorldShape(w)) as any}
+                participantIds={participantIds}
+                onAddParticipant={handleAddParticipant}
+                onRemoveParticipant={handleRemoveParticipant}
+                onLoadScene={handleLoadScene}
+                perspectiveAgentId={perspectiveId}
+                onSelectPerspective={setPerspectiveAgentId}
+                sceneControl={sceneControl}
+                onSceneControlChange={setSceneControl}
+                scenePresets={Object.values(SCENE_PRESETS) as any}
+              />
+            </div>
           </div>
-        </div>
+        ) : null}
 
-        <div className="col-span-9 flex flex-col min-h-0 overflow-y-auto custom-scrollbar p-6 space-y-6">
+        <div className={uiPanels.left ? 'col-span-9 flex flex-col min-h-0 overflow-y-auto custom-scrollbar p-6 space-y-6' : 'col-span-12 flex flex-col min-h-0 overflow-y-auto custom-scrollbar p-6 space-y-6'}>
           <div className="sticky top-0 z-20 -mx-6 px-6 py-3 bg-canon-bg/90 backdrop-blur border-b border-canon-border flex items-center gap-3">
             <button
-              className="px-4 py-2 rounded bg-canon-accent text-black font-semibold text-sm"
-              onClick={handleExportPipelineAll}
-              title="Экспорт детерминированного пайплайна по стадиям (S0..S8)"
+              onClick={() => setStageBarCollapsed(v => !v)}
+              className="w-7 h-7 flex items-center justify-center rounded border border-canon-border/60 bg-canon-bg-light/20 hover:bg-canon-bg-light/30 text-[12px]"
+              title={stageBarCollapsed ? 'Expand stage bar' : 'Collapse stage bar'}
             >
-              EXPORT PIPELINE DEBUG (JSON)
+              {stageBarCollapsed ? '▾' : '▴'}
             </button>
 
-            <button
-              className="px-4 py-2 rounded border border-canon-border bg-canon-bg-light/30 text-canon-text font-semibold text-sm hover:bg-canon-bg-light/50 transition-colors"
-              onClick={onDownloadScene}
-              title="Экспорт всей сцены (world + cast snapshots + overrides + events + scene control)"
-            >
-              EXPORT SCENE (JSON)
-            </button>
+            {!stageBarCollapsed ? (
+              <>
+                <button
+                  className="px-4 py-2 rounded bg-canon-accent text-black font-semibold text-sm"
+                  onClick={handleExportPipelineAll}
+                  title="Экспорт детерминированного пайплайна по стадиям (S0..S8)"
+                >
+                  EXPORT PIPELINE DEBUG (JSON)
+                </button>
 
-            <div className="ml-auto flex items-center gap-2">
-              <div className="text-[11px] opacity-70">stage</div>
-              <button
-                className="px-2 py-1 text-[11px] rounded border border-canon-border/60 hover:bg-white/5 disabled:opacity-40"
-                onClick={handlePrevStage}
-                disabled={!pipelineStageOptions.length || pipelineStageIndex <= 0}
-                title="Предыдущая стадия"
-              >
-                ◀
-              </button>
-              <select
-                className="px-2 py-1 text-[11px] rounded border border-canon-border/60 bg-canon-bg min-w-[88px]"
-                value={currentPipelineStageId}
-                onChange={(e) => setPipelineStageId(e.target.value)}
-                title="Выбор стадии пайплайна"
-              >
-                {pipelineStageOptions.map(id => {
-                  const label = pipelineStageLabelById.get(id) || id;
-                  return (
-                    <option key={id} value={id}>
-                      {id} — {label}
-                    </option>
-                  );
-                })}
-              </select>
-              <button
-                className="px-2 py-1 text-[11px] rounded border border-canon-border/60 hover:bg-white/5 disabled:opacity-40"
-                onClick={handleNextStage}
-                disabled={!pipelineStageOptions.length || pipelineStageIndex >= pipelineStageOptions.length - 1}
-                title="Следующая стадия"
-              >
-                ▶
-              </button>
-              <div className="ml-3 flex items-center gap-2">
-                <div className="text-[11px] opacity-70">staged pipe</div>
-                <div className="text-[11px] font-mono opacity-90">{pipelineV1 ? 'on' : 'off'}</div>
-              </div>
-            </div>
+                <button
+                  className="px-4 py-2 rounded border border-canon-border bg-canon-bg-light/30 text-canon-text font-semibold text-sm hover:bg-canon-bg-light/50 transition-colors"
+                  onClick={onDownloadScene}
+                  title="Экспорт всей сцены (world + cast snapshots + overrides + events + scene control)"
+                >
+                  EXPORT SCENE (JSON)
+                </button>
+
+                <div className="ml-auto flex items-center gap-2">
+                  <div className="text-[11px] opacity-70">stage</div>
+                  <button
+                    className="px-2 py-1 text-[11px] rounded border border-canon-border/60 hover:bg-white/5 disabled:opacity-40"
+                    onClick={handlePrevStage}
+                    disabled={!pipelineStageOptions.length || pipelineStageIndex <= 0}
+                    title="Предыдущая стадия"
+                  >
+                    ◀
+                  </button>
+                  <select
+                    className="px-2 py-1 text-[11px] rounded border border-canon-border/60 bg-canon-bg min-w-[88px]"
+                    value={currentPipelineStageId}
+                    onChange={(e) => setPipelineStageId(e.target.value)}
+                    title="Выбор стадии пайплайна"
+                  >
+                    {pipelineStageOptions.map(id => {
+                      const label = pipelineStageLabelById.get(id) || id;
+                      return (
+                        <option key={id} value={id}>
+                          {id} — {label}
+                        </option>
+                      );
+                    })}
+                  </select>
+                  <button
+                    className="px-2 py-1 text-[11px] rounded border border-canon-border/60 hover:bg-white/5 disabled:opacity-40"
+                    onClick={handleNextStage}
+                    disabled={!pipelineStageOptions.length || pipelineStageIndex >= pipelineStageOptions.length - 1}
+                    title="Следующая стадия"
+                  >
+                    ▶
+                  </button>
+                  <div className="ml-3 flex items-center gap-2">
+                    <div className="text-[11px] opacity-70">staged pipe</div>
+                    <div className="text-[11px] font-mono opacity-90">{pipelineV1 ? 'on' : 'off'}</div>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="text-[11px] opacity-70 ml-1">stage</div>
+                <div className="text-[11px] font-mono opacity-90">{currentPipelineStageId}</div>
+                <div className="flex-1" />
+                <button
+                  className="px-2 py-1 text-[11px] rounded border border-canon-border/60 hover:bg-white/5 disabled:opacity-40"
+                  onClick={handlePrevStage}
+                  disabled={!pipelineStageOptions.length || pipelineStageIndex <= 0}
+                  title="Предыдущая стадия"
+                >
+                  ◀
+                </button>
+                <button
+                  className="px-2 py-1 text-[11px] rounded border border-canon-border/60 hover:bg-white/5 disabled:opacity-40"
+                  onClick={handleNextStage}
+                  disabled={!pipelineStageOptions.length || pipelineStageIndex >= pipelineStageOptions.length - 1}
+                  title="Следующая стадия"
+                >
+                  ▶
+                </button>
+              </>
+            )}
           </div>
           <div className="grid grid-cols-1 gap-6">
             {fatalError && (
@@ -1696,18 +1802,28 @@ export const GoalSandbox: React.FC = () => {
               </div>
             )}
 
-            <CastPerspectivePanel
-              rows={castRows}
-              focusId={perspectiveId}
-              onFocus={setPerspectiveAgentId}
-            />
+            {uiPanels.cast ? (
+              <CastPerspectivePanel
+                rows={castRows}
+                focusId={perspectiveId}
+                onFocus={setPerspectiveAgentId}
+              />
+            ) : null}
 
+            {uiPanels.compare ? (
+              <CastComparePanel
+                rows={castRows}
+                focusId={perspectiveId}
+              />
+            ) : null}
+
+            {uiPanels.results ? (
               <GoalLabResults
                 context={snapshot as any}
                 actorLabels={actorLabels}
                 perspectiveAgentId={perspectiveId}
                 tomRows={tomMatrixForPerspective}
-              goalScores={goals as any}
+                goalScores={goals as any}
                 situation={situation as any}
                 goalPreview={goalPreview as any}
                 contextualMind={contextualMind as any}
@@ -1719,14 +1835,15 @@ export const GoalSandbox: React.FC = () => {
                 pipelineV1={pipelineV1 as any}
                 pipelineStageId={currentPipelineStageId}
                 onChangePipelineStageId={setPipelineStageId}
-              onExportPipelineStage={handleExportPipelineStage}
-              onExportPipelineAll={handleExportPipelineAll}
-              sceneDump={sceneDumpV2 as any}
-              onDownloadScene={onDownloadScene}
-              onImportScene={handleImportSceneClick}
-              manualAtoms={manualAtoms}
-              onChangeManualAtoms={setManualAtoms}
-            />
+                onExportPipelineStage={handleExportPipelineStage}
+                onExportPipelineAll={handleExportPipelineAll}
+                sceneDump={sceneDumpV2 as any}
+                onDownloadScene={onDownloadScene}
+                onImportScene={handleImportSceneClick}
+                manualAtoms={manualAtoms}
+                onChangeManualAtoms={setManualAtoms}
+              />
+            ) : null}
 
             <input
               ref={importInputRef}
@@ -1740,7 +1857,7 @@ export const GoalSandbox: React.FC = () => {
               }}
             />
 
-          {snapshotV1 && (
+          {uiPanels.emo && snapshotV1 ? (
             <div className="mt-4">
               <EmotionInspector
                 selfId={perspectiveId}
@@ -1748,58 +1865,60 @@ export const GoalSandbox: React.FC = () => {
                 setManualAtom={setManualAtom}
               />
             </div>
-          )}
+          ) : null}
 
-          {pipelineFrame && (
+          {uiPanels.frame && pipelineFrame ? (
             <div className="mt-4">
               <h3 className="text-lg font-bold text-canon-accent uppercase tracking-widest mb-4 border-b border-canon-border/40 pb-2">
                 Pipeline Debug Area (Stage 0-3)
               </h3>
               <FrameDebugPanel frame={pipelineFrame as any} />
             </div>
-          )}
+          ) : null}
 
-          <div className="mt-4">
-            <h3 className="text-lg font-bold text-canon-accent uppercase tracking-widest mb-4 border-b border-canon-border/40 pb-2">
-              Actions × Locations Lint
-            </h3>
+          {uiPanels.lint ? (
+            <div className="mt-4">
+              <h3 className="text-lg font-bold text-canon-accent uppercase tracking-widest mb-4 border-b border-canon-border/40 pb-2">
+                Actions × Locations Lint
+              </h3>
 
-            <div className="text-sm opacity-80 mb-2">
-              Locations: {actionsLocLint.stats.locations} • with affordances:{' '}
-              {actionsLocLint.stats.locationsWithAffordances} • known actionIds:{' '}
-              {actionsLocLint.stats.knownActionIds} • known tags:{' '}
-              {actionsLocLint.stats.knownTags}
-            </div>
-
-            {(actionsLocLint.stats.errors + actionsLocLint.stats.warnings) === 0 ? (
-              <div className="text-sm">No issues.</div>
-            ) : (
-              <div className="space-y-2">
-                <div className="text-sm">
-                  Errors: <b>{actionsLocLint.stats.errors}</b> • Warnings:{' '}
-                  <b>{actionsLocLint.stats.warnings}</b>
-                </div>
-
-                <div className="max-h-72 overflow-auto border border-canon-border/40 rounded p-2">
-                  {actionsLocLint.issues.map((it, idx) => (
-                    <div
-                      key={idx}
-                      className="text-xs py-1 border-b border-canon-border/20 last:border-b-0"
-                    >
-                      <div>
-                        <b>{it.severity.toUpperCase()}</b> • {it.locationId}
-                      </div>
-                      <div className="opacity-80">
-                        {it.path}
-                        {it.token ? ` :: ${it.token}` : ''}
-                      </div>
-                      <div>{it.message}</div>
-                    </div>
-                  ))}
-                </div>
+              <div className="text-sm opacity-80 mb-2">
+                Locations: {actionsLocLint.stats.locations} • with affordances:{' '}
+                {actionsLocLint.stats.locationsWithAffordances} • known actionIds:{' '}
+                {actionsLocLint.stats.knownActionIds} • known tags:{' '}
+                {actionsLocLint.stats.knownTags}
               </div>
-            )}
-          </div>
+
+              {(actionsLocLint.stats.errors + actionsLocLint.stats.warnings) === 0 ? (
+                <div className="text-sm">No issues.</div>
+              ) : (
+                <div className="space-y-2">
+                  <div className="text-sm">
+                    Errors: <b>{actionsLocLint.stats.errors}</b> • Warnings:{' '}
+                    <b>{actionsLocLint.stats.warnings}</b>
+                  </div>
+
+                  <div className="max-h-72 overflow-auto border border-canon-border/40 rounded p-2">
+                    {actionsLocLint.issues.map((it, idx) => (
+                      <div
+                        key={idx}
+                        className="text-xs py-1 border-b border-canon-border/20 last:border-b-0"
+                      >
+                        <div>
+                          <b>{it.severity.toUpperCase()}</b> • {it.locationId}
+                        </div>
+                        <div className="opacity-80">
+                          {it.path}
+                          {it.token ? ` :: ${it.token}` : ''}
+                        </div>
+                        <div>{it.message}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : null}
           </div>
         </div>
       </div>
