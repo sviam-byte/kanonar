@@ -1605,6 +1605,34 @@ export const GoalSandbox: React.FC = () => {
     if (id) setPipelineStageId(id);
   }, [pipelineStageOptions, pipelineStageIndex]);
 
+  // ===== atoms for the currently selected pipeline stage (for Passport UI) =====
+  const passportAtoms = useMemo(() => {
+    // Prefer pipelineV1 if present.
+    if (pipelineV1 && Array.isArray((pipelineV1 as any).stages)) {
+      const stages = (pipelineV1 as any).stages;
+      const st =
+        stages.find((s: any) => String(s?.stage || s?.id) === String(currentPipelineStageId)) ||
+        stages[stages.length - 1];
+      const atoms = asArray<any>(st?.atoms ?? st?.materializedAtoms ?? st?.fullAtoms ?? []);
+      if (atoms.length) return atoms;
+    }
+
+    // Fallback: materialize from snapshotV1.meta.pipelineDeltas.
+    if (snapshotV1) {
+      const deltasRaw = (snapshotV1 as any).meta?.pipelineDeltas;
+      const deltas = Array.isArray(deltasRaw) ? deltasRaw : [];
+      if (deltas.length) {
+        try {
+          return materializeStageAtoms(deltas, String(currentPipelineStageId));
+        } catch {}
+      }
+      return asArray<any>(snapshotV1.atoms as any);
+    }
+
+    // Legacy fallback.
+    return asArray<any>(((snapshot as any)?.atoms) as any);
+  }, [pipelineV1, snapshotV1, snapshot, currentPipelineStageId]);
+
   return (
     <div className="h-full flex flex-col bg-canon-bg text-canon-text overflow-hidden">
       <div className="sticky top-0 z-40 backdrop-blur bg-black/40 border-b border-white/10 px-3 py-2 flex items-center gap-2">
@@ -1848,7 +1876,7 @@ export const GoalSandbox: React.FC = () => {
 
             {uiPanels.passport ? (
               <AgentPassportPanel
-                atoms={currentAtoms || []}
+                atoms={passportAtoms}
                 selfId={perspectiveId || ''}
                 title="How the agent sees the situation"
               />
