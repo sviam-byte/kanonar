@@ -287,6 +287,7 @@ export function computeContextualMind(inputs: ContextualMindInputs): ContextualM
   
   // Context axes derivation
   const axesRes = deriveContextAxes({
+      selfId: agent.entityId,
       frame,
       world,
       atoms: atoms ?? null,

@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import type { ContextSnapshot, ContextualGoalScore, ContextAtom, TemporalContextConfig, ContextualGoalContribution } from '../../lib/context/v2/types';
 import { GOAL_DEFS } from '../../lib/goals/space'; 
 import { AffectState } from '../../types';
@@ -364,7 +364,21 @@ export const GoalLabResults: React.FC<Props> = ({
   const [isPreviewOpen, setPreviewOpen] = useState(false);
   const [activeTabIndex, setActiveTabIndex] = useState(0);
   const [selectedAtomId, setSelectedAtomId] = useState<string | null>(null);
+  const [headersCollapsed, setHeadersCollapsed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('goalLab.headersCollapsed') === '1';
+    } catch {
+      return false;
+    }
+  });
   const safeGoalScores = arr(goalScores);
+
+  // Persist header collapse for consistent compare workflows.
+  useEffect(() => {
+    try {
+      localStorage.setItem('goalLab.headersCollapsed', headersCollapsed ? '1' : '0');
+    } catch {}
+  }, [headersCollapsed]);
 
     const canDownload = Boolean(onDownloadScene || sceneDump);
 
@@ -716,6 +730,92 @@ export const GoalLabResults: React.FC<Props> = ({
     const CoverageTab = () => (
         <CoveragePanel coverage={snapshotV1?.coverage} />
     );
+
+    const CastTab = () => {
+      // Summarize per-agent atoms to quickly spot differences across the cast.
+      const castRowsRaw = arr((sceneDump as any)?.castRows);
+      const cast = castRowsRaw
+        .map((r: any) => {
+          const id = String(r?.id || '');
+          return { id, label: (actorLabels && actorLabels[id]) ? actorLabels[id] : id, atoms: arr(r?.snapshot?.atoms) };
+        })
+        .filter(x => x.id);
+
+      const metric = (a: any) => Number((a as any)?.magnitude ?? (a as any)?.m ?? 0) || 0;
+      const pick = (atoms: any[], prefix: string, selfId: string, limit = 6) => {
+        const suffix = `:${selfId}`;
+        return arr(atoms)
+          .filter(a => {
+            const id = String((a as any)?.id || '');
+            return id.startsWith(prefix) && id.endsWith(suffix);
+          })
+          .sort((x, y) => metric(y) - metric(x))
+          .slice(0, limit);
+      };
+
+      if (!cast.length) {
+        return (
+          <div className="absolute inset-0 p-4 text-[12px] text-canon-text-light/70">
+            Нет castRows в sceneDump. Включи экспорт debug (BOTH) или передай castRows в GoalLabResults.
+          </div>
+        );
+      }
+
+      return (
+        <div className="absolute inset-0 overflow-y-auto custom-scrollbar p-4 pb-20">
+          <div className="text-xs font-bold text-canon-text uppercase tracking-wider mb-3">Cast compare</div>
+          <div className="text-[11px] text-canon-text-light/70 mb-4">
+            Быстрый способ увидеть различия между персонажами: top контекст-оси, эмоции, драйверы и цели по каждому self.
+          </div>
+          <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${Math.min(4, cast.length)}, minmax(220px, 1fr))` }}>
+            {cast.map(c => (
+              <div key={c.id} className="border border-canon-border/40 rounded bg-black/15 p-3">
+                <div className="flex items-baseline justify-between gap-2">
+                  <div className="text-[12px] font-semibold text-canon-text truncate" title={c.id}>{c.label}</div>
+                  <div className="text-[10px] font-mono text-canon-text-light/70">{c.id}</div>
+                </div>
+                <div className="mt-3">
+                  <div className="text-[10px] font-bold text-canon-text-light uppercase tracking-wider">ctx:*</div>
+                  <div className="mt-1 space-y-1">{pick(c.atoms, 'ctx:', c.id, 7).map(a => (
+                    <div key={a.id} className="flex items-center justify-between gap-2 text-[11px]">
+                      <div className="truncate text-canon-text-light" title={a.id}>{a.id}</div>
+                      <div className="font-mono text-canon-text">{metric(a).toFixed(2)}</div>
+                    </div>
+                  ))}</div>
+                </div>
+                <div className="mt-3">
+                  <div className="text-[10px] font-bold text-canon-text-light uppercase tracking-wider">emo:*</div>
+                  <div className="mt-1 space-y-1">{pick(c.atoms, 'emo:', c.id, 7).map(a => (
+                    <div key={a.id} className="flex items-center justify-between gap-2 text-[11px]">
+                      <div className="truncate text-canon-text-light" title={a.id}>{a.id}</div>
+                      <div className="font-mono text-canon-text">{metric(a).toFixed(2)}</div>
+                    </div>
+                  ))}</div>
+                </div>
+                <div className="mt-3">
+                  <div className="text-[10px] font-bold text-canon-text-light uppercase tracking-wider">drv:*</div>
+                  <div className="mt-1 space-y-1">{pick(c.atoms, 'drv:', c.id, 6).map(a => (
+                    <div key={a.id} className="flex items-center justify-between gap-2 text-[11px]">
+                      <div className="truncate text-canon-text-light" title={a.id}>{a.id}</div>
+                      <div className="font-mono text-canon-text">{metric(a).toFixed(2)}</div>
+                    </div>
+                  ))}</div>
+                </div>
+                <div className="mt-3">
+                  <div className="text-[10px] font-bold text-canon-text-light uppercase tracking-wider">goal:*</div>
+                  <div className="mt-1 space-y-1">{pick(c.atoms, 'goal:', c.id, 6).map(a => (
+                    <div key={a.id} className="flex items-center justify-between gap-2 text-[11px]">
+                      <div className="truncate text-canon-text-light" title={a.id}>{a.id}</div>
+                      <div className="font-mono text-canon-text">{metric(a).toFixed(2)}</div>
+                    </div>
+                  ))}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    };
     
     const DebugTab = () => (
          <div className="p-4 space-y-4 h-full overflow-y-auto custom-scrollbar pb-20 absolute inset-0">
@@ -788,22 +888,23 @@ export const GoalLabResults: React.FC<Props> = ({
             case 1: return <AnalysisTab />;
             case 2: return <AtomsTab />;
             case 3: return <PipelineTab />;
-            case 4: return <ThreatTab />;
-            case 5: return <ToMTab />;
-            case 6: return <MindTab />;
-            case 7: return <EmotionsTab />;
-            case 8: return <CoverageTab />;
-            case 9: return <PossibilitiesTab />;
-            case 10: return <DecisionTab />;
-            case 11: return <AccessTab />;
-            case 12: return <DiffTab />;
-            case 13: return <EmotionExplainTab />;
-            case 14: return <DebugTab />;
+            case 4: return <CastTab />;
+            case 5: return <ThreatTab />;
+            case 6: return <ToMTab />;
+            case 7: return <MindTab />;
+            case 8: return <EmotionsTab />;
+            case 9: return <CoverageTab />;
+            case 10: return <PossibilitiesTab />;
+            case 11: return <DecisionTab />;
+            case 12: return <AccessTab />;
+            case 13: return <DiffTab />;
+            case 14: return <EmotionExplainTab />;
+            case 15: return <DebugTab />;
             default: return <ExplainTab />;
         }
     };
 
-  const tabsList = ['Explain', 'Analysis', 'Atoms', 'Pipeline', 'Threat', 'ToM', 'CtxMind', 'Emotions', 'Coverage', 'Possibilities', 'Decision', 'Access', 'Diff', 'EmotionExplain', 'Debug'];
+  const tabsList = ['Explain', 'Analysis', 'Atoms', 'Pipeline', 'Cast', 'Threat', 'ToM', 'CtxMind', 'Emotions', 'Coverage', 'Possibilities', 'Decision', 'Access', 'Diff', 'EmotionExplain', 'Debug'];
 
   const focusId = (context as any)?.agentId;
   const focusLabel = (focusId && actorLabels?.[focusId]) ? actorLabels[focusId] : focusId;
@@ -841,63 +942,75 @@ export const GoalLabResults: React.FC<Props> = ({
                     </div>
                 </div>
             )}
-            <div className="bg-canon-bg border-b border-canon-border p-3 grid grid-cols-4 gap-3 shadow-sm z-10 shrink-0">
-                <ValueBadge label="Угроза" value={stats.threat} color="text-red-400" />
-                <ValueBadge label="Давление" value={stats.pressure} color="text-amber-400" />
-                <ValueBadge label="Поддержка" value={stats.support} color="text-emerald-400" />
-                <ValueBadge label="Толпа" value={stats.crowd} color="text-blue-400" />
+            <div className="bg-canon-bg border-b border-canon-border/60 p-2 flex items-center justify-end gap-2 shrink-0">
+              <button
+                onClick={() => setHeadersCollapsed(v => !v)}
+                className="px-3 py-1 text-[11px] font-semibold border border-canon-border/60 rounded bg-canon-bg-light hover:bg-canon-bg-light/70 transition-colors"
+                title="Свернуть/развернуть верхние панели (summary ribbons, preview, ...)"
+              >
+                {headersCollapsed ? 'Show headers' : 'Hide headers'}
+              </button>
             </div>
+            {!headersCollapsed ? (
+              <>
+                <div className="bg-canon-bg border-b border-canon-border p-3 grid grid-cols-4 gap-3 shadow-sm z-10 shrink-0">
+                  <ValueBadge label="Угроза" value={stats.threat} color="text-red-400" />
+                  <ValueBadge label="Давление" value={stats.pressure} color="text-amber-400" />
+                  <ValueBadge label="Поддержка" value={stats.support} color="text-emerald-400" />
+                  <ValueBadge label="Толпа" value={stats.crowd} color="text-blue-400" />
+                </div>
 
-            <div className="bg-black/30 border-b border-canon-border/50 shrink-0">
-                <ContextRibbon atoms={currentAtoms} />
-            </div>
+                <div className="bg-black/30 border-b border-canon-border/50 shrink-0">
+                  <ContextRibbon atoms={currentAtoms} />
+                </div>
 
-
-            {tomRows && tomRows.length > 0 && (
-                <div className="bg-canon-bg border-b border-canon-border/30 p-2 shrink-0">
+                {tomRows && tomRows.length > 0 && (
+                  <div className="bg-canon-bg border-b border-canon-border/30 p-2 shrink-0">
                     <div className="text-[11px] font-bold mb-2">ToM (X думает про Y)</div>
                     <div className="flex flex-col gap-1">
-                        {arr(tomRows).map(r => (
-                            <div key={`${r.me}__${r.other}`} className="text-[10px] border border-canon-border/30 rounded p-1">
-                                <div className="font-semibold">{r.me} → {r.other}</div>
-                                <div className="opacity-80">
-                                    trust: {String((r.dyad as any)?.trust ?? '—')} · threat: {String((r.dyad as any)?.threat ?? '—')} · intent: {String((r.dyad as any)?.intent ?? '—')}
-                                </div>
-                            </div>
-                        ))}
+                      {arr(tomRows).map(r => (
+                        <div key={`${r.me}__${r.other}`} className="text-[10px] border border-canon-border/30 rounded p-1">
+                          <div className="font-semibold">{r.me} → {r.other}</div>
+                          <div className="opacity-80">
+                            trust: {String((r.dyad as any)?.trust ?? '—')} · threat: {String((r.dyad as any)?.threat ?? '—')} · intent: {String((r.dyad as any)?.intent ?? '—')}
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                </div>
-            )}
+                  </div>
+                )}
 
-            {goalPreview?.goals?.length ? (
-                <div className="bg-canon-bg border-b border-canon-border/30 p-2 shrink-0">
+                {goalPreview?.goals?.length ? (
+                  <div className="bg-canon-bg border-b border-canon-border/30 p-2 shrink-0">
                     <button onClick={() => setPreviewOpen(!isPreviewOpen)} className="w-full flex items-center justify-between text-[10px] font-bold text-canon-text-light uppercase tracking-wider hover:text-canon-accent transition-colors">
-                        <div className="flex items-center gap-2"><span>Contextual priorities</span><span className="font-mono text-[9px] opacity-70 bg-black/30 px-1 rounded">{arr(goalPreview?.goals).length}</span></div>
-                        <span>{isPreviewOpen ? '▼' : '▶'}</span>
+                      <div className="flex items-center gap-2"><span>Contextual priorities</span><span className="font-mono text-[9px] opacity-70 bg-black/30 px-1 rounded">{arr(goalPreview?.goals).length}</span></div>
+                      <span>{isPreviewOpen ? '▼' : '▶'}</span>
                     </button>
                     {isPreviewOpen && (
-                        <div className="mt-2 animate-fade-in">
-                            {situation ? (
-                                <div className="mb-2 flex flex-wrap gap-1 text-[10px] text-canon-text-light/80">
-                                    <span className="px-2 py-0.5 rounded bg-black/20 border border-canon-border/30">kind: {String(situation.scenarioKind || 'other')}</span>
-                                    <span className="px-2 py-0.5 rounded bg-black/20 border border-canon-border/30">threat: {Number(situation.threatLevel ?? 0).toFixed(2)}</span>
-                                    <span className="px-2 py-0.5 rounded bg-black/20 border border-canon-border/30">pressure: {Number(situation.timePressure ?? 0).toFixed(2)}</span>
-                                </div>
-                            ) : null}
-                            <div className="flex flex-wrap gap-2">
-                                {arr(goalPreview?.goals).slice(0, 10).map(g => (
-                                    <div key={g.id} className="px-2 py-1 rounded border border-canon-border/40 bg-black/20">
-                                        <div className="text-[11px] font-semibold text-canon-text truncate max-w-[220px]" title={g.id}>{g.label}</div>
-                                        <div className="text-[9px] font-mono text-canon-text-light/70">p={g.priority.toFixed(2)} • a={g.activation.toFixed(2)}</div>
-                                    </div>
-                                ))}
+                      <div className="mt-2 animate-fade-in">
+                        {situation ? (
+                          <div className="mb-2 flex flex-wrap gap-1 text-[10px] text-canon-text-light/80">
+                            <span className="px-2 py-0.5 rounded bg-black/20 border border-canon-border/30">kind: {String(situation.scenarioKind || 'other')}</span>
+                            <span className="px-2 py-0.5 rounded bg-black/20 border border-canon-border/30">threat: {Number(situation.threatLevel ?? 0).toFixed(2)}</span>
+                            <span className="px-2 py-0.5 rounded bg-black/20 border border-canon-border/30">pressure: {Number(situation.timePressure ?? 0).toFixed(2)}</span>
+                          </div>
+                        ) : null}
+                        <div className="flex flex-wrap gap-2">
+                          {arr(goalPreview?.goals).slice(0, 10).map(g => (
+                            <div key={g.id} className="px-2 py-1 rounded border border-canon-border/40 bg-black/20">
+                              <div className="text-[11px] font-semibold text-canon-text truncate max-w-[220px]" title={g.id}>{g.label}</div>
+                              <div className="text-[9px] font-mono text-canon-text-light/70">p={g.priority.toFixed(2)} • a={g.activation.toFixed(2)}</div>
                             </div>
-                            <div className="text-[9px] font-mono text-canon-text-light/60 mt-1 text-right">
-                                {goalPreview.debug?.temperature != null ? `T=${Number(goalPreview.debug.temperature).toFixed(2)}` : ''}
-                            </div>
+                          ))}
                         </div>
+                        <div className="text-[9px] font-mono text-canon-text-light/60 mt-1 text-right">
+                          {goalPreview.debug?.temperature != null ? `T=${Number(goalPreview.debug.temperature).toFixed(2)}` : ''}
+                        </div>
+                      </div>
                     )}
-                </div>
+                  </div>
+                ) : null}
+              </>
             ) : null}
 
             <div className="flex-1 flex min-h-0">

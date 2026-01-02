@@ -55,6 +55,7 @@ export type VectorAxisId = string;
 // --- Context Tuning (Moved from lib/tom/contextual/types.ts) ---
 export type ContextAxisId =
   | 'danger'          // threat/hazard/violence risk
+  | 'control'         // ability to steer outcomes / options / leverage
   | 'intimacy'        // privacy + closeness affordance
   | 'hierarchy'       // dominance/authority gradient
   | 'publicness'      // exposure to audience / scrutiny

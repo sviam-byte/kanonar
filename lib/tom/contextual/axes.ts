@@ -6,6 +6,7 @@ const clamp = (x: number, a: number, b: number) => Math.max(a, Math.min(b, x));
 
 const AXES: ContextAxisId[] = [
   'danger',
+  'control',
   'intimacy',
   'hierarchy',
   'publicness',
@@ -72,16 +73,26 @@ export type DeriveAxesResult = {
 
 // Main derivation from frame + atoms + situation + goals
 export function deriveContextAxes(args: {
+  selfId?: string;
   frame: any;
   world: any;
   atoms?: ContextAtomLike[] | null;
   domainMix?: Record<string, number> | null;
   tuning?: ContextTuning | null;
 }): DeriveAxesResult {
-  const { frame, world, atoms, domainMix, tuning } = args;
+  const { selfId, frame, world, atoms, domainMix, tuning } = args;
   const raw = defaultAxes();
   const atomsUsed: DeriveAxesResult['atomsUsed'] = {};
   const idx = buildAtomIndex(atoms ?? null);
+
+  const pick = (id: string, kind?: string) => {
+    if (selfId) {
+      const withSelf = `${id}:${selfId}`;
+      const a = pickAtomExact(idx, { kind, id: withSelf });
+      if (a.from !== 'none') return a;
+    }
+    return pickAtomExact(idx, { kind, id });
+  };
 
   // ---- location tags / situation flags
   const locTags: string[] = frame?.where?.locationTags ?? [];
@@ -106,24 +117,25 @@ export function deriveContextAxes(args: {
 
   // ---- atoms (global)
   const A = {
-    soc_publicness: pickAtomExact(idx, { id: 'soc_publicness' }),
-    soc_surveillance: pickAtomExact(idx, { id: 'soc_surveillance' }),
-    soc_norm_pressure: pickAtomExact(idx, { id: 'soc_norm_pressure' }),
-    ctx_publicness: pickAtomExact(idx, { id: 'ctx:publicness' }),
-    ctx_surveillance: pickAtomExact(idx, { id: 'ctx:surveillance' }),
-    ctx_norm_pressure: pickAtomExact(idx, { id: 'ctx:normPressure' }),
+    soc_publicness: pick('soc_publicness'),
+    soc_surveillance: pick('soc_surveillance'),
+    soc_norm_pressure: pick('soc_norm_pressure'),
+    ctx_publicness: pick('ctx:publicness'),
+    ctx_surveillance: pick('ctx:surveillance'),
+    ctx_norm_pressure: pick('ctx:normPressure'),
 
     // canonical ctx axes atoms: ids like "ctx:danger"
-    ctx_danger: pickAtomExact(idx, { id: 'ctx:danger' }),
-    ctx_intimacy: pickAtomExact(idx, { id: 'ctx:intimacy' }),
-    ctx_hierarchy: pickAtomExact(idx, { id: 'ctx:hierarchy' }),
-    ctx_scarcity: pickAtomExact(idx, { id: 'ctx:scarcity' }),
-    ctx_time_pressure: pickAtomExact(idx, { id: 'ctx:timePressure' }),
-    ctx_uncertainty: pickAtomExact(idx, { id: 'ctx:uncertainty' }),
-    ctx_legitimacy: pickAtomExact(idx, { id: 'ctx:legitimacy' }),
-    ctx_secrecy: pickAtomExact(idx, { id: 'ctx:secrecy' }),
-    ctx_grief: pickAtomExact(idx, { id: 'ctx:grief' }),
-    ctx_pain: pickAtomExact(idx, { id: 'ctx:pain' }),
+    ctx_danger: pick('ctx:danger'),
+    ctx_control: pick('ctx:control'),
+    ctx_intimacy: pick('ctx:intimacy'),
+    ctx_hierarchy: pick('ctx:hierarchy'),
+    ctx_scarcity: pick('ctx:scarcity'),
+    ctx_time_pressure: pick('ctx:timePressure'),
+    ctx_uncertainty: pick('ctx:uncertainty'),
+    ctx_legitimacy: pick('ctx:legitimacy'),
+    ctx_secrecy: pick('ctx:secrecy'),
+    ctx_grief: pick('ctx:grief'),
+    ctx_pain: pick('ctx:pain'),
   };
 
   // register used atom signals
@@ -185,6 +197,15 @@ export function deriveContextAxes(args: {
   // uncertainty: explicit atom + chaos + inverse info adequacy
   const infoAdequacy01 = typeof frame?.what?.infoAdequacy01 === 'number' ? clamp01(frame.what.infoAdequacy01) : 0.3;
   raw.uncertainty = clamp01(Math.max(A.ctx_uncertainty.value, sceneChaos01, 1 - infoAdequacy01, (domainMix?.uncertainty ?? 0) as number));
+
+  // control: explicit axis + inverse danger/uncertainty/timePressure
+  const ctrlFromCtx = clamp01(
+    0.65 * A.ctx_control.value +
+    0.20 * (1 - raw.danger) +
+    0.10 * (1 - raw.timePressure) +
+    0.05 * (1 - raw.uncertainty)
+  );
+  raw.control = clamp01(Math.max(ctrlFromCtx, (domainMix?.control ?? domainMix?.order ?? 0) as number));
 
   // legitimacy: explicit atom + inverse surveillance/normPressure (если сильные нормы без легитимности — падает)
   const legAtom = A.ctx_legitimacy.value;
