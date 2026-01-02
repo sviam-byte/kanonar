@@ -1,6 +1,68 @@
 import type { AtomOverrideLayer } from '../context/overrides/types';
 import type { WorldState } from '../../types';
 import { buildGoalLabExplain } from './explain';
+import { arr } from '../utils/arr';
+
+type PipelineStageDeltaLite = {
+  id: string;
+  baseId?: string;
+  full?: any[];
+  added?: any[];
+  changed?: any[];
+  removedIds?: string[];
+};
+
+// Reconstruct the atom list at a specific stage by replaying pipeline deltas.
+function materializeStageAtoms(pipeline: PipelineStageDeltaLite[] | any, stageId: string): any[] {
+  if (!Array.isArray(pipeline) || !pipeline.length) return [];
+
+  const byId = new Map(arr(pipeline).map((s: any) => [s.id, s]));
+  const target: PipelineStageDeltaLite | undefined = byId.get(stageId);
+  if (!target) return [];
+
+  const s0: PipelineStageDeltaLite | undefined = arr(pipeline).find((s: any) => Array.isArray((s as any).full));
+  if (!s0) return [];
+
+  const chain: PipelineStageDeltaLite[] = [];
+  const visited = new Set<string>();
+
+  let cur: PipelineStageDeltaLite | undefined = target;
+  while (cur) {
+    if (visited.has(cur.id)) break;
+    visited.add(cur.id);
+    chain.push(cur);
+    if (cur.id === s0.id) break;
+    cur = cur.baseId ? byId.get(cur.baseId) : undefined;
+  }
+  chain.reverse();
+
+  const m = new Map<string, any>(
+    arr((s0 as any).full)
+      .map((a: any) => [String(a?.id), a])
+      .filter(([id]) => id)
+  );
+
+  for (const st of chain) {
+    if (st.id === s0.id) continue;
+    for (const rid of arr((st as any).removedIds)) m.delete(String(rid));
+    for (const a of arr((st as any).added)) m.set(String(a?.id), a);
+    for (const a of arr((st as any).changed)) m.set(String(a?.id), a);
+  }
+
+  return Array.from(m.values());
+}
+
+// Keep scene dumps readable: store only atom ids + counts per stage (cap list size).
+function safeAtomIdList(atoms: any[], limit = 2000): string[] {
+  const out: string[] = [];
+  for (const a of Array.isArray(atoms) ? atoms : []) {
+    const id = String((a as any)?.id || '');
+    if (!id) continue;
+    out.push(id);
+    if (out.length >= limit) break;
+  }
+  return out;
+}
 
 type SceneDumpInput = {
   world: WorldState | null;
@@ -118,6 +180,24 @@ export function buildGoalLabSceneDumpV2(input: SceneDumpInput) {
     ? (snapshot as any)?.meta?.pipelineDeltas ?? null
     : null;
 
+  // Provide a compact view of S0..S* materialized atoms without bloating the dump.
+  const pipelineMaterialized = (() => {
+    if (!Array.isArray(pipelineDeltas)) return null;
+    try {
+      const byStage: Record<string, { atomCount: number; atomIds: string[] }> = {};
+      for (const st of pipelineDeltas) {
+        const id = String((st as any)?.id || '');
+        if (!id) continue;
+        const atoms = materializeStageAtoms(pipelineDeltas as any, id);
+        const atomIds = safeAtomIdList(atoms, 4000);
+        byStage[id] = { atomCount: atoms.length, atomIds };
+      }
+      return byStage;
+    } catch {
+      return { error: { message: 'materialize-failed' } } as any;
+    }
+  })();
+
   const pipelineViolations = includeViolations
     ? (Array.isArray(pipelineDeltas) ? pipelineDeltas.filter((s: any) => s?.id === 'VALIDATE' || s?.meta?.violations) : [])
     : null;
@@ -176,6 +256,7 @@ export function buildGoalLabSceneDumpV2(input: SceneDumpInput) {
     },
     pipelineFrames,
     pipelineDeltas,
+    pipelineMaterialized,
     pipelineViolations,
     explain: buildGoalLabExplain(snapshot ?? null),
     tomMatrixForPerspective,

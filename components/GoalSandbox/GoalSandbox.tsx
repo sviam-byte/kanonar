@@ -249,6 +249,22 @@ export const GoalSandbox: React.FC = () => {
     } catch {}
   }, [stageBarCollapsed]);
 
+  // HUD / headers collapse (persisted)
+  const [hudCollapsed, setHudCollapsed] = useState<boolean>(() => {
+    try {
+      const v = localStorage.getItem('goalSandbox.hudCollapsed');
+      return v === '1';
+    } catch {
+      return false;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('goalSandbox.hudCollapsed', hudCollapsed ? '1' : '0');
+    } catch {}
+  }, [hudCollapsed]);
+
   useEffect(() => {
     try {
       localStorage.setItem('goalsandbox.uiPanels.v1', JSON.stringify(uiPanels));
@@ -1625,14 +1641,23 @@ export const GoalSandbox: React.FC = () => {
         )}
         <div className="flex-1" />
         <button
-          onClick={handleExportDebugBoth}
-          className={toolbarCollapsed
-            ? 'px-3 py-2 text-[11px] font-extrabold border border-canon-accent rounded bg-canon-accent/20 hover:bg-canon-accent/30 transition-colors'
-            : 'px-4 py-2 text-[12px] font-extrabold border-2 border-canon-accent rounded bg-canon-accent/20 hover:bg-canon-accent/30 transition-colors'}
-          title="Один файл: input + output + S0..S* atoms + deltas + validations"
+          onClick={() => setHudCollapsed(v => !v)}
+          className="px-3 py-2 text-[11px] font-semibold border border-canon-border/60 rounded bg-canon-bg-light/20 hover:bg-canon-bg-light/30 transition-colors"
+          title="Свернуть/развернуть верхние панели (export/stage controls)"
         >
-          ⬇ EXPORT DEBUG
+          {hudCollapsed ? 'Show HUD' : 'Hide HUD'}
         </button>
+        {!hudCollapsed ? (
+          <button
+            onClick={handleExportDebugBoth}
+            className={toolbarCollapsed
+              ? 'px-3 py-2 text-[11px] font-extrabold border border-canon-accent rounded bg-canon-accent/20 hover:bg-canon-accent/30 transition-colors'
+              : 'px-4 py-2 text-[12px] font-extrabold border-2 border-canon-accent rounded bg-canon-accent/20 hover:bg-canon-accent/30 transition-colors'}
+            title="Один файл: input + output + S0..S* atoms + deltas + validations"
+          >
+            ⬇ EXPORT DEBUG
+          </button>
+        ) : null}
       </div>
       <div className="flex-1 grid grid-cols-12 min-h-0">
         {uiPanels.left ? (
@@ -1697,7 +1722,8 @@ export const GoalSandbox: React.FC = () => {
         ) : null}
 
         <div className={uiPanels.left ? 'col-span-9 flex flex-col min-h-0 overflow-y-auto custom-scrollbar p-6 space-y-6' : 'col-span-12 flex flex-col min-h-0 overflow-y-auto custom-scrollbar p-6 space-y-6'}>
-          <div className="sticky top-0 z-20 -mx-6 px-6 py-3 bg-canon-bg/90 backdrop-blur border-b border-canon-border flex items-center gap-3">
+          {!hudCollapsed ? (
+            <div className="sticky top-0 z-20 -mx-6 px-6 py-3 bg-canon-bg/90 backdrop-blur border-b border-canon-border flex items-center gap-3">
             <button
               onClick={() => setStageBarCollapsed(v => !v)}
               className="w-7 h-7 flex items-center justify-center rounded border border-canon-border/60 bg-canon-bg-light/20 hover:bg-canon-bg-light/30 text-[12px]"
@@ -1786,7 +1812,8 @@ export const GoalSandbox: React.FC = () => {
                 </button>
               </>
             )}
-          </div>
+            </div>
+          ) : null}
           <div className="grid grid-cols-1 gap-6">
             {fatalError && (
               <div className="bg-red-900/40 border border-red-500/60 text-red-200 p-4 rounded">
