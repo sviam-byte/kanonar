@@ -3,6 +3,7 @@ import { ContextAtom } from '../v2/types';
 import { normalizeAtom } from '../v2/infer';
 import { Possibility } from './types';
 import { computeActionCost } from '../../cost/model';
+import { getCtx, pickCtxId } from '../layers';
 
 function clamp01(x: number) {
   if (!Number.isFinite(x)) return 0;
@@ -38,7 +39,7 @@ export function derivePossibilities(atoms: ContextAtom[], selfId: string): { pos
   
   const cover = getMag(atoms, `ctx:cover:${selfId}`, getMag(atoms, 'map_cover', 0));
   const escape = getMag(atoms, `ctx:escape:${selfId}`, 0);
-  const publicness = getMag(atoms, `ctx:publicness:${selfId}`, 0);
+  const publicness = getCtx(atoms, 'publicness', selfId, 0);
   const protocolStrict = getMag(atoms, `ctx:proceduralStrict:${selfId}`, 0);
 
   // constraints
@@ -137,7 +138,7 @@ export function derivePossibilities(atoms: ContextAtom[], selfId: string): { pos
       label: `Share secret with ${other}`,
       magnitude: secretOk ? clamp01(0.6 + 0.4 * closeness) : 0.05,
       enabled: secretOk && closeness > 0.2,
-      whyAtomIds: [`ctx:publicness:${selfId}`, `rel:base:${selfId}:${other}:loyalty`].filter(id => has(atoms, id)),
+      whyAtomIds: [pickCtxId(atoms, 'publicness', selfId), `rel:base:${selfId}:${other}:loyalty`].filter(id => has(atoms, id)),
       blockedBy: !secretOk ? ['con:context:noPrivacyOrTrust'] : []
     });
 

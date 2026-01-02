@@ -101,7 +101,7 @@ function mkDyadDerived(id: string, selfId: string, otherId: string, metric: stri
 /**
  * CharacterLens:
  * - НЕ трогает world/obs факты.
- * - Перезаписывает (derived) субъективные ctx:* и tom:dyad:* на основе:
+ * - Пишет (derived) субъективные ctx:final:* и tom:dyad:* на основе:
  *   trait.paranoia, trait.sensitivity, trait.experience, body.stress/fatigue, ctx:*.
  */
 export function applyCharacterLens(args: {
@@ -184,80 +184,80 @@ export function applyCharacterLens(args: {
   ];
 
   out.push(
-    // перезаписываем ключевые оси, которыми питаются threat/appraisal/tomBias
+    // НЕ перетираем базовые ctx:* оси. Линза пишет ТОЛЬКО в ctx:final:*
     mkDerived(
-      `ctx:danger:${selfId}`,
+      `ctx:final:danger:${selfId}`,
       selfId,
       danger,
       usedCtxBase(
         `ctx:danger:${selfId}`,
-        ensureBaseCopy(atoms, out, `ctx:danger:${selfId}`, 'characterLens.ctx')
+        `ctx:danger:${selfId}`
       ),
       { danger0, kDanger, paranoia, stress },
       ['ctx', 'lens', 'danger']
     ),
     mkDerived(
-      `ctx:uncertainty:${selfId}`,
+      `ctx:final:uncertainty:${selfId}`,
       selfId,
       unc,
       usedCtxBase(
         `ctx:uncertainty:${selfId}`,
-        ensureBaseCopy(atoms, out, `ctx:uncertainty:${selfId}`, 'characterLens.ctx')
+        `ctx:uncertainty:${selfId}`
       ),
       { unc0, kUnc, experience, fatigue },
       ['ctx', 'lens', 'uncertainty']
     ),
     mkDerived(
-      `ctx:normPressure:${selfId}`,
+      `ctx:final:normPressure:${selfId}`,
       selfId,
       norm,
       usedCtxBase(
         `ctx:normPressure:${selfId}`,
-        ensureBaseCopy(atoms, out, `ctx:normPressure:${selfId}`, 'characterLens.ctx')
+        `ctx:normPressure:${selfId}`
       ),
       { norm0, kNorm, sensitivity, pub0 },
       ['ctx', 'lens', 'normPressure']
     ),
     mkDerived(
-      `ctx:publicness:${selfId}`,
+      `ctx:final:publicness:${selfId}`,
       selfId,
       pub,
       usedCtxBase(
         `ctx:publicness:${selfId}`,
-        ensureBaseCopy(atoms, out, `ctx:publicness:${selfId}`, 'characterLens.ctx')
+        `ctx:publicness:${selfId}`
       ),
       { pub0, kPub, sensitivity },
       ['ctx', 'lens', 'publicness']
     ),
     mkDerived(
-      `ctx:surveillance:${selfId}`,
+      `ctx:final:surveillance:${selfId}`,
       selfId,
       surv,
       usedCtxBase(
         `ctx:surveillance:${selfId}`,
-        ensureBaseCopy(atoms, out, `ctx:surveillance:${selfId}`, 'characterLens.ctx')
+        `ctx:surveillance:${selfId}`
       ),
       { surv0, kSurv, paranoia },
       ['ctx', 'lens', 'surveillance']
     ),
     mkDerived(
-      `ctx:crowd:${selfId}`,
+      `ctx:final:crowd:${selfId}`,
       selfId,
       crowd,
       usedCtxBase(
         `ctx:crowd:${selfId}`,
-        ensureBaseCopy(atoms, out, `ctx:crowd:${selfId}`, 'characterLens.ctx')
+        `ctx:crowd:${selfId}`
       ),
       { crowd0, kCrowd, stress, paranoia },
       ['ctx', 'lens', 'crowd']
     ),
     mkDerived(
-      `ctx:intimacy:${selfId}`,
+      `ctx:final:intimacy:${selfId}`,
       selfId,
       intim,
       usedCtxBase(
         `ctx:intimacy:${selfId}`,
-        ensureBaseCopy(atoms, out, `ctx:intimacy:${selfId}`, 'characterLens.ctx')
+        `ctx:intimacy:${selfId}`
       ),
       { intim0, kIntim, paranoia, danger0 },
       ['ctx', 'lens', 'intimacy']
