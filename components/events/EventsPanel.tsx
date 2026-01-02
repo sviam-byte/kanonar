@@ -2,6 +2,7 @@
 import React, { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { UnifiedEventView, UnifiedEventKind } from '../../lib/events/unifiedEvents';
+import { listify } from "../../lib/utils/listify";
 import { useAccess } from '../../contexts/AccessContext';
 import { RedactedBlock } from '../EntitySecurityGate';
 
@@ -242,7 +243,7 @@ export const EventsPanel: React.FC<EventsPanelProps> = ({ events }) => {
                           
                           {selected.participants && (
                               <DetailSection title="Участники">
-                                  {selected.participants.participants.map((p, i) => (
+                                  {listify(selected.participants?.participants, "selected.participants.participants").map((p: any, i: number) => (
                                       <div key={i} className="flex justify-between text-xs py-1 border-b border-canon-border/20 last:border-0">
                                           <EntityLink id={p.actorId} className="text-canon-text font-medium" />
                                           <span className="text-canon-text-light italic">{p.role}</span>
@@ -257,7 +258,7 @@ export const EventsPanel: React.FC<EventsPanelProps> = ({ events }) => {
                                       <span>Observer</span>
                                       <span>Channel</span>
                                   </div>
-                                  {selected.epistemics.observers.map((obs, i) => (
+                                  {listify(selected.epistemics?.observers, "event.epistemics.observers").map((obs: any, i: number) => (
                                       <div key={i} className="flex justify-between py-1 border-b border-canon-border/20 last:border-0">
                                           <EntityLink id={obs.actorId} className="text-canon-text" />
                                           <span className="opacity-70">{obs.channel}</span>
