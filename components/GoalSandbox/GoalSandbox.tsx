@@ -37,6 +37,7 @@ import { buildGoalLabSceneDumpV2, downloadJson } from '../../lib/goal-lab/sceneD
 import { materializeStageAtoms } from '../goal-lab/materializePipeline';
 import { CastPerspectivePanel } from '../goal-lab/CastPerspectivePanel';
 import { CastComparePanel } from '../goal-lab/CastComparePanel';
+import { AgentPassportPanel } from '../goal-lab/AgentPassportPanel';
 import { allScenarioDefs } from '../../data/scenarios/index';
 import { useAccess } from '../../contexts/AccessContext';
 import { filterCharactersForActiveModule } from '../../lib/modules/visibility';
@@ -216,7 +217,7 @@ export const GoalSandbox: React.FC = () => {
       const raw = localStorage.getItem('goalsandbox.uiPanels.v1');
       if (raw) return JSON.parse(raw);
     } catch {}
-    return { left: true, cast: true, compare: true, results: true, emo: false, frame: false, lint: false };
+    return { left: true, cast: true, compare: true, passport: true, results: true, emo: false, frame: false, lint: false };
   });
 
   // Top toolbar collapse (persisted)
@@ -1621,6 +1622,7 @@ export const GoalSandbox: React.FC = () => {
               ['left', 'LEFT'],
               ['cast', 'CAST'],
               ['compare', 'COMPARE'],
+              ['passport', 'PASSPORT'],
               ['results', 'RESULTS'],
               ['emo', 'EMO'],
               ['frame', 'FRAME'],
@@ -1841,6 +1843,14 @@ export const GoalSandbox: React.FC = () => {
               <CastComparePanel
                 rows={castRows}
                 focusId={perspectiveId}
+              />
+            ) : null}
+
+            {uiPanels.passport ? (
+              <AgentPassportPanel
+                atoms={currentAtoms || []}
+                selfId={perspectiveId || ''}
+                title="How the agent sees the situation"
               />
             ) : null}
 
