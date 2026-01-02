@@ -41,6 +41,7 @@ import { applyCharacterLens } from '../context/lens/characterLens';
 import { deriveAppraisalAtoms } from '../emotion/appraisals';
 import { deriveEmotionAtoms } from '../emotion/emotions';
 import { deriveDyadicEmotionAtoms } from '../emotion/dyadic';
+import { deriveSummaryAtoms } from '../context/summary';
 import { arr } from '../utils/arr';
 import { validateAtomInvariants } from '../context/validate/atomInvariants';
 
@@ -973,13 +974,16 @@ export function buildGoalLabContext(
   
   const summaries = buildSummaryAtoms(atomsValidated, { selfId });
   const atomsWithSummaries = dedupeAtomsById([...atomsValidated, ...summaries.atoms]).map(normalizeAtom);
+  // UI-focused summary metrics (derived from ctx + emo atoms).
+  const summaryMetrics = deriveSummaryAtoms({ atoms: atomsWithSummaries, selfId });
+  const atomsWithSummaryMetrics = dedupeAtomsById([...atomsWithSummaries, ...summaryMetrics]).map(normalizeAtom);
 
   const postOverrides = (appliedOverrides || []).filter(a => {
     const id = String((a as any)?.id || '');
     return id.startsWith('emo:') || id.startsWith('app:');
   });
 
-  const atomsForMind = dedupeAtomsById([...atomsWithSummaries, ...postOverrides]).map(normalizeAtom);
+  const atomsForMind = dedupeAtomsById([...atomsWithSummaryMetrics, ...postOverrides]).map(normalizeAtom);
 
   // Compute scoreboard (mind) BEFORE deciding, and materialize it into atoms.
   const contextMind = computeContextMindScoreboard({
@@ -1107,11 +1111,20 @@ export function buildGoalLabContext(
   const tracedPipeline = Array.isArray((result as any).pipelineStages) ? (result as any).pipelineStages : [];
   const pipelineAll = [...tracedPipeline];
 
+  const s3bStage = buildDeltaStage(
+    'S3b',
+    'S3b • summary metrics (UI)',
+    atomsWithSummaryMetrics,
+    atomsWithSummaries,
+    pipelineAll[pipelineAll.length - 1]?.id
+  );
+  pipelineAll.push(s3bStage);
+
   const s4Stage = buildDeltaStage(
     'S4',
     'S4 • contextMind metrics materialized',
     atomsWithMind,
-    result.atoms,
+    atomsWithSummaryMetrics,
     pipelineAll[pipelineAll.length - 1]?.id
   );
   pipelineAll.push(s4Stage);
@@ -1191,7 +1204,7 @@ export function buildGoalLabContext(
       ? buildContextV2FromFrame(frame, world) 
       : { locationType: 'unknown', visibility: 1, noise: 0, panic: 0, nearbyActors: [], alliesCount: 0, enemiesCount: 0, leaderPresent: false, kingPresent: false, authorityConflict: 0, timePressure: 0, scenarioKind: 'routine', cover: 0, exitsNearby: 0, obstacles: 0, groupDensity: 0, hierarchyPressure: 0, structuralDamage: 0 };
 
-  const situation = buildSituationContextForLab(agent, world, frame, snapshot, atomsWithSummaries, ctxV2);
+  const situation = buildSituationContextForLab(agent, world, frame, snapshot, atomsWithSummaryMetrics, ctxV2);
 
   const planningGoals = getPlanningGoals();
   const plan = computeGoalPriorities(agent, planningGoals, world, { skipBioShift: true }, situation);
@@ -1214,7 +1227,7 @@ export function buildGoalLabContext(
     agent,
     frame,
     snapshot,
-    v4Atoms: atomsWithSummaries,
+    v4Atoms: atomsWithSummaryMetrics,
     ctxV2,
     situation,
     goalPreview,
