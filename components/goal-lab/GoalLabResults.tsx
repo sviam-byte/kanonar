@@ -28,6 +28,11 @@ import { PipelinePanel } from './PipelinePanel';
 import { materializeStageAtoms } from './materializePipeline';
 import { arr } from '../../lib/utils/arr';
 
+function num(x: any, d = 0) {
+  const n = Number(x);
+  return Number.isFinite(n) ? n : d;
+}
+
 interface Props {
   context: ContextSnapshot | null;
   frame?: AgentContextFrame | null;
@@ -418,11 +423,20 @@ export const GoalLabResults: React.FC<Props> = ({
     const effectiveSelectedId = selectedGoalId || (safeGoalScores.length > 0 ? safeGoalScores[0].goalId : null);
     const selectedScore = safeGoalScores.find(g => g.goalId === effectiveSelectedId);
 
+    const domains = (snapshotV1 as any)?.domains || null;
+    const summary = (snapshotV1 as any)?.summary || null;
+
+    const threat = domains ? num(domains.threatTotal, 0) : num(summary?.threatLevel ?? summary?.threat ?? 0, 0);
+    const timePressure = domains ? num(domains.timePressure, 0) : num(summary?.timePressure ?? 0, 0);
+    const normPressure = domains ? num(domains.normPressure, 0) : num(summary?.normPressure ?? 0, 0);
+    const danger = domains ? num(domains.danger, 0) : num(summary?.danger ?? 0, 0);
+    const uncertainty = domains ? num(domains.uncertainty, 0) : num(summary?.uncertainty ?? 0, 0);
+
     // Aggregates from snapshot or legacy context
     const stats = {
-        threat: snapshotV1?.contextMind?.metrics?.find((m: any) => m.key === 'threat')?.value ?? context?.aggregates?.threatLevel ?? context?.summary.physicalRisk ?? 0,
+        threat,
         support: snapshotV1?.contextMind?.metrics?.find((m: any) => m.key === 'support')?.value ?? context?.aggregates?.socialSupport ?? context?.summary.socialSupport ?? 0,
-        pressure: snapshotV1?.contextMind?.metrics?.find((m: any) => m.key === 'pressure')?.value ?? ((context?.summary.timePressure ?? 0) + (context?.summary.normPressure ?? 0)) / 2,
+        pressure: snapshotV1?.contextMind?.metrics?.find((m: any) => m.key === 'pressure')?.value ?? (timePressure + normPressure) / 2,
         crowd: snapshotV1?.contextMind?.metrics?.find((m: any) => m.key === 'crowd')?.value ?? context?.aggregates?.crowding ?? context?.summary.crowding ?? 0
     };
 
@@ -991,8 +1005,8 @@ export const GoalLabResults: React.FC<Props> = ({
                         {situation ? (
                           <div className="mb-2 flex flex-wrap gap-1 text-[10px] text-canon-text-light/80">
                             <span className="px-2 py-0.5 rounded bg-black/20 border border-canon-border/30">kind: {String(situation.scenarioKind || 'other')}</span>
-                            <span className="px-2 py-0.5 rounded bg-black/20 border border-canon-border/30">threat: {Number(situation.threatLevel ?? 0).toFixed(2)}</span>
-                            <span className="px-2 py-0.5 rounded bg-black/20 border border-canon-border/30">pressure: {Number(situation.timePressure ?? 0).toFixed(2)}</span>
+                            <span className="px-2 py-0.5 rounded bg-black/20 border border-canon-border/30">threat: {Number(threat ?? 0).toFixed(2)}</span>
+                            <span className="px-2 py-0.5 rounded bg-black/20 border border-canon-border/30">pressure: {Number(timePressure ?? 0).toFixed(2)}</span>
                           </div>
                         ) : null}
                         <div className="flex flex-wrap gap-2">

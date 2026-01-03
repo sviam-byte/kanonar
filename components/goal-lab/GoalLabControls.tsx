@@ -12,10 +12,20 @@ import { ModsPanel } from './ModsPanel';
 import { ScenePanel } from './ScenePanel';
 import { listify } from '../../lib/utils/listify';
 
+function asArr<T>(x: any): T[] {
+  return Array.isArray(x) ? x : [];
+}
+
+function asSet(x: any): Set<string> {
+  if (x instanceof Set) return x;
+  if (Array.isArray(x)) return new Set(x.map(String));
+  return new Set();
+}
+
 interface Props {
   allCharacters: CharacterEntity[];
   allLocations: LocationEntity[];
-  allEvents: Event[];
+  events: Event[] | any;
   
   selectedAgentId: string;
   onSelectAgent: (id: string) => void;
@@ -26,10 +36,10 @@ interface Props {
   locationMode: 'preset' | 'custom';
   onLocationModeChange: (mode: 'preset' | 'custom') => void;
 
-  selectedEventIds: Set<string>;
+  selectedEventIds: Set<string> | any;
   onToggleEvent: (id: string) => void;
   
-  manualAtoms: ContextAtom[];
+  manualAtoms: ContextAtom[] | any;
   onChangeManualAtoms: (atoms: ContextAtom[]) => void;
 
   // Optional: current computed atoms (for inspectors)
@@ -71,12 +81,12 @@ interface Props {
 }
 
 export const GoalLabControls: React.FC<Props> = ({
-  allCharacters, allLocations, allEvents,
+  allCharacters, allLocations, events: rawEvents,
   selectedAgentId, onSelectAgent,
   selectedLocationId, onSelectLocation,
   locationMode, onLocationModeChange,
-  selectedEventIds, onToggleEvent,
-  manualAtoms, onChangeManualAtoms,
+  selectedEventIds: rawSelectedEventIds, onToggleEvent,
+  manualAtoms: rawManualAtoms, onChangeManualAtoms,
   computedAtoms,
   nearbyActors, onNearbyActorsChange,
   placingActorId, onStartPlacement,
@@ -98,7 +108,9 @@ export const GoalLabControls: React.FC<Props> = ({
   const [activeTab, setActiveTab] = React.useState<'events' | 'affect' | 'manual' | 'emotions' | 'scenes' | 'sim' | 'mods' | 'scene'>('scenes');
   const characters = listify(allCharacters);
   const locations = listify(allLocations);
-  const events = listify(allEvents);
+  const events = asArr<Event>(rawEvents);
+  const selectedEventIds = asSet(rawSelectedEventIds);
+  const manualAtoms = asArr<ContextAtom>(rawManualAtoms);
   const participants = listify(participantIds);
   const presets = listify(scenePresets);
   const nearby = listify(nearbyActors);

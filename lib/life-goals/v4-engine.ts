@@ -10,6 +10,7 @@ import { actionGoalMap } from '../goals/space';
 import { AgentContextFrame } from '../context/frame/types';
 import { ContextAtom } from '../context/v2/types';
 import { extractTargetCandidates } from '../goals/targeting';
+import { getDyadMag } from '../tom/layers';
 
 // Type for standardized metrics input including flattened psych/latent/field states
 interface MetricInput {
@@ -112,6 +113,11 @@ interface MetricInput {
     
     // Modes
     ImpulseShare: number;
+}
+
+function clamp01(x: number) {
+    if (!Number.isFinite(x)) return 0;
+    return Math.max(0, Math.min(1, x));
 }
 
 // Universal Targeted Goal Computer
@@ -323,17 +329,35 @@ export function computeConcreteGoals(
          
          const relBio = extractRelationalBioFeatures(agent.historicalEvents || [], targetId);
          
-         const relMetrics: Record<string, number> = {
-             Trust: rel?.trust ?? 0.5,
-             Bond: rel?.bond ?? 0.1,
-             Fear: rel?.fear ?? 0.1,
-             Respect: rel?.respect ?? 0.5,
-             Conflict: rel?.conflict ?? 0.1,
-             Align: rel?.align ?? 0.5,
-             Significance: (rel?.bond ?? 0) * 0.7 + Math.abs((rel?.align ?? 0.5) - 0.5),
-             Dominance: role === 'leader' ? 0.8 : 0.5,
-             Legitimacy: role === 'leader' ? 0.9 : 0.5,
-         };
+        // Prefer dyad ToM atoms when present; fallback to stored relationship state.
+        // This ensures targeted ToM goals respond to the contextual ToM pipeline.
+        const dyad = (metric: string, fb: number) => {
+            try {
+                const picked = getDyadMag(contextAtoms as any, agent.entityId, targetId, metric, NaN as any);
+                return Number.isFinite(picked.mag) ? picked.mag : fb;
+            } catch {
+                return fb;
+            }
+        };
+
+        const trust = dyad('trust', rel?.trust ?? 0.5);
+        const threat = dyad('threat', rel?.fear ?? 0.1);
+        const intimacy = dyad('intimacy', rel?.bond ?? 0.1);
+        const alignment = dyad('alignment', rel?.align ?? 0.5);
+        const respect = dyad('respect', rel?.respect ?? 0.5);
+        const dominance = dyad('dominance', rel?.dominance ?? (role === 'leader' ? 0.8 : 0.5));
+
+        const relMetrics: Record<string, number> = {
+            Trust: trust,
+            Bond: intimacy,
+            Fear: threat,
+            Respect: respect,
+            Conflict: Math.max(threat, dyad('uncertainty', rel?.conflict ?? 0.1)),
+            Align: alignment,
+            Significance: clamp01(intimacy * 0.7 + alignment * 0.3),
+            Dominance: dominance,
+            Legitimacy: dyad('support', rel?.legitimacy ?? (role === 'leader' ? 0.9 : respect)),
+        };
 
          for (const def of V4_TARGETED_GOAL_DEFINITIONS) {
              const inst = computeUniversalTargetedGoal(def, targetId, agent, preGoalLogits, relBio, relMetrics);

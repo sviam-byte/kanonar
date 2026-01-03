@@ -16,6 +16,7 @@ import {
 } from '../context/overrides/types';
 import { validateAtoms } from '../context/validate/frameValidator';
 import { buildSummaryAtoms } from '../context/summaries/buildSummaries';
+import { clamp01 } from '../utils/clamp01';
 import { computeCoverageReport } from '../goal-lab/coverage/computeCoverage';
 import { normalizeAffectState } from '../affect/normalize';
 import { atomizeAffect } from '../affect/atomize';
@@ -97,6 +98,20 @@ function dedupeAtomsById(arr0: ContextAtom[]): ContextAtom[] {
     out.unshift(a);
   }
   return out;
+}
+
+function findAtomMag(atoms: any[], id: string): number | null {
+  const a = (atoms || []).find((x: any) => String(x?.id) === id);
+  const m = Number(a?.magnitude);
+  return Number.isFinite(m) ? clamp01(m) : null;
+}
+
+function findFirstMag(atoms: any[], ids: string[], fallback = 0): number {
+  for (const id of ids) {
+    const v = findAtomMag(atoms, id);
+    if (v != null) return v;
+  }
+  return clamp01(fallback);
 }
 
 function buildSituationContextForLab(
@@ -1154,6 +1169,44 @@ export function buildGoalLabContext(
   (snapshot as any).summary = computeSnapshotSummary((snapshot as any).atoms as any, selfId);
   (snapshot as any).contextMind = contextMind;
 
+  // domains: stable, UI-friendly aggregates (so UI doesn't show fake zeros)
+  // Prefer final ctx atoms if present.
+  const atoms = (snapshot as any).atoms as any[];
+  const danger = findFirstMag(atoms, [
+    `ctx:final:danger:${selfId}`,
+    `ctx:danger:${selfId}`,
+    `ctx:danger`,
+  ]);
+  const uncertainty = findFirstMag(atoms, [
+    `ctx:final:uncertainty:${selfId}`,
+    `ctx:uncertainty:${selfId}`,
+    `ctx:uncertainty`,
+  ]);
+  const timePressure = findFirstMag(atoms, [
+    `ctx:final:timePressure:${selfId}`,
+    `ctx:timePressure:${selfId}`,
+    `ctx:timePressure`,
+  ]);
+  const normPressure = findFirstMag(atoms, [
+    `ctx:final:normPressure:${selfId}`,
+    `ctx:normPressure:${selfId}`,
+    `ctx:normPressure`,
+  ]);
+
+  const threatTotal = findFirstMag(atoms, [
+    `threat:final:${selfId}`,
+    `threat:final`,
+    `sum:threatLevel:${selfId}`, // fallback if threat atoms not present
+  ]);
+
+  (snapshot as any).domains = {
+    danger,
+    uncertainty,
+    timePressure,
+    normPressure,
+    threatTotal,
+  };
+
   pipelineAll.push(
     buildDeltaStage(
       'S5',
@@ -1179,7 +1232,7 @@ export function buildGoalLabContext(
   (snapshot as any).scene = sceneInst;
   (snapshot as any).epistemic = { provenance: [...Array.from((result as any).provenance.entries())] };
   (snapshot as any).epistemicGenerated = {
-    rumorBeliefs: (result as any).rumorBeliefs.map((a: any) => ({
+    rumorBeliefs: arr((result as any).rumorBeliefs).map((a: any) => ({
       id: a.id,
       magnitude: a.magnitude,
       confidence: a.confidence,
