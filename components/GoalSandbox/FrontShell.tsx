@@ -4,8 +4,8 @@ import type { ContextAtom } from '../../lib/context/v2/types';
 
 import { Tabs } from '../Tabs';
 import { FrontOverviewPanel } from './FrontOverviewPanel';
+import { FriendlyDyadToMPanel } from './FriendlyDyadToMPanel';
 import { DecisionPanel } from '../goal-lab/DecisionPanel';
-import { ToMPanel } from '../goal-lab/ToMPanel';
 import { ThreatPanel } from '../goal-lab/ThreatPanel';
 
 function asArray<T>(x: any): T[] {
@@ -37,14 +37,17 @@ export const FrontShell: React.FC<{
   const tabs = useMemo(() => {
     return [
       {
-        label: 'Overview',
+        label: 'What’s going on',
         content: <FrontOverviewPanel snapshotV1={snapshotV1} selfId={selfId} actorLabels={actorLabels} />,
       },
-      { label: 'Decision', content: <DecisionPanel decision={(snapshotV1 as any)?.decision} /> },
-      { label: 'ToM', content: <ToMPanel atoms={atoms} /> },
-      { label: 'Threat', content: <ThreatPanel atoms={atoms} /> },
+      { label: 'What I’ll do', content: <DecisionPanel decision={(snapshotV1 as any)?.decision} /> },
       {
-        label: 'Raw',
+        label: 'How I see others',
+        content: <FriendlyDyadToMPanel snapshotV1={snapshotV1} selfId={selfId} actorLabels={actorLabels} />,
+      },
+      { label: 'Why it feels risky', content: <ThreatPanel atoms={atoms} /> },
+      {
+        label: 'Debug JSON',
         content: (
           <div className="h-full min-h-0 overflow-auto custom-scrollbar p-3 bg-canon-bg text-canon-text">
             <div className="text-xs font-semibold opacity-80 mb-2">snapshotV1</div>
