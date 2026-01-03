@@ -36,6 +36,7 @@ import { diffAtoms } from '../../lib/snapshot/diffAtoms';
 import { adaptToSnapshotV1, normalizeSnapshot } from '../../lib/goal-lab/snapshotAdapter';
 import { buildGoalLabSceneDumpV2, downloadJson } from '../../lib/goal-lab/sceneDump';
 import { materializeStageAtoms } from '../goal-lab/materializePipeline';
+import { buildFullDebugDump } from '../../lib/debug/buildFullDebugDump';
 import { allScenarioDefs } from '../../data/scenarios/index';
 import { useAccess } from '../../contexts/AccessContext';
 import { filterCharactersForActiveModule } from '../../lib/modules/visibility';
@@ -1477,6 +1478,46 @@ export const GoalSandbox: React.FC = () => {
     downloadJson(payload, `goal-lab__pipeline__${snapshotV1.selfId}__t${snapshotV1.tick}.json`);
   }, [snapshotV1, pipelineV1]);
 
+  const handleExportFullDebug = useCallback(() => {
+    if (!snapshotV1) return;
+
+    const payload = buildFullDebugDump({
+      snapshotV1,
+      pipelineV1,
+      pipelineFrame,
+      worldState,
+      sceneDump: sceneDumpV2,
+      castRows,
+      manualAtoms,
+      selectedEventIds,
+      selectedLocationId,
+      selectedAgentId,
+      uiMeta: {
+        pipelineStageId: currentPipelineStageId,
+        perspectiveId,
+      },
+    });
+
+    const exportedAt = new Date().toISOString().replace(/[:.]/g, '-');
+    downloadJson(
+      payload,
+      `goal-lab__FULL_DEBUG__${snapshotV1.selfId}__t${snapshotV1.tick}__${exportedAt}.json`
+    );
+  }, [
+    snapshotV1,
+    pipelineV1,
+    pipelineFrame,
+    worldState,
+    sceneDumpV2,
+    castRows,
+    manualAtoms,
+    selectedEventIds,
+    selectedLocationId,
+    selectedAgentId,
+    currentPipelineStageId,
+    perspectiveId,
+  ]);
+
   const handleExportPipelineStage = useCallback(
     (stageId: string) => {
       if (pipelineV1 && Array.isArray((pipelineV1 as any).stages)) {
@@ -1736,7 +1777,7 @@ export const GoalSandbox: React.FC = () => {
               <GoalLabControls
                 allCharacters={allCharacters}
                 allLocations={allLocations as any}
-                allEvents={eventRegistry.getAll() as any}
+                events={eventRegistry.getAll() as any}
                 computedAtoms={asArray<any>((snapshotV1?.atoms ?? (snapshot as any)?.atoms) as any)}
                 selectedAgentId={selectedAgentId}
                 onSelectAgent={handleSelectAgent}
@@ -1922,35 +1963,28 @@ export const GoalSandbox: React.FC = () => {
               />
             ) : (
               <DebugShell
-                castRows={castRows}
-                perspectiveId={perspectiveId}
-                onFocusPerspective={setPerspectiveAgentId}
-                passportAtoms={passportAtoms}
-                snapshot={snapshot as any}
                 snapshotV1={snapshotV1 as any}
                 pipelineV1={pipelineV1 as any}
+                pipelineFrame={pipelineFrame as any}
                 pipelineStageId={currentPipelineStageId}
                 onChangePipelineStageId={setPipelineStageId}
-                onExportPipelineStage={handleExportPipelineStage}
-                onExportPipelineAll={handleExportPipelineAll}
+                castRows={castRows}
+                perspectiveId={perspectiveId}
+                onSetPerspectiveId={setPerspectiveAgentId}
+                passportAtoms={passportAtoms}
+                contextualMind={contextualMind as any}
+                locationScores={locationScores as any}
+                tomScores={tomScores as any}
+                tom={(worldState as any)?.tom?.[perspectiveId as any]}
+                atomDiff={atomDiff as any}
                 sceneDump={sceneDumpV2 as any}
                 onDownloadScene={onDownloadScene}
                 onImportScene={handleImportSceneClick}
                 manualAtoms={manualAtoms}
                 onChangeManualAtoms={setManualAtoms}
-                actorLabels={actorLabels}
-                tomRows={tomMatrixForPerspective}
-                goals={goals as any}
-                situation={situation as any}
-                goalPreview={goalPreview as any}
-                contextualMind={contextualMind as any}
-                locationScores={locationScores as any}
-                tomScores={tomScores as any}
-                worldTom={(worldState as any)?.tom?.[perspectiveId]}
-                atomDiff={atomDiff as any}
-                pipelineFrame={pipelineFrame as any}
-                actionsLocLint={actionsLocLint as any}
-                setManualAtom={setManualAtom}
+                onExportPipelineStage={handleExportPipelineStage}
+                onExportPipelineAll={handleExportPipelineAll}
+                onExportFullDebug={handleExportFullDebug}
               />
             )}
 

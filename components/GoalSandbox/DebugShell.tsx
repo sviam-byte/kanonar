@@ -1,11 +1,19 @@
 import React, { useMemo } from 'react';
 import type { ContextAtom } from '../../lib/context/v2/types';
+import type { GoalLabSnapshotV1 } from '../../lib/goal-lab/snapshotTypes';
+
 import { Tabs } from '../Tabs';
-import { CastPerspectivePanel } from '../goal-lab/CastPerspectivePanel';
 import { CastComparePanel } from '../goal-lab/CastComparePanel';
+import { CastPerspectivePanel } from '../goal-lab/CastPerspectivePanel';
 import { AgentPassportPanel } from '../goal-lab/AgentPassportPanel';
 import { GoalLabResults } from '../goal-lab/GoalLabResults';
-import { EmotionInspector } from '../GoalLab/EmotionInspector';
+import { EmotionInspector } from '../goal-lab/EmotionInspector';
+import { EmotionExplainPanel } from '../goal-lab/EmotionExplainPanel';
+import { ToMPanel } from '../goal-lab/ToMPanel';
+import { ContextMindPanel } from '../goal-lab/ContextMindPanel';
+import { RelationsPanel } from '../goal-lab/RelationsPanel';
+import { PipelinePanel } from '../goal-lab/PipelinePanel';
+import { ValidatorPanel } from '../goal-lab/ValidatorPanel';
 import { FrameDebugPanel } from '../GoalLab/FrameDebugPanel';
 
 function asArray<T>(x: any): T[] {
@@ -13,218 +21,187 @@ function asArray<T>(x: any): T[] {
 }
 
 export const DebugShell: React.FC<{
-  castRows: any[];
-  perspectiveId: string | null;
-  onFocusPerspective: (id: string | null) => void;
-  passportAtoms: ContextAtom[];
-  snapshot: any;
-  snapshotV1: any;
-  pipelineV1: any;
+  snapshotV1: GoalLabSnapshotV1 | null;
+  pipelineV1?: any;
+  pipelineFrame?: any;
   pipelineStageId: string;
   onChangePipelineStageId: (id: string) => void;
-  onExportPipelineStage: (stageId: string) => void;
-  onExportPipelineAll: () => void;
-  sceneDump: any;
-  onDownloadScene: () => void;
-  onImportScene: () => void;
-  manualAtoms: ContextAtom[];
-  onChangeManualAtoms: (atoms: ContextAtom[]) => void;
-  actorLabels: Record<string, string>;
-  tomRows: any;
-  goals: any;
-  situation: any;
-  goalPreview: any;
-  contextualMind: any;
-  locationScores: any;
-  tomScores: any;
-  worldTom: any;
-  atomDiff: any;
-  pipelineFrame: any;
-  actionsLocLint: any;
-  setManualAtom: (id: string, magnitude: number) => void;
-}> = ({
-  castRows,
-  perspectiveId,
-  onFocusPerspective,
-  passportAtoms,
-  snapshot,
-  snapshotV1,
-  pipelineV1,
-  pipelineStageId,
-  onChangePipelineStageId,
-  onExportPipelineStage,
-  onExportPipelineAll,
-  sceneDump,
-  onDownloadScene,
-  onImportScene,
-  manualAtoms,
-  onChangeManualAtoms,
-  actorLabels,
-  tomRows,
-  goals,
-  situation,
-  goalPreview,
-  contextualMind,
-  locationScores,
-  tomScores,
-  worldTom,
-  atomDiff,
-  pipelineFrame,
-  actionsLocLint,
-  setManualAtom,
-}) => {
+
+  castRows: any[];
+  perspectiveId: string | null;
+  onSetPerspectiveId: (id: string) => void;
+
+  passportAtoms: ContextAtom[];
+  contextualMind?: any;
+  locationScores?: any;
+  tomScores?: any;
+  tom?: any;
+  atomDiff?: any;
+
+  sceneDump?: any;
+  onDownloadScene?: () => void;
+  onImportScene?: () => void;
+
+  manualAtoms?: ContextAtom[];
+  onChangeManualAtoms?: (atoms: ContextAtom[]) => void;
+
+  onExportPipelineStage?: (stageId: string) => void;
+  onExportPipelineAll?: () => void;
+
+  onExportFullDebug?: () => void;
+}> = (p) => {
+  const atoms = useMemo(() => asArray<any>(p.snapshotV1?.atoms), [p.snapshotV1]);
+  const manualAtoms = useMemo(() => asArray<ContextAtom>(p.manualAtoms), [p.manualAtoms]);
+  const onChangeManualAtoms = p.onChangeManualAtoms ?? (() => {});
+
   const tabs = useMemo(() => {
     return [
       {
-        label: 'Cast',
-        content: (
-          <CastPerspectivePanel rows={castRows} focusId={perspectiveId} onFocus={onFocusPerspective} />
-        ),
-      },
-      {
         label: 'Compare',
-        content: <CastComparePanel rows={castRows} focusId={perspectiveId} />,
-      },
-      {
-        label: 'Passport',
         content: (
-          <AgentPassportPanel
-            atoms={passportAtoms}
-            selfId={perspectiveId || ''}
-            title="How the agent sees the situation"
-          />
-        ),
+          <div className="p-3 space-y-3">
+            <div className="text-xs opacity-70">
+              Compare = сравнение A vs B (перспективы агентов), не “по времени”.
+            </div>
+            <CastPerspectivePanel rows={p.castRows} focusId={p.perspectiveId} onFocus={p.onSetPerspectiveId} />
+            <CastComparePanel rows={p.castRows} focusId={p.perspectiveId || undefined} />
+          </div>
+        )
       },
       {
-        label: 'Deep debug',
-        content: snapshot ? (
-          <GoalLabResults
-            context={snapshot as any}
-            actorLabels={actorLabels}
-            perspectiveAgentId={perspectiveId}
-            tomRows={tomRows}
-            goalScores={goals as any}
-            situation={situation as any}
-            goalPreview={goalPreview as any}
-            contextualMind={contextualMind as any}
-            locationScores={locationScores as any}
-            tomScores={tomScores as any}
-            tom={worldTom}
-            atomDiff={atomDiff as any}
-            snapshotV1={snapshotV1 as any}
-            pipelineV1={pipelineV1 as any}
-            pipelineStageId={pipelineStageId}
-            onChangePipelineStageId={onChangePipelineStageId}
-            onExportPipelineStage={onExportPipelineStage}
-            onExportPipelineAll={onExportPipelineAll}
-            sceneDump={sceneDump as any}
-            onDownloadScene={onDownloadScene}
-            onImportScene={onImportScene}
-            manualAtoms={manualAtoms}
-            onChangeManualAtoms={onChangeManualAtoms}
-          />
-        ) : (
-          <div className="p-4 text-sm text-canon-text-light italic">No snapshot available.</div>
-        ),
+        label: 'Passport + Atoms',
+        content: (
+          <div className="p-3 space-y-3">
+            <AgentPassportPanel atoms={p.passportAtoms} selfId={p.perspectiveId || ''} title="How the agent sees the situation" />
+          </div>
+        )
       },
       {
-        label: 'Emotions',
-        content: snapshotV1 ? (
-          <div className="p-4">
+        label: 'Pipeline (all stages)',
+        content: (
+          <div className="p-3 space-y-3">
+            <div className="flex gap-2">
+              <button
+                className="px-2 py-1 text-[11px] rounded border border-white/10 bg-white/5 hover:bg-white/10"
+                onClick={() => p.onExportPipelineAll?.()}
+              >
+                Export pipeline
+              </button>
+              <button
+                className="px-2 py-1 text-[11px] rounded border border-white/10 bg-white/5 hover:bg-white/10"
+                onClick={() => p.onExportFullDebug?.()}
+              >
+                Export FULL debug JSON
+              </button>
+            </div>
+
+            <PipelinePanel
+              snapshotV1={p.snapshotV1 as any}
+              pipelineV1={p.pipelineV1 as any}
+              pipelineStageId={p.pipelineStageId}
+              onChangePipelineStageId={p.onChangePipelineStageId}
+              onExportPipelineStage={p.onExportPipelineStage as any}
+              onExportPipelineAll={p.onExportPipelineAll as any}
+            />
+
+            <div className="rounded border border-white/10 bg-black/10">
+              <GoalLabResults
+                context={p.snapshotV1 as any}
+                contextualMind={p.contextualMind}
+                locationScores={p.locationScores}
+                tomScores={p.tomScores}
+                tom={p.tom}
+                atomDiff={p.atomDiff}
+                snapshotV1={p.snapshotV1 as any}
+                pipelineV1={p.pipelineV1 as any}
+                pipelineStageId={p.pipelineStageId}
+                onChangePipelineStageId={p.onChangePipelineStageId}
+                onExportPipelineStage={p.onExportPipelineStage as any}
+                onExportPipelineAll={p.onExportPipelineAll as any}
+                sceneDump={p.sceneDump}
+                onDownloadScene={p.onDownloadScene}
+                onImportScene={p.onImportScene}
+                manualAtoms={p.manualAtoms as any}
+                onChangeManualAtoms={p.onChangeManualAtoms as any}
+              />
+            </div>
+          </div>
+        )
+      },
+      {
+        label: 'ToM',
+        content: (
+          <div className="p-3 space-y-3">
+            <div className="text-xs opacity-70">Dyad + contextual ToM, без “шума”.</div>
+            <ToMPanel atoms={atoms} />
+            <ContextMindPanel atoms={atoms} />
+            <RelationsPanel atoms={atoms} />
+          </div>
+        )
+      },
+      {
+        label: 'Emotions + formulas',
+        content: (
+          <div className="p-3 space-y-3">
             <EmotionInspector
-              selfId={perspectiveId}
-              atoms={asArray<any>(snapshotV1.atoms as any)}
-              setManualAtom={setManualAtom}
+              selfId={p.perspectiveId || ''}
+              atoms={atoms}
+              manualAtoms={manualAtoms}
+              onChangeManualAtoms={onChangeManualAtoms}
+            />
+            <EmotionExplainPanel
+              atoms={atoms}
+              selfId={p.perspectiveId || ''}
+              manualAtoms={manualAtoms}
+              onChangeManualAtoms={onChangeManualAtoms}
             />
           </div>
-        ) : (
-          <div className="p-4 text-sm text-canon-text-light italic">No snapshotV1 data.</div>
-        ),
+        )
       },
       {
         label: 'Frame',
-        content: pipelineFrame ? (
-          <div className="p-4">
-            <FrameDebugPanel frame={pipelineFrame as any} />
-          </div>
-        ) : (
-          <div className="p-4 text-sm text-canon-text-light italic">No pipeline frame.</div>
-        ),
-      },
-      {
-        label: 'Lint',
-        content: actionsLocLint ? (
-          <div className="p-4">
-            <h3 className="text-lg font-bold text-canon-accent uppercase tracking-widest mb-4 border-b border-canon-border/40 pb-2">
-              Actions × Locations Lint
-            </h3>
-
-            <div className="text-sm opacity-80 mb-2">
-              Locations: {actionsLocLint.stats.locations} • with affordances:{' '}
-              {actionsLocLint.stats.locationsWithAffordances} • known actionIds:{' '}
-              {actionsLocLint.stats.knownActionIds} • unknown actionIds:{' '}
-              {actionsLocLint.stats.unknownActionIds}
-            </div>
-
-            <div className="text-xs text-canon-text-light mb-4">
-              Missing (action → locations):
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {actionsLocLint.results.map((r: any, i: number) => (
-                <div key={i} className="p-3 rounded border border-canon-border bg-canon-bg-light/20">
-                  <div className="text-sm font-bold text-canon-text mb-1">{r.actionId}</div>
-                  <div className="text-[11px] text-canon-text-light">{r.message}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-        ) : (
-          <div className="p-4 text-sm text-canon-text-light italic">No lint data.</div>
-        ),
-      },
-      {
-        label: 'Raw JSON',
         content: (
-          <div className="h-full min-h-0 overflow-auto custom-scrollbar p-3 bg-canon-bg text-canon-text">
-            <div className="text-xs font-semibold opacity-80 mb-2">snapshotV1</div>
+          <div className="p-3">
+            {p.pipelineFrame ? (
+              <FrameDebugPanel frame={p.pipelineFrame} />
+            ) : (
+              <div className="text-xs italic opacity-70">No pipeline frame available.</div>
+            )}
+          </div>
+        )
+      },
+      {
+        label: 'Validate',
+        content: (
+          <div className="p-3">
+            <ValidatorPanel atoms={atoms} />
+          </div>
+        )
+      },
+      {
+        label: 'Raw',
+        content: (
+          <div className="p-3">
             <pre className="text-[10px] font-mono whitespace-pre-wrap break-words opacity-90">
-              {JSON.stringify(snapshotV1, null, 2)}
+              {JSON.stringify(p.snapshotV1, null, 2)}
             </pre>
           </div>
-        ),
+        )
       },
     ];
-  }, [
-    castRows,
-    perspectiveId,
-    passportAtoms,
-    snapshot,
-    snapshotV1,
-    pipelineV1,
-    pipelineStageId,
-    onChangePipelineStageId,
-    onExportPipelineStage,
-    onExportPipelineAll,
-    sceneDump,
-    onDownloadScene,
-    onImportScene,
-    manualAtoms,
-    onChangeManualAtoms,
-    actorLabels,
-    tomRows,
-    goals,
-    situation,
-    goalPreview,
-    contextualMind,
-    locationScores,
-    tomScores,
-    worldTom,
-    atomDiff,
-    pipelineFrame,
-    actionsLocLint,
-    setManualAtom,
-  ]);
+  }, [atoms, p]);
 
-  return <Tabs tabs={tabs} syncKey="debugTab" />;
+  return (
+    <div className="h-full min-h-0 flex flex-col border border-canon-border rounded bg-canon-bg overflow-hidden">
+      <div className="px-3 py-2 border-b border-canon-border bg-canon-bg-light/10 flex items-center justify-between">
+        <div className="text-sm font-semibold">Debug</div>
+        <div className="text-[11px] opacity-70 font-mono">
+          tick={p.snapshotV1?.tick ?? 0} self={p.perspectiveId || ''}
+        </div>
+      </div>
+      <div className="flex-1 min-h-0">
+        <Tabs tabs={tabs} syncKey="debugTab" />
+      </div>
+    </div>
+  );
 };
