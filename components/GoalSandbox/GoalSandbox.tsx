@@ -1478,46 +1478,6 @@ export const GoalSandbox: React.FC = () => {
     downloadJson(payload, `goal-lab__pipeline__${snapshotV1.selfId}__t${snapshotV1.tick}.json`);
   }, [snapshotV1, pipelineV1]);
 
-  const handleExportFullDebug = useCallback(() => {
-    if (!snapshotV1) return;
-
-    const payload = buildFullDebugDump({
-      snapshotV1,
-      pipelineV1,
-      pipelineFrame,
-      worldState,
-      sceneDump: sceneDumpV2,
-      castRows,
-      manualAtoms,
-      selectedEventIds,
-      selectedLocationId,
-      selectedAgentId,
-      uiMeta: {
-        pipelineStageId: currentPipelineStageId,
-        perspectiveId,
-      },
-    });
-
-    const exportedAt = new Date().toISOString().replace(/[:.]/g, '-');
-    downloadJson(
-      payload,
-      `goal-lab__FULL_DEBUG__${snapshotV1.selfId}__t${snapshotV1.tick}__${exportedAt}.json`
-    );
-  }, [
-    snapshotV1,
-    pipelineV1,
-    pipelineFrame,
-    worldState,
-    sceneDumpV2,
-    castRows,
-    manualAtoms,
-    selectedEventIds,
-    selectedLocationId,
-    selectedAgentId,
-    currentPipelineStageId,
-    perspectiveId,
-  ]);
-
   const handleExportPipelineStage = useCallback(
     (stageId: string) => {
       if (pipelineV1 && Array.isArray((pipelineV1 as any).stages)) {
@@ -1658,6 +1618,46 @@ export const GoalSandbox: React.FC = () => {
     if (pipelineStageIndex < 0) return pipelineStageId;
     return pipelineStageOptions[pipelineStageIndex] || pipelineStageId;
   }, [pipelineStageIndex, pipelineStageOptions, pipelineStageId]);
+
+  const handleExportFullDebug = useCallback(() => {
+    if (!snapshotV1) return;
+
+    const payload = buildFullDebugDump({
+      snapshotV1,
+      pipelineV1,
+      pipelineFrame,
+      worldState,
+      sceneDump: sceneDumpV2,
+      castRows,
+      manualAtoms,
+      selectedEventIds,
+      selectedLocationId,
+      selectedAgentId,
+      uiMeta: {
+        pipelineStageId: currentPipelineStageId,
+        perspectiveId,
+      },
+    });
+
+    const exportedAt = new Date().toISOString().replace(/[:.]/g, '-');
+    downloadJson(
+      payload,
+      `goal-lab__FULL_DEBUG__${snapshotV1.selfId}__t${snapshotV1.tick}__${exportedAt}.json`
+    );
+  }, [
+    snapshotV1,
+    pipelineV1,
+    pipelineFrame,
+    worldState,
+    sceneDumpV2,
+    castRows,
+    manualAtoms,
+    selectedEventIds,
+    selectedLocationId,
+    selectedAgentId,
+    currentPipelineStageId,
+    perspectiveId,
+  ]);
 
   const handlePrevStage = useCallback(() => {
     if (!pipelineStageOptions.length) return;
