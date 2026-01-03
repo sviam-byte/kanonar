@@ -60,13 +60,23 @@ export class ErrorBoundary extends React.Component<Props, State> {
     if (!error) return this.props.children;
 
     const diag = getDiag();
+    const buildDiag = {
+      mode: import.meta.env.MODE,
+      prod: import.meta.env.PROD,
+      dev: import.meta.env.DEV,
+      base: import.meta.env.BASE_URL,
+      href: typeof window !== 'undefined' ? window.location.href : null,
+    };
     const report = {
       schema: 'KanonarCrashReportV1',
       time: new Date().toISOString(),
       message: String(error.message || error),
       stack: String((error as any).stack || ''),
       componentStack: String(info?.componentStack || ''),
-      diag,
+      diag: {
+        events: diag,
+        build: buildDiag,
+      },
       userAgent: navigator.userAgent,
       location: String(window.location.href),
     };
