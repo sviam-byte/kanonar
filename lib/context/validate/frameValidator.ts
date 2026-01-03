@@ -1,6 +1,6 @@
 
 // lib/context/validate/frameValidator.ts
-import { ContextAtom, ValidationSeverity, ValidationIssue, ValidationReport } from '../v2/types';
+import type { ContextAtom, ValidationSeverity, ValidationIssue, ValidationReport } from '../v2/types';
 import { matchAtomSpec, clamp } from '../catalog/atomCatalog';
 import { inferAtomNamespace, inferAtomOrigin } from '../v2/infer';
 import { getAtomStrictMode } from '../catalog/strictMode';

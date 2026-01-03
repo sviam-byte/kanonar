@@ -1,4 +1,4 @@
-import { ContextAtom } from '../v2/types';
+import type { ContextAtom } from '../v2/types';
 
 export type AtomGate = {
   allOf?: string[];

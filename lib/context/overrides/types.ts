@@ -1,6 +1,6 @@
 
 // lib/context/overrides/types.ts
-import { ContextAtom } from '../v2/types';
+import type { ContextAtom } from '../v2/types';
 
 export type AtomOverrideOp =
   | { op: 'upsert'; atom: ContextAtom }

@@ -1,6 +1,6 @@
 
 // lib/context/pipeline/stage0.ts
-import { ContextAtom } from '../v2/types';
+import type { ContextAtom } from '../v2/types';
 import { normalizeAtom } from '../v2/infer';
 // Removed: import { atomizeObservations } from '../epistemic/atomizeObs';
 import { extractObservationAtoms } from '../sources/observationAtoms';

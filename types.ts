@@ -1,7 +1,6 @@
 
 // types.ts
-import { AffectState } from './lib/emotions/types';
-export type { AffectState };
+export type { AffectState } from './lib/emotions/types';
 
 import type { ContextualMindState } from './lib/tom/contextual/types';
 export type { ContextualMindState };

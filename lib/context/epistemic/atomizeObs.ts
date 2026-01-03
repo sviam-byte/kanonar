@@ -1,6 +1,6 @@
 
 // lib/context/epistemic/atomizeObs.ts
-import { ContextAtom } from '../v2/types';
+import type { ContextAtom } from '../v2/types';
 import { normalizeAtom } from '../v2/infer';
 import { computeInfoAdequacy, clamp01, defaultPerceptionProfile } from './perceptionProfile';
 import { WorldState, AgentState } from '../../../types';

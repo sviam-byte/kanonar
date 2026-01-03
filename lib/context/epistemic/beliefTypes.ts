@@ -1,6 +1,6 @@
 
 // lib/context/epistemic/beliefTypes.ts
-import { ContextAtom } from '../v2/types';
+import type { ContextAtom } from '../v2/types';
 
 // Minimal: belief:* is "I believe that..."
 // Important: belief atoms often mirror world IDs (e.g. belief:scene:crowd)

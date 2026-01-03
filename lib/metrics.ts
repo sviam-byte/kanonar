@@ -1,8 +1,7 @@
 
-import { Branch, CharacterEntity, EntityParams, FullCharacterMetrics, SocialEventEntity, V42Metrics, ToMDashboardMetrics, ToMV2DashboardMetrics, BehavioralAdvice, GoalEcology, AgentState, ArchetypeMode, GoalAxisId } from '../types';
+import { Branch, CharacterEntity, FullCharacterMetrics, SocialEventEntity, V42Metrics, ToMDashboardMetrics, ToMV2DashboardMetrics, BehavioralAdvice, GoalEcology, AgentState, ArchetypeMode, GoalAxisId } from '../types';
 import { flattenObject, setNestedValue, getNestedValue } from './param-utils';
-import { latentSchema } from '../data/latent-schema';
-import { calculatePrMonstroDay } from './formulas';
+import { calculateLatentsAndQuickStates } from './metrics/latentsQuick';
 import { calculateV42Metrics, normalizeParamsForV42 } from './character-metrics-v4.2';
 import { calculateToMMetrics } from './tom-metrics';
 import { calculateTomV2Metrics } from './tom-v2-metrics';
@@ -30,6 +29,8 @@ import { computeTraitLogits } from './life-goals/life-from-traits';
 import { LifeGoalVector, LifeGoalId } from './life-goals/types-life';
 import { normalize } from './util/math';
 import { computeConcreteGoals } from './life-goals/v4-engine'; 
+
+export { calculateLatentsAndQuickStates } from './metrics/latentsQuick';
 
 const clamp01 = (x: number): number => Math.max(0, Math.min(1, x));
 
@@ -93,89 +94,6 @@ export function applyAging(character: CharacterEntity): CharacterEntity {
     }
 
     return agedChar;
-}
-
-export function calculateLatentsAndQuickStates(flatParams: EntityParams): { latents: Record<string, number>, quickStates: Record<string, number> } {
-    const latents: Record<string, number> = {};
-
-    // Calculate Latents
-    for (const [key, schema] of Object.entries(latentSchema)) {
-        let sum = 0;
-        let count = 0;
-        for (const comp of schema.components) {
-             const fullKey = `vector_base.${comp.key}`;
-             const val = flatParams[fullKey] ?? flatParams[comp.key] ?? 0.5;
-
-             if (comp.weight > 0) {
-                 sum += val;
-             } else {
-                 sum += (1 - val);
-             }
-             count++;
-        }
-        latents[key] = count > 0 ? sum / count : 0.5;
-    }
-
-    // Calculate Quick States
-    const quickStates: Record<string, number> = {};
-
-    // Social Support Proxy (for PrMonstro)
-    const rec = flatParams['vector_base.C_reciprocity_index'] ?? 0.5;
-    const loy = flatParams['vector_base.C_coalition_loyalty'] ?? 0.5;
-    const sec = flatParams['vector_base.A_Transparency_Secrecy'] ?? 0.5;
-    quickStates['social_support_proxy'] = (rec + loy + (1 - sec)) / 3;
-
-    // Decision Readiness (DR)
-    const disc = flatParams['vector_base.B_cooldown_discipline'] ?? 0.5;
-    const goalC = flatParams['vector_base.B_goal_coherence'] ?? 0.5;
-    const cal = flatParams['vector_base.E_Model_calibration'] ?? 0.5;
-    quickStates['DR'] = (disc + goalC + cal) / 3;
-
-    // Stability Index (SI)
-    const trad = flatParams['vector_base.A_Tradition_Continuity'] ?? 0.5;
-    const leg = flatParams['vector_base.A_Legitimacy_Procedure'] ?? 0.5;
-    const stab = flatParams['vector_base.A_Safety_Care'] ?? 0.5;
-    quickStates['SI'] = (trad + leg + stab) / 3;
-
-    // Dark Susceptibility
-    const sens = flatParams['vector_base.C_reputation_sensitivity'] ?? 0.5;
-    const dark = (flatParams['state.dark_exposure'] ?? 0) / 100;
-    const trauma = (flatParams['body.acute.moral_injury'] ?? 0) / 100;
-    quickStates['dark_susceptibility'] = (sens + dark + trauma) / 3;
-
-    // Phys Fitness
-    const str = flatParams['body.functional.strength_upper'] ?? 0.5;
-    const end = flatParams['body.functional.aerobic_capacity'] ?? 0.5;
-    quickStates['phys_fitness'] = (str + end) / 2;
-
-    // Phys Fragility
-    const knee = flatParams['body.functional.injury_risk.knees'] ?? 0.5;
-    const back = flatParams['body.functional.injury_risk.lower_back'] ?? 0.5;
-    quickStates['phys_fragility'] = (knee + back) / 2;
-
-    // Hormone Tension
-    const hpa = flatParams['body.regulation.HPA_axis'] ?? 0.5;
-    const stress = (flatParams['body.acute.stress'] ?? 0) / 100;
-    quickStates['hormone_tension'] = (hpa + stress) / 2;
-
-    // ToM Quality proxy (for SDE loop)
-    const meta = flatParams['vector_base.G_Metacog_accuracy'] ?? 0.5;
-    const ch = latents['CH'] ?? 0.5;
-    quickStates['ToM_Q'] = (meta + ch) / 2;
-
-    // Topology (for SDE)
-    const topo = flatParams['vector_base.E_KB_topos'] ?? 0.5;
-    quickStates['T_topo'] = topo;
-
-    // PrMonstro Calculation (Quick)
-    const s = {
-        stress: flatParams['body.acute.stress'] ?? 0,
-        fatigue: flatParams['body.acute.fatigue'] ?? 0,
-        darkness: flatParams['state.dark_exposure'] ?? 0
-    };
-    quickStates['prMonstro'] = calculatePrMonstroDay(flatParams, s, latents, quickStates);
-
-    return { latents, quickStates };
 }
 
 export function calculateAllCharacterMetrics(
