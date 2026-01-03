@@ -1,7 +1,7 @@
 
 import { AgentState, AgentMotivationProfile } from "../../types";
 import { calculateV42Metrics, normalizeParamsForV42 } from "../character-metrics-v4.2";
-import { calculateLatentsAndQuickStates } from "../metrics";
+import { calculateLatentsAndQuickStates } from "../metrics/latentsQuick";
 import { flattenObject } from "../param-utils";
 
 export function getAgentMotivationProfile(agent: AgentState): AgentMotivationProfile {

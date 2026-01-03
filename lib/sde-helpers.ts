@@ -1,6 +1,6 @@
 
 import { CharacterEntity, CharacterState } from '../types';
-import { calculateLatentsAndQuickStates } from './metrics';
+import { calculateLatentsAndQuickStates } from './metrics/latentsQuick';
 
 const sigmoid = (x: number): number => 1 / (1 + Math.exp(-x));
 const clip = (val: number, min: number, max: number): number => Math.max(min, Math.min(val, max));

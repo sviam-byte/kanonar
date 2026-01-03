@@ -1,9 +1,9 @@
 
 // lib/context/v2/types.ts
 
-import { CharacterGoalId, ContextAxesVector, ContextTuning } from '../../types';
+import type { CharacterGoalId, ContextAxesVector, ContextTuning } from '../../types';
 
-export { ContextAxesVector, ContextTuning };
+export type { ContextAxesVector, ContextTuning };
 
 export type KnownContextSource =
   | 'life'
