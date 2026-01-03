@@ -22,6 +22,30 @@ import { computeConcreteGoals } from '../../life-goals/v4-engine';
 import { makeZeroGoalLogits } from '../../life-goals/psych-to-goals';
 import { computeBioLogitsV3 } from '../../life-goals/life-from-biography';
 
+function clamp01(x: number) {
+  if (!Number.isFinite(x)) return 0;
+  return Math.max(0, Math.min(1, x));
+}
+
+function getAtomMag(atoms: any[] | undefined, id: string, fb = 0): number {
+  const arr = Array.isArray(atoms) ? atoms : [];
+  const a: any = arr.find(x => String(x?.id) === id);
+  const m = a?.magnitude;
+  return typeof m === 'number' && Number.isFinite(m) ? m : fb;
+}
+
+function computeContextWeight(ctx: ContextSnapshot, selfId: string): number {
+  // Stronger context imprint when the situation is dangerous/urgent/uncertain or norm-heavy.
+  const danger = clamp01(getAtomMag(ctx.atoms as any, `ctx:danger:${selfId}`, 0));
+  const unc = clamp01(getAtomMag(ctx.atoms as any, `ctx:uncertainty:${selfId}`, 0));
+  const time = clamp01(getAtomMag(ctx.atoms as any, `ctx:timePressure:${selfId}`, 0));
+  const norm = clamp01(getAtomMag(ctx.atoms as any, `ctx:normPressure:${selfId}`, 0));
+
+  const m = Math.max(danger, unc, time, norm);
+  // 0.35..1.00
+  return 0.35 + 0.65 * m;
+}
+
 // Helper to map domains for legacy compatibility
 function mapDomainsToGoalLogits(
   domains: Record<string, number>
@@ -60,11 +84,12 @@ export function scoreContextualGoals(
 
   // Combine Logits: Traits + Bio + Context
   const combinedLogits = makeZeroGoalLogits();
+  const ctxW = computeContextWeight(ctx, agent.entityId);
   for (const axis of GOAL_AXES) {
-      combinedLogits[axis] = 
-          (traitLogits[axis] || 0) + 
-          (bioLogits[axis] || 0) + 
-          (contextLogits[axis] || 0) * 0.5; // Context bias
+    combinedLogits[axis] =
+      (traitLogits[axis] || 0) +
+      (bioLogits[axis] || 0) +
+      (contextLogits[axis] || 0) * ctxW;
   }
 
   // 2. Run V4 Engine

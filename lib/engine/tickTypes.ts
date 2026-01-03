@@ -3,6 +3,7 @@ export type TickConfig = {
   dt: number;    // usually 1
   steps: number; // for multi-step runs
   seed?: number;
+  applyDecision?: boolean;
 };
 
 export type TickResult = {

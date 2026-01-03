@@ -10,6 +10,7 @@ import { applyEvidenceToTomBase } from '../tom/memory/update';
 import { updateRelationshipGraphFromEvents } from '../relations/updateFromEvents';
 import { WorldEvent } from '../events/types';
 import { arr } from '../utils/arr';
+import { applyDecisionToWorld } from './applyDecision';
 
 export function ensureWorldTick(world: any) {
   if (typeof world.tick !== 'number') world.tick = 0;
@@ -111,6 +112,17 @@ export function runTicks(args: {
     
     const snap = ctxResult.snapshot;
     snapshots.push(snap);
+
+    // 4.5) Close the loop: decision -> world event (available next tick)
+    if (cfg.applyDecision ?? true) {
+      try {
+        // Stamp the action as happening *after* the current evaluation window,
+        // so it becomes visible to the next tick's "eventsAtTick" processing.
+        applyDecisionToWorld({ world, tick: tickNow + dt, actorId: agentId, decision: (snap as any)?.decision });
+      } catch (e) {
+        console.error('applyDecisionToWorld failed', e);
+      }
+    }
 
     // 5) Integrate Slow State (Affect/Stress/Traces)
     if (agent) {
@@ -222,6 +234,12 @@ export function runTicksForCast(args: {
       const snap = ctxResult.snapshot;
       const arr = snapshotsByAgentId[selfId] || (snapshotsByAgentId[selfId] = []);
       arr.push(snap);
+
+      if (cfg.applyDecision ?? true) {
+        try {
+          applyDecisionToWorld({ world, tick: tickNow + dt, actorId: selfId, decision: (snap as any)?.decision });
+        } catch {}
+      }
 
       try {
         integrateAgentState({ agent, atomsAfterAffect: snap.atoms, tuning: baseInput?.integratorTuning });
