@@ -44,6 +44,8 @@ import { deriveDyadicEmotionAtoms } from '../emotion/dyadic';
 import { deriveSummaryAtoms } from '../context/summary';
 import { arr } from '../utils/arr';
 import { validateAtomInvariants } from '../context/validate/atomInvariants';
+import { deriveLensCtxAtoms } from '../context/v2/lens';
+import { computeSnapshotSummary } from '../goal-lab/snapshotSummary';
 
 // Scene Engine
 import { SCENE_PRESETS } from '../scene/presets';
@@ -927,9 +929,14 @@ export function buildGoalLabContext(
         atomsAfterSocialLoop
       );
 
+      // --- Stage 2c: Lens → ctx:final:* (character perception of context)
+      const lensCtxRes = deriveLensCtxAtoms({ selfId, atoms: atomsAfterSocialLoop, agent: agentForPipeline });
+      const atomsAfterLensCtx = mergeKeepingOverrides(atomsAfterSocialLoop, lensCtxRes.atoms).merged;
+      pushStage('S2c', 'S2c • lens applied: ctx:final:* + lens:*', atomsAfterLensCtx);
+
       // appraisal -> emotions -> dyadic emotions
-      const appRes = deriveAppraisalAtoms({ selfId, atoms: atomsAfterSocialLoop, agent: agentForPipeline });
-      const atomsAfterApp = mergeKeepingOverrides(atomsAfterSocialLoop, appRes.atoms).merged;
+      const appRes = deriveAppraisalAtoms({ selfId, atoms: atomsAfterLensCtx, agent: agentForPipeline });
+      const atomsAfterApp = mergeKeepingOverrides(atomsAfterLensCtx, appRes.atoms).merged;
       const emoRes = deriveEmotionAtoms({ selfId, atoms: atomsAfterApp });
       const atomsAfterEmo = mergeKeepingOverrides(atomsAfterApp, emoRes.atoms).merged;
       const dyadEmo = deriveDyadicEmotionAtoms({ selfId, atoms: atomsAfterEmo });
@@ -1173,6 +1180,9 @@ export function buildGoalLabContext(
       snapshot.coverage = computeCoverageReport(snapshot.atoms as any);
     }
   } catch {}
+
+  // Fill snapshot.summary for UI/compare panels.
+  (snapshot as any).summary = computeSnapshotSummary(snapshot.atoms as any, selfId);
 
   snapshot.contextMind = contextMind;
 
