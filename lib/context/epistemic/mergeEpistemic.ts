@@ -1,6 +1,6 @@
 
 // lib/context/epistemic/mergeEpistemic.ts
-import { ContextAtom } from '../v2/types';
+import type { ContextAtom } from '../v2/types';
 import { normalizeAtom } from '../v2/infer';
 
 export type EpistemicLayer = 'world' | 'obs' | 'belief' | 'override' | 'derived';

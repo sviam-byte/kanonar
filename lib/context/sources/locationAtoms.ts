@@ -1,5 +1,5 @@
 
-import { ContextAtom } from '../v2/types';
+import type { ContextAtom } from '../v2/types';
 import { normalizeAtom } from '../v2/infer';
 import { LocationEntity, LocationMap, LocationMapCell } from '../../../types';
 

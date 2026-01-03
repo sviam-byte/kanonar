@@ -1,6 +1,6 @@
 
 // lib/context/epistemic/rumorGenerator.ts
-import { ContextAtom } from '../v2/types';
+import type { ContextAtom } from '../v2/types';
 import { normalizeAtom } from '../v2/infer';
 import { clamp01 } from './perceptionProfile';
 import { hash32, mulberry32 } from './deterministicRng';

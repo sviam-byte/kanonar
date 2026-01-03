@@ -1,6 +1,6 @@
 
 // lib/context/validate/beliefDivergence.ts
-import { ContextAtom } from '../v2/types';
+import type { ContextAtom } from '../v2/types';
 
 export type Divergence = {
   worldId: string;

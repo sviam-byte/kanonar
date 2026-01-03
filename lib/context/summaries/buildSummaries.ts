@@ -1,5 +1,5 @@
 // lib/context/summaries/buildSummaries.ts
-import { ContextAtom } from '../v2/types';
+import type { ContextAtom } from '../v2/types';
 import { normalizeAtom } from '../v2/infer';
 
 type SummaryResult = {
