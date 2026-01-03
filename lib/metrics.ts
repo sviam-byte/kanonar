@@ -30,6 +30,8 @@ import { LifeGoalVector, LifeGoalId } from './life-goals/types-life';
 import { normalize } from './util/math';
 import { computeConcreteGoals } from './life-goals/v4-engine'; 
 
+export { calculateLatentsAndQuickStates } from './metrics/latentsQuick';
+
 const clamp01 = (x: number): number => Math.max(0, Math.min(1, x));
 
 // Helper to mix manual goals with calculated goals
