@@ -5,7 +5,7 @@
 
 import { CharacterEntity, GoalEcology, VisualizationPlanStep, ActiveGoal, SimulationPoint, GoalProfileShape, CharacterState, EntityParams, Branch, CharacterGoalId, GoalState } from '../types';
 import { flattenObject } from './param-utils';
-import { calculateLatentsAndQuickStates } from './metrics';
+import { calculateLatentsAndQuickStates } from './metrics/latentsQuick';
 
 const sigmoid = (x: number): number => 1 / (1 + Math.exp(-x));
 

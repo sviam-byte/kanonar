@@ -1,6 +1,6 @@
 
 import { CharacterEntity } from '../../types';
-import { calculateLatentsAndQuickStates } from '../metrics';
+import { calculateLatentsAndQuickStates } from '../metrics/latentsQuick';
 import { getNestedValue } from '../param-utils';
 import { allArchetypes, getArchetypeData } from '../../data/archetypes';
 import { Branch } from '../../types';

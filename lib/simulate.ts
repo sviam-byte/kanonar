@@ -5,7 +5,7 @@ import seedrandom from 'seedrandom';
 import { CharacterState, EntityParams, SimConfig, SimulationOutput, SimulationRun, SimulationPoint, CharacterEntity, Branch, AnyEntity, BlackSwanEvent, AgentState } from '../types';
 import { stepCharacter } from './sde';
 import { calculateInfluence, getMonsterVeto, calculatePrMonstroDay } from './formulas';
-import { calculateLatentsAndQuickStates } from './metrics';
+import { calculateLatentsAndQuickStates } from './metrics/latentsQuick';
 import { calculateSdeDiagnostics } from './sde-helpers';
 import { mapCharacterToBehaviorParams } from './core/character_mapper';
 import { makeAgentRNG } from './core/noise';
