@@ -1,6 +1,6 @@
 
 // lib/context/axes/deriveAxes.ts
-import { ContextAtom, ContextAxesVector, ContextTuning, ContextAtomLike, ContextSignalId } from '../v2/types';
+import type { ContextAtom, ContextAxesVector, ContextTuning, ContextAtomLike, ContextSignalId } from '../v2/types';
 import { normalizeAtom } from '../v2/infer';
 import { buildQuarkIndex, getQuark } from '../quarks/quarkIndex';
 

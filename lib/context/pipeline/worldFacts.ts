@@ -1,6 +1,6 @@
 
 import { normalizeAtom } from '../v2/infer';
-import { ContextAtom } from '../v2/types';
+import type { ContextAtom } from '../v2/types';
 
 function clamp01(x: number) {
   if (!Number.isFinite(x)) return 0;

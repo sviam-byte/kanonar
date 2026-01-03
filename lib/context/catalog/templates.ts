@@ -1,6 +1,6 @@
 
 // lib/context/catalog/templates.ts
-import { ContextAtom } from '../v2/types';
+import type { ContextAtom } from '../v2/types';
 import { normalizeAtom } from '../v2/infer';
 
 export type AtomTemplateId =
