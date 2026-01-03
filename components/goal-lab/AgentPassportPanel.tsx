@@ -2,6 +2,8 @@ import React, { useMemo, useState } from 'react';
 
 type AnyAtom = any;
 
+const num = (x: any, d = 0) => (Number.isFinite(Number(x)) ? Number(x) : d);
+
 const fmt = (x: any) => {
   const n = Number(x);
   return Number.isFinite(n) ? n.toFixed(2) : '—';
@@ -34,11 +36,11 @@ function pickEmo(atomsIdx: Map<string, AnyAtom>, selfId: string, k: string) {
 }
 
 function pickDrv(atomsIdx: Map<string, AnyAtom>, selfId: string, k: string) {
-  return atomsIdx.get(`drv:${k}:${selfId}`) || null;
+  return atomsIdx.get(`drv:${k}:${selfId}`) || atomsIdx.get(`drv:${k}`) || null;
 }
 
 function pickGoalDom(atomsIdx: Map<string, AnyAtom>, selfId: string, k: string) {
-  return atomsIdx.get(`goal:domain:${k}:${selfId}`) || null;
+  return atomsIdx.get(`goal:domain:${k}:${selfId}`) || atomsIdx.get(`goal:domain:${k}`) || null;
 }
 
 function TraceView({ atom }: { atom: AnyAtom | null }) {
@@ -107,16 +109,24 @@ function MetricRow({
   );
 }
 
-function DyadRow({ atom }: { atom: AnyAtom }) {
-  const parts = atom?.trace?.parts || {};
-  const trust = parts?.trust ?? parts?.t ?? null;
-  const hostility = parts?.hostility ?? parts?.h ?? null;
-  const threat = parts?.threat ?? parts?.thr ?? null;
-  const respect = parts?.respect ?? parts?.r ?? null;
+type DyadGroup = {
+  targetId: string;
+  baseId: string; // tom:dyad:final:self:target
+  metrics: Record<string, AnyAtom>;
+};
+
+function DyadGroupCard({ g }: { g: DyadGroup }) {
+  const m = g.metrics;
+  const trust = m.trust ? num(m.trust.magnitude ?? m.trust.m ?? 0) : NaN;
+  const threat = m.threat ? num(m.threat.magnitude ?? m.threat.m ?? 0) : NaN;
+  const hostility = m.hostility ? num(m.hostility.magnitude ?? m.hostility.m ?? 0) : NaN;
+  const respect = m.respect ? num(m.respect.magnitude ?? m.respect.m ?? 0) : NaN;
+  const uncertainty = m.uncertainty ? num(m.uncertainty.magnitude ?? m.uncertainty.m ?? 0) : NaN;
+
   return (
     <div className="rounded border border-white/10 bg-black/15 p-2">
-      <div className="text-[11px] font-mono opacity-90 truncate" title={String(atom.id)}>
-        {String(atom.id)}
+      <div className="text-[11px] font-mono opacity-90 truncate" title={g.baseId}>
+        {g.baseId}
       </div>
       <div className="mt-1 grid grid-cols-2 gap-x-3 gap-y-1 text-[11px]">
         <div className="flex justify-between gap-2">
@@ -134,6 +144,10 @@ function DyadRow({ atom }: { atom: AnyAtom }) {
         <div className="flex justify-between gap-2">
           <span className="opacity-60">respect</span>
           <span className="font-mono">{fmt(respect)}</span>
+        </div>
+        <div className="flex justify-between gap-2">
+          <span className="opacity-60">uncertainty</span>
+          <span className="font-mono">{fmt(uncertainty)}</span>
         </div>
       </div>
     </div>
@@ -219,13 +233,26 @@ export function AgentPassportPanel({
     return keys.map(([label, k]) => ({ label, atom: pickGoalDom(idx, selfId, k) }));
   }, [idx, selfId]);
 
-  const dyads = useMemo(() => {
-    // Show dyad finals for this self.
-    const suffix = `:${selfId}`;
-    return (Array.isArray(atoms) ? atoms : [])
-      .filter(a => {
-        const id = String(a?.id || '');
-        return id.startsWith('tom:dyad:final:') && id.includes(suffix);
+  const dyads = useMemo<DyadGroup[]>(() => {
+    const prefix = `tom:dyad:final:${selfId}:`;
+    const groups = new Map<string, DyadGroup>();
+    for (const a of Array.isArray(atoms) ? atoms : []) {
+      const id = String(a?.id || '');
+      if (!id.startsWith(prefix)) continue;
+      // tom:dyad:final:self:target:metric
+      const parts = id.split(':');
+      if (parts.length < 6) continue;
+      const targetId = parts[4];
+      const metric = parts.slice(5).join(':');
+      const baseId = parts.slice(0, 5).join(':');
+      if (!groups.has(baseId)) groups.set(baseId, { targetId, baseId, metrics: {} });
+      groups.get(baseId)!.metrics[metric] = a;
+    }
+    return Array.from(groups.values())
+      .sort((x, y) => {
+        const xt = num(y.metrics.threat?.magnitude ?? y.metrics.threat?.m ?? 0, 0);
+        const yt = num(x.metrics.threat?.magnitude ?? x.metrics.threat?.m ?? 0, 0);
+        return xt - yt;
       })
       .slice(0, 40);
   }, [atoms, selfId]);
@@ -295,8 +322,8 @@ export function AgentPassportPanel({
         <div className="text-[11px] font-semibold opacity-80 mb-2">ToM dyads (final)</div>
         {dyads.length ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-            {dyads.map(a => (
-              <DyadRow key={String(a.id)} atom={a} />
+            {dyads.map(g => (
+              <DyadGroupCard key={g.baseId} g={g} />
             ))}
           </div>
         ) : (

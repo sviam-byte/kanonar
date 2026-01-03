@@ -48,18 +48,38 @@ export function CastComparePanel({ rows, focusId }: { rows: CastRow[]; focusId?:
   const b = usable.find(r => r.id === bId) || usable[1] || usable[0];
 
   const summaryRows = useMemo(() => {
-    const sa: any = (a?.snapshot as any)?.summary || {};
-    const sb: any = (b?.snapshot as any)?.summary || {};
+    const atomsA: any[] = (a?.snapshot as any)?.atoms || [];
+    const atomsB: any[] = (b?.snapshot as any)?.atoms || [];
+    const aId = a?.id || '';
+    const bId = b?.id || '';
+
+    const byId = (atoms: any[]) => {
+      const m = new Map<string, any>();
+      for (const x of Array.isArray(atoms) ? atoms : []) {
+        const id = String(x?.id || '');
+        if (id) m.set(id, x);
+      }
+      return m;
+    };
+    const ia = byId(atomsA);
+    const ib = byId(atomsB);
+    const get = (idx: Map<string, any>, self: string, k: string) => {
+      const at = idx.get(`sum:${k}:${self}`) || idx.get(`sum:${k}`) || null;
+      return at ? Number(at.magnitude ?? at.m ?? NaN) : NaN;
+    };
+
     const keys: Array<[string, string]> = [
       ['Threat', 'threatLevel'],
       ['Tension', 'tension'],
       ['Clarity', 'clarity'],
-      ['Credibility', 'credibility'],
-      ['Total atom magnitude', 'totalAtomMagnitude'],
+      ['Coping', 'coping'],
+      ['Social exposure', 'socialExposure'],
+      ['Norm risk', 'normRisk'],
     ];
+
     return keys.map(([label, k]) => {
-      const va = Number(sa[k]);
-      const vb = Number(sb[k]);
+      const va = get(ia, aId, k);
+      const vb = get(ib, bId, k);
       const delta = Number.isFinite(va) && Number.isFinite(vb) ? vb - va : NaN;
       return { label, va, vb, delta };
     });

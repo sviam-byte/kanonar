@@ -243,6 +243,7 @@ export const GoalSandbox: React.FC = () => {
     } catch {}
     return false;
   });
+  const [advancedExportsOpen, setAdvancedExportsOpen] = useState(false);
 
   useEffect(() => {
     try {
@@ -1351,6 +1352,31 @@ export const GoalSandbox: React.FC = () => {
     downloadJson(sceneDumpV2, `goal-lab-scene__${castTag}__persp-${pid}__${exportedAt}.json`);
   }, [perspectiveId, sceneDumpV2, selectedAgentId, participantIds]);
 
+  const handleExportBundle = useCallback(() => {
+    if (!snapshotV1) return;
+    const exportedAt = new Date().toISOString().replace(/[:.]/g, '-');
+
+    const payload = {
+      schema: 'GoalLabExportBundleV1',
+      exportedAt,
+      selfId: snapshotV1.selfId,
+      tick: snapshotV1.tick,
+      snapshotV1,
+      pipelineV1: pipelineV1 || null,
+      sceneDumpV2: sceneDumpV2 || null,
+      cast: (castRows || []).map(r => ({
+        id: r.id,
+        label: r.label,
+        summary: (r.snapshot as any)?.summary || null,
+      })),
+    };
+
+    downloadJson(
+      payload,
+      `goal-lab__bundle__${snapshotV1.selfId}__t${snapshotV1.tick}__${exportedAt}.json`
+    );
+  }, [snapshotV1, pipelineV1, sceneDumpV2, castRows]);
+
   const handleExportDebugBoth = useCallback(() => {
     if (!worldState) return;
 
@@ -1679,13 +1705,13 @@ export const GoalSandbox: React.FC = () => {
         </button>
         {!hudCollapsed ? (
           <button
-            onClick={handleExportDebugBoth}
+            onClick={handleExportBundle}
             className={toolbarCollapsed
               ? 'px-3 py-2 text-[11px] font-extrabold border border-canon-accent rounded bg-canon-accent/20 hover:bg-canon-accent/30 transition-colors'
               : 'px-4 py-2 text-[12px] font-extrabold border-2 border-canon-accent rounded bg-canon-accent/20 hover:bg-canon-accent/30 transition-colors'}
-            title="Один файл: input + output + S0..S* atoms + deltas + validations"
+            title="Экспорт одного bundle: snapshot + pipeline + scene"
           >
-            ⬇ EXPORT DEBUG
+            ⬇ EXPORT BUNDLE
           </button>
         ) : null}
       </div>
@@ -1765,19 +1791,11 @@ export const GoalSandbox: React.FC = () => {
             {!stageBarCollapsed ? (
               <>
                 <button
-                  className="px-4 py-2 rounded bg-canon-accent text-black font-semibold text-sm"
-                  onClick={handleExportPipelineAll}
-                  title="Экспорт детерминированного пайплайна по стадиям (S0..S8)"
+                  className="px-3 py-2 rounded border border-canon-border/60 bg-canon-bg-light/20 text-[11px] font-semibold hover:bg-canon-bg-light/30 transition-colors"
+                  onClick={() => setAdvancedExportsOpen(v => !v)}
+                  title="Показать/скрыть дополнительные экспорты"
                 >
-                  EXPORT PIPELINE DEBUG (JSON)
-                </button>
-
-                <button
-                  className="px-4 py-2 rounded border border-canon-border bg-canon-bg-light/30 text-canon-text font-semibold text-sm hover:bg-canon-bg-light/50 transition-colors"
-                  onClick={onDownloadScene}
-                  title="Экспорт всей сцены (world + cast snapshots + overrides + events + scene control)"
-                >
-                  EXPORT SCENE (JSON)
+                  {advancedExportsOpen ? 'Hide advanced exports' : 'Advanced exports'}
                 </button>
 
                 <div className="ml-auto flex items-center gap-2">
@@ -1825,6 +1843,13 @@ export const GoalSandbox: React.FC = () => {
                 <div className="text-[11px] font-mono opacity-90">{currentPipelineStageId}</div>
                 <div className="flex-1" />
                 <button
+                  className="px-2 py-1 text-[11px] rounded border border-canon-border/60 hover:bg-white/5"
+                  onClick={() => setAdvancedExportsOpen(v => !v)}
+                  title="Показать/скрыть дополнительные экспорты"
+                >
+                  {advancedExportsOpen ? 'Advanced ▲' : 'Advanced ▼'}
+                </button>
+                <button
                   className="px-2 py-1 text-[11px] rounded border border-canon-border/60 hover:bg-white/5 disabled:opacity-40"
                   onClick={handlePrevStage}
                   disabled={!pipelineStageOptions.length || pipelineStageIndex <= 0}
@@ -1842,6 +1867,31 @@ export const GoalSandbox: React.FC = () => {
                 </button>
               </>
             )}
+            {advancedExportsOpen ? (
+              <div className="mt-2 flex flex-wrap gap-2">
+                <button
+                  className="px-3 py-2 rounded bg-canon-accent text-black font-semibold text-[11px]"
+                  onClick={handleExportDebugBoth}
+                  title="Экспорт: input + output + S0..S* atoms + deltas + validations"
+                >
+                  EXPORT DEBUG (JSON)
+                </button>
+                <button
+                  className="px-3 py-2 rounded border border-canon-border bg-canon-bg-light/30 text-canon-text font-semibold text-[11px] hover:bg-canon-bg-light/50 transition-colors"
+                  onClick={handleExportPipelineAll}
+                  title="Экспорт детерминированного пайплайна по стадиям (S0..S8)"
+                >
+                  EXPORT PIPELINE (JSON)
+                </button>
+                <button
+                  className="px-3 py-2 rounded border border-canon-border bg-canon-bg-light/30 text-canon-text font-semibold text-[11px] hover:bg-canon-bg-light/50 transition-colors"
+                  onClick={onDownloadScene}
+                  title="Экспорт всей сцены (world + cast snapshots + overrides + events + scene control)"
+                >
+                  EXPORT SCENE (JSON)
+                </button>
+              </div>
+            ) : null}
             </div>
           ) : null}
           <div className="grid grid-cols-1 gap-6">
