@@ -10,7 +10,7 @@ import { applyEvidenceToTomBase } from '../tom/memory/update';
 import { updateRelationshipGraphFromEvents } from '../relations/updateFromEvents';
 import { WorldEvent } from '../events/types';
 import { arr } from '../utils/arr';
-import { applyDecisionToWorld } from './applyDecision';
+import { applyChosenActionToWorld } from './applyChosenAction';
 
 export function ensureWorldTick(world: any) {
   if (typeof world.tick !== 'number') world.tick = 0;
@@ -113,17 +113,6 @@ export function runTicks(args: {
     const snap = ctxResult.snapshot;
     snapshots.push(snap);
 
-    // 4.5) Close the loop: decision -> world event (available next tick)
-    if (cfg.applyDecision ?? true) {
-      try {
-        // Stamp the action as happening *after* the current evaluation window,
-        // so it becomes visible to the next tick's "eventsAtTick" processing.
-        applyDecisionToWorld({ world, tick: tickNow + dt, actorId: agentId, decision: (snap as any)?.decision });
-      } catch (e) {
-        console.error('applyDecisionToWorld failed', e);
-      }
-    }
-
     // 5) Integrate Slow State (Affect/Stress/Traces)
     if (agent) {
        integrateAgentState({
@@ -132,6 +121,17 @@ export function runTicks(args: {
            tuning: baseInput?.integratorTuning 
        });
     }
+
+    // 5.5) CLOSE THE LOOP: decision -> scheduled world event (next tick)
+    try {
+      applyChosenActionToWorld({
+        world,
+        selfId: agentId,
+        decision: (snap as any)?.decision,
+        tickNow,
+        dt,
+      });
+    } catch {}
 
     // 6. Compute Diffs if requested
     if (withDiffs && snapshots.length >= 2) {
@@ -235,14 +235,19 @@ export function runTicksForCast(args: {
       const arr = snapshotsByAgentId[selfId] || (snapshotsByAgentId[selfId] = []);
       arr.push(snap);
 
-      if (cfg.applyDecision ?? true) {
-        try {
-          applyDecisionToWorld({ world, tick: tickNow + dt, actorId: selfId, decision: (snap as any)?.decision });
-        } catch {}
-      }
-
       try {
         integrateAgentState({ agent, atomsAfterAffect: snap.atoms, tuning: baseInput?.integratorTuning });
+      } catch {}
+
+      // CLOSE THE LOOP: decision -> scheduled world event (next tick)
+      try {
+        applyChosenActionToWorld({
+          world,
+          selfId,
+          decision: (snap as any)?.decision,
+          tickNow,
+          dt,
+        });
       } catch {}
 
       if (withDiffs && arr.length >= 2) {

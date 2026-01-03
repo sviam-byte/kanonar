@@ -46,6 +46,7 @@ export function CastComparePanel({ rows, focusId }: { rows: CastRow[]; focusId?:
 
   const a = usable.find(r => r.id === aId) || usable[0];
   const b = usable.find(r => r.id === bId) || usable[1] || usable[0];
+  const hasTwo = usable.length >= 2 && (a?.id || '') !== (b?.id || '');
 
   const summaryRows = useMemo(() => {
     const atomsA: any[] = (a?.snapshot as any)?.atoms || [];
@@ -119,18 +120,13 @@ export function CastComparePanel({ rows, focusId }: { rows: CastRow[]; focusId?:
     return (pri.length ? pri : scored).slice(0, 24);
   }, [a, b]);
 
-  if (usable.length < 2) {
-    return (
-      <div className="rounded-xl border border-canon-border bg-canon-bg-light/30 p-3">
-        <div className="text-xs opacity-80">Compare: need at least 2 agents with snapshots.</div>
-      </div>
-    );
-  }
-
   return (
     <div className="rounded-xl border border-canon-border bg-canon-bg-light/30 p-3">
       <div className="flex items-center justify-between gap-3 mb-2">
         <div className="text-xs font-semibold opacity-80">Compare (agent ↔ agent)</div>
+        <div className="text-[11px] opacity-60">
+          Это сравнение <b>перспектив A vs B</b>, не “до/после тика”.
+        </div>
         <div className="flex items-center gap-2">
           <select
             className="text-[12px] bg-black/20 border border-white/10 rounded px-2 py-1"
@@ -158,9 +154,18 @@ export function CastComparePanel({ rows, focusId }: { rows: CastRow[]; focusId?:
         </div>
       </div>
 
+      {!hasTwo ? (
+        <div className="mb-3 text-[12px] opacity-70">
+          Нет второго агента для сравнения (или выбран A=A). Тогда большинство Δ будет 0 — это нормально.
+        </div>
+      ) : null}
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <div className="rounded-lg border border-white/10 bg-black/10 p-2">
-          <div className="text-[11px] font-semibold opacity-80 mb-2">Summary deltas (B − A)</div>
+          <div className="text-[11px] font-semibold opacity-80 mb-2">
+            Summary deltas (B − A) • A: <span className="font-mono">{getName(a as any)}</span> • B:{' '}
+            <span className="font-mono">{getName(b as any)}</span>
+          </div>
           <div className="space-y-1">
             {summaryRows.map(r => (
               <div key={r.label} className="flex items-baseline justify-between gap-2 text-[12px]">

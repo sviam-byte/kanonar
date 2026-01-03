@@ -214,12 +214,44 @@ export const GoalSandbox: React.FC = () => {
 
   // UI panel visibility (persisted)
   const [uiPanels, setUiPanels] = useState(() => {
+    const defaults: any = {
+      left: true,
+      front: true,
+      results: false,
+      cast: false,
+      compare: false,
+      passport: false,
+      emo: false,
+      frame: false,
+      lint: false,
+    };
     try {
       const raw = localStorage.getItem('goalsandbox.uiPanels.v1');
-      if (raw) return JSON.parse(raw);
+      if (raw) {
+        const parsed = JSON.parse(raw) || {};
+        return { ...defaults, ...parsed, front: true };
+      }
     } catch {}
-    return { left: true, cast: true, compare: false, passport: false, front: false, results: true, emo: false, frame: false, lint: false };
+    return defaults;
   });
+
+  const resetUIPanels = useCallback(() => {
+    const defaults: any = {
+      left: true,
+      front: true,
+      results: false,
+      cast: false,
+      compare: false,
+      passport: false,
+      emo: false,
+      frame: false,
+      lint: false,
+    };
+    try {
+      localStorage.removeItem('goalsandbox.uiPanels.v1');
+    } catch {}
+    setUiPanels(defaults);
+  }, []);
 
   // Top toolbar collapse (persisted)
   const [toolbarCollapsed, setToolbarCollapsed] = useState(() => {
@@ -275,7 +307,10 @@ export const GoalSandbox: React.FC = () => {
   }, [uiPanels]);
 
   const togglePanel = useCallback((key: string) => {
-    setUiPanels((p: any) => ({ ...p, [key]: !p?.[key] }));
+    setUiPanels((p: any) => {
+      if (key === 'front') return { ...p, front: true };
+      return { ...p, [key]: !p?.[key], front: true };
+    });
   }, []);
 
   // NOTE: Do not mutate worldState via affect overrides. Affect is materialized as atoms inside buildGoalLabContext.
@@ -1673,17 +1708,26 @@ export const GoalSandbox: React.FC = () => {
         <div className="text-[12px] opacity-80">GoalSandbox</div>
         {!toolbarCollapsed ? (
           <div className="flex items-center gap-1 ml-2">
-            {([
-              ['left', 'LEFT'],
-              ['cast', 'CAST'],
-              ['compare', 'COMPARE'],
-              ['passport', 'PASSPORT'],
-              ['front', 'FRONT'],
-              ['results', 'RESULTS'],
-              ['emo', 'EMO'],
-              ['frame', 'FRAME'],
-              ['lint', 'LINT'],
-            ] as const).map(([k, label]) => (
+            {(
+              (uiPanels?.results
+                ? ([
+                    ['left', 'LEFT'],
+                    ['front', 'FRONT'],
+                    ['results', 'DEBUG'],
+                    ['cast', 'CAST'],
+                    ['compare', 'COMPARE'],
+                    ['passport', 'PASSPORT'],
+                    ['emo', 'EMO'],
+                    ['frame', 'FRAME'],
+                    ['lint', 'LINT'],
+                  ] as const)
+                : ([
+                    ['left', 'LEFT'],
+                    ['front', 'FRONT'],
+                    ['results', 'DEBUG'],
+                  ] as const)
+              )
+            ).map(([k, label]) => (
               <button
                 key={k}
                 onClick={() => togglePanel(k)}
@@ -1698,6 +1742,13 @@ export const GoalSandbox: React.FC = () => {
           <div className="text-[11px] opacity-60 ml-2">toolbar collapsed</div>
         )}
         <div className="flex-1" />
+        <button
+          onClick={resetUIPanels}
+          className="px-3 py-2 text-[11px] font-semibold border border-canon-border/60 rounded bg-canon-bg-light/10 hover:bg-canon-bg-light/20 transition-colors"
+          title="Сбросить UI-панели (убрать кашу из localStorage)"
+        >
+          Reset UI
+        </button>
         <button
           onClick={() => setHudCollapsed(v => !v)}
           className="px-3 py-2 text-[11px] font-semibold border border-canon-border/60 rounded bg-canon-bg-light/20 hover:bg-canon-bg-light/30 transition-colors"
@@ -1911,7 +1962,7 @@ export const GoalSandbox: React.FC = () => {
               </div>
             )}
 
-            {uiPanels.cast ? (
+            {uiPanels.results && uiPanels.cast ? (
               <CastPerspectivePanel
                 rows={castRows}
                 focusId={perspectiveId}
@@ -1919,14 +1970,14 @@ export const GoalSandbox: React.FC = () => {
               />
             ) : null}
 
-            {uiPanels.compare ? (
+            {uiPanels.results && uiPanels.compare ? (
               <CastComparePanel
                 rows={castRows}
                 focusId={perspectiveId}
               />
             ) : null}
 
-            {uiPanels.passport ? (
+            {uiPanels.results && uiPanels.passport ? (
               <AgentPassportPanel
                 atoms={passportAtoms}
                 selfId={perspectiveId || ''}
@@ -1942,7 +1993,7 @@ export const GoalSandbox: React.FC = () => {
               />
             ) : null}
 
-            {uiPanels.results && !uiPanels.front ? (
+            {uiPanels.results ? (
               <GoalLabResults
                 context={snapshot as any}
                 actorLabels={actorLabels}
@@ -1982,7 +2033,7 @@ export const GoalSandbox: React.FC = () => {
               }}
             />
 
-          {uiPanels.emo && snapshotV1 ? (
+          {uiPanels.results && uiPanels.emo && snapshotV1 ? (
             <div className="mt-4">
               <EmotionInspector
                 selfId={perspectiveId}
@@ -1992,7 +2043,7 @@ export const GoalSandbox: React.FC = () => {
             </div>
           ) : null}
 
-          {uiPanels.frame && pipelineFrame ? (
+          {uiPanels.results && uiPanels.frame && pipelineFrame ? (
             <div className="mt-4">
               <h3 className="text-lg font-bold text-canon-accent uppercase tracking-widest mb-4 border-b border-canon-border/40 pb-2">
                 Pipeline Debug Area (Stage 0-3)
@@ -2001,7 +2052,7 @@ export const GoalSandbox: React.FC = () => {
             </div>
           ) : null}
 
-          {uiPanels.lint ? (
+          {uiPanels.results && uiPanels.lint ? (
             <div className="mt-4">
               <h3 className="text-lg font-bold text-canon-accent uppercase tracking-widest mb-4 border-b border-canon-border/40 pb-2">
                 Actions × Locations Lint
