@@ -3,6 +3,7 @@ import React, { useMemo, useState } from 'react';
 type AnyAtom = any;
 
 const num = (x: any, d = 0) => (Number.isFinite(Number(x)) ? Number(x) : d);
+
 const fmt = (x: any) => {
   const n = Number(x);
   return Number.isFinite(n) ? n.toFixed(2) : '—';
@@ -238,22 +239,20 @@ export function AgentPassportPanel({
     for (const a of Array.isArray(atoms) ? atoms : []) {
       const id = String(a?.id || '');
       if (!id.startsWith(prefix)) continue;
-      // Expected shape: tom:dyad:final:self:target:metric.
+      // tom:dyad:final:self:target:metric
       const parts = id.split(':');
-      // [tom, dyad, final, self, target, metric]
       if (parts.length < 6) continue;
       const targetId = parts[4];
-      const metric = parts.slice(5).join(':'); // tolerate extra colons in metric names.
+      const metric = parts.slice(5).join(':');
       const baseId = parts.slice(0, 5).join(':');
       if (!groups.has(baseId)) groups.set(baseId, { targetId, baseId, metrics: {} });
       groups.get(baseId)!.metrics[metric] = a;
     }
-    // Sort by threat desc if it exists.
     return Array.from(groups.values())
       .sort((x, y) => {
-        const xt = num(x.metrics.threat?.magnitude ?? x.metrics.threat?.m ?? 0, 0);
-        const yt = num(y.metrics.threat?.magnitude ?? y.metrics.threat?.m ?? 0, 0);
-        return yt - xt;
+        const xt = num(y.metrics.threat?.magnitude ?? y.metrics.threat?.m ?? 0, 0);
+        const yt = num(x.metrics.threat?.magnitude ?? x.metrics.threat?.m ?? 0, 0);
+        return xt - yt;
       })
       .slice(0, 40);
   }, [atoms, selfId]);
