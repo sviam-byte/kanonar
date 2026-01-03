@@ -29,7 +29,9 @@ function actionDomainHint(actionId: string): string | null {
   if (id.includes('talk') || id.includes('help') || id.includes('assist') || id.includes('comfort')) return 'affiliation';
   if (id.includes('report') || id.includes('comply') || id.includes('challenge') || id.includes('present')) return 'status';
   if (id.includes('investigate') || id.includes('search') || id.includes('explore')) return 'exploration';
-  if (id.includes('organize') || id.includes('plan') || id.includes('protocol')) return 'order';
+  if (id.includes('organize') || id.includes('plan') || id.includes('protocol') || id.includes('monologue') || id.includes('reflect')) {
+    return 'order';
+  }
   if (id.includes('rest') || id.includes('sleep') || id.includes('pause')) return 'rest';
   if (id.includes('trade') || id.includes('buy') || id.includes('sell')) return 'wealth';
   return null;
@@ -91,6 +93,11 @@ export function scorePossibility(args: {
     pref += 0.20 * care - 0.10 * fear - 0.35 * allyHazardBetween - 0.15 * hazardBetween;
     prefParts.allyHazardBetween = -0.35 * allyHazardBetween;
     prefParts.hazardBetween = (prefParts.hazardBetween ?? 0) + -0.15 * hazardBetween;
+  }
+  if (p.id.startsWith('cog:monologue')) {
+    const unc = clamp01(get(atoms, `ctx:uncertainty:${selfId}`, 0));
+    pref += 0.15 * unc + 0.05 * shame - 0.10 * threatFinal;
+    prefParts.uncertainty = 0.15 * unc;
   }
 
   // Protocol: if strict, prefer talk over attack

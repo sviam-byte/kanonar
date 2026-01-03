@@ -42,6 +42,7 @@ export function computeActionCost(args: {
   if (p.id.startsWith('aff:hide')) base = 0.15;
   if (p.id.startsWith('exit:escape')) base = 0.35;
   if (p.id.startsWith('aff:talk')) base = 0.10;
+  if (p.id.startsWith('cog:monologue')) base = 0.05;
   if (p.id.startsWith('aff:attack')) base = 0.50;
 
   // legality / norm risk: attack under strict protocol is expensive (social penalty)

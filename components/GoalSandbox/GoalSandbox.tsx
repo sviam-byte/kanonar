@@ -19,7 +19,7 @@ import { normalizeWorldShape } from '../../lib/world/normalizeWorldShape';
 import { scoreContextualGoals } from '../../lib/context/v2/scoring';
 import type { ContextAtom } from '../../lib/context/v2/types';
 import { GoalLabResults } from '../goal-lab/GoalLabResults';
-import { FrontOverviewPanel } from './FrontOverviewPanel';
+import { FrontShell } from './FrontShell';
 import { allLocations } from '../../data/locations';
 import { computeLocationGoalsForAgent } from '../../lib/context/v2/locationGoals';
 import { computeTomGoalsForAgent } from '../../lib/context/v2/tomGoals';
@@ -212,29 +212,14 @@ export const GoalSandbox: React.FC = () => {
   const [manualAtoms, setManualAtoms] = useState<ContextAtom[]>([]);
   const [pipelineStageId, setPipelineStageId] = useState<string>('S5');
 
-  // Front mode: hide noisy panels and show only a compact “meaning” output.
-  const [frontMode, setFrontMode] = useState(() => {
-    try {
-      const raw = localStorage.getItem('goalsandbox.frontMode.v1');
-      if (raw === '0') return false;
-    } catch {}
-    return true;
-  });
-
   // UI panel visibility (persisted)
   const [uiPanels, setUiPanels] = useState(() => {
     try {
       const raw = localStorage.getItem('goalsandbox.uiPanels.v1');
       if (raw) return JSON.parse(raw);
     } catch {}
-    return { left: true, cast: true, compare: false, passport: false, results: true, emo: false, frame: false, lint: false };
+    return { left: true, cast: true, compare: false, passport: false, front: false, results: true, emo: false, frame: false, lint: false };
   });
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('goalsandbox.frontMode.v1', frontMode ? '1' : '0');
-    } catch {}
-  }, [frontMode]);
 
   // Top toolbar collapse (persisted)
   const [toolbarCollapsed, setToolbarCollapsed] = useState(() => {
@@ -1693,6 +1678,7 @@ export const GoalSandbox: React.FC = () => {
               ['cast', 'CAST'],
               ['compare', 'COMPARE'],
               ['passport', 'PASSPORT'],
+              ['front', 'FRONT'],
               ['results', 'RESULTS'],
               ['emo', 'EMO'],
               ['frame', 'FRAME'],
@@ -1711,27 +1697,6 @@ export const GoalSandbox: React.FC = () => {
         ) : (
           <div className="text-[11px] opacity-60 ml-2">toolbar collapsed</div>
         )}
-        <button
-          onClick={() => {
-            const next = !frontMode;
-            setFrontMode(next);
-            if (next) {
-              // Hide noisy panels when switching to front mode.
-              setUiPanels((p: any) => ({
-                ...p,
-                compare: false,
-                passport: false,
-                emo: false,
-                frame: false,
-                lint: false,
-              }));
-            }
-          }}
-          className={`ml-2 px-2 py-1 text-[11px] rounded border border-white/10 transition-colors ${frontMode ? 'bg-white/10 hover:bg-white/15' : 'bg-transparent opacity-60 hover:opacity-100 hover:bg-white/10'}`}
-          title="Сжать интерфейс до понятного фронтового вывода"
-        >
-          {frontMode ? 'FRONT: ON' : 'FRONT: off'}
-        </button>
         <div className="flex-1" />
         <button
           onClick={() => setHudCollapsed(v => !v)}
@@ -1969,11 +1934,15 @@ export const GoalSandbox: React.FC = () => {
               />
             ) : null}
 
-            {frontMode && snapshot ? (
-              <FrontOverviewPanel snapshot={snapshot as any} selfId={perspectiveId || ''} />
+            {uiPanels.front && snapshotV1 ? (
+              <FrontShell
+                snapshotV1={snapshotV1 as any}
+                selfId={perspectiveId || ''}
+                actorLabels={actorLabels}
+              />
             ) : null}
 
-            {uiPanels.results ? (
+            {uiPanels.results && !uiPanels.front ? (
               <GoalLabResults
                 context={snapshot as any}
                 actorLabels={actorLabels}

@@ -76,35 +76,36 @@ export const DEFAULT_POSSIBILITY_DEFS: PossibilityDef[] = [
     }
   },
 
-  // --- TALK PRIVATE (needs privacy / low publicness) ---
+  // --- SELF-TALK / REFLECT (internal action, not a social target) ---
   {
-    key: 'talk_private',
-    kind: 'aff',
-    label: 'Talk privately',
+    key: 'self_talk',
+    kind: 'cog',
+    label: 'Self-talk / rehearse plan',
     build: ({ selfId, helpers }) => {
-      const privacyAtom = 
+      // Use uncertainty + privacy as a soft proxy for "needing to clarify thoughts".
+      const uncAtom = helpers.findPrefix(`ctx:uncertainty:${selfId}`)[0]?.id;
+      const privacyAtom =
         helpers.findPrefix(`world:loc:privacy:${selfId}`)[0]?.id ||
         helpers.findPrefix(`ctx:privacy:${selfId}`)[0]?.id;
 
-      const publicAtom = 
-        helpers.findPrefix(`world:loc:publicness:${selfId}`)[0]?.id ||
-        helpers.findPrefix(`ctx:publicness:${selfId}`)[0]?.id;
-
+      const uncertainty = uncAtom ? helpers.get(uncAtom, 0) : 0;
       const privacy = privacyAtom ? helpers.get(privacyAtom, 0) : 0;
-      const publicness = publicAtom ? helpers.get(publicAtom, 0) : 0.5;
 
-      const magnitude = helpers.clamp01(0.7 * privacy + 0.3 * (1 - publicness));
+      const magnitude = helpers.clamp01(0.75 * uncertainty + 0.25 * privacy);
       if (magnitude < 0.15) return null;
 
       return {
-        id: `aff:talk:private:${selfId}`,
-        kind: 'aff',
-        label: 'Talk privately',
+        id: `cog:monologue:${selfId}`,
+        kind: 'cog',
+        label: 'Self-talk / rehearse plan',
         magnitude,
         confidence: 1,
         subjectId: selfId,
-        requires: [privacyAtom, publicAtom].filter(Boolean) as any,
-        trace: { usedAtomIds: [privacyAtom, publicAtom].filter(Boolean) as any }
+        requires: [uncAtom, privacyAtom].filter(Boolean) as any,
+        trace: {
+          usedAtomIds: [uncAtom, privacyAtom].filter(Boolean) as any,
+          notes: ['uncertainty+privacy => internal monologue']
+        }
       };
     }
   },

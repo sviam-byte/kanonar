@@ -1,144 +1,157 @@
-import React from 'react';
+import React, { useMemo } from 'react';
+import type { ContextAtom } from '../../lib/context/v2/types';
+import type { GoalLabSnapshotV1 } from '../../lib/goal-lab/snapshotTypes';
+import { getCtx } from '../../lib/context/layers';
 
 function clamp01(x: number) {
   if (!Number.isFinite(x)) return 0;
   return Math.max(0, Math.min(1, x));
 }
 
-function fmt(x: any, digits = 2) {
-  const n = Number(x);
-  if (!Number.isFinite(n)) return '0';
-  return n.toFixed(digits);
+function getMag(atoms: ContextAtom[], id: string, fb = 0) {
+  const a = atoms.find(x => x?.id === id);
+  const m = (a as any)?.magnitude;
+  return typeof m === 'number' && Number.isFinite(m) ? m : fb;
 }
 
-function getTopDomains(atoms: any[], selfId: string, k = 5) {
-  const out: { domain: string; magnitude: number; id: string }[] = [];
-  const suffix = `:${selfId}`;
-  for (const a of Array.isArray(atoms) ? atoms : []) {
+function listNearby(atoms: ContextAtom[], selfId: string): { id: string; closeness: number; atomId: string }[] {
+  // obs:nearby:OTHER:closeness (with subject=selfId, target=OTHER)
+  const out: { id: string; closeness: number; atomId: string }[] = [];
+  for (const a of atoms) {
     const id = String((a as any)?.id || '');
-    if (!id.startsWith('goal:domain:')) continue;
-    if (!id.endsWith(suffix)) continue;
-    const domain = id.slice('goal:domain:'.length, id.length - suffix.length);
-    out.push({ domain, magnitude: clamp01(Number((a as any)?.magnitude ?? 0)), id });
+    if (!id.startsWith('obs:nearby:')) continue;
+    const target = (a as any)?.target;
+    const subject = (a as any)?.subject;
+    if (subject && String(subject) !== selfId) continue;
+    if (typeof target !== 'string' || !target) continue;
+    const closeness = Number((a as any)?.magnitude ?? 0);
+    if (!Number.isFinite(closeness)) continue;
+    out.push({ id: target, closeness: clamp01(closeness), atomId: id });
   }
-  out.sort((a, b) => b.magnitude - a.magnitude);
-  return out.slice(0, k);
+  out.sort((a, b) => b.closeness - a.closeness);
+  return out;
 }
 
-function getTopEmotions(summary: any, k = 5) {
-  const top = summary?.emotions?.topEmotions;
-  const arr = Array.isArray(top) ? top : [];
-  return arr
-    .map((e: any) => ({
-      key: String(e?.key || ''),
-      magnitude: clamp01(Number(e?.magnitude ?? 0)),
-    }))
-    .filter(e => e.key)
-    .sort((a, b) => b.magnitude - a.magnitude)
-    .slice(0, k);
-}
+export const FrontOverviewPanel: React.FC<{
+  snapshotV1: GoalLabSnapshotV1;
+  selfId: string;
+  actorLabels?: Record<string, string>;
+}> = ({ snapshotV1, selfId, actorLabels }) => {
+  const atoms = useMemo(() => (Array.isArray(snapshotV1?.atoms) ? snapshotV1.atoms : []), [snapshotV1]);
+  const summary = (snapshotV1 as any)?.summary || null;
 
-export function FrontOverviewPanel(props: { snapshot: any; selfId: string }) {
-  const { snapshot, selfId } = props;
-  const summary = snapshot?.summary || {};
-  const ctx = summary?.context || {};
-  const decision = snapshot?.decision || {};
+  const axes = useMemo(() => {
+    const pick = (axis: string) => getCtx(atoms, selfId, axis, 0);
+    return {
+      danger: pick('danger'),
+      uncertainty: pick('uncertainty'),
+      timePressure: pick('timePressure'),
+      normPressure: pick('normPressure'),
+    };
+  }, [atoms, selfId]);
 
-  const topDomains = getTopDomains(snapshot?.atoms || [], selfId, 5);
-  const topEmo = getTopEmotions(summary, 5);
-  const ranked = Array.isArray(decision?.ranked) ? decision.ranked : [];
-  const topActions = ranked.slice(0, 5);
+  const emo = useMemo(() => {
+    const keys = ['fear', 'anger', 'shame', 'resolve', 'care', 'valence', 'arousal'];
+    const out: Record<string, number> = {};
+    for (const k of keys) out[k] = clamp01(getMag(atoms, `emo:${k}:${selfId}`, 0));
+    return out;
+  }, [atoms, selfId]);
 
-  const best = decision?.best;
-  const bestId = best?.p?.id || best?.id || '';
+  const nearby = useMemo(() => listNearby(atoms, selfId), [atoms, selfId]);
 
-  return (
-    <div className="rounded-lg border border-white/10 bg-black/30 p-3">
-      <div className="text-[12px] uppercase tracking-wide opacity-70 mb-2">Front output</div>
+  const kv = [
+    {
+      k: 'Threat',
+      v:
+        summary?.threatLevel ??
+        clamp01(getMag(atoms, `threat:final:${selfId}`, getMag(atoms, 'threat:final', 0))),
+    },
+    { k: 'Norm risk', v: summary?.normRisk ?? 0 },
+    { k: 'Stress', v: clamp01(getMag(atoms, `feat:char:${selfId}:body.stress`, 0)) },
+    { k: 'Fatigue', v: clamp01(getMag(atoms, `feat:char:${selfId}:body.fatigue`, 0)) },
+  ];
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <div className="rounded-md border border-white/10 p-2">
-          <div className="text-[11px] opacity-60 mb-1">Context (axes)</div>
-          <div className="text-[12px] leading-6">
-            <div>
-              danger: <b>{fmt(ctx?.axes?.danger)}</b>
-            </div>
-            <div>
-              uncertainty: <b>{fmt(ctx?.axes?.uncertainty)}</b>
-            </div>
-            <div>
-              timePressure: <b>{fmt(ctx?.axes?.timePressure)}</b>
-            </div>
-            <div>
-              normPressure: <b>{fmt(ctx?.axes?.normPressure)}</b>
-            </div>
-            <div className="opacity-60 text-[11px] mt-1">
-              (this is what should drive “feels different” between scenes)
-            </div>
-          </div>
+  const axisRow = (
+    label: string,
+    p: { magnitude: number; confidence: number; layer: string; id: string | null }
+  ) => (
+    <div className="flex items-center justify-between p-2 border border-canon-border/30 rounded bg-black/20">
+      <div>
+        <div className="text-xs font-semibold text-canon-text">{label}</div>
+        <div className="text-[10px] font-mono text-canon-text-light">
+          {p.id ? `${p.id} (${p.layer})` : `missing (${p.layer})`}
         </div>
-
-        <div className="rounded-md border border-white/10 p-2">
-          <div className="text-[11px] opacity-60 mb-1">Decision</div>
-          <div className="text-[12px] leading-6">
-            <div>
-              best: <b>{String(bestId || '—')}</b>
-            </div>
-            <div>
-              score: <b>{fmt(best?.score)}</b>
-            </div>
-            <div className="mt-2 text-[11px] opacity-60">top candidates:</div>
-            <div className="text-[12px]">
-              {topActions.length === 0 ? (
-                <div className="opacity-60">—</div>
-              ) : (
-                <ul className="list-disc pl-4">
-                  {topActions.map((r: any, i: number) => (
-                    <li key={String(r?.p?.id || r?.id || i)}>
-                      {String(r?.p?.id || r?.id)}{' '}
-                      <span className="opacity-60">({fmt(r?.score ?? r?.utility)})</span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          </div>
+      </div>
+      <div className="text-right">
+        <div className="text-lg font-extrabold text-canon-accent">
+          {Math.round(clamp01(p.magnitude) * 100)}
         </div>
-
-        <div className="rounded-md border border-white/10 p-2">
-          <div className="text-[11px] opacity-60 mb-1">Top emotions</div>
-          <div className="text-[12px]">
-            {topEmo.length === 0 ? (
-              <div className="opacity-60">—</div>
-            ) : (
-              <ul className="list-disc pl-4">
-                {topEmo.map((e: any) => (
-                  <li key={e.key}>
-                    {e.key} <span className="opacity-60">({fmt(e.magnitude)})</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </div>
-
-        <div className="rounded-md border border-white/10 p-2">
-          <div className="text-[11px] opacity-60 mb-1">Top goal domains</div>
-          <div className="text-[12px]">
-            {topDomains.length === 0 ? (
-              <div className="opacity-60">—</div>
-            ) : (
-              <ul className="list-disc pl-4">
-                {topDomains.map(d => (
-                  <li key={d.id}>
-                    {d.domain} <span className="opacity-60">({fmt(d.magnitude)})</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
+        <div className="text-[10px] font-mono text-canon-text-light">
+          c={Math.round(clamp01(p.confidence) * 100)}%
         </div>
       </div>
     </div>
   );
-}
+
+  return (
+    <div className="h-full min-h-0 overflow-auto custom-scrollbar p-4 bg-canon-bg text-canon-text">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="text-xs text-canon-text-light">Perspective</div>
+          <div className="text-lg font-extrabold">{actorLabels?.[selfId] || selfId}</div>
+          <div className="text-[11px] text-canon-text-light">tick: {snapshotV1?.tick ?? 0}</div>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          {kv.map(x => (
+            <div key={x.k} className="p-2 border border-canon-border/30 rounded bg-black/20">
+              <div className="text-[10px] text-canon-text-light">{x.k}</div>
+              <div className="text-base font-bold">{Math.round(clamp01(Number(x.v ?? 0)) * 100)}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="mt-4 grid grid-cols-2 gap-2">
+        {axisRow('Danger', axes.danger as any)}
+        {axisRow('Uncertainty', axes.uncertainty as any)}
+        {axisRow('Time pressure', axes.timePressure as any)}
+        {axisRow('Norm pressure', axes.normPressure as any)}
+      </div>
+
+      <div className="mt-4 grid grid-cols-3 gap-2">
+        {Object.entries(emo).map(([k, v]) => (
+          <div key={k} className="p-2 border border-canon-border/30 rounded bg-black/20">
+            <div className="text-[10px] text-canon-text-light">emo:{k}</div>
+            <div className="text-base font-bold">{Math.round(clamp01(v) * 100)}</div>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-6">
+        <div className="text-xs font-semibold text-canon-text-light uppercase tracking-wider">
+          Nearby agents (perception)
+        </div>
+        {nearby.length === 0 ? (
+          <div className="mt-2 text-xs italic text-canon-text-light">None.</div>
+        ) : (
+          <div className="mt-2 space-y-2">
+            {nearby.slice(0, 12).map(n => (
+              <div
+                key={n.id}
+                className="flex items-center justify-between p-2 border border-canon-border/30 rounded bg-black/20"
+              >
+                <div>
+                  <div className="text-sm font-semibold">{actorLabels?.[n.id] || n.id}</div>
+                  <div className="text-[10px] font-mono text-canon-text-light">{n.atomId}</div>
+                </div>
+                <div className="text-right">
+                  <div className="text-base font-bold">{Math.round(n.closeness * 100)}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
