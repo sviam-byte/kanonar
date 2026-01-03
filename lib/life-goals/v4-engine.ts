@@ -333,8 +333,8 @@ export function computeConcreteGoals(
         // This ensures targeted ToM goals respond to the contextual ToM pipeline.
         const dyad = (metric: string, fb: number) => {
             try {
-                const v = getDyadMag(contextAtoms as any, agent.entityId, targetId, metric, NaN as any);
-                return Number.isFinite(v) ? v : fb;
+                const picked = getDyadMag(contextAtoms as any, agent.entityId, targetId, metric, NaN as any);
+                return Number.isFinite(picked.mag) ? picked.mag : fb;
             } catch {
                 return fb;
             }

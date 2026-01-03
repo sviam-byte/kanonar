@@ -2,19 +2,19 @@ import React, { useMemo, useState } from 'react';
 import type { GoalLabSnapshotV1 } from '../../lib/goal-lab/snapshotTypes';
 import type { ContextAtom } from '../../lib/context/v2/types';
 import { getDyadMag } from '../../lib/tom/layers';
-import { metricLabel, metricHelp } from '../../lib/ui/metricLexicon';
+import { metricHelp, metricLabel } from '../../lib/ui/metricLexicon';
 
 function clamp01(x: number) {
   if (!Number.isFinite(x)) return 0;
   return Math.max(0, Math.min(1, x));
 }
 
-function asAtoms(x: any): ContextAtom[] {
-  return Array.isArray(x) ? x : [];
-}
-
 function fmtPct(x: number) {
   return `${Math.round(clamp01(x) * 100)}`;
+}
+
+function asAtoms(x: any): ContextAtom[] {
+  return Array.isArray(x) ? x : [];
 }
 
 function listNearby(atoms: ContextAtom[], selfId: string) {
@@ -52,7 +52,6 @@ export const FriendlyDyadToMPanel: React.FC<{
   const nearby = useMemo(() => listNearby(atoms, selfId), [atoms, selfId]);
 
   const [selected, setSelected] = useState<string | null>(nearby[0]?.id ?? null);
-
   const targetId = selected ?? nearby[0]?.id ?? null;
 
   const dyad = useMemo(() => {
@@ -60,8 +59,8 @@ export const FriendlyDyadToMPanel: React.FC<{
 
     const read = (k: string) => {
       try {
-        const v = getDyadMag(atoms as any, selfId, targetId, k, NaN as any);
-        return Number.isFinite(v) ? clamp01(v) : null;
+        const { mag } = getDyadMag(atoms as any, selfId, targetId, k, NaN as any);
+        return Number.isFinite(mag) ? clamp01(mag) : null;
       } catch {
         return null;
       }
@@ -71,7 +70,7 @@ export const FriendlyDyadToMPanel: React.FC<{
       trust: read('trust'),
       threat: read('threat'),
       respect: read('respect'),
-      intimacy: read('intimacy'),
+      closeness: read('intimacy'),
       alignment: read('alignment'),
       dominance: read('dominance'),
       uncertainty: read('uncertainty'),
@@ -83,9 +82,9 @@ export const FriendlyDyadToMPanel: React.FC<{
 
   return (
     <div className="h-full min-h-0 overflow-auto custom-scrollbar p-4 bg-canon-bg text-canon-text">
-      <div className="text-xs text-canon-text-light mb-2">
-        Здесь показывается <b>Dyad ToM</b>: как агент <b>{actorLabels?.[selfId] || selfId}</b> видит других.
-        Если “никого нет” — это не баг: значит нет `obs:nearby:*` для этой перспективы.
+      <div className="text-xs text-canon-text-light mb-3">
+        <b>Dyad ToM</b> — как агент <b>{actorLabels?.[selfId] || selfId}</b> видит других. Если список пуст — значит
+        для этой перспективы нет атомов <span className="font-mono">obs:nearby:*</span>.
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -131,14 +130,14 @@ export const FriendlyDyadToMPanel: React.FC<{
                 ['dyadTrust', dyad.trust],
                 ['dyadThreat', dyad.threat],
                 ['dyadRespect', dyad.respect],
-                ['dyadIntimacy', dyad.intimacy],
+                ['dyadCloseness', dyad.closeness],
                 ['dyadAlignment', dyad.alignment],
                 ['dyadDominance', dyad.dominance],
                 ['dyadUncertainty', dyad.uncertainty],
                 ['dyadSupport', dyad.support],
               ] as const).map(([k, v]) => (
                 <div key={k} className="flex items-center justify-between rounded border border-white/10 bg-black/10 px-2 py-2">
-                  <div>
+                  <div className="mr-3">
                     <div className="text-sm font-semibold">{metricLabel(k as any)}</div>
                     <div className="text-[11px] opacity-60">{metricHelp(k as any)}</div>
                   </div>
@@ -150,8 +149,7 @@ export const FriendlyDyadToMPanel: React.FC<{
               ))}
 
               <div className="mt-2 text-[11px] opacity-60">
-                Примечание: “Interpersonal threat” — про <b>этого человека</b>, а “Situational threat” — про{' '}
-                <b>ситуацию в целом</b>.
+                Примечание: <b>Interpersonal threat</b> — про этого человека. <b>Situational threat</b> — про ситуацию в целом.
               </div>
             </div>
           )}

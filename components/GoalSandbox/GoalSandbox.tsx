@@ -18,7 +18,7 @@ import { createInitialWorld } from '../../lib/world/initializer';
 import { normalizeWorldShape } from '../../lib/world/normalizeWorldShape';
 import { scoreContextualGoals } from '../../lib/context/v2/scoring';
 import type { ContextAtom } from '../../lib/context/v2/types';
-import { GoalLabResults } from '../goal-lab/GoalLabResults';
+import { DebugShell } from './DebugShell';
 import { FrontShell } from './FrontShell';
 import { allLocations } from '../../data/locations';
 import { computeLocationGoalsForAgent } from '../../lib/context/v2/locationGoals';
@@ -36,15 +36,11 @@ import { diffAtoms } from '../../lib/snapshot/diffAtoms';
 import { adaptToSnapshotV1, normalizeSnapshot } from '../../lib/goal-lab/snapshotAdapter';
 import { buildGoalLabSceneDumpV2, downloadJson } from '../../lib/goal-lab/sceneDump';
 import { materializeStageAtoms } from '../goal-lab/materializePipeline';
-import { CastPerspectivePanel } from '../goal-lab/CastPerspectivePanel';
-import { CastComparePanel } from '../goal-lab/CastComparePanel';
-import { AgentPassportPanel } from '../goal-lab/AgentPassportPanel';
 import { allScenarioDefs } from '../../data/scenarios/index';
 import { useAccess } from '../../contexts/AccessContext';
 import { filterCharactersForActiveModule } from '../../lib/modules/visibility';
 
 // Pipeline Imports
-import { FrameDebugPanel } from '../GoalLab/FrameDebugPanel';
 import type { ScenePreset } from '../../data/presets/scenes';
 import { SCENE_PRESETS } from '../../lib/scene/presets';
 import { initTomForCharacters } from '../../lib/tom/init';
@@ -53,7 +49,6 @@ import { constructGil } from '../../lib/gil/apply';
 import type { DyadConfigForA } from '../../lib/tom/dyad-metrics';
 import { ensureMapCells } from '../../lib/world/ensureMapCells';
 import { buildDebugFrameFromSnapshot } from '../../lib/goal-lab/debugFrameFromSnapshot';
-import { EmotionInspector } from '../GoalLab/EmotionInspector';
 import { normalizeAtom } from '../../lib/context/v2/infer';
 import { lintActionsAndLocations } from '../../lib/linter/actionsAndLocations';
 import { arr } from '../../lib/utils/arr';
@@ -212,46 +207,20 @@ export const GoalSandbox: React.FC = () => {
   const [manualAtoms, setManualAtoms] = useState<ContextAtom[]>([]);
   const [pipelineStageId, setPipelineStageId] = useState<string>('S5');
 
-  // UI panel visibility (persisted)
-  const [uiPanels, setUiPanels] = useState(() => {
-    const defaults: any = {
-      left: true,
-      front: true,
-      results: false,
-      cast: false,
-      compare: false,
-      passport: false,
-      emo: false,
-      frame: false,
-      lint: false,
-    };
+  // UI mode: a compact “front” view for normal use, and a “debug” view for pipeline/atoms.
+  const [uiMode, setUiMode] = useState<'front' | 'debug'>(() => {
     try {
-      const raw = localStorage.getItem('goalsandbox.uiPanels.v1');
-      if (raw) {
-        const parsed = JSON.parse(raw) || {};
-        return { ...defaults, ...parsed, front: true };
-      }
-    } catch {}
-    return defaults;
+      return (localStorage.getItem('goalsandbox.uiMode.v1') as any) === 'debug' ? 'debug' : 'front';
+    } catch {
+      return 'front';
+    }
   });
 
-  const resetUIPanels = useCallback(() => {
-    const defaults: any = {
-      left: true,
-      front: true,
-      results: false,
-      cast: false,
-      compare: false,
-      passport: false,
-      emo: false,
-      frame: false,
-      lint: false,
-    };
+  useEffect(() => {
     try {
-      localStorage.removeItem('goalsandbox.uiPanels.v1');
+      localStorage.setItem('goalsandbox.uiMode.v1', uiMode);
     } catch {}
-    setUiPanels(defaults);
-  }, []);
+  }, [uiMode]);
 
   // Top toolbar collapse (persisted)
   const [toolbarCollapsed, setToolbarCollapsed] = useState(() => {
@@ -300,19 +269,6 @@ export const GoalSandbox: React.FC = () => {
     } catch {}
   }, [hudCollapsed]);
 
-  useEffect(() => {
-    try {
-      localStorage.setItem('goalsandbox.uiPanels.v1', JSON.stringify(uiPanels));
-    } catch {}
-  }, [uiPanels]);
-
-  const togglePanel = useCallback((key: string) => {
-    setUiPanels((p: any) => {
-      if (key === 'front') return { ...p, front: true };
-      return { ...p, [key]: !p?.[key], front: true };
-    });
-  }, []);
-
   // NOTE: Do not mutate worldState via affect overrides. Affect is materialized as atoms inside buildGoalLabContext.
 
   // Atom Overrides
@@ -357,6 +313,15 @@ export const GoalSandbox: React.FC = () => {
 
   // Persistent Scene Participants: stores ALL actors in the scene (including selectedAgentId)
   const [sceneParticipants, setSceneParticipants] = useState<Set<string>>(() => new Set());
+
+  // Seed the scene with a small cast by default (prevents empty “no one around” front views).
+  useEffect(() => {
+    if (worldSource === 'imported') return;
+    if (sceneParticipants.size > 0) return;
+    if (allCharacters.length < 2) return;
+    const n = Math.min(4, allCharacters.length);
+    setSceneParticipants(new Set(allCharacters.slice(0, n).map(c => c.entityId)));
+  }, [allCharacters, sceneParticipants.size, worldSource]);
 
   const participantIds = useMemo(() => {
     const ids = new Set(sceneParticipants);
@@ -1695,6 +1660,9 @@ export const GoalSandbox: React.FC = () => {
     return asArray<any>(((snapshot as any)?.atoms) as any);
   }, [pipelineV1, snapshotV1, snapshot, currentPipelineStageId]);
 
+  // Keep the left sidebar visible in both front/debug modes (core controls live there).
+  const leftVisible = true;
+
   return (
     <div className="h-full flex flex-col bg-canon-bg text-canon-text overflow-hidden">
       <div className="sticky top-0 z-40 backdrop-blur bg-black/40 border-b border-white/10 px-3 py-2 flex items-center gap-2">
@@ -1707,48 +1675,31 @@ export const GoalSandbox: React.FC = () => {
         </button>
         <div className="text-[12px] opacity-80">GoalSandbox</div>
         {!toolbarCollapsed ? (
-          <div className="flex items-center gap-1 ml-2">
-            {(
-              (uiPanels?.results
-                ? ([
-                    ['left', 'LEFT'],
-                    ['front', 'FRONT'],
-                    ['results', 'DEBUG'],
-                    ['cast', 'CAST'],
-                    ['compare', 'COMPARE'],
-                    ['passport', 'PASSPORT'],
-                    ['emo', 'EMO'],
-                    ['frame', 'FRAME'],
-                    ['lint', 'LINT'],
-                  ] as const)
-                : ([
-                    ['left', 'LEFT'],
-                    ['front', 'FRONT'],
-                    ['results', 'DEBUG'],
-                  ] as const)
-              )
-            ).map(([k, label]) => (
-              <button
-                key={k}
-                onClick={() => togglePanel(k)}
-                className={`px-2 py-1 text-[11px] rounded border border-white/10 transition-colors ${uiPanels?.[k] ? 'bg-white/10 hover:bg-white/15' : 'bg-transparent opacity-60 hover:opacity-100 hover:bg-white/10'}`}
-                title={k}
-              >
-                {label}
-              </button>
-            ))}
+          <div className="flex items-center gap-2 ml-2">
+            <div className="text-[11px] opacity-70">UI mode</div>
+            <button
+              onClick={() => setUiMode('front')}
+              className={`px-2 py-1 text-[11px] rounded border border-white/10 transition-colors ${
+                uiMode === 'front' ? 'bg-white/10 hover:bg-white/15' : 'bg-transparent opacity-60 hover:opacity-100 hover:bg-white/10'
+              }`}
+              title="Front mode: concise output"
+            >
+              FRONT
+            </button>
+            <button
+              onClick={() => setUiMode('debug')}
+              className={`px-2 py-1 text-[11px] rounded border border-white/10 transition-colors ${
+                uiMode === 'debug' ? 'bg-white/10 hover:bg-white/15' : 'bg-transparent opacity-60 hover:opacity-100 hover:bg-white/10'
+              }`}
+              title="Debug mode: pipeline & atoms"
+            >
+              DEBUG
+            </button>
           </div>
         ) : (
           <div className="text-[11px] opacity-60 ml-2">toolbar collapsed</div>
         )}
         <div className="flex-1" />
-        <button
-          onClick={resetUIPanels}
-          className="px-3 py-2 text-[11px] font-semibold border border-canon-border/60 rounded bg-canon-bg-light/10 hover:bg-canon-bg-light/20 transition-colors"
-          title="Сбросить UI-панели (убрать кашу из localStorage)"
-        >
-          Reset UI
-        </button>
         <button
           onClick={() => setHudCollapsed(v => !v)}
           className="px-3 py-2 text-[11px] font-semibold border border-canon-border/60 rounded bg-canon-bg-light/20 hover:bg-canon-bg-light/30 transition-colors"
@@ -1769,7 +1720,7 @@ export const GoalSandbox: React.FC = () => {
         ) : null}
       </div>
       <div className="flex-1 grid grid-cols-12 min-h-0">
-        {uiPanels.left ? (
+        {leftVisible ? (
           <div className="col-span-3 border-r border-canon-border bg-canon-bg-light/30 flex flex-col min-h-0 overflow-y-auto custom-scrollbar">
             <div className="h-64 border-b border-canon-border relative bg-black">
               <MapViewer
@@ -1830,7 +1781,7 @@ export const GoalSandbox: React.FC = () => {
           </div>
         ) : null}
 
-        <div className={uiPanels.left ? 'col-span-9 flex flex-col min-h-0 overflow-y-auto custom-scrollbar p-6 space-y-6' : 'col-span-12 flex flex-col min-h-0 overflow-y-auto custom-scrollbar p-6 space-y-6'}>
+        <div className={leftVisible ? 'col-span-9 flex flex-col min-h-0 overflow-y-auto custom-scrollbar p-6 space-y-6' : 'col-span-12 flex flex-col min-h-0 overflow-y-auto custom-scrollbar p-6 space-y-6'}>
           {!hudCollapsed ? (
             <div className="sticky top-0 z-20 -mx-6 px-6 py-3 bg-canon-bg/90 backdrop-blur border-b border-canon-border flex items-center gap-3">
             <button
@@ -1962,51 +1913,20 @@ export const GoalSandbox: React.FC = () => {
               </div>
             )}
 
-            {uiPanels.results && uiPanels.cast ? (
-              <CastPerspectivePanel
-                rows={castRows}
-                focusId={perspectiveId}
-                onFocus={setPerspectiveAgentId}
-              />
-            ) : null}
-
-            {uiPanels.results && uiPanels.compare ? (
-              <CastComparePanel
-                rows={castRows}
-                focusId={perspectiveId}
-              />
-            ) : null}
-
-            {uiPanels.results && uiPanels.passport ? (
-              <AgentPassportPanel
-                atoms={passportAtoms}
-                selfId={perspectiveId || ''}
-                title="How the agent sees the situation"
-              />
-            ) : null}
-
-            {uiPanels.front && snapshotV1 ? (
+            {uiMode === 'front' ? (
               <FrontShell
                 snapshotV1={snapshotV1 as any}
                 selfId={perspectiveId || ''}
                 actorLabels={actorLabels}
+                setManualAtom={setManualAtom}
               />
-            ) : null}
-
-            {uiPanels.results ? (
-              <GoalLabResults
-                context={snapshot as any}
-                actorLabels={actorLabels}
-                perspectiveAgentId={perspectiveId}
-                tomRows={tomMatrixForPerspective}
-                goalScores={goals as any}
-                situation={situation as any}
-                goalPreview={goalPreview as any}
-                contextualMind={contextualMind as any}
-                locationScores={locationScores as any}
-                tomScores={tomScores as any}
-                tom={(worldState as any)?.tom?.[perspectiveId]}
-                atomDiff={atomDiff as any}
+            ) : (
+              <DebugShell
+                castRows={castRows}
+                perspectiveId={perspectiveId}
+                onFocusPerspective={setPerspectiveAgentId}
+                passportAtoms={passportAtoms}
+                snapshot={snapshot as any}
                 snapshotV1={snapshotV1 as any}
                 pipelineV1={pipelineV1 as any}
                 pipelineStageId={currentPipelineStageId}
@@ -2018,8 +1938,21 @@ export const GoalSandbox: React.FC = () => {
                 onImportScene={handleImportSceneClick}
                 manualAtoms={manualAtoms}
                 onChangeManualAtoms={setManualAtoms}
+                actorLabels={actorLabels}
+                tomRows={tomMatrixForPerspective}
+                goals={goals as any}
+                situation={situation as any}
+                goalPreview={goalPreview as any}
+                contextualMind={contextualMind as any}
+                locationScores={locationScores as any}
+                tomScores={tomScores as any}
+                worldTom={(worldState as any)?.tom?.[perspectiveId]}
+                atomDiff={atomDiff as any}
+                pipelineFrame={pipelineFrame as any}
+                actionsLocLint={actionsLocLint as any}
+                setManualAtom={setManualAtom}
               />
-            ) : null}
+            )}
 
             <input
               ref={importInputRef}
@@ -2032,69 +1965,6 @@ export const GoalSandbox: React.FC = () => {
                 e.currentTarget.value = '';
               }}
             />
-
-          {uiPanels.results && uiPanels.emo && snapshotV1 ? (
-            <div className="mt-4">
-              <EmotionInspector
-                selfId={perspectiveId}
-                atoms={asArray<any>(snapshotV1.atoms as any)}
-                setManualAtom={setManualAtom}
-              />
-            </div>
-          ) : null}
-
-          {uiPanels.results && uiPanels.frame && pipelineFrame ? (
-            <div className="mt-4">
-              <h3 className="text-lg font-bold text-canon-accent uppercase tracking-widest mb-4 border-b border-canon-border/40 pb-2">
-                Pipeline Debug Area (Stage 0-3)
-              </h3>
-              <FrameDebugPanel frame={pipelineFrame as any} />
-            </div>
-          ) : null}
-
-          {uiPanels.results && uiPanels.lint ? (
-            <div className="mt-4">
-              <h3 className="text-lg font-bold text-canon-accent uppercase tracking-widest mb-4 border-b border-canon-border/40 pb-2">
-                Actions × Locations Lint
-              </h3>
-
-              <div className="text-sm opacity-80 mb-2">
-                Locations: {actionsLocLint.stats.locations} • with affordances:{' '}
-                {actionsLocLint.stats.locationsWithAffordances} • known actionIds:{' '}
-                {actionsLocLint.stats.knownActionIds} • known tags:{' '}
-                {actionsLocLint.stats.knownTags}
-              </div>
-
-              {(actionsLocLint.stats.errors + actionsLocLint.stats.warnings) === 0 ? (
-                <div className="text-sm">No issues.</div>
-              ) : (
-                <div className="space-y-2">
-                  <div className="text-sm">
-                    Errors: <b>{actionsLocLint.stats.errors}</b> • Warnings:{' '}
-                    <b>{actionsLocLint.stats.warnings}</b>
-                  </div>
-
-                  <div className="max-h-72 overflow-auto border border-canon-border/40 rounded p-2">
-                    {actionsLocLint.issues.map((it, idx) => (
-                      <div
-                        key={idx}
-                        className="text-xs py-1 border-b border-canon-border/20 last:border-b-0"
-                      >
-                        <div>
-                          <b>{it.severity.toUpperCase()}</b> • {it.locationId}
-                        </div>
-                        <div className="opacity-80">
-                          {it.path}
-                          {it.token ? ` :: ${it.token}` : ''}
-                        </div>
-                        <div>{it.message}</div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          ) : null}
           </div>
         </div>
       </div>
