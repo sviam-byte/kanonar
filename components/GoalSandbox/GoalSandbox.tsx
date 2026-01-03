@@ -37,6 +37,7 @@ import { buildGoalLabSceneDumpV2, downloadJson } from '../../lib/goal-lab/sceneD
 import { materializeStageAtoms } from '../goal-lab/materializePipeline';
 import { CastPerspectivePanel } from '../goal-lab/CastPerspectivePanel';
 import { CastComparePanel } from '../goal-lab/CastComparePanel';
+import { AgentPassportPanel } from '../goal-lab/AgentPassportPanel';
 import { allScenarioDefs } from '../../data/scenarios/index';
 import { useAccess } from '../../contexts/AccessContext';
 import { filterCharactersForActiveModule } from '../../lib/modules/visibility';
@@ -216,7 +217,7 @@ export const GoalSandbox: React.FC = () => {
       const raw = localStorage.getItem('goalsandbox.uiPanels.v1');
       if (raw) return JSON.parse(raw);
     } catch {}
-    return { left: true, cast: true, compare: true, results: true, emo: false, frame: false, lint: false };
+    return { left: true, cast: true, compare: true, passport: true, results: true, emo: false, frame: false, lint: false };
   });
 
   // Top toolbar collapse (persisted)
@@ -1604,6 +1605,34 @@ export const GoalSandbox: React.FC = () => {
     if (id) setPipelineStageId(id);
   }, [pipelineStageOptions, pipelineStageIndex]);
 
+  // ===== atoms for the currently selected pipeline stage (for Passport UI) =====
+  const passportAtoms = useMemo(() => {
+    // Prefer pipelineV1 if present.
+    if (pipelineV1 && Array.isArray((pipelineV1 as any).stages)) {
+      const stages = (pipelineV1 as any).stages;
+      const st =
+        stages.find((s: any) => String(s?.stage || s?.id) === String(currentPipelineStageId)) ||
+        stages[stages.length - 1];
+      const atoms = asArray<any>(st?.atoms ?? st?.materializedAtoms ?? st?.fullAtoms ?? []);
+      if (atoms.length) return atoms;
+    }
+
+    // Fallback: materialize from snapshotV1.meta.pipelineDeltas.
+    if (snapshotV1) {
+      const deltasRaw = (snapshotV1 as any).meta?.pipelineDeltas;
+      const deltas = Array.isArray(deltasRaw) ? deltasRaw : [];
+      if (deltas.length) {
+        try {
+          return materializeStageAtoms(deltas, String(currentPipelineStageId));
+        } catch {}
+      }
+      return asArray<any>(snapshotV1.atoms as any);
+    }
+
+    // Legacy fallback.
+    return asArray<any>(((snapshot as any)?.atoms) as any);
+  }, [pipelineV1, snapshotV1, snapshot, currentPipelineStageId]);
+
   return (
     <div className="h-full flex flex-col bg-canon-bg text-canon-text overflow-hidden">
       <div className="sticky top-0 z-40 backdrop-blur bg-black/40 border-b border-white/10 px-3 py-2 flex items-center gap-2">
@@ -1621,6 +1650,7 @@ export const GoalSandbox: React.FC = () => {
               ['left', 'LEFT'],
               ['cast', 'CAST'],
               ['compare', 'COMPARE'],
+              ['passport', 'PASSPORT'],
               ['results', 'RESULTS'],
               ['emo', 'EMO'],
               ['frame', 'FRAME'],
@@ -1841,6 +1871,14 @@ export const GoalSandbox: React.FC = () => {
               <CastComparePanel
                 rows={castRows}
                 focusId={perspectiveId}
+              />
+            ) : null}
+
+            {uiPanels.passport ? (
+              <AgentPassportPanel
+                atoms={passportAtoms}
+                selfId={perspectiveId || ''}
+                title="How the agent sees the situation"
               />
             ) : null}
 

@@ -41,6 +41,7 @@ import { applyCharacterLens } from '../context/lens/characterLens';
 import { deriveAppraisalAtoms } from '../emotion/appraisals';
 import { deriveEmotionAtoms } from '../emotion/emotions';
 import { deriveDyadicEmotionAtoms } from '../emotion/dyadic';
+import { deriveSummaryAtoms } from '../context/summary';
 import { arr } from '../utils/arr';
 import { validateAtomInvariants } from '../context/validate/atomInvariants';
 
@@ -990,6 +991,10 @@ export function buildGoalLabContext(
   const mindAtoms = atomizeContextMindMetrics(selfId, contextMind);
   const atomsWithMind = dedupeAtomsById([...atomsForMind, ...mindAtoms]).map(normalizeAtom);
 
+  // UI-focused summary metrics (derived from ctx + emo atoms); keep after mind so pipeline ordering is stable.
+  const summaryMetrics = deriveSummaryAtoms({ atoms: atomsWithMind, selfId });
+  const atomsWithSummaryMetrics = dedupeAtomsById([...atomsWithMind, ...summaryMetrics]).map(normalizeAtom);
+
   type PipelineAtomStub = {
     id: string;
     magnitude?: number;
@@ -1111,10 +1116,19 @@ export function buildGoalLabContext(
     'S4',
     'S4 • contextMind metrics materialized',
     atomsWithMind,
-    result.atoms,
+    atomsForMind,
     pipelineAll[pipelineAll.length - 1]?.id
   );
   pipelineAll.push(s4Stage);
+
+  const s4_5Stage = buildDeltaStage(
+    'S4.5',
+    'S4.5 • summary metrics (UI)',
+    atomsWithSummaryMetrics,
+    atomsWithMind,
+    s4Stage.id
+  );
+  pipelineAll.push(s4_5Stage);
 
   // Decide AFTER mind metrics exist in the atom stream
   const decision = decideAction({
@@ -1125,7 +1139,7 @@ export function buildGoalLabContext(
   });
 
   const decisionAtoms = arr((decision as any)?.atoms).map(normalizeAtom);
-  const atomsWithDecision = dedupeAtomsById([...atomsWithMind, ...decisionAtoms]).map(normalizeAtom);
+  const atomsWithDecision = dedupeAtomsById([...atomsWithSummaryMetrics, ...decisionAtoms]).map(normalizeAtom);
 
   const snapshot = buildContextSnapshot(world, agent, {
       ...opts.snapshotOptions,
@@ -1166,8 +1180,9 @@ export function buildGoalLabContext(
     'S5',
     'S5 • final snapshot.atoms (export truth)',
     snapshot.atoms || [],
-    atomsWithMind,
-    s4Stage.id
+    atomsWithSummaryMetrics,
+    // IMPORTANT: baseId must be S4.5 (otherwise stage materialization skips the inserted layer).
+    s4_5Stage.id
   ));
 
   (snapshot as any).meta = {
@@ -1191,7 +1206,7 @@ export function buildGoalLabContext(
       ? buildContextV2FromFrame(frame, world) 
       : { locationType: 'unknown', visibility: 1, noise: 0, panic: 0, nearbyActors: [], alliesCount: 0, enemiesCount: 0, leaderPresent: false, kingPresent: false, authorityConflict: 0, timePressure: 0, scenarioKind: 'routine', cover: 0, exitsNearby: 0, obstacles: 0, groupDensity: 0, hierarchyPressure: 0, structuralDamage: 0 };
 
-  const situation = buildSituationContextForLab(agent, world, frame, snapshot, atomsWithSummaries, ctxV2);
+  const situation = buildSituationContextForLab(agent, world, frame, snapshot, atomsWithSummaryMetrics, ctxV2);
 
   const planningGoals = getPlanningGoals();
   const plan = computeGoalPriorities(agent, planningGoals, world, { skipBioShift: true }, situation);
@@ -1214,7 +1229,7 @@ export function buildGoalLabContext(
     agent,
     frame,
     snapshot,
-    v4Atoms: atomsWithSummaries,
+    v4Atoms: atomsWithSummaryMetrics,
     ctxV2,
     situation,
     goalPreview,
