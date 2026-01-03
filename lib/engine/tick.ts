@@ -10,6 +10,7 @@ import { applyEvidenceToTomBase } from '../tom/memory/update';
 import { updateRelationshipGraphFromEvents } from '../relations/updateFromEvents';
 import { WorldEvent } from '../events/types';
 import { arr } from '../utils/arr';
+import { applyChosenActionToWorld } from './applyChosenAction';
 
 export function ensureWorldTick(world: any) {
   if (typeof world.tick !== 'number') world.tick = 0;
@@ -121,6 +122,17 @@ export function runTicks(args: {
        });
     }
 
+    // 5.5) CLOSE THE LOOP: decision -> scheduled world event (next tick)
+    try {
+      applyChosenActionToWorld({
+        world,
+        selfId: agentId,
+        decision: (snap as any)?.decision,
+        tickNow,
+        dt,
+      });
+    } catch {}
+
     // 6. Compute Diffs if requested
     if (withDiffs && snapshots.length >= 2) {
       const prev = snapshots[snapshots.length - 2];
@@ -225,6 +237,17 @@ export function runTicksForCast(args: {
 
       try {
         integrateAgentState({ agent, atomsAfterAffect: snap.atoms, tuning: baseInput?.integratorTuning });
+      } catch {}
+
+      // CLOSE THE LOOP: decision -> scheduled world event (next tick)
+      try {
+        applyChosenActionToWorld({
+          world,
+          selfId,
+          decision: (snap as any)?.decision,
+          tickNow,
+          dt,
+        });
       } catch {}
 
       if (withDiffs && arr.length >= 2) {

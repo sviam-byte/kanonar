@@ -1179,7 +1179,7 @@ export function buildGoalLabContext(
   (snapshot as any).scene = sceneInst;
   (snapshot as any).epistemic = { provenance: [...Array.from((result as any).provenance.entries())] };
   (snapshot as any).epistemicGenerated = {
-    rumorBeliefs: (result as any).rumorBeliefs.map((a: any) => ({
+    rumorBeliefs: arr((result as any).rumorBeliefs).map((a: any) => ({
       id: a.id,
       magnitude: a.magnitude,
       confidence: a.confidence,

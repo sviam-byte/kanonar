@@ -29,7 +29,9 @@ function actionDomainHint(actionId: string): string | null {
   if (id.includes('talk') || id.includes('help') || id.includes('assist') || id.includes('comfort')) return 'affiliation';
   if (id.includes('report') || id.includes('comply') || id.includes('challenge') || id.includes('present')) return 'status';
   if (id.includes('investigate') || id.includes('search') || id.includes('explore')) return 'exploration';
-  if (id.includes('organize') || id.includes('plan') || id.includes('protocol')) return 'order';
+  if (id.includes('organize') || id.includes('plan') || id.includes('protocol') || id.includes('monologue') || id.includes('reflect')) {
+    return 'order';
+  }
   if (id.includes('rest') || id.includes('sleep') || id.includes('pause')) return 'rest';
   if (id.includes('trade') || id.includes('buy') || id.includes('sell')) return 'wealth';
   return null;
@@ -53,7 +55,10 @@ export function scorePossibility(args: {
   p: Possibility;
 }): ScoredAction {
   const { selfId, atoms, p } = args;
-  const goalWeightAlpha = 0.15; // small, safe influence; keeps legacy behavior dominant if goals are imperfect.
+  // Dynamic goal influence: ramp up when context is demanding.
+  const uncertaintyCtx = getCtx(atoms, selfId, 'uncertainty', 0);
+  const timePressureCtx = getCtx(atoms, selfId, 'timePressure', 0);
+  const normPressureCtx = getCtx(atoms, selfId, 'normPressure', 0);
 
   const gate = gatePossibility({ atoms, p });
   const { cost, parts, usedAtomIds: costUsedAtomIds } = computeActionCost({ selfId, atoms, p });
@@ -89,25 +94,40 @@ export function scorePossibility(args: {
     prefParts.allyHazardBetween = -0.35 * allyHazardBetween;
     prefParts.hazardBetween = (prefParts.hazardBetween ?? 0) + -0.15 * hazardBetween;
   }
+  if (p.id.startsWith('cog:monologue')) {
+    const unc = clamp01(get(atoms, `ctx:uncertainty:${selfId}`, 0));
+    pref += 0.15 * unc + 0.05 * shame - 0.10 * threatFinal;
+    prefParts.uncertainty = 0.15 * unc;
+  }
 
   // Protocol: if strict, prefer talk over attack
   const protocol = get(atoms, `ctx:proceduralStrict:${selfId}`, get(atoms, `norm:proceduralStrict:${selfId}`, 0));
   if (p.id.startsWith('aff:talk')) pref += 0.15 * protocol;
   if (p.id.startsWith('aff:attack')) pref += -0.40 * protocol;
 
+  // Goal weight grows with contextual intensity: danger/uncertainty/protocol/time pressure.
+  const ctxIntensity = Math.max(
+    clamp01(protocol),
+    clamp01(dangerCtx.magnitude),
+    clamp01(uncertaintyCtx.magnitude),
+    clamp01(timePressureCtx.magnitude),
+    clamp01(normPressureCtx.magnitude)
+  );
+  const goalAlpha = clamp01(0.10 + 0.60 * ctxIntensity); // 0.10..0.70
+
   const availability = clamp01(p.magnitude);
   const raw = clamp01(availability * (1 - cost) + pref);
   const dom = actionDomainHint(p.id);
   const g = dom ? getGoalDomain(atoms, selfId, dom, NaN) : NaN;
-  const goalBoost = Number.isFinite(g) ? goalWeightAlpha * clamp01(g) : 0;
-  const withGoal = clamp01(raw + goalBoost);
+  const goalUtility = Number.isFinite(g) ? clamp01(g) : null;
+  const withGoal = goalUtility == null ? raw : clamp01(raw * (1 - goalAlpha) + goalUtility * goalAlpha);
   
   const allowedScore = gate.allowed ? withGoal : 0;
 
   const usedAtomIds = [
     ...(p.trace?.usedAtomIds || []),
     ...costUsedAtomIds,
-    ...(goalBoost > 0 && dom ? [`goal:domain:${dom}:${selfId}`] : []),
+    ...(goalUtility != null && dom ? [`goal:domain:${dom}:${selfId}`] : []),
     ...(dangerCtx.id ? [dangerCtx.id] : pickCtxId('danger', selfId)),
     ...(targetId ? [
       `world:map:hazardBetween:${selfId}:${targetId}`,
@@ -135,9 +155,10 @@ export function scorePossibility(args: {
           pref,
           prefParts,
           costParts: parts,
-          goalBoost,
+          raw,
+          goalUtility,
           goalDomain: dom ?? null,
-          goalAlpha: goalWeightAlpha,
+          goalAlpha,
           danger: dangerCtx.magnitude,
           dangerLayer: dangerCtx.layer,
           allowed: gate.allowed,
@@ -159,9 +180,10 @@ export function scorePossibility(args: {
         pref,
         prefParts,
         costParts: parts,
-        goalBoost,
+        raw,
+        goalUtility,
         goalDomain: dom ?? null,
-        goalAlpha: goalWeightAlpha
+        goalAlpha
       },
       blockedBy: gate.blockedBy
     },
