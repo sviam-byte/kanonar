@@ -23,29 +23,18 @@ function getName(r?: CastRow | null) {
 }
 
 export function CastComparePanel({ rows, focusId }: { rows: CastRow[]; focusId?: string | null }) {
-  const usable = useMemo(
-    () => rows.filter(r => {
+  // --- ВСЕ хуки СРАЗУ ---
+  const usable = useMemo(() => {
+    return rows.filter(r => {
       const snap: any = r?.snapshot;
       if (!snap) return false;
       const canon = getCanonicalAtomsFromSnapshot(snap);
       return Array.isArray(canon.atoms);
-    }),
-    [rows]
-  );
+    });
+  }, [rows]);
 
-  if (!usable.length) {
-    return (
-      <div className="rounded-xl border border-canon-border bg-canon-bg-light/30 p-3">
-        <div className="text-xs font-semibold opacity-80 mb-2">Compare (agent ↔ agent)</div>
-        <div className="text-[12px] opacity-70">
-          Нет пригодных снапшотов для сравнения (нужны pipelineV1.stages[*].atoms как массив).
-        </div>
-      </div>
-    );
-  }
-
-  const [aId, setAId] = useState<string>(() => usable[0]?.id || '');
-  const [bId, setBId] = useState<string>(() => usable[1]?.id || usable[0]?.id || '');
+  const [aIdx, setAIdx] = useState<number>(0);
+  const [bIdx, setBIdx] = useState<number>(1);
 
   const usableIdsKey = useMemo(() => usable.map(u => u.id).join('|'), [usable]);
 
@@ -55,16 +44,21 @@ export function CastComparePanel({ rows, focusId }: { rows: CastRow[]; focusId?:
 
     // Prefer focusing A on the currently selected actor if possible
     const focus = focusId && ids.includes(focusId) ? focusId : null;
-    const nextA = focus || (ids.includes(aId) ? aId : ids[0]);
-    if (nextA !== aId) setAId(nextA);
+    const focusIdx = focus ? ids.indexOf(focus) : -1;
+    const nextA = focusIdx >= 0 ? focusIdx : Math.min(aIdx, ids.length - 1);
+    if (nextA !== aIdx) setAIdx(nextA);
 
     // Ensure B exists and is different from A when possible
-    const nextB = ids.includes(bId) && bId !== nextA ? bId : (ids.find(id => id !== nextA) || nextA);
-    if (nextB !== bId) setBId(nextB);
-  }, [focusId, usableIdsKey]);
+    let nextB = Math.min(bIdx, ids.length - 1);
+    if (nextB === nextA) {
+      nextB = ids.findIndex((_, idx) => idx !== nextA);
+      if (nextB < 0) nextB = nextA;
+    }
+    if (nextB !== bIdx) setBIdx(nextB);
+  }, [focusId, usableIdsKey, aIdx, bIdx]);
 
-  const a = usable.find(r => r.id === aId) || usable[0];
-  const b = usable.find(r => r.id === bId) || usable[1] || usable[0];
+  const a = usable[aIdx];
+  const b = usable[bIdx];
   const hasTwo = usable.length >= 2 && (a?.id || '') !== (b?.id || '');
 
   const summaryRows = useMemo(() => {
@@ -143,6 +137,20 @@ export function CastComparePanel({ rows, focusId }: { rows: CastRow[]; focusId?:
     return (pri.length ? pri : scored).slice(0, 24);
   }, [a, b]);
 
+  // --- ТОЛЬКО ТЕПЕРЬ можно ранний return ---
+  if (usable.length < 2) {
+    return (
+      <div className="rounded-xl border border-canon-border bg-canon-bg-light/30 p-3">
+        <div className="text-xs font-semibold opacity-80 mb-2">
+          Compare (agent ↔ agent)
+        </div>
+        <div className="text-[12px] opacity-70">
+          Нужно минимум два снапшота с каноническими атомами
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="rounded-xl border border-canon-border bg-canon-bg-light/30 p-3">
       <div className="flex items-center justify-between gap-3 mb-2">
@@ -153,8 +161,8 @@ export function CastComparePanel({ rows, focusId }: { rows: CastRow[]; focusId?:
         <div className="flex items-center gap-2">
           <select
             className="text-[12px] bg-black/20 border border-white/10 rounded px-2 py-1"
-            value={aId}
-            onChange={e => setAId(e.target.value)}
+            value={a?.id || ''}
+            onChange={e => setAIdx(Math.max(0, usable.findIndex(r => r.id === e.target.value)))}
           >
             {usable.map(r => (
               <option key={r.id} value={r.id}>
@@ -165,8 +173,8 @@ export function CastComparePanel({ rows, focusId }: { rows: CastRow[]; focusId?:
           <div className="text-[12px] opacity-60">vs</div>
           <select
             className="text-[12px] bg-black/20 border border-white/10 rounded px-2 py-1"
-            value={bId}
-            onChange={e => setBId(e.target.value)}
+            value={b?.id || ''}
+            onChange={e => setBIdx(Math.max(0, usable.findIndex(r => r.id === e.target.value)))}
           >
             {usable.map(r => (
               <option key={r.id} value={r.id}>
