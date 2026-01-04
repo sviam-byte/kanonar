@@ -17,8 +17,8 @@ export function applyAcquaintanceFromEvents(world: WorldState, events: DomainEve
     if (!actorId || !targetId || actorId === targetId) continue;
 
     const meta = (ev as { meta?: Record<string, unknown> })?.meta ?? {};
-    const seenAsFromEvent = s(meta.seenAsLabel ?? meta.seenAs ?? '');
-    const recognizedAsFromEvent = s(meta.recognizedAsLabel ?? meta.recognizedAs ?? '');
+    const seenAsFromEvent = s((meta as any).seenAsLabel ?? (meta as any).seenAs ?? '');
+    const recognizedAsFromEvent = s((meta as any).recognizedAsLabel ?? (meta as any).recognizedAs ?? '');
 
     const actor = world.agents.find(a => a.entityId === actorId);
     const target = world.agents.find(a => a.entityId === targetId);
@@ -35,10 +35,11 @@ export function applyAcquaintanceFromEvents(world: WorldState, events: DomainEve
 
       const e2 = ensureAcquaintance(target, actorId);
       // For reverse direction: allow meta.seenAsLabelReverse / meta.recognizedAsLabelReverse.
-      const seenAsRev = s(meta.seenAsLabelReverse ?? meta.seenAsReverse ?? '');
-      const recAsRev = s(meta.recognizedAsLabelReverse ?? meta.recognizedAsReverse ?? '');
+      const seenAsRev = s((meta as any).seenAsLabelReverse ?? (meta as any).seenAsReverse ?? '');
+      const recAsRev = s((meta as any).recognizedAsLabelReverse ?? (meta as any).recognizedAsReverse ?? '');
       if (seenAsRev) (e2 as any).seenAsLabel = seenAsRev;
       if (recAsRev) (e2 as any).recognizedAsLabel = recAsRev;
+
       touchSeen(world, e2, { idBoost: 0.75, famBoost: 0.45 });
       continue;
     }
@@ -53,20 +54,20 @@ export function applyAcquaintanceFromEvents(world: WorldState, events: DomainEve
     // Keep perceptual/identity labels if the event carries them.
     if (seenAsFromEvent) (e1 as any).seenAsLabel = seenAsFromEvent;
     if (recognizedAsFromEvent) (e1 as any).recognizedAsLabel = recognizedAsFromEvent;
-    const e2 = ensureAcquaintance(target, actorId);
 
-    const recent1 = typeof e1.lastSeenAt === 'number' ? nowTick - (e1.lastSeenAt as number) : 9999;
-    const recent2 = typeof e2.lastSeenAt === 'number' ? nowTick - (e2.lastSeenAt as number) : 9999;
+    const e2 = ensureAcquaintance(target, actorId);
+    const seenAsRev = s((meta as any).seenAsLabelReverse ?? (meta as any).seenAsReverse ?? '');
+    const recAsRev = s((meta as any).recognizedAsLabelReverse ?? (meta as any).recognizedAsReverse ?? '');
+    if (seenAsRev) (e2 as any).seenAsLabel = seenAsRev;
+    if (recAsRev) (e2 as any).recognizedAsLabel = recAsRev;
+
+    const recent1 = typeof (e1 as any).lastSeenAt === 'number' ? nowTick - ((e1 as any).lastSeenAt as number) : 9999;
+    const recent2 = typeof (e2 as any).lastSeenAt === 'number' ? nowTick - ((e2 as any).lastSeenAt as number) : 9999;
 
     const rep1 = recent1 <= 3 ? 1.6 : recent1 <= 10 ? 1.2 : 1.0;
     const rep2 = recent2 <= 3 ? 1.6 : recent2 <= 10 ? 1.2 : 1.0;
 
     touchSeen(world, e1, { idBoost: baseId * rep1, famBoost: baseFam * rep1 });
-
-    const seenAsRev = s(meta.seenAsLabelReverse ?? meta.seenAsReverse ?? '');
-    const recAsRev = s(meta.recognizedAsLabelReverse ?? meta.recognizedAsReverse ?? '');
-    if (seenAsRev) (e2 as any).seenAsLabel = seenAsRev;
-    if (recAsRev) (e2 as any).recognizedAsLabel = recAsRev;
     touchSeen(world, e2, { idBoost: baseId * rep2, famBoost: baseFam * rep2 });
   }
 }

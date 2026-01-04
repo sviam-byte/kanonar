@@ -28,6 +28,8 @@ export const AcquaintancePanel: React.FC<{
     for (const atom of arr(atoms)) {
       if ((atom as { ns?: string })?.ns !== 'soc') continue;
       const kind = String((atom as { kind?: string })?.kind ?? '');
+
+      // support both recognition atoms and explicit identification statement
       if (!kind.startsWith('soc_acq_') && kind !== 'soc_identify_as') continue;
 
       const targetId = String(
@@ -104,7 +106,7 @@ export const AcquaintancePanel: React.FC<{
       .filter(row =>
         !search
           ? true
-          : `${row.targetId} ${row.tier ?? ''} ${row.kind ?? ''}`
+          : `${row.targetId} ${row.tier ?? ''} ${row.kind ?? ''} ${row.identifyText ?? ''}`
               .toLowerCase()
               .includes(search),
       )
@@ -169,9 +171,10 @@ export const AcquaintancePanel: React.FC<{
             )}
           </div>
         ))}
+
         {rows.length === 0 && (
           <div className="p-4 text-xs text-canon-text-light italic text-center">
-            No acquaintance atoms (soc_acq_*) found.
+            No acquaintance atoms (soc_acq_* / soc_identify_as) found.
           </div>
         )}
       </div>
