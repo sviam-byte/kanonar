@@ -15,8 +15,10 @@ function fmt(n: any) {
   return x.toFixed(2);
 }
 
-function getName(r: CastRow) {
-  return (r.displayName || r.label || r.id).trim();
+function getName(r?: CastRow | null) {
+  if (!r) return '—';
+  const s = String((r as any).displayName || r.label || r.id || '').trim();
+  return s || '—';
 }
 
 export function CastComparePanel({ rows, focusId }: { rows: CastRow[]; focusId?: string | null }) {
@@ -24,6 +26,17 @@ export function CastComparePanel({ rows, focusId }: { rows: CastRow[]; focusId?:
     () => rows.filter(r => r.snapshot && Array.isArray((r.snapshot as any).atoms)),
     [rows]
   );
+
+  if (!usable.length) {
+    return (
+      <div className="rounded-xl border border-canon-border bg-canon-bg-light/30 p-3">
+        <div className="text-xs font-semibold opacity-80 mb-2">Compare (agent ↔ agent)</div>
+        <div className="text-[12px] opacity-70">
+          Нет пригодных снапшотов для сравнения (нужны rows[i].snapshot.atoms как массив).
+        </div>
+      </div>
+    );
+  }
 
   const [aId, setAId] = useState<string>(() => usable[0]?.id || '');
   const [bId, setBId] = useState<string>(() => usable[1]?.id || usable[0]?.id || '');
@@ -49,8 +62,8 @@ export function CastComparePanel({ rows, focusId }: { rows: CastRow[]; focusId?:
   const hasTwo = usable.length >= 2 && (a?.id || '') !== (b?.id || '');
 
   const summaryRows = useMemo(() => {
-    const atomsA: any[] = (a?.snapshot as any)?.atoms || [];
-    const atomsB: any[] = (b?.snapshot as any)?.atoms || [];
+    const atomsA: any[] = Array.isArray((a?.snapshot as any)?.atoms) ? (a?.snapshot as any).atoms : [];
+    const atomsB: any[] = Array.isArray((b?.snapshot as any)?.atoms) ? (b?.snapshot as any).atoms : [];
     const aId = a?.id || '';
     const bId = b?.id || '';
 
@@ -87,8 +100,8 @@ export function CastComparePanel({ rows, focusId }: { rows: CastRow[]; focusId?:
   }, [a, b]);
 
   const topDiff = useMemo(() => {
-    const atomsA = (a?.snapshot as any)?.atoms || [];
-    const atomsB = (b?.snapshot as any)?.atoms || [];
+    const atomsA = Array.isArray((a?.snapshot as any)?.atoms) ? (a?.snapshot as any).atoms : [];
+    const atomsB = Array.isArray((b?.snapshot as any)?.atoms) ? (b?.snapshot as any).atoms : [];
 
     const diffs = diffAtoms(atomsA, atomsB);
 
@@ -163,8 +176,8 @@ export function CastComparePanel({ rows, focusId }: { rows: CastRow[]; focusId?:
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <div className="rounded-lg border border-white/10 bg-black/10 p-2">
           <div className="text-[11px] font-semibold opacity-80 mb-2">
-            Summary deltas (B − A) • A: <span className="font-mono">{getName(a as any)}</span> • B:{' '}
-            <span className="font-mono">{getName(b as any)}</span>
+            Summary deltas (B − A) • A: <span className="font-mono">{getName(a)}</span> • B:{' '}
+            <span className="font-mono">{getName(b)}</span>
           </div>
           <div className="space-y-1">
             {summaryRows.map(r => (

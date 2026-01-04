@@ -8,7 +8,7 @@ function arr<T>(x: any): T[] {
 
 export function derivePossibilitiesRegistry(args: {
   selfId: string;
-  atoms: ContextAtom[];
+  atoms: any;
   defs?: PossibilityDef[];
 }): Possibility[] {
   const defs = args.defs || DEFAULT_POSSIBILITY_DEFS;
