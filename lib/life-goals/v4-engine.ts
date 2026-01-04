@@ -11,6 +11,7 @@ import { AgentContextFrame } from '../context/frame/types';
 import { ContextAtom } from '../context/v2/types';
 import { extractTargetCandidates } from '../goals/targeting';
 import { getRelationshipFromTom } from '../tom/rel';
+import { ensureAcquaintance, gateMetricsByAcquaintance } from '../social/acquaintance';
 import { getDyadMag } from '../tom/layers';
 
 // Type for standardized metrics input including flattened psych/latent/field states
@@ -351,18 +352,37 @@ export function computeConcreteGoals(
         const intimacy = dyad('intimacy', rel?.bond ?? 0.1);
         const alignment = dyad('alignment', rel?.align ?? 0.5);
         const respect = dyad('respect', rel?.respect ?? 0.5);
+
+        // Acquaintance gate: if the agent doesn't recognize the target,
+        // damp dyad-derived social metrics (trust/bond/etc.).
+        const acqEdge = ensureAcquaintance(agent, targetId);
+        const gated = gateMetricsByAcquaintance(acqEdge, {
+            trust,
+            threat,
+            bond: dyad('bond', rel?.bond ?? 0.1),
+            respect,
+            align: dyad('align', rel?.align ?? 0.5),
+            conflict: dyad('conflict', rel?.conflict ?? 0.1),
+        });
+
+        const trustEff = gated.trust;
+        const threatEff = gated.threat;
+        const intimacyEff = gated.bond;
+        const alignmentEff = gated.align;
+        const respectEff = gated.respect;
+        const conflictEff = gated.conflict;
         const dominance = dyad('dominance', rel?.dominance ?? (role === 'leader' ? 0.8 : 0.5));
 
         const relMetrics: Record<string, number> = {
-            Trust: trust,
-            Bond: intimacy,
-            Fear: threat,
-            Respect: respect,
-            Conflict: Math.max(threat, dyad('uncertainty', rel?.conflict ?? 0.1)),
-            Align: alignment,
-            Significance: clamp01(intimacy * 0.7 + alignment * 0.3),
+            Trust: trustEff,
+            Bond: intimacyEff,
+            Fear: threatEff,
+            Respect: respectEff,
+            Conflict: Math.max(threatEff, dyad('uncertainty', rel?.conflict ?? 0.1)),
+            Align: alignmentEff,
+            Significance: clamp01(intimacyEff * 0.7 + alignmentEff * 0.3),
             Dominance: dominance,
-            Legitimacy: dyad('support', rel?.legitimacy ?? (role === 'leader' ? 0.9 : respect)),
+            Legitimacy: dyad('support', rel?.legitimacy ?? (role === 'leader' ? 0.9 : respectEff)),
         };
 
          for (const def of V4_TARGETED_GOAL_DEFINITIONS) {

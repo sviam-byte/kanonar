@@ -8,6 +8,7 @@ import { normalizeAtom } from '../v2/infer';
 import { computeRelationshipLabels } from '../../relations/relationshipLabels';
 import { deriveRelationshipLabel } from '../../social/relationshipLabels';
 import { extractLocationAtoms } from '../sources/locationAtoms';
+import { safeNum } from '../../util/safe';
 
 function clamp01(x: number): number {
   if (Number.isNaN(x)) return 0;
@@ -470,11 +471,64 @@ export function atomizeFrame(frame: AgentContextFrame, t: number, world?: WorldS
         }).slice(0, 3);
 
         const selfChar = getCharacterById(world, selfId);
+        const selfAgent: any =
+          (world as any)?.agents?.find((a: any) => a?.entityId === selfId) ?? null;
+        const acqMap: Record<string, any> | null = selfAgent?.acquaintances ?? null;
+        const acqTierToMag = (tier: any) => {
+          switch (tier) {
+            case 'intimate':
+              return 1;
+            case 'known':
+              return 0.75;
+            case 'acquaintance':
+              return 0.5;
+            case 'seen':
+              return 0.25;
+            default:
+              return 0;
+          }
+        };
 
         for (const r of relSorted as any[]) {
             const otherId = r.targetId;
             const label = r.label || r.name || otherId;
             const suf = mkId([otherId]);
+
+            // --- ACQUAINTANCE / RECOGNITION ATOMS ---
+            const e: any = acqMap?.[otherId];
+            if (e) {
+              const tierMag = clamp01(acqTierToMag(e.tier));
+              add('soc_acq_tier', tierMag, `Acq tier: ${e.tier} (${label})`, 'social', `acq_tier_${suf}`, {
+                ns: 'soc',
+                targetId: otherId,
+                tags: ['acq', String(e.tier || 'unknown'), String(e.kind || 'stranger')],
+                meta: { tier: e.tier, kind: e.kind, idConfidence: e.idConfidence, familiarity: e.familiarity },
+              });
+              add('soc_acq_idconf', clamp01(safeNum(e.idConfidence, 0)), `Acq idConf: ${label}`, 'social', `acq_id_${suf}`, {
+                ns: 'soc',
+                targetId: otherId,
+                tags: ['acq', 'idConfidence'],
+              });
+              add(
+                'soc_acq_familiarity',
+                clamp01(safeNum(e.familiarity, 0)),
+                `Acq familiarity: ${label}`,
+                'social',
+                `acq_fam_${suf}`,
+                {
+                  ns: 'soc',
+                  targetId: otherId,
+                  tags: ['acq', 'familiarity'],
+                }
+              );
+              if (e.kind && e.kind !== 'stranger' && e.kind !== 'none') {
+                add('soc_acq_kind', 1, `Acq kind: ${e.kind} (${label})`, 'social', `acq_kind_${String(e.kind)}_${suf}`, {
+                  ns: 'soc',
+                  targetId: otherId,
+                  tags: ['acq', 'kind', String(e.kind)],
+                });
+              }
+            }
             
             // Generate atom set for meaningful relations
             if (r.trust > 0.1) add('tom_trust', clamp01(r.trust ?? 0), `ToM trust: ${label}`, 'tom', `trust_${suf}`);
@@ -578,6 +632,76 @@ export function atomizeFrame(frame: AgentContextFrame, t: number, world?: WorldS
                     } as any));
                 }
             }
+        }
+
+        // Also emit acquaintance atoms for top nearby agents even if ToM.relations is sparse.
+        if (acqMap && Array.isArray(nearby)) {
+          const nearSorted = [...nearby]
+            .sort((a: any, b: any) => safeNum(a?.distanceNorm, 1) - safeNum(b?.distanceNorm, 1))
+            .slice(0, 5);
+
+          for (const n of nearSorted as any[]) {
+            const otherId = n?.id;
+            if (!otherId || otherId === selfId) continue;
+            if (!acqMap[otherId]) continue;
+
+            const label = n?.name || otherId;
+            const suf = mkId([otherId]);
+            const e: any = acqMap[otherId];
+            const tierMag = clamp01(acqTierToMag(e.tier));
+
+            add(
+              'soc_acq_tier',
+              tierMag,
+              `Acq tier: ${e.tier} (nearby ${label})`,
+              'social',
+              `acq_tier_near_${suf}`,
+              {
+                ns: 'soc',
+                targetId: otherId,
+                tags: ['acq', String(e.tier || 'unknown'), String(e.kind || 'stranger')],
+                meta: { tier: e.tier, kind: e.kind, idConfidence: e.idConfidence, familiarity: e.familiarity },
+              }
+            );
+            add(
+              'soc_acq_idconf',
+              clamp01(safeNum(e.idConfidence, 0)),
+              `Acq idConf: nearby ${label}`,
+              'social',
+              `acq_id_near_${suf}`,
+              {
+                ns: 'soc',
+                targetId: otherId,
+                tags: ['acq', 'idConfidence'],
+              }
+            );
+            add(
+              'soc_acq_familiarity',
+              clamp01(safeNum(e.familiarity, 0)),
+              `Acq familiarity: nearby ${label}`,
+              'social',
+              `acq_fam_near_${suf}`,
+              {
+                ns: 'soc',
+                targetId: otherId,
+                tags: ['acq', 'familiarity'],
+              }
+            );
+            if (e.kind && e.kind !== 'stranger' && e.kind !== 'none') {
+              add(
+                'soc_acq_kind',
+                1,
+                `Acq kind: ${e.kind} (nearby ${label})`,
+                'social',
+                `acq_kind_near_${String(e.kind)}_${suf}`,
+                {
+                  ns: 'soc',
+                  targetId: otherId,
+                  tags: ['acq', 'kind', String(e.kind)],
+                }
+              );
+            }
+          }
         }
       }
   }

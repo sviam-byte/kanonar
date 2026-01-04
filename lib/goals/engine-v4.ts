@@ -29,6 +29,7 @@ import { hasLocalWounded } from '../context/v2/nearbyWounded';
 import { buildAtomsFromFrame } from '../context/v4/atoms';
 import { extractTargetCandidates } from './targeting';
 import { getRelationshipFromTom } from '../tom/rel';
+import { ensureAcquaintance, gateRelationshipByAcquaintance } from '../social/acquaintance';
 
 export interface EvaluateGoalsRequestV4 {
   world: WorldState;
@@ -256,12 +257,17 @@ export function computeConcreteGoals(
 
         // If relationships are missing/uninitialized, fall back to dyadic ToM.
         // This prevents "romance/close bond" pairs from behaving like strangers.
-        if (!rel && world) {
-          rel = getRelationshipFromTom({ world, agent, selfId: agent.entityId, otherId: targetId }) || rel;
-        }
+         if (!rel && world) {
+             rel = getRelationshipFromTom({ world, agent, selfId: agent.entityId, otherId: targetId }) || rel;
+         }
 
-        // Mock relation if missing based on sandbox role
-        if (!rel && nearby) {
+         // Acquaintance gate: if the agent doesn't recognize the target,
+         // damp relationship-driven effects to prevent "everyone feels the same."
+         const acqEdge = ensureAcquaintance(agent, targetId);
+         rel = gateRelationshipByAcquaintance(acqEdge, rel);
+
+         // Mock relation if missing based on sandbox role
+         if (!rel && nearby) {
              rel = {
                  trust: nearby.kind === 'ally' ? 0.8 : 0.1,
                  conflict: nearby.kind === 'enemy' ? 0.9 : 0.1,

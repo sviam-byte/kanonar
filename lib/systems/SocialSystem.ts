@@ -6,6 +6,7 @@ import { estimateInfluenceState } from '../tom/update';
 import { safe01, safeNum, clamp } from "../util/safe";
 import { updateTomPolicyPriorForTarget } from '../tom/policy';
 import { getRelationshipFromTom } from '../tom/rel';
+import { seedAcquaintanceFromSignals, touchSeen } from '../social/acquaintance';
 
 const sigmoid = (x: number): number => 1 / (1 + Math.exp(-x));
 
@@ -164,6 +165,20 @@ export const SocialSystem = {
 
                 // Seed (or refresh defaults) from ToM dyad traits when available.
                 agent.relationships[other.entityId] = seedRelFromTom(other.entityId, agent.relationships[other.entityId]);
+
+                // Seed acquaintance graph from relationship/ToM signals for recognition gating.
+                const acq = seedAcquaintanceFromSignals({
+                    world,
+                    agent,
+                    otherId: other.entityId,
+                });
+
+                // If co-located, increase recognition/familiarity.
+                const sameLoc =
+                    (agent as any)?.locationId &&
+                    (other as any)?.locationId &&
+                    (agent as any).locationId === (other as any).locationId;
+                if (sameLoc) touchSeen(world, acq, { idBoost: 0.12, famBoost: 0.08 });
                 
                 // Update Policy Prior (Expectations)
                 if (world.tom) {
