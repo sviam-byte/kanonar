@@ -167,7 +167,9 @@ export function AgentPassportPanel({
   selfId: string;
   title?: string;
 }) {
-  const idx = useMemo(() => byId(atoms), [atoms]);
+  // Guard against non-array inputs to keep the passport UI stable.
+  const safeAtoms = Array.isArray(atoms) ? atoms : [];
+  const idx = useMemo(() => byId(safeAtoms), [safeAtoms]);
   const [inspectAtom, setInspectAtom] = useState<AnyAtom | null>(null);
 
   const axes = useMemo(() => {
@@ -236,7 +238,7 @@ export function AgentPassportPanel({
   const dyads = useMemo<DyadGroup[]>(() => {
     const prefix = `tom:dyad:final:${selfId}:`;
     const groups = new Map<string, DyadGroup>();
-    for (const a of Array.isArray(atoms) ? atoms : []) {
+    for (const a of safeAtoms) {
       const id = String(a?.id || '');
       if (!id.startsWith(prefix)) continue;
       // tom:dyad:final:self:target:metric
@@ -255,7 +257,7 @@ export function AgentPassportPanel({
         return xt - yt;
       })
       .slice(0, 40);
-  }, [atoms, selfId]);
+  }, [safeAtoms, selfId]);
 
   return (
     <div className="rounded-xl border border-canon-border bg-canon-bg-light/30 p-3">
