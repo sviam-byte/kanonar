@@ -165,18 +165,46 @@ export const GoalLabControls: React.FC<Props> = ({
   const getManualValue = (kind: ContextAtomKind) => {
       return manual.find(a => a.kind === kind && a.source === 'manual')?.magnitude ?? 0;
   };
-  
+
+  /**
+   * Stable 32-bit FNV-1a hash to keep manual atom ids deterministic.
+   * NOTE: We avoid Date.now so exports/diffs remain repeatable.
+   */
+  function stableHash32(s: string): number {
+    let h = 2166136261;
+    for (let i = 0; i < s.length; i++) {
+      h ^= s.charCodeAt(i);
+      h = Math.imul(h, 16777619);
+    }
+    return (h >>> 0) || 1;
+  }
+
+  /**
+   * Generate a deterministic manual atom id, with a stable suffix if needed.
+   */
+  function makeStableManualId(kind: string, label: string, existingIds: string[]): string {
+    const base = `manual:${kind}:${stableHash32(`${kind}::${label || ''}`)}`;
+    if (!existingIds.includes(base)) return base;
+
+    // If already present, add a stable suffix based on the current set.
+    let k = 2;
+    while (existingIds.includes(`${base}:${k}`)) k++;
+    return `${base}:${k}`;
+  }
+
   const handleAddCustomAtom = () => {
-      const id = `manual:${customAtomKind}:${Date.now()}`;
-      const atom: ContextAtom = {
-          id,
-          kind: customAtomKind,
-          source: 'manual',
-          magnitude: 0.5,
-          label: customAtomLabel || customAtomKind
-      };
-      onChangeManualAtoms([...manual, atom]);
-      setCustomAtomLabel('');
+    const existingIds = manual.map(a => String((a as any)?.id || '')).filter(Boolean);
+    const id = makeStableManualId(customAtomKind, customAtomLabel || customAtomKind, existingIds);
+
+    const atom: ContextAtom = {
+      id,
+      kind: customAtomKind,
+      source: 'manual',
+      magnitude: 0.5,
+      label: customAtomLabel || customAtomKind
+    };
+    onChangeManualAtoms([...manual, atom]);
+    setCustomAtomLabel('');
   };
 
   const handleAddCharacter = () => {

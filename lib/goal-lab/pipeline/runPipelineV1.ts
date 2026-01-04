@@ -9,6 +9,7 @@ import { deriveAxes } from '../../context/axes/deriveAxes';
 import { applyCharacterLens } from '../../context/lens/characterLens';
 
 import { applyRelationPriorsToDyads } from '../../tom/base/applyRelationPriors';
+import { deriveNonContextDyadAtoms } from '../../tom/base/deriveNonContextDyads';
 import { buildBeliefToMBias } from '../../tom/ctx/beliefBias';
 import { buildTomPolicyLayer } from '../../tom/policy/tomPolicy';
 
@@ -21,6 +22,8 @@ import { computeContextMindScoreboard } from '../../contextMind/scoreboard';
 
 import { deriveDriversAtoms } from '../../drivers/deriveDrivers';
 import { deriveGoalAtoms } from '../../goals/goalAtoms';
+import { derivePlanningGoalAtoms } from '../../goals/planningGoalAtoms';
+import { deriveGoalActionLinkAtoms } from '../../goals/goalActionLinksAtoms';
 
 import { derivePossibilitiesRegistry } from '../../possibilities/derive';
 import { atomizePossibilities } from '../../possibilities/atomize';
@@ -342,17 +345,22 @@ export function runGoalLabPipelineV1(input: {
   const relAtoms = arr((relPriors as any)?.atoms).map(normalizeAtom);
   const mS5a = mergeAtomsPreferNewer(atoms, relAtoms);
 
-  const beliefBias = buildBeliefToMBias({ selfId, atoms: mS5a.atoms });
+  const othersForTom = participantIds.filter(id => id && id !== selfId);
+  const nonCtx = deriveNonContextDyadAtoms({ selfId, otherIds: othersForTom, atoms: mS5a.atoms });
+  const nonCtxAtoms = arr((nonCtx as any)?.atoms).map(normalizeAtom);
+  const mS5x = mergeAtomsPreferNewer(mS5a.atoms, nonCtxAtoms);
+
+  const beliefBias = buildBeliefToMBias({ selfId, atoms: mS5x.atoms });
   const beliefAtoms = arr((beliefBias as any)?.atoms).map(normalizeAtom);
-  const mS5b = mergeAtomsPreferNewer(mS5a.atoms, beliefAtoms);
+  const mS5b = mergeAtomsPreferNewer(mS5x.atoms, beliefAtoms);
 
   const policy = buildTomPolicyLayer({ selfId, atoms: mS5b.atoms });
   const policyAtoms = arr((policy as any)?.atoms).map(normalizeAtom);
   const mS5c = mergeAtomsPreferNewer(mS5b.atoms, policyAtoms);
 
   const atomsS5 = mS5c.atoms;
-  const s5Added = uniqStrings([...mS5a.newIds, ...mS5b.newIds, ...mS5c.newIds]);
-  const s5Overridden = uniqStrings([...mS5a.overriddenIds, ...mS5b.overriddenIds, ...mS5c.overriddenIds]);
+  const s5Added = uniqStrings([...mS5a.newIds, ...mS5x.newIds, ...mS5b.newIds, ...mS5c.newIds]);
+  const s5Overridden = uniqStrings([...mS5a.overriddenIds, ...mS5x.overriddenIds, ...mS5b.overriddenIds, ...mS5c.overriddenIds]);
   atoms = atomsS5;
   stages.push({
     stage: 'S5',
@@ -363,6 +371,7 @@ export function runGoalLabPipelineV1(input: {
     stats: { atomCount: atoms.length, addedCount: s5Added.length, ...stageStats(atoms) },
     artifacts: {
       relPriorsCount: relAtoms.length,
+      nonContextDyadCount: nonCtxAtoms.length,
       beliefBiasCount: beliefAtoms.length,
       policyCount: policyAtoms.length,
       overriddenIds: s5Overridden,
@@ -392,23 +401,38 @@ export function runGoalLabPipelineV1(input: {
     artifacts: { contextMind: scoreboard, drvCount: drvAtoms.length, overriddenIds: s6Overridden }
   });
 
-  // S7: goals (ecology + active)
+  // S7: goals (ecology + active) + planning-goals
   // Safe: uses only existing atoms; if drv/life are missing it falls back to ctx.
   const goalRes = deriveGoalAtoms(selfId, atoms as any, { topN: 3 });
   const goalAtoms = arr((goalRes as any)?.atoms).map(normalizeAtom);
-  const mS7 = mergeAtomsPreferNewer(atoms, goalAtoms);
-  const atomsS7 = mS7.atoms;
-  const s7Added = mS7.newIds;
-  const s7Overridden = mS7.overriddenIds;
+
+  const planRes = derivePlanningGoalAtoms(selfId, mergeAtomsPreferNewer(atoms, goalAtoms).atoms as any, { topN: 5 });
+  const planAtoms = arr((planRes as any)?.atoms).map(normalizeAtom);
+
+  const linkRes = deriveGoalActionLinkAtoms(selfId);
+  const linkAtoms = arr((linkRes as any)?.atoms).map(normalizeAtom);
+
+  const mS7a = mergeAtomsPreferNewer(atoms, goalAtoms);
+  const mS7b = mergeAtomsPreferNewer(mS7a.atoms, planAtoms);
+  const mS7c = mergeAtomsPreferNewer(mS7b.atoms, linkAtoms);
+  const atomsS7 = mS7c.atoms;
+  const s7Added = uniqStrings([...mS7a.newIds, ...mS7b.newIds, ...mS7c.newIds]);
+  const s7Overridden = uniqStrings([...mS7a.overriddenIds, ...mS7b.overriddenIds, ...mS7c.overriddenIds]);
   atoms = atomsS7;
   stages.push({
     stage: 'S7',
-    title: 'S7 Goals',
+    title: 'S7 Goals (ecology + planning)',
     atoms,
     atomsAddedIds: s7Added,
     warnings: [],
     stats: { atomCount: atoms.length, addedCount: s7Added.length, ...stageStats(atoms) },
-    artifacts: { goalAtomsCount: goalAtoms.length, overriddenIds: s7Overridden }
+    artifacts: {
+      goalAtomsCount: goalAtoms.length,
+      planGoalAtomsCount: planAtoms.length,
+      goalActionLinksCount: linkAtoms.length,
+      topPlanGoals: (planRes as any)?.top || [],
+      overriddenIds: s7Overridden
+    }
   });
 
   // S8: actions

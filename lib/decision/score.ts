@@ -21,6 +21,41 @@ function getGoalDomain(atoms: ContextAtom[], selfId: string, domain: string, def
   return get(atoms, `goal:domain:${domain}:${selfId}`, def);
 }
 
+function getActionKeyFromPossibilityId(pid: string): string {
+  // ожидаем формат kind:key:selfId (например aff:attack:K)
+  const s = String(pid || '');
+  const parts = s.split(':');
+  return parts.length >= 2 ? parts[1] : s;
+}
+
+function getTopActivePlanGoals(atoms: ContextAtom[], selfId: string, topN = 5): { goalId: string; v: number; atomId: string }[] {
+  const pref = `goal:activeGoal:${selfId}:`;
+  const arr = atoms
+    .filter(a => typeof (a as any)?.id === 'string' && (a as any).id.startsWith(pref))
+    .map(a => {
+      const id = String((a as any).id);
+      const goalId = id.slice(pref.length);
+      const v = Number((a as any).magnitude ?? 0);
+      return { goalId, v: Number.isFinite(v) ? v : 0, atomId: id };
+    })
+    .sort((a, b) => b.v - a.v);
+
+  if (arr.length) return arr.slice(0, topN);
+
+  // fallback: если activeGoal нет — берём plan
+  const pref2 = `goal:plan:${selfId}:`;
+  return atoms
+    .filter(a => typeof (a as any)?.id === 'string' && (a as any).id.startsWith(pref2))
+    .map(a => {
+      const id = String((a as any).id);
+      const goalId = id.slice(pref2.length);
+      const v = Number((a as any).magnitude ?? 0);
+      return { goalId, v: Number.isFinite(v) ? v : 0, atomId: id };
+    })
+    .sort((a, b) => b.v - a.v)
+    .slice(0, topN);
+}
+
 function actionDomainHint(actionId: string): string | null {
   // Minimal, safe heuristic mapping; can be expanded later without breaking.
   const id = String(actionId || '');
@@ -118,16 +153,54 @@ export function scorePossibility(args: {
   const availability = clamp01(p.magnitude);
   const raw = clamp01(availability * (1 - cost) + pref);
   const dom = actionDomainHint(p.id);
-  const g = dom ? getGoalDomain(atoms, selfId, dom, NaN) : NaN;
-  const goalUtility = Number.isFinite(g) ? clamp01(g) : null;
-  const withGoal = goalUtility == null ? raw : clamp01(raw * (1 - goalAlpha) + goalUtility * goalAlpha);
+  const gDom = dom ? getGoalDomain(atoms, selfId, dom, NaN) : NaN;
+  const domUtility = Number.isFinite(gDom) ? clamp01(gDom) : null;
+
+  // --- plan-goals utility ---
+  const actionKey = getActionKeyFromPossibilityId(p.id);
+  const active = getTopActivePlanGoals(atoms, selfId, 5);
+
+  // минимальный безопасный режим: без ссылок план-цели не влияют
+  let planUtility: number | null = null;
+  let planUsed: string[] = [];
+  let planParts: any = { actionKey, mode: 'no_links' };
+
+  const linkPref = 'goal:hint:allow:'; // goal:hint:allow:<goalId>:<actionKey>
+  let best = 0;
+  let bestGoal: any = null;
+
+  for (const g of active) {
+    const linkId = `${linkPref}${g.goalId}:${actionKey}`;
+    const link = atoms.find(a => (a as any)?.id === linkId) as any;
+    const allow = link ? Number(link.magnitude ?? 0) : 0; // 0..1
+    if (allow <= 0) continue;
+    const u = clamp01(g.v) * clamp01(allow);
+    if (u > best) {
+      best = u;
+      bestGoal = { goalId: g.goalId, goalV: g.v, allow, linkId, goalAtomId: g.atomId };
+    }
+  }
+
+  if (bestGoal) {
+    planUtility = clamp01(best);
+    planUsed = [bestGoal.goalAtomId, bestGoal.linkId];
+    planParts = { actionKey, mode: 'links', bestGoal };
+  }
+
+  // --- mix utilities: prefer the stronger signal, then blend with goalAlpha
+  const bestUtility =
+    planUtility != null && domUtility != null ? Math.max(planUtility, domUtility)
+    : (planUtility ?? domUtility);
+
+  const withGoal = bestUtility == null ? raw : clamp01(raw * (1 - goalAlpha) + bestUtility * goalAlpha);
   
   const allowedScore = gate.allowed ? withGoal : 0;
 
   const usedAtomIds = [
     ...(p.trace?.usedAtomIds || []),
     ...costUsedAtomIds,
-    ...(goalUtility != null && dom ? [`goal:domain:${dom}:${selfId}`] : []),
+    ...(domUtility != null && dom ? [`goal:domain:${dom}:${selfId}`] : []),
+    ...planUsed,
     ...(dangerCtx.id ? [dangerCtx.id] : pickCtxId('danger', selfId)),
     ...(targetId ? [
       `world:map:hazardBetween:${selfId}:${targetId}`,
@@ -156,9 +229,11 @@ export function scorePossibility(args: {
           prefParts,
           costParts: parts,
           raw,
-          goalUtility,
+          goalUtility: domUtility,
           goalDomain: dom ?? null,
           goalAlpha,
+          planUtility,
+          planParts,
           danger: dangerCtx.magnitude,
           dangerLayer: dangerCtx.layer,
           allowed: gate.allowed,
@@ -181,9 +256,11 @@ export function scorePossibility(args: {
         prefParts,
         costParts: parts,
         raw,
-        goalUtility,
+        goalUtility: domUtility,
         goalDomain: dom ?? null,
-        goalAlpha
+        goalAlpha,
+        planUtility,
+        planParts
       },
       blockedBy: gate.blockedBy
     },

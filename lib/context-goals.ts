@@ -70,7 +70,126 @@ export const CONTEXT_PROFILES: ContextGoalProfile[] = [
       social: 0.6
     },
     when: (ctx) => Math.max(0, 1 - ctx.threatLevel),
-  }
+  },
+
+  // --- NEGOTIATION / DIPLOMACY ---
+  {
+    id: 'negotiation.diplomat',
+    scenarioKinds: ['negotiation', 'strategic_council'],
+    roleTags: ['diplomat', 'envoy', 'leader', 'any'],
+    domainWeights: {
+      information: 0.9,
+      leader_legitimacy: 0.7,
+      group_cohesion: 0.5,
+      status: 0.6,
+      autonomy: 0.4,
+      survival: 0.2
+    },
+    when: (ctx) => Math.max(0.4, 1 - ctx.threatLevel * 0.6),
+  },
+
+  // --- INTERROGATION / INVESTIGATION ---
+  {
+    id: 'investigation.investigator',
+    scenarioKinds: ['investigation', 'other'],
+    roleTags: ['investigator', 'detective', 'any'],
+    domainWeights: {
+      information: 1.1,
+      control: 0.6,
+      status: 0.3,
+      survival: 0.2
+    },
+    when: (ctx) => Math.max(0.2, ctx.timePressure),
+  },
+
+  // --- MEDICAL / CARE ---
+  {
+    id: 'medical.medic',
+    scenarioKinds: ['medical', 'fight_escape', 'other'],
+    roleTags: ['medic', 'caretaker', 'any'],
+    domainWeights: {
+      attachment_care: 1.2,
+      group_cohesion: 0.7,
+      survival: 0.6,
+      information: 0.2
+    },
+    when: (ctx) => Math.max(ctx.woundedPresent, 0.2),
+  },
+
+  // --- STEALTH / INFILTRATION ---
+  {
+    id: 'stealth.infiltration',
+    scenarioKinds: ['stealth', 'patrol', 'other'],
+    roleTags: ['scout', 'spy', 'any'],
+    domainWeights: {
+      survival: 0.9,
+      information: 0.7,
+      autonomy: 0.6,
+      control: 0.4,
+      status: 0.1
+    },
+    when: (ctx) => Math.max(0.2, ctx.threatLevel * 0.7 + ctx.timePressure * 0.6),
+  },
+
+  // --- MARKET / TRADE ---
+  {
+    id: 'market.trader',
+    scenarioKinds: ['market', 'other'],
+    roleTags: ['trader', 'merchant', 'any'],
+    domainWeights: {
+      status: 0.6,
+      autonomy: 0.5,
+      information: 0.4,
+      group_cohesion: 0.2,
+      survival: 0.2
+    },
+    when: (ctx) => Math.max(0.2, 1 - ctx.threatLevel),
+  },
+
+  // --- REST / RECOVERY ---
+  {
+    id: 'recovery.rest_focus',
+    scenarioKinds: ['domestic_scene', 'other'],
+    roleTags: ['any'],
+    domainWeights: {
+      rest: 1.2,
+      personal_bond: 0.6,
+      social: 0.4,
+      survival: 0.2
+    },
+    when: (ctx) => Math.max(0.3, 1 - ctx.threatLevel),
+  },
+
+  // --- RITUAL / PUBLIC DISPLAY ---
+  {
+    id: 'ritual.public',
+    scenarioKinds: ['ritual', 'strategic_council'],
+    roleTags: ['leader', 'priest', 'any'],
+    domainWeights: {
+      ritual: 1.1,
+      leader_legitimacy: 0.9,
+      status: 0.8,
+      obedience: 0.6,
+      group_cohesion: 0.6,
+      survival: 0.1
+    },
+    when: (ctx) => (ctx.isFormal ? 1.0 : 0.6),
+  },
+
+  // --- PRISON / COERCION ---
+  {
+    id: 'coercion.prison',
+    scenarioKinds: ['prison', 'interrogation', 'other'],
+    roleTags: ['guard', 'jailer', 'any'],
+    domainWeights: {
+      control: 1.0,
+      obedience: 0.8,
+      survival: 0.5,
+      information: 0.4,
+      status: 0.3
+    },
+    when: (ctx) => Math.max(0.2, ctx.threatLevel),
+  },
 ];
 
 // Hard Gating: Is the goal applicable in this context?

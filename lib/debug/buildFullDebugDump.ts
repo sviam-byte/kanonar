@@ -1,5 +1,6 @@
 import { materializeStageAtoms } from '../../components/goal-lab/materializePipeline';
 import type { ContextAtom } from '../context/v2/types';
+import { getCanonicalAtomsFromSnapshot } from '../goal-lab/atoms/canonical';
 
 function asArr<T>(x: any): T[] {
   return Array.isArray(x) ? x : [];
@@ -49,6 +50,7 @@ export function buildFullDebugDump(args: {
 
   // useful computed slices
   const atoms = asArr<any>(snapshotV1?.atoms);
+  const canon = snapshotV1 ? getCanonicalAtomsFromSnapshot(snapshotV1) : null;
 
   const payload = {
     schema: 'GoalLabFullDebugDumpV1',
@@ -73,8 +75,15 @@ export function buildFullDebugDump(args: {
       selfId: snapshotV1?.selfId ?? null,
       decision: snapshotV1?.decision ?? null,
       meta: snapshotV1?.meta ?? null,
-      finalAtoms: atoms,
+      legacyAtoms: atoms,
     },
+
+    canonical: canon ? {
+      stageId: canon.stageId,
+      source: canon.source,
+      warnings: canon.warnings,
+      atoms: canon.atoms,
+    } : null,
 
     pipeline: pipelineV1
       ? { kind: 'pipelineV1', pipelineV1 }

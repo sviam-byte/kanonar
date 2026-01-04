@@ -22,8 +22,16 @@ export const PipelinePanel: React.FC<{
   onSelect: (id: string) => void;
   onExportStage?: (stageId: string) => void;
 }> = ({ stages, selectedId, onSelect, onExportStage }) => {
-  const stage = stages.find(s => s.id === selectedId) || stages[stages.length - 1] || null;
-  const atoms = materializeStageAtoms(stages as any, stage?.id || '');
+  const safeStages = arr(stages);
+
+  const stage =
+    safeStages.find(s => s.id === selectedId) ||
+    safeStages[safeStages.length - 1] ||
+    null;
+
+  const atoms = safeStages.length
+    ? materializeStageAtoms(safeStages as any, stage?.id || '')
+    : [];
 
   const overriddenIds: string[] = Array.isArray((stage as any)?.artifacts?.overriddenIds)
     ? (stage as any).artifacts.overriddenIds.map((x: any) => String(x)).filter(Boolean)
@@ -50,6 +58,24 @@ export const PipelinePanel: React.FC<{
       // ignore (clipboard may be denied)
     }
   };
+
+  if (!safeStages.length) {
+    return (
+      <div className="h-full min-h-0 flex flex-col">
+        <div className="p-3 border-b border-canon-border/30 bg-canon-bg/40">
+          <div className="text-[10px] font-bold text-canon-text-light uppercase tracking-wider">
+            Pipeline stages
+          </div>
+          <div className="text-[12px] text-canon-text-light/70 mt-2">
+            Нет стадий пайплайна (stages пуст или не передан).
+          </div>
+        </div>
+        <div className="p-3 text-[12px] text-canon-text-light/60">
+          Проверь: snapshot.pipelineV1.stages и маппинг в DebugShell → PipelinePanel.
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="h-full min-h-0 flex flex-col">

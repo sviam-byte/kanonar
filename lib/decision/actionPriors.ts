@@ -65,11 +65,16 @@ export function deriveActionPriors(args: {
     const oblig = clamp01(getMag(atoms, `rel:state:${selfId}:${otherId}:obligation`, 0.0));
     const respe = clamp01(getMag(atoms, `rel:state:${selfId}:${otherId}:respect`, 0.0));
 
-    // ToM если есть — уточняет priors, но не обязателен
+    // ToM если есть — уточняет priors, но не обязателен.
+    // fallback: если нет tom:dyad, используем rel:state как минимальный ordinary ToM
     const tomThreatP = getEffectiveOrDyad(otherId, 'threat', 0.2);
     const tomTrustP = getEffectiveOrDyad(otherId, 'trust', 0.5);
-    const tomThreat = clamp01(tomThreatP.mag);
-    const tomTrust = clamp01(tomTrustP.mag);
+    const tomThreatId = `tom:dyad:${selfId}:${otherId}:threat`;
+    const tomTrustId = `tom:dyad:${selfId}:${otherId}:trust`;
+    const tomThreatFallback = getMag(atoms, tomThreatId, getMag(atoms, `rel:state:${selfId}:${otherId}:hostility`, 0.0));
+    const tomTrustFallback = getMag(atoms, tomTrustId, getMag(atoms, `rel:state:${selfId}:${otherId}:trust`, 0.5));
+    const tomThreat = clamp01(tomThreatP.id ? tomThreatP.mag : tomThreatFallback);
+    const tomTrust = clamp01(tomTrustP.id ? tomTrustP.mag : tomTrustFallback);
 
     // База: помочь / навредить / запросить инфо / избегать / конфронтировать
     // Важно: норм/публичность/наблюдение сдвигают в сторону “безопасных” действий.
@@ -107,6 +112,8 @@ export function deriveActionPriors(args: {
       `rel:state:${selfId}:${otherId}:respect`,
       tomTrustP.id,
       tomThreatP.id,
+      tomTrustId,
+      tomThreatId,
     ].filter(id => atoms.some(a => a?.id === id));
 
     out.push(

@@ -2,13 +2,13 @@ import type { GoalLabSnapshotV1 } from './snapshotTypes';
 import { normalizeAtom } from '../context/v2/infer';
 import { describeQuark } from '../context/codex/quarkRegistry';
 import { resolveAtomSpec } from '../context/catalog/atomSpecs';
+import { getCanonicalAtomsFromSnapshot } from './atoms/canonical';
 
 type AtomOrigin = 'world' | 'obs' | 'override' | 'derived';
 
 export function buildDebugFrameFromSnapshot(snapshot: GoalLabSnapshotV1) {
-  const rawAtoms: any[] = Array.isArray((snapshot as any).atoms)
-    ? ((snapshot as any).atoms as any[])
-    : [];
+  const canon = getCanonicalAtomsFromSnapshot(snapshot, (snapshot as any)?.ui?.selectedStageId);
+  const rawAtoms: any[] = Array.isArray(canon.atoms) ? (canon.atoms as any[]) : [];
 
   const atoms = rawAtoms.map(a => {
     const raw: any = {
@@ -116,5 +116,8 @@ export function buildDebugFrameFromSnapshot(snapshot: GoalLabSnapshotV1) {
     index,
     panels: { mind, threat, ctx: null },
     diagnostics: diag,
+    __atomsSource: canon.source,
+    __atomsStageId: canon.stageId,
+    __atomsWarnings: canon.warnings,
   };
 }
