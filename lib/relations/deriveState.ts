@@ -13,6 +13,18 @@ function has(atoms: ContextAtom[], id: string) {
   return atoms.some(a => a?.id === id);
 }
 
+function hasRelTag(atoms: ContextAtom[], selfId: string, otherId: string, tag: string) {
+  return atoms.some(a => a?.id === `rel:tag:${selfId}:${otherId}:${tag}`);
+}
+
+function readAcq(atoms: ContextAtom[], selfId: string, otherId: string) {
+  return {
+    tier: clamp01(getMag(atoms, `rel:acq:${selfId}:${otherId}:tier`, 0)),
+    idc: clamp01(getMag(atoms, `rel:acq:${selfId}:${otherId}:idConfidence`, 0)),
+    fam: clamp01(getMag(atoms, `rel:acq:${selfId}:${otherId}:familiarity`, 0)),
+  };
+}
+
 function readRelBase(atoms: ContextAtom[], selfId: string, otherId: string) {
   return {
     closeness: clamp01(getMag(atoms, `rel:base:${selfId}:${otherId}:closeness`, 0)),
@@ -87,13 +99,20 @@ export function deriveRelStateAtoms(args: {
     if (!otherId || otherId === selfId) continue;
 
     const r0 = readRelBase(atoms, selfId, otherId);
+    const acq = readAcq(atoms, selfId, otherId);
 
     // контекстный “социальный пресс” делает отношения хрупче/осторожнее
-    const socialPressure = clamp01(0.40 * surv + 0.35 * stress + 0.25 * paranoia);
+    const socialPressure0 = clamp01(0.40 * surv + 0.35 * stress + 0.25 * paranoia);
+    // Recognition lowers defensiveness (but doesn't delete context pressure).
+    const recognition = clamp01(0.50 * acq.tier + 0.30 * acq.idc + 0.20 * acq.fam);
+    const socialPressure = clamp01(socialPressure0 * (1 - 0.35 * recognition));
 
     // ToM (если уже есть) добавляет “настроение” к отношениям
     const tomTrust = clamp01(getMag(atoms, `tom:dyad:${selfId}:${otherId}:trust`, 0.5));
     const tomThreat = clamp01(getMag(atoms, `tom:dyad:${selfId}:${otherId}:threat`, 0.2));
+    const tomIntimacy = clamp01(getMag(atoms, `tom:dyad:${selfId}:${otherId}:intimacy`, 0.0));
+    const tomSupport = clamp01(getMag(atoms, `tom:dyad:${selfId}:${otherId}:support`, 0.0));
+    const isLover = hasRelTag(atoms, selfId, otherId, 'lover');
 
     const ev = eventDelta(atoms, selfId, otherId);
 
@@ -101,24 +120,32 @@ export function deriveRelStateAtoms(args: {
     // в сторону текущих сигналов. Никакой агрессии к данным: если тома/ивентов нет —
     // остаётся r0.
     const closeness = clamp01(
-      0.70 * r0.closeness +
-      0.15 * tomTrust +
-      0.10 * ev.delta +
-      0.05 * (1 - socialPressure)
+      0.62 * r0.closeness +
+      0.12 * tomTrust +
+      0.12 * tomIntimacy +
+      0.07 * tomSupport +
+      0.05 * ev.delta +
+      0.02 * (1 - socialPressure) +
+      (isLover ? 0.10 : 0)
     );
 
     const trust = clamp01(
-      0.55 * r0.loyalty +
-      0.25 * tomTrust +
-      0.10 * ev.delta -
-      0.20 * tomThreat
+      0.48 * r0.loyalty +
+      0.22 * tomTrust +
+      0.10 * tomSupport +
+      0.08 * tomIntimacy +
+      0.08 * ev.delta -
+      0.22 * tomThreat +
+      (isLover ? 0.08 : 0)
     );
 
     const hostility = clamp01(
-      0.60 * r0.hostility +
+      0.58 * r0.hostility +
       0.25 * tomThreat +
       0.10 * (1 - ev.delta) +
-      0.15 * socialPressure
+      0.12 * socialPressure -
+      0.08 * tomIntimacy -
+      (isLover ? 0.12 : 0)
     );
 
     const obligation = clamp01(
@@ -143,6 +170,9 @@ export function deriveRelStateAtoms(args: {
       `rel:base:${selfId}:${otherId}:authority`,
       `tom:dyad:${selfId}:${otherId}:trust`,
       `tom:dyad:${selfId}:${otherId}:threat`,
+      `tom:dyad:${selfId}:${otherId}:intimacy`,
+      `tom:dyad:${selfId}:${otherId}:support`,
+      `rel:tag:${selfId}:${otherId}:lover`,
       `feat:char:${selfId}:trait.paranoia`,
       `feat:char:${selfId}:body.stress`,
       `ctx:surveillance:${selfId}`,

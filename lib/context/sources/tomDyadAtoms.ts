@@ -2,6 +2,7 @@
 import type { WorldState, AgentState } from '../../../types';
 import type { ContextAtom } from '../v2/types';
 import { normalizeAtom } from '../v2/infer';
+import { seedAcquaintanceFromSignals, tierToMag } from '../../social/acquaintance';
 
 function clamp01(x: number) {
   if (!Number.isFinite(x)) return 0;
@@ -103,6 +104,23 @@ function mkDyadAtom(selfId: string, otherId: string, metric: string, magnitude: 
   } as any);
 }
 
+function mkAcqAtom(selfId: string, otherId: string, name: string, magnitude: number, parts: any): ContextAtom {
+  return normalizeAtom({
+    id: `rel:acq:${selfId}:${otherId}:${name}`,
+    kind: 'acquaintance' as any,
+    ns: 'rel' as any,
+    origin: 'derived',
+    source: 'acquaintance',
+    magnitude: clamp01(magnitude),
+    confidence: 1,
+    subject: selfId,
+    target: otherId,
+    tags: ['rel', 'acq', name],
+    label: `acq.${name}:${Math.round(clamp01(magnitude) * 100)}%`,
+    trace: { usedAtomIds: [], notes: ['acquaintance/recognition state'], parts },
+  } as any);
+}
+
 export function extractTomDyadAtoms(args: {
   world: WorldState;
   agent: AgentState;
@@ -120,6 +138,17 @@ export function extractTomDyadAtoms(args: {
     const m = extractMetrics(raw);
     if (!m) continue;
 
+    // Acquaintance/recognition: seed & use it to reduce uncertainty for known targets.
+    const acq = seedAcquaintanceFromSignals({ world, agent, otherId });
+    const acqTierMag = tierToMag(acq?.tier ?? 'unknown');
+    const idc = clamp01((acq as any)?.idConfidence ?? 0);
+    const fam = clamp01((acq as any)?.familiarity ?? 0);
+
+    // Uncertainty should go DOWN with recognition. Keep some floor to avoid overconfidence.
+    const unc0 = clamp01(m.uncertainty);
+    const uncAdj = clamp01(unc0 * (1 - 0.60 * acqTierMag) * (1 - 0.35 * idc) * (1 - 0.25 * fam));
+    m.uncertainty = Math.max(0.02, uncAdj);
+
     const threat = clamp01(0.55 * m.conflict + 0.25 * m.fear + 0.20 * (1 - m.trust));
     const intimacy = clamp01(0.65 * m.bond + 0.35 * m.trust);
     const support = clamp01((0.55 * m.trust + 0.45 * m.bond) * (1 - threat));
@@ -135,8 +164,17 @@ export function extractTomDyadAtoms(args: {
       mkDyadAtom(selfId, otherId, 'support', support, { ...m, threat, support }),
     );
 
+    // Expose acquaintance in atoms for debugging/UI.
+    relHintAtoms.push(
+      mkAcqAtom(selfId, otherId, 'tier', acqTierMag, { tier: acq?.tier, tierMag: acqTierMag }),
+      mkAcqAtom(selfId, otherId, 'idConfidence', idc, { idConfidence: idc }),
+      mkAcqAtom(selfId, otherId, 'familiarity', fam, { familiarity: fam }),
+    );
+
     const isFriend = m.trust >= 0.75 && m.bond >= 0.55 && threat <= 0.35;
     const isEnemy = threat >= 0.70 && m.trust <= 0.35;
+    // Romance/partner hint: high intimacy + low threat.
+    const isLover = intimacy >= 0.78 && m.bond >= 0.70 && m.trust >= 0.60 && threat <= 0.40;
 
     if (isFriend) {
       relHintAtoms.push(normalizeAtom({
@@ -151,6 +189,26 @@ export function extractTomDyadAtoms(args: {
         target: otherId,
         tags: ['rel', 'tag', 'friend', 'tom_hint'],
         trace: { usedAtomIds: [`tom_state:${selfId}:${otherId}`], notes: ['trust+bond high'], parts: { trust: m.trust, bond: m.bond, threat } },
+      } as any));
+    }
+
+    if (isLover) {
+      relHintAtoms.push(normalizeAtom({
+        id: `rel:tag:${selfId}:${otherId}:lover`,
+        kind: 'rel_tag',
+        ns: 'rel',
+        origin: 'belief',
+        source: 'tom',
+        magnitude: 1,
+        confidence: 0.75,
+        subject: selfId,
+        target: otherId,
+        tags: ['rel', 'tag', 'lover', 'tom_hint'],
+        trace: {
+          usedAtomIds: [`tom_state:${selfId}:${otherId}`],
+          notes: ['intimacy high'],
+          parts: { trust: m.trust, bond: m.bond, intimacy, threat },
+        },
       } as any));
     }
 

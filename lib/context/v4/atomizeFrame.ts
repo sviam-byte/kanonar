@@ -498,17 +498,57 @@ export function atomizeFrame(frame: AgentContextFrame, t: number, world?: WorldS
             const e: any = acqMap?.[otherId];
             if (e) {
               const tierMag = clamp01(acqTierToMag(e.tier));
+              const idc = clamp01(safeNum(e.idConfidence, 0));
               add('soc_acq_tier', tierMag, `Acq tier: ${e.tier} (${label})`, 'social', `acq_tier_${suf}`, {
                 ns: 'soc',
                 targetId: otherId,
                 tags: ['acq', String(e.tier || 'unknown'), String(e.kind || 'stranger')],
                 meta: { tier: e.tier, kind: e.kind, idConfidence: e.idConfidence, familiarity: e.familiarity },
               });
-              add('soc_acq_idconf', clamp01(safeNum(e.idConfidence, 0)), `Acq idConf: ${label}`, 'social', `acq_id_${suf}`, {
+              add('soc_acq_idconf', idc, `Acq idConf: ${label}`, 'social', `acq_id_${suf}`, {
                 ns: 'soc',
                 targetId: otherId,
                 tags: ['acq', 'idConfidence'],
               });
+
+              // --- EXPLICIT IDENTIFICATION STATEMENT ---
+              // "I recognize N as M" as a first-class atom (human-readable).
+              // N = how the agent currently refers to the observed person (fallback: label/otherId)
+              // M = the identity label we map them to (fallback: otherChar.title/name/label)
+              const otherChar = getCharacterById(world, otherId);
+              const seenAs = String(
+                (e as any)?.seenAsLabel ??
+                  (otherChar as any)?.appearanceLabel ??
+                  label ??
+                  otherId,
+              );
+              const recognizedAs = String(
+                (e as any)?.recognizedAsLabel ??
+                  otherChar?.title ??
+                  otherChar?.name ??
+                  label ??
+                  otherId,
+              );
+
+              add(
+                'soc_identify_as',
+                idc,
+                `Я опознаю ${seenAs} как ${recognizedAs}`,
+                'social',
+                `identify_${suf}`,
+                {
+                  ns: 'soc',
+                  targetId: otherId,
+                  tags: ['acq', 'identify'],
+                  meta: {
+                    seenAs,
+                    recognizedAs,
+                    idConfidence: idc,
+                    tier: e.tier,
+                    kind: e.kind,
+                  },
+                }
+              );
               add(
                 'soc_acq_familiarity',
                 clamp01(safeNum(e.familiarity, 0)),
