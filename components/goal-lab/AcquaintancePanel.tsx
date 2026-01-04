@@ -10,6 +10,7 @@ type Row = {
   idConfidence?: number;
   familiarity?: number;
   lastSeenAt?: unknown;
+  identifyText?: string;
 };
 
 const num = (x: unknown, d = 0) => (Number.isFinite(Number(x)) ? Number(x) : d);
@@ -27,7 +28,7 @@ export const AcquaintancePanel: React.FC<{
     for (const atom of arr(atoms)) {
       if ((atom as { ns?: string })?.ns !== 'soc') continue;
       const kind = String((atom as { kind?: string })?.kind ?? '');
-      if (!kind.startsWith('soc_acq_')) continue;
+      if (!kind.startsWith('soc_acq_') && kind !== 'soc_identify_as') continue;
 
       const targetId = String(
         (atom as { targetId?: string })?.targetId ??
@@ -38,6 +39,21 @@ export const AcquaintancePanel: React.FC<{
 
       if (!byTarget.has(targetId)) byTarget.set(targetId, { targetId });
       const row = byTarget.get(targetId)!;
+
+      if (kind === 'soc_identify_as') {
+        // Prefer atom.label as the exact user-facing statement.
+        const text =
+          String((atom as { label?: string })?.label || '') ||
+          (() => {
+            const seenAs = String((atom as { meta?: { seenAs?: string } })?.meta?.seenAs ?? targetId);
+            const recognizedAs = String(
+              (atom as { meta?: { recognizedAs?: string } })?.meta?.recognizedAs ?? targetId,
+            );
+            return `Я опознаю ${seenAs} как ${recognizedAs}`;
+          })();
+        row.identifyText = text;
+        continue;
+      }
 
       if (kind === 'soc_acq_tier') {
         row.tier = String(
@@ -145,6 +161,12 @@ export const AcquaintancePanel: React.FC<{
                 <span className="font-mono">{num(row.familiarity).toFixed(2)}</span>
               </div>
             </div>
+
+            {row.identifyText && (
+              <div className="mt-2 text-[11px] font-mono text-canon-text-light">
+                {row.identifyText}
+              </div>
+            )}
           </div>
         ))}
         {rows.length === 0 && (

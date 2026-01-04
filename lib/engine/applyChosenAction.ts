@@ -122,6 +122,7 @@ export function applyChosenActionToWorld(args: {
     polarity,
     locationId,
     meta: {
+      ...(typeof (p as any)?.meta === 'object' && (p as any)?.meta ? (p as any).meta : {}),
       label: p.label || null,
       score: typeof best.score === 'number' ? best.score : null,
       scheduledFromTick: tickNow,

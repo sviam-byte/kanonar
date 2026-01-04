@@ -187,8 +187,8 @@ export function buildGoalLabContext(
     const ns = String((a as any)?.ns || '');
     const kind = String((a as any)?.kind || '');
 
-    // Recognition atoms.
-    if (ns === 'soc' && kind.startsWith('soc_acq_')) return true;
+    // Recognition / identification atoms.
+    if (ns === 'soc' && (kind.startsWith('soc_acq_') || kind === 'soc_identify_as')) return true;
 
     // Relation label atoms (and similar).
     if (id.startsWith('rel:')) return true;
