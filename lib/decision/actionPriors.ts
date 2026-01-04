@@ -69,19 +69,26 @@ export function deriveActionPriors(args: {
     // fallback: если нет tom:dyad, используем rel:state как минимальный ordinary ToM
     const tomThreatP = getEffectiveOrDyad(otherId, 'threat', 0.2);
     const tomTrustP = getEffectiveOrDyad(otherId, 'trust', 0.5);
+    const tomIntimacyP = getEffectiveOrDyad(otherId, 'intimacy', 0.1);
     const tomThreatId = `tom:dyad:${selfId}:${otherId}:threat`;
     const tomTrustId = `tom:dyad:${selfId}:${otherId}:trust`;
+    const tomIntimacyId = `tom:dyad:${selfId}:${otherId}:intimacy`;
     const tomThreatFallback = getMag(atoms, tomThreatId, getMag(atoms, `rel:state:${selfId}:${otherId}:hostility`, 0.0));
     const tomTrustFallback = getMag(atoms, tomTrustId, getMag(atoms, `rel:state:${selfId}:${otherId}:trust`, 0.5));
     const tomThreat = clamp01(tomThreatP.id ? tomThreatP.mag : tomThreatFallback);
     const tomTrust = clamp01(tomTrustP.id ? tomTrustP.mag : tomTrustFallback);
+    const tomIntimacy = clamp01(
+      tomIntimacyP.id
+        ? tomIntimacyP.mag
+        : getMag(atoms, tomIntimacyId, 0.1)
+    );
 
     // База: помочь / навредить / запросить инфо / избегать / конфронтировать
     // Важно: норм/публичность/наблюдение сдвигают в сторону “безопасных” действий.
     const socialRisk = clamp01(0.45 * pub + 0.35 * surv + 0.20 * norm);
 
     const help = clamp01(
-      0.55 * trust + 0.20 * clos + 0.20 * oblig + 0.10 * tomTrust - 0.30 * tomThreat
+      0.50 * trust + 0.18 * clos + 0.18 * oblig + 0.10 * tomTrust + 0.18 * tomIntimacy - 0.30 * tomThreat
     ) * clamp01(1 - 0.45 * danger);
 
     const harm = clamp01(
@@ -93,7 +100,8 @@ export function deriveActionPriors(args: {
     ) * clamp01(1 - 0.25 * danger);
 
     const avoid = clamp01(
-      0.25 + 0.55 * tomThreat + 0.25 * danger + 0.15 * socialRisk - 0.25 * oblig
+      0.25 + 0.55 * tomThreat + 0.25 * danger + 0.15 * socialRisk
+      - 0.25 * oblig - 0.35 * tomIntimacy - 0.10 * clos
     );
 
     const confront = clamp01(
@@ -112,15 +120,17 @@ export function deriveActionPriors(args: {
       `rel:state:${selfId}:${otherId}:respect`,
       tomTrustP.id,
       tomThreatP.id,
+      tomIntimacyP.id,
       tomTrustId,
       tomThreatId,
+      tomIntimacyId,
     ].filter(id => atoms.some(a => a?.id === id));
 
     out.push(
-      mk(selfId, otherId, 'help', help, used, { trust, clos, oblig, tomTrust, tomThreat, danger, dangerLayer: dangerP.layer }),
+      mk(selfId, otherId, 'help', help, used, { trust, clos, oblig, tomTrust, tomIntimacy, tomThreat, danger, dangerLayer: dangerP.layer }),
       mk(selfId, otherId, 'harm', harm, used, { host, tomThreat, trust, socialRisk }),
       mk(selfId, otherId, 'ask_info', askInfo, used, { tomTrust, clos, respe, danger, dangerLayer: dangerP.layer }),
-      mk(selfId, otherId, 'avoid', avoid, used, { tomThreat, danger, dangerLayer: dangerP.layer, socialRisk, oblig }),
+      mk(selfId, otherId, 'avoid', avoid, used, { tomThreat, tomIntimacy, danger, dangerLayer: dangerP.layer, socialRisk, oblig, clos }),
       mk(selfId, otherId, 'confront', confront, used, { host, socialRisk, respe, danger, dangerLayer: dangerP.layer }),
     );
   }

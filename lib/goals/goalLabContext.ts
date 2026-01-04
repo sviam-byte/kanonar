@@ -180,6 +180,22 @@ export function buildGoalLabContext(
   const t = opts.timeOverride ?? (world as any).tick ?? 0;
   const legacyFrameAtoms = frame ? atomizeFrame(frame, t, world).map(normalizeAtom) : [];
 
+  // --- Merge selected legacy atoms into snapshot atoms for UI/debug panels ---
+  // Reason: legacyFrameAtoms include soc_acq_* (recognition) + rel:* labels, but snapshot.atoms previously omitted them.
+  const legacyUiAtoms = (legacyFrameAtoms || []).filter(a => {
+    const id = String((a as any)?.id || '');
+    const ns = String((a as any)?.ns || '');
+    const kind = String((a as any)?.kind || '');
+
+    // Recognition atoms.
+    if (ns === 'soc' && kind.startsWith('soc_acq_')) return true;
+
+    // Relation label atoms (and similar).
+    if (id.startsWith('rel:')) return true;
+
+    return false;
+  });
+
   // 3. Prepare Override Atoms (GoalLab Manual)
   const overridesLayer = opts.snapshotOptions?.atomOverridesLayer;
   const manualAtomsRaw = arr((opts.snapshotOptions as any)?.manualAtoms).map(normalizeAtom);
@@ -1118,7 +1134,11 @@ export function buildGoalLabContext(
   });
 
   const decisionAtoms = arr((decision as any)?.atoms).map(normalizeAtom);
-  const atomsWithDecision = dedupeAtomsById([...atomsWithSummaryMetrics, ...decisionAtoms]).map(normalizeAtom);
+  const atomsWithDecision = dedupeAtomsById([
+    ...atomsWithSummaryMetrics,
+    ...decisionAtoms,
+    ...legacyUiAtoms,
+  ]).map(normalizeAtom);
 
   const snapshot = buildContextSnapshot(world, agent, {
     ...(opts.snapshotOptions as any),

@@ -2,6 +2,7 @@
 
 // data/actions-social.ts
 import { Action } from '../types';
+import { getRelPriors, hasRecentAction } from '../lib/social/actionGuards';
 
 // Action definitions for core social interactions
 export const socialActionsData: Omit<Action, 'goalImpact'>[] = [
@@ -35,6 +36,185 @@ export const socialActionsData: Omit<Action, 'goalImpact'>[] = [
         return { factId: null, factLabel: 'general situation' };
     },
     category: 'support', aggression: 'none', adequacy: 'adaptive', tone: 'caring', allowedFor: ['any']
+  },
+  {
+    id: "thank",
+    name: "Поблагодарить",
+    narrative_verb: "благодарит",
+    tags: ["COMM", "gratitude"],
+    styleTags: ['style_care'],
+    cost: { time: 0.6 },
+    targetMode: 'character',
+    narrativeTemplate: '{actor} благодарит {target}.',
+    category: 'support',
+    aggression: 'none',
+    adequacy: 'adaptive',
+    tone: 'caring',
+    allowedFor: ['any'],
+    isAvailable: ({ world, actor, target }) => {
+      if (!target) return false;
+      const a = actor.entityId;
+      const b = target.entityId;
+      // "Thanks" makes sense when the target helped or baseline trust is already decent.
+      const helpedMeRecently = hasRecentAction(world, {
+        a,
+        b,
+        lookbackTicks: 30,
+        tagsAny: ['help'],
+        actorMustBe: 'b',
+      });
+      const rel = getRelPriors(actor, b);
+      return helpedMeRecently || (rel.trust > 0.65 && rel.threat < 0.35);
+    },
+  },
+  {
+    id: "apologize",
+    name: "Извиниться",
+    narrative_verb: "извиняется перед",
+    tags: ["COMM", "apology"],
+    styleTags: ['style_care', 'style_submissive'],
+    cost: { time: 0.8, reputation: 0.05 },
+    targetMode: 'character',
+    narrativeTemplate: '{actor} извиняется перед {target}.',
+    category: 'support',
+    aggression: 'none',
+    adequacy: 'adaptive',
+    tone: 'neutral',
+    allowedFor: ['any'],
+    isAvailable: ({ world, actor, target }) => {
+      if (!target) return false;
+      const a = actor.entityId;
+      const b = target.entityId;
+      // Apologize if I recently harmed the target or threat is high.
+      const iHurtRecently = hasRecentAction(world, {
+        a,
+        b,
+        lookbackTicks: 30,
+        tagsAny: ['attack', 'lie', 'betrayal'],
+        actorMustBe: 'a',
+      });
+      const rel = getRelPriors(actor, b);
+      return iHurtRecently || rel.threat > 0.55;
+    },
+  },
+  {
+    id: "set_boundary",
+    name: "Обозначить границу",
+    narrative_verb: "обозначает границу с",
+    tags: ["COMM", "boundary"],
+    styleTags: ['style_assertive'],
+    cost: { time: 0.9 },
+    targetMode: 'character',
+    narrativeTemplate: '{actor} обозначает границы в общении с {target}.',
+    category: 'withdrawal',
+    aggression: 'irritated',
+    adequacy: 'adaptive',
+    tone: 'cold',
+    allowedFor: ['any'],
+    isAvailable: ({ actor, target }) => {
+      if (!target) return false;
+      const rel = getRelPriors(actor, target.entityId);
+      // Boundary setting is triggered by high threat/conflict.
+      return rel.threat > 0.6;
+    },
+  },
+  {
+    id: "reconcile",
+    name: "Попытаться помириться",
+    narrative_verb: "пытается помириться с",
+    tags: ["COMM", "reconcile"],
+    styleTags: ['style_care'],
+    cost: { time: 1.2, reputation: 0.05 },
+    targetMode: 'character',
+    narrativeTemplate: '{actor} пытается помириться с {target}.',
+    category: 'support',
+    aggression: 'none',
+    adequacy: 'risky',
+    tone: 'caring',
+    allowedFor: ['any'],
+    isAvailable: ({ world, actor, target }) => {
+      if (!target) return false;
+      const rel = getRelPriors(actor, target.entityId);
+      const recentConflict = hasRecentAction(world, {
+        a: actor.entityId,
+        b: target.entityId,
+        lookbackTicks: 40,
+        tagsAny: ['attack', 'lie', 'betrayal'],
+      });
+      // Reconcile when there's conflict but not a total breakdown.
+      return recentConflict && rel.trust > 0.35 && rel.threat > 0.45;
+    },
+  },
+  {
+    id: "request_help",
+    name: "Попросить помощи",
+    narrative_verb: "просит помощи у",
+    tags: ["COMM", "request_help"],
+    styleTags: ['style_submissive', 'style_care'],
+    cost: { time: 0.8 },
+    targetMode: 'character',
+    narrativeTemplate: '{actor} просит помощи у {target}.',
+    category: 'support',
+    aggression: 'none',
+    adequacy: 'adaptive',
+    tone: 'neutral',
+    allowedFor: ['any'],
+    isAvailable: ({ actor, target }) => {
+      if (!target) return false;
+      const rel = getRelPriors(actor, target.entityId);
+      // Ask for help when trust is high and threat isn't.
+      return rel.trust > 0.55 && rel.threat < 0.55;
+    },
+  },
+  {
+    id: "offer_help",
+    name: "Предложить помощь",
+    narrative_verb: "предлагает помощь",
+    tags: ["COMM", "help", "offer_help"],
+    styleTags: ['style_care'],
+    cost: { time: 0.8, energy: 0.1 },
+    targetMode: 'character',
+    narrativeTemplate: '{actor} предлагает помощь {target}.',
+    category: 'support',
+    aggression: 'none',
+    adequacy: 'adaptive',
+    tone: 'caring',
+    allowedFor: ['any'],
+    isAvailable: ({ actor, target }) => {
+      if (!target) return false;
+      const rel = getRelPriors(actor, target.entityId);
+      // Offering help is fine unless the perceived threat is extreme.
+      return rel.threat < 0.75;
+    },
+  },
+  {
+    id: "confront_lie",
+    name: "Конфронтировать ложь",
+    narrative_verb: "конфронтирует",
+    tags: ["COMM", "conflict", "lie"],
+    styleTags: ['style_confrontational', 'style_assertive'],
+    cost: { time: 1.0, stamina: 0.1 },
+    targetMode: 'character',
+    narrativeTemplate: '{actor} конфронтирует {target} из-за лжи.',
+    category: 'aggression',
+    aggression: 'irritated',
+    adequacy: 'risky',
+    tone: 'controlling',
+    allowedFor: ['any'],
+    isAvailable: ({ world, actor, target }) => {
+      if (!target) return false;
+      const a = actor.entityId;
+      const b = target.entityId;
+      const liedRecently = hasRecentAction(world, {
+        a,
+        b,
+        lookbackTicks: 40,
+        tagsAny: ['lie'],
+        actorMustBe: 'b',
+      });
+      const rel = getRelPriors(actor, b);
+      return liedRecently || rel.threat > 0.6;
+    },
   },
   // ... (existing actions kept for brevity, assumed to be part of socialActionsData export) ...
   // Adding new planning actions:
@@ -111,6 +291,185 @@ export const socialActions: Action[] = [
         return { factId: null, factLabel: 'general situation' };
     },
     category: 'support', aggression: 'none', adequacy: 'adaptive', tone: 'caring', allowedFor: ['any']
+  },
+  {
+    id: "thank",
+    name: "Поблагодарить",
+    narrative_verb: "благодарит",
+    tags: ["COMM", "gratitude"],
+    styleTags: ['style_care'],
+    cost: { time: 0.6 },
+    targetMode: 'character',
+    narrativeTemplate: '{actor} благодарит {target}.',
+    category: 'support',
+    aggression: 'none',
+    adequacy: 'adaptive',
+    tone: 'caring',
+    allowedFor: ['any'],
+    isAvailable: ({ world, actor, target }) => {
+      if (!target) return false;
+      const a = actor.entityId;
+      const b = target.entityId;
+      // "Thanks" makes sense when the target helped or baseline trust is already decent.
+      const helpedMeRecently = hasRecentAction(world, {
+        a,
+        b,
+        lookbackTicks: 30,
+        tagsAny: ['help'],
+        actorMustBe: 'b',
+      });
+      const rel = getRelPriors(actor, b);
+      return helpedMeRecently || (rel.trust > 0.65 && rel.threat < 0.35);
+    },
+  },
+  {
+    id: "apologize",
+    name: "Извиниться",
+    narrative_verb: "извиняется перед",
+    tags: ["COMM", "apology"],
+    styleTags: ['style_care', 'style_submissive'],
+    cost: { time: 0.8, reputation: 0.05 },
+    targetMode: 'character',
+    narrativeTemplate: '{actor} извиняется перед {target}.',
+    category: 'support',
+    aggression: 'none',
+    adequacy: 'adaptive',
+    tone: 'neutral',
+    allowedFor: ['any'],
+    isAvailable: ({ world, actor, target }) => {
+      if (!target) return false;
+      const a = actor.entityId;
+      const b = target.entityId;
+      // Apologize if I recently harmed the target or threat is high.
+      const iHurtRecently = hasRecentAction(world, {
+        a,
+        b,
+        lookbackTicks: 30,
+        tagsAny: ['attack', 'lie', 'betrayal'],
+        actorMustBe: 'a',
+      });
+      const rel = getRelPriors(actor, b);
+      return iHurtRecently || rel.threat > 0.55;
+    },
+  },
+  {
+    id: "set_boundary",
+    name: "Обозначить границу",
+    narrative_verb: "обозначает границу с",
+    tags: ["COMM", "boundary"],
+    styleTags: ['style_assertive'],
+    cost: { time: 0.9 },
+    targetMode: 'character',
+    narrativeTemplate: '{actor} обозначает границы в общении с {target}.',
+    category: 'withdrawal',
+    aggression: 'irritated',
+    adequacy: 'adaptive',
+    tone: 'cold',
+    allowedFor: ['any'],
+    isAvailable: ({ actor, target }) => {
+      if (!target) return false;
+      const rel = getRelPriors(actor, target.entityId);
+      // Boundary setting is triggered by high threat/conflict.
+      return rel.threat > 0.6;
+    },
+  },
+  {
+    id: "reconcile",
+    name: "Попытаться помириться",
+    narrative_verb: "пытается помириться с",
+    tags: ["COMM", "reconcile"],
+    styleTags: ['style_care'],
+    cost: { time: 1.2, reputation: 0.05 },
+    targetMode: 'character',
+    narrativeTemplate: '{actor} пытается помириться с {target}.',
+    category: 'support',
+    aggression: 'none',
+    adequacy: 'risky',
+    tone: 'caring',
+    allowedFor: ['any'],
+    isAvailable: ({ world, actor, target }) => {
+      if (!target) return false;
+      const rel = getRelPriors(actor, target.entityId);
+      const recentConflict = hasRecentAction(world, {
+        a: actor.entityId,
+        b: target.entityId,
+        lookbackTicks: 40,
+        tagsAny: ['attack', 'lie', 'betrayal'],
+      });
+      // Reconcile when there's conflict but not a total breakdown.
+      return recentConflict && rel.trust > 0.35 && rel.threat > 0.45;
+    },
+  },
+  {
+    id: "request_help",
+    name: "Попросить помощи",
+    narrative_verb: "просит помощи у",
+    tags: ["COMM", "request_help"],
+    styleTags: ['style_submissive', 'style_care'],
+    cost: { time: 0.8 },
+    targetMode: 'character',
+    narrativeTemplate: '{actor} просит помощи у {target}.',
+    category: 'support',
+    aggression: 'none',
+    adequacy: 'adaptive',
+    tone: 'neutral',
+    allowedFor: ['any'],
+    isAvailable: ({ actor, target }) => {
+      if (!target) return false;
+      const rel = getRelPriors(actor, target.entityId);
+      // Ask for help when trust is high and threat isn't.
+      return rel.trust > 0.55 && rel.threat < 0.55;
+    },
+  },
+  {
+    id: "offer_help",
+    name: "Предложить помощь",
+    narrative_verb: "предлагает помощь",
+    tags: ["COMM", "help", "offer_help"],
+    styleTags: ['style_care'],
+    cost: { time: 0.8, energy: 0.1 },
+    targetMode: 'character',
+    narrativeTemplate: '{actor} предлагает помощь {target}.',
+    category: 'support',
+    aggression: 'none',
+    adequacy: 'adaptive',
+    tone: 'caring',
+    allowedFor: ['any'],
+    isAvailable: ({ actor, target }) => {
+      if (!target) return false;
+      const rel = getRelPriors(actor, target.entityId);
+      // Offering help is fine unless the perceived threat is extreme.
+      return rel.threat < 0.75;
+    },
+  },
+  {
+    id: "confront_lie",
+    name: "Конфронтировать ложь",
+    narrative_verb: "конфронтирует",
+    tags: ["COMM", "conflict", "lie"],
+    styleTags: ['style_confrontational', 'style_assertive'],
+    cost: { time: 1.0, stamina: 0.1 },
+    targetMode: 'character',
+    narrativeTemplate: '{actor} конфронтирует {target} из-за лжи.',
+    category: 'aggression',
+    aggression: 'irritated',
+    adequacy: 'risky',
+    tone: 'controlling',
+    allowedFor: ['any'],
+    isAvailable: ({ world, actor, target }) => {
+      if (!target) return false;
+      const a = actor.entityId;
+      const b = target.entityId;
+      const liedRecently = hasRecentAction(world, {
+        a,
+        b,
+        lookbackTicks: 40,
+        tagsAny: ['lie'],
+        actorMustBe: 'b',
+      });
+      const rel = getRelPriors(actor, b);
+      return liedRecently || rel.threat > 0.6;
+    },
   },
   {
     id: "share_personal_belief",
@@ -501,4 +860,3 @@ export const socialActions: Action[] = [
       category: 'withdrawal', aggression: 'none', adequacy: 'adaptive', tone: 'cold', allowedFor: ['any']
   }
 ];
-
