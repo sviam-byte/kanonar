@@ -6,6 +6,7 @@ import { Tabs } from '../Tabs';
 import { CastComparePanel } from '../goal-lab/CastComparePanel';
 import { CastPerspectivePanel } from '../goal-lab/CastPerspectivePanel';
 import { AgentPassportPanel } from '../goal-lab/AgentPassportPanel';
+import { AtomBrowser } from '../goal-lab/AtomBrowser';
 import { GoalLabResults } from '../goal-lab/GoalLabResults';
 import { EmotionInspector } from '../goal-lab/EmotionInspector';
 import { EmotionExplainPanel } from '../goal-lab/EmotionExplainPanel';
@@ -15,6 +16,7 @@ import { RelationsPanel } from '../goal-lab/RelationsPanel';
 import { PipelinePanel } from '../goal-lab/PipelinePanel';
 import { ValidatorPanel } from '../goal-lab/ValidatorPanel';
 import { FrameDebugPanel } from '../GoalLab/FrameDebugPanel';
+import { arr } from '../../lib/utils/arr';
 
 function asArray<T>(x: any): T[] {
   return Array.isArray(x) ? x : [];
@@ -72,7 +74,16 @@ export const DebugShell: React.FC<{
         label: 'Passport + Atoms',
         content: (
           <div className="p-3 space-y-3">
-            <AgentPassportPanel atoms={p.passportAtoms} selfId={p.perspectiveId || ''} title="How the agent sees the situation" />
+            <AgentPassportPanel
+              atoms={arr(p.passportAtoms)}
+              selfId={p.perspectiveId || ''}
+              title="How the agent sees the situation"
+            />
+
+            {/* Atom browser mirrors the same canonical atoms as the passport panel. */}
+            <div className="h-[520px] min-h-0 rounded border border-white/10 bg-black/10 overflow-hidden">
+              <AtomBrowser atoms={arr(p.passportAtoms)} className="h-full min-h-0 flex flex-col" />
+            </div>
           </div>
         )
       },
