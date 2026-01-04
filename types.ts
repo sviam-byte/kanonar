@@ -501,6 +501,30 @@ export interface Relationship {
     history: any[];
 }
 
+export type AcquaintanceTier = 'unknown' | 'seen' | 'acquaintance' | 'known' | 'intimate';
+
+export type AcquaintanceKind =
+    | 'none'
+    | 'stranger'
+    | 'colleague'
+    | 'friend'
+    | 'romance'
+    | 'family'
+    | 'enemy'
+    | 'rival'
+    | 'mentor'
+    | 'subordinate';
+
+export interface AcquaintanceEdge {
+    tier: AcquaintanceTier;      // recognition level
+    kind: AcquaintanceKind;      // semantic relation kind
+    familiarity: number;         // 0..1
+    idConfidence: number;        // 0..1
+    firstMetAt?: number;
+    lastSeenAt?: number;
+    notes?: string[];
+}
+
 export interface UserRelation {
     trust: number;
     bond: number;
@@ -1010,6 +1034,7 @@ export interface AgentState extends CharacterEntity {
     position?: { x: number; y: number };
     factionId?: string;
     relationships: Record<string, Relationship>;
+    acquaintances?: Record<string, AcquaintanceEdge>;
     perceivedStates: Map<string, any>;
     pendingProposals: any[];
     actionHistory: { id: SocialActionId, targetId?: string }[];

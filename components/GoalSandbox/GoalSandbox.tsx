@@ -1138,14 +1138,69 @@ export const GoalSandbox: React.FC = () => {
     } as any;
   }, [snapshotV1, perspectiveId]);
 
+  // Prefer staged pipeline ids, fallback to snapshot deltas (or a safe default list) for legacy data.
+  const pipelineStageOptions = useMemo(() => {
+    if (pipelineV1 && Array.isArray((pipelineV1 as any).stages)) {
+      return (pipelineV1 as any).stages
+        .map((s: any, idx: number) => String(s?.stage || s?.id || `S${idx}`))
+        .filter((x: string) => !!x);
+    }
+    const deltasRaw = (snapshotV1 as any)?.meta?.pipelineDeltas;
+    const deltas = Array.isArray(deltasRaw) ? deltasRaw : [];
+    const ids = deltas.map((d: any, idx: number) => String(d?.id || `S${idx}`)).filter((x: string) => !!x);
+    return ids.length ? ids : ['S0', 'S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8'];
+  }, [pipelineV1, snapshotV1]);
+
+  const pipelineStageLabelById = useMemo(() => {
+    const m = new Map<string, string>();
+    if (pipelineV1 && Array.isArray((pipelineV1 as any).stages)) {
+      for (const s of (pipelineV1 as any).stages) {
+        const id = String(s?.stage || s?.id || '');
+        const label = String(s?.title || s?.label || id);
+        if (id) m.set(id, label);
+      }
+    }
+    return m;
+  }, [pipelineV1]);
+
+  const pipelineStageIndex = useMemo(() => {
+    const i = pipelineStageOptions.indexOf(String(pipelineStageId));
+    return i >= 0 ? i : pipelineStageOptions.length - 1;
+  }, [pipelineStageOptions, pipelineStageId]);
+
+  const currentPipelineStageId = useMemo(() => {
+    if (pipelineStageIndex < 0) return pipelineStageId;
+    return pipelineStageOptions[pipelineStageIndex] || pipelineStageId;
+  }, [pipelineStageIndex, pipelineStageOptions, pipelineStageId]);
+
+  const canonicalAtoms = useMemo(() => {
+    if (!snapshotV1) {
+      return {
+        stageId: String(currentPipelineStageId || ''),
+        atoms: [] as any[],
+        source: 'snapshotFallback' as const,
+        warnings: ['no snapshotV1'],
+      };
+    }
+    return getCanonicalAtomsFromSnapshot(snapshotV1 as any, String(currentPipelineStageId || ''));
+  }, [snapshotV1, currentPipelineStageId]);
+
   const pipelineFrame = useMemo(() => {
     if (!snapshotV1) return null;
-    const frame = buildDebugFrameFromSnapshot(snapshotV1 as any);
+    const frame = buildDebugFrameFromSnapshot(
+      snapshotV1 as any,
+      String(currentPipelineStageId || '')
+    );
     if (import.meta.env.DEV) {
       assertArray('frame.atoms', (frame as any)?.atoms);
     }
     return frame;
-  }, [snapshotV1]);
+  }, [snapshotV1, currentPipelineStageId]);
+
+  // ===== atoms for the currently selected pipeline stage (for Passport UI) =====
+  const passportAtoms = useMemo(() => {
+    return arr(canonicalAtoms?.atoms);
+  }, [canonicalAtoms]);
 
   const tomMatrixForPerspective = useMemo(() => {
     if (!worldState?.tom) return null;
@@ -1511,6 +1566,60 @@ export const GoalSandbox: React.FC = () => {
     [snapshotV1, pipelineV1]
   );
 
+  const handleExportFullDebug = useCallback(() => {
+    if (!snapshotV1) return;
+
+    const payload = buildFullDebugDump({
+      snapshotV1,
+      pipelineV1,
+      pipelineFrame,
+      worldState,
+      sceneDump: sceneDumpV2,
+      castRows,
+      manualAtoms,
+      selectedEventIds,
+      selectedLocationId,
+      selectedAgentId,
+      uiMeta: {
+        pipelineStageId: currentPipelineStageId,
+        perspectiveId,
+      },
+    });
+
+    const exportedAt = new Date().toISOString().replace(/[:.]/g, '-');
+    downloadJson(
+      payload,
+      `goal-lab__FULL_DEBUG__${snapshotV1.selfId}__t${snapshotV1.tick}__${exportedAt}.json`
+    );
+  }, [
+    snapshotV1,
+    pipelineV1,
+    pipelineFrame,
+    worldState,
+    sceneDumpV2,
+    castRows,
+    manualAtoms,
+    selectedEventIds,
+    selectedLocationId,
+    selectedAgentId,
+    currentPipelineStageId,
+    perspectiveId,
+  ]);
+
+  const handlePrevStage = useCallback(() => {
+    if (!pipelineStageOptions.length) return;
+    const next = Math.max(0, pipelineStageIndex - 1);
+    const id = pipelineStageOptions[next];
+    if (id) setPipelineStageId(id);
+  }, [pipelineStageOptions, pipelineStageIndex]);
+
+  const handleNextStage = useCallback(() => {
+    if (!pipelineStageOptions.length) return;
+    const next = Math.min(pipelineStageOptions.length - 1, pipelineStageIndex + 1);
+    const id = pipelineStageOptions[next];
+    if (id) setPipelineStageId(id);
+  }, [pipelineStageOptions, pipelineStageIndex]);
+
   const handleImportSceneClick = useCallback(() => {
     importInputRef.current?.click();
   }, []);
@@ -1584,107 +1693,6 @@ export const GoalSandbox: React.FC = () => {
       };
     }
   }, []);
-
-  // Prefer staged pipeline ids, fallback to snapshot deltas (or a safe default list) for legacy data.
-  const pipelineStageOptions = useMemo(() => {
-    if (pipelineV1 && Array.isArray((pipelineV1 as any).stages)) {
-      return (pipelineV1 as any).stages
-        .map((s: any, idx: number) => String(s?.stage || s?.id || `S${idx}`))
-        .filter((x: string) => !!x);
-    }
-    const deltasRaw = (snapshotV1 as any)?.meta?.pipelineDeltas;
-    const deltas = Array.isArray(deltasRaw) ? deltasRaw : [];
-    const ids = deltas.map((d: any, idx: number) => String(d?.id || `S${idx}`)).filter((x: string) => !!x);
-    return ids.length ? ids : ['S0', 'S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8'];
-  }, [pipelineV1, snapshotV1]);
-
-  const pipelineStageLabelById = useMemo(() => {
-    const m = new Map<string, string>();
-    if (pipelineV1 && Array.isArray((pipelineV1 as any).stages)) {
-      for (const s of (pipelineV1 as any).stages) {
-        const id = String(s?.stage || s?.id || '');
-        const label = String(s?.title || s?.label || id);
-        if (id) m.set(id, label);
-      }
-    }
-    return m;
-  }, [pipelineV1]);
-
-  const pipelineStageIndex = useMemo(() => {
-    const i = pipelineStageOptions.indexOf(String(pipelineStageId));
-    return i >= 0 ? i : pipelineStageOptions.length - 1;
-  }, [pipelineStageOptions, pipelineStageId]);
-
-  const currentPipelineStageId = useMemo(() => {
-    if (pipelineStageIndex < 0) return pipelineStageId;
-    return pipelineStageOptions[pipelineStageIndex] || pipelineStageId;
-  }, [pipelineStageIndex, pipelineStageOptions, pipelineStageId]);
-
-  const handleExportFullDebug = useCallback(() => {
-    if (!snapshotV1) return;
-
-    const payload = buildFullDebugDump({
-      snapshotV1,
-      pipelineV1,
-      pipelineFrame,
-      worldState,
-      sceneDump: sceneDumpV2,
-      castRows,
-      manualAtoms,
-      selectedEventIds,
-      selectedLocationId,
-      selectedAgentId,
-      uiMeta: {
-        pipelineStageId: currentPipelineStageId,
-        perspectiveId,
-      },
-    });
-
-    const exportedAt = new Date().toISOString().replace(/[:.]/g, '-');
-    downloadJson(
-      payload,
-      `goal-lab__FULL_DEBUG__${snapshotV1.selfId}__t${snapshotV1.tick}__${exportedAt}.json`
-    );
-  }, [
-    snapshotV1,
-    pipelineV1,
-    pipelineFrame,
-    worldState,
-    sceneDumpV2,
-    castRows,
-    manualAtoms,
-    selectedEventIds,
-    selectedLocationId,
-    selectedAgentId,
-    currentPipelineStageId,
-    perspectiveId,
-  ]);
-
-  const handlePrevStage = useCallback(() => {
-    if (!pipelineStageOptions.length) return;
-    const next = Math.max(0, pipelineStageIndex - 1);
-    const id = pipelineStageOptions[next];
-    if (id) setPipelineStageId(id);
-  }, [pipelineStageOptions, pipelineStageIndex]);
-
-  const handleNextStage = useCallback(() => {
-    if (!pipelineStageOptions.length) return;
-    const next = Math.min(pipelineStageOptions.length - 1, pipelineStageIndex + 1);
-    const id = pipelineStageOptions[next];
-    if (id) setPipelineStageId(id);
-  }, [pipelineStageOptions, pipelineStageIndex]);
-
-  // ===== atoms for the currently selected pipeline stage (for Passport UI) =====
-  const passportAtoms = useMemo(() => {
-    if (snapshotV1) {
-      // Единство атомов: паспорт читает только pipelineV1 stage atoms (fallback внутри canonical.ts)
-      return getCanonicalAtomsFromSnapshot(
-        snapshotV1 as any,
-        String(currentPipelineStageId || '')
-      ).atoms;
-    }
-    return [];
-  }, [snapshotV1, currentPipelineStageId]);
 
   // Keep the left sidebar visible in both front/debug modes (core controls live there).
   const leftVisible = true;
@@ -1957,6 +1965,7 @@ export const GoalSandbox: React.FC = () => {
                 perspectiveId={perspectiveId}
                 onSetPerspectiveId={setPerspectiveAgentId}
                 passportAtoms={passportAtoms}
+                passportMeta={canonicalAtoms as any}
                 contextualMind={contextualMind as any}
                 locationScores={locationScores as any}
                 tomScores={tomScores as any}

@@ -34,6 +34,7 @@ export const DebugShell: React.FC<{
   onSetPerspectiveId: (id: string) => void;
 
   passportAtoms: ContextAtom[];
+  passportMeta?: { stageId?: string; source?: string; warnings?: string[] };
   contextualMind?: any;
   locationScores?: any;
   tomScores?: any;
@@ -74,13 +75,24 @@ export const DebugShell: React.FC<{
         label: 'Passport + Atoms',
         content: (
           <div className="p-3 space-y-3">
+            <div className="text-[11px] font-mono rounded border border-white/10 bg-black/20 px-2 py-1 flex flex-wrap gap-x-3 gap-y-1">
+              <span>stage={String(p.passportMeta?.stageId ?? 'unknown')}</span>
+              <span>source={String(p.passportMeta?.source ?? 'unknown')}</span>
+              <span>atoms={arr(p.passportAtoms).length}</span>
+              <span>
+                warnings=
+                {arr(p.passportMeta?.warnings).length
+                  ? arr(p.passportMeta?.warnings).join(', ')
+                  : 'none'}
+              </span>
+            </div>
+
             <AgentPassportPanel
               atoms={arr(p.passportAtoms)}
               selfId={p.perspectiveId || ''}
               title="How the agent sees the situation"
             />
 
-            {/* Atom browser mirrors the same canonical atoms as the passport panel. */}
             <div className="h-[520px] min-h-0 rounded border border-white/10 bg-black/10 overflow-hidden">
               <AtomBrowser atoms={arr(p.passportAtoms)} className="h-full min-h-0 flex flex-col" />
             </div>

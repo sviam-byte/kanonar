@@ -5,6 +5,8 @@ import { AgentState, ActionOutcome, WorldState } from '../../types';
 import { estimateInfluenceState } from '../tom/update';
 import { safe01, safeNum, clamp } from "../util/safe";
 import { updateTomPolicyPriorForTarget } from '../tom/policy';
+import { getRelationshipFromTom } from '../tom/rel';
+import { seedAcquaintanceFromSignals, touchSeen } from '../social/acquaintance';
 
 const sigmoid = (x: number): number => 1 / (1 + Math.exp(-x));
 
@@ -105,6 +107,51 @@ export const SocialSystem = {
         }
         
         agent.perceivedStates.set(agent.entityId, { hp: agent.hp });
+
+        // IMPORTANT: In the new pipeline, dyadic ToM (world.tom / agent.tom)
+        // often carries the *real* relationship signal (bond/trust/align/etc.)
+        // while agent.relationships may still be uninitialized/default.
+        // Seed relationships from dyadic ToM to avoid "everyone feels like a stranger".
+
+        const isDefaultRel = (r: any): boolean => {
+            if (!r) return true;
+            const hlen = Array.isArray(r.history) ? r.history.length : 0;
+            if (hlen > 0) return false;
+            // Default-ish initializer values used across the codebase.
+            const near = (a: number, b: number, eps = 1e-6) => Math.abs((a ?? 0) - b) <= eps;
+            return (
+                near(r.trust, 0.5) &&
+                near(r.align, 0.5) &&
+                near(r.respect, 0.5) &&
+                near(r.fear, 0.1) &&
+                near(r.bond, 0.1) &&
+                near(r.conflict, 0.0)
+            );
+        };
+
+        const seedRelFromTom = (otherId: string, current?: any) => {
+            // Only seed if the relationship looks uninitialized.
+            if (!isDefaultRel(current)) return current;
+
+            const relFromTom = getRelationshipFromTom({
+                world,
+                agent,
+                selfId: agent.entityId,
+                otherId,
+            });
+
+            if (!relFromTom) return current;
+
+            return {
+                history: Array.isArray(current?.history) ? current.history : [],
+                trust: clamp(safeNum(relFromTom.trust, 0.5), 0, 1),
+                align: clamp(safeNum(relFromTom.align, 0.5), 0, 1),
+                respect: clamp(safeNum(relFromTom.respect, 0.5), 0, 1),
+                fear: clamp(safeNum(relFromTom.fear, 0.1), 0, 1),
+                bond: clamp(safeNum(relFromTom.bond, 0.1), 0, 1),
+                conflict: clamp(safeNum(relFromTom.conflict, 0.0), 0, 1),
+            };
+        };
         
         world.agents.forEach(other => {
             if (other.entityId !== agent.entityId) {
@@ -115,6 +162,23 @@ export const SocialSystem = {
                         fear: 0.1, bond: 0.1, conflict: 0.0,
                     };
                 }
+
+                // Seed (or refresh defaults) from ToM dyad traits when available.
+                agent.relationships[other.entityId] = seedRelFromTom(other.entityId, agent.relationships[other.entityId]);
+
+                // Seed acquaintance graph from relationship/ToM signals for recognition gating.
+                const acq = seedAcquaintanceFromSignals({
+                    world,
+                    agent,
+                    otherId: other.entityId,
+                });
+
+                // If co-located, increase recognition/familiarity.
+                const sameLoc =
+                    (agent as any)?.locationId &&
+                    (other as any)?.locationId &&
+                    (agent as any).locationId === (other as any).locationId;
+                if (sameLoc) touchSeen(world, acq, { idBoost: 0.12, famBoost: 0.08 });
                 
                 // Update Policy Prior (Expectations)
                 if (world.tom) {

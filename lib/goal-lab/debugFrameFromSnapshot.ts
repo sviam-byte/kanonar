@@ -6,8 +6,10 @@ import { getCanonicalAtomsFromSnapshot } from './atoms/canonical';
 
 type AtomOrigin = 'world' | 'obs' | 'override' | 'derived';
 
-export function buildDebugFrameFromSnapshot(snapshot: GoalLabSnapshotV1) {
-  const canon = getCanonicalAtomsFromSnapshot(snapshot, (snapshot as any)?.ui?.selectedStageId);
+export function buildDebugFrameFromSnapshot(snapshot: GoalLabSnapshotV1, stageId?: string) {
+  const resolvedStageId =
+    stageId || (snapshot as any)?.ui?.selectedStageId || (snapshot as any)?.meta?.ui?.selectedStageId;
+  const canon = getCanonicalAtomsFromSnapshot(snapshot, resolvedStageId);
   const rawAtoms: any[] = Array.isArray(canon.atoms) ? (canon.atoms as any[]) : [];
 
   const atoms = rawAtoms.map(a => {
