@@ -9,6 +9,7 @@ import { deriveAxes } from '../../context/axes/deriveAxes';
 import { applyCharacterLens } from '../../context/lens/characterLens';
 
 import { applyRelationPriorsToDyads } from '../../tom/base/applyRelationPriors';
+import { deriveNonContextDyadAtoms } from '../../tom/base/deriveNonContextDyads';
 import { buildBeliefToMBias } from '../../tom/ctx/beliefBias';
 import { buildTomPolicyLayer } from '../../tom/policy/tomPolicy';
 
@@ -342,17 +343,22 @@ export function runGoalLabPipelineV1(input: {
   const relAtoms = arr((relPriors as any)?.atoms).map(normalizeAtom);
   const mS5a = mergeAtomsPreferNewer(atoms, relAtoms);
 
-  const beliefBias = buildBeliefToMBias({ selfId, atoms: mS5a.atoms });
+  const othersForTom = participantIds.filter(id => id && id !== selfId);
+  const nonCtx = deriveNonContextDyadAtoms({ selfId, otherIds: othersForTom, atoms: mS5a.atoms });
+  const nonCtxAtoms = arr((nonCtx as any)?.atoms).map(normalizeAtom);
+  const mS5x = mergeAtomsPreferNewer(mS5a.atoms, nonCtxAtoms);
+
+  const beliefBias = buildBeliefToMBias({ selfId, atoms: mS5x.atoms });
   const beliefAtoms = arr((beliefBias as any)?.atoms).map(normalizeAtom);
-  const mS5b = mergeAtomsPreferNewer(mS5a.atoms, beliefAtoms);
+  const mS5b = mergeAtomsPreferNewer(mS5x.atoms, beliefAtoms);
 
   const policy = buildTomPolicyLayer({ selfId, atoms: mS5b.atoms });
   const policyAtoms = arr((policy as any)?.atoms).map(normalizeAtom);
   const mS5c = mergeAtomsPreferNewer(mS5b.atoms, policyAtoms);
 
   const atomsS5 = mS5c.atoms;
-  const s5Added = uniqStrings([...mS5a.newIds, ...mS5b.newIds, ...mS5c.newIds]);
-  const s5Overridden = uniqStrings([...mS5a.overriddenIds, ...mS5b.overriddenIds, ...mS5c.overriddenIds]);
+  const s5Added = uniqStrings([...mS5a.newIds, ...mS5x.newIds, ...mS5b.newIds, ...mS5c.newIds]);
+  const s5Overridden = uniqStrings([...mS5a.overriddenIds, ...mS5x.overriddenIds, ...mS5b.overriddenIds, ...mS5c.overriddenIds]);
   atoms = atomsS5;
   stages.push({
     stage: 'S5',
@@ -363,6 +369,7 @@ export function runGoalLabPipelineV1(input: {
     stats: { atomCount: atoms.length, addedCount: s5Added.length, ...stageStats(atoms) },
     artifacts: {
       relPriorsCount: relAtoms.length,
+      nonContextDyadCount: nonCtxAtoms.length,
       beliefBiasCount: beliefAtoms.length,
       policyCount: policyAtoms.length,
       overriddenIds: s5Overridden,
