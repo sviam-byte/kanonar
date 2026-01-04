@@ -86,13 +86,13 @@ export const DebugShell: React.FC<{
                   : 'none'}
               </span>
             </div>
+
             <AgentPassportPanel
               atoms={arr(p.passportAtoms)}
               selfId={p.perspectiveId || ''}
               title="How the agent sees the situation"
             />
 
-            {/* Atom browser mirrors the same canonical atoms as the passport panel. */}
             <div className="h-[520px] min-h-0 rounded border border-white/10 bg-black/10 overflow-hidden">
               <AtomBrowser atoms={arr(p.passportAtoms)} className="h-full min-h-0 flex flex-col" />
             </div>
