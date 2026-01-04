@@ -53,6 +53,7 @@ import { buildDebugFrameFromSnapshot } from '../../lib/goal-lab/debugFrameFromSn
 import { normalizeAtom } from '../../lib/context/v2/infer';
 import { lintActionsAndLocations } from '../../lib/linter/actionsAndLocations';
 import { arr } from '../../lib/utils/arr';
+import { getCanonicalAtomsFromSnapshot } from '../../lib/goal-lab/atoms/canonical';
 
 function createCustomLocationEntity(map: LocationMap): LocationEntity {
   const cells = map.cells || [];
@@ -1137,15 +1138,6 @@ export const GoalSandbox: React.FC = () => {
     } as any;
   }, [snapshotV1, perspectiveId]);
 
-  const pipelineFrame = useMemo(() => {
-    if (!snapshotV1) return null;
-    const frame = buildDebugFrameFromSnapshot(snapshotV1 as any);
-    if (import.meta.env.DEV) {
-      assertArray('frame.atoms', (frame as any)?.atoms);
-    }
-    return frame;
-  }, [snapshotV1]);
-
   const tomMatrixForPerspective = useMemo(() => {
     if (!worldState?.tom) return null;
     if (!perspectiveId) return null;
@@ -1619,6 +1611,27 @@ export const GoalSandbox: React.FC = () => {
     return pipelineStageOptions[pipelineStageIndex] || pipelineStageId;
   }, [pipelineStageIndex, pipelineStageOptions, pipelineStageId]);
 
+  const canonicalAtoms = useMemo(() => {
+    if (!snapshotV1) {
+      return {
+        stageId: String(currentPipelineStageId || ''),
+        atoms: [] as any[],
+        source: 'snapshotFallback' as const,
+        warnings: ['no snapshotV1'],
+      };
+    }
+    return getCanonicalAtomsFromSnapshot(snapshotV1 as any, String(currentPipelineStageId || ''));
+  }, [snapshotV1, currentPipelineStageId]);
+
+  const pipelineFrame = useMemo(() => {
+    if (!snapshotV1) return null;
+    const frame = buildDebugFrameFromSnapshot(snapshotV1 as any, String(currentPipelineStageId || ''));
+    if (import.meta.env.DEV) {
+      assertArray('frame.atoms', (frame as any)?.atoms);
+    }
+    return frame;
+  }, [snapshotV1, currentPipelineStageId]);
+
   const handleExportFullDebug = useCallback(() => {
     if (!snapshotV1) return;
 
@@ -1675,31 +1688,8 @@ export const GoalSandbox: React.FC = () => {
 
   // ===== atoms for the currently selected pipeline stage (for Passport UI) =====
   const passportAtoms = useMemo(() => {
-    // Prefer pipelineV1 if present.
-    if (pipelineV1 && Array.isArray((pipelineV1 as any).stages)) {
-      const stages = (pipelineV1 as any).stages;
-      const st =
-        stages.find((s: any) => String(s?.stage || s?.id) === String(currentPipelineStageId)) ||
-        stages[stages.length - 1];
-      const atoms = asArray<any>(st?.atoms ?? st?.materializedAtoms ?? st?.fullAtoms ?? []);
-      if (atoms.length) return atoms;
-    }
-
-    // Fallback: materialize from snapshotV1.meta.pipelineDeltas.
-    if (snapshotV1) {
-      const deltasRaw = (snapshotV1 as any).meta?.pipelineDeltas;
-      const deltas = Array.isArray(deltasRaw) ? deltasRaw : [];
-      if (deltas.length) {
-        try {
-          return materializeStageAtoms(deltas, String(currentPipelineStageId));
-        } catch {}
-      }
-      return asArray<any>(snapshotV1.atoms as any);
-    }
-
-    // Legacy fallback.
-    return asArray<any>(((snapshot as any)?.atoms) as any);
-  }, [pipelineV1, snapshotV1, snapshot, currentPipelineStageId]);
+    return arr(canonicalAtoms?.atoms);
+  }, [canonicalAtoms]);
 
   // Keep the left sidebar visible in both front/debug modes (core controls live there).
   const leftVisible = true;
@@ -1972,6 +1962,7 @@ export const GoalSandbox: React.FC = () => {
                 perspectiveId={perspectiveId}
                 onSetPerspectiveId={setPerspectiveAgentId}
                 passportAtoms={passportAtoms}
+                passportMeta={canonicalAtoms as any}
                 contextualMind={contextualMind as any}
                 locationScores={locationScores as any}
                 tomScores={tomScores as any}
