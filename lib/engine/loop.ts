@@ -33,6 +33,7 @@ import { computeToMCore } from '../tom/core';
 import { flattenObject } from '../param-utils';
 import { findLocation } from '../world/locations';
 import { mapSimulationEventsToUnified } from '../events/simulation-bridge';
+import { applyAcquaintanceFromEvents } from '../social/acquaintanceFromEvents';
 
 // Helper to map SimulationEvent to DomainEvent for logs
 function mapSimEventToDomain(ev: SimulationEvent, world: WorldState): DomainEvent {
@@ -293,6 +294,8 @@ export async function runSimulationTick(world: WorldState): Promise<SimulationEv
     if (world.eventLog) {
         // Filter out low-level ticks if too spammy, or include all
         const domainEvents = events.map(e => mapSimEventToDomain(e, world));
+        // Feed interaction events into recognition/acquaintance updates.
+        applyAcquaintanceFromEvents(world, domainEvents);
         world.eventLog.events.push(...domainEvents);
         
         // Limit log size if needed
