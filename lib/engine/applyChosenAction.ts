@@ -23,15 +23,37 @@ function inferTags(actionId: string): string[] {
   const id = String(actionId || '').toLowerCase();
   const tags: string[] = [];
 
-  // очень грубая эвристика — но детерминированная
-  if (id.includes('help') || id.includes('aid')) tags.push('help');
-  if (id.includes('attack') || id.includes('harm')) tags.push('attack');
+  // Pro-social (support/care).
+  if (id.includes('help') || id.includes('aid') || id.includes('offer_help')) tags.push('help');
+  if (id.includes('save')) tags.push('help');
+  if (id.includes('reassure') || id.includes('comfort')) tags.push('help');
+
+  // Aggressive / harm.
+  if (id.includes('attack') || id.includes('harm') || id.includes('hurt')) tags.push('attack');
+  if (id.includes('intimidate') || id.includes('threaten')) tags.push('attack');
+  if (id.includes('blame') || id.includes('accuse')) tags.push('attack');
+
+  // Deception / betrayal.
+  if (id.includes('deceive') || id.includes('lie')) tags.push('lie');
+  if (id.includes('gossip') || id.includes('rumor')) tags.push('lie');
+  if (id.includes('betray')) tags.push('betrayal');
+
+  // Cooperation / bonding.
+  if (id.includes('share_secret') || id.includes('secret')) tags.push('shared_secret');
+  if (id.includes('apologize')) tags.push('apology');
+  if (id.includes('thank')) tags.push('gratitude');
+  if (id.includes('forgive')) tags.push('forgive');
+  if (id.includes('reconcile')) tags.push('reconcile');
+  if (id.includes('set_boundary')) tags.push('boundary');
+  if (id.includes('request_help')) tags.push('request_help');
+
+  // Misc.
   if (id.includes('escape') || id.includes('exit')) tags.push('escape');
   if (id.includes('hide') || id.includes('sneak')) tags.push('hide');
   if (id.includes('self_talk') || id.includes('monologue')) tags.push('self_talk');
 
   if (!tags.length) tags.push(id.split(':')[0] || 'action');
-  return tags.slice(0, 4);
+  return tags.slice(0, 6);
 }
 
 function inferPolarity(tags: string[]): number {

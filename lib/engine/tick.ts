@@ -11,6 +11,7 @@ import { updateRelationshipGraphFromEvents } from '../relations/updateFromEvents
 import { WorldEvent } from '../events/types';
 import { arr } from '../utils/arr';
 import { applyChosenActionToWorld } from './applyChosenAction';
+import { applyAcquaintanceFromEvents } from '../social/acquaintanceFromEvents';
 
 export function ensureWorldTick(world: any) {
   if (typeof world.tick !== 'number') world.tick = 0;
@@ -51,13 +52,12 @@ export function runTicks(args: {
     const worldEvents: WorldEvent[] = eventsNow.map(ev => {
         let kind = ev.domain;
         if (ev.tags && ev.tags.length > 0) {
-             if (ev.tags.includes('help') || ev.tags.includes('aid')) kind = 'helped';
-             else if (ev.tags.includes('attack') || ev.tags.includes('harm')) kind = 'attacked';
+             if (ev.tags.includes('help')) kind = 'helped';
+             else if (ev.tags.includes('attack')) kind = 'attacked';
              else if (ev.tags.includes('betrayal')) kind = 'betrayed';
-             else if (ev.tags.includes('lie') || ev.tags.includes('deceive')) kind = 'lied';
-             else if (ev.tags.includes('promise') && ev.tags.includes('kept')) kind = 'kept_oath';
-             else if (ev.tags.includes('promise') && ev.tags.includes('broken')) kind = 'broke_oath';
-             else kind = ev.tags[0]; 
+             else if (ev.tags.includes('lie')) kind = 'lied';
+             else if (ev.tags.includes('shared_secret')) kind = 'shared_secret';
+             else kind = ev.tags[0];
         }
         
         return {
@@ -70,6 +70,9 @@ export function runTicks(args: {
             context: { locationId: ev.locationId }
         };
     });
+
+    // Grow recognition from recent interaction events.
+    applyAcquaintanceFromEvents(world, eventsNow);
 
     // 2) Update Relations (if graph exists on agent)
     if (agent && typeof updateRelationshipGraphFromEvents === 'function') {
@@ -181,12 +184,11 @@ export function runTicksForCast(args: {
     const worldEvents: WorldEvent[] = eventsNow.map(ev => {
       let kind = ev.domain;
       if (ev.tags && ev.tags.length > 0) {
-        if (ev.tags.includes('help') || ev.tags.includes('aid')) kind = 'helped';
-        else if (ev.tags.includes('attack') || ev.tags.includes('harm')) kind = 'attacked';
+        if (ev.tags.includes('help')) kind = 'helped';
+        else if (ev.tags.includes('attack')) kind = 'attacked';
         else if (ev.tags.includes('betrayal')) kind = 'betrayed';
-        else if (ev.tags.includes('lie') || ev.tags.includes('deceive')) kind = 'lied';
-        else if (ev.tags.includes('promise') && ev.tags.includes('kept')) kind = 'kept_oath';
-        else if (ev.tags.includes('promise') && ev.tags.includes('broken')) kind = 'broke_oath';
+        else if (ev.tags.includes('lie')) kind = 'lied';
+        else if (ev.tags.includes('shared_secret')) kind = 'shared_secret';
         else kind = ev.tags[0];
       }
       return {
@@ -199,6 +201,9 @@ export function runTicksForCast(args: {
         context: { locationId: ev.locationId },
       };
     });
+
+    // Grow recognition from recent interaction events.
+    applyAcquaintanceFromEvents(world, eventsNow);
 
     const evAll = extractEvidenceFromEvents({ events: eventsNow });
 

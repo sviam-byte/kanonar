@@ -12,6 +12,7 @@ import { ContextWorldState, FactAtom, OfferAtom, ContextSlice, CommitmentAtom, P
 import { socialActions } from '../../data/actions-social';
 import { registerCommitmentAtom } from '../context/engine';
 import { createPlanFromSteps } from '../planning/engine';
+import { ensureAcquaintance, touchSeen } from '../social/acquaintance';
 
 const SIGNIFICANT_CHANGE_THRESHOLD = 0.1;
 
@@ -218,6 +219,19 @@ export const ActionSystem = {
         if (intention.id === 'reject_plan') {
              description = `${agent.title} отвергает предложенный план.`;
              // Could find and mark atom as rejected if it was directed specifically at this agent
+        }
+
+        if (intention.id === 'introduce' && target) {
+            // Make "introduce" explicitly lock in recognition on both sides.
+            const e1 = ensureAcquaintance(agent, target.entityId);
+            touchSeen(world, e1, { idBoost: 0.75, famBoost: 0.45 });
+            if (e1.tier === 'seen') e1.tier = 'acquaintance';
+
+            const e2 = ensureAcquaintance(target, agent.entityId);
+            touchSeen(world, e2, { idBoost: 0.75, famBoost: 0.45 });
+            if (e2.tier === 'seen') e2.tier = 'acquaintance';
+
+            description = `${agent.title} представляется ${target.title}. (acquaintance++)`;
         }
 
         // --- Generate Fact if Action Satisfies Proposition ---

@@ -10,6 +10,7 @@ import { AtomBrowser } from '../goal-lab/AtomBrowser';
 import { GoalLabResults } from '../goal-lab/GoalLabResults';
 import { EmotionInspector } from '../goal-lab/EmotionInspector';
 import { EmotionExplainPanel } from '../goal-lab/EmotionExplainPanel';
+import { AcquaintancePanel } from '../goal-lab/AcquaintancePanel';
 import { ToMPanel } from '../goal-lab/ToMPanel';
 import { ContextMindPanel } from '../goal-lab/ContextMindPanel';
 import { RelationsPanel } from '../goal-lab/RelationsPanel';
@@ -17,6 +18,7 @@ import { PipelinePanel } from '../goal-lab/PipelinePanel';
 import { ValidatorPanel } from '../goal-lab/ValidatorPanel';
 import { FrameDebugPanel } from '../GoalLab/FrameDebugPanel';
 import { arr } from '../../lib/utils/arr';
+import { buildRelGraphFromAtoms } from '../../lib/goal-lab/buildRelGraphFromAtoms';
 
 function asArray<T>(x: any): T[] {
   return Array.isArray(x) ? x : [];
@@ -158,7 +160,21 @@ export const DebugShell: React.FC<{
             <div className="text-xs opacity-70">Dyad + contextual ToM, без “шума”.</div>
             <ToMPanel atoms={atoms} />
             <ContextMindPanel atoms={atoms} />
-            <RelationsPanel atoms={atoms} />
+            <div className="h-[420px] min-h-0 rounded border border-white/10 bg-black/10 overflow-hidden">
+              <AcquaintancePanel
+                atoms={atoms}
+                className="h-full min-h-0"
+                onSelectTargetId={id => p.onSetPerspectiveId?.(id)}
+              />
+            </div>
+            <div className="h-[520px] min-h-0 rounded border border-white/10 bg-black/10 overflow-hidden">
+              <RelationsPanel
+                selfId={p.perspectiveId || ''}
+                graph={buildRelGraphFromAtoms(atoms)}
+                className="h-full min-h-0"
+                onSelectTargetId={id => p.onSetPerspectiveId?.(id)}
+              />
+            </div>
           </div>
         )
       },
