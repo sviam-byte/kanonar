@@ -28,6 +28,7 @@ import { buildFullAgentContextFrame } from '../context/v4/build';
 import { hasLocalWounded } from '../context/v2/nearbyWounded';
 import { buildAtomsFromFrame } from '../context/v4/atoms';
 import { extractTargetCandidates } from './targeting';
+import { getRelationshipFromTom } from '../tom/rel';
 
 export interface EvaluateGoalsRequestV4 {
   world: WorldState;
@@ -249,12 +250,18 @@ export function computeConcreteGoals(
          
          const nearby = nearbyActors.find(a => a.id === targetId);
          if (nearby) {
-             role = nearby.role;
-             threatLevel = nearby.threatLevel ?? 0;
-         }
-         
-         // Mock relation if missing based on sandbox role
-         if (!rel && nearby) {
+          role = nearby.role;
+          threatLevel = nearby.threatLevel ?? 0;
+        }
+
+        // If relationships are missing/uninitialized, fall back to dyadic ToM.
+        // This prevents "romance/close bond" pairs from behaving like strangers.
+        if (!rel && world) {
+          rel = getRelationshipFromTom({ world, agent, selfId: agent.entityId, otherId: targetId }) || rel;
+        }
+
+        // Mock relation if missing based on sandbox role
+        if (!rel && nearby) {
              rel = {
                  trust: nearby.kind === 'ally' ? 0.8 : 0.1,
                  conflict: nearby.kind === 'enemy' ? 0.9 : 0.1,

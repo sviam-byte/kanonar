@@ -10,6 +10,7 @@ import { actionGoalMap } from '../goals/space';
 import { AgentContextFrame } from '../context/frame/types';
 import { ContextAtom } from '../context/v2/types';
 import { extractTargetCandidates } from '../goals/targeting';
+import { getRelationshipFromTom } from '../tom/rel';
 import { getDyadMag } from '../tom/layers';
 
 // Type for standardized metrics input including flattened psych/latent/field states
@@ -310,12 +311,17 @@ export function computeConcreteGoals(
          
          const nearby = nearbyActors.find(a => a.id === targetId);
          if (nearby) {
-             role = nearby.role;
-             threatLevel = nearby.threatLevel ?? 0;
-         }
-         
-         // Mock relation if missing based on sandbox role
-         if (!rel && nearby) {
+          role = nearby.role;
+          threatLevel = nearby.threatLevel ?? 0;
+        }
+
+        // If relationships are missing/uninitialized, fall back to dyadic ToM.
+        if (!rel && world) {
+          rel = getRelationshipFromTom({ world, agent, selfId: agent.entityId, otherId: targetId }) || rel;
+        }
+
+        // Mock relation if missing based on sandbox role
+        if (!rel && nearby) {
              rel = {
                  trust: nearby.kind === 'ally' ? 0.8 : 0.1,
                  conflict: nearby.kind === 'enemy' ? 0.9 : 0.1,
