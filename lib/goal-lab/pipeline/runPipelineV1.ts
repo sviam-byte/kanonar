@@ -22,6 +22,8 @@ import { computeContextMindScoreboard } from '../../contextMind/scoreboard';
 
 import { deriveDriversAtoms } from '../../drivers/deriveDrivers';
 import { deriveGoalAtoms } from '../../goals/goalAtoms';
+import { derivePlanningGoalAtoms } from '../../goals/planningGoalAtoms';
+import { deriveGoalActionLinkAtoms } from '../../goals/goalActionLinksAtoms';
 
 import { derivePossibilitiesRegistry } from '../../possibilities/derive';
 import { atomizePossibilities } from '../../possibilities/atomize';
@@ -399,23 +401,38 @@ export function runGoalLabPipelineV1(input: {
     artifacts: { contextMind: scoreboard, drvCount: drvAtoms.length, overriddenIds: s6Overridden }
   });
 
-  // S7: goals (ecology + active)
+  // S7: goals (ecology + active) + planning-goals
   // Safe: uses only existing atoms; if drv/life are missing it falls back to ctx.
   const goalRes = deriveGoalAtoms(selfId, atoms as any, { topN: 3 });
   const goalAtoms = arr((goalRes as any)?.atoms).map(normalizeAtom);
-  const mS7 = mergeAtomsPreferNewer(atoms, goalAtoms);
-  const atomsS7 = mS7.atoms;
-  const s7Added = mS7.newIds;
-  const s7Overridden = mS7.overriddenIds;
+
+  const planRes = derivePlanningGoalAtoms(selfId, mergeAtomsPreferNewer(atoms, goalAtoms).atoms as any, { topN: 5 });
+  const planAtoms = arr((planRes as any)?.atoms).map(normalizeAtom);
+
+  const linkRes = deriveGoalActionLinkAtoms(selfId);
+  const linkAtoms = arr((linkRes as any)?.atoms).map(normalizeAtom);
+
+  const mS7a = mergeAtomsPreferNewer(atoms, goalAtoms);
+  const mS7b = mergeAtomsPreferNewer(mS7a.atoms, planAtoms);
+  const mS7c = mergeAtomsPreferNewer(mS7b.atoms, linkAtoms);
+  const atomsS7 = mS7c.atoms;
+  const s7Added = uniqStrings([...mS7a.newIds, ...mS7b.newIds, ...mS7c.newIds]);
+  const s7Overridden = uniqStrings([...mS7a.overriddenIds, ...mS7b.overriddenIds, ...mS7c.overriddenIds]);
   atoms = atomsS7;
   stages.push({
     stage: 'S7',
-    title: 'S7 Goals',
+    title: 'S7 Goals (ecology + planning)',
     atoms,
     atomsAddedIds: s7Added,
     warnings: [],
     stats: { atomCount: atoms.length, addedCount: s7Added.length, ...stageStats(atoms) },
-    artifacts: { goalAtomsCount: goalAtoms.length, overriddenIds: s7Overridden }
+    artifacts: {
+      goalAtomsCount: goalAtoms.length,
+      planGoalAtomsCount: planAtoms.length,
+      goalActionLinksCount: linkAtoms.length,
+      topPlanGoals: (planRes as any)?.top || [],
+      overriddenIds: s7Overridden
+    }
   });
 
   // S8: actions

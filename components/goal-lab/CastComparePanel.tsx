@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import type { ContextSnapshot } from '../../lib/context/v2/types';
 import { diffAtoms } from '../../lib/snapshot/diffAtoms';
+import { getCanonicalAtomsFromSnapshot } from '../../lib/goal-lab/atoms/canonical';
 
 type CastRow = {
   id: string;
@@ -23,7 +24,12 @@ function getName(r?: CastRow | null) {
 
 export function CastComparePanel({ rows, focusId }: { rows: CastRow[]; focusId?: string | null }) {
   const usable = useMemo(
-    () => rows.filter(r => r.snapshot && Array.isArray((r.snapshot as any).atoms)),
+    () => rows.filter(r => {
+      const snap: any = r?.snapshot;
+      if (!snap) return false;
+      const canon = getCanonicalAtomsFromSnapshot(snap);
+      return Array.isArray(canon.atoms);
+    }),
     [rows]
   );
 
@@ -32,7 +38,7 @@ export function CastComparePanel({ rows, focusId }: { rows: CastRow[]; focusId?:
       <div className="rounded-xl border border-canon-border bg-canon-bg-light/30 p-3">
         <div className="text-xs font-semibold opacity-80 mb-2">Compare (agent ↔ agent)</div>
         <div className="text-[12px] opacity-70">
-          Нет пригодных снапшотов для сравнения (нужны rows[i].snapshot.atoms как массив).
+          Нет пригодных снапшотов для сравнения (нужны pipelineV1.stages[*].atoms как массив).
         </div>
       </div>
     );
@@ -62,8 +68,10 @@ export function CastComparePanel({ rows, focusId }: { rows: CastRow[]; focusId?:
   const hasTwo = usable.length >= 2 && (a?.id || '') !== (b?.id || '');
 
   const summaryRows = useMemo(() => {
-    const atomsA: any[] = Array.isArray((a?.snapshot as any)?.atoms) ? (a?.snapshot as any).atoms : [];
-    const atomsB: any[] = Array.isArray((b?.snapshot as any)?.atoms) ? (b?.snapshot as any).atoms : [];
+    const aCanon = a?.snapshot ? getCanonicalAtomsFromSnapshot(a.snapshot as any) : null;
+    const bCanon = b?.snapshot ? getCanonicalAtomsFromSnapshot(b.snapshot as any) : null;
+    const atomsA: any[] = aCanon?.atoms || [];
+    const atomsB: any[] = bCanon?.atoms || [];
     const aId = a?.id || '';
     const bId = b?.id || '';
 
@@ -100,8 +108,10 @@ export function CastComparePanel({ rows, focusId }: { rows: CastRow[]; focusId?:
   }, [a, b]);
 
   const topDiff = useMemo(() => {
-    const atomsA = Array.isArray((a?.snapshot as any)?.atoms) ? (a?.snapshot as any).atoms : [];
-    const atomsB = Array.isArray((b?.snapshot as any)?.atoms) ? (b?.snapshot as any).atoms : [];
+    const aCanon = a?.snapshot ? getCanonicalAtomsFromSnapshot(a.snapshot as any) : null;
+    const bCanon = b?.snapshot ? getCanonicalAtomsFromSnapshot(b.snapshot as any) : null;
+    const atomsA = aCanon?.atoms || [];
+    const atomsB = bCanon?.atoms || [];
 
     const diffs = diffAtoms(atomsA, atomsB);
 
