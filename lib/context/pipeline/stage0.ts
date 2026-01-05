@@ -15,8 +15,9 @@ import { deriveAxes } from '../axes/deriveAxes';
 import { buildLifeDomainWeights } from '../../life-domains';
 
 // New RelationBase Logic
-import { extractRelBaseFromCharacter } from '../../relations/extract';
-import { atomizeRelBase } from '../../relations/atomize';
+import { extractRelBaseFromCharacter, extractRelCtxFromCharacter } from '../../relations/extract';
+import { atomizeRelBase, atomizeRelCtx } from '../../relations/atomize';
+import { deriveRelCtxAtoms } from '../../relations/deriveCtx';
 
 // New WorldFacts Logic
 import { buildWorldFactsAtoms } from './worldFacts';
@@ -262,6 +263,11 @@ export function buildStage0Atoms(input: Stage0Input): Stage0Output {
   (input.agent as any).rel_base = relBase;
   const relAtoms = atomizeRelBase(input.selfId, relBase, otherAgentIds);
 
+  // 2.1 Relationship Context Memory (inheritable) — rel:ctx from character storage
+  const relCtxMem = extractRelCtxFromCharacter({ selfId: input.selfId, character: input.agent, tick });
+  (input.agent as any).rel_ctx = relCtxMem;
+  const relCtxAtomsFromMem = atomizeRelCtx(input.selfId, relCtxMem, otherAgentIds);
+
   const { dyadAtoms: tomDyadAtoms, relHintAtoms: tomRelHints } = extractTomDyadAtoms({
     world: input.world,
     agent: input.agent,
@@ -290,6 +296,31 @@ export function buildStage0Atoms(input: Stage0Input): Stage0Output {
 
   // 2.5 Relationship CURRENT state (derived from rel:base + events + tom + ctx)
   // Важно: rel:state — это не ToM. Это “текущее отношение”, которое ToM будет учитывать как prior.
+  // 2.45 Relationship CONTEXT state (derived from inherited ctx + this scene signals)
+  const relCtxAtoms = deriveRelCtxAtoms({
+    selfId: input.selfId,
+    otherIds: otherAgentIds,
+    atoms: [
+      ...worldFacts,
+      ...locationAtoms,
+      ...selfFeatAtoms,
+      ...locFeatAtoms,
+      ...scFeatAtoms,
+      ...lifeAtoms,
+      ...(input.extraWorldAtoms || []),
+      ...relAtoms,
+      ...relCtxAtomsFromMem,
+      ...eventAtoms,
+      ...capAtoms,
+      ...locAccessAtoms,
+      ...traceAtoms,
+      ...obsAtoms,
+      ...(input.beliefAtoms || []),
+      ...tomDyadAtoms,
+      ...tomRelHints
+    ]
+  });
+
   const relStateAtoms = deriveRelStateAtoms({
     selfId: input.selfId,
     otherIds: otherAgentIds,
@@ -302,6 +333,7 @@ export function buildStage0Atoms(input: Stage0Input): Stage0Output {
       ...lifeAtoms,
       ...(input.extraWorldAtoms || []),
       ...relAtoms,
+      ...relCtxAtoms,
       ...eventAtoms,
       ...capAtoms,
       ...locAccessAtoms,
@@ -323,6 +355,7 @@ export function buildStage0Atoms(input: Stage0Input): Stage0Output {
     ...lifeAtoms,
     ...(input.extraWorldAtoms || []),
     ...relAtoms,
+    ...relCtxAtoms,
     ...relStateAtoms,
     ...eventAtoms,
     ...capAtoms,
@@ -351,6 +384,7 @@ export function buildStage0Atoms(input: Stage0Input): Stage0Output {
       ...lifeAtoms,
       ...(input.extraWorldAtoms || []),
       ...relAtoms,
+      ...relCtxAtoms,
       ...relStateAtoms,
       ...eventAtoms,
       ...capAtoms,

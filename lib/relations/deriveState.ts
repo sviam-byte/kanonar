@@ -35,6 +35,16 @@ function readRelBase(atoms: ContextAtom[], selfId: string, otherId: string) {
   };
 }
 
+function readRelCtx(atoms: ContextAtom[], selfId: string, otherId: string) {
+  return {
+    closeness: clamp01(getMag(atoms, `rel:ctx:${selfId}:${otherId}:closeness`, 0)),
+    loyalty: clamp01(getMag(atoms, `rel:ctx:${selfId}:${otherId}:loyalty`, 0)),
+    hostility: clamp01(getMag(atoms, `rel:ctx:${selfId}:${otherId}:hostility`, 0)),
+    dependency: clamp01(getMag(atoms, `rel:ctx:${selfId}:${otherId}:dependency`, 0)),
+    authority: clamp01(getMag(atoms, `rel:ctx:${selfId}:${otherId}:authority`, 0)),
+  };
+}
+
 function eventDelta(atoms: ContextAtom[], selfId: string, otherId: string) {
   // Мягко и безопасно: не требуем конкретных event-атомов (они могут меняться),
   // но если они есть — используем.
@@ -99,7 +109,18 @@ export function deriveRelStateAtoms(args: {
     if (!otherId || otherId === selfId) continue;
 
     const r0 = readRelBase(atoms, selfId, otherId);
+    const rc = readRelCtx(atoms, selfId, otherId);
     const acq = readAcq(atoms, selfId, otherId);
+
+    // base ⊕ ctx: ctx не должен полностью переопределять "биографию",
+    // но должен давать различимость внутри сцены.
+    const base = {
+      closeness: clamp01(0.75 * r0.closeness + 0.25 * rc.closeness),
+      loyalty: clamp01(0.75 * r0.loyalty + 0.25 * rc.loyalty),
+      hostility: clamp01(0.75 * r0.hostility + 0.25 * rc.hostility),
+      dependency: clamp01(0.75 * r0.dependency + 0.25 * rc.dependency),
+      authority: clamp01(0.75 * r0.authority + 0.25 * rc.authority),
+    };
 
     // контекстный “социальный пресс” делает отношения хрупче/осторожнее
     const socialPressure0 = clamp01(0.40 * surv + 0.35 * stress + 0.25 * paranoia);
@@ -120,7 +141,7 @@ export function deriveRelStateAtoms(args: {
     // в сторону текущих сигналов. Никакой агрессии к данным: если тома/ивентов нет —
     // остаётся r0.
     const closeness = clamp01(
-      0.62 * r0.closeness +
+      0.62 * base.closeness +
       0.12 * tomTrust +
       0.12 * tomIntimacy +
       0.07 * tomSupport +
@@ -130,7 +151,7 @@ export function deriveRelStateAtoms(args: {
     );
 
     const trust = clamp01(
-      0.48 * r0.loyalty +
+      0.48 * base.loyalty +
       0.22 * tomTrust +
       0.10 * tomSupport +
       0.08 * tomIntimacy +
@@ -140,7 +161,7 @@ export function deriveRelStateAtoms(args: {
     );
 
     const hostility = clamp01(
-      0.58 * r0.hostility +
+      0.58 * base.hostility +
       0.25 * tomThreat +
       0.10 * (1 - ev.delta) +
       0.12 * socialPressure -
@@ -149,15 +170,15 @@ export function deriveRelStateAtoms(args: {
     );
 
     const obligation = clamp01(
-      0.50 * r0.dependency +
-      0.20 * r0.loyalty +
+      0.50 * base.dependency +
+      0.20 * base.loyalty +
       0.10 * closeness +
       0.10 * (1 - socialPressure) -
       0.10 * hostility
     );
 
     const respect = clamp01(
-      0.70 * r0.authority +
+      0.70 * base.authority +
       0.15 * (1 - hostility) +
       0.15 * (0.5 + 0.5 * tomTrust)
     );
@@ -168,6 +189,11 @@ export function deriveRelStateAtoms(args: {
       `rel:base:${selfId}:${otherId}:hostility`,
       `rel:base:${selfId}:${otherId}:dependency`,
       `rel:base:${selfId}:${otherId}:authority`,
+      `rel:ctx:${selfId}:${otherId}:closeness`,
+      `rel:ctx:${selfId}:${otherId}:loyalty`,
+      `rel:ctx:${selfId}:${otherId}:hostility`,
+      `rel:ctx:${selfId}:${otherId}:dependency`,
+      `rel:ctx:${selfId}:${otherId}:authority`,
       `tom:dyad:${selfId}:${otherId}:trust`,
       `tom:dyad:${selfId}:${otherId}:threat`,
       `tom:dyad:${selfId}:${otherId}:intimacy`,

@@ -32,6 +32,7 @@ import { BiographyLabPage } from './pages/BiographyLabPage';
 import { GoalLabPage } from './pages/GoalLabPage';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { NarrativePage } from './pages/NarrativePage';
+import { RelationsLabPage } from './pages/RelationsLabPage';
 
 
 function App() {
@@ -69,6 +70,7 @@ function App() {
                     <Route path="/planning-lab" element={<PlanningLabPage />} />
                     <Route path="/dialogue-lab" element={<DialogueLabPage />} />
                     <Route path="/goal-lab" element={<GoalLabPage />} />
+                    <Route path="/relations-lab" element={<RelationsLabPage />} />
                     <Route path="/biography-lab" element={<BiographyLabPage />} />
                     <Route path="/narrative" element={<NarrativePage />} />
                     <Route path="/:entityType" element={<EntityListPage />} />

@@ -182,3 +182,21 @@ export function extractRelBaseFromCharacter(args: {
 
   return mem;
 }
+
+// Contextual relation memory: fast-changing, inheritable with decay.
+// Stored on character.rel_ctx (or character.relationshipsCtx) as RelationMemory-like object.
+export function extractRelCtxFromCharacter(args: {
+  selfId: string;
+  character: any;
+  tick?: number;
+}): RelationMemory {
+  const c = args.character || {};
+  const raw = c.rel_ctx || c.relationshipsCtx || c.relationsCtx || null;
+  if (raw && typeof raw === 'object' && raw.edges && typeof raw.edges === 'object') {
+    return {
+      schemaVersion: Number(raw.schemaVersion ?? 1) || 1,
+      edges: raw.edges || {}
+    };
+  }
+  return { schemaVersion: 1, edges: {} };
+}

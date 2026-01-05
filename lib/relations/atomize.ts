@@ -9,7 +9,7 @@ function clamp01(x: number) {
   return Math.max(0, Math.min(1, x));
 }
 
-export function atomizeRelBase(selfId: string, rel: RelationMemory, otherIds?: string[]): ContextAtom[] {
+function atomizeRelWithPrefix(prefix: 'rel:base' | 'rel:ctx', selfId: string, rel: RelationMemory, otherIds?: string[]): ContextAtom[] {
   const out: ContextAtom[] = [];
   const edges = rel?.edges || {};
 
@@ -55,18 +55,18 @@ export function atomizeRelBase(selfId: string, rel: RelationMemory, otherIds?: s
     const confidence = hasRealSource ? 1 : 0.35;
 
     const emit = (name: string, v: number) => out.push(normalizeAtom({
-      id: `rel:base:${selfId}:${otherId}:${name}`,
+      id: `${prefix}:${selfId}:${otherId}:${name}`,
       ns: 'rel',
-      kind: 'relation_base' as any,
-      origin: 'world',
-      source: 'rel_base',
+      kind: (prefix === 'rel:base' ? 'relation_base' : 'relation_ctx') as any,
+      origin: (prefix === 'rel:base' ? 'world' : 'derived') as any,
+      source: (prefix === 'rel:base' ? 'rel_base' : 'rel_ctx'),
       magnitude: clamp01(v),
       confidence,
       subject: selfId,
       target: otherId,
-      tags: ['rel', 'base', name, ...arr(e.tags)],
+      tags: ['rel', (prefix === 'rel:base' ? 'base' : 'ctx'), name, ...arr(e.tags)],
       label: `rel.${name}=${Math.round(clamp01(v) * 100)}%`,
-      trace: { usedAtomIds: used, notes: ['from rel_base'], parts: { tags: e.tags, lastUpdatedTick: e.lastUpdatedTick } }
+      trace: { usedAtomIds: used, notes: [prefix === 'rel:base' ? 'from rel_base' : 'from rel_ctx'], parts: { tags: e.tags, lastUpdatedTick: e.lastUpdatedTick } }
     } as any));
 
     emit('closeness', e.closeness ?? 0.1);
@@ -77,7 +77,7 @@ export function atomizeRelBase(selfId: string, rel: RelationMemory, otherIds?: s
     emit('hierarchy', deriveHierarchy(e));
     emit('intimacy', deriveIntimacy(e));
 
-    // also emit tag flags for fast gates (0/1)
+    // also emit tag flags for fast gates (0/1) — keep same rel:tag namespace
     for (const t of arr(e.tags)) {
       out.push(normalizeAtom({
         id: `rel:tag:${selfId}:${otherId}:${t}`,
@@ -97,4 +97,12 @@ export function atomizeRelBase(selfId: string, rel: RelationMemory, otherIds?: s
   }
 
   return out;
+}
+
+export function atomizeRelBase(selfId: string, rel: RelationMemory, otherIds?: string[]): ContextAtom[] {
+  return atomizeRelWithPrefix('rel:base', selfId, rel, otherIds);
+}
+
+export function atomizeRelCtx(selfId: string, rel: RelationMemory, otherIds?: string[]): ContextAtom[] {
+  return atomizeRelWithPrefix('rel:ctx', selfId, rel, otherIds);
 }
