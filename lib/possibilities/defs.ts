@@ -191,7 +191,7 @@ export const DEFAULT_POSSIBILITY_DEFS: PossibilityDef[] = [
     key: 'hide',
     kind: 'aff',
     label: 'Hide (use cover)',
-    build: ({ selfId, helpers }) => {
+    build: ({ selfId, helpers, atoms }) => {
       const coverAtom =
         helpers.findPrefix(`world:map:cover:${selfId}`)[0]?.id ||
         helpers.findPrefix(`map:cover:${selfId}`)[0]?.id ||
@@ -207,17 +207,19 @@ export const DEFAULT_POSSIBILITY_DEFS: PossibilityDef[] = [
 
       const vis = visibilityAtom ? helpers.get(visibilityAtom, 0.5) : 0.5;
       const magnitude = helpers.clamp01(0.7 * cover + 0.3 * (1 - vis));
+      const { id: pId, v: priorHide } = getPrior(atoms || [], selfId, selfId, 'hide', 0.45);
+      const mag = helpers.clamp01(magnitude * (0.55 + 0.45 * priorHide));
 
       return mkSelf({
         kind: 'aff',
         selfId,
         key: 'hide',
         label: 'Hide',
-        magnitude,
+        magnitude: mag,
         requires: [coverAtom || 'world:map:cover:*'],
-        usedAtomIds: [coverAtom, visibilityAtom].filter(Boolean) as any,
-        notes: ['cover->hide'],
-        parts: { cover, vis }
+        usedAtomIds: [coverAtom, visibilityAtom, pId].filter(Boolean) as any,
+        notes: ['cover->hide * prior.hide(self)'],
+        parts: { cover, vis, priorHide }
       });
     }
   },
@@ -226,7 +228,7 @@ export const DEFAULT_POSSIBILITY_DEFS: PossibilityDef[] = [
     key: 'escape',
     kind: 'exit',
     label: 'Escape',
-    build: ({ selfId, helpers }) => {
+    build: ({ selfId, helpers, atoms }) => {
       const exitsAtom =
         helpers.findPrefix(`world:map:exits:${selfId}`)[0]?.id ||
         helpers.findPrefix(`nav_exits_count`)[0]?.id;
@@ -240,16 +242,19 @@ export const DEFAULT_POSSIBILITY_DEFS: PossibilityDef[] = [
       if (exits < 0.05 && esc < 0.05) return null;
 
       const magnitude = helpers.clamp01(0.5 * exits + 0.5 * esc);
+      const { id: pId, v: priorEscape } = getPrior(atoms || [], selfId, selfId, 'escape', 0.45);
+      // keep map affordance primary, but let desire-to-escape matter
+      const mag = helpers.clamp01(magnitude * (0.55 + 0.45 * priorEscape));
       return mkSelf({
         kind: 'exit',
         selfId,
         key: 'escape',
         label: 'Escape',
-        magnitude,
+        magnitude: mag,
         requires: [exitsAtom, escapeAtom].filter(Boolean) as any,
-        usedAtomIds: [exitsAtom, escapeAtom].filter(Boolean) as any,
-        notes: ['exits+escape'],
-        parts: { exits, esc }
+        usedAtomIds: [exitsAtom, escapeAtom, pId].filter(Boolean) as any,
+        notes: ['exits+escape * prior.escape(self)'],
+        parts: { exits, esc, priorEscape }
       });
     }
   },
@@ -258,23 +263,25 @@ export const DEFAULT_POSSIBILITY_DEFS: PossibilityDef[] = [
     key: 'wait',
     kind: 'cog',
     label: 'Wait / do nothing',
-    build: ({ selfId, helpers }) => {
+    build: ({ selfId, helpers, atoms }) => {
       const pressureAtom =
         helpers.findPrefix(`ctx:timePressure:${selfId}`)[0]?.id ||
         helpers.findPrefix(`ctx:timePressure`)[0]?.id;
       const p = pressureAtom ? helpers.get(pressureAtom, 0) : 0;
       const magnitude = clamp01(0.45 - 0.35 * p);
       if (magnitude < 0.05) return null;
+      const { id: pId, v: priorWait } = getPrior(atoms || [], selfId, selfId, 'wait', 0.35);
+      const mag = helpers.clamp01(magnitude * (0.65 + 0.35 * priorWait));
 
       return mkSelf({
         kind: 'cog',
         selfId,
         key: 'wait',
         label: 'Wait',
-        magnitude,
-        usedAtomIds: [pressureAtom].filter(Boolean) as any,
-        notes: ['low timePressure => wait'],
-        parts: { timePressure: p }
+        magnitude: mag,
+        usedAtomIds: [pressureAtom, pId].filter(Boolean) as any,
+        notes: ['low timePressure => wait * prior.wait(self)'],
+        parts: { timePressure: p, priorWait }
       });
     }
   },
