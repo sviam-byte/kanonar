@@ -5,8 +5,6 @@ import { AgentContextFrame } from '../context/frame/types';
 import { buildFullAgentContextFrame } from '../context/v4/build';
 import { atomizeFrame } from '../context/v4/atomizeFrame';
 import { buildContextV2FromFrame } from './context-v2';
-import { getPlanningGoals } from './adapter';
-import { computeGoalPriorities } from '../goal-planning';
 import { SituationContext } from '../types-goals';
 import { normalizeAtom } from '../context/v2/infer';
 import {
@@ -23,7 +21,7 @@ import { synthesizeAffectFromMind } from '../affect/synthesizeFromMind';
 
 // New Imports for Pipeline
 import { buildStage0Atoms } from '../context/pipeline/stage0';
-import { deriveContextVectors } from '../context/axes/deriveAxes';
+import { deriveAxes, deriveContextVectors } from '../context/axes/deriveAxes';
 import { mergeEpistemicAtoms, mergeKeepingOverrides } from '../context/epistemic/mergeEpistemic';
 import { generateRumorBeliefs } from '../context/epistemic/rumorGenerator';
 import { buildBeliefToMBias } from '../tom/ctx/beliefBias';
@@ -46,6 +44,11 @@ import { applyCharacterLens } from '../context/lens/characterLens';
 import { deriveAppraisalAtoms } from '../emotion/appraisals';
 import { deriveEmotionAtoms } from '../emotion/emotions';
 import { deriveDyadicEmotionAtoms } from '../emotion/dyadic';
+import { deriveDriversAtoms } from '../drivers/deriveDrivers';
+import { deriveGoalAtoms } from './goalAtoms';
+import { derivePlanningGoalAtoms } from './planningGoalAtoms';
+import { deriveGoalActionLinkAtoms } from './goalActionLinksAtoms';
+import { deriveRelFinalAtoms } from '../relations/finalize';
 import { deriveSummaryAtoms } from '../context/summary';
 import { arr } from '../utils/arr';
 import { validateAtomInvariants } from '../context/validate/atomInvariants';
@@ -66,7 +69,7 @@ export interface GoalLabContextResult {
   situation: SituationContext;
   goalPreview: {
     goals: Array<{ id: string; label: string; priority: number; activation: number; base_ctx: number }>;
-    debug: { temperature: number; d_mix: Record<string, number> };
+    debug: Record<string, any>;
   };
 }
 
@@ -97,6 +100,30 @@ function dedupeAtomsById(arr0: ContextAtom[]): ContextAtom[] {
     out.unshift(a);
   }
   return out;
+}
+
+function sortAtomsDeterministic(atoms: ContextAtom[]): ContextAtom[] {
+  // Deterministic ordering is critical for debugs/exports/diffs.
+  // Keep it stable across runs and independent from merge insertion order.
+  const rank: Record<string, number> = {
+    world: 1,
+    obs: 2,
+    belief: 3,
+    derived: 4,
+    override: 5,
+  };
+  return [...(atoms || [])].sort((a: any, b: any) => {
+    const ra = rank[String(a?.origin || '')] ?? 9;
+    const rb = rank[String(b?.origin || '')] ?? 9;
+    if (ra !== rb) return ra - rb;
+    const nsa = String(a?.ns || '');
+    const nsb = String(b?.ns || '');
+    if (nsa !== nsb) return nsa.localeCompare(nsb);
+    const ka = String(a?.kind || '');
+    const kb = String(b?.kind || '');
+    if (ka !== kb) return ka.localeCompare(kb);
+    return String(a?.id || '').localeCompare(String(b?.id || ''));
+  });
 }
 
 function buildSituationContextForLab(
@@ -435,6 +462,16 @@ export function buildGoalLabContext(
     const gridMap = (opts.snapshotOptions as any)?.gridMap || null;
     const pos = (agentForPipeline as any)?.position || (agentForPipeline as any)?.pos || null;
     const mapMetrics = gridMap ? computeLocalMapMetrics(gridMap, pos, 1) : null;
+    const participantIdsAll = Array.from(
+      new Set(
+        arr(
+          (sceneSnapshotForStage0 as any)?.participants ||
+            (sceneInst as any)?.participants ||
+            (opts.snapshotOptions as any)?.participantIds ||
+            arr((worldForPipeline as any)?.agents).map((a: any) => a.entityId || a.id)
+        ).filter(Boolean)
+      )
+    );
 
     // Stage 0 (World Facts)
     const stage0 = buildStage0Atoms({
@@ -449,6 +486,7 @@ export function buildGoalLabContext(
       ctxCrowd,
       events: eventsAll,
       sceneSnapshot: sceneSnapshotForStage0,
+      includeAxes: false,
     });
     pushStage('S0', 'S0 • stage0.mergedAtoms (world facts + overrides + events)', stage0.mergedAtoms);
 
@@ -465,14 +503,20 @@ export function buildGoalLabContext(
     atomsPreAxes = mergeKeepingOverrides(atomsPreAxes, hazGeo.atoms).merged;
     pushStage('S0a', 'S0a • stage0 + aliases + socProx + hazardGeometry (pre-axes)', atomsPreAxes);
 
-    // Axes
-    const axesRes = deriveContextVectors({
-      selfId,
-      atoms: atomsPreAxes,
-      tuning: (frame?.what as any)?.contextTuning || (world as any).scene?.contextTuning,
+    // Axes (strict staging): derive base ctx axes from canonical atoms, then apply optional tuning overlays.
+    const tuning = (frame?.what as any)?.contextTuning || (world as any).scene?.contextTuning;
+
+    const axesBase = deriveAxes({ selfId, atoms: atomsPreAxes, tuning });
+    const atomsWithAxesBase = mergeKeepingOverrides(atomsPreAxes, axesBase.atoms).merged;
+    pushStage('S1', 'S1 • axes derived (ctx:* base)', atomsWithAxesBase, {
+      meta: { derivedAxes: axesBase.atoms.length },
     });
-    const atomsWithAxes = mergeKeepingOverrides(atomsPreAxes, axesRes.atoms).merged;
-    pushStage('S1', 'S1 • axes materialized (ctx vectors)', atomsWithAxes);
+
+    const axesRes = deriveContextVectors({ selfId, atoms: atomsWithAxesBase, tuning });
+    const atomsWithAxes = mergeKeepingOverrides(atomsWithAxesBase, axesRes.atoms).merged;
+    pushStage('S1t', 'S1t • axes tuning overlays (ctx vectors)', atomsWithAxes, {
+      meta: (axesRes as any).meta,
+    });
 
     // Access constraints
     const locId = (agentForPipeline as any).locationId || getLocationForAgent(worldForPipeline, selfId)?.entityId;
@@ -496,9 +540,20 @@ export function buildGoalLabContext(
     const atomsAfterPriors = mergeKeepingOverrides(atomsAfterBeliefGen, priorsApplied.atoms).merged;
     pushStage('S2', 'S2 • relation priors applied', atomsAfterPriors);
 
+    // Canonical relations: rel:final:* (single source for decision/UI)
+    const relFinal = deriveRelFinalAtoms({
+      selfId,
+      atoms: atomsAfterPriors,
+      participantIds: participantIdsAll,
+      wState: 0.55,
+      wTom: 0.45,
+    });
+    const atomsAfterRelFinal = mergeKeepingOverrides(atomsAfterPriors, relFinal.atoms).merged;
+    pushStage('S2f', 'S2f • rel:final materialized (mix rel:state + tom:effective)', atomsAfterRelFinal);
+
     // Character lens
-    const lensRes = applyCharacterLens({ selfId, atoms: atomsAfterPriors, agent: agentForPipeline });
-    const atomsAfterLens = mergeKeepingOverrides(atomsAfterPriors, lensRes.atoms).merged;
+    const lensRes = applyCharacterLens({ selfId, atoms: atomsAfterRelFinal, agent: agentForPipeline });
+    const atomsAfterLens = mergeKeepingOverrides(atomsAfterRelFinal, lensRes.atoms).merged;
     pushStage('S2a', 'S2a • character lens (subjective interpretation)', atomsAfterLens, {
       notes: [`lensAdded=${lensRes.atoms?.length ?? 0}`, 'Delta shows what lens injected/removed vs priors.'],
     });
@@ -909,11 +964,31 @@ export function buildGoalLabContext(
 
     pushStage('S3', 'S3 • appraisal + emotions + dyadic emotions', atomsAfterDyadEmo);
 
+    // Drivers -> goal ecology -> planning goals (goal layer)
+    const drvRes = deriveDriversAtoms({ selfId, atoms: atomsAfterDyadEmo, agent: agentForPipeline });
+    const atomsAfterDrv = mergeKeepingOverrides(atomsAfterDyadEmo, drvRes.atoms).merged;
+    pushStage('S3d', 'S3d • drivers derived (drv:*)', atomsAfterDrv, {
+      meta: { drivers: drvRes.atoms.length },
+    });
+
+    const goalRes = deriveGoalAtoms(selfId, atomsAfterDrv, { topN: 3 });
+    const atomsAfterGoals = mergeKeepingOverrides(atomsAfterDrv, goalRes.atoms).merged;
+    pushStage('S3e', 'S3e • goal domains + active goals', atomsAfterGoals, {
+      meta: { goalAtoms: goalRes.atoms.length },
+    });
+
+    const planRes = derivePlanningGoalAtoms(selfId, atomsAfterGoals, { topN: 5 });
+    const goalLinks = deriveGoalActionLinkAtoms(selfId);
+    const atomsAfterPlans = mergeKeepingOverrides(atomsAfterGoals, [...planRes.atoms, ...goalLinks.atoms]).merged;
+    pushStage('S3f', 'S3f • planning goals + goal-action links', atomsAfterPlans, {
+      meta: { planAtoms: planRes.atoms.length, goalLinks: goalLinks.atoms.length },
+    });
+
     // Possibilities
-    const possibilities = derivePossibilitiesRegistry({ selfId, atoms: atomsAfterDyadEmo });
+    const possibilities = derivePossibilitiesRegistry({ selfId, atoms: atomsAfterPlans });
     const possAtoms = atomizePossibilities(possibilities);
 
-    const atomsAfterPoss = mergeKeepingOverrides(atomsAfterDyadEmo, possAtoms).merged;
+    const atomsAfterPoss = mergeKeepingOverrides(atomsAfterPlans, possAtoms).merged;
     pushStage('S3a', 'S3a • possibilities materialized', atomsAfterPoss);
 
     return {
@@ -1148,7 +1223,9 @@ export function buildGoalLabContext(
   (snapshot as any).coverage = computeCoverageReport(atomsWithDecision as any);
 
   // Drop legacy scene:* atoms in favor of canonical ctx:src:scene:* inputs.
-  (snapshot as any).atoms = (atomsWithDecision || []).filter(a => !String((a as any)?.id || '').startsWith('scene:'));
+  (snapshot as any).atoms = sortAtomsDeterministic(
+    (atomsWithDecision || []).filter(a => !String((a as any)?.id || '').startsWith('scene:'))
+  );
   (snapshot as any).validation = validation;
   (snapshot as any).decision = decision;
 
@@ -1163,9 +1240,11 @@ export function buildGoalLabContext(
     const synthesizedAffectAtoms = atomizeAffect(selfId, synthesized, 'derived');
     if (Array.isArray(synthesizedAffectAtoms) && synthesizedAffectAtoms.length) {
       const withoutAffect = ((snapshot as any).atoms || []).filter((a: any) => !String(a?.id || '').startsWith('affect:'));
-      (snapshot as any).atoms = dedupeAtomsById([...withoutAffect, ...synthesizedAffectAtoms])
-        .map(normalizeAtom)
-        .filter((a: any) => !String(a?.id || '').startsWith('scene:'));
+      (snapshot as any).atoms = sortAtomsDeterministic(
+        dedupeAtomsById([...withoutAffect, ...synthesizedAffectAtoms])
+          .map(normalizeAtom)
+          .filter((a: any) => !String(a?.id || '').startsWith('scene:'))
+      );
       (snapshot as any).coverage = computeCoverageReport((snapshot as any).atoms as any);
     }
   } catch {}
@@ -1184,9 +1263,19 @@ export function buildGoalLabContext(
     )
   );
 
+  const pipelineAllSafe = pipelineAll.map(s => ({
+    ...s,
+    // Hardening: UI expects arrays in these fields.
+    full: Array.isArray((s as any).full) ? (s as any).full : undefined,
+    added: arr((s as any).added),
+    changed: arr((s as any).changed),
+    removedIds: arr((s as any).removedIds),
+    notes: arr((s as any).notes),
+  }));
+
   (snapshot as any).meta = {
     ...((snapshot as any).meta || {}),
-    pipelineDeltas: pipelineAll,
+    pipelineDeltas: pipelineAllSafe,
   };
 
   (snapshot as any).debug = {
@@ -1233,22 +1322,44 @@ export function buildGoalLabContext(
 
   const situation = buildSituationContextForLab(agent, world, frame, snapshot as any, atomsWithSummaryMetrics, ctxV2 as any);
 
-  const planningGoals = getPlanningGoals();
-  const plan = computeGoalPriorities(agent as any, planningGoals as any, world as any, { skipBioShift: true } as any, situation as any);
+  // Goal preview: single source of truth = goal atoms in the final atom stream.
+  const goalPreview = (() => {
+    const atoms = (atomsWithSummaryMetrics as any) || [];
+    const plans = atoms.filter((a: any) => String(a?.id || '').startsWith('goal:plan:'));
+    const actives = atoms.filter((a: any) => String(a?.id || '').startsWith('goal:active:'));
 
-  const goalPreview = {
-    goals: (planningGoals as any)
-      .map((g: any, i: number) => ({
-        id: g.id,
-        label: g.label,
-        priority: (plan as any).priorities[i] ?? 0,
-        activation: (plan as any).activations[i] ?? 0,
-        base_ctx: (plan as any).debug?.b_ctx?.[i] ?? 0,
-      }))
+    const activeByGoalId = new Map<string, any>();
+    for (const a of actives) {
+      const parts = (a as any)?.trace?.parts || {};
+      const gid = String(parts.goalId || '').trim() || String((a as any).id).split(':')[2] || '';
+      if (!gid) continue;
+      activeByGoalId.set(gid, a);
+    }
+
+    const rows = plans
+      .map((a: any) => {
+        const parts = (a as any)?.trace?.parts || {};
+        const gid = String(parts.goalId || '').trim() || String((a as any).id).split(':')[2] || '';
+        const activeA = gid ? activeByGoalId.get(gid) : undefined;
+        const activation = Number((activeA as any)?.magnitude ?? parts.activeGoalScore ?? 0);
+        const base_ctx = Number(parts.baseMag ?? 0);
+        return {
+          id: String(gid || (a as any).id),
+          label: String((a as any)?.label || gid || (a as any).id),
+          priority: Number((a as any)?.magnitude ?? 0),
+          activation,
+          base_ctx,
+        };
+      })
+      .filter((r: any) => r.id)
       .sort((a: any, b: any) => b.priority - a.priority)
-      .slice(0, 12),
-    debug: { temperature: (plan as any).debug?.temperature, d_mix: (plan as any).debug?.d_mix as any },
-  };
+      .slice(0, 12);
+
+    return {
+      goals: rows,
+      debug: { source: 'atoms' as const },
+    };
+  })();
 
   return {
     agent,
