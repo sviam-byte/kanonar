@@ -114,6 +114,18 @@ export function scorePossibility(args: {
 }): ScoredAction {
   const { selfId, atoms, p } = args;
   const actionKey = getActionKey(p);
+  const targetId = (p as any)?.targetId ?? null;
+
+  // ---- traits (individual differences) ----
+  const trParanoia = clamp01(get(atoms, `feat:char:${selfId}:trait.paranoia`, 0.5));
+  const trSafety = clamp01(get(atoms, `feat:char:${selfId}:trait.safety`, 0.5));
+  const trPowerDrive = clamp01(get(atoms, `feat:char:${selfId}:trait.powerDrive`, 0.4));
+  const trCare = clamp01(get(atoms, `feat:char:${selfId}:trait.care`, 0.4));
+  const trTruthNeed = clamp01(get(atoms, `feat:char:${selfId}:trait.truthNeed`, 0.4));
+  const trAutonomy = clamp01(get(atoms, `feat:char:${selfId}:trait.autonomy`, 0.4));
+  const trOrder = clamp01(get(atoms, `feat:char:${selfId}:trait.order`, 0.4));
+  const trNormSens = clamp01(get(atoms, `feat:char:${selfId}:trait.normSensitivity`, 0.5));
+
   const gate = gatePossibility({ atoms, p });
   const { cost, parts, usedAtomIds: costUsedAtomIds } = computeActionCost({ selfId, atoms, p });
 
@@ -125,7 +137,6 @@ export function scorePossibility(args: {
   const shame = get(atoms, `emo:shame:${selfId}`, 0);
   const resolve = get(atoms, `emo:resolve:${selfId}`, 0);
   const care = get(atoms, `emo:care:${selfId}`, 0);
-  const targetId = (p as any)?.targetId;
   const hazardBetween = targetId ? clamp01(get(atoms, `world:map:hazardBetween:${selfId}:${targetId}`, 0)) : 0;
   const allyHazardBetween = targetId ? clamp01(get(atoms, `soc:allyHazardBetween:${selfId}:${targetId}`, 0)) : 0;
   const enemyHazardBetween = targetId ? clamp01(get(atoms, `soc:enemyHazardBetween:${selfId}:${targetId}`, 0)) : 0;
@@ -134,6 +145,39 @@ export function scorePossibility(args: {
 
   let pref = 0;
   const prefParts: Record<string, number> = {};
+
+  // ---- trait modulation by action family ----
+  // Make the same context produce different choices for different characters.
+  if (String(p.id).startsWith('exit:escape') || String(p.id).startsWith('aff:hide') || String(p.id).startsWith('aff:avoid')) {
+    const dv = 0.25 * trSafety + 0.22 * trParanoia - 0.18 * trPowerDrive;
+    pref += dv;
+    prefParts.traits_defensive = dv;
+  }
+  if (String(p.id).startsWith('aff:talk') || String(p.id).startsWith('aff:share_secret')) {
+    const dv = 0.22 * trCare - 0.22 * trParanoia - 0.12 * trSafety + 0.10 * trAutonomy;
+    pref += dv;
+    prefParts.traits_social = dv;
+  }
+  if (String(p.id).startsWith('aff:ask_info') || String(p.id).startsWith('cog:investigate') || String(p.id).startsWith('cog:probe')) {
+    const dv = 0.28 * trTruthNeed + 0.12 * trAutonomy - 0.12 * trParanoia;
+    pref += dv;
+    prefParts.traits_epistemic = dv;
+  }
+  if (String(p.id).startsWith('off:help') || String(p.id).startsWith('aff:help')) {
+    const dv = 0.35 * trCare - 0.10 * trSafety - 0.10 * trParanoia;
+    pref += dv;
+    prefParts.traits_help = dv;
+  }
+  if (String(p.id).startsWith('aff:attack') || String(p.id).startsWith('aff:confront') || String(p.id).startsWith('aff:threaten')) {
+    const dv = 0.30 * trPowerDrive + 0.10 * trAutonomy - 0.25 * trOrder - 0.20 * trNormSens - 0.15 * trCare;
+    pref += dv;
+    prefParts.traits_aggressive = dv;
+  }
+  if (String(p.id).startsWith('cog:wait') || String(p.id).startsWith('aff:rest')) {
+    const dv = 0.18 * trOrder + 0.12 * trSafety - 0.10 * trAutonomy;
+    pref += dv;
+    prefParts.traits_passive = dv;
+  }
   if (p.id.startsWith('exit:escape')) pref += 0.25 * fear + 0.10 * threatFinal;
   if (p.id.startsWith('aff:hide'))   pref += 0.20 * fear;
   if (p.id.startsWith('aff:talk')) {
@@ -207,6 +251,14 @@ export function scorePossibility(args: {
     ...costUsedAtomIds,
     ...goalDomainUsed,
     ...arr(plan.usedAtomIds),
+    `feat:char:${selfId}:trait.paranoia`,
+    `feat:char:${selfId}:trait.safety`,
+    `feat:char:${selfId}:trait.powerDrive`,
+    `feat:char:${selfId}:trait.care`,
+    `feat:char:${selfId}:trait.truthNeed`,
+    `feat:char:${selfId}:trait.autonomy`,
+    `feat:char:${selfId}:trait.order`,
+    `feat:char:${selfId}:trait.normSensitivity`,
     ...(dangerCtx.id ? [dangerCtx.id] : pickCtxId('danger', selfId)),
     ...(targetId ? [
       `world:map:hazardBetween:${selfId}:${targetId}`,

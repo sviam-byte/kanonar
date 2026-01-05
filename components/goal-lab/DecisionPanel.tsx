@@ -11,7 +11,7 @@ function pct(x: number) {
   return Math.round(clamp01(x) * 100);
 }
 
-export const DecisionPanel: React.FC<{ decision: any }> = ({ decision }) => {
+export const DecisionPanel: React.FC<{ decision: any; selfId?: string; castDecisions?: any[] }> = ({ decision, selfId, castDecisions }) => {
   const ranked = useMemo(() => arr(decision?.ranked), [decision]);
   const bestId = decision?.best?.p?.id || decision?.best?.id || null;
   const [showDetails, setShowDetails] = useState(false);
@@ -23,6 +23,38 @@ export const DecisionPanel: React.FC<{ decision: any }> = ({ decision }) => {
     return `${a?.label || a?.p?.id || 'Untitled action'}${targetId ? ` → ${targetId}` : ''}`;
   };
 
+  // Diagnostics: detect "everything is the same" failure mode.
+  // 1) If no trait atoms participate in the top actions, personalization is likely broken.
+  const traitUsedInTop = useMemo(() => {
+    const top = ranked.slice(0, 5);
+    for (const a of top) {
+      const used = arr(a?.why?.usedAtomIds);
+      if (used.some((id: any) => String(id).includes('feat:char:') && String(id).includes('trait.'))) return true;
+    }
+    return false;
+  }, [ranked]);
+
+  // 2) If many agents have the exact same best action id, target inference or emotions/traits are likely flat.
+  // (This panel can still be used standalone; only warns when castDecisions is provided.)
+  const castSameBestWarning = useMemo(() => {
+    const list = arr(castDecisions);
+    if (list.length < 3) return null;
+    const bestIds = list
+      .map((d: any) => d?.best?.p?.id || d?.best?.id || null)
+      .filter(Boolean);
+    if (bestIds.length < 3) return null;
+    const freq = new Map<string, number>();
+    for (const id of bestIds) freq.set(String(id), (freq.get(String(id)) || 0) + 1);
+    let top: { id: string; n: number } | null = null;
+    for (const [id, n] of freq.entries()) {
+      if (!top || n > top.n) top = { id, n };
+    }
+    if (!top) return null;
+    const ratio = top.n / bestIds.length;
+    if (ratio >= 0.7) return { id: top.id, n: top.n, total: bestIds.length, ratio };
+    return null;
+  }, [castDecisions]);
+
   return (
     <div className="h-full min-h-0 flex bg-canon-bg text-canon-text">
       <div className="w-80 border-r border-canon-border overflow-auto custom-scrollbar flex-shrink-0">
@@ -30,6 +62,21 @@ export const DecisionPanel: React.FC<{ decision: any }> = ({ decision }) => {
           <div className="text-sm font-semibold">What I’ll do</div>
           <div className="text-xs text-canon-text-light mt-1">Ranked actions</div>
         </div>
+        {(!traitUsedInTop || castSameBestWarning) && (
+          <div className="p-3 border-b border-canon-border/60 bg-amber-900/10">
+            <div className="text-[10px] uppercase tracking-wider font-bold text-amber-200">Diagnostics</div>
+            {!traitUsedInTop && (
+              <div className="mt-1 text-[11px] text-amber-100/90">
+                Personalization may be flat: no <span className="font-mono">feat:char:*:trait.*</span> atoms in top-5 usedAt.
+              </div>
+            )}
+            {castSameBestWarning && (
+              <div className="mt-1 text-[11px] text-amber-100/90">
+                Same best action for many agents: <span className="font-mono">{castSameBestWarning.id}</span> ({castSameBestWarning.n}/{castSameBestWarning.total}).
+              </div>
+            )}
+          </div>
+        )}
         {ranked.map((a: any, i: number) => {
           const isBest = (a?.p?.id || a?.id) === bestId;
           const allowed = Boolean(a?.allowed);
