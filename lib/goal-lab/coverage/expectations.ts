@@ -79,6 +79,24 @@ export const DEFAULT_COVERAGE_GROUPS: CoverageGroup[] = [
     ]
   },
   {
+    groupId: 'relations_final',
+    title: 'Relations / Final',
+    expectations: [
+      { id: 'rel_state', label: 'rel:state present', anyOf: [{ prefix: 'rel:state:' }], severity: 'info' },
+      { id: 'rel_final', label: 'rel:final present', anyOf: [{ prefix: 'rel:final:' }], severity: 'warn' }
+    ]
+  },
+  {
+    groupId: 'goals',
+    title: 'Goals',
+    expectations: [
+      { id: 'goal_domain', label: 'goal domains', anyOf: [{ prefix: 'goal:domain:' }], severity: 'error' },
+      { id: 'goal_active', label: 'active goal domains', anyOf: [{ prefix: 'goal:active:' }], severity: 'warn' },
+      { id: 'goal_plan', label: 'plan goals', anyOf: [{ prefix: 'goal:plan:' }], severity: 'warn' },
+      { id: 'goal_links', label: 'goal→action links', anyOf: [{ prefix: 'goal:hint:allow:' }], severity: 'warn' }
+    ]
+  },
+  {
     groupId: 'possibilities',
     title: 'Possibilities',
     expectations: [

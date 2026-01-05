@@ -19,17 +19,66 @@ function getMag(atoms: any[], id: string, fb = 0): number {
   return (typeof m === 'number' && Number.isFinite(m)) ? m : fb;
 }
 
-// Extract otherIds from rel:state:self:other:*
+// Extract otherIds from multiple sources:
+// - rel:final / rel:state / rel:base
+// - rel:tag
+// - obs:nearby:self:other
+// - event:didTo:actor:self:kind (actorId becomes "other")
 function inferOtherIds(selfId: string, atoms: any[]): string[] {
   const out: string[] = [];
-  const prefix = `rel:state:${selfId}:`;
-  for (const a of arr<any>(atoms)) {
-    const id = String(a?.id || '');
-    if (!id.startsWith(prefix)) continue;
-    const rest = id.slice(prefix.length); // other:metric
-    const other = rest.split(':')[0];
-    if (other && other !== selfId) out.push(other);
+  const list = arr<any>(atoms);
+
+  const takeRel = (kind: 'final' | 'state' | 'base') => {
+    const prefix = `rel:${kind}:${selfId}:`;
+    for (const a of list) {
+      const id = String(a?.id || '');
+      if (!id.startsWith(prefix)) continue;
+      const rest = id.slice(prefix.length); // other:metric
+      const other = rest.split(':')[0];
+      if (other && other !== selfId) out.push(other);
+    }
+  };
+
+  takeRel('final');
+  takeRel('state');
+  takeRel('base');
+
+  // rel:tag:self:other:tag
+  {
+    const prefix = `rel:tag:${selfId}:`;
+    for (const a of list) {
+      const id = String(a?.id || '');
+      if (!id.startsWith(prefix)) continue;
+      const rest = id.slice(prefix.length); // other:tag
+      const other = rest.split(':')[0];
+      if (other && other !== selfId) out.push(other);
+    }
   }
+
+  // obs:nearby:self:other
+  {
+    const prefix = `obs:nearby:${selfId}:`;
+    for (const a of list) {
+      const id = String(a?.id || '');
+      if (!id.startsWith(prefix)) continue;
+      const other = id.slice(prefix.length);
+      if (other && other !== selfId) out.push(other);
+    }
+  }
+
+  // event:didTo:actor:self:kind -> actor is a targetable "other"
+  {
+    const prefix = 'event:didTo:';
+    for (const a of list) {
+      const id = String(a?.id || '');
+      if (!id.startsWith(prefix)) continue;
+      const parts = id.split(':'); // event didTo actor self kind
+      const actor = parts[2] || '';
+      const target = parts[3] || '';
+      if (target === selfId && actor && actor !== selfId) out.push(actor);
+    }
+  }
+
   return uniq(out);
 }
 
@@ -728,6 +777,42 @@ export const DEFAULT_POSSIBILITY_DEFS: PossibilityDef[] = [
           usedAtomIds: uniq(usedIfPresent(atoms, [pId || '', hostId])),
           notes: ['prior.confront + hostility => threaten'],
           parts: { priorConfront: v, hostility: host }
+        });
+      });
+    }
+  },
+
+  {
+    key: 'confront',
+    kind: 'aff',
+    label: 'Confront',
+    build: ({ selfId, atoms, helpers }) => {
+      const noThreats = proto(helpers, 'noThreats');
+      const others = inferOtherIds(selfId, atoms);
+      if (!others.length) return null;
+
+      return others.map(otherId => {
+        const { id: pId, v } = getPrior(atoms, selfId, otherId, 'confront', 0.25);
+        const host = helpers.get(`rel:final:${selfId}:${otherId}:hostility`, helpers.get(`rel:state:${selfId}:${otherId}:hostility`, 0.1));
+        const threat = helpers.get(`tom:effective:dyad:${selfId}:${otherId}:threat`, 0.2);
+        const magnitude = helpers.clamp01(0.30 * v + 0.35 * host + 0.35 * threat);
+
+        return mkTargeted({
+          kind: 'aff',
+          selfId,
+          otherId,
+          key: 'confront',
+          label: 'Confront',
+          magnitude,
+          blockedBy: noThreats ? [noThreats] : undefined,
+          usedAtomIds: usedIfPresent(atoms, [
+            pId || '',
+            `rel:final:${selfId}:${otherId}:hostility`,
+            `rel:state:${selfId}:${otherId}:hostility`,
+            `tom:effective:dyad:${selfId}:${otherId}:threat`,
+          ]),
+          notes: ['confront scales with hostility and perceived threat'],
+          parts: { prior: v, hostility: host, threat }
         });
       });
     }
