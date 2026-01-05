@@ -16,18 +16,28 @@ function getGoalDomainMag(atoms: ContextAtom[], selfId: string, domain: string, 
   return clamp01(getMag(atoms, `goal:domain:${domain}:${selfId}`, fb));
 }
 
-function getRel(atoms: ContextAtom[], selfId: string, otherId: string, metric: string, fb: number) {
+function getRel(
+  atoms: ContextAtom[],
+  selfId: string,
+  otherId: string,
+  metric: string,
+  fb: number
+): { id: string; mag: number } {
   // Prefer final over state over base.
   const idF = `rel:final:${selfId}:${otherId}:${metric}`;
   const aF = atoms.find(a => a?.id === idF) as any;
   if (aF && typeof aF.magnitude === 'number' && Number.isFinite(aF.magnitude)) return { id: idF, mag: aF.magnitude };
+
   const idS = `rel:state:${selfId}:${otherId}:${metric}`;
   const aS = atoms.find(a => a?.id === idS) as any;
   if (aS && typeof aS.magnitude === 'number' && Number.isFinite(aS.magnitude)) return { id: idS, mag: aS.magnitude };
+
   const idB = `rel:base:${selfId}:${otherId}:${metric}`;
   const aB = atoms.find(a => a?.id === idB) as any;
   if (aB && typeof aB.magnitude === 'number' && Number.isFinite(aB.magnitude)) return { id: idB, mag: aB.magnitude };
-  return { id: idS, mag: fb }; // keep stable id for traces even if absent
+
+  // keep stable id for traces even if absent
+  return { id: idS, mag: fb };
 }
 
 function mk(selfId: string, otherId: string, act: string, v: number, usedAtomIds: string[], parts: any): ContextAtom {
@@ -76,10 +86,10 @@ export function deriveActionPriors(args: {
   const gOrder = getGoalDomainMag(atoms, selfId, 'order', 0);
 
   // --- SELF priors: make escape/hide/wait not depend purely on map affordances ---
-  // They will be used as multipliers in possibilities/defs.ts (see patch below).
   {
     const threatFinal = clamp01(getMag(atoms, `threat:final:${selfId}`, danger));
     const protocol = clamp01(getMag(atoms, `ctx:proceduralStrict:${selfId}`, getMag(atoms, `norm:proceduralStrict:${selfId}`, 0)));
+
     const selfUsed = [
       ...(dangerP.id ? [dangerP.id] : pickCtxId('danger', selfId)),
       ...(timeP.id ? [timeP.id] : pickCtxId('timePressure', selfId)),
@@ -88,16 +98,25 @@ export function deriveActionPriors(args: {
       `threat:final:${selfId}`,
       `ctx:proceduralStrict:${selfId}`,
       `norm:proceduralStrict:${selfId}`,
+      `goal:domain:safety:${selfId}`,
+      `goal:domain:order:${selfId}`,
+      `goal:domain:control:${selfId}`,
     ].filter(id => atoms.some(a => a?.id === id));
 
-    const escape = clamp01(0.20 + 0.55 * danger + 0.20 * threatFinal + 0.15 * time - 0.25 * protocol);
-    const hide = clamp01(0.15 + 0.45 * danger + 0.25 * surv + 0.10 * pub);
-    const wait = clamp01(0.30 + 0.25 * (1 - danger) + 0.15 * (1 - time) - 0.20 * threatFinal);
+    // base
+    let escape = clamp01(0.20 + 0.55 * danger + 0.20 * threatFinal + 0.15 * time - 0.25 * protocol);
+    let hide = clamp01(0.15 + 0.45 * danger + 0.25 * surv + 0.10 * pub);
+    let wait = clamp01(0.30 + 0.25 * (1 - danger) + 0.15 * (1 - time) - 0.20 * threatFinal);
+
+    // goal ecology modulation (small)
+    escape = clamp01(escape + 0.18 * gSafety + 0.10 * gControl - 0.10 * gAff);
+    hide = clamp01(hide + 0.16 * gSafety + 0.06 * gOrder - 0.06 * gStatus);
+    wait = clamp01(wait + 0.10 * gOrder - 0.08 * gExplore);
 
     out.push(
-      mk(selfId, selfId, 'escape', escape, selfUsed, { danger, threatFinal, time, protocol }),
-      mk(selfId, selfId, 'hide', hide, selfUsed, { danger, surv, pub }),
-      mk(selfId, selfId, 'wait', wait, selfUsed, { danger, time, threatFinal }),
+      mk(selfId, selfId, 'escape', escape, selfUsed, { danger, threatFinal, time, protocol, gSafety, gControl, gAff }),
+      mk(selfId, selfId, 'hide', hide, selfUsed, { danger, surv, pub, gSafety, gOrder, gStatus }),
+      mk(selfId, selfId, 'wait', wait, selfUsed, { danger, time, threatFinal, gOrder, gExplore }),
     );
   }
 
@@ -119,6 +138,7 @@ export function deriveActionPriors(args: {
     const closP = getRel(atoms, selfId, otherId, 'closeness', 0.2);
     const obligP = getRel(atoms, selfId, otherId, 'obligation', 0.0);
     const respeP = getRel(atoms, selfId, otherId, 'respect', 0.0);
+
     const trust = clamp01(trustP.mag);
     const host = clamp01(hostP.mag);
     const clos = clamp01(closP.mag);
@@ -130,11 +150,14 @@ export function deriveActionPriors(args: {
     const tomThreatP = getEffectiveOrDyad(otherId, 'threat', 0.2);
     const tomTrustP = getEffectiveOrDyad(otherId, 'trust', 0.5);
     const tomIntimacyP = getEffectiveOrDyad(otherId, 'intimacy', 0.1);
+
     const tomThreatId = `tom:dyad:${selfId}:${otherId}:threat`;
     const tomTrustId = `tom:dyad:${selfId}:${otherId}:trust`;
     const tomIntimacyId = `tom:dyad:${selfId}:${otherId}:intimacy`;
+
     const tomThreatFallback = getMag(atoms, tomThreatId, getMag(atoms, `rel:state:${selfId}:${otherId}:hostility`, 0.0));
     const tomTrustFallback = getMag(atoms, tomTrustId, getMag(atoms, `rel:state:${selfId}:${otherId}:trust`, 0.5));
+
     const tomThreat = clamp01(tomThreatP.id ? tomThreatP.mag : tomThreatFallback);
     const tomTrust = clamp01(tomTrustP.id ? tomTrustP.mag : tomTrustFallback);
     const tomIntimacy = clamp01(
@@ -169,6 +192,7 @@ export function deriveActionPriors(args: {
     // It should spike because THIS other is dangerous/hostile or recently harmed self.
     const recentHarmId = `soc:recentHarmBy:${otherId}:${selfId}`;
     const recentHarm = clamp01(getMag(atoms, recentHarmId, 0));
+
     let avoid = clamp01(
       0.10
       + 0.55 * tomThreat
@@ -195,18 +219,22 @@ export function deriveActionPriors(args: {
       ...(normP.id ? [normP.id] : pickCtxId('normPressure', selfId)),
       ...(pubP.id ? [pubP.id] : pickCtxId('publicness', selfId)),
       ...(survP.id ? [survP.id] : pickCtxId('surveillance', selfId)),
+      ...(timeP.id ? [timeP.id] : pickCtxId('timePressure', selfId)),
+
       `goal:domain:safety:${selfId}`,
       `goal:domain:control:${selfId}`,
       `goal:domain:affiliation:${selfId}`,
       `goal:domain:status:${selfId}`,
       `goal:domain:exploration:${selfId}`,
       `goal:domain:order:${selfId}`,
+
       trustP.id,
       hostP.id,
       closP.id,
       obligP.id,
       respeP.id,
       recentHarmId,
+
       tomTrustP.id,
       tomThreatP.id,
       tomIntimacyP.id,
@@ -216,11 +244,11 @@ export function deriveActionPriors(args: {
     ].filter(id => atoms.some(a => a?.id === id));
 
     out.push(
-      mk(selfId, otherId, 'help', help, used, { trust, clos, oblig, tomTrust, tomIntimacy, tomThreat, danger, dangerLayer: dangerP.layer }),
-      mk(selfId, otherId, 'harm', harm, used, { host, tomThreat, trust, socialRisk }),
-      mk(selfId, otherId, 'ask_info', askInfo, used, { tomTrust, clos, respe, danger, dangerLayer: dangerP.layer }),
-      mk(selfId, otherId, 'avoid', avoid, used, { tomThreat, host, recentHarm, trust, tomIntimacy, clos, oblig, danger, dangerLayer: dangerP.layer, socialRisk }),
-      mk(selfId, otherId, 'confront', confront, used, { host, socialRisk, respe, danger, dangerLayer: dangerP.layer }),
+      mk(selfId, otherId, 'help', help, used, { trust, clos, oblig, tomTrust, tomIntimacy, tomThreat, danger, dangerLayer: dangerP.layer, gAff, gOrder, gSafety }),
+      mk(selfId, otherId, 'harm', harm, used, { host, tomThreat, trust, socialRisk, gOrder, gAff, gSafety }),
+      mk(selfId, otherId, 'ask_info', askInfo, used, { tomTrust, clos, respe, danger, dangerLayer: dangerP.layer, gExplore, gControl, gSafety }),
+      mk(selfId, otherId, 'avoid', avoid, used, { tomThreat, host, recentHarm, trust, tomIntimacy, clos, oblig, danger, dangerLayer: dangerP.layer, socialRisk, gSafety, gAff }),
+      mk(selfId, otherId, 'confront', confront, used, { host, socialRisk, respe, danger, dangerLayer: dangerP.layer, gControl, gStatus, gSafety, gOrder }),
     );
   }
 
