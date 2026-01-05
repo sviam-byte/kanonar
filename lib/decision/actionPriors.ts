@@ -11,6 +11,25 @@ function getMag(atoms: ContextAtom[], id: string, fb = 0) {
   return (typeof m === 'number' && Number.isFinite(m)) ? m : fb;
 }
 
+function getGoalDomainMag(atoms: ContextAtom[], selfId: string, domain: string, fb = 0) {
+  // Canonical ids from deriveGoalAtoms(): goal:domain:<domain>:<selfId>
+  return clamp01(getMag(atoms, `goal:domain:${domain}:${selfId}`, fb));
+}
+
+function getRel(atoms: ContextAtom[], selfId: string, otherId: string, metric: string, fb: number) {
+  // Prefer final over state over base.
+  const idF = `rel:final:${selfId}:${otherId}:${metric}`;
+  const aF = atoms.find(a => a?.id === idF) as any;
+  if (aF && typeof aF.magnitude === 'number' && Number.isFinite(aF.magnitude)) return { id: idF, mag: aF.magnitude };
+  const idS = `rel:state:${selfId}:${otherId}:${metric}`;
+  const aS = atoms.find(a => a?.id === idS) as any;
+  if (aS && typeof aS.magnitude === 'number' && Number.isFinite(aS.magnitude)) return { id: idS, mag: aS.magnitude };
+  const idB = `rel:base:${selfId}:${otherId}:${metric}`;
+  const aB = atoms.find(a => a?.id === idB) as any;
+  if (aB && typeof aB.magnitude === 'number' && Number.isFinite(aB.magnitude)) return { id: idB, mag: aB.magnitude };
+  return { id: idS, mag: fb }; // keep stable id for traces even if absent
+}
+
 function mk(selfId: string, otherId: string, act: string, v: number, usedAtomIds: string[], parts: any): ContextAtom {
   return normalizeAtom({
     id: `act:prior:${selfId}:${otherId}:${act}`,
@@ -24,7 +43,7 @@ function mk(selfId: string, otherId: string, act: string, v: number, usedAtomIds
     target: otherId,
     tags: ['act', 'prior', act],
     label: `prior.${act}:${Math.round(clamp01(v) * 100)}%`,
-    trace: { usedAtomIds, notes: ['base action priors'], parts }
+    trace: { usedAtomIds, notes: ['base action priors', 'goal ecology modulation'], parts }
   } as any);
 }
 
@@ -40,11 +59,47 @@ export function deriveActionPriors(args: {
   const normP = getCtx(atoms, selfId, 'normPressure', 0);
   const pubP = getCtx(atoms, selfId, 'publicness', 0);
   const survP = getCtx(atoms, selfId, 'surveillance', 0);
+  const timeP = getCtx(atoms, selfId, 'timePressure', 0);
 
   const danger = clamp01(dangerP.magnitude);
   const norm = clamp01(normP.magnitude);
   const pub = clamp01(pubP.magnitude);
   const surv = clamp01(survP.magnitude);
+  const time = clamp01(timeP.magnitude);
+
+  // Goal ecology (domain weights). If goal atoms are missing, these are 0 and priors are unchanged.
+  const gSafety = getGoalDomainMag(atoms, selfId, 'safety', 0);
+  const gControl = getGoalDomainMag(atoms, selfId, 'control', 0);
+  const gAff = getGoalDomainMag(atoms, selfId, 'affiliation', 0);
+  const gStatus = getGoalDomainMag(atoms, selfId, 'status', 0);
+  const gExplore = getGoalDomainMag(atoms, selfId, 'exploration', 0);
+  const gOrder = getGoalDomainMag(atoms, selfId, 'order', 0);
+
+  // --- SELF priors: make escape/hide/wait not depend purely on map affordances ---
+  // They will be used as multipliers in possibilities/defs.ts (see patch below).
+  {
+    const threatFinal = clamp01(getMag(atoms, `threat:final:${selfId}`, danger));
+    const protocol = clamp01(getMag(atoms, `ctx:proceduralStrict:${selfId}`, getMag(atoms, `norm:proceduralStrict:${selfId}`, 0)));
+    const selfUsed = [
+      ...(dangerP.id ? [dangerP.id] : pickCtxId('danger', selfId)),
+      ...(timeP.id ? [timeP.id] : pickCtxId('timePressure', selfId)),
+      ...(pubP.id ? [pubP.id] : pickCtxId('publicness', selfId)),
+      ...(survP.id ? [survP.id] : pickCtxId('surveillance', selfId)),
+      `threat:final:${selfId}`,
+      `ctx:proceduralStrict:${selfId}`,
+      `norm:proceduralStrict:${selfId}`,
+    ].filter(id => atoms.some(a => a?.id === id));
+
+    const escape = clamp01(0.20 + 0.55 * danger + 0.20 * threatFinal + 0.15 * time - 0.25 * protocol);
+    const hide = clamp01(0.15 + 0.45 * danger + 0.25 * surv + 0.10 * pub);
+    const wait = clamp01(0.30 + 0.25 * (1 - danger) + 0.15 * (1 - time) - 0.20 * threatFinal);
+
+    out.push(
+      mk(selfId, selfId, 'escape', escape, selfUsed, { danger, threatFinal, time, protocol }),
+      mk(selfId, selfId, 'hide', hide, selfUsed, { danger, surv, pub }),
+      mk(selfId, selfId, 'wait', wait, selfUsed, { danger, time, threatFinal }),
+    );
+  }
 
   function getEffectiveOrDyad(otherId: string, metric: string, fb = 0): { id: string; mag: number } {
     const effId = `tom:effective:dyad:${selfId}:${otherId}:${metric}`;
@@ -58,12 +113,17 @@ export function deriveActionPriors(args: {
   for (const otherId of otherIds) {
     if (!otherId || otherId === selfId) continue;
 
-    // берём из rel:state (а если нет — уже там fallback на rel:base/дефолты через stage0+deriveRelState)
-    const trust = clamp01(getMag(atoms, `rel:state:${selfId}:${otherId}:trust`, 0.5));
-    const host = clamp01(getMag(atoms, `rel:state:${selfId}:${otherId}:hostility`, 0.0));
-    const clos = clamp01(getMag(atoms, `rel:state:${selfId}:${otherId}:closeness`, 0.2));
-    const oblig = clamp01(getMag(atoms, `rel:state:${selfId}:${otherId}:obligation`, 0.0));
-    const respe = clamp01(getMag(atoms, `rel:state:${selfId}:${otherId}:respect`, 0.0));
+    // Prefer rel:final → rel:state → rel:base (prevents "all defaults" collapse).
+    const trustP = getRel(atoms, selfId, otherId, 'trust', 0.5);
+    const hostP = getRel(atoms, selfId, otherId, 'hostility', 0.0);
+    const closP = getRel(atoms, selfId, otherId, 'closeness', 0.2);
+    const obligP = getRel(atoms, selfId, otherId, 'obligation', 0.0);
+    const respeP = getRel(atoms, selfId, otherId, 'respect', 0.0);
+    const trust = clamp01(trustP.mag);
+    const host = clamp01(hostP.mag);
+    const clos = clamp01(closP.mag);
+    const oblig = clamp01(obligP.mag);
+    const respe = clamp01(respeP.mag);
 
     // ToM если есть — уточняет priors, но не обязателен.
     // fallback: если нет tom:dyad, используем rel:state как минимальный ordinary ToM
@@ -87,37 +147,66 @@ export function deriveActionPriors(args: {
     // Важно: норм/публичность/наблюдение сдвигают в сторону “безопасных” действий.
     const socialRisk = clamp01(0.45 * pub + 0.35 * surv + 0.20 * norm);
 
-    const help = clamp01(
+    let help = clamp01(
       0.50 * trust + 0.18 * clos + 0.18 * oblig + 0.10 * tomTrust + 0.18 * tomIntimacy - 0.30 * tomThreat
     ) * clamp01(1 - 0.45 * danger);
+    // affiliation/order -> more help; safety -> less help towards perceived threat.
+    help = clamp01(help * (1 + 0.25 * gAff + 0.10 * gOrder) * (1 - 0.20 * gSafety * tomThreat));
 
-    const harm = clamp01(
+    let harm = clamp01(
       0.70 * host + 0.25 * tomThreat - 0.20 * trust
     ) * clamp01(1 - 0.60 * socialRisk);
+    // order/affiliation/safety reduce harm.
+    harm = clamp01(harm * (1 - 0.35 * gOrder) * (1 - 0.25 * gAff) * (1 - 0.20 * gSafety));
 
-    const askInfo = clamp01(
+    let askInfo = clamp01(
       0.35 + 0.25 * (1 - tomTrust) + 0.25 * (1 - clos) + 0.15 * respe
     ) * clamp01(1 - 0.25 * danger);
+    // exploration/control increase info-seeking; safety slightly increases cautionary info-seeking.
+    askInfo = clamp01(askInfo * (1 + 0.20 * gExplore + 0.15 * gControl + 0.10 * gSafety));
 
-    const avoid = clamp01(
-      0.25 + 0.55 * tomThreat + 0.25 * danger + 0.15 * socialRisk
-      - 0.25 * oblig - 0.35 * tomIntimacy - 0.10 * clos
+    // Avoid should not spike just because "danger is high".
+    // It should spike because THIS other is dangerous/hostile or recently harmed self.
+    const recentHarmId = `soc:recentHarmBy:${otherId}:${selfId}`;
+    const recentHarm = clamp01(getMag(atoms, recentHarmId, 0));
+    let avoid = clamp01(
+      0.10
+      + 0.55 * tomThreat
+      + 0.25 * host
+      + 0.35 * recentHarm
+      + 0.05 * danger
+      - 0.30 * trust
+      - 0.45 * tomIntimacy
+      - 0.15 * clos
+      - 0.25 * oblig
+      - 0.10 * socialRisk
     );
+    // safety increases avoidance; affiliation decreases avoidance.
+    avoid = clamp01(avoid + 0.20 * gSafety - 0.12 * gAff);
 
-    const confront = clamp01(
+    let confront = clamp01(
       0.20 + 0.50 * host + 0.25 * (1 - socialRisk) + 0.15 * respe - 0.35 * danger
     );
+    // control/status increase confrontation; safety/order reduce it.
+    confront = clamp01(confront + 0.18 * gControl + 0.12 * gStatus - 0.15 * gSafety - 0.10 * gOrder);
 
     const used = [
       ...(dangerP.id ? [dangerP.id] : pickCtxId('danger', selfId)),
       ...(normP.id ? [normP.id] : pickCtxId('normPressure', selfId)),
       ...(pubP.id ? [pubP.id] : pickCtxId('publicness', selfId)),
       ...(survP.id ? [survP.id] : pickCtxId('surveillance', selfId)),
-      `rel:state:${selfId}:${otherId}:trust`,
-      `rel:state:${selfId}:${otherId}:hostility`,
-      `rel:state:${selfId}:${otherId}:closeness`,
-      `rel:state:${selfId}:${otherId}:obligation`,
-      `rel:state:${selfId}:${otherId}:respect`,
+      `goal:domain:safety:${selfId}`,
+      `goal:domain:control:${selfId}`,
+      `goal:domain:affiliation:${selfId}`,
+      `goal:domain:status:${selfId}`,
+      `goal:domain:exploration:${selfId}`,
+      `goal:domain:order:${selfId}`,
+      trustP.id,
+      hostP.id,
+      closP.id,
+      obligP.id,
+      respeP.id,
+      recentHarmId,
       tomTrustP.id,
       tomThreatP.id,
       tomIntimacyP.id,
@@ -130,7 +219,7 @@ export function deriveActionPriors(args: {
       mk(selfId, otherId, 'help', help, used, { trust, clos, oblig, tomTrust, tomIntimacy, tomThreat, danger, dangerLayer: dangerP.layer }),
       mk(selfId, otherId, 'harm', harm, used, { host, tomThreat, trust, socialRisk }),
       mk(selfId, otherId, 'ask_info', askInfo, used, { tomTrust, clos, respe, danger, dangerLayer: dangerP.layer }),
-      mk(selfId, otherId, 'avoid', avoid, used, { tomThreat, tomIntimacy, danger, dangerLayer: dangerP.layer, socialRisk, oblig, clos }),
+      mk(selfId, otherId, 'avoid', avoid, used, { tomThreat, host, recentHarm, trust, tomIntimacy, clos, oblig, danger, dangerLayer: dangerP.layer, socialRisk }),
       mk(selfId, otherId, 'confront', confront, used, { host, socialRisk, respe, danger, dangerLayer: dangerP.layer }),
     );
   }

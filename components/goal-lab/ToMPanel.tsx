@@ -160,7 +160,7 @@ export const ToMPanel: React.FC<{ atoms: ContextAtom[] }> = ({ atoms }) => {
     const modeAtom = atoms.find(a => a.id === `tom:mode:${selfId}`);
 
     const relPairs = useMemo(() => {
-        const collect = (kind: 'base' | 'state') => {
+        const collect = (kind: 'base' | 'state' | 'final') => {
             const prefix = `rel:${kind}:${selfId}:${otherId}:`;
             const list = atoms
                 .filter(a => typeof a.id === 'string' && a.id.startsWith(prefix))
@@ -171,9 +171,11 @@ export const ToMPanel: React.FC<{ atoms: ContextAtom[] }> = ({ atoms }) => {
         };
         const base = collect('base');
         const state = collect('state');
+        const final = collect('final');
         return {
             base: Array.isArray(base) ? base : [],
             state: Array.isArray(state) ? state : [],
+            final: Array.isArray(final) ? final : [],
         };
     }, [atoms, selfId, otherId]);
 
@@ -282,9 +284,9 @@ export const ToMPanel: React.FC<{ atoms: ContextAtom[] }> = ({ atoms }) => {
 
             <div className="mb-5">
                 <h4 className="text-xs font-bold text-canon-accent uppercase mb-2 border-b border-canon-border/30 pb-1">
-                    Relationship (rel:base / rel:state)
+                    Relationship (rel:base / rel:state / rel:final)
                 </h4>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-3 gap-3">
                     <div className="rounded border border-canon-border/30 p-2 bg-white/5">
                         <div className="text-[11px] font-semibold text-canon-text mb-1">rel:base</div>
                         {relPairs.base.length === 0 ? (
@@ -302,6 +304,17 @@ export const ToMPanel: React.FC<{ atoms: ContextAtom[] }> = ({ atoms }) => {
                             <div className="text-[11px] text-canon-text-light">—</div>
                         ) : relPairs.state.map(x => (
                             <div key={`relstate:${x.metric}`} className="flex items-center justify-between text-[11px]">
+                                <span className="text-canon-text">{x.metric}</span>
+                                <span className="text-canon-text-light tabular-nums">{x.value == null ? '—' : x.value.toFixed(2)}</span>
+                            </div>
+                        ))}
+                    </div>
+                    <div className="rounded border border-canon-border/30 p-2 bg-white/5">
+                        <div className="text-[11px] font-semibold text-canon-text mb-1">rel:final</div>
+                        {relPairs.final.length === 0 ? (
+                            <div className="text-[11px] text-canon-text-light">—</div>
+                        ) : relPairs.final.map(x => (
+                            <div key={`relfinal:${x.metric}`} className="flex items-center justify-between text-[11px]">
                                 <span className="text-canon-text">{x.metric}</span>
                                 <span className="text-canon-text-light tabular-nums">{x.value == null ? '—' : x.value.toFixed(2)}</span>
                             </div>

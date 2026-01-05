@@ -741,6 +741,31 @@ export const GoalLabResults: React.FC<Props> = ({
         })
         .filter(x => x.id);
 
+      // Diagnostics: detect emotions being suspiciously identical across agents.
+      const emoKeys = ['fear', 'anger', 'shame', 'relief', 'resolve', 'care', 'arousal'] as const;
+      const emoStats = (() => {
+        if (cast.length < 3) return { flat: [] as Array<{ key: string; sd: number }> };
+        const getEmo = (atoms: any[], id: string, key: string) => {
+          const atomId = `emo:${key}:${id}`;
+          const a = arr(atoms).find(x => String(x?.id || '') === atomId);
+          return Number((a as any)?.magnitude ?? 0) || 0;
+        };
+        const sd = (vals: number[]) => {
+          const n = vals.length;
+          if (n < 2) return 0;
+          const mean = vals.reduce((s, v) => s + v, 0) / n;
+          const v = vals.reduce((s, x) => s + (x - mean) * (x - mean), 0) / (n - 1);
+          return Math.sqrt(v);
+        };
+        const flat: Array<{ key: string; sd: number }> = [];
+        for (const k of emoKeys) {
+          const vals = cast.map(c => getEmo(c.atoms, c.id, k));
+          const s = sd(vals);
+          if (s < 0.03) flat.push({ key: k, sd: s });
+        }
+        return { flat };
+      })();
+
       const metric = (a: any) => Number((a as any)?.magnitude ?? (a as any)?.m ?? 0) || 0;
       const pick = (atoms: any[], prefix: string, selfId: string, limit = 6) => {
         const suffix = `:${selfId}`;
@@ -767,6 +792,17 @@ export const GoalLabResults: React.FC<Props> = ({
           <div className="text-[11px] text-canon-text-light/70 mb-4">
             Быстрый способ увидеть различия между персонажами: top контекст-оси, эмоции, драйверы и цели по каждому self.
           </div>
+
+          {emoStats.flat.length > 0 && (
+            <div className="mb-4 p-3 rounded border border-amber-500/30 bg-amber-900/10">
+              <div className="text-[10px] uppercase tracking-wider font-bold text-amber-200">Diagnostics</div>
+              <div className="mt-1 text-[11px] text-amber-100/90">
+                Emotions look too similar across cast (sd &lt; 0.03):{' '}
+                {emoStats.flat.map(x => `${x.key}: ${x.sd.toFixed(3)}`).join(' • ')}.
+              </div>
+            </div>
+          )}
+
           <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${Math.min(4, cast.length)}, minmax(220px, 1fr))` }}>
             {cast.map(c => (
               <div key={c.id} className="border border-canon-border/40 rounded bg-black/15 p-3">
@@ -829,10 +865,14 @@ export const GoalLabResults: React.FC<Props> = ({
     const possibilities = (context as any).possibilities ?? snapshotV1?.possibilities;
     const diffs = atomDiff ?? snapshotV1?.atomDiff;
     const decision = (context as any).decision ?? snapshotV1?.decision;
+    const focusSelfId = (snapshotV1 as any)?.selfId || (context as any)?.agentId || (context as any)?.selfId || null;
+    const castDecisions = arr((sceneDump as any)?.castRows)
+      .map((r: any) => r?.snapshot?.decision)
+      .filter(Boolean);
     const AccessTab = () => <AccessPanel decisions={accessDecisions} />;
     const PossibilitiesTab = () => <PossibilitiesPanel possibilities={possibilities} />;
     const DiffTab = () => <DiffPanel diffs={diffs} />;
-    const DecisionTab = () => <DecisionPanel decision={decision} />;
+    const DecisionTab = () => <DecisionPanel decision={decision} selfId={focusSelfId ?? undefined} castDecisions={castDecisions} />;
     const explainStats = {
         threat: Number(stats.threat) || 0,
         pressure: Number(stats.pressure) || 0,

@@ -5,6 +5,7 @@ import { getCtx, pickCtxId } from '../context/layers';
 import { Possibility } from '../possibilities/catalog';
 import { computeActionCost } from './costModel';
 import { gatePossibility } from './gating';
+import { arr } from '../utils/arr';
 
 function clamp01(x: number) {
   if (!Number.isFinite(x)) return 0;
@@ -17,43 +18,9 @@ function get(atoms: ContextAtom[], id: string, fb = 0) {
   return (typeof m === 'number' && Number.isFinite(m)) ? m : fb;
 }
 
-function getGoalDomain(atoms: ContextAtom[], selfId: string, domain: string, def = NaN): number {
-  return get(atoms, `goal:domain:${domain}:${selfId}`, def);
-}
-
-function getActionKeyFromPossibilityId(pid: string): string {
-  // ожидаем формат kind:key:selfId (например aff:attack:K)
-  const s = String(pid || '');
-  const parts = s.split(':');
-  return parts.length >= 2 ? parts[1] : s;
-}
-
-function getTopActivePlanGoals(atoms: ContextAtom[], selfId: string, topN = 5): { goalId: string; v: number; atomId: string }[] {
-  const pref = `goal:activeGoal:${selfId}:`;
-  const arr = atoms
-    .filter(a => typeof (a as any)?.id === 'string' && (a as any).id.startsWith(pref))
-    .map(a => {
-      const id = String((a as any).id);
-      const goalId = id.slice(pref.length);
-      const v = Number((a as any).magnitude ?? 0);
-      return { goalId, v: Number.isFinite(v) ? v : 0, atomId: id };
-    })
-    .sort((a, b) => b.v - a.v);
-
-  if (arr.length) return arr.slice(0, topN);
-
-  // fallback: если activeGoal нет — берём plan
-  const pref2 = `goal:plan:${selfId}:`;
-  return atoms
-    .filter(a => typeof (a as any)?.id === 'string' && (a as any).id.startsWith(pref2))
-    .map(a => {
-      const id = String((a as any).id);
-      const goalId = id.slice(pref2.length);
-      const v = Number((a as any).magnitude ?? 0);
-      return { goalId, v: Number.isFinite(v) ? v : 0, atomId: id };
-    })
-    .sort((a, b) => b.v - a.v)
-    .slice(0, topN);
+function getActionKey(possibility: Possibility): string {
+  // Normalize action key. Many places use `key`, `actionKey`, or `kind`.
+  return String((possibility as any)?.actionKey || (possibility as any)?.key || (possibility as any)?.kind || possibility?.id || '').trim();
 }
 
 function actionDomainHint(actionId: string): string | null {
@@ -70,6 +37,62 @@ function actionDomainHint(actionId: string): string | null {
   if (id.includes('rest') || id.includes('sleep') || id.includes('pause')) return 'rest';
   if (id.includes('trade') || id.includes('buy') || id.includes('sell')) return 'wealth';
   return null;
+}
+
+function actionDomainHintWeight(p: Possibility, domain: string): number {
+  // Conservative heuristic: 1 if action maps to the domain; otherwise 0.
+  const hint = actionDomainHint(p.id);
+  return hint === domain ? 1 : 0;
+}
+
+function getActiveGoalDomains(atoms: ContextAtom[], selfId: string) {
+  // deriveGoalAtoms emits goal:active:<domain>:<selfId> with magnitude = activation.
+  const prefix = 'goal:active:';
+  const res: Array<{ id: string; domain: string; mag: number }> = [];
+  for (const a of atoms) {
+    const id = String((a as any)?.id || '');
+    if (!id.startsWith(prefix)) continue;
+    const parts = id.split(':');
+    // goal:active:<domain>:<selfId>
+    const domain = parts[2] || '';
+    const sid = parts[3] || '';
+    if (!domain || sid !== selfId) continue;
+    res.push({ id, domain, mag: clamp01(get(atoms, id, 0)) });
+  }
+  return res;
+}
+
+function getPlanGoalSupport(atoms: ContextAtom[], selfId: string, actionKey: string) {
+  // Plan goals:
+  // - goal:activeGoal:<selfId>:<goalId> magnitude = activation
+  // - goal:hint:allow:<goalId>:<actionKey> magnitude = 1
+  const activePrefix = `goal:activeGoal:${selfId}:`;
+  const allowPrefix = 'goal:hint:allow:';
+  const allowIds = new Set<string>();
+  for (const a of atoms) {
+    const id = String((a as any)?.id || '');
+    if (!id.startsWith(allowPrefix)) continue;
+    // goal:hint:allow:<goalId>:<actionKey>
+    const parts = id.split(':');
+    const gid = parts[3] || '';
+    const ak = parts[4] || '';
+    if (gid && ak && ak === actionKey) allowIds.add(gid);
+  }
+  let support = 0;
+  const used: string[] = [];
+  const partsOut: any[] = [];
+  for (const a of atoms) {
+    const id = String((a as any)?.id || '');
+    if (!id.startsWith(activePrefix)) continue;
+    const goalId = id.slice(activePrefix.length);
+    if (!allowIds.has(goalId)) continue;
+    const m = clamp01(get(atoms, id, 0));
+    support += m;
+    used.push(id);
+    used.push(`goal:hint:allow:${goalId}:${actionKey}`);
+    partsOut.push({ goalId, active: m, link: 1 });
+  }
+  return { support: clamp01(support), usedAtomIds: used, parts: partsOut };
 }
 
 export type ScoredAction = {
@@ -90,10 +113,18 @@ export function scorePossibility(args: {
   p: Possibility;
 }): ScoredAction {
   const { selfId, atoms, p } = args;
-  // Dynamic goal influence: ramp up when context is demanding.
-  const uncertaintyCtx = getCtx(atoms, selfId, 'uncertainty', 0);
-  const timePressureCtx = getCtx(atoms, selfId, 'timePressure', 0);
-  const normPressureCtx = getCtx(atoms, selfId, 'normPressure', 0);
+  const actionKey = getActionKey(p);
+  const targetId = (p as any)?.targetId ?? null;
+
+  // ---- traits (individual differences) ----
+  const trParanoia = clamp01(get(atoms, `feat:char:${selfId}:trait.paranoia`, 0.5));
+  const trSafety = clamp01(get(atoms, `feat:char:${selfId}:trait.safety`, 0.5));
+  const trPowerDrive = clamp01(get(atoms, `feat:char:${selfId}:trait.powerDrive`, 0.4));
+  const trCare = clamp01(get(atoms, `feat:char:${selfId}:trait.care`, 0.4));
+  const trTruthNeed = clamp01(get(atoms, `feat:char:${selfId}:trait.truthNeed`, 0.4));
+  const trAutonomy = clamp01(get(atoms, `feat:char:${selfId}:trait.autonomy`, 0.4));
+  const trOrder = clamp01(get(atoms, `feat:char:${selfId}:trait.order`, 0.4));
+  const trNormSens = clamp01(get(atoms, `feat:char:${selfId}:trait.normSensitivity`, 0.5));
 
   const gate = gatePossibility({ atoms, p });
   const { cost, parts, usedAtomIds: costUsedAtomIds } = computeActionCost({ selfId, atoms, p });
@@ -106,28 +137,74 @@ export function scorePossibility(args: {
   const shame = get(atoms, `emo:shame:${selfId}`, 0);
   const resolve = get(atoms, `emo:resolve:${selfId}`, 0);
   const care = get(atoms, `emo:care:${selfId}`, 0);
-  const targetId = (p as any)?.targetId;
   const hazardBetween = targetId ? clamp01(get(atoms, `world:map:hazardBetween:${selfId}:${targetId}`, 0)) : 0;
   const allyHazardBetween = targetId ? clamp01(get(atoms, `soc:allyHazardBetween:${selfId}:${targetId}`, 0)) : 0;
   const enemyHazardBetween = targetId ? clamp01(get(atoms, `soc:enemyHazardBetween:${selfId}:${targetId}`, 0)) : 0;
+  const recentHarmByTarget = targetId ? clamp01(get(atoms, `soc:recentHarmBy:${targetId}:${selfId}`, 0)) : 0;
+  const recentHelpByTarget = targetId ? clamp01(get(atoms, `soc:recentHelpBy:${targetId}:${selfId}`, 0)) : 0;
 
   let pref = 0;
   const prefParts: Record<string, number> = {};
+
+  // ---- trait modulation by action family ----
+  // Make the same context produce different choices for different characters.
+  if (String(p.id).startsWith('exit:escape') || String(p.id).startsWith('aff:hide') || String(p.id).startsWith('aff:avoid')) {
+    const dv = 0.25 * trSafety + 0.22 * trParanoia - 0.18 * trPowerDrive;
+    pref += dv;
+    prefParts.traits_defensive = dv;
+  }
+  if (String(p.id).startsWith('aff:talk') || String(p.id).startsWith('aff:share_secret')) {
+    const dv = 0.22 * trCare - 0.22 * trParanoia - 0.12 * trSafety + 0.10 * trAutonomy;
+    pref += dv;
+    prefParts.traits_social = dv;
+  }
+  if (String(p.id).startsWith('aff:ask_info') || String(p.id).startsWith('cog:investigate') || String(p.id).startsWith('cog:probe')) {
+    const dv = 0.28 * trTruthNeed + 0.12 * trAutonomy - 0.12 * trParanoia;
+    pref += dv;
+    prefParts.traits_epistemic = dv;
+  }
+  if (String(p.id).startsWith('off:help') || String(p.id).startsWith('aff:help')) {
+    const dv = 0.35 * trCare - 0.10 * trSafety - 0.10 * trParanoia;
+    pref += dv;
+    prefParts.traits_help = dv;
+  }
+  if (String(p.id).startsWith('aff:attack') || String(p.id).startsWith('aff:confront') || String(p.id).startsWith('aff:threaten')) {
+    const dv = 0.30 * trPowerDrive + 0.10 * trAutonomy - 0.25 * trOrder - 0.20 * trNormSens - 0.15 * trCare;
+    pref += dv;
+    prefParts.traits_aggressive = dv;
+  }
+  if (String(p.id).startsWith('cog:wait') || String(p.id).startsWith('aff:rest')) {
+    const dv = 0.18 * trOrder + 0.12 * trSafety - 0.10 * trAutonomy;
+    pref += dv;
+    prefParts.traits_passive = dv;
+  }
   if (p.id.startsWith('exit:escape')) pref += 0.25 * fear + 0.10 * threatFinal;
   if (p.id.startsWith('aff:hide'))   pref += 0.20 * fear;
   if (p.id.startsWith('aff:talk')) {
     pref += 0.10 * shame - 0.10 * fear - 0.20 * hazardBetween;
     prefParts.hazardBetween = -0.20 * hazardBetween;
+    // If target recently harmed me, talking is less attractive; if helped — more attractive.
+    pref += -0.30 * recentHarmByTarget + 0.18 * recentHelpByTarget;
+    prefParts.recentHarmByTarget = -0.30 * recentHarmByTarget;
+    prefParts.recentHelpByTarget = 0.18 * recentHelpByTarget;
   }
   if (p.id.startsWith('aff:attack')) {
     pref += 0.20 * anger + 0.10 * resolve - 0.25 * shame - 0.25 * enemyHazardBetween - 0.10 * hazardBetween;
     prefParts.enemyHazardBetween = -0.25 * enemyHazardBetween;
     prefParts.hazardBetween = (prefParts.hazardBetween ?? 0) + -0.10 * hazardBetween;
+    // Retaliation signal (bounded later by protocol).
+    pref += 0.22 * recentHarmByTarget - 0.12 * recentHelpByTarget;
+    prefParts.recentHarmByTarget = (prefParts.recentHarmByTarget ?? 0) + 0.22 * recentHarmByTarget;
+    prefParts.recentHelpByTarget = (prefParts.recentHelpByTarget ?? 0) + -0.12 * recentHelpByTarget;
   }
   if (p.id.startsWith('off:help')) {
     pref += 0.20 * care - 0.10 * fear - 0.35 * allyHazardBetween - 0.15 * hazardBetween;
     prefParts.allyHazardBetween = -0.35 * allyHazardBetween;
     prefParts.hazardBetween = (prefParts.hazardBetween ?? 0) + -0.15 * hazardBetween;
+    // Helping someone who harmed me is harder.
+    pref += -0.25 * recentHarmByTarget + 0.20 * recentHelpByTarget;
+    prefParts.recentHarmByTarget = (prefParts.recentHarmByTarget ?? 0) + -0.25 * recentHarmByTarget;
+    prefParts.recentHelpByTarget = (prefParts.recentHelpByTarget ?? 0) + 0.20 * recentHelpByTarget;
   }
   if (p.id.startsWith('cog:monologue')) {
     const unc = clamp01(get(atoms, `ctx:uncertainty:${selfId}`, 0));
@@ -140,72 +217,55 @@ export function scorePossibility(args: {
   if (p.id.startsWith('aff:talk')) pref += 0.15 * protocol;
   if (p.id.startsWith('aff:attack')) pref += -0.40 * protocol;
 
-  // Goal weight grows with contextual intensity: danger/uncertainty/protocol/time pressure.
-  const ctxIntensity = Math.max(
-    clamp01(protocol),
-    clamp01(dangerCtx.magnitude),
-    clamp01(uncertaintyCtx.magnitude),
-    clamp01(timePressureCtx.magnitude),
-    clamp01(normPressureCtx.magnitude)
-  );
-  const goalAlpha = clamp01(0.10 + 0.60 * ctxIntensity); // 0.10..0.70
-
   const availability = clamp01(p.magnitude);
   const raw = clamp01(availability * (1 - cost) + pref);
-  const dom = actionDomainHint(p.id);
-  const gDom = dom ? getGoalDomain(atoms, selfId, dom, NaN) : NaN;
-  const domUtility = Number.isFinite(gDom) ? clamp01(gDom) : null;
 
-  // --- plan-goals utility ---
-  const actionKey = getActionKeyFromPossibilityId(p.id);
-  const active = getTopActivePlanGoals(atoms, selfId, 5);
-
-  // минимальный безопасный режим: без ссылок план-цели не влияют
-  let planUtility: number | null = null;
-  let planUsed: string[] = [];
-  let planParts: any = { actionKey, mode: 'no_links' };
-
-  const linkPref = 'goal:hint:allow:'; // goal:hint:allow:<goalId>:<actionKey>
-  let best = 0;
-  let bestGoal: any = null;
-
-  for (const g of active) {
-    const linkId = `${linkPref}${g.goalId}:${actionKey}`;
-    const link = atoms.find(a => (a as any)?.id === linkId) as any;
-    const allow = link ? Number(link.magnitude ?? 0) : 0; // 0..1
-    if (allow <= 0) continue;
-    const u = clamp01(g.v) * clamp01(allow);
-    if (u > best) {
-      best = u;
-      bestGoal = { goalId: g.goalId, goalV: g.v, allow, linkId, goalAtomId: g.atomId };
-    }
+  // ---- GOALS: additive utility layer (bounded & explainable) ----
+  // 1) Domain-level active goals: reward actions that match domain hints.
+  let goalDomainBoost = 0;
+  const goalDomainParts: any[] = [];
+  const goalDomainUsed: string[] = [];
+  const activeDomains = getActiveGoalDomains(atoms, selfId);
+  for (const g of activeDomains) {
+    const hint = actionDomainHintWeight(p, g.domain);
+    if (!Number.isFinite(hint) || hint === 0) continue;
+    const contrib = g.mag * hint;
+    goalDomainBoost += contrib;
+    goalDomainUsed.push(g.id);
+    goalDomainParts.push({ domain: g.domain, active: g.mag, hint, contrib });
   }
+  // 2) Plan-goal support: active plan goals that explicitly allow this action.
+  const plan = getPlanGoalSupport(atoms, selfId, actionKey);
+  const planBoost = 0.65 * plan.support; // bounded; weight chosen to matter but not dominate.
 
-  if (bestGoal) {
-    planUtility = clamp01(best);
-    planUsed = [bestGoal.goalAtomId, bestGoal.linkId];
-    planParts = { actionKey, mode: 'links', bestGoal };
-  }
+  const goalUtilityRaw = goalDomainBoost + planBoost;
+  const goalUtility = clamp01(0.5 + 0.5 * Math.tanh(goalUtilityRaw)); // squashing to [0..1]
 
-  // --- mix utilities: prefer the stronger signal, then blend with goalAlpha
-  const bestUtility =
-    planUtility != null && domUtility != null ? Math.max(planUtility, domUtility)
-    : (planUtility ?? domUtility);
+  // Mix with base utility (keep conservative to avoid goal dominance).
+  const mixedUtility = clamp01(0.80 * raw + 0.20 * goalUtility);
 
-  const withGoal = bestUtility == null ? raw : clamp01(raw * (1 - goalAlpha) + bestUtility * goalAlpha);
-  
-  const allowedScore = gate.allowed ? withGoal : 0;
+  const allowedScore = gate.allowed ? mixedUtility : 0;
 
   const usedAtomIds = [
     ...(p.trace?.usedAtomIds || []),
     ...costUsedAtomIds,
-    ...(domUtility != null && dom ? [`goal:domain:${dom}:${selfId}`] : []),
-    ...planUsed,
+    ...goalDomainUsed,
+    ...arr(plan.usedAtomIds),
+    `feat:char:${selfId}:trait.paranoia`,
+    `feat:char:${selfId}:trait.safety`,
+    `feat:char:${selfId}:trait.powerDrive`,
+    `feat:char:${selfId}:trait.care`,
+    `feat:char:${selfId}:trait.truthNeed`,
+    `feat:char:${selfId}:trait.autonomy`,
+    `feat:char:${selfId}:trait.order`,
+    `feat:char:${selfId}:trait.normSensitivity`,
     ...(dangerCtx.id ? [dangerCtx.id] : pickCtxId('danger', selfId)),
     ...(targetId ? [
       `world:map:hazardBetween:${selfId}:${targetId}`,
       `soc:allyHazardBetween:${selfId}:${targetId}`,
-      `soc:enemyHazardBetween:${selfId}:${targetId}`
+      `soc:enemyHazardBetween:${selfId}:${targetId}`,
+      `soc:recentHarmBy:${targetId}:${selfId}`,
+      `soc:recentHelpBy:${targetId}:${selfId}`
     ] : [])
   ].filter(id => atoms.some(a => a?.id === id));
 
@@ -229,11 +289,12 @@ export function scorePossibility(args: {
           prefParts,
           costParts: parts,
           raw,
-          goalUtility: domUtility,
-          goalDomain: dom ?? null,
-          goalAlpha,
-          planUtility,
-          planParts,
+          goalUtility,
+          goalDomainBoost,
+          planBoost,
+          goalUtilityRaw,
+          goalDomainParts,
+          planParts: plan.parts,
           danger: dangerCtx.magnitude,
           dangerLayer: dangerCtx.layer,
           allowed: gate.allowed,
@@ -256,11 +317,12 @@ export function scorePossibility(args: {
         prefParts,
         costParts: parts,
         raw,
-        goalUtility: domUtility,
-        goalDomain: dom ?? null,
-        goalAlpha,
-        planUtility,
-        planParts
+        goalUtility,
+        goalDomainBoost,
+        planBoost,
+        goalUtilityRaw,
+        goalDomainParts,
+        planParts: plan.parts
       },
       blockedBy: gate.blockedBy
     },
