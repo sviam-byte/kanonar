@@ -18,6 +18,10 @@ export const DecisionPanel: React.FC<{ decision: any }> = ({ decision }) => {
   const [sel, setSel] = useState(0);
 
   const current = ranked[sel] || null;
+  const labelWithTarget = (a: any) => {
+    const targetId = a?.p?.targetId || a?.targetId || null;
+    return `${a?.label || a?.p?.id || 'Untitled action'}${targetId ? ` → ${targetId}` : ''}`;
+  };
 
   return (
     <div className="h-full min-h-0 flex bg-canon-bg text-canon-text">
@@ -39,7 +43,7 @@ export const DecisionPanel: React.FC<{ decision: any }> = ({ decision }) => {
             >
               <div className="flex items-center justify-between">
                 <div className={`text-sm font-bold ${allowed ? 'text-canon-text' : 'text-canon-text-light/50'}`}>
-                  {a.label || a?.p?.id || 'Untitled action'}
+                  {labelWithTarget(a)}
                 </div>
                 {isBest ? (
                   <span className="text-[10px] uppercase tracking-wide text-canon-accent">best</span>
@@ -63,7 +67,7 @@ export const DecisionPanel: React.FC<{ decision: any }> = ({ decision }) => {
           <div className="space-y-4">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <h3 className="text-xl font-bold text-canon-text mb-1">{current.label}</h3>
+                <h3 className="text-xl font-bold text-canon-text mb-1">{labelWithTarget(current)}</h3>
                 <div className="text-xs font-mono text-canon-text-light">id: {current.id}</div>
               </div>
               <label className="flex items-center gap-2 text-xs text-canon-text-light">

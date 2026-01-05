@@ -1,6 +1,9 @@
 import type { ContextAtom } from '../context/v2/types';
 import { normalizeAtom } from '../context/v2/infer';
-import { clamp01 } from '../math/normalize';
+function clamp01(x: number) {
+  if (!Number.isFinite(x)) return 0;
+  return Math.max(0, Math.min(1, x));
+}
 
 function mag(a?: any, fb = 0) {
   const m = a?.magnitude;
@@ -18,8 +21,8 @@ export function deriveRelFinalAtoms(args: {
   selfId: string;
   atoms: ContextAtom[];
   participantIds: string[];
-  wState?: number; // weight of rel:state
-  wTom?: number; // weight of tom:effective
+  wState?: number; // rel:state weight
+  wTom?: number; // tom:effective weight
 }) {
   const { selfId, atoms, participantIds, wState = 0.55, wTom = 0.45 } = args;
   const out: ContextAtom[] = [];
@@ -47,6 +50,9 @@ export function deriveRelFinalAtoms(args: {
           ns: 'rel',
           kind: 'rel_final',
           origin: 'derived',
+          source: 'rel_final',
+          subject: selfId,
+          object: otherId,
           magnitude: mFinal,
           confidence: Math.min(1, (aState?.confidence ?? 1) * 0.75 + (aTom?.confidence ?? 1) * 0.25),
           tags: ['rel', 'final', metric],

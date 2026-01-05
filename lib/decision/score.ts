@@ -129,6 +129,8 @@ export function scorePossibility(args: {
   const hazardBetween = targetId ? clamp01(get(atoms, `world:map:hazardBetween:${selfId}:${targetId}`, 0)) : 0;
   const allyHazardBetween = targetId ? clamp01(get(atoms, `soc:allyHazardBetween:${selfId}:${targetId}`, 0)) : 0;
   const enemyHazardBetween = targetId ? clamp01(get(atoms, `soc:enemyHazardBetween:${selfId}:${targetId}`, 0)) : 0;
+  const recentHarmByTarget = targetId ? clamp01(get(atoms, `soc:recentHarmBy:${targetId}:${selfId}`, 0)) : 0;
+  const recentHelpByTarget = targetId ? clamp01(get(atoms, `soc:recentHelpBy:${targetId}:${selfId}`, 0)) : 0;
 
   let pref = 0;
   const prefParts: Record<string, number> = {};
@@ -137,16 +139,28 @@ export function scorePossibility(args: {
   if (p.id.startsWith('aff:talk')) {
     pref += 0.10 * shame - 0.10 * fear - 0.20 * hazardBetween;
     prefParts.hazardBetween = -0.20 * hazardBetween;
+    // If target recently harmed me, talking is less attractive; if helped — more attractive.
+    pref += -0.30 * recentHarmByTarget + 0.18 * recentHelpByTarget;
+    prefParts.recentHarmByTarget = -0.30 * recentHarmByTarget;
+    prefParts.recentHelpByTarget = 0.18 * recentHelpByTarget;
   }
   if (p.id.startsWith('aff:attack')) {
     pref += 0.20 * anger + 0.10 * resolve - 0.25 * shame - 0.25 * enemyHazardBetween - 0.10 * hazardBetween;
     prefParts.enemyHazardBetween = -0.25 * enemyHazardBetween;
     prefParts.hazardBetween = (prefParts.hazardBetween ?? 0) + -0.10 * hazardBetween;
+    // Retaliation signal (bounded later by protocol).
+    pref += 0.22 * recentHarmByTarget - 0.12 * recentHelpByTarget;
+    prefParts.recentHarmByTarget = (prefParts.recentHarmByTarget ?? 0) + 0.22 * recentHarmByTarget;
+    prefParts.recentHelpByTarget = (prefParts.recentHelpByTarget ?? 0) + -0.12 * recentHelpByTarget;
   }
   if (p.id.startsWith('off:help')) {
     pref += 0.20 * care - 0.10 * fear - 0.35 * allyHazardBetween - 0.15 * hazardBetween;
     prefParts.allyHazardBetween = -0.35 * allyHazardBetween;
     prefParts.hazardBetween = (prefParts.hazardBetween ?? 0) + -0.15 * hazardBetween;
+    // Helping someone who harmed me is harder.
+    pref += -0.25 * recentHarmByTarget + 0.20 * recentHelpByTarget;
+    prefParts.recentHarmByTarget = (prefParts.recentHarmByTarget ?? 0) + -0.25 * recentHarmByTarget;
+    prefParts.recentHelpByTarget = (prefParts.recentHelpByTarget ?? 0) + 0.20 * recentHelpByTarget;
   }
   if (p.id.startsWith('cog:monologue')) {
     const unc = clamp01(get(atoms, `ctx:uncertainty:${selfId}`, 0));
@@ -197,7 +211,9 @@ export function scorePossibility(args: {
     ...(targetId ? [
       `world:map:hazardBetween:${selfId}:${targetId}`,
       `soc:allyHazardBetween:${selfId}:${targetId}`,
-      `soc:enemyHazardBetween:${selfId}:${targetId}`
+      `soc:enemyHazardBetween:${selfId}:${targetId}`,
+      `soc:recentHarmBy:${targetId}:${selfId}`,
+      `soc:recentHelpBy:${targetId}:${selfId}`
     ] : [])
   ].filter(id => atoms.some(a => a?.id === id));
 
@@ -220,16 +236,16 @@ export function scorePossibility(args: {
           pref,
           prefParts,
           costParts: parts,
-        raw,
-        goalUtility,
-        goalDomainBoost,
-        planBoost,
-        goalUtilityRaw,
-        goalDomainParts,
-        planParts: plan.parts,
-        danger: dangerCtx.magnitude,
-        dangerLayer: dangerCtx.layer,
-        allowed: gate.allowed,
+          raw,
+          goalUtility,
+          goalDomainBoost,
+          planBoost,
+          goalUtilityRaw,
+          goalDomainParts,
+          planParts: plan.parts,
+          danger: dangerCtx.magnitude,
+          dangerLayer: dangerCtx.layer,
+          allowed: gate.allowed,
         }
       }
     } as any)

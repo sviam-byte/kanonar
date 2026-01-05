@@ -11,6 +11,19 @@ export type DecisionResult = {
   atoms: ContextAtom[];
 };
 
+function tieBreak(a: ScoredAction, b: ScoredAction) {
+  // 1) allowed first
+  if (Boolean(a.allowed) !== Boolean(b.allowed)) return a.allowed ? -1 : 1;
+  // 2) higher score
+  const ds = (b.score ?? 0) - (a.score ?? 0);
+  if (ds !== 0) return ds;
+  // 3) lower cost
+  const dc = (a.cost ?? 0) - (b.cost ?? 0);
+  if (dc !== 0) return dc;
+  // 4) stable by id
+  return String(a?.p?.id || a?.id || '').localeCompare(String(b?.p?.id || b?.id || ''));
+}
+
 function clamp01(x: number) {
   if (!Number.isFinite(x)) return 0;
   return Math.max(0, Math.min(1, x));
@@ -50,7 +63,7 @@ export function decideAction(args: {
   const poss = arr<Possibility>(args.possibilities);
   const ranked = poss
     .map(p => scorePossibility({ selfId: args.selfId, atoms: args.atoms, p }))
-    .sort((a, b) => b.score - a.score);
+    .sort(tieBreak);
 
   const topK = args.topK ?? 10;
   const topRanked = ranked.slice(0, topK);
@@ -81,8 +94,12 @@ export function decideAction(args: {
     );
   }
 
-  if (topRanked[0]) {
-    const chosen = topRanked[0];
+  // Choose first allowed action; if none allowed, fall back to topRanked[0] and mark noAllowed=true.
+  const chosen = topRanked.find(x => x?.allowed) || topRanked[0] || null;
+  const noAllowed = Boolean(chosen && !chosen.allowed);
+
+  if (chosen) {
+    const targetId = (chosen.p as any)?.targetId ?? null;
     decisionAtoms.push(
       mkDecisionAtom(
         `action:choice:${args.selfId}`,
@@ -93,13 +110,24 @@ export function decideAction(args: {
           ...topRanked.map(p => `action:gate:${args.selfId}:${p.p.id}`),
           ...topRanked.map(p => `action:utility:${args.selfId}:${p.p.id}`),
         ],
-        `choice:${chosen.p.id}`,
-        { chosen: chosen.p.id, top: topRanked.slice(0, 5).map(p => ({ a: p.p.id, prior: p.score })) },
+        `choice:${chosen.p.id}${targetId ? `→${targetId}` : ''}`,
+        {
+          chosen: chosen.p.id,
+          targetId,
+          noAllowed,
+          top: topRanked.slice(0, 7).map(p => ({
+            a: p.p.id,
+            targetId: (p.p as any)?.targetId ?? null,
+            score: p.score,
+            cost: p.cost,
+            allowed: p.allowed,
+          })),
+        },
         ['action', 'choice']
       )
     );
   }
 
   const atoms = [...topRanked.flatMap(item => item.atoms || []), ...decisionAtoms];
-  return { best: topRanked[0] || null, ranked: topRanked, atoms };
+  return { best: chosen, ranked: topRanked, atoms };
 }
