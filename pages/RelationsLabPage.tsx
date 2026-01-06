@@ -1,6 +1,10 @@
 import React, { useMemo, useState } from 'react';
 import { useSandbox } from '../contexts/SandboxContext';
+import { useAccess } from '../contexts/AccessContext';
+import { getEntitiesByType } from '../data';
 import { relations as STATIC_RELATIONS } from '../data/relations';
+import { EntityType } from '../enums';
+import type { CharacterEntity } from '../types';
 
 type EdgeRow = {
   a: string;
@@ -249,7 +253,26 @@ function foldBioIntoMetrics(base: EdgeRow, bioAspects: Record<string, number>, b
 }
 
 export const RelationsLabPage: React.FC = () => {
-  const { characters } = useSandbox();
+  const { characters: sandboxCharacters } = useSandbox();
+  const { activeModule } = useAccess();
+
+  const characters: CharacterEntity[] = useMemo(() => {
+    // 1) If sandbox is populated, use it.
+    if (Array.isArray(sandboxCharacters) && sandboxCharacters.length > 0) return sandboxCharacters;
+
+    // 2) Otherwise, prefer the active module whitelist.
+    if (activeModule) {
+      try {
+        const cs = activeModule.getCharacters();
+        if (Array.isArray(cs) && cs.length > 0) return cs;
+      } catch {
+        // Ignore module errors and fall through to registry.
+      }
+    }
+
+    // 3) Otherwise, return all characters from the registry.
+    return getEntitiesByType(EntityType.Character) as CharacterEntity[];
+  }, [sandboxCharacters, activeModule]);
   const [focusA, setFocusA] = useState<string>('');
   const [focusB, setFocusB] = useState<string>('');
 

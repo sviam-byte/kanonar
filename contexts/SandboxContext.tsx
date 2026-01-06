@@ -2,6 +2,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { CharacterEntity } from '../types';
 import { DyadConfigForA } from '../lib/tom/dyad-metrics';
+import { useAccess } from './AccessContext';
 
 interface SandboxState {
   characters: CharacterEntity[];
@@ -28,6 +29,7 @@ const ADMIN_KEY = 'kanonar-admin-mode';
 export const SandboxProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [state, setState] = useState<SandboxState>({ characters: [], dyadConfigs: {} });
   const [isAdmin, setIsAdmin] = useState(false);
+  const { activeModule } = useAccess();
 
   // Load from localStorage on mount
   useEffect(() => {
@@ -50,6 +52,25 @@ export const SandboxProvider: React.FC<{ children: ReactNode }> = ({ children })
       console.error("Failed to load sandbox session:", e);
     }
   }, []);
+
+  // Seed sandbox from the active access module (only when sandbox is empty).
+  useEffect(() => {
+    if (!activeModule) return;
+    if (state.characters.length > 0) return;
+
+    try {
+      const seeded = activeModule.getCharacters();
+      if (Array.isArray(seeded) && seeded.length > 0) {
+        setState(prev => ({
+          ...prev,
+          characters: seeded,
+        }));
+      }
+    } catch (e) {
+      console.error('Failed to seed sandbox from access module:', e);
+    }
+    // Important: depend on state.characters.length to avoid overwriting manual additions.
+  }, [activeModule, state.characters.length]);
 
   // Save to localStorage on change
   useEffect(() => {

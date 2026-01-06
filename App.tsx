@@ -40,8 +40,8 @@ function App() {
     <ErrorBoundary>
       <HashRouter>
         <BranchProvider>
-          <SandboxProvider>
-            <AccessProvider>
+          <AccessProvider>
+            <SandboxProvider>
               <div className="min-h-screen flex flex-col">
                 <Header />
                 <main className="flex-grow">
@@ -78,8 +78,8 @@ function App() {
                   </Routes>
                 </main>
               </div>
-            </AccessProvider>
-          </SandboxProvider>
+            </SandboxProvider>
+          </AccessProvider>
         </BranchProvider>
       </HashRouter>
     </ErrorBoundary>
