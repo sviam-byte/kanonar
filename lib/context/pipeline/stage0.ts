@@ -18,6 +18,7 @@ import { buildLifeDomainWeights } from '../../life-domains';
 import { extractRelBaseFromCharacter, extractRelCtxFromCharacter } from '../../relations/extract';
 import { atomizeRelBase, atomizeRelCtx } from '../../relations/atomize';
 import { deriveRelCtxAtoms } from '../../relations/deriveCtx';
+import { atomizeRelations } from '../../relations/atomizeRelations';
 
 // New WorldFacts Logic
 import { buildWorldFactsAtoms } from './worldFacts';
@@ -268,6 +269,13 @@ export function buildStage0Atoms(input: Stage0Input): Stage0Output {
   (input.agent as any).rel_ctx = relCtxMem;
   const relCtxAtomsFromMem = atomizeRelCtx(input.selfId, relCtxMem, otherAgentIds);
 
+  const relGraphRaw =
+    (input.agent as any)?.relations?.graph ||
+    (input.agent as any)?.rel_graph ||
+    (input.agent as any)?.relationships?.graph ||
+    null;
+  const relGraphAtoms = relGraphRaw ? atomizeRelations(relGraphRaw as any, input.selfId) : [];
+
   const { dyadAtoms: tomDyadAtoms, relHintAtoms: tomRelHints } = extractTomDyadAtoms({
     world: input.world,
     agent: input.agent,
@@ -310,6 +318,7 @@ export function buildStage0Atoms(input: Stage0Input): Stage0Output {
       ...(input.extraWorldAtoms || []),
       ...relAtoms,
       ...relCtxAtomsFromMem,
+      ...relGraphAtoms,
       ...eventAtoms,
       ...capAtoms,
       ...locAccessAtoms,
@@ -334,6 +343,7 @@ export function buildStage0Atoms(input: Stage0Input): Stage0Output {
       ...(input.extraWorldAtoms || []),
       ...relAtoms,
       ...relCtxAtoms,
+      ...relGraphAtoms,
       ...eventAtoms,
       ...capAtoms,
       ...locAccessAtoms,
@@ -357,6 +367,7 @@ export function buildStage0Atoms(input: Stage0Input): Stage0Output {
     ...relAtoms,
     ...relCtxAtoms,
     ...relStateAtoms,
+    ...relGraphAtoms,
     ...eventAtoms,
     ...capAtoms,
     ...locAccessAtoms,
@@ -386,6 +397,7 @@ export function buildStage0Atoms(input: Stage0Input): Stage0Output {
       ...relAtoms,
       ...relCtxAtoms,
       ...relStateAtoms,
+      ...relGraphAtoms,
       ...eventAtoms,
       ...capAtoms,
       ...locAccessAtoms,

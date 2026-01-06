@@ -1,4 +1,3 @@
-
 // components/goal-lab/RelationsPanel.tsx
 import React, { useMemo, useState } from 'react';
 import { arr } from '../../lib/utils/arr';
@@ -12,6 +11,9 @@ type RelEdge = {
   threatPrior?: number;
   updatedAtTick?: number;
   sources?: Array<{ kind: string; ref?: string; weight?: number }>;
+
+  bioAspects?: Record<string, number>;
+  bioVector?: Record<string, number>;
 };
 
 type RelGraph = {
@@ -41,8 +43,8 @@ export const RelationsPanel: React.FC<Props> = ({ selfId, graph, className, onSe
     const s = q.trim().toLowerCase();
 
     const filtered = out
-      .filter(e => !s ? true : (`${e.b} ${arr(e.tags).join(' ')}`).toLowerCase().includes(s))
-      .filter(e => tagFilter === 'all' ? true : arr(e.tags).includes(tagFilter))
+      .filter(e => (!s ? true : (`${e.b} ${arr(e.tags).join(' ')}`).toLowerCase().includes(s)))
+      .filter(e => (tagFilter === 'all' ? true : arr(e.tags).includes(tagFilter)))
       .sort((x, y) => (y.strength ?? 0) - (x.strength ?? 0));
 
     const allTags = Array.from(new Set(out.flatMap(e => arr(e.tags)))).sort();
@@ -58,7 +60,7 @@ export const RelationsPanel: React.FC<Props> = ({ selfId, graph, className, onSe
       <div className="p-3 border-b border-canon-border bg-canon-bg-light/30">
         <div className="text-sm font-semibold">Relations (Graph)</div>
         <div className="text-xs text-canon-text-light mt-1">
-          Slow memory layer (friend/lover/enemy/etc). Drives ToM priors.
+          Slow memory layer (friend/lover/enemy/etc) + Social biography. Drives ToM priors.
         </div>
 
         <div className="flex gap-2 mt-3">
@@ -69,7 +71,9 @@ export const RelationsPanel: React.FC<Props> = ({ selfId, graph, className, onSe
           >
             <option value="all">all tags</option>
             {arr(edges?.allTags).map(t => (
-              <option key={t} value={t}>{t}</option>
+              <option key={t} value={t}>
+                {t}
+              </option>
             ))}
           </select>
 
@@ -99,26 +103,66 @@ export const RelationsPanel: React.FC<Props> = ({ selfId, graph, className, onSe
 
             <div className="flex flex-wrap gap-1 mb-2">
               {arr(e.tags).map(t => (
-                <span key={t} className="px-1.5 py-0.5 text-[10px] rounded border border-canon-border/40 bg-canon-bg-light/30 text-canon-text-light">
+                <span
+                  key={t}
+                  className="px-1.5 py-0.5 text-[10px] rounded border border-canon-border/40 bg-canon-bg-light/30 text-canon-text-light"
+                >
                   {t}
                 </span>
               ))}
             </div>
 
+            {e.bioAspects && Object.keys(e.bioAspects).length > 0 && (
+              <div className="text-[10px] text-canon-text-light/90 bg-black/20 p-2 rounded mb-2">
+                <div className="font-semibold text-[10px] mb-1">Social biography</div>
+                <div className="flex flex-wrap gap-2 font-mono">
+                  {Object.entries(e.bioAspects)
+                    .sort((a, b) => (b[1] ?? 0) - (a[1] ?? 0))
+                    .slice(0, 8)
+                    .map(([k, v]) => (
+                      <span key={k} className="px-1.5 py-0.5 rounded border border-canon-border/40 bg-canon-bg-light/20">
+                        {k}:{pct(v)}
+                      </span>
+                    ))}
+                </div>
+              </div>
+            )}
+
+            {e.bioVector && Object.keys(e.bioVector).length > 0 && (
+              <div className="text-[10px] text-canon-text-light/90 bg-black/20 p-2 rounded mb-2">
+                <div className="font-semibold text-[10px] mb-1">Vector impact</div>
+                <div className="flex flex-wrap gap-2 font-mono">
+                  {Object.entries(e.bioVector)
+                    .sort((a, b) => Math.abs(b[1] ?? 0) - Math.abs(a[1] ?? 0))
+                    .slice(0, 8)
+                    .map(([k, v]) => (
+                      <span key={k} className="px-1.5 py-0.5 rounded border border-canon-border/40 bg-canon-bg-light/20">
+                        {k}:{Number.isFinite(v) ? v.toFixed(2) : '0.00'}
+                      </span>
+                    ))}
+                </div>
+              </div>
+            )}
+
             {arr(e.sources).length > 0 && (
               <div className="text-[9px] text-canon-text-light/70 bg-black/20 p-1.5 rounded">
                 sources:
-                {arr(e.sources).slice(0, 6).map((s, i) => (
-                  <span key={i} className="ml-1">
-                    {s.kind}{s.ref ? `:${s.ref}` : ''}{typeof s.weight === 'number' ? `(${Math.round(s.weight * 100)}%)` : ''}
-                  </span>
-                ))}
+                {arr(e.sources)
+                  .slice(0, 6)
+                  .map((s, i) => (
+                    <span key={i} className="ml-1">
+                      {s.kind}
+                      {s.ref ? `:${s.ref}` : ''}
+                      {typeof s.weight === 'number' ? `(${Math.round(s.weight * 100)}%)` : ''}
+                    </span>
+                  ))}
               </div>
             )}
           </div>
         ))}
+
         {edges.filtered.length === 0 && (
-            <div className="p-4 text-xs text-canon-text-light italic text-center">No relations found.</div>
+          <div className="p-4 text-xs text-canon-text-light italic text-center">No relations found.</div>
         )}
       </div>
     </div>
