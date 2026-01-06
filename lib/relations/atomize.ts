@@ -1,4 +1,3 @@
-
 import { RelationMemory } from './types';
 import { ContextAtom } from '../context/v2/types';
 import { normalizeAtom } from '../context/v2/infer';
@@ -7,6 +6,12 @@ import { arr } from '../utils/arr';
 function clamp01(x: number) {
   if (!Number.isFinite(x)) return 0;
   return Math.max(0, Math.min(1, x));
+}
+
+function signedToUnit(x: number) {
+  const n = Number(x);
+  if (!Number.isFinite(n)) return 0.5;
+  return clamp01((n + 1) / 2);
 }
 
 function atomizeRelWithPrefix(prefix: 'rel:base' | 'rel:ctx', selfId: string, rel: RelationMemory, otherIds?: string[]): ContextAtom[] {
@@ -93,6 +98,51 @@ function atomizeRelWithPrefix(prefix: 'rel:base' | 'rel:ctx', selfId: string, re
         label: `tag:${t}`,
         trace: { usedAtomIds: used, notes: ['relation tag'], parts: {} }
       } as any));
+    }
+
+    // Social biography atoms (available regardless of prefix)
+    const aspects = e?.bio?.aspects;
+    if (aspects && typeof aspects === 'object') {
+      for (const [k, v] of Object.entries(aspects)) {
+        const mag = clamp01(Number(v));
+        out.push(normalizeAtom({
+          id: `rel:bio:${k}:${selfId}:${otherId}`,
+          ns: 'rel' as any,
+          kind: 'rel_bio' as any,
+          origin: 'profile' as any,
+          source: 'rel_bio',
+          magnitude: mag,
+          confidence: 1,
+          subject: selfId,
+          target: otherId,
+          tags: ['rel', 'bio', k, ...arr(e.tags)],
+          label: `bio.${k}=${Math.round(mag * 100)}%`,
+          trace: { usedAtomIds: used, notes: ['from RelationMemory.edge.bio.aspects'], parts: { lastUpdatedTick: e.lastUpdatedTick } }
+        } as any));
+      }
+    }
+
+    const vec = e?.bio?.vector;
+    if (vec && typeof vec === 'object') {
+      for (const [dim, raw] of Object.entries(vec)) {
+        const rawN = Number(raw);
+        const mag01 = signedToUnit(rawN);
+        out.push(normalizeAtom({
+          id: `rel:vec:${dim}:${selfId}:${otherId}`,
+          ns: 'rel' as any,
+          kind: 'rel_vec' as any,
+          origin: 'profile' as any,
+          source: 'rel_bio',
+          magnitude: mag01,
+          confidence: 1,
+          subject: selfId,
+          target: otherId,
+          tags: ['rel', 'vec', dim, ...arr(e.tags)],
+          label: `vec.${dim}=${Number.isFinite(rawN) ? rawN.toFixed(2) : '0.00'}`,
+          meta: { raw: Number.isFinite(rawN) ? rawN : 0 },
+          trace: { usedAtomIds: used, notes: ['from RelationMemory.edge.bio.vector'], parts: { lastUpdatedTick: e.lastUpdatedTick } }
+        } as any));
+      }
     }
   }
 
