@@ -11,6 +11,7 @@ import { makeGoalLabPipelinePlugin } from '../../simkit/plugins/goalLabPipelineP
 import { SCENE_PRESETS } from '../../simkit/scenes/sceneCatalog';
 import { SimMapView } from '../../../components/SimMapView';
 import { KeyValueEditor } from '../../../components/KeyValueEditor';
+import { Badge, Button, Card, Input, Select, TabButton } from '../../../components/ui/primitives';
 
 function jsonDownload(filename: string, data: any) {
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -170,66 +171,6 @@ function clamp01(x: number) {
   return Math.max(0, Math.min(1, x));
 }
 
-function Btn({ className, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement>) {
-  return (
-    <button
-      {...props}
-      className={cx(
-        'px-3 py-2 rounded-xl border border-canon-border bg-canon-card hover:bg-white/5 active:bg-white/10 transition',
-        'disabled:opacity-50 disabled:cursor-not-allowed',
-        className
-      )}
-    />
-  );
-}
-
-function BtnPrimary({ className, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement>) {
-  return (
-    <button
-      {...props}
-      className={cx(
-        'px-4 py-2.5 rounded-2xl border border-canon-border bg-white/10 hover:bg-white/15 active:bg-white/20 transition',
-        'font-semibold',
-        'disabled:opacity-50 disabled:cursor-not-allowed',
-        className
-      )}
-    />
-  );
-}
-
-function Card({ title, children, className }: { title: string; children: React.ReactNode; className?: string }) {
-  return (
-    <div className={cx('rounded-2xl border border-canon-border bg-canon-card p-4', className)}>
-      <div className="font-extrabold mb-2">{title}</div>
-      {children}
-    </div>
-  );
-}
-
-function Tab({
-  id,
-  active,
-  onClick,
-  label,
-}: {
-  id: TabId;
-  active: boolean;
-  onClick: (id: TabId) => void;
-  label: string;
-}) {
-  return (
-    <button
-      onClick={() => onClick(id)}
-      className={cx(
-        'px-3 py-2 rounded-xl border border-canon-border transition',
-        active ? 'bg-white/10' : 'bg-transparent hover:bg-white/5'
-      )}
-    >
-      <span className="font-semibold">{label}</span>
-    </button>
-  );
-}
-
 export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
   const simRef = useRef<SimKitSimulator | null>(null);
 
@@ -315,7 +256,7 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
     hardRefreshAfterRun();
   }
 
-  function doExportSession() {
+  function exportSession() {
     const exp = buildExport({ scenarioId: sim.cfg.scenarioId, seed: sim.world.seed, records: sim.records });
     jsonDownload('simkit-session.json', exp);
   }
@@ -360,139 +301,158 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
 
   const canSimulate = setupProblems.length === 0;
   const previewSnapshot = records.length ? cur?.snapshot : sim.getPreviewSnapshot();
+  const scenarioId = sim.cfg.scenarioId;
 
   return (
     <div className="h-full w-full p-4">
-      {/* Header */}
-      <div className="flex items-end justify-between gap-3 flex-wrap mb-4">
-        <div>
-          <div className="text-xl font-extrabold">Simulator Lab</div>
-          <div className="font-mono text-sm opacity-80">
-            simkit | worldTick={sim.world.tickIndex} | records={records.length} | scenario={sim.cfg.scenarioId}
+      <div className="sticky top-0 z-20 mb-4">
+        <div className="rounded-canon border border-canon-border bg-canon-panel/70 backdrop-blur-md shadow-canon-1 px-5 py-3 flex items-center gap-3">
+          <div className="text-lg font-semibold tracking-tight">Simulator Lab</div>
+          <div className="text-xs text-canon-muted font-mono">
+            simkit | worldTick={sim.world.tickIndex} | records={sim.records.length} | scenario={scenarioId}
           </div>
-        </div>
+          <div className="grow" />
 
-        <div className="flex items-center gap-2 flex-wrap">
-          <div className="font-mono opacity-80">seed</div>
-          <input
-            type="number"
-            value={seedDraft}
-            onChange={(e) => setSeedDraft(Number(e.target.value))}
-            className="w-24 px-3 py-2 rounded-xl border border-canon-border bg-canon-card"
-          />
-          <div className="font-mono opacity-80">T</div>
-          <input
-            type="number"
-            step="0.05"
-            value={temperatureDraft}
-            onChange={(e) => updateTemperature(Number(e.target.value))}
-            className="w-24 px-3 py-2 rounded-xl border border-canon-border bg-canon-card"
-          />
-          <Btn onClick={doReset}>Apply + Reset</Btn>
-          <Btn onClick={doExportSession} disabled={records.length === 0}>
-            Export session.json
-          </Btn>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-canon-muted font-mono">seed</span>
+            <Input className="w-20" value={String(seedDraft)} onChange={(e) => setSeedDraft(Number(e.target.value))} />
+            <span className="text-xs text-canon-muted font-mono">T</span>
+            <Input
+              className="w-20"
+              value={String(sim.world.facts?.['sim:T'] ?? temperatureDraft)}
+              onChange={(e) => {
+                const v = Number(e.target.value);
+                updateTemperature(v);
+                setVersion((x) => x + 1);
+              }}
+            />
+            <Button kind="primary" onClick={applyScene} disabled={setupProblems.length > 0}>
+              Apply + Reset
+            </Button>
+            <Button onClick={exportSession} disabled={records.length === 0}>
+              Export session
+            </Button>
+          </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-[360px_1fr] gap-4 h-[calc(100%-68px)] min-h-0">
+      <div className="grid grid-cols-12 gap-4 min-h-0">
         {/* Left */}
-        <div className="min-h-0 flex flex-col gap-4">
-          <Card title="Quick start">
-            <div className="text-sm opacity-80 mb-3">
+        <div className="col-span-3 min-h-0 flex flex-col gap-4">
+          <Card title="Controls">
+            <div className="text-sm text-canon-muted mb-3">
               Симулятор = мир → действия → события → снапшот. Нажми “Сделать 1 тик”, чтобы появились записи и отладка.
             </div>
 
             <div className="flex gap-2 flex-wrap">
-              <BtnPrimary onClick={doStep} disabled={!canSimulate}>
+              <Button kind="primary" onClick={doStep} disabled={!canSimulate}>
                 Сделать 1 тик
-              </BtnPrimary>
-              <Btn onClick={() => doRun(10)} disabled={!canSimulate}>
-                Run x10
-              </Btn>
-              <Btn onClick={() => doRun(100)} disabled={!canSimulate}>
-                Run x100
-              </Btn>
-              <Btn onClick={doReset}>Reset</Btn>
+              </Button>
+              <Button onClick={() => doRun(10)} disabled={!canSimulate}>
+                Run ×10
+              </Button>
+              <Button onClick={() => doRun(100)} disabled={!canSimulate}>
+                Run ×100
+              </Button>
+              <Button onClick={doReset}>Reset</Button>
             </div>
 
-            <div className="mt-3 flex items-center gap-2 flex-wrap">
-              <div className="font-mono text-sm opacity-80">run</div>
-              <input
-                type="number"
-                value={runN}
-                onChange={(e) => setRunN(Math.max(1, Number(e.target.value) || 1))}
-                className="w-24 px-3 py-2 rounded-xl border border-canon-border bg-canon-card"
-              />
-              <Btn onClick={() => doRun(runN)} disabled={!canSimulate}>
+            <div className="mt-3 flex items-center gap-2">
+              <span className="text-xs text-canon-muted font-mono">run</span>
+              <Input className="w-24" value={String(runN)} onChange={(e) => setRunN(Number(e.target.value))} />
+              <Button onClick={() => doRun(runN)} disabled={!canSimulate}>
                 Run N
-              </Btn>
+              </Button>
             </div>
           </Card>
 
-          <Card title="History" className="min-h-0 flex flex-col">
+          <Card title="History" bodyClassName="p-0">
             {records.length === 0 ? (
-              <div className="text-sm opacity-70">
+              <div className="text-sm text-canon-muted p-5">
                 Пока пусто. Сделай 1 тик — появится список тиков, и можно будет смотреть мир/действия/события/пайплайн/оркестратор.
               </div>
             ) : (
-              <>
-                <div className="flex gap-2 mb-3 flex-wrap">
-                  <Btn onClick={() => setSelected(-1)}>Latest</Btn>
-                  <Btn onClick={() => setSelected(Math.max(0, records.length - 1))}>Oldest</Btn>
-                  <Btn onClick={doExportRecord} disabled={!cur}>
+              <div className="max-h-[360px] overflow-auto p-3 flex flex-col gap-2">
+                <div className="flex gap-2 flex-wrap mb-2">
+                  <Button onClick={() => setSelected(-1)}>Latest</Button>
+                  <Button onClick={() => setSelected(Math.max(0, records.length - 1))}>Oldest</Button>
+                  <Button onClick={doExportRecord} disabled={!cur}>
                     Export record.json
-                  </Btn>
-                  <Btn onClick={doExportTrace} disabled={!orchestratorTrace}>
+                  </Button>
+                  <Button onClick={doExportTrace} disabled={!orchestratorTrace}>
                     Export trace.json
-                  </Btn>
-                  <Btn onClick={doExportPipeline} disabled={!pipelineOut}>
+                  </Button>
+                  <Button onClick={doExportPipeline} disabled={!pipelineOut}>
                     Export pipeline.json
-                  </Btn>
+                  </Button>
                   {onPushToGoalLab && orchestratorSnapshot ? (
-                    <Btn onClick={() => onPushToGoalLab(orchestratorSnapshot)}>Push → GoalLab</Btn>
+                    <Button onClick={() => onPushToGoalLab(orchestratorSnapshot)}>Push → GoalLab</Button>
                   ) : null}
                 </div>
 
-                <div className="min-h-0 overflow-auto pr-1">
-                  <div className="flex flex-col gap-2">
-                    {tickItems.map((it) => (
-                      <button
-                        key={it.i}
-                        onClick={() => setSelected(it.i)}
-                        className={cx(
-                          'text-left rounded-xl border border-canon-border p-3 bg-canon-card hover:bg-white/5 transition',
-                          it.i === curIdx && 'bg-white/10'
-                        )}
-                      >
-                        <div className="flex items-baseline justify-between gap-2">
-                          <div className="font-extrabold">tick {it.tick}</div>
-                          <div className="font-mono text-xs opacity-70">#{it.i}</div>
-                        </div>
-                        <div className="font-mono text-xs opacity-80 mt-1">
-                          actions={it.actions} events={it.events} atoms={it.atoms} pipelineStages={it.pipelineStages}
-                        </div>
-                      </button>
-                    ))}
-                  </div>
+                <div className="flex flex-col gap-2">
+                  {tickItems.map((it) => (
+                    <button
+                      key={it.i}
+                      onClick={() => setSelected(it.i)}
+                      className={cx(
+                        'text-left rounded-xl border border-canon-border p-3 bg-canon-card/80 hover:bg-white/5 transition',
+                        it.i === curIdx && 'bg-white/10'
+                      )}
+                    >
+                      <div className="flex items-baseline justify-between gap-2">
+                        <div className="font-extrabold">tick {it.tick}</div>
+                        <div className="font-mono text-xs text-canon-muted">#{it.i}</div>
+                      </div>
+                      <div className="font-mono text-xs text-canon-muted mt-1">
+                        actions={it.actions} events={it.events} atoms={it.atoms} pipelineStages={it.pipelineStages}
+                      </div>
+                    </button>
+                  ))}
                 </div>
-              </>
+              </div>
             )}
           </Card>
         </div>
 
         {/* Right */}
-        <div className="min-h-0 flex flex-col gap-4">
-          <div className="flex gap-2 flex-wrap">
-            <Tab id="setup" active={tab === 'setup'} onClick={setTab} label="Setup" />
-            <Tab id="summary" active={tab === 'summary'} onClick={setTab} label="Сводка" />
-            <Tab id="world" active={tab === 'world'} onClick={setTab} label="Мир" />
-            <Tab id="actions" active={tab === 'actions'} onClick={setTab} label="Действия" />
-            <Tab id="events" active={tab === 'events'} onClick={setTab} label="События" />
-            <Tab id="pipeline" active={tab === 'pipeline'} onClick={setTab} label="Pipeline (S0–S8)" />
-            <Tab id="orchestrator" active={tab === 'orchestrator'} onClick={setTab} label="Оркестратор" />
-            <Tab id="map" active={tab === 'map'} onClick={setTab} label="Map" />
-            <Tab id="json" active={tab === 'json'} onClick={setTab} label="JSON" />
+        <div className="col-span-9 min-h-0 flex flex-col gap-4">
+          <div className="flex flex-wrap gap-2 mb-4">
+            <TabButton active={tab === 'setup'} onClick={() => setTab('setup')}>
+              Setup
+            </TabButton>
+            <TabButton active={tab === 'summary'} onClick={() => setTab('summary')}>
+              Сводка
+            </TabButton>
+            <TabButton active={tab === 'world'} onClick={() => setTab('world')}>
+              Мир
+            </TabButton>
+            <TabButton active={tab === 'actions'} onClick={() => setTab('actions')}>
+              Действия
+            </TabButton>
+            <TabButton active={tab === 'events'} onClick={() => setTab('events')}>
+              События
+            </TabButton>
+            <TabButton active={tab === 'pipeline'} onClick={() => setTab('pipeline')}>
+              Pipeline (S0–S8)
+            </TabButton>
+            <TabButton active={tab === 'orchestrator'} onClick={() => setTab('orchestrator')}>
+              Оркестратор
+            </TabButton>
+            <TabButton active={tab === 'map'} onClick={() => setTab('map')}>
+              Map
+            </TabButton>
+            <TabButton active={tab === 'json'} onClick={() => setTab('json')}>
+              JSON
+            </TabButton>
+
+            <div className="grow" />
+
+            {setupProblems.length ? (
+              <Badge tone="bad">issues: {setupProblems.length}</Badge>
+            ) : (
+              <Badge tone="good">scene ok</Badge>
+            )}
           </div>
 
           {records.length === 0 && tab !== 'setup' ? (
@@ -502,7 +462,9 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
                 Сейчас записей нет, поэтому “смотреть” нечего. Симулятор создаёт записи только после тиков. Нажми кнопку ниже —
                 появится tick 0 и вся отладка.
               </div>
-              <BtnPrimary onClick={doStep}>Сделать 1 тик</BtnPrimary>
+              <Button kind="primary" onClick={doStep}>
+                Сделать 1 тик
+              </Button>
             </div>
           ) : !cur && tab !== 'setup' ? (
             <div className="opacity-70">Нет выбранной записи.</div>
@@ -517,8 +479,7 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
                     </div>
 
                     <div className="flex items-center gap-2 flex-wrap">
-                      <select
-                        className="px-3 py-2 rounded-xl border border-canon-border bg-canon-card"
+                      <Select
                         value={presetId}
                         onChange={(e) => setPresetId(e.target.value)}
                       >
@@ -527,9 +488,9 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
                             {p.title}
                           </option>
                         ))}
-                      </select>
+                      </Select>
 
-                      <Btn onClick={() => loadPreset(presetId)}>Load preset</Btn>
+                      <Button onClick={() => loadPreset(presetId)}>Load preset</Button>
 
                       <div className="grow" />
 
@@ -541,9 +502,9 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
                         <div className="text-sm opacity-70">OK</div>
                       )}
 
-                      <BtnPrimary disabled={setupProblems.length > 0} onClick={applyScene}>
+                      <Button kind="primary" disabled={setupProblems.length > 0} onClick={applyScene}>
                         Apply Scene + Reset
-                      </BtnPrimary>
+                      </Button>
                     </div>
 
                     {setupProblems.length > 0 && (
@@ -563,7 +524,7 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
                     <div className="col-span-4 flex flex-col gap-4">
                       <Card title="Locations">
                         <div className="flex items-center gap-2 mb-2">
-                          <Btn
+                          <Button
                             onClick={() => {
                               setSetupDraft((d) => {
                                 const next = structuredClone(d);
@@ -582,10 +543,9 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
                             }}
                           >
                             + New
-                          </Btn>
+                          </Button>
 
-                          <select
-                            className="px-3 py-2 rounded-xl border border-canon-border bg-canon-card"
+                          <Select
                             defaultValue=""
                             onChange={(e) => {
                               const id = e.target.value;
@@ -617,7 +577,7 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
                                 {l.id}
                               </option>
                             ))}
-                          </select>
+                          </Select>
                         </div>
 
                         <div className="flex flex-col gap-1">
@@ -657,7 +617,7 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
 
                       <Card title="Characters">
                         <div className="flex items-center gap-2 mb-2">
-                          <Btn
+                          <Button
                             onClick={() => {
                               setSetupDraft((d) => {
                                 const next = structuredClone(d);
@@ -679,10 +639,9 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
                             }}
                           >
                             + New
-                          </Btn>
+                          </Button>
 
-                          <select
-                            className="px-3 py-2 rounded-xl border border-canon-border bg-canon-card"
+                          <Select
                             defaultValue=""
                             onChange={(e) => {
                               const id = e.target.value;
@@ -718,7 +677,7 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
                                 {c.id}
                               </option>
                             ))}
-                          </select>
+                          </Select>
                         </div>
 
                         <div className="flex flex-col gap-1">
@@ -777,8 +736,8 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
                                   <div className="col-span-9 font-mono text-sm">{l.id}</div>
 
                                   <div className="col-span-3 text-sm opacity-80">name</div>
-                                  <input
-                                    className="col-span-9 px-3 py-2 rounded-xl border border-canon-border bg-black/20"
+                                  <Input
+                                    className="col-span-9 bg-black/20"
                                     value={l.name}
                                     onChange={(e) => {
                                       const name = e.target.value;
@@ -868,8 +827,8 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
                                   <div className="col-span-9 font-mono text-sm">{c.id}</div>
 
                                   <div className="col-span-3 text-sm opacity-80">name</div>
-                                  <input
-                                    className="col-span-9 px-3 py-2 rounded-xl border border-canon-border bg-black/20"
+                                  <Input
+                                    className="col-span-9 bg-black/20"
                                     value={c.name}
                                     onChange={(e) => {
                                       const name = e.target.value;
@@ -882,8 +841,8 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
                                   />
 
                                   <div className="col-span-3 text-sm opacity-80">start loc</div>
-                                  <select
-                                    className="col-span-9 px-3 py-2 rounded-xl border border-canon-border bg-black/20"
+                                  <Select
+                                    className="col-span-9 bg-black/20"
                                     value={c.locId}
                                     onChange={(e) => {
                                       const locId = e.target.value;
@@ -899,15 +858,15 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
                                         {l.id}
                                       </option>
                                     ))}
-                                  </select>
+                                  </Select>
                                 </div>
 
                                 <div className="rounded-2xl border border-canon-border bg-canon-card p-3">
                                   <div className="font-semibold mb-2">Stats</div>
                                   <div className="grid grid-cols-12 gap-2 items-center">
                                     <div className="col-span-3 text-sm opacity-80">stress</div>
-                                    <input
-                                      className="col-span-9 px-3 py-2 rounded-xl border border-canon-border bg-black/20"
+                                    <Input
+                                      className="col-span-9 bg-black/20"
                                       type="number"
                                       step="0.05"
                                       value={c.stress}
@@ -920,8 +879,8 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
                                       }}
                                     />
                                     <div className="col-span-3 text-sm opacity-80">health</div>
-                                    <input
-                                      className="col-span-9 px-3 py-2 rounded-xl border border-canon-border bg-black/20"
+                                    <Input
+                                      className="col-span-9 bg-black/20"
                                       type="number"
                                       step="0.05"
                                       value={c.health}
@@ -934,8 +893,8 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
                                       }}
                                     />
                                     <div className="col-span-3 text-sm opacity-80">energy</div>
-                                    <input
-                                      className="col-span-9 px-3 py-2 rounded-xl border border-canon-border bg-black/20"
+                                    <Input
+                                      className="col-span-9 bg-black/20"
                                       type="number"
                                       step="0.05"
                                       value={c.energy}
@@ -1107,9 +1066,9 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
                           stages={Number(pipelineOut.stageCount ?? pipelineStages.length)} atomsOut={Number(pipelineOut.atomsOut ?? 0)}
                         </div>
                         <div className="mt-3">
-                          <Btn onClick={doExportPipeline} disabled={!pipelineOut}>
+                          <Button onClick={doExportPipeline} disabled={!pipelineOut}>
                             Export pipeline.json
-                          </Btn>
+                          </Button>
                         </div>
                       </>
                     )}
@@ -1226,15 +1185,15 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
               {tab === 'json' ? (
                 <Card title="JSON текущей записи">
                   <div className="flex gap-2 flex-wrap mb-3">
-                    <Btn onClick={doExportRecord}>Export record.json</Btn>
+                    <Button onClick={doExportRecord}>Export record.json</Button>
                     {orchestratorSnapshot ? (
-                      <Btn onClick={() => jsonDownload(`goal-lab-snapshot-${cur.snapshot.tickIndex}.json`, orchestratorSnapshot)}>
+                      <Button onClick={() => jsonDownload(`goal-lab-snapshot-${cur.snapshot.tickIndex}.json`, orchestratorSnapshot)}>
                         Export GoalLab snapshot.json
-                      </Btn>
+                      </Button>
                     ) : null}
-                    <Btn onClick={doExportPipeline} disabled={!pipelineOut}>
+                    <Button onClick={doExportPipeline} disabled={!pipelineOut}>
                       Export pipeline.json
-                    </Btn>
+                    </Button>
                   </div>
                   <pre className="font-mono text-xs opacity-90 whitespace-pre-wrap m-0">{JSON.stringify(cur, null, 2)}</pre>
                 </Card>

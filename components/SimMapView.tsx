@@ -49,6 +49,11 @@ export function SimMapView({ sim, snapshot }: Props) {
   const actorIds = useMemo(() => chars.map((c) => c.id).sort(), [chars]);
   const actorId = selectedActor || actorIds[0] || '';
   const actor = useMemo(() => chars.find((c) => c.id === actorId) || null, [chars, actorId]);
+  const neighborSet = useMemo(() => {
+    if (!actor) return new Set<string>();
+    const from = locById[actor.locId];
+    return new Set<string>(from?.neighbors || []);
+  }, [actor, locById]);
 
   function isNeighbor(fromId: string, toId: string) {
     const from = locById[fromId];
@@ -93,6 +98,30 @@ export function SimMapView({ sim, snapshot }: Props) {
 
       <div className="rounded-2xl border border-canon-border bg-canon-card p-3 overflow-hidden">
         <svg viewBox="0 0 900 520" className="w-full h-[520px]">
+          <rect x="0" y="0" width="900" height="520" fill="rgba(255,255,255,0.02)" />
+          <g opacity={0.25}>
+            {Array.from({ length: 22 }).map((_, i) => (
+              <line
+                key={`v${i}`}
+                x1={i * 42}
+                y1={0}
+                x2={i * 42}
+                y2={520}
+                stroke="rgba(255,255,255,0.05)"
+              />
+            ))}
+            {Array.from({ length: 13 }).map((_, i) => (
+              <line
+                key={`h${i}`}
+                x1={0}
+                y1={i * 42}
+                x2={900}
+                y2={i * 42}
+                stroke="rgba(255,255,255,0.05)"
+              />
+            ))}
+          </g>
+
           {/* edges */}
           {locs.flatMap((l) => {
             const p1 = positions[l.id];
@@ -123,6 +152,9 @@ export function SimMapView({ sim, snapshot }: Props) {
 
             // подсветка: является ли узел доступным перемещением для выбранного актора
             const canMove = actor ? isNeighbor(actor.locId, l.id) : false;
+            const isActorLoc = actor ? actor.locId === l.id : false;
+            const isNeighbor = neighborSet.has(l.id);
+            const nodeRadius = isActorLoc ? 30 : 26;
 
             return (
               <g
@@ -133,11 +165,11 @@ export function SimMapView({ sim, snapshot }: Props) {
                 <circle
                   cx={p.x}
                   cy={p.y}
-                  r={26}
-                  fill="none"
+                  r={nodeRadius}
+                  fill={isActorLoc ? 'rgba(102,217,255,0.18)' : isNeighbor ? 'rgba(102,217,255,0.08)' : 'none'}
                   stroke="currentColor"
-                  opacity={canMove ? 0.9 : 0.5}
-                  strokeWidth={canMove ? 3 : 2}
+                  opacity={canMove ? 0.95 : 0.5}
+                  strokeWidth={canMove ? 3.5 : 2.2}
                 />
                 <text x={p.x} y={p.y - 34} textAnchor="middle" fontSize="12" opacity={0.8}>
                   {l.name}
@@ -171,6 +203,18 @@ export function SimMapView({ sim, snapshot }: Props) {
               </g>
             );
           })}
+
+          {/* legend */}
+          <g transform="translate(16 16)">
+            <rect width="210" height="64" rx="10" fill="rgba(18,23,36,0.7)" stroke="rgba(255,255,255,0.08)" />
+            <text x="12" y="20" fontSize="11" opacity={0.8}>
+              Legend
+            </text>
+            <circle cx="18" cy="38" r="7" fill="rgba(102,217,255,0.18)" stroke="currentColor" opacity={0.8} />
+            <text x="32" y="42" fontSize="11" opacity={0.8}>
+              selected actor location
+            </text>
+          </g>
         </svg>
       </div>
 
