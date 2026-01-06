@@ -61,6 +61,30 @@ export class SimKitSimulator {
     this.forcedActions = [];
   }
 
+  /** Replace initial world (used by Scene Setup) and reset session. */
+  setInitialWorld(next: SimWorld, opts?: { seed?: number; scenarioId?: string }) {
+    const seed = Number.isFinite(opts?.seed as any) ? Number(opts!.seed) : this.cfg.seed;
+    if (opts?.scenarioId) this.cfg.scenarioId = opts.scenarioId;
+
+    // keep cfg.seed in sync
+    this.cfg.seed = seed;
+
+    // normalize world for new session
+    const w = cloneWorld(next);
+    w.tickIndex = 0;
+    w.seed = seed;
+    w.events = w.events || [];
+    w.facts = w.facts || {};
+
+    this.cfg.initialWorld = w;
+    this.reset(seed);
+  }
+
+  /** Useful for UI: show a map even before first tick. */
+  getPreviewSnapshot() {
+    return buildSnapshot(this.world);
+  }
+
   enqueueAction(a: SimAction) {
     this.forcedActions.push(a);
   }

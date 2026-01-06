@@ -1,10 +1,11 @@
 // lib/goal-lab/labs/SimulatorLab.tsx
 // Friendly Simulator Lab UI for SimKit (session runner + debug) + GoalLab Pipeline view.
 
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { ProducerSpec } from '../../orchestrator/types';
 import { SimKitSimulator } from '../../simkit/core/simulator';
 import { buildExport } from '../../simkit/core/export';
+import { buildSnapshot } from '../../simkit/core/world';
 import { basicScenarioId, makeBasicWorld } from '../../simkit/scenarios/basicScenario';
 import { makeOrchestratorPlugin } from '../../simkit/plugins/orchestratorPlugin';
 import { makeGoalLabPipelinePlugin } from '../../simkit/plugins/goalLabPipelinePlugin';
@@ -25,7 +26,111 @@ type Props = {
   onPushToGoalLab?: (goalLabSnapshot: any) => void;
 };
 
-type TabId = 'summary' | 'world' | 'actions' | 'events' | 'pipeline' | 'orchestrator' | 'map' | 'json';
+type TabId = 'setup' | 'summary' | 'world' | 'actions' | 'events' | 'pipeline' | 'orchestrator' | 'map' | 'json';
+
+type DraftLoc = {
+  id: string;
+  name: string;
+  enabled: boolean;
+  neighbors: string[];
+  hazards: Record<string, number>;
+  norms: Record<string, number>;
+};
+
+type DraftChar = {
+  id: string;
+  name: string;
+  enabled: boolean;
+  locId: string;
+  stress: number;
+  health: number;
+  energy: number;
+  tags: string[];
+};
+
+function toDraftFromWorld(w: ReturnType<typeof makeBasicWorld>) {
+  const locs: DraftLoc[] = Object.values(w.locations).map((l) => ({
+    id: l.id,
+    name: l.name,
+    enabled: true,
+    neighbors: (l.neighbors || []).slice(),
+    hazards: { ...(l.hazards || {}) },
+    norms: { ...(l.norms || {}) },
+  }));
+  const chars: DraftChar[] = Object.values(w.characters).map((c) => ({
+    id: c.id,
+    name: c.name,
+    enabled: true,
+    locId: c.locId,
+    stress: c.stress,
+    health: c.health,
+    energy: c.energy,
+    tags: (c.tags || []).slice(),
+  }));
+  return { locs, chars };
+}
+
+function buildWorldFromDraft(d: { locs: DraftLoc[]; chars: DraftChar[] }, seed: number) {
+  const enabledLocs = d.locs.filter((x) => x.enabled);
+  const locIds = new Set(enabledLocs.map((l) => l.id));
+
+  const locations: any = {};
+  for (const l of enabledLocs) {
+    locations[l.id] = {
+      id: l.id,
+      name: l.name,
+      neighbors: (l.neighbors || []).filter((n) => locIds.has(n) && n !== l.id),
+      hazards: l.hazards || {},
+      norms: l.norms || {},
+    };
+  }
+
+  const enabledChars = d.chars.filter((x) => x.enabled);
+  const characters: any = {};
+  for (const c of enabledChars) {
+    characters[c.id] = {
+      id: c.id,
+      name: c.name,
+      locId: locIds.has(c.locId) ? c.locId : (enabledLocs[0]?.id ?? 'loc:missing'),
+      stress: c.stress,
+      health: c.health,
+      energy: c.energy,
+      tags: c.tags || [],
+    };
+  }
+
+  return {
+    tickIndex: 0,
+    seed,
+    facts: {},
+    events: [],
+    locations,
+    characters,
+  };
+}
+
+function validateDraft(d: { locs: DraftLoc[]; chars: DraftChar[] }) {
+  const problems: string[] = [];
+  const locs = d.locs.filter((x) => x.enabled);
+  const chars = d.chars.filter((x) => x.enabled);
+
+  if (!locs.length) problems.push('Нужна минимум 1 активная локация.');
+  if (!chars.length) problems.push('Нужен минимум 1 активный персонаж.');
+
+  const locIds = new Set(locs.map((l) => l.id));
+  for (const l of locs) {
+    for (const n of l.neighbors || []) {
+      if (!locIds.has(n)) problems.push(`Локация ${l.id}: сосед ${n} не существует/выключен.`);
+      if (n === l.id) problems.push(`Локация ${l.id}: сосед не может быть самой собой.`);
+    }
+  }
+
+  for (const c of chars) {
+    if (!locIds.has(c.locId)) problems.push(`Персонаж ${c.id}: стартовая locId=${c.locId} не существует/выключена.`);
+  }
+
+  return problems;
+}
 
 function cx(...xs: Array<string | false | null | undefined>) {
   return xs.filter(Boolean).join(' ');
@@ -105,6 +210,7 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
   const [version, setVersion] = useState(0);
   const [runN, setRunN] = useState(10);
   const [temperatureDraft, setTemperatureDraft] = useState(0.2);
+  const [setupDraft, setSetupDraft] = useState(() => toDraftFromWorld(makeBasicWorld()));
 
   if (!simRef.current) {
     simRef.current = new SimKitSimulator({
@@ -122,6 +228,14 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
     sim.world.facts['sim:T'] = temperatureDraft;
   }
   const records = sim.records;
+
+  const setupProblems = useMemo(() => validateDraft(setupDraft), [setupDraft]);
+
+  // If no ticks exist, default to the setup view.
+  useEffect(() => {
+    if ((simRef.current?.records?.length || 0) === 0) setTab('setup');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const curIdx = selected >= 0 ? selected : records.length - 1;
   const cur = curIdx >= 0 ? records[curIdx] : null;
@@ -193,12 +307,23 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
     jsonDownload(`goal-lab-pipeline-${tick}.json`, data);
   }
 
+  function applyScene() {
+    const w = buildWorldFromDraft(setupDraft, seedDraft);
+    sim.setInitialWorld(w, { seed: seedDraft, scenarioId: basicScenarioId });
+    setSelected(-1);
+    setVersion((v) => v + 1);
+    setTab('summary');
+  }
+
   // Temperature for action sampling in the orchestrator policy (T -> 0 = greedy).
   function updateTemperature(value: number) {
     const safeValue = Number.isFinite(value) ? value : 0;
     setTemperatureDraft(safeValue);
     sim.world.facts['sim:T'] = safeValue;
   }
+
+  const canSimulate = setupProblems.length === 0;
+  const previewSnapshot = records.length ? cur?.snapshot : sim.getPreviewSnapshot();
 
   return (
     <div className="h-full w-full p-4">
@@ -243,9 +368,15 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
             </div>
 
             <div className="flex gap-2 flex-wrap">
-              <BtnPrimary onClick={doStep}>Сделать 1 тик</BtnPrimary>
-              <Btn onClick={() => doRun(10)}>Run x10</Btn>
-              <Btn onClick={() => doRun(100)}>Run x100</Btn>
+              <BtnPrimary onClick={doStep} disabled={!canSimulate}>
+                Сделать 1 тик
+              </BtnPrimary>
+              <Btn onClick={() => doRun(10)} disabled={!canSimulate}>
+                Run x10
+              </Btn>
+              <Btn onClick={() => doRun(100)} disabled={!canSimulate}>
+                Run x100
+              </Btn>
               <Btn onClick={doReset}>Reset</Btn>
             </div>
 
@@ -257,7 +388,9 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
                 onChange={(e) => setRunN(Math.max(1, Number(e.target.value) || 1))}
                 className="w-24 px-3 py-2 rounded-xl border border-canon-border bg-canon-card"
               />
-              <Btn onClick={() => doRun(runN)}>Run N</Btn>
+              <Btn onClick={() => doRun(runN)} disabled={!canSimulate}>
+                Run N
+              </Btn>
             </div>
           </Card>
 
@@ -315,6 +448,7 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
         {/* Right */}
         <div className="min-h-0 flex flex-col gap-4">
           <div className="flex gap-2 flex-wrap">
+            <Tab id="setup" active={tab === 'setup'} onClick={setTab} label="Setup" />
             <Tab id="summary" active={tab === 'summary'} onClick={setTab} label="Сводка" />
             <Tab id="world" active={tab === 'world'} onClick={setTab} label="Мир" />
             <Tab id="actions" active={tab === 'actions'} onClick={setTab} label="Действия" />
@@ -325,7 +459,7 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
             <Tab id="json" active={tab === 'json'} onClick={setTab} label="JSON" />
           </div>
 
-          {records.length === 0 ? (
+          {records.length === 0 && tab !== 'setup' ? (
             <div className="flex-1 min-h-0 rounded-2xl border border-canon-border bg-canon-card p-8 flex flex-col items-start justify-center gap-4">
               <div className="text-2xl font-extrabold">Здесь будет жизнь</div>
               <div className="opacity-80 max-w-2xl">
@@ -334,10 +468,251 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
               </div>
               <BtnPrimary onClick={doStep}>Сделать 1 тик</BtnPrimary>
             </div>
-          ) : !cur ? (
+          ) : !cur && tab !== 'setup' ? (
             <div className="opacity-70">Нет выбранной записи.</div>
           ) : (
             <div className="flex-1 min-h-0 overflow-auto pr-1 flex flex-col gap-4">
+              {/* SETUP */}
+              {tab === 'setup' ? (
+                <div className="grid grid-cols-12 gap-4">
+                  <div className="col-span-5 flex flex-col gap-4">
+                    <Card title="Scene Setup">
+                      <div className="text-sm opacity-80 mb-2">
+                        Сначала собери сцену: активные локации + персонажи + стартовые позиции. Потом Step/Run.
+                      </div>
+
+                      {setupProblems.length > 0 && (
+                        <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-sm">
+                          <div className="font-semibold mb-2">Проблемы сцены:</div>
+                          <ul className="list-disc pl-5">
+                            {setupProblems.map((p, i) => (
+                              <li key={i}>{p}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+
+                      <div className="mt-3 flex gap-2">
+                        <BtnPrimary disabled={setupProblems.length > 0} onClick={applyScene}>
+                          Apply Scene + Reset
+                        </BtnPrimary>
+                        <Btn onClick={() => setSetupDraft(toDraftFromWorld(makeBasicWorld()))}>Reset Draft</Btn>
+                      </div>
+                    </Card>
+
+                    <Card title="Locations">
+                      <div className="flex flex-col gap-3">
+                        {setupDraft.locs.map((l, idx) => (
+                          <div key={l.id} className="rounded-xl border border-canon-border bg-white/5 p-3">
+                            <div className="flex items-center justify-between gap-2">
+                              <label className="flex items-center gap-2">
+                                <input
+                                  type="checkbox"
+                                  checked={l.enabled}
+                                  onChange={(e) => {
+                                    const enabled = e.target.checked;
+                                    setSetupDraft((d) => {
+                                      const next = structuredClone(d);
+                                      next.locs[idx].enabled = enabled;
+                                      return next;
+                                    });
+                                  }}
+                                />
+                                <span className="font-semibold">{l.id}</span>
+                              </label>
+
+                              <Btn
+                                onClick={() => {
+                                  setSetupDraft((d) => {
+                                    const next = structuredClone(d);
+                                    next.locs.splice(idx, 1);
+                                    // remove neighbor links to deleted location
+                                    for (const x of next.locs) {
+                                      x.neighbors = (x.neighbors || []).filter((n) => n !== l.id);
+                                    }
+                                    // reassign characters that were in the deleted location
+                                    for (const c of next.chars) {
+                                      if (c.locId === l.id) c.locId = next.locs[0]?.id || c.locId;
+                                    }
+                                    return next;
+                                  });
+                                }}
+                              >
+                                Remove
+                              </Btn>
+                            </div>
+
+                            <div className="mt-2 grid grid-cols-2 gap-2">
+                              <input
+                                className="px-3 py-2 rounded-xl border border-canon-border bg-canon-card"
+                                value={l.name}
+                                onChange={(e) => {
+                                  const name = e.target.value;
+                                  setSetupDraft((d) => {
+                                    const next = structuredClone(d);
+                                    next.locs[idx].name = name;
+                                    return next;
+                                  });
+                                }}
+                              />
+                              <div className="text-xs opacity-70 self-center">name</div>
+
+                              <select
+                                multiple
+                                className="px-3 py-2 rounded-xl border border-canon-border bg-canon-card h-28"
+                                value={l.neighbors}
+                                onChange={(e) => {
+                                  const selected = Array.from(e.target.selectedOptions).map((o) => o.value);
+                                  setSetupDraft((d) => {
+                                    const next = structuredClone(d);
+                                    next.locs[idx].neighbors = selected;
+                                    return next;
+                                  });
+                                }}
+                              >
+                                {setupDraft.locs
+                                  .filter((x) => x.id !== l.id && x.enabled)
+                                  .map((x) => (
+                                    <option key={x.id} value={x.id}>
+                                      {x.id}
+                                    </option>
+                                  ))}
+                              </select>
+                              <div className="text-xs opacity-70 self-start pt-2">neighbors (multi-select)</div>
+                            </div>
+                          </div>
+                        ))}
+
+                        <Btn
+                          onClick={() => {
+                            setSetupDraft((d) => {
+                              const next = structuredClone(d);
+                              const n = next.locs.length + 1;
+                              next.locs.push({
+                                id: `loc:${n}`,
+                                name: `Location ${n}`,
+                                enabled: true,
+                                neighbors: [],
+                                hazards: {},
+                                norms: {},
+                              });
+                              return next;
+                            });
+                          }}
+                        >
+                          + Add Location
+                        </Btn>
+                      </div>
+                    </Card>
+
+                    <Card title="Characters">
+                      <div className="flex flex-col gap-3">
+                        {setupDraft.chars.map((c, idx) => (
+                          <div key={c.id} className="rounded-xl border border-canon-border bg-white/5 p-3">
+                            <div className="flex items-center justify-between gap-2">
+                              <label className="flex items-center gap-2">
+                                <input
+                                  type="checkbox"
+                                  checked={c.enabled}
+                                  onChange={(e) => {
+                                    const enabled = e.target.checked;
+                                    setSetupDraft((d) => {
+                                      const next = structuredClone(d);
+                                      next.chars[idx].enabled = enabled;
+                                      return next;
+                                    });
+                                  }}
+                                />
+                                <span className="font-semibold">{c.id}</span>
+                              </label>
+                              <Btn
+                                onClick={() => {
+                                  setSetupDraft((d) => {
+                                    const next = structuredClone(d);
+                                    next.chars.splice(idx, 1);
+                                    return next;
+                                  });
+                                }}
+                              >
+                                Remove
+                              </Btn>
+                            </div>
+
+                            <div className="mt-2 grid grid-cols-2 gap-2">
+                              <input
+                                className="px-3 py-2 rounded-xl border border-canon-border bg-canon-card"
+                                value={c.name}
+                                onChange={(e) => {
+                                  const name = e.target.value;
+                                  setSetupDraft((d) => {
+                                    const next = structuredClone(d);
+                                    next.chars[idx].name = name;
+                                    return next;
+                                  });
+                                }}
+                              />
+                              <div className="text-xs opacity-70 self-center">name</div>
+
+                              <select
+                                className="px-3 py-2 rounded-xl border border-canon-border bg-canon-card"
+                                value={c.locId}
+                                onChange={(e) => {
+                                  const locId = e.target.value;
+                                  setSetupDraft((d) => {
+                                    const next = structuredClone(d);
+                                    next.chars[idx].locId = locId;
+                                    return next;
+                                  });
+                                }}
+                              >
+                                {setupDraft.locs
+                                  .filter((l) => l.enabled)
+                                  .map((l) => (
+                                    <option key={l.id} value={l.id}>
+                                      {l.id}
+                                    </option>
+                                  ))}
+                              </select>
+                              <div className="text-xs opacity-70 self-center">start loc</div>
+                            </div>
+                          </div>
+                        ))}
+
+                        <Btn
+                          onClick={() => {
+                            setSetupDraft((d) => {
+                              const next = structuredClone(d);
+                              const n = next.chars.length + 1;
+                              const firstLoc =
+                                next.locs.find((l) => l.enabled)?.id || next.locs[0]?.id || 'loc:missing';
+                              next.chars.push({
+                                id: `ch:${n}`,
+                                name: `Character ${n}`,
+                                enabled: true,
+                                locId: firstLoc,
+                                stress: 0.2,
+                                health: 1.0,
+                                energy: 0.7,
+                                tags: [],
+                              });
+                              return next;
+                            });
+                          }}
+                        >
+                          + Add Character
+                        </Btn>
+                      </div>
+                    </Card>
+                  </div>
+
+                  <div className="col-span-7">
+                    <Card title="Map Preview">
+                      <SimMapView sim={sim} snapshot={previewSnapshot || buildSnapshot(sim.world)} />
+                    </Card>
+                  </div>
+                </div>
+              ) : null}
+
               {/* SUMMARY */}
               {tab === 'summary' ? (
                 <>
