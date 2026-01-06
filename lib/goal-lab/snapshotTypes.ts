@@ -20,6 +20,10 @@ export type GoalLabSnapshotV1 = {
   tom?: any;                            // if you keep separate
   threat?: any;                         // if you keep separate
   meta?: Record<string, any>;
+  debug?: {
+    orchestrator?: any;                 // OrchestratorTraceV1 (kept loose here to avoid coupling)
+    [key: string]: any;
+  };
   
   coverage?: any;                       // Atom coverage report
 };

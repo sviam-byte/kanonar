@@ -27,6 +27,7 @@ import { EmotionExplainPanel } from './EmotionExplainPanel';
 import { PipelinePanel } from './PipelinePanel';
 import { materializeStageAtoms } from './materializePipeline';
 import { arr } from '../../lib/utils/arr';
+import { OrchestratorLab } from '../../lib/goal-lab/labs/OrchestratorLab';
 
 interface Props {
   context: ContextSnapshot | null;
@@ -873,6 +874,7 @@ export const GoalLabResults: React.FC<Props> = ({
     const PossibilitiesTab = () => <PossibilitiesPanel possibilities={possibilities} />;
     const DiffTab = () => <DiffPanel diffs={diffs} />;
     const DecisionTab = () => <DecisionPanel decision={decision} selfId={focusSelfId ?? undefined} castDecisions={castDecisions} />;
+    const OrchestratorTab = () => <OrchestratorLab snapshot={snapshotV1 ?? null} />;
     const explainStats = {
         threat: Number(stats.threat) || 0,
         pressure: Number(stats.pressure) || 0,
@@ -940,11 +942,12 @@ export const GoalLabResults: React.FC<Props> = ({
             case 13: return <DiffTab />;
             case 14: return <EmotionExplainTab />;
             case 15: return <DebugTab />;
+            case 16: return <OrchestratorTab />;
             default: return <ExplainTab />;
         }
     };
 
-  const tabsList = ['Explain', 'Analysis', 'Atoms', 'Pipeline', 'Cast', 'Threat', 'ToM', 'CtxMind', 'Emotions', 'Coverage', 'Possibilities', 'Decision', 'Access', 'Diff', 'EmotionExplain', 'Debug'];
+  const tabsList = ['Explain', 'Analysis', 'Atoms', 'Pipeline', 'Cast', 'Threat', 'ToM', 'CtxMind', 'Emotions', 'Coverage', 'Possibilities', 'Decision', 'Access', 'Diff', 'EmotionExplain', 'Debug', 'Orchestrator'];
 
   const focusId = (context as any)?.agentId;
   const focusLabel = (focusId && actorLabels?.[focusId]) ? actorLabels[focusId] : focusId;
