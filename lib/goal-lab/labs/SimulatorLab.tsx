@@ -5,11 +5,12 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { ProducerSpec } from '../../orchestrator/types';
 import { SimKitSimulator } from '../../simkit/core/simulator';
 import { buildExport } from '../../simkit/core/export';
-import { buildSnapshot } from '../../simkit/core/world';
 import { basicScenarioId, makeBasicWorld } from '../../simkit/scenarios/basicScenario';
 import { makeOrchestratorPlugin } from '../../simkit/plugins/orchestratorPlugin';
 import { makeGoalLabPipelinePlugin } from '../../simkit/plugins/goalLabPipelinePlugin';
+import { SCENE_PRESETS } from '../../simkit/scenes/sceneCatalog';
 import { SimMapView } from '../../../components/SimMapView';
+import { KeyValueEditor } from '../../../components/KeyValueEditor';
 
 function jsonDownload(filename: string, data: any) {
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -27,6 +28,8 @@ type Props = {
 };
 
 type TabId = 'setup' | 'summary' | 'world' | 'actions' | 'events' | 'pipeline' | 'orchestrator' | 'map' | 'json';
+
+type Sel = { kind: 'loc'; id: string } | { kind: 'ch'; id: string } | null;
 
 type DraftLoc = {
   id: string;
@@ -132,6 +135,32 @@ function validateDraft(d: { locs: DraftLoc[]; chars: DraftChar[] }) {
   return problems;
 }
 
+function loadPresetToDraft(id: string) {
+  const p = SCENE_PRESETS.find((x) => x.id === id);
+  if (!p) return toDraftFromWorld(makeBasicWorld());
+
+  const locs = p.locations.map((l) => ({
+    id: l.id,
+    name: l.name,
+    enabled: true,
+    neighbors: (l.neighbors || []).slice(),
+    hazards: { ...(l.hazards || {}) },
+    norms: { ...(l.norms || {}) },
+  }));
+  const firstLoc = locs[0]?.id || 'loc:missing';
+  const chars = p.characters.map((c) => ({
+    id: c.id,
+    name: c.name,
+    enabled: true,
+    locId: firstLoc,
+    stress: c.stress ?? 0.2,
+    health: c.health ?? 1.0,
+    energy: c.energy ?? 0.7,
+    tags: (c.tags || []).slice(),
+  }));
+  return { locs, chars };
+}
+
 function cx(...xs: Array<string | false | null | undefined>) {
   return xs.filter(Boolean).join(' ');
 }
@@ -211,6 +240,8 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
   const [runN, setRunN] = useState(10);
   const [temperatureDraft, setTemperatureDraft] = useState(0.2);
   const [setupDraft, setSetupDraft] = useState(() => toDraftFromWorld(makeBasicWorld()));
+  const [sel, setSel] = useState<Sel>(null);
+  const [presetId, setPresetId] = useState<string>('basic:v1');
 
   if (!simRef.current) {
     simRef.current = new SimKitSimulator({
@@ -313,6 +344,11 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
     setSelected(-1);
     setVersion((v) => v + 1);
     setTab('summary');
+  }
+
+  function loadPreset(id: string) {
+    setSetupDraft(() => loadPresetToDraft(id));
+    setSel(null);
   }
 
   // Temperature for action sampling in the orchestrator policy (T -> 0 = greedy).
@@ -474,241 +510,457 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
             <div className="flex-1 min-h-0 overflow-auto pr-1 flex flex-col gap-4">
               {/* SETUP */}
               {tab === 'setup' ? (
-                <div className="grid grid-cols-12 gap-4">
-                  <div className="col-span-5 flex flex-col gap-4">
-                    <Card title="Scene Setup">
-                      <div className="text-sm opacity-80 mb-2">
-                        Сначала собери сцену: активные локации + персонажи + стартовые позиции. Потом Step/Run.
-                      </div>
+                <div className="flex flex-col gap-4">
+                  <Card title="Scene Setup">
+                    <div className="text-sm opacity-80 mb-2">
+                      Сначала собери сцену: активные локации + персонажи + стартовые позиции. Потом Step/Run.
+                    </div>
 
-                      {setupProblems.length > 0 && (
-                        <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-sm">
-                          <div className="font-semibold mb-2">Проблемы сцены:</div>
-                          <ul className="list-disc pl-5">
-                            {setupProblems.map((p, i) => (
-                              <li key={i}>{p}</li>
-                            ))}
-                          </ul>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <select
+                        className="px-3 py-2 rounded-xl border border-canon-border bg-canon-card"
+                        value={presetId}
+                        onChange={(e) => setPresetId(e.target.value)}
+                      >
+                        {SCENE_PRESETS.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.title}
+                          </option>
+                        ))}
+                      </select>
+
+                      <Btn onClick={() => loadPreset(presetId)}>Load preset</Btn>
+
+                      <div className="grow" />
+
+                      {setupProblems.length > 0 ? (
+                        <div className="text-sm opacity-80">
+                          Issues: <span className="text-red-300">{setupProblems.length}</span>
                         </div>
+                      ) : (
+                        <div className="text-sm opacity-70">OK</div>
                       )}
 
-                      <div className="mt-3 flex gap-2">
-                        <BtnPrimary disabled={setupProblems.length > 0} onClick={applyScene}>
-                          Apply Scene + Reset
-                        </BtnPrimary>
-                        <Btn onClick={() => setSetupDraft(toDraftFromWorld(makeBasicWorld()))}>Reset Draft</Btn>
-                      </div>
-                    </Card>
+                      <BtnPrimary disabled={setupProblems.length > 0} onClick={applyScene}>
+                        Apply Scene + Reset
+                      </BtnPrimary>
+                    </div>
 
-                    <Card title="Locations">
-                      <div className="flex flex-col gap-3">
-                        {setupDraft.locs.map((l, idx) => (
-                          <div key={l.id} className="rounded-xl border border-canon-border bg-white/5 p-3">
-                            <div className="flex items-center justify-between gap-2">
-                              <label className="flex items-center gap-2">
-                                <input
-                                  type="checkbox"
-                                  checked={l.enabled}
-                                  onChange={(e) => {
-                                    const enabled = e.target.checked;
+                    {setupProblems.length > 0 && (
+                      <div className="mt-3 rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-sm">
+                        <div className="font-semibold mb-2">Проблемы сцены:</div>
+                        <ul className="list-disc pl-5">
+                          {setupProblems.map((p, i) => (
+                            <li key={i}>{p}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </Card>
+
+                  <div className="grid grid-cols-12 gap-4">
+                    {/* LEFT: lists */}
+                    <div className="col-span-4 flex flex-col gap-4">
+                      <Card title="Locations">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Btn
+                            onClick={() => {
+                              setSetupDraft((d) => {
+                                const next = structuredClone(d);
+                                const n = next.locs.length + 1;
+                                const id = `loc:${n}`;
+                                next.locs.push({
+                                  id,
+                                  name: `Location ${n}`,
+                                  enabled: true,
+                                  neighbors: [],
+                                  hazards: {},
+                                  norms: {},
+                                });
+                                return next;
+                              });
+                            }}
+                          >
+                            + New
+                          </Btn>
+
+                          <select
+                            className="px-3 py-2 rounded-xl border border-canon-border bg-canon-card"
+                            defaultValue=""
+                            onChange={(e) => {
+                              const id = e.target.value;
+                              if (!id) return;
+                              const p = SCENE_PRESETS.find((x) => x.id === presetId) || SCENE_PRESETS[0];
+                              const src = p?.locations.find((l) => l.id === id);
+                              if (!src) return;
+
+                              setSetupDraft((d) => {
+                                const next = structuredClone(d);
+                                if (next.locs.some((x) => x.id === src.id)) return next;
+                                next.locs.push({
+                                  id: src.id,
+                                  name: src.name,
+                                  enabled: true,
+                                  neighbors: (src.neighbors || []).slice(),
+                                  hazards: { ...(src.hazards || {}) },
+                                  norms: { ...(src.norms || {}) },
+                                });
+                                return next;
+                              });
+
+                              e.currentTarget.value = '';
+                            }}
+                          >
+                            <option value="">+ Add from preset…</option>
+                            {(SCENE_PRESETS.find((x) => x.id === presetId)?.locations || []).map((l) => (
+                              <option key={l.id} value={l.id}>
+                                {l.id}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div className="flex flex-col gap-1">
+                          {setupDraft.locs.map((l) => (
+                            <button
+                              key={l.id}
+                              className={[
+                                'w-full text-left px-3 py-2 rounded-xl border border-canon-border hover:bg-white/5',
+                                sel?.kind === 'loc' && sel.id === l.id ? 'bg-white/10' : 'bg-black/10',
+                              ].join(' ')}
+                              onClick={() => setSel({ kind: 'loc', id: l.id })}
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="font-mono text-sm">{l.id}</div>
+                                <label className="flex items-center gap-2 text-sm opacity-80">
+                                  <input
+                                    type="checkbox"
+                                    checked={l.enabled}
+                                    onChange={(e) => {
+                                      const en = e.target.checked;
+                                      setSetupDraft((d) => {
+                                        const next = structuredClone(d);
+                                        const it = next.locs.find((x) => x.id === l.id);
+                                        if (it) it.enabled = en;
+                                        return next;
+                                      });
+                                    }}
+                                  />
+                                  enabled
+                                </label>
+                              </div>
+                              <div className="text-sm opacity-70">{l.name}</div>
+                            </button>
+                          ))}
+                        </div>
+                      </Card>
+
+                      <Card title="Characters">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Btn
+                            onClick={() => {
+                              setSetupDraft((d) => {
+                                const next = structuredClone(d);
+                                const n = next.chars.length + 1;
+                                const firstLoc =
+                                  next.locs.find((x) => x.enabled)?.id || next.locs[0]?.id || 'loc:missing';
+                                next.chars.push({
+                                  id: `ch:${n}`,
+                                  name: `Character ${n}`,
+                                  enabled: true,
+                                  locId: firstLoc,
+                                  stress: 0.2,
+                                  health: 1.0,
+                                  energy: 0.7,
+                                  tags: [],
+                                });
+                                return next;
+                              });
+                            }}
+                          >
+                            + New
+                          </Btn>
+
+                          <select
+                            className="px-3 py-2 rounded-xl border border-canon-border bg-canon-card"
+                            defaultValue=""
+                            onChange={(e) => {
+                              const id = e.target.value;
+                              if (!id) return;
+                              const p = SCENE_PRESETS.find((x) => x.id === presetId) || SCENE_PRESETS[0];
+                              const src = p?.characters.find((c) => c.id === id);
+                              if (!src) return;
+
+                              setSetupDraft((d) => {
+                                const next = structuredClone(d);
+                                if (next.chars.some((x) => x.id === src.id)) return next;
+                                const firstLoc =
+                                  next.locs.find((x) => x.enabled)?.id || next.locs[0]?.id || 'loc:missing';
+                                next.chars.push({
+                                  id: src.id,
+                                  name: src.name,
+                                  enabled: true,
+                                  locId: firstLoc,
+                                  stress: src.stress ?? 0.2,
+                                  health: src.health ?? 1.0,
+                                  energy: src.energy ?? 0.7,
+                                  tags: (src.tags || []).slice(),
+                                });
+                                return next;
+                              });
+
+                              e.currentTarget.value = '';
+                            }}
+                          >
+                            <option value="">+ Add from preset…</option>
+                            {(SCENE_PRESETS.find((x) => x.id === presetId)?.characters || []).map((c) => (
+                              <option key={c.id} value={c.id}>
+                                {c.id}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div className="flex flex-col gap-1">
+                          {setupDraft.chars.map((c) => (
+                            <button
+                              key={c.id}
+                              className={[
+                                'w-full text-left px-3 py-2 rounded-xl border border-canon-border hover:bg-white/5',
+                                sel?.kind === 'ch' && sel.id === c.id ? 'bg-white/10' : 'bg-black/10',
+                              ].join(' ')}
+                              onClick={() => setSel({ kind: 'ch', id: c.id })}
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="font-mono text-sm">{c.id}</div>
+                                <label className="flex items-center gap-2 text-sm opacity-80">
+                                  <input
+                                    type="checkbox"
+                                    checked={c.enabled}
+                                    onChange={(e) => {
+                                      const en = e.target.checked;
+                                      setSetupDraft((d) => {
+                                        const next = structuredClone(d);
+                                        const it = next.chars.find((x) => x.id === c.id);
+                                        if (it) it.enabled = en;
+                                        return next;
+                                      });
+                                    }}
+                                  />
+                                  enabled
+                                </label>
+                              </div>
+                              <div className="text-sm opacity-70">{c.name}</div>
+                            </button>
+                          ))}
+                        </div>
+                      </Card>
+                    </div>
+
+                    {/* MIDDLE: inspector */}
+                    <div className="col-span-5 flex flex-col gap-4">
+                      <Card title="Inspector">
+                        {!sel && <div className="text-sm opacity-70">Выбери локацию или персонажа слева.</div>}
+
+                        {sel?.kind === 'loc' &&
+                          (() => {
+                            const i = setupDraft.locs.findIndex((x) => x.id === sel.id);
+                            const l = setupDraft.locs[i];
+                            if (!l) return <div className="text-sm opacity-70">Missing loc.</div>;
+
+                            const enabledLocs = setupDraft.locs.filter((x) => x.enabled && x.id !== l.id);
+
+                            return (
+                              <div className="flex flex-col gap-3">
+                                <div className="grid grid-cols-12 gap-2 items-center">
+                                  <div className="col-span-3 font-mono text-sm opacity-80">id</div>
+                                  <div className="col-span-9 font-mono text-sm">{l.id}</div>
+
+                                  <div className="col-span-3 text-sm opacity-80">name</div>
+                                  <input
+                                    className="col-span-9 px-3 py-2 rounded-xl border border-canon-border bg-black/20"
+                                    value={l.name}
+                                    onChange={(e) => {
+                                      const name = e.target.value;
+                                      setSetupDraft((d) => {
+                                        const next = structuredClone(d);
+                                        next.locs[i].name = name;
+                                        return next;
+                                      });
+                                    }}
+                                  />
+                                </div>
+
+                                <div className="rounded-2xl border border-canon-border bg-canon-card p-3">
+                                  <div className="font-semibold mb-2">Neighbors</div>
+                                  <div className="flex flex-col gap-2">
+                                    {enabledLocs.length === 0 && (
+                                      <div className="text-sm opacity-60">Нет других активных локаций.</div>
+                                    )}
+                                    {enabledLocs.map((n) => {
+                                      const checked = l.neighbors.includes(n.id);
+                                      return (
+                                        <label key={n.id} className="flex items-center gap-2 text-sm">
+                                          <input
+                                            type="checkbox"
+                                            checked={checked}
+                                            onChange={(e) => {
+                                              const on = e.target.checked;
+                                              setSetupDraft((d) => {
+                                                const next = structuredClone(d);
+                                                const curNeighbors = next.locs[i].neighbors;
+                                                next.locs[i].neighbors = on
+                                                  ? Array.from(new Set([...curNeighbors, n.id]))
+                                                  : curNeighbors.filter((x) => x !== n.id);
+                                                return next;
+                                              });
+                                            }}
+                                          />
+                                          <span className="font-mono">{n.id}</span>
+                                          <span className="opacity-70">{n.name}</span>
+                                        </label>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+
+                                <KeyValueEditor
+                                  title="Hazards"
+                                  value={l.hazards}
+                                  suggestions={['radiation', 'cold', 'dark', 'toxic', 'noise', 'crowd']}
+                                  onChange={(haz) => {
                                     setSetupDraft((d) => {
                                       const next = structuredClone(d);
-                                      next.locs[idx].enabled = enabled;
+                                      next.locs[i].hazards = haz;
                                       return next;
                                     });
                                   }}
                                 />
-                                <span className="font-semibold">{l.id}</span>
-                              </label>
 
-                              <Btn
-                                onClick={() => {
-                                  setSetupDraft((d) => {
-                                    const next = structuredClone(d);
-                                    next.locs.splice(idx, 1);
-                                    // remove neighbor links to deleted location
-                                    for (const x of next.locs) {
-                                      x.neighbors = (x.neighbors || []).filter((n) => n !== l.id);
-                                    }
-                                    // reassign characters that were in the deleted location
-                                    for (const c of next.chars) {
-                                      if (c.locId === l.id) c.locId = next.locs[0]?.id || c.locId;
-                                    }
-                                    return next;
-                                  });
-                                }}
-                              >
-                                Remove
-                              </Btn>
-                            </div>
-
-                            <div className="mt-2 grid grid-cols-2 gap-2">
-                              <input
-                                className="px-3 py-2 rounded-xl border border-canon-border bg-canon-card"
-                                value={l.name}
-                                onChange={(e) => {
-                                  const name = e.target.value;
-                                  setSetupDraft((d) => {
-                                    const next = structuredClone(d);
-                                    next.locs[idx].name = name;
-                                    return next;
-                                  });
-                                }}
-                              />
-                              <div className="text-xs opacity-70 self-center">name</div>
-
-                              <select
-                                multiple
-                                className="px-3 py-2 rounded-xl border border-canon-border bg-canon-card h-28"
-                                value={l.neighbors}
-                                onChange={(e) => {
-                                  const selected = Array.from(e.target.selectedOptions).map((o) => o.value);
-                                  setSetupDraft((d) => {
-                                    const next = structuredClone(d);
-                                    next.locs[idx].neighbors = selected;
-                                    return next;
-                                  });
-                                }}
-                              >
-                                {setupDraft.locs
-                                  .filter((x) => x.id !== l.id && x.enabled)
-                                  .map((x) => (
-                                    <option key={x.id} value={x.id}>
-                                      {x.id}
-                                    </option>
-                                  ))}
-                              </select>
-                              <div className="text-xs opacity-70 self-start pt-2">neighbors (multi-select)</div>
-                            </div>
-                          </div>
-                        ))}
-
-                        <Btn
-                          onClick={() => {
-                            setSetupDraft((d) => {
-                              const next = structuredClone(d);
-                              const n = next.locs.length + 1;
-                              next.locs.push({
-                                id: `loc:${n}`,
-                                name: `Location ${n}`,
-                                enabled: true,
-                                neighbors: [],
-                                hazards: {},
-                                norms: {},
-                              });
-                              return next;
-                            });
-                          }}
-                        >
-                          + Add Location
-                        </Btn>
-                      </div>
-                    </Card>
-
-                    <Card title="Characters">
-                      <div className="flex flex-col gap-3">
-                        {setupDraft.chars.map((c, idx) => (
-                          <div key={c.id} className="rounded-xl border border-canon-border bg-white/5 p-3">
-                            <div className="flex items-center justify-between gap-2">
-                              <label className="flex items-center gap-2">
-                                <input
-                                  type="checkbox"
-                                  checked={c.enabled}
-                                  onChange={(e) => {
-                                    const enabled = e.target.checked;
+                                <KeyValueEditor
+                                  title="Norms"
+                                  value={l.norms}
+                                  suggestions={['order', 'privacy', 'violence', 'ritual', 'obedience', 'surveillance']}
+                                  onChange={(norms) => {
                                     setSetupDraft((d) => {
                                       const next = structuredClone(d);
-                                      next.chars[idx].enabled = enabled;
+                                      next.locs[i].norms = norms;
                                       return next;
                                     });
                                   }}
                                 />
-                                <span className="font-semibold">{c.id}</span>
-                              </label>
-                              <Btn
-                                onClick={() => {
-                                  setSetupDraft((d) => {
-                                    const next = structuredClone(d);
-                                    next.chars.splice(idx, 1);
-                                    return next;
-                                  });
-                                }}
-                              >
-                                Remove
-                              </Btn>
-                            </div>
+                              </div>
+                            );
+                          })()}
 
-                            <div className="mt-2 grid grid-cols-2 gap-2">
-                              <input
-                                className="px-3 py-2 rounded-xl border border-canon-border bg-canon-card"
-                                value={c.name}
-                                onChange={(e) => {
-                                  const name = e.target.value;
-                                  setSetupDraft((d) => {
-                                    const next = structuredClone(d);
-                                    next.chars[idx].name = name;
-                                    return next;
-                                  });
-                                }}
-                              />
-                              <div className="text-xs opacity-70 self-center">name</div>
+                        {sel?.kind === 'ch' &&
+                          (() => {
+                            const i = setupDraft.chars.findIndex((x) => x.id === sel.id);
+                            const c = setupDraft.chars[i];
+                            if (!c) return <div className="text-sm opacity-70">Missing ch.</div>;
 
-                              <select
-                                className="px-3 py-2 rounded-xl border border-canon-border bg-canon-card"
-                                value={c.locId}
-                                onChange={(e) => {
-                                  const locId = e.target.value;
-                                  setSetupDraft((d) => {
-                                    const next = structuredClone(d);
-                                    next.chars[idx].locId = locId;
-                                    return next;
-                                  });
-                                }}
-                              >
-                                {setupDraft.locs
-                                  .filter((l) => l.enabled)
-                                  .map((l) => (
-                                    <option key={l.id} value={l.id}>
-                                      {l.id}
-                                    </option>
-                                  ))}
-                              </select>
-                              <div className="text-xs opacity-70 self-center">start loc</div>
-                            </div>
-                          </div>
-                        ))}
+                            const locs = setupDraft.locs.filter((l) => l.enabled);
 
-                        <Btn
-                          onClick={() => {
-                            setSetupDraft((d) => {
-                              const next = structuredClone(d);
-                              const n = next.chars.length + 1;
-                              const firstLoc =
-                                next.locs.find((l) => l.enabled)?.id || next.locs[0]?.id || 'loc:missing';
-                              next.chars.push({
-                                id: `ch:${n}`,
-                                name: `Character ${n}`,
-                                enabled: true,
-                                locId: firstLoc,
-                                stress: 0.2,
-                                health: 1.0,
-                                energy: 0.7,
-                                tags: [],
-                              });
-                              return next;
-                            });
-                          }}
-                        >
-                          + Add Character
-                        </Btn>
-                      </div>
-                    </Card>
-                  </div>
+                            return (
+                              <div className="flex flex-col gap-3">
+                                <div className="grid grid-cols-12 gap-2 items-center">
+                                  <div className="col-span-3 font-mono text-sm opacity-80">id</div>
+                                  <div className="col-span-9 font-mono text-sm">{c.id}</div>
 
-                  <div className="col-span-7">
-                    <Card title="Map Preview">
-                      <SimMapView sim={sim} snapshot={previewSnapshot || buildSnapshot(sim.world)} />
-                    </Card>
+                                  <div className="col-span-3 text-sm opacity-80">name</div>
+                                  <input
+                                    className="col-span-9 px-3 py-2 rounded-xl border border-canon-border bg-black/20"
+                                    value={c.name}
+                                    onChange={(e) => {
+                                      const name = e.target.value;
+                                      setSetupDraft((d) => {
+                                        const next = structuredClone(d);
+                                        next.chars[i].name = name;
+                                        return next;
+                                      });
+                                    }}
+                                  />
+
+                                  <div className="col-span-3 text-sm opacity-80">start loc</div>
+                                  <select
+                                    className="col-span-9 px-3 py-2 rounded-xl border border-canon-border bg-black/20"
+                                    value={c.locId}
+                                    onChange={(e) => {
+                                      const locId = e.target.value;
+                                      setSetupDraft((d) => {
+                                        const next = structuredClone(d);
+                                        next.chars[i].locId = locId;
+                                        return next;
+                                      });
+                                    }}
+                                  >
+                                    {locs.map((l) => (
+                                      <option key={l.id} value={l.id}>
+                                        {l.id}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
+
+                                <div className="rounded-2xl border border-canon-border bg-canon-card p-3">
+                                  <div className="font-semibold mb-2">Stats</div>
+                                  <div className="grid grid-cols-12 gap-2 items-center">
+                                    <div className="col-span-3 text-sm opacity-80">stress</div>
+                                    <input
+                                      className="col-span-9 px-3 py-2 rounded-xl border border-canon-border bg-black/20"
+                                      type="number"
+                                      step="0.05"
+                                      value={c.stress}
+                                      onChange={(e) => {
+                                        setSetupDraft((d) => {
+                                          const n = structuredClone(d);
+                                          n.chars[i].stress = Number(e.target.value);
+                                          return n;
+                                        });
+                                      }}
+                                    />
+                                    <div className="col-span-3 text-sm opacity-80">health</div>
+                                    <input
+                                      className="col-span-9 px-3 py-2 rounded-xl border border-canon-border bg-black/20"
+                                      type="number"
+                                      step="0.05"
+                                      value={c.health}
+                                      onChange={(e) => {
+                                        setSetupDraft((d) => {
+                                          const n = structuredClone(d);
+                                          n.chars[i].health = Number(e.target.value);
+                                          return n;
+                                        });
+                                      }}
+                                    />
+                                    <div className="col-span-3 text-sm opacity-80">energy</div>
+                                    <input
+                                      className="col-span-9 px-3 py-2 rounded-xl border border-canon-border bg-black/20"
+                                      type="number"
+                                      step="0.05"
+                                      value={c.energy}
+                                      onChange={(e) => {
+                                        setSetupDraft((d) => {
+                                          const n = structuredClone(d);
+                                          n.chars[i].energy = Number(e.target.value);
+                                          return n;
+                                        });
+                                      }}
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })()}
+                      </Card>
+                    </div>
+
+                    {/* RIGHT: map */}
+                    <div className="col-span-3 flex flex-col gap-4">
+                      <Card title="Map Preview">
+                        <SimMapView sim={sim} snapshot={previewSnapshot || sim.getPreviewSnapshot()} />
+                      </Card>
+                    </div>
                   </div>
                 </div>
               ) : null}
