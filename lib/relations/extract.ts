@@ -1,4 +1,11 @@
-import { RelationEdge, RelationMemory, RelationTag } from './types';
+import { RelationEdge, RelationMemory, RelationTag, RelationshipGraph, RelationshipEdge } from './types';
+import { buildRelationshipGraphFromAgent } from './extractors';
+
+type SnapshotLike = {
+  tick?: number;
+  agents?: any[];
+  entities?: any[];
+};
 
 function clamp01(x: number) {
   if (!Number.isFinite(x)) return 0;
@@ -214,6 +221,27 @@ export function extractRelBaseFromCharacter(args: {
   }
 
   return mem;
+}
+
+/**
+ * Extract a global relationship graph snapshot from world/scene state.
+ * - This is intended as "slow memory" from bios/roles/oaths/etc.
+ * - Per-tick event deltas are applied elsewhere (updateRelationshipGraphFromEvents).
+ */
+export function extractRelations(snapshot: SnapshotLike): RelationshipGraph {
+  const agents = Array.isArray(snapshot?.agents) && snapshot.agents.length > 0
+    ? snapshot.agents
+    : (Array.isArray(snapshot?.entities) ? snapshot.entities : []);
+  const tick = Number(snapshot?.tick ?? 0);
+  const edges: RelationshipEdge[] = [];
+
+  for (const agent of agents) {
+    if (!agent) continue;
+    const graph = buildRelationshipGraphFromAgent(agent, tick);
+    if (Array.isArray(graph?.edges)) edges.push(...graph.edges);
+  }
+
+  return { schemaVersion: 1, edges };
 }
 
 // Contextual relation memory: fast-changing, inheritable with decay.

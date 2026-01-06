@@ -19,6 +19,7 @@ import { extractRelBaseFromCharacter, extractRelCtxFromCharacter } from '../../r
 import { atomizeRelBase, atomizeRelCtx } from '../../relations/atomize';
 import { deriveRelCtxAtoms } from '../../relations/deriveCtx';
 import { atomizeRelations } from '../../relations/atomizeRelations';
+import { buildRelationshipGraph } from '../../relations/manager';
 
 // New WorldFacts Logic
 import { buildWorldFactsAtoms } from './worldFacts';
@@ -269,10 +270,13 @@ export function buildStage0Atoms(input: Stage0Input): Stage0Output {
   (input.agent as any).rel_ctx = relCtxMem;
   const relCtxAtomsFromMem = atomizeRelCtx(input.selfId, relCtxMem, otherAgentIds);
 
+  // Build graph from world snapshot at least once per tick (slow memory + bios).
+  const snapshotRelGraph = buildRelationshipGraph(input.world);
   const relGraphRaw =
     (input.agent as any)?.relations?.graph ||
     (input.agent as any)?.rel_graph ||
     (input.agent as any)?.relationships?.graph ||
+    snapshotRelGraph ||
     null;
   const relGraphAtoms = relGraphRaw ? atomizeRelations(relGraphRaw as any, input.selfId) : [];
 
