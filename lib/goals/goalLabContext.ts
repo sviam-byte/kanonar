@@ -54,6 +54,8 @@ import { arr } from '../utils/arr';
 import { validateAtomInvariants } from '../context/validate/atomInvariants';
 import { deriveLensCtxAtoms } from '../context/v2/lens';
 import { computeSnapshotSummary } from '../goal-lab/snapshotSummary';
+import { adaptToWorldEvents } from '../events/adaptToWorldEvents';
+import { updateRelationshipGraphFromEvents } from '../relations/updateFromEvents';
 
 // Scene Engine
 import { SCENE_PRESETS } from '../scene/presets';
@@ -249,7 +251,8 @@ export function buildGoalLabContext(
   const tick = (world as any)?.tick ?? 0;
   const worldEvents = (world as any)?.eventLog?.events || [];
   const overrideEvents = (opts.snapshotOptions as any)?.overrideEvents || [];
-  const eventsAll = [...overrideEvents, ...worldEvents];
+  const eventsAllRaw = [...overrideEvents, ...worldEvents];
+  const eventsAll = adaptToWorldEvents({ events: eventsAllRaw, fallbackTick: tick });
 
   const selfId = (agent as any).entityId;
   const arousal = (agent as any).affect?.arousal ?? 0;
@@ -293,6 +296,28 @@ export function buildGoalLabContext(
   const overrideLocation = (opts.snapshotOptions as any)?.overrideLocation as any;
   let worldForPipeline: any = world;
   let agentForPipeline: any = agent;
+
+  // Ensure relation graph reflects the same event stream that Stage0 sees.
+  try {
+    const selfId2 = String((agentForPipeline as any)?.entityId ?? agentId);
+    const baseGraph =
+      (agentForPipeline as any)?.relations?.graph ||
+      (agentForPipeline as any)?.rel_graph ||
+      { schemaVersion: 1, edges: [] };
+    const updated = updateRelationshipGraphFromEvents({
+      graph: baseGraph,
+      selfId: selfId2,
+      events: eventsAll as any,
+      nowTick: tick,
+    });
+    agentForPipeline = {
+      ...(agentForPipeline as any),
+      relations: { ...((agentForPipeline as any).relations || {}), graph: updated.graph },
+      rel_graph: updated.graph,
+    };
+  } catch (e) {
+    // Non-fatal; keep the base graph if normalization or update fails.
+  }
 
   if (overrideLocation) {
     const locIdOverride = typeof overrideLocation === 'string' ? overrideLocation : overrideLocation.entityId;
