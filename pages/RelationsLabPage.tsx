@@ -37,6 +37,43 @@ function pairKey(a: string, b: string) {
   return `${a}→${b}`;
 }
 
+function inferParticipants(ev: any, selfId: string): string[] {
+  const out = new Set<string>();
+
+  // 1) Explicit participants
+  if (Array.isArray(ev?.participants)) {
+    for (const p of ev.participants) if (p != null) out.add(String(p));
+  }
+
+  // 2) Common "second participant" fields
+  const directKeys = [
+    'targetId', 'otherId', 'other_id', 'partnerId', 'withId', 'to', 'against',
+    'b', 'objectId', 'subjectId', 'enemyId', 'victimId'
+  ];
+
+  for (const k of directKeys) {
+    const v = ev?.[k];
+    if (v != null && String(v)) out.add(String(v));
+  }
+
+  // 3) payload.* (most common storage in historical events)
+  const payload = ev?.payload || {};
+  for (const k of ['targetId', 'otherId', 'partnerId', 'withId', 'to', 'against', 'b', 'objectId', 'subjectId']) {
+    const v = payload?.[k];
+    if (v != null && String(v)) out.add(String(v));
+  }
+
+  // 4) payload.participants (if stored there)
+  if (Array.isArray(payload?.participants)) {
+    for (const x of payload.participants) if (x != null) out.add(String(x));
+  }
+
+  // events are stored from the perspective of self
+  out.delete(String(selfId));
+
+  return Array.from(out.values()).filter(Boolean);
+}
+
 function parseStaticRelationsToDirectedRows(charIds: Set<string>): EdgeRow[] {
   // STATIC_RELATIONS keys are sorted "a__b"; emit directed rows for UI.
   const rows: EdgeRow[] = [];
@@ -245,7 +282,7 @@ export const RelationsLabPage: React.FC = () => {
       const a = c.entityId;
       const evs: any[] = (c as any)?.historicalEvents || (c as any)?.history?.events || [];
       for (const ev of evs) {
-        const participants: string[] = Array.isArray(ev?.participants) ? ev.participants.map(String) : [];
+        const participants: string[] = inferParticipants(ev, a);
         const tags: string[] = Array.isArray(ev?.tags) ? ev.tags.map(String) : [];
         const domain = String(ev?.domain ?? '');
         const intensity = clamp01(ev?.intensity ?? ev?.magnitude ?? 0.7, 0.7);
