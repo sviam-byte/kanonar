@@ -28,6 +28,8 @@ import { PipelinePanel } from './PipelinePanel';
 import { materializeStageAtoms } from './materializePipeline';
 import { arr } from '../../lib/utils/arr';
 import { OrchestratorLab } from '../../lib/goal-lab/labs/OrchestratorLab';
+import { SimulatorLab } from '../../lib/goal-lab/labs/SimulatorLab';
+import { defaultProducers } from '../../lib/orchestrator/defaultProducers';
 
 interface Props {
   context: ContextSnapshot | null;
@@ -875,6 +877,8 @@ export const GoalLabResults: React.FC<Props> = ({
     const DiffTab = () => <DiffPanel diffs={diffs} />;
     const DecisionTab = () => <DecisionPanel decision={decision} selfId={focusSelfId ?? undefined} castDecisions={castDecisions} />;
     const OrchestratorTab = () => <OrchestratorLab snapshot={snapshotV1 ?? null} />;
+    // Simulator uses a local session runner; pass real producers to wire up real logic.
+    const SimulatorTab = () => <SimulatorLab registry={defaultProducers} />;
     const explainStats = {
         threat: Number(stats.threat) || 0,
         pressure: Number(stats.pressure) || 0,
@@ -943,11 +947,12 @@ export const GoalLabResults: React.FC<Props> = ({
             case 14: return <EmotionExplainTab />;
             case 15: return <DebugTab />;
             case 16: return <OrchestratorTab />;
+            case 17: return <SimulatorTab />;
             default: return <ExplainTab />;
         }
     };
 
-  const tabsList = ['Explain', 'Analysis', 'Atoms', 'Pipeline', 'Cast', 'Threat', 'ToM', 'CtxMind', 'Emotions', 'Coverage', 'Possibilities', 'Decision', 'Access', 'Diff', 'EmotionExplain', 'Debug', 'Orchestrator'];
+  const tabsList = ['Explain', 'Analysis', 'Atoms', 'Pipeline', 'Cast', 'Threat', 'ToM', 'CtxMind', 'Emotions', 'Coverage', 'Possibilities', 'Decision', 'Access', 'Diff', 'EmotionExplain', 'Debug', 'Orchestrator', 'Simulation'];
 
   const focusId = (context as any)?.agentId;
   const focusLabel = (focusId && actorLabels?.[focusId]) ? actorLabels[focusId] : focusId;
