@@ -1,4 +1,3 @@
-
 export type RelationTag =
   | 'friend'
   | 'ally'
@@ -30,13 +29,35 @@ export type RelationEdge = {
 
   // traceability
   sources: Array<{
-    type: 'biography' | 'oath' | 'event' | 'manual' | 'legacy';
+    type: 'biography' | 'oath' | 'event' | 'manual' | 'legacy' | 'default';
     ref?: string;
     weight?: number;
     tick?: number;
   }>;
 
   lastUpdatedTick?: number;
+
+  // Social biography layer (slow memory, per dyad)
+  bio?: {
+    aspects?: Partial<
+      Record<
+        | 'devotion'
+        | 'submission'
+        | 'shared_trauma'
+        | 'rescue_actor'
+        | 'romance'
+        | 'friendship'
+        | 'betrayed_by'
+        | 'humiliated_by'
+        | 'care_from'
+        | 'approval_deprivation'
+        | 'controlled_by'
+        | 'harmed',
+        number
+      >
+    >; // 0..1
+    vector?: Record<string, number>; // signed [-1..+1]
+  };
 };
 
 export type RelationMemory = {
@@ -45,9 +66,9 @@ export type RelationMemory = {
 };
 
 export interface RelationshipEdgeSource {
-    kind: string; 
-    ref?: string; 
-    weight?: number;
+  kind: string;
+  ref?: string;
+  weight?: number;
 }
 
 export interface RelationshipEdge {
