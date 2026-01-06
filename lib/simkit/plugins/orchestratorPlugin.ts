@@ -2,8 +2,8 @@
 // Plugin bridge: SimKit snapshot -> GoalLab snapshot -> orchestrator.
 
 import type { SimPlugin } from '../core/simulator';
-import type { ProducerSpec } from '../../orchestrator/types';
 import type { SimAction, ActionOffer } from '../core/types';
+import type { ProducerSpec } from '../../orchestrator/types';
 import { runTick } from '../../orchestrator/runTick';
 import { buildRegistry } from '../../orchestrator/registry';
 
@@ -49,48 +49,49 @@ export function makeOrchestratorPlugin(registry: ProducerSpec[]): SimPlugin {
   let prevPostSnapshot: any = null;
 
   return {
-    id: 'orchestrator',
+    id: 'plugin:orchestrator',
+
     decideActions: ({ world, offers, rng, tickIndex }) => {
-      // 1) pre-snapshot for orchestrator (minimal; we mainly need atom updates + context)
-      const pre = {
+      // Pre-decision snapshot: we reuse orchestrator to update atoms/context before choosing actions.
+      const preSnap: any = {
         id: `simkit:pre:${tickIndex}`,
         time: new Date().toISOString(),
         tickIndex,
-        characters: Object.values(world.characters),
-        locations: Object.values(world.locations),
+        characters: Object.values(world.characters || {}),
+        locations: Object.values(world.locations || {}),
         events: (world.events || []).slice(),
         atoms: [],
         debug: {
           simkit: {
-            offers,
+            phase: 'pre',
             T: world.facts?.['sim:T'] ?? 0.2,
+            offers,
           },
         },
       };
 
-      // 2) run orchestrator before decision to update atoms/context for decision loop
       const { nextSnapshot } = runTick({
         tickIndex,
-        snapshot: pre,
+        snapshot: preSnap,
         prevSnapshot: prevDecisionSnapshot,
         overrides: null,
         registry: reg,
-        seed: null,
+        seed: world.seed ?? null,
       });
+
       prevDecisionSnapshot = nextSnapshot;
 
-      // 3) choose actions via simple softmax on offers using temperature T
-      const T = Number(pre.debug?.simkit?.T ?? 0.2);
-      const actions: SimAction[] = [];
+      // Softmax policy: T -> 0 ~ greedy; larger T -> more stochastic.
+      const T = Number(world.facts?.['sim:T'] ?? 0.2);
 
       const byActor: Record<string, ActionOffer[]> = {};
       for (const o of offers) {
-        if (!byActor[o.actorId]) byActor[o.actorId] = [];
-        byActor[o.actorId].push(o);
+        const k = String(o.actorId);
+        (byActor[k] = byActor[k] || []).push(o);
       }
 
-      const actorIds = Object.keys(world.characters).sort();
-      for (const actorId of actorIds) {
+      const actions: SimAction[] = [];
+      for (const actorId of Object.keys(world.characters || {}).sort()) {
         const best = pickSoftmax(byActor[actorId] || [], T, () => rng.next());
         if (!best) continue;
         actions.push({
@@ -103,6 +104,7 @@ export function makeOrchestratorPlugin(registry: ProducerSpec[]): SimPlugin {
 
       return actions;
     },
+
     afterSnapshot: ({ snapshot, record }) => {
       const goalSnapIn = toGoalLabSnapshot(snapshot);
 
@@ -119,14 +121,10 @@ export function makeOrchestratorPlugin(registry: ProducerSpec[]): SimPlugin {
 
       // Save orchestrator output into record.plugins (simulator core does not depend on this)
       record.plugins = record.plugins || {};
-      record.plugins.orchestrator = {
-        snapshot: nextSnapshot, // with atoms
-        trace,
-      };
+      record.plugins.orchestrator = { snapshot: nextSnapshot, trace };
 
-      // Mirror trace into snapshot.debug for UI convenience.
+      // Optionally mirror short human log into snapshot.debug for quick visibility.
       record.snapshot.debug = record.snapshot.debug || {};
-      record.snapshot.debug.orchestrator = trace;
       record.snapshot.debug.orchestratorHumanLog = trace?.humanLog || [];
     },
   };

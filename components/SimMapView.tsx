@@ -1,5 +1,5 @@
 // components/SimMapView.tsx
-// Simple SVG map for SimKit: locations, links, and click-to-enqueue moves.
+// Simple interactive map for SimKit: locations graph + characters + click-to-move.
 
 import React, { useMemo, useState } from 'react';
 import type { SimSnapshot, SimAction, SimLocation, SimCharacter } from '../lib/simkit/core/types';
@@ -16,7 +16,7 @@ type Props = {
 
 type Pos = { x: number; y: number };
 
-export const SimMapView: React.FC<Props> = ({ sim, snapshot }) => {
+export function SimMapView({ sim, snapshot }: Props) {
   const [selectedActor, setSelectedActor] = useState<string>('');
 
   const locs: SimLocation[] = snapshot?.locations || [];
@@ -47,7 +47,8 @@ export const SimMapView: React.FC<Props> = ({ sim, snapshot }) => {
   }, [locs]);
 
   const actorIds = useMemo(() => chars.map((c) => c.id).sort(), [chars]);
-  const actor = selectedActor || actorIds[0] || '';
+  const actorId = selectedActor || actorIds[0] || '';
+  const actor = useMemo(() => chars.find((c) => c.id === actorId) || null, [chars, actorId]);
 
   function isNeighbor(fromId: string, toId: string) {
     const from = locById[fromId];
@@ -56,14 +57,12 @@ export const SimMapView: React.FC<Props> = ({ sim, snapshot }) => {
 
   function enqueueMove(toLocId: string) {
     if (!actor) return;
-    const actorObj = chars.find((c) => c.id === actor);
-    if (!actorObj) return;
-    if (!isNeighbor(actorObj.locId, toLocId)) return;
+    if (!isNeighbor(actor.locId, toLocId)) return;
 
     const a: SimAction = {
-      id: `ui:move:${sim.world.tickIndex}:${actor}:${toLocId}`,
+      id: `ui:move:${sim.world.tickIndex}:${actor.id}:${toLocId}`,
       kind: 'move',
-      actorId: actor,
+      actorId: actor.id,
       targetId: toLocId,
     };
     sim.enqueueAction(a);
@@ -76,9 +75,9 @@ export const SimMapView: React.FC<Props> = ({ sim, snapshot }) => {
       <div className="flex items-center gap-2 flex-wrap">
         <div className="font-mono text-sm opacity-80">actor</div>
         <select
-          value={actor}
+          value={actorId}
           onChange={(e) => setSelectedActor(e.target.value)}
-          className={cx('px-3 py-2 rounded-xl border border-canon-border bg-canon-card')}
+          className="px-3 py-2 rounded-xl border border-canon-border bg-canon-card"
         >
           {actorIds.map((id) => (
             <option key={id} value={id}>
@@ -88,7 +87,7 @@ export const SimMapView: React.FC<Props> = ({ sim, snapshot }) => {
         </select>
 
         <div className="text-sm opacity-70">
-          Кликни по соседней локации, чтобы поставить move в очередь forcedActions на следующий тик.
+          Кликни по соседней локации — добавится forced move на следующий тик.
         </div>
       </div>
 
@@ -123,8 +122,7 @@ export const SimMapView: React.FC<Props> = ({ sim, snapshot }) => {
             if (!p) return null;
 
             // подсветка: является ли узел доступным перемещением для выбранного актора
-            const actorObj = chars.find((c) => c.id === actor);
-            const canMove = actorObj ? isNeighbor(actorObj.locId, l.id) : false;
+            const canMove = actor ? isNeighbor(actor.locId, l.id) : false;
 
             return (
               <g
@@ -157,7 +155,7 @@ export const SimMapView: React.FC<Props> = ({ sim, snapshot }) => {
             if (!p) return null;
             const dx = (idx % 3) * 10 - 10;
             const dy = Math.floor(idx / 3) * 10 - 10;
-            const isSel = c.id === actor;
+            const isSel = c.id === actorId;
             return (
               <g key={c.id}>
                 <circle
@@ -175,6 +173,10 @@ export const SimMapView: React.FC<Props> = ({ sim, snapshot }) => {
           })}
         </svg>
       </div>
+
+      <div className="font-mono text-xs opacity-70">
+        queue(forcedActions)={sim.forcedActions.length} | T={String(sim.world.facts?.['sim:T'] ?? 0.2)}
+      </div>
     </div>
   );
-};
+}

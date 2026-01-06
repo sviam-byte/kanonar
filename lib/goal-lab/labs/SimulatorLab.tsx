@@ -104,6 +104,7 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
   const [selected, setSelected] = useState<number>(-1); // record index, -1 = latest
   const [version, setVersion] = useState(0);
   const [runN, setRunN] = useState(10);
+  const [temperatureDraft, setTemperatureDraft] = useState(0.2);
 
   if (!simRef.current) {
     simRef.current = new SimKitSimulator({
@@ -116,6 +117,10 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
   }
 
   const sim = simRef.current;
+  sim.world.facts = sim.world.facts || {};
+  if (sim.world.facts['sim:T'] == null) {
+    sim.world.facts['sim:T'] = temperatureDraft;
+  }
   const records = sim.records;
 
   const curIdx = selected >= 0 ? selected : records.length - 1;
@@ -148,6 +153,8 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
 
   function doReset() {
     sim.reset(seedDraft);
+    sim.world.facts = sim.world.facts || {};
+    sim.world.facts['sim:T'] = temperatureDraft;
     setTab('summary');
     setSelected(-1);
     setVersion((v) => v + 1);
@@ -186,6 +193,13 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
     jsonDownload(`goal-lab-pipeline-${tick}.json`, data);
   }
 
+  // Temperature for action sampling in the orchestrator policy (T -> 0 = greedy).
+  function updateTemperature(value: number) {
+    const safeValue = Number.isFinite(value) ? value : 0;
+    setTemperatureDraft(safeValue);
+    sim.world.facts['sim:T'] = safeValue;
+  }
+
   return (
     <div className="h-full w-full p-4">
       {/* Header */}
@@ -203,6 +217,14 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
             type="number"
             value={seedDraft}
             onChange={(e) => setSeedDraft(Number(e.target.value))}
+            className="w-24 px-3 py-2 rounded-xl border border-canon-border bg-canon-card"
+          />
+          <div className="font-mono opacity-80">T</div>
+          <input
+            type="number"
+            step="0.05"
+            value={temperatureDraft}
+            onChange={(e) => updateTemperature(Number(e.target.value))}
             className="w-24 px-3 py-2 rounded-xl border border-canon-border bg-canon-card"
           />
           <Btn onClick={doReset}>Apply + Reset</Btn>
