@@ -877,8 +877,8 @@ export const GoalLabResults: React.FC<Props> = ({
     const DiffTab = () => <DiffPanel diffs={diffs} />;
     const DecisionTab = () => <DecisionPanel decision={decision} selfId={focusSelfId ?? undefined} castDecisions={castDecisions} />;
     const OrchestratorTab = () => <OrchestratorLab snapshot={snapshotV1 ?? null} />;
-    // Simulator uses a local session runner; pass real producers to wire up real logic.
-    const SimulatorTab = () => <SimulatorLab registry={defaultProducers} />;
+    // Simulator uses SimKit; pass real producers to wire up orchestrator output.
+    const SimulatorTab = () => <SimulatorLab orchestratorRegistry={defaultProducers} />;
     const explainStats = {
         threat: Number(stats.threat) || 0,
         pressure: Number(stats.pressure) || 0,
