@@ -8,6 +8,7 @@ import { buildExport } from '../../simkit/core/export';
 import { basicScenarioId, makeBasicWorld } from '../../simkit/scenarios/basicScenario';
 import { makeOrchestratorPlugin } from '../../simkit/plugins/orchestratorPlugin';
 import { makeGoalLabPipelinePlugin } from '../../simkit/plugins/goalLabPipelinePlugin';
+import { SimMapView } from '../../../components/SimMapView';
 
 function jsonDownload(filename: string, data: any) {
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -24,7 +25,7 @@ type Props = {
   onPushToGoalLab?: (goalLabSnapshot: any) => void;
 };
 
-type TabId = 'summary' | 'world' | 'actions' | 'events' | 'pipeline' | 'orchestrator' | 'json';
+type TabId = 'summary' | 'world' | 'actions' | 'events' | 'pipeline' | 'orchestrator' | 'map' | 'json';
 
 function cx(...xs: Array<string | false | null | undefined>) {
   return xs.filter(Boolean).join(' ');
@@ -298,6 +299,7 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
             <Tab id="events" active={tab === 'events'} onClick={setTab} label="События" />
             <Tab id="pipeline" active={tab === 'pipeline'} onClick={setTab} label="Pipeline (S0–S8)" />
             <Tab id="orchestrator" active={tab === 'orchestrator'} onClick={setTab} label="Оркестратор" />
+            <Tab id="map" active={tab === 'map'} onClick={setTab} label="Map" />
             <Tab id="json" active={tab === 'json'} onClick={setTab} label="JSON" />
           </div>
 
@@ -562,6 +564,13 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
                     )}
                   </Card>
                 </>
+              ) : null}
+
+              {/* MAP */}
+              {tab === 'map' ? (
+                <Card title="Карта мира">
+                  <SimMapView sim={sim} snapshot={cur?.snapshot || null} />
+                </Card>
               ) : null}
 
               {/* JSON */}
