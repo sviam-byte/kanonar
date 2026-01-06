@@ -49,6 +49,10 @@ import { deriveGoalAtoms } from './goalAtoms';
 import { derivePlanningGoalAtoms } from './planningGoalAtoms';
 import { deriveGoalActionLinkAtoms } from './goalActionLinksAtoms';
 import { deriveRelFinalAtoms } from '../relations/finalize';
+import { extractRelBaseFromCharacter } from '../relations/extract';
+import { atomizeRelBase } from '../relations/atomize';
+import { deriveRelCtxAtoms } from '../relations/deriveCtx';
+import { deriveRelStateAtoms } from '../relations/deriveState';
 import { deriveSummaryAtoms } from '../context/summary';
 import { arr } from '../utils/arr';
 import { validateAtomInvariants } from '../context/validate/atomInvariants';
@@ -560,9 +564,39 @@ export function buildGoalLabContext(
     const atomsAfterBeliefGen = [...atomsAfterAccess, ...rumorBeliefs];
     pushStage('S1b', 'S1b • rumor beliefs injected', atomsAfterBeliefGen);
 
+    // Relations (biography priors -> ctx -> state)
+    // IMPORTANT: GoalLab expects relations to be present in the atom stream automatically,
+    // so downstream systems (ToM priors, rel:final, decisions, UI) can consume them.
+    const relOtherIds = participantIdsAll.filter((x: any) => String(x) && String(x) !== String(selfId));
+
+    // rel:base:* (slow social biography priors)
+    let atomsAfterRelBase = atomsAfterBeliefGen;
+    try {
+      const relBaseMem = extractRelBaseFromCharacter({
+        selfId,
+        character: agentForPipeline as any,
+        tick,
+      });
+      const relBaseAtoms = atomizeRelBase(selfId, relBaseMem as any, relOtherIds);
+      atomsAfterRelBase = mergeKeepingOverrides(atomsAfterBeliefGen, relBaseAtoms).merged;
+    } catch {
+      // Keep pipeline resilient: absence/shape mismatch in biography must not crash GoalLab.
+    }
+    pushStage('S1r0', 'S1r0 • rel:base (biography priors) injected', atomsAfterRelBase);
+
+    // rel:ctx:* (situational social proximity / fresh dyad signals)
+    const relCtxAtoms = deriveRelCtxAtoms({ selfId, otherIds: relOtherIds, atoms: atomsAfterRelBase });
+    const atomsAfterRelCtx = mergeKeepingOverrides(atomsAfterRelBase, relCtxAtoms).merged;
+    pushStage('S1r1', 'S1r1 • rel:ctx derived (situational)', atomsAfterRelCtx);
+
+    // rel:state:* (current relationship state: base ⊕ ctx ⊕ events ⊕ ToM)
+    const relStateAtoms = deriveRelStateAtoms({ selfId, otherIds: relOtherIds, atoms: atomsAfterRelCtx });
+    const atomsAfterRelState = mergeKeepingOverrides(atomsAfterRelCtx, relStateAtoms).merged;
+    pushStage('S1r2', 'S1r2 • rel:state derived (current)', atomsAfterRelState);
+
     // Relation priors
-    const priorsApplied = applyRelationPriorsToDyads(atomsAfterBeliefGen, selfId);
-    const atomsAfterPriors = mergeKeepingOverrides(atomsAfterBeliefGen, priorsApplied.atoms).merged;
+    const priorsApplied = applyRelationPriorsToDyads(atomsAfterRelState, selfId);
+    const atomsAfterPriors = mergeKeepingOverrides(atomsAfterRelState, priorsApplied.atoms).merged;
     pushStage('S2', 'S2 • relation priors applied', atomsAfterPriors);
 
     // Canonical relations: rel:final:* (single source for decision/UI)
