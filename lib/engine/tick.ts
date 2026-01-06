@@ -12,6 +12,12 @@ import { WorldEvent } from '../events/types';
 import { arr } from '../utils/arr';
 import { applyChosenActionToWorld } from './applyChosenAction';
 import { applyAcquaintanceFromEvents } from '../social/acquaintanceFromEvents';
+import { runTick } from '../orchestrator/runTick';
+import { buildRegistry } from '../orchestrator/registry';
+import { defaultProducers } from '../orchestrator/defaultProducers';
+
+// Build the orchestrator registry once; producers are sorted deterministically.
+const orchestratorRegistry = buildRegistry(defaultProducers);
 
 export function ensureWorldTick(world: any) {
   if (typeof world.tick !== 'number') world.tick = 0;
@@ -113,7 +119,24 @@ export function runTicks(args: {
     
     if (!ctxResult) break; // Agent not found or error
     
-    const snap = ctxResult.snapshot;
+    let snap = ctxResult.snapshot;
+    const prevSnapshot = snapshots.length ? snapshots[snapshots.length - 1] : null;
+
+    // Orchestrator step: merges producer patches and attaches trace to snapshot.debug.orchestrator.
+    try {
+      const orchestrated = runTick({
+        tickIndex: tickNow,
+        snapshot: snap,
+        prevSnapshot,
+        overrides: null,
+        registry: orchestratorRegistry,
+        seed: (baseInput as any)?.seed ?? null,
+      });
+      snap = orchestrated.nextSnapshot;
+    } catch (e) {
+      console.error('[orchestrator] runTick failed', e);
+    }
+
     snapshots.push(snap);
 
     // 5) Integrate Slow State (Affect/Stress/Traces)
@@ -236,8 +259,25 @@ export function runTicksForCast(args: {
       const ctxResult = buildGoalLabContext(world, selfId, { snapshotOptions: baseInput.snapshotOptions, timeOverride: tickNow });
       if (!ctxResult) continue;
 
-      const snap = ctxResult.snapshot;
+      let snap = ctxResult.snapshot;
       const arr = snapshotsByAgentId[selfId] || (snapshotsByAgentId[selfId] = []);
+      const prevSnapshot = arr.length ? arr[arr.length - 1] : null;
+
+      // Orchestrator step: per-agent trace attached to snapshot.debug.orchestrator.
+      try {
+        const orchestrated = runTick({
+          tickIndex: tickNow,
+          snapshot: snap,
+          prevSnapshot,
+          overrides: null,
+          registry: orchestratorRegistry,
+          seed: (baseInput as any)?.seed ?? null,
+        });
+        snap = orchestrated.nextSnapshot;
+      } catch (e) {
+        console.error('[orchestrator] runTick failed', e);
+      }
+
       arr.push(snap);
 
       try {
