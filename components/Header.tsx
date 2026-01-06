@@ -134,12 +134,13 @@ export const Header: React.FC = () => {
 
             <NavDropdown 
                 label="Lab & Edit" 
-                active={isGroupActive(['/builder', '/character-lab', '/planning-lab', '/dialogue-lab', '/biography-lab', '/presets', '/goal-lab', '/relations-lab'])}
+                active={isGroupActive(['/builder', '/character-lab', '/planning-lab', '/dialogue-lab', '/biography-lab', '/presets', '/goal-lab', '/simkit-lab', '/relations-lab'])}
                 colorClass="text-green-400"
             >
                 <NavItem to="/builder" label="Конструктор Персонажа" active={isActive('/builder')} />
                 <NavItem to="/character-lab" label="Инспектор ToM (Dyad)" active={isActive('/character-lab')} />
                 <NavItem to="/goal-lab" label="Лаборатория Целей" active={isActive('/goal-lab')} />
+                <NavItem to="/simkit-lab" label="SimKit Simulator" active={isActive('/simkit-lab')} />
                 <NavItem to="/relations-lab" label="Relations Lab (Global)" active={isActive('/relations-lab')} />
                 <NavItem to="/planning-lab" label="Лаборатория Планирования" active={isActive('/planning-lab')} />
                 <NavItem to="/dialogue-lab" label="Лаборатория Диалога" active={isActive('/dialogue-lab')} />
