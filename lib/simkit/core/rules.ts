@@ -97,9 +97,16 @@ export function applyAction(w: SimWorld, a: SimAction): { world: SimWorld; event
   if (a.kind === 'move') {
     const to = String(a.targetId ?? '');
     const from = c.locId;
-    c.locId = to;
-    c.energy = clamp01(c.energy - 0.03);
-    notes.push(`${c.id} moves ${from} -> ${to}`);
+    const fromLoc = getLoc(w, from);
+    const ok = !!to && (fromLoc.neighbors || []).includes(to);
+
+    if (!ok) {
+      notes.push(`${c.id} move blocked ${from} -> ${to || '(none)'}`);
+    } else {
+      c.locId = to;
+      c.energy = clamp01(c.energy - 0.03);
+      notes.push(`${c.id} moves ${from} -> ${to}`);
+    }
   }
 
   if (a.kind === 'talk') {
