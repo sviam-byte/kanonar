@@ -1,9 +1,13 @@
-
 import { RelationEdge, RelationMemory, RelationTag } from './types';
 
 function clamp01(x: number) {
   if (!Number.isFinite(x)) return 0;
   return Math.max(0, Math.min(1, x));
+}
+
+function clampSigned(x: number) {
+  if (!Number.isFinite(x)) return 0;
+  return Math.max(-1, Math.min(1, x));
 }
 
 function ensureEdge(mem: RelationMemory, otherId: string): RelationEdge {
@@ -27,6 +31,33 @@ function addTag(edge: RelationEdge, t: RelationTag) {
   if (!edge.tags.includes(t)) edge.tags.push(t);
 }
 
+function applyBioFromAny(edge: RelationEdge, src: any) {
+  // Accept src.bio / src.socialBio / src.relationshipBio / src.aspects / src.vector
+  const bio = src?.bio ?? src?.socialBio ?? src?.relationshipBio ?? null;
+  const aspects = bio?.aspects ?? src?.aspects ?? null;
+  const vector = bio?.vector ?? src?.vector ?? null;
+
+  if (aspects && typeof aspects === 'object') {
+    edge.bio = edge.bio || {};
+    edge.bio.aspects = edge.bio.aspects || {};
+    for (const [k, v] of Object.entries(aspects)) {
+      const mag = clamp01(Number(v));
+      if (!Number.isFinite(mag)) continue;
+      (edge.bio.aspects as any)[String(k)] = mag;
+    }
+  }
+
+  if (vector && typeof vector === 'object') {
+    edge.bio = edge.bio || {};
+    edge.bio.vector = edge.bio.vector || {};
+    for (const [dim, raw] of Object.entries(vector)) {
+      const vv = clampSigned(Number(raw));
+      if (!Number.isFinite(vv)) continue;
+      (edge.bio.vector as any)[String(dim)] = vv;
+    }
+  }
+}
+
 export function extractRelBaseFromCharacter(args: {
   selfId: string;
   character: any;
@@ -45,10 +76,10 @@ export function extractRelBaseFromCharacter(args: {
     for (const otherId of Object.keys(explicit)) {
       // skip internal keys if any
       if (otherId === 'graph') continue;
-      
+
       const src = explicit[otherId];
       if (!src) continue;
-      
+
       const e = ensureEdge(mem, otherId);
 
       // Direct mapping
@@ -62,29 +93,30 @@ export function extractRelBaseFromCharacter(args: {
       else if (typeof src.conflict === 'number') e.hostility = clamp01(src.conflict);
 
       if (typeof src.dependency === 'number') e.dependency = clamp01(src.dependency);
-      
+
       if (typeof src.authority === 'number') e.authority = clamp01(src.authority);
       else if (typeof src.respect === 'number') e.authority = clamp01(src.respect * 0.6); // Respect as proxy for authority
 
       // Map legacy/string tags
       const rawTags: any[] = src.tags || src.kinds || [];
       for (const tVal of rawTags) {
-          const t = String(tVal).toLowerCase();
-          if (t === 'friend') addTag(e, 'friend');
-          if (t === 'ally') addTag(e, 'ally');
-          if (t === 'lover') addTag(e, 'lover');
-          if (t === 'family') addTag(e, 'family');
-          if (t === 'enemy') addTag(e, 'enemy');
-          if (t === 'rival') addTag(e, 'rival');
-          if (t === 'mentor') addTag(e, 'mentor');
-          if (t === 'student') addTag(e, 'student');
-          if (t === 'subordinate') addTag(e, 'subordinate');
-          if (t === 'superior') addTag(e, 'superior');
-          if (t === 'oathbound') addTag(e, 'oathbound');
-          if (t === 'protected') addTag(e, 'protected');
-          if (t === 'protector') addTag(e, 'protector');
+        const t = String(tVal).toLowerCase();
+        if (t === 'friend') addTag(e, 'friend');
+        if (t === 'ally') addTag(e, 'ally');
+        if (t === 'lover') addTag(e, 'lover');
+        if (t === 'family') addTag(e, 'family');
+        if (t === 'enemy') addTag(e, 'enemy');
+        if (t === 'rival') addTag(e, 'rival');
+        if (t === 'mentor') addTag(e, 'mentor');
+        if (t === 'student') addTag(e, 'student');
+        if (t === 'subordinate') addTag(e, 'subordinate');
+        if (t === 'superior') addTag(e, 'superior');
+        if (t === 'oathbound') addTag(e, 'oathbound');
+        if (t === 'protected') addTag(e, 'protected');
+        if (t === 'protector') addTag(e, 'protector');
       }
 
+      applyBioFromAny(e, src);
       e.sources.push({ type: 'biography', ref: 'relationships', weight: 1 });
       e.lastUpdatedTick = tick;
     }
@@ -112,9 +144,9 @@ export function extractRelBaseFromCharacter(args: {
         addTag(e, 'superior'); // they are superior relative to me
         // I am subordinate
       }
-      
+
       if (text.includes('protect')) {
-          addTag(e, 'protected');
+        addTag(e, 'protected');
       }
 
       e.sources.push({ type: 'oath', ref: o?.id || o?.type || 'oath', weight: 1 });
@@ -143,6 +175,7 @@ export function extractRelBaseFromCharacter(args: {
         if (typeof b?.loyalty === 'number') e.loyalty = clamp01(Math.max(e.loyalty, b.loyalty));
         if (typeof b?.hostility === 'number') e.hostility = clamp01(Math.max(e.hostility, b.hostility));
 
+        applyBioFromAny(e, b);
         e.sources.push({ type: 'biography', ref: b?.ref || b?.kind || 'bio_bond', weight: 0.8 });
         e.lastUpdatedTick = tick;
       }
