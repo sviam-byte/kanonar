@@ -5,13 +5,16 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { ProducerSpec } from '../../orchestrator/types';
 import { SimKitSimulator } from '../../simkit/core/simulator';
 import { buildExport } from '../../simkit/core/export';
+import { buildSnapshot } from '../../simkit/core/world';
 import { basicScenarioId, makeBasicWorld } from '../../simkit/scenarios/basicScenario';
 import { makeOrchestratorPlugin } from '../../simkit/plugins/orchestratorPlugin';
 import { makeGoalLabPipelinePlugin } from '../../simkit/plugins/goalLabPipelinePlugin';
-import { SCENE_PRESETS } from '../../simkit/scenes/sceneCatalog';
+import { makeSimWorldFromSelection } from '../../simkit/adapters/fromKanonarEntities';
 import { SimMapView } from '../../../components/SimMapView';
-import { KeyValueEditor } from '../../../components/KeyValueEditor';
 import { Badge, Button, Card, Input, Select, TabButton } from '../../../components/ui/primitives';
+import { EntityType } from '../../../enums';
+import { getEntitiesByType, getAllCharactersWithRuntime } from '../../../data';
+import type { LocationEntity, CharacterEntity } from '../../../types';
 
 function jsonDownload(filename: string, data: any) {
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -30,136 +33,54 @@ type Props = {
 
 type TabId = 'setup' | 'summary' | 'world' | 'actions' | 'events' | 'pipeline' | 'orchestrator' | 'map' | 'json';
 
-type Sel = { kind: 'loc'; id: string } | { kind: 'ch'; id: string } | null;
-
-type DraftLoc = {
-  id: string;
-  name: string;
-  enabled: boolean;
-  neighbors: string[];
-  hazards: Record<string, number>;
-  norms: Record<string, number>;
+type SetupDraft = {
+  selectedLocIds: string[];
+  selectedCharIds: string[];
+  placements: Record<string, string>;
 };
 
-type DraftChar = {
-  id: string;
-  name: string;
-  enabled: boolean;
-  locId: string;
-  stress: number;
-  health: number;
-  energy: number;
-  tags: string[];
-};
+function normalizePlacements(args: {
+  draft: SetupDraft;
+  nextLocIds?: string[];
+  nextCharIds?: string[];
+}) {
+  // Keep placements in sync with the current selection.
+  const selectedLocIds = args.nextLocIds ?? args.draft.selectedLocIds;
+  const selectedCharIds = args.nextCharIds ?? args.draft.selectedCharIds;
+  const locSet = new Set(selectedLocIds);
+  const nextPlacements: Record<string, string> = { ...args.draft.placements };
 
-function toDraftFromWorld(w: ReturnType<typeof makeBasicWorld>) {
-  const locs: DraftLoc[] = Object.values(w.locations).map((l) => ({
-    id: l.id,
-    name: l.name,
-    enabled: true,
-    neighbors: (l.neighbors || []).slice(),
-    hazards: { ...(l.hazards || {}) },
-    norms: { ...(l.norms || {}) },
-  }));
-  const chars: DraftChar[] = Object.values(w.characters).map((c) => ({
-    id: c.id,
-    name: c.name,
-    enabled: true,
-    locId: c.locId,
-    stress: c.stress,
-    health: c.health,
-    energy: c.energy,
-    tags: (c.tags || []).slice(),
-  }));
-  return { locs, chars };
-}
-
-function buildWorldFromDraft(d: { locs: DraftLoc[]; chars: DraftChar[] }, seed: number) {
-  const enabledLocs = d.locs.filter((x) => x.enabled);
-  const locIds = new Set(enabledLocs.map((l) => l.id));
-
-  const locations: any = {};
-  for (const l of enabledLocs) {
-    locations[l.id] = {
-      id: l.id,
-      name: l.name,
-      neighbors: (l.neighbors || []).filter((n) => locIds.has(n) && n !== l.id),
-      hazards: l.hazards || {},
-      norms: l.norms || {},
-    };
+  for (const id of Object.keys(nextPlacements)) {
+    if (!selectedCharIds.includes(id)) delete nextPlacements[id];
   }
 
-  const enabledChars = d.chars.filter((x) => x.enabled);
-  const characters: any = {};
-  for (const c of enabledChars) {
-    characters[c.id] = {
-      id: c.id,
-      name: c.name,
-      locId: locIds.has(c.locId) ? c.locId : (enabledLocs[0]?.id ?? 'loc:missing'),
-      stress: c.stress,
-      health: c.health,
-      energy: c.energy,
-      tags: c.tags || [],
-    };
-  }
-
-  return {
-    tickIndex: 0,
-    seed,
-    facts: {},
-    events: [],
-    locations,
-    characters,
-  };
-}
-
-function validateDraft(d: { locs: DraftLoc[]; chars: DraftChar[] }) {
-  const problems: string[] = [];
-  const locs = d.locs.filter((x) => x.enabled);
-  const chars = d.chars.filter((x) => x.enabled);
-
-  if (!locs.length) problems.push('Нужна минимум 1 активная локация.');
-  if (!chars.length) problems.push('Нужен минимум 1 активный персонаж.');
-
-  const locIds = new Set(locs.map((l) => l.id));
-  for (const l of locs) {
-    for (const n of l.neighbors || []) {
-      if (!locIds.has(n)) problems.push(`Локация ${l.id}: сосед ${n} не существует/выключен.`);
-      if (n === l.id) problems.push(`Локация ${l.id}: сосед не может быть самой собой.`);
+  const fallbackLocId = selectedLocIds[0];
+  if (fallbackLocId) {
+    for (const id of selectedCharIds) {
+      const locId = nextPlacements[id];
+      if (!locSet.has(locId)) nextPlacements[id] = fallbackLocId;
     }
   }
 
-  for (const c of chars) {
-    if (!locIds.has(c.locId)) problems.push(`Персонаж ${c.id}: стартовая locId=${c.locId} не существует/выключена.`);
+  return {
+    selectedLocIds,
+    selectedCharIds,
+    placements: nextPlacements,
+  };
+}
+
+function validateDraft(d: SetupDraft) {
+  const problems: string[] = [];
+  if (!d.selectedLocIds.length) problems.push('Нужна минимум 1 выбранная локация.');
+  if (!d.selectedCharIds.length) problems.push('Нужен минимум 1 выбранный персонаж.');
+
+  const locSet = new Set(d.selectedLocIds);
+  for (const [chId, locId] of Object.entries(d.placements)) {
+    if (!d.selectedCharIds.includes(chId)) continue;
+    if (!locSet.has(locId)) problems.push(`Персонаж ${chId}: стартовая locId=${locId} не выбрана.`);
   }
 
   return problems;
-}
-
-function loadPresetToDraft(id: string) {
-  const p = SCENE_PRESETS.find((x) => x.id === id);
-  if (!p) return toDraftFromWorld(makeBasicWorld());
-
-  const locs = p.locations.map((l) => ({
-    id: l.id,
-    name: l.name,
-    enabled: true,
-    neighbors: (l.neighbors || []).slice(),
-    hazards: { ...(l.hazards || {}) },
-    norms: { ...(l.norms || {}) },
-  }));
-  const firstLoc = locs[0]?.id || 'loc:missing';
-  const chars = p.characters.map((c) => ({
-    id: c.id,
-    name: c.name,
-    enabled: true,
-    locId: firstLoc,
-    stress: c.stress ?? 0.2,
-    health: c.health ?? 1.0,
-    energy: c.energy ?? 0.7,
-    tags: (c.tags || []).slice(),
-  }));
-  return { locs, chars };
 }
 
 function cx(...xs: Array<string | false | null | undefined>) {
@@ -174,15 +95,27 @@ function clamp01(x: number) {
 export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
   const simRef = useRef<SimKitSimulator | null>(null);
 
+  // Catalog: entities available for selection in the simulator setup.
+  const catalogLocations = useMemo(
+    () =>
+      (getEntitiesByType(EntityType.Location) as LocationEntity[]).filter(
+        (l) => (l.versionTags || []).length === 0 || (l.versionTags || []).includes('current' as any)
+      ),
+    []
+  );
+  const catalogCharacters = useMemo(() => getAllCharactersWithRuntime(), []);
+
   const [seedDraft, setSeedDraft] = useState(5);
   const [tab, setTab] = useState<TabId>('summary');
   const [selected, setSelected] = useState<number>(-1); // record index, -1 = latest
   const [version, setVersion] = useState(0);
   const [runN, setRunN] = useState(10);
   const [temperatureDraft, setTemperatureDraft] = useState(0.2);
-  const [setupDraft, setSetupDraft] = useState(() => toDraftFromWorld(makeBasicWorld()));
-  const [sel, setSel] = useState<Sel>(null);
-  const [presetId, setPresetId] = useState<string>('basic:v1');
+  const [setupDraft, setSetupDraft] = useState<SetupDraft>({
+    selectedLocIds: [],
+    selectedCharIds: [],
+    placements: {},
+  });
 
   if (!simRef.current) {
     simRef.current = new SimKitSimulator({
@@ -202,6 +135,14 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
   const records = sim.records;
 
   const setupProblems = useMemo(() => validateDraft(setupDraft), [setupDraft]);
+  const selectedLocations = useMemo(
+    () => catalogLocations.filter((l) => setupDraft.selectedLocIds.includes(l.entityId)),
+    [catalogLocations, setupDraft.selectedLocIds]
+  );
+  const selectedCharacters = useMemo(
+    () => catalogCharacters.filter((c) => setupDraft.selectedCharIds.includes(c.entityId)),
+    [catalogCharacters, setupDraft.selectedCharIds]
+  );
 
   // If no ticks exist, default to the setup view.
   useEffect(() => {
@@ -279,17 +220,29 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
     jsonDownload(`goal-lab-pipeline-${tick}.json`, data);
   }
 
-  function applyScene() {
-    const w = buildWorldFromDraft(setupDraft, seedDraft);
-    sim.setInitialWorld(w, { seed: seedDraft, scenarioId: basicScenarioId });
+  function applySceneFromDraft() {
+    const world = makeSimWorldFromSelection({
+      seed: Number(seedDraft) || 1,
+      locations: selectedLocations,
+      characters: selectedCharacters,
+      placements: setupDraft.placements,
+    });
+    sim.setInitialWorld(world, { seed: seedDraft, scenarioId: basicScenarioId });
     setSelected(-1);
     setVersion((v) => v + 1);
     setTab('summary');
   }
 
-  function loadPreset(id: string) {
-    setSetupDraft(() => loadPresetToDraft(id));
-    setSel(null);
+  function pushManualMove(actorId: string, targetLocId: string) {
+    if (!actorId || !targetLocId) return;
+    // Manual move goes straight to forcedActions to bypass orchestrator selection.
+    sim.forcedActions.push({
+      id: `ui:move:${sim.world.tickIndex}:${actorId}:${targetLocId}`,
+      kind: 'move',
+      actorId,
+      targetId: targetLocId,
+    });
+    setVersion((v) => v + 1);
   }
 
   // Temperature for action sampling in the orchestrator policy (T -> 0 = greedy).
@@ -300,7 +253,16 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
   }
 
   const canSimulate = setupProblems.length === 0;
-  const previewSnapshot = records.length ? cur?.snapshot : sim.getPreviewSnapshot();
+  const draftPreviewSnapshot = useMemo(() => {
+    if (!selectedLocations.length) return sim.getPreviewSnapshot();
+    const world = makeSimWorldFromSelection({
+      seed: Number(seedDraft) || 1,
+      locations: selectedLocations,
+      characters: selectedCharacters,
+      placements: setupDraft.placements,
+    });
+    return buildSnapshot(world);
+  }, [selectedLocations, selectedCharacters, setupDraft.placements, seedDraft, sim]);
   const scenarioId = sim.cfg.scenarioId;
 
   return (
@@ -326,7 +288,7 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
                 setVersion((x) => x + 1);
               }}
             />
-            <Button kind="primary" onClick={applyScene} disabled={setupProblems.length > 0}>
+            <Button kind="primary" onClick={applySceneFromDraft} disabled={setupProblems.length > 0}>
               Apply + Reset
             </Button>
             <Button onClick={exportSession} disabled={records.length === 0}>
@@ -475,36 +437,90 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
                 <div className="flex flex-col gap-4">
                   <Card title="Scene Setup">
                     <div className="text-sm opacity-80 mb-2">
-                      Сначала собери сцену: активные локации + персонажи + стартовые позиции. Потом Step/Run.
+                      Собери сцену: выбери локации, персонажей и задай стартовые позиции.
                     </div>
 
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <Select
-                        value={presetId}
-                        onChange={(e) => setPresetId(e.target.value)}
-                      >
-                        {SCENE_PRESETS.map((p) => (
-                          <option key={p.id} value={p.id}>
-                            {p.title}
-                          </option>
-                        ))}
-                      </Select>
+                    <div className="grid grid-cols-12 gap-4">
+                      <div className="col-span-4">
+                        <div className="font-semibold mb-2">Локации (multi-select)</div>
+                        <select
+                          multiple
+                          value={setupDraft.selectedLocIds}
+                          onChange={(e) => {
+                            const nextIds = Array.from(e.currentTarget.selectedOptions).map((o) => o.value);
+                            setSetupDraft((d) => normalizePlacements({ draft: d, nextLocIds: nextIds }));
+                          }}
+                          className="w-full min-h-[220px] rounded-xl border border-canon-border bg-canon-card px-3 py-2 text-sm"
+                        >
+                          {catalogLocations.map((l) => (
+                            <option key={l.entityId} value={l.entityId}>
+                              {l.title || l.entityId} ({l.entityId})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
 
-                      <Button onClick={() => loadPreset(presetId)}>Load preset</Button>
+                      <div className="col-span-4">
+                        <div className="font-semibold mb-2">Персонажи (multi-select)</div>
+                        <select
+                          multiple
+                          value={setupDraft.selectedCharIds}
+                          onChange={(e) => {
+                            const nextIds = Array.from(e.currentTarget.selectedOptions).map((o) => o.value);
+                            setSetupDraft((d) => normalizePlacements({ draft: d, nextCharIds: nextIds }));
+                          }}
+                          className="w-full min-h-[220px] rounded-xl border border-canon-border bg-canon-card px-3 py-2 text-sm"
+                        >
+                          {catalogCharacters.map((c) => (
+                            <option key={c.entityId} value={c.entityId}>
+                              {c.title || c.entityId} ({c.entityId})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
 
-                      <div className="grow" />
-
-                      {setupProblems.length > 0 ? (
-                        <div className="text-sm opacity-80">
-                          Issues: <span className="text-red-300">{setupProblems.length}</span>
-                        </div>
-                      ) : (
-                        <div className="text-sm opacity-70">OK</div>
-                      )}
-
-                      <Button kind="primary" disabled={setupProblems.length > 0} onClick={applyScene}>
-                        Apply Scene + Reset
-                      </Button>
+                      <div className="col-span-4">
+                        <div className="font-semibold mb-2">Расстановка</div>
+                        {selectedCharacters.length === 0 ? (
+                          <div className="text-sm opacity-70">Выбери хотя бы одного персонажа.</div>
+                        ) : (
+                          <div className="flex flex-col gap-3">
+                            {selectedCharacters.map((ch) => {
+                              const fallbackLoc = setupDraft.selectedLocIds[0] || '';
+                              const locId = setupDraft.placements[ch.entityId] || fallbackLoc;
+                              return (
+                                <div key={ch.entityId} className="grid grid-cols-12 gap-2 items-center">
+                                  <div className="col-span-6 text-sm">
+                                    {ch.title || ch.entityId}
+                                    <div className="text-xs opacity-60">{ch.entityId}</div>
+                                  </div>
+                                  <Select
+                                    className="col-span-6 bg-black/20"
+                                    value={locId}
+                                    disabled={!setupDraft.selectedLocIds.length}
+                                    onChange={(e) => {
+                                      const nextLocId = e.target.value;
+                                      setSetupDraft((d) => ({
+                                        ...d,
+                                        placements: { ...d.placements, [ch.entityId]: nextLocId },
+                                      }));
+                                    }}
+                                  >
+                                    {!setupDraft.selectedLocIds.length ? (
+                                      <option value="">(нет выбранных локаций)</option>
+                                    ) : null}
+                                    {selectedLocations.map((loc) => (
+                                      <option key={loc.entityId} value={loc.entityId}>
+                                        {loc.title || loc.entityId}
+                                      </option>
+                                    ))}
+                                  </Select>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
                     </div>
 
                     {setupProblems.length > 0 && (
@@ -517,410 +533,21 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
                         </ul>
                       </div>
                     )}
+
+                    <div className="mt-3 flex items-center gap-2 flex-wrap">
+                      <div className="text-sm opacity-70">
+                        Выбрано: {setupDraft.selectedLocIds.length} локаций, {setupDraft.selectedCharIds.length} персонажей.
+                      </div>
+                      <div className="grow" />
+                      <Button kind="primary" disabled={setupProblems.length > 0} onClick={applySceneFromDraft}>
+                        Apply Scene + Reset
+                      </Button>
+                    </div>
                   </Card>
 
-                  <div className="grid grid-cols-12 gap-4">
-                    {/* LEFT: lists */}
-                    <div className="col-span-4 flex flex-col gap-4">
-                      <Card title="Locations">
-                        <div className="flex items-center gap-2 mb-2">
-                          <Button
-                            onClick={() => {
-                              setSetupDraft((d) => {
-                                const next = structuredClone(d);
-                                const n = next.locs.length + 1;
-                                const id = `loc:${n}`;
-                                next.locs.push({
-                                  id,
-                                  name: `Location ${n}`,
-                                  enabled: true,
-                                  neighbors: [],
-                                  hazards: {},
-                                  norms: {},
-                                });
-                                return next;
-                              });
-                            }}
-                          >
-                            + New
-                          </Button>
-
-                          <Select
-                            defaultValue=""
-                            onChange={(e) => {
-                              const id = e.target.value;
-                              if (!id) return;
-                              const p = SCENE_PRESETS.find((x) => x.id === presetId) || SCENE_PRESETS[0];
-                              const src = p?.locations.find((l) => l.id === id);
-                              if (!src) return;
-
-                              setSetupDraft((d) => {
-                                const next = structuredClone(d);
-                                if (next.locs.some((x) => x.id === src.id)) return next;
-                                next.locs.push({
-                                  id: src.id,
-                                  name: src.name,
-                                  enabled: true,
-                                  neighbors: (src.neighbors || []).slice(),
-                                  hazards: { ...(src.hazards || {}) },
-                                  norms: { ...(src.norms || {}) },
-                                });
-                                return next;
-                              });
-
-                              e.currentTarget.value = '';
-                            }}
-                          >
-                            <option value="">+ Add from preset…</option>
-                            {(SCENE_PRESETS.find((x) => x.id === presetId)?.locations || []).map((l) => (
-                              <option key={l.id} value={l.id}>
-                                {l.id}
-                              </option>
-                            ))}
-                          </Select>
-                        </div>
-
-                        <div className="flex flex-col gap-1">
-                          {setupDraft.locs.map((l) => (
-                            <button
-                              key={l.id}
-                              className={[
-                                'w-full text-left px-3 py-2 rounded-xl border border-canon-border hover:bg-white/5',
-                                sel?.kind === 'loc' && sel.id === l.id ? 'bg-white/10' : 'bg-black/10',
-                              ].join(' ')}
-                              onClick={() => setSel({ kind: 'loc', id: l.id })}
-                            >
-                              <div className="flex items-center justify-between gap-2">
-                                <div className="font-mono text-sm">{l.id}</div>
-                                <label className="flex items-center gap-2 text-sm opacity-80">
-                                  <input
-                                    type="checkbox"
-                                    checked={l.enabled}
-                                    onChange={(e) => {
-                                      const en = e.target.checked;
-                                      setSetupDraft((d) => {
-                                        const next = structuredClone(d);
-                                        const it = next.locs.find((x) => x.id === l.id);
-                                        if (it) it.enabled = en;
-                                        return next;
-                                      });
-                                    }}
-                                  />
-                                  enabled
-                                </label>
-                              </div>
-                              <div className="text-sm opacity-70">{l.name}</div>
-                            </button>
-                          ))}
-                        </div>
-                      </Card>
-
-                      <Card title="Characters">
-                        <div className="flex items-center gap-2 mb-2">
-                          <Button
-                            onClick={() => {
-                              setSetupDraft((d) => {
-                                const next = structuredClone(d);
-                                const n = next.chars.length + 1;
-                                const firstLoc =
-                                  next.locs.find((x) => x.enabled)?.id || next.locs[0]?.id || 'loc:missing';
-                                next.chars.push({
-                                  id: `ch:${n}`,
-                                  name: `Character ${n}`,
-                                  enabled: true,
-                                  locId: firstLoc,
-                                  stress: 0.2,
-                                  health: 1.0,
-                                  energy: 0.7,
-                                  tags: [],
-                                });
-                                return next;
-                              });
-                            }}
-                          >
-                            + New
-                          </Button>
-
-                          <Select
-                            defaultValue=""
-                            onChange={(e) => {
-                              const id = e.target.value;
-                              if (!id) return;
-                              const p = SCENE_PRESETS.find((x) => x.id === presetId) || SCENE_PRESETS[0];
-                              const src = p?.characters.find((c) => c.id === id);
-                              if (!src) return;
-
-                              setSetupDraft((d) => {
-                                const next = structuredClone(d);
-                                if (next.chars.some((x) => x.id === src.id)) return next;
-                                const firstLoc =
-                                  next.locs.find((x) => x.enabled)?.id || next.locs[0]?.id || 'loc:missing';
-                                next.chars.push({
-                                  id: src.id,
-                                  name: src.name,
-                                  enabled: true,
-                                  locId: firstLoc,
-                                  stress: src.stress ?? 0.2,
-                                  health: src.health ?? 1.0,
-                                  energy: src.energy ?? 0.7,
-                                  tags: (src.tags || []).slice(),
-                                });
-                                return next;
-                              });
-
-                              e.currentTarget.value = '';
-                            }}
-                          >
-                            <option value="">+ Add from preset…</option>
-                            {(SCENE_PRESETS.find((x) => x.id === presetId)?.characters || []).map((c) => (
-                              <option key={c.id} value={c.id}>
-                                {c.id}
-                              </option>
-                            ))}
-                          </Select>
-                        </div>
-
-                        <div className="flex flex-col gap-1">
-                          {setupDraft.chars.map((c) => (
-                            <button
-                              key={c.id}
-                              className={[
-                                'w-full text-left px-3 py-2 rounded-xl border border-canon-border hover:bg-white/5',
-                                sel?.kind === 'ch' && sel.id === c.id ? 'bg-white/10' : 'bg-black/10',
-                              ].join(' ')}
-                              onClick={() => setSel({ kind: 'ch', id: c.id })}
-                            >
-                              <div className="flex items-center justify-between gap-2">
-                                <div className="font-mono text-sm">{c.id}</div>
-                                <label className="flex items-center gap-2 text-sm opacity-80">
-                                  <input
-                                    type="checkbox"
-                                    checked={c.enabled}
-                                    onChange={(e) => {
-                                      const en = e.target.checked;
-                                      setSetupDraft((d) => {
-                                        const next = structuredClone(d);
-                                        const it = next.chars.find((x) => x.id === c.id);
-                                        if (it) it.enabled = en;
-                                        return next;
-                                      });
-                                    }}
-                                  />
-                                  enabled
-                                </label>
-                              </div>
-                              <div className="text-sm opacity-70">{c.name}</div>
-                            </button>
-                          ))}
-                        </div>
-                      </Card>
-                    </div>
-
-                    {/* MIDDLE: inspector */}
-                    <div className="col-span-5 flex flex-col gap-4">
-                      <Card title="Inspector">
-                        {!sel && <div className="text-sm opacity-70">Выбери локацию или персонажа слева.</div>}
-
-                        {sel?.kind === 'loc' &&
-                          (() => {
-                            const i = setupDraft.locs.findIndex((x) => x.id === sel.id);
-                            const l = setupDraft.locs[i];
-                            if (!l) return <div className="text-sm opacity-70">Missing loc.</div>;
-
-                            const enabledLocs = setupDraft.locs.filter((x) => x.enabled && x.id !== l.id);
-
-                            return (
-                              <div className="flex flex-col gap-3">
-                                <div className="grid grid-cols-12 gap-2 items-center">
-                                  <div className="col-span-3 font-mono text-sm opacity-80">id</div>
-                                  <div className="col-span-9 font-mono text-sm">{l.id}</div>
-
-                                  <div className="col-span-3 text-sm opacity-80">name</div>
-                                  <Input
-                                    className="col-span-9 bg-black/20"
-                                    value={l.name}
-                                    onChange={(e) => {
-                                      const name = e.target.value;
-                                      setSetupDraft((d) => {
-                                        const next = structuredClone(d);
-                                        next.locs[i].name = name;
-                                        return next;
-                                      });
-                                    }}
-                                  />
-                                </div>
-
-                                <div className="rounded-2xl border border-canon-border bg-canon-card p-3">
-                                  <div className="font-semibold mb-2">Neighbors</div>
-                                  <div className="flex flex-col gap-2">
-                                    {enabledLocs.length === 0 && (
-                                      <div className="text-sm opacity-60">Нет других активных локаций.</div>
-                                    )}
-                                    {enabledLocs.map((n) => {
-                                      const checked = l.neighbors.includes(n.id);
-                                      return (
-                                        <label key={n.id} className="flex items-center gap-2 text-sm">
-                                          <input
-                                            type="checkbox"
-                                            checked={checked}
-                                            onChange={(e) => {
-                                              const on = e.target.checked;
-                                              setSetupDraft((d) => {
-                                                const next = structuredClone(d);
-                                                const curNeighbors = next.locs[i].neighbors;
-                                                next.locs[i].neighbors = on
-                                                  ? Array.from(new Set([...curNeighbors, n.id]))
-                                                  : curNeighbors.filter((x) => x !== n.id);
-                                                return next;
-                                              });
-                                            }}
-                                          />
-                                          <span className="font-mono">{n.id}</span>
-                                          <span className="opacity-70">{n.name}</span>
-                                        </label>
-                                      );
-                                    })}
-                                  </div>
-                                </div>
-
-                                <KeyValueEditor
-                                  title="Hazards"
-                                  value={l.hazards}
-                                  suggestions={['radiation', 'cold', 'dark', 'toxic', 'noise', 'crowd']}
-                                  onChange={(haz) => {
-                                    setSetupDraft((d) => {
-                                      const next = structuredClone(d);
-                                      next.locs[i].hazards = haz;
-                                      return next;
-                                    });
-                                  }}
-                                />
-
-                                <KeyValueEditor
-                                  title="Norms"
-                                  value={l.norms}
-                                  suggestions={['order', 'privacy', 'violence', 'ritual', 'obedience', 'surveillance']}
-                                  onChange={(norms) => {
-                                    setSetupDraft((d) => {
-                                      const next = structuredClone(d);
-                                      next.locs[i].norms = norms;
-                                      return next;
-                                    });
-                                  }}
-                                />
-                              </div>
-                            );
-                          })()}
-
-                        {sel?.kind === 'ch' &&
-                          (() => {
-                            const i = setupDraft.chars.findIndex((x) => x.id === sel.id);
-                            const c = setupDraft.chars[i];
-                            if (!c) return <div className="text-sm opacity-70">Missing ch.</div>;
-
-                            const locs = setupDraft.locs.filter((l) => l.enabled);
-
-                            return (
-                              <div className="flex flex-col gap-3">
-                                <div className="grid grid-cols-12 gap-2 items-center">
-                                  <div className="col-span-3 font-mono text-sm opacity-80">id</div>
-                                  <div className="col-span-9 font-mono text-sm">{c.id}</div>
-
-                                  <div className="col-span-3 text-sm opacity-80">name</div>
-                                  <Input
-                                    className="col-span-9 bg-black/20"
-                                    value={c.name}
-                                    onChange={(e) => {
-                                      const name = e.target.value;
-                                      setSetupDraft((d) => {
-                                        const next = structuredClone(d);
-                                        next.chars[i].name = name;
-                                        return next;
-                                      });
-                                    }}
-                                  />
-
-                                  <div className="col-span-3 text-sm opacity-80">start loc</div>
-                                  <Select
-                                    className="col-span-9 bg-black/20"
-                                    value={c.locId}
-                                    onChange={(e) => {
-                                      const locId = e.target.value;
-                                      setSetupDraft((d) => {
-                                        const next = structuredClone(d);
-                                        next.chars[i].locId = locId;
-                                        return next;
-                                      });
-                                    }}
-                                  >
-                                    {locs.map((l) => (
-                                      <option key={l.id} value={l.id}>
-                                        {l.id}
-                                      </option>
-                                    ))}
-                                  </Select>
-                                </div>
-
-                                <div className="rounded-2xl border border-canon-border bg-canon-card p-3">
-                                  <div className="font-semibold mb-2">Stats</div>
-                                  <div className="grid grid-cols-12 gap-2 items-center">
-                                    <div className="col-span-3 text-sm opacity-80">stress</div>
-                                    <Input
-                                      className="col-span-9 bg-black/20"
-                                      type="number"
-                                      step="0.05"
-                                      value={c.stress}
-                                      onChange={(e) => {
-                                        setSetupDraft((d) => {
-                                          const n = structuredClone(d);
-                                          n.chars[i].stress = Number(e.target.value);
-                                          return n;
-                                        });
-                                      }}
-                                    />
-                                    <div className="col-span-3 text-sm opacity-80">health</div>
-                                    <Input
-                                      className="col-span-9 bg-black/20"
-                                      type="number"
-                                      step="0.05"
-                                      value={c.health}
-                                      onChange={(e) => {
-                                        setSetupDraft((d) => {
-                                          const n = structuredClone(d);
-                                          n.chars[i].health = Number(e.target.value);
-                                          return n;
-                                        });
-                                      }}
-                                    />
-                                    <div className="col-span-3 text-sm opacity-80">energy</div>
-                                    <Input
-                                      className="col-span-9 bg-black/20"
-                                      type="number"
-                                      step="0.05"
-                                      value={c.energy}
-                                      onChange={(e) => {
-                                        setSetupDraft((d) => {
-                                          const n = structuredClone(d);
-                                          n.chars[i].energy = Number(e.target.value);
-                                          return n;
-                                        });
-                                      }}
-                                    />
-                                  </div>
-                                </div>
-                              </div>
-                            );
-                          })()}
-                      </Card>
-                    </div>
-
-                    {/* RIGHT: map */}
-                    <div className="col-span-3 flex flex-col gap-4">
-                      <Card title="Map Preview">
-                        <SimMapView sim={sim} snapshot={previewSnapshot || sim.getPreviewSnapshot()} />
-                      </Card>
-                    </div>
-                  </div>
+                  <Card title="Map Preview">
+                    <SimMapView sim={sim} snapshot={draftPreviewSnapshot} onMove={pushManualMove} />
+                  </Card>
                 </div>
               ) : null}
 
@@ -1177,7 +804,7 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
               {/* MAP */}
               {tab === 'map' ? (
                 <Card title="Карта мира">
-                  <SimMapView sim={sim} snapshot={cur?.snapshot || null} />
+                  <SimMapView sim={sim} snapshot={cur?.snapshot || null} onMove={pushManualMove} />
                 </Card>
               ) : null}
 
