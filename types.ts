@@ -215,6 +215,37 @@ export interface ToMModifier {
     privacyBias: number;
 }
 
+export type Vec3 = { x: number; y: number; z: number };
+export type Euler = { yaw: number; pitch: number; roll: number };
+
+export type VolumeShape =
+    | { kind: 'box'; size: Vec3 }
+    | { kind: 'sphere'; radius: number }
+    | { kind: 'cylinder'; radius: number; height: number };
+
+export type VolumeTransform = {
+    pos: Vec3;
+    rot?: Euler; // для sphere можно игнорировать
+};
+
+export type HazardVolume = {
+    id: string;
+    hazardKind: string;    // 'radiation' | 'toxic' | ...
+    intensity: number;     // 0..1
+    shape: VolumeShape;
+    transform: VolumeTransform;
+    falloff?: { kind: 'none' | 'linear' | 'invSq'; radius?: number };
+    tags?: string[];
+};
+
+export type ZoneVolume = {
+    id: string;
+    name: string;
+    shape: VolumeShape;
+    transform: VolumeTransform;
+    tags?: string[];
+};
+
 export interface LocationEntity extends BaseEntity {
     type: EntityType.Location;
     map?: LocationMap;
@@ -254,6 +285,13 @@ export interface LocationEntity extends BaseEntity {
     goalHooks?: any;
     access?: any; 
     ownerIds?: string[];
+    spatial?: {
+        pos: Vec3;
+        rot?: Euler;
+        size?: Vec3; // bbox
+    };
+    hazardVolumes?: HazardVolume[];
+    zoneVolumes?: ZoneVolume[];
 }
 
 // --- Body Interfaces ---
