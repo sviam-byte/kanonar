@@ -79,12 +79,22 @@ export function applyAction(w: SimWorld, a: SimAction): { world: SimWorld; event
     c.energy = clamp01(c.energy + 0.02);
     c.stress = clamp01(c.stress - 0.01);
     notes.push(`${c.id} waits`);
+    events.push({
+      id: `evt:action:wait:${w.tickIndex}:${c.id}`,
+      type: 'action:wait',
+      payload: { actorId: c.id, locationId: c.locId },
+    });
   }
 
   if (a.kind === 'rest') {
     c.energy = clamp01(c.energy + 0.08);
     c.stress = clamp01(c.stress - 0.03);
     notes.push(`${c.id} rests`);
+    events.push({
+      id: `evt:action:rest:${w.tickIndex}:${c.id}`,
+      type: 'action:rest',
+      payload: { actorId: c.id, locationId: c.locId },
+    });
   }
 
   if (a.kind === 'work') {
@@ -92,6 +102,11 @@ export function applyAction(w: SimWorld, a: SimAction): { world: SimWorld; event
     c.stress = clamp01(c.stress + 0.03);
     w.facts['work:count'] = (w.facts['work:count'] ?? 0) + 1;
     notes.push(`${c.id} works`);
+    events.push({
+      id: `evt:action:work:${w.tickIndex}:${c.id}`,
+      type: 'action:work',
+      payload: { actorId: c.id, locationId: c.locId, factKey: 'work:count' },
+    });
   }
 
   if (a.kind === 'move') {
@@ -102,10 +117,20 @@ export function applyAction(w: SimWorld, a: SimAction): { world: SimWorld; event
 
     if (!ok) {
       notes.push(`${c.id} move blocked ${from} -> ${to || '(none)'}`);
+      events.push({
+        id: `evt:action:move:${w.tickIndex}:${c.id}`,
+        type: 'action:move',
+        payload: { actorId: c.id, fromLocId: from, toLocId: to || null, ok: false, locationId: from },
+      });
     } else {
       c.locId = to;
       c.energy = clamp01(c.energy - 0.03);
       notes.push(`${c.id} moves ${from} -> ${to}`);
+      events.push({
+        id: `evt:action:move:${w.tickIndex}:${c.id}`,
+        type: 'action:move',
+        payload: { actorId: c.id, fromLocId: from, toLocId: to, ok: true, locationId: to },
+      });
     }
   }
 
@@ -114,6 +139,11 @@ export function applyAction(w: SimWorld, a: SimAction): { world: SimWorld; event
     c.stress = clamp01(c.stress - 0.02);
     w.facts[`talk:${c.id}:${otherId}`] = (w.facts[`talk:${c.id}:${otherId}`] ?? 0) + 1;
     notes.push(`${c.id} talks to ${otherId}`);
+    events.push({
+      id: `evt:action:talk:${w.tickIndex}:${c.id}:${otherId}`,
+      type: 'action:talk',
+      payload: { actorId: c.id, targetId: otherId, locationId: c.locId },
+    });
   }
 
   // пример: локационные hazards дают событие “hazardPulse”
@@ -123,7 +153,7 @@ export function applyAction(w: SimWorld, a: SimAction): { world: SimWorld; event
     events.push({
       id: `evt:hazardPulse:${w.tickIndex}:${c.id}`,
       type: 'hazardPulse',
-      payload: { actorId: c.id, locId: c.locId, hazardKey: 'radiation', level: hazard },
+      payload: { actorId: c.id, locationId: c.locId, hazardKey: 'radiation', level: hazard },
     });
   }
 

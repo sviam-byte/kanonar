@@ -26,7 +26,10 @@ function toDomainEvents(snapshot: SimSnapshot): any[] {
     const p = (e && typeof e === 'object') ? (e.payload || {}) : {};
     const actorId = String(p.actorId ?? p.actor ?? 'system');
     const targetId = p.targetId != null ? String(p.targetId) : undefined;
-    const locationId = p.locationId != null ? String(p.locationId) : undefined;
+    // tolerate both locationId and legacy locId
+    const locationId = (p.locationId != null)
+      ? String(p.locationId)
+      : (p.locId != null ? String(p.locId) : undefined);
     const magnitude = clamp01(Number(p.magnitude ?? p.severity ?? 0.5));
     return {
       kind: String(e?.type ?? 'event'),

@@ -22,7 +22,7 @@ export function getLoc(w: SimWorld, id: Id): SimLocation {
   return l;
 }
 
-export function buildSnapshot(w: SimWorld): SimSnapshot {
+export function buildSnapshot(w: SimWorld, opts?: { events?: any[] }): SimSnapshot {
   return {
     schema: 'SimKitSnapshotV1',
     id: `sim:snap:${padTick(w.tickIndex)}`,
@@ -30,7 +30,10 @@ export function buildSnapshot(w: SimWorld): SimSnapshot {
     tickIndex: w.tickIndex,
     characters: Object.values(w.characters).sort((a, b) => a.id.localeCompare(b.id)),
     locations: Object.values(w.locations).sort((a, b) => a.id.localeCompare(b.id)),
-    events: (w.events || []).slice().sort((a, b) => a.id.localeCompare(b.id)),
+    // IMPORTANT: SimWorld.events is a transient queue that is consumed during step().
+    // Snapshot должен отражать события, реально применённые на этом тике.
+    // Поэтому opts.events (eventsApplied) имеет приоритет; иначе fallback на w.events.
+    events: (opts?.events || w.events || []).slice().sort((a, b) => a.id.localeCompare(b.id)),
     debug: {},
   };
 }
