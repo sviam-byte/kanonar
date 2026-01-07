@@ -10,16 +10,32 @@
         theme: {
           extend: {
             colors: {
-              'canon-bg': '#101010',
+              'canon-bg': '#0b0d10',
+              'canon-panel': '#0f1217',
+              'canon-card': '#121724',
+              'canon-card-2': '#0e131d',
+              'canon-border': 'rgba(255,255,255,0.10)',
+              'canon-border-2': 'rgba(255,255,255,0.14)',
+              'canon-text': 'rgba(255,255,255,0.88)',
+              'canon-muted': 'rgba(255,255,255,0.60)',
+              'canon-faint': 'rgba(255,255,255,0.40)',
+              'canon-accent': '#66d9ff',
+              'canon-accent-2': '#9b87ff',
+              'canon-good': '#42f5b3',
+              'canon-bad': '#ff5c7a',
               'canon-bg-light': '#1e1e1e',
-              'canon-border': '#3a3a3a',
-              'canon-text': '#d1d1d1',
               'canon-text-light': '#888888',
-              'canon-accent': '#00aaff',
               'canon-green': '#33ff99',
               'canon-red': '#ff4444',
               'canon-blue': '#00ccff',
               'slider-thumb': '#87CEFA',
+            },
+            boxShadow: {
+              'canon-1': '0 10px 30px rgba(0,0,0,0.35)',
+              'canon-2': '0 1px 0 rgba(255,255,255,0.06) inset, 0 10px 30px rgba(0,0,0,0.35)',
+            },
+            borderRadius: {
+              'canon': '18px',
             },
             fontFamily: {
               'sans': ['ui-sans-serif', 'system-ui'],
@@ -42,6 +58,34 @@
   }
 }
 </script>
+<style>
+  html, body { background: #0b0d10; color: rgba(255,255,255,0.88); }
+  ::selection { background: rgba(102,217,255,0.25); }
+
+  /* subtle grid + vignette */
+  body {
+    background-image:
+      radial-gradient(1200px 700px at 20% 10%, rgba(102,217,255,0.10), transparent 60%),
+      radial-gradient(900px 600px at 80% 0%, rgba(155,135,255,0.10), transparent 55%),
+      radial-gradient(900px 700px at 50% 110%, rgba(0,0,0,0.45), transparent 60%),
+      repeating-linear-gradient(90deg, rgba(255,255,255,0.03), rgba(255,255,255,0.03) 1px, transparent 1px, transparent 42px),
+      repeating-linear-gradient(0deg, rgba(255,255,255,0.03), rgba(255,255,255,0.03) 1px, transparent 1px, transparent 42px);
+    background-attachment: fixed;
+  }
+
+  /* nicer scrollbars */
+  *::-webkit-scrollbar { height: 10px; width: 10px; }
+  *::-webkit-scrollbar-thumb {
+    background: rgba(255,255,255,0.12);
+    border: 2px solid rgba(0,0,0,0.0);
+    border-radius: 999px;
+    background-clip: padding-box;
+  }
+  *::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.18); }
+
+  /* focus ring consistency */
+  :focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(102,217,255,0.25); border-radius: 10px; }
+</style>
 <style>
   /* Custom styles for range slider thumb */
   input[type="range"]::-webkit-slider-thumb {

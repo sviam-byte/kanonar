@@ -8,6 +8,13 @@ import { proposeActions, applyAction, applyEvent } from './rules';
 
 export type SimPlugin = {
   id: string;
+  // Optional pre-step decision hook: can return actions to apply before default heuristic.
+  decideActions?: (args: {
+    world: SimWorld;
+    offers: ActionOffer[];
+    rng: RNG;
+    tickIndex: number;
+  }) => SimAction[] | null | void;
   afterSnapshot?: (args: {
     world: SimWorld;
     snapshot: any;              // SimSnapshot
@@ -54,6 +61,30 @@ export class SimKitSimulator {
     this.forcedActions = [];
   }
 
+  /** Replace initial world (used by Scene Setup) and reset session. */
+  setInitialWorld(next: SimWorld, opts?: { seed?: number; scenarioId?: string }) {
+    const seed = Number.isFinite(opts?.seed as any) ? Number(opts!.seed) : this.cfg.seed;
+    if (opts?.scenarioId) this.cfg.scenarioId = opts.scenarioId;
+
+    // keep cfg.seed in sync
+    this.cfg.seed = seed;
+
+    // normalize world for new session
+    const w = cloneWorld(next);
+    w.tickIndex = 0;
+    w.seed = seed;
+    w.events = w.events || [];
+    w.facts = w.facts || {};
+
+    this.cfg.initialWorld = w;
+    this.reset(seed);
+  }
+
+  /** Useful for UI: show a map even before first tick. */
+  getPreviewSnapshot() {
+    return buildSnapshot(this.world);
+  }
+
   enqueueAction(a: SimAction) {
     this.forcedActions.push(a);
   }
@@ -67,10 +98,28 @@ export class SimKitSimulator {
     const eventsApplied: any[] = [];
     const notes: string[] = [];
 
-    // 1) применяем forcedActions (если есть), иначе — топ-оффер для каждого чара
+    // 1) применяем forcedActions (если есть), иначе — даём плагинам шанс выбрать действия
     const forced = this.takeForcedActions();
-    if (forced.length) {
-      for (const a of forced) {
+    let pluginDecided: SimAction[] | null = null;
+    if (!forced.length) {
+      for (const p of this.cfg.plugins || []) {
+        const out = p.decideActions?.({
+          world: this.world,
+          offers,
+          rng: this.rng,
+          tickIndex: this.world.tickIndex,
+        });
+        if (Array.isArray(out) && out.length) {
+          pluginDecided = out;
+          break; // первый решивший плагин выигрывает
+        }
+      }
+    }
+
+    const actionsToApply = forced.length ? forced : (pluginDecided || []);
+
+    if (actionsToApply.length) {
+      for (const a of actionsToApply) {
         const r = applyAction(this.world, a);
         this.world = r.world;
         actionsApplied.push(a);
@@ -79,6 +128,7 @@ export class SimKitSimulator {
         this.world.events.push(...r.events);
       }
     } else {
+      // fallback: эвристика как раньше
       for (const cId of Object.keys(this.world.characters).sort()) {
         const best = pickTopOffer(offers, cId);
         if (!best) continue;
