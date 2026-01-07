@@ -153,7 +153,8 @@ export function SimMapView({ sim, snapshot }: Props) {
             // подсветка: является ли узел доступным перемещением для выбранного актора
             const canMove = actor ? isNeighbor(actor.locId, l.id) : false;
             const isActorLoc = actor ? actor.locId === l.id : false;
-            const isNeighbor = neighborSet.has(l.id);
+            // Flag for rendering neighbor tiles; avoid shadowing the isNeighbor() helper.
+            const isNbr = neighborSet.has(l.id);
             const nodeRadius = isActorLoc ? 30 : 26;
 
             return (
@@ -166,7 +167,7 @@ export function SimMapView({ sim, snapshot }: Props) {
                   cx={p.x}
                   cy={p.y}
                   r={nodeRadius}
-                  fill={isActorLoc ? 'rgba(102,217,255,0.18)' : isNeighbor ? 'rgba(102,217,255,0.08)' : 'none'}
+                  fill={isActorLoc ? 'rgba(102,217,255,0.18)' : isNbr ? 'rgba(102,217,255,0.08)' : 'none'}
                   stroke="currentColor"
                   opacity={canMove ? 0.95 : 0.5}
                   strokeWidth={canMove ? 3.5 : 2.2}
