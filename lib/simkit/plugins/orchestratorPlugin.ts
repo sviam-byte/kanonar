@@ -87,12 +87,40 @@ function computeSoftmaxTopK(offers: ActionOffer[], T: number, topK: number) {
 
 // Bridge: SimSnapshot -> GoalLabSnapshotV1Like (minimal, tolerant).
 function toGoalLabSnapshot(simSnapshot: any): any {
+  const charsIn = Array.isArray(simSnapshot?.characters) ? simSnapshot.characters : [];
+  const locsIn = Array.isArray(simSnapshot?.locations) ? simSnapshot.locations : [];
+
+  const characters = charsIn.map((c: any) => {
+    const base = c?.entity ? { ...(c.entity as any) } : { id: c?.id, entityId: c?.id, title: c?.name };
+    // Не перетираем канонические поля — simkit-срез кладём отдельно.
+    (base as any).simkit = {
+      locId: c?.locId ?? null,
+      stress: c?.stress ?? null,
+      health: c?.health ?? null,
+      energy: c?.energy ?? null,
+      tickIndex: simSnapshot?.tickIndex ?? null,
+    };
+    if ((base as any).locationId == null && c?.locId) (base as any).locationId = c.locId;
+    return base;
+  });
+
+  const locations = locsIn.map((l: any) => {
+    const base = l?.entity ? { ...(l.entity as any) } : { id: l?.id, entityId: l?.id, title: l?.name };
+    if ((base as any).map == null && l?.map != null) (base as any).map = l.map;
+    (base as any).simkit = {
+      hazards: l?.hazards ?? null,
+      norms: l?.norms ?? null,
+      tickIndex: simSnapshot?.tickIndex ?? null,
+    };
+    return base;
+  });
+
   return {
     id: simSnapshot?.id,
     time: simSnapshot?.time,
     tickIndex: simSnapshot?.tickIndex,
-    characters: simSnapshot?.characters || [],
-    locations: simSnapshot?.locations || [],
+    characters,
+    locations,
     events: simSnapshot?.events || [],
     atoms: [], // orchestrator will fill
     debug: simSnapshot?.debug || {},
