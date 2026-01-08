@@ -1,0 +1,99 @@
+// lib/simkit/adapters/fromKanonarEntities.ts
+// Adapter to build a SimWorld from selected Kanonar entities.
+
+import type { LocationEntity, CharacterEntity } from '../../../types';
+import type { SimWorld } from '../core/types';
+
+function clamp01(x: number) {
+  if (!Number.isFinite(x)) return 0;
+  return Math.max(0, Math.min(1, x));
+}
+
+function locNeighborsFromConnections(loc: LocationEntity): string[] {
+  // В data/locations.ts связи указаны entityId соседних локаций.
+  return Object.keys(loc.connections || {});
+}
+
+function hazardsFromLocation(loc: LocationEntity): Record<string, number> {
+  // Hazards приходят массивом; для каждого kind берём максимум intensity.
+  const out: Record<string, number> = {};
+  for (const h of loc.hazards || []) {
+    const k = String((h as any).kind || 'unknown');
+    const v = clamp01(Number((h as any).intensity ?? 0));
+    out[k] = Math.max(out[k] ?? 0, v);
+  }
+  return out;
+}
+
+function normsFromLocation(loc: LocationEntity): Record<string, number> {
+  // Минимальная витрина норм из properties/state (если есть числовые значения).
+  const out: Record<string, number> = {};
+  const props = (loc.properties || {}) as any;
+  const state = (loc.state || {}) as any;
+
+  if (typeof props.control_level === 'number') out.control = clamp01(props.control_level);
+  if (typeof props.visibility === 'number') out.visibility = clamp01(props.visibility);
+  if (typeof props.noise === 'number') out.noise = clamp01(props.noise);
+
+  if (typeof state.alert_level === 'number') out.alert = clamp01(state.alert_level);
+  if (typeof state.crowd_level === 'number') out.crowd = clamp01(state.crowd_level);
+
+  return out;
+}
+
+function tagsFromCharacter(ch: CharacterEntity): string[] {
+  // Быстрые теги по id; можно заменить на biography/roles/capabilities при необходимости.
+  const t: string[] = [];
+  const id = ch.entityId || '';
+  if (id.includes('tegan')) t.push('authority');
+  if (id.includes('krystar')) t.push('proud');
+  return t;
+}
+
+export function makeSimWorldFromSelection(args: {
+  seed: number;
+  locations: LocationEntity[];
+  characters: CharacterEntity[];
+  placements: Record<string, string>;
+}): SimWorld {
+  const { seed, locations, characters, placements } = args;
+
+  const locMap: SimWorld['locations'] = {};
+  for (const loc of locations) {
+    locMap[loc.entityId] = {
+      id: loc.entityId,
+      name: loc.title || loc.entityId,
+      neighbors: locNeighborsFromConnections(loc).filter((id) => locations.some((l) => l.entityId === id)),
+      hazards: hazardsFromLocation(loc),
+      norms: normsFromLocation(loc),
+    };
+  }
+
+  const firstLoc = locations[0]?.entityId || 'loc:missing';
+
+  const chMap: SimWorld['characters'] = {};
+  for (const ch of characters) {
+    const locId = placements[ch.entityId] && locMap[placements[ch.entityId]]
+      ? placements[ch.entityId]
+      : firstLoc;
+
+    chMap[ch.entityId] = {
+      id: ch.entityId,
+      name: ch.title || ch.entityId,
+      locId,
+      stress: 0.2,
+      health: 1.0,
+      energy: 0.7,
+      tags: tagsFromCharacter(ch),
+    };
+  }
+
+  return {
+    tickIndex: 0,
+    seed,
+    facts: {},
+    events: [],
+    locations: locMap,
+    characters: chMap,
+  };
+}

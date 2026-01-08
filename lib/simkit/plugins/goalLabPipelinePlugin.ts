@@ -26,7 +26,10 @@ function toDomainEvents(snapshot: SimSnapshot): any[] {
     const p = (e && typeof e === 'object') ? (e.payload || {}) : {};
     const actorId = String(p.actorId ?? p.actor ?? 'system');
     const targetId = p.targetId != null ? String(p.targetId) : undefined;
-    const locationId = p.locationId != null ? String(p.locationId) : undefined;
+    // tolerate both locationId and legacy locId
+    const locationId = (p.locationId != null)
+      ? String(p.locationId)
+      : (p.locId != null ? String(p.locId) : undefined);
     const magnitude = clamp01(Number(p.magnitude ?? p.severity ?? 0.5));
     return {
       kind: String(e?.type ?? 'event'),
@@ -53,7 +56,8 @@ function buildWorldStateFromSim(world: SimWorld, snapshot: SimSnapshot): WorldSt
       title: String(c?.name ?? entityId),
       locationId: locId,
       // pipeline reads agent.memory.beliefAtoms
-      memory: { beliefAtoms: [] },
+      // persisted by perceptionMemoryPlugin into world.facts[mem:beliefAtoms:<id>]
+      memory: { beliefAtoms: arr<any>((world as any)?.facts?.[`mem:beliefAtoms:${entityId}`]) },
       // keep room for extensions
       params: {
         stress: clamp01(Number(c?.stress ?? 0)),
