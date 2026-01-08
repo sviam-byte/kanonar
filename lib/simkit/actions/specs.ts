@@ -275,12 +275,46 @@ const TalkSpec: ActionSpec = {
   },
 };
 
+const StartIntentSpec: ActionSpec = {
+  kind: 'start_intent',
+  enumerate: () => [],
+  validateV1: ({ world, offer }) => validateCommon(world, offer),
+  validateV2: ({ world, offer }) => validateCommon(world, offer),
+  classifyV3: () => 'single',
+  apply: ({ world, action }) => {
+    const notes: string[] = [];
+    const events: SimEvent[] = [];
+    const c = getChar(world, action.actorId);
+
+    const payload = action.payload && typeof action.payload === 'object' ? action.payload : {};
+    const intent = payload.intent || null;
+    const intentId = String(payload.intentId || `intent:${c.id}:${world.tickIndex}`);
+
+    // Minimal intent storage: one active intent per actor (v0).
+    world.facts[`intent:${c.id}`] = {
+      id: intentId,
+      startedAtTick: world.tickIndex,
+      intent,
+    };
+
+    notes.push(`${c.id} starts intent ${intentId}`);
+    events.push(mkActionEvent(world, 'action:start_intent', {
+      actorId: c.id,
+      locationId: c.locId,
+      intentId,
+      intent,
+    }));
+    return { world, events, notes };
+  },
+};
+
 export const ACTION_SPECS: Record<ActionKind, ActionSpec> = {
   wait: WaitSpec,
   rest: RestSpec,
   work: WorkSpec,
   move: MoveSpec,
   talk: TalkSpec,
+  start_intent: StartIntentSpec,
 };
 
 export function enumerateActionOffers(world: SimWorld): ActionOffer[] {

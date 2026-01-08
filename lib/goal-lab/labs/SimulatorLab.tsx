@@ -638,6 +638,33 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
                     </div>
                   </Card>
 
+                  <Card title="Action validation (V1/V2/V3)">
+                    {!cur?.trace?.actionValidations?.length ? (
+                      <div className="opacity-70">(no validation trace)</div>
+                    ) : (
+                      <div className="font-mono text-xs whitespace-pre-wrap">
+                        {cur.trace.actionValidations.map((v: any) => {
+                          const norm = v.normalizedTo
+                            ? `${v.normalizedTo.kind}${v.normalizedTo.targetId ? `→${v.normalizedTo.targetId}` : ''}`
+                            : '(none)';
+                          const tgt = v.targetId ? `→${v.targetId}` : '';
+                          const reasons = Array.isArray(v.reasons) ? v.reasons.join(',') : '';
+                          return (
+                            <div key={String(v.actionId)} className="mb-2">
+                              <div>
+                                {String(v.actorId)}:{String(v.kind)}
+                                {tgt} allowed={String(Boolean(v.allowed))} singleTick={String(Boolean(v.singleTick))}
+                              </div>
+                              <div className="opacity-80">
+                                reasons={reasons || '(none)'} normalizedTo={norm}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </Card>
+
                   <Card title="Top предложений (actionsProposed)">
                     <div className="font-mono text-xs opacity-90">
                       {(cur.trace.actionsProposed || []).slice(0, 120).map((o: any, i: number) => (
