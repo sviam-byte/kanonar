@@ -157,7 +157,9 @@ export class SimKitSimulator {
     }
 
     // 3) строим снапшот
-    const snapshot = buildSnapshot(this.world);
+    // IMPORTANT: by now this.world.events has been consumed/reset.
+    // We must pass the applied events explicitly for traceability.
+    const snapshot = buildSnapshot(this.world, { events: eventsApplied });
 
     // 4) собираем trace deltas (минимально: по персонажам + фактам)
     const deltasChars: TickTrace['deltas']['chars'] = [];

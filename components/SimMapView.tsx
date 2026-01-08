@@ -2,21 +2,18 @@
 // Simple interactive map for SimKit: locations graph + characters + click-to-move.
 
 import React, { useMemo, useState } from 'react';
-import type { SimSnapshot, SimAction, SimLocation, SimCharacter } from '../lib/simkit/core/types';
+import type { SimSnapshot, SimLocation, SimCharacter } from '../lib/simkit/core/types';
 import type { SimKitSimulator } from '../lib/simkit/core/simulator';
-
-function cx(...xs: Array<string | false | null | undefined>) {
-  return xs.filter(Boolean).join(' ');
-}
 
 type Props = {
   sim: SimKitSimulator;
   snapshot: SimSnapshot | null;
+  onMove?: (actorId: string, targetLocId: string) => void;
 };
 
 type Pos = { x: number; y: number };
 
-export function SimMapView({ sim, snapshot }: Props) {
+export function SimMapView({ sim, snapshot, onMove }: Props) {
   const [selectedActor, setSelectedActor] = useState<string>('');
 
   const locs: SimLocation[] = snapshot?.locations || [];
@@ -60,17 +57,12 @@ export function SimMapView({ sim, snapshot }: Props) {
     return !!from && (from.neighbors || []).includes(toId);
   }
 
-  function enqueueMove(toLocId: string) {
+  function offerManualMove(toLocId: string) {
     if (!actor) return;
     if (!isNeighbor(actor.locId, toLocId)) return;
 
-    const a: SimAction = {
-      id: `ui:move:${sim.world.tickIndex}:${actor.id}:${toLocId}`,
-      kind: 'move',
-      actorId: actor.id,
-      targetId: toLocId,
-    };
-    sim.enqueueAction(a);
+    // Delegate forced action creation to the parent to keep manual mode logic centralized.
+    onMove?.(actor.id, toLocId);
   }
 
   if (!snapshot) return <div className="text-sm opacity-70">Нет снапшота. Сделай хотя бы 1 тик.</div>;
@@ -91,9 +83,7 @@ export function SimMapView({ sim, snapshot }: Props) {
           ))}
         </select>
 
-        <div className="text-sm opacity-70">
-          Кликни по соседней локации — добавится forced move на следующий тик.
-        </div>
+        <div className="text-sm opacity-70">Кликни по соседней локации — добавится forced move на следующий тик.</div>
       </div>
 
       <div className="rounded-2xl border border-canon-border bg-canon-card p-3 overflow-hidden">
@@ -153,20 +143,21 @@ export function SimMapView({ sim, snapshot }: Props) {
             // подсветка: является ли узел доступным перемещением для выбранного актора
             const canMove = actor ? isNeighbor(actor.locId, l.id) : false;
             const isActorLoc = actor ? actor.locId === l.id : false;
-            const isNeighbor = neighborSet.has(l.id);
+            // Flag for rendering neighbor tiles; avoid shadowing the isNeighbor() helper.
+            const isNbr = neighborSet.has(l.id);
             const nodeRadius = isActorLoc ? 30 : 26;
 
             return (
               <g
                 key={l.id}
-                onClick={() => canMove && enqueueMove(l.id)}
+                onClick={() => canMove && offerManualMove(l.id)}
                 style={{ cursor: canMove ? 'pointer' : 'default' }}
               >
                 <circle
                   cx={p.x}
                   cy={p.y}
                   r={nodeRadius}
-                  fill={isActorLoc ? 'rgba(102,217,255,0.18)' : isNeighbor ? 'rgba(102,217,255,0.08)' : 'none'}
+                  fill={isActorLoc ? 'rgba(102,217,255,0.18)' : isNbr ? 'rgba(102,217,255,0.08)' : 'none'}
                   stroke="currentColor"
                   opacity={canMove ? 0.95 : 0.5}
                   strokeWidth={canMove ? 3.5 : 2.2}
