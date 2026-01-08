@@ -34,6 +34,7 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { NarrativePage } from './pages/NarrativePage';
 import { RelationsLabPage } from './pages/RelationsLabPage';
 import { SimKitLabPage } from './pages/SimKitLabPage';
+import { LocationConstructorPage } from './pages/LocationConstructorPage';
 
 
 function App() {
@@ -74,6 +75,7 @@ function App() {
                     <Route path="/simkit-lab" element={<SimKitLabPage />} />
                     <Route path="/relations-lab" element={<RelationsLabPage />} />
                     <Route path="/biography-lab" element={<BiographyLabPage />} />
+                    <Route path="/location-constructor" element={<LocationConstructorPage />} />
                     <Route path="/narrative" element={<NarrativePage />} />
                     <Route path="/:entityType" element={<EntityListPage />} />
                     <Route path="/:entityType/:entityId" element={<EntityDetailPage />} />
