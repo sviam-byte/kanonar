@@ -168,6 +168,7 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
 
   const orchestratorTrace = cur?.plugins?.orchestrator?.trace || null;
   const orchestratorSnapshot = cur?.plugins?.orchestrator?.snapshot || null;
+  const orchestratorDecision = cur?.plugins?.orchestratorDecision || null;
 
   const pipelineOut = cur?.plugins?.goalLabPipeline || null;
   const pipeline = pipelineOut?.pipeline || null;
@@ -637,6 +638,33 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
                     </div>
                   </Card>
 
+                  <Card title="Action validation (V1/V2/V3)">
+                    {!cur?.trace?.actionValidations?.length ? (
+                      <div className="opacity-70">(no validation trace)</div>
+                    ) : (
+                      <div className="font-mono text-xs whitespace-pre-wrap">
+                        {cur.trace.actionValidations.map((v: any) => {
+                          const norm = v.normalizedTo
+                            ? `${v.normalizedTo.kind}${v.normalizedTo.targetId ? `→${v.normalizedTo.targetId}` : ''}`
+                            : '(none)';
+                          const tgt = v.targetId ? `→${v.targetId}` : '';
+                          const reasons = Array.isArray(v.reasons) ? v.reasons.join(',') : '';
+                          return (
+                            <div key={String(v.actionId)} className="mb-2">
+                              <div>
+                                {String(v.actorId)}:{String(v.kind)}
+                                {tgt} allowed={String(Boolean(v.allowed))} singleTick={String(Boolean(v.singleTick))}
+                              </div>
+                              <div className="opacity-80">
+                                reasons={reasons || '(none)'} normalizedTo={norm}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </Card>
+
                   <Card title="Top предложений (actionsProposed)">
                     <div className="font-mono text-xs opacity-90">
                       {(cur.trace.actionsProposed || []).slice(0, 120).map((o: any, i: number) => (
@@ -767,6 +795,63 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
               {/* ORCHESTRATOR */}
               {tab === 'orchestrator' ? (
                 <>
+                  <Card title="Decision trace (chosen + topK softmax)">
+                    {!orchestratorDecision ? (
+                      <div className="opacity-70">(no orchestratorDecision on this tick)</div>
+                    ) : (
+                      <div className="flex flex-col gap-4">
+                        <div className="font-mono text-xs opacity-80">
+                          tickIndex={String(orchestratorDecision.tickIndex)} T={String(orchestratorDecision.T)}
+                        </div>
+
+                        <div className="flex flex-col gap-3">
+                          {Object.keys(orchestratorDecision.perActor || {})
+                            .sort()
+                            .map((actorId: string) => {
+                              const d = orchestratorDecision.perActor?.[actorId];
+                              const ch = d?.chosen;
+                              const topK = Array.isArray(d?.topK) ? d.topK : [];
+                              return (
+                                <div key={actorId} className="rounded-2xl border border-canon-border bg-canon-card p-4">
+                                  <div className="flex items-baseline justify-between gap-3">
+                                    <div className="font-extrabold">{actorId}</div>
+                                    <div className="font-mono text-xs opacity-70">
+                                      mode={String(d?.mode || 'n/a')} T={String(d?.T ?? orchestratorDecision.T)}
+                                    </div>
+                                  </div>
+
+                                  <div className="mt-2 font-mono text-sm">
+                                    chosen:{' '}
+                                    <b>{String(ch?.simKind ?? ch?.kind ?? ch?.key ?? ch?.possibilityId ?? '(none)')}</b>
+                                    {ch?.targetId ? ` target=${String(ch.targetId)}` : ''}
+                                    {Number.isFinite(ch?.score) ? ` score=${Number(ch.score).toFixed(3)}` : ''}
+                                    {Number.isFinite(ch?.cost) ? ` cost=${Number(ch.cost).toFixed(3)}` : ''}
+                                    {ch?.prob != null ? ` prob=${Number(ch.prob).toFixed(3)}` : ''}
+                                    {Array.isArray(ch?.blockedBy) && ch.blockedBy.length ? ` blockedBy=${ch.blockedBy.join(',')}` : ''}
+                                  </div>
+
+                                  <div className="mt-3">
+                                    <div className="font-bold text-sm">topK</div>
+                                    <div className="font-mono text-xs opacity-90 mt-2">
+                                      {topK.slice(0, 25).map((o: any) => (
+                                        <div key={String(o.possibilityId ?? o.key ?? o.id)} className="mb-1">
+                                          prob={o.prob != null ? Number(o.prob).toFixed(3) : 'n/a'} score={Number(o.score ?? 0).toFixed(3)} cost={Number(o.cost ?? 0).toFixed(3)} allowed={String(Boolean(o.allowed))}{' '}
+                                          key={String(o.key ?? '')}
+                                          {o.targetId ? ` target=${String(o.targetId)}` : ''}
+                                          {Array.isArray(o.blockedBy) && o.blockedBy.length ? ` blockedBy=${o.blockedBy.join(',')}` : ''}
+                                        </div>
+                                      ))}
+                                      {topK.length > 25 ? <div>… (+{topK.length - 25})</div> : null}
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                        </div>
+                      </div>
+                    )}
+                  </Card>
+
                   <Card title="Human log (оркестратор)">
                     {!orchestratorTrace ? (
                       <div className="opacity-70">Трейса оркестратора нет (registry пустой или плагин не отдал trace).</div>
