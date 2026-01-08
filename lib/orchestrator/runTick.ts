@@ -2,10 +2,10 @@
 // Single orchestrator tick: run producer stages, merge patches, and emit trace.
 
 import type {
-  AtomV1, AtomPatch, OrchestratorContext, OrchestratorTraceV1, ProducerSpec,
+  AtomV1, OrchestratorContext, OrchestratorTraceV1, ProducerSpec,
   ProducerTrace, StageTrace,
 } from './types';
-import { applyPatch, mergePatches, normalizeAtom } from './merge';
+import { applyPatch, normalizeAtom } from './merge';
 
 const nowIso = () => new Date().toISOString();
 
@@ -64,8 +64,9 @@ export function runTick(args: RunTickArgs): { nextSnapshot: any; trace: Orchestr
   const stageIds = Array.from(byStage.keys()).sort((a, b) => a.localeCompare(b));
 
   const stages: StageTrace[] = [];
-  const allPatches: AtomPatch[] = [];
   let workingAtoms: AtomV1[] = atomsIn;
+  // Track last change per atom id to reflect the sequential application truth.
+  const lastChangeById = new Map<string, { id: string; op: string; before?: AtomV1 | null; after?: AtomV1 | null }>();
 
   for (const stageId of stageIds) {
     const specs = (byStage.get(stageId) || []).slice();
@@ -106,29 +107,27 @@ export function runTick(args: RunTickArgs): { nextSnapshot: any; trace: Orchestr
       };
 
       stageTrace.producers.push(producerTrace);
-      allPatches.push(res.patch);
-
       // apply producer patch immediately to update working set
       const applied = applyPatch(workingAtoms, res.patch);
       workingAtoms = applied.atoms;
+      for (const ch of applied.changes) lastChangeById.set(ch.id, ch);
     }
 
     stages.push(stageTrace);
   }
 
-  // merged "final" patch view (mostly for summary)
-  const mergedPatch = mergePatches(allPatches);
-  const finalApplied = applyPatch(atomsIn, mergedPatch);
+  // workingAtoms is the source of truth (sequential application).
 
   // human log
-  const added = finalApplied.changes.filter(c => c.op === 'add').length;
-  const upd = finalApplied.changes.filter(c => c.op === 'update').length;
-  const rem = finalApplied.changes.filter(c => c.op === 'remove').length;
+  const atomChanges = Array.from(lastChangeById.values()).sort((a, b) => a.id.localeCompare(b.id));
+  const added = atomChanges.filter(c => c.op === 'add').length;
+  const upd = atomChanges.filter(c => c.op === 'update').length;
+  const rem = atomChanges.filter(c => c.op === 'remove').length;
 
-  const top = summarizeTopChanges(finalApplied.changes, 10);
+  const top = summarizeTopChanges(atomChanges, 10);
   const humanLog: string[] = [
     `Tick ${tickId} @ ${timeIso}`,
-    `atoms: in=${atomsIn.length} out=${finalApplied.atoms.length}  (+${added} ~${upd} -${rem})`,
+    `atoms: in=${atomsIn.length} out=${workingAtoms.length}  (+${added} ~${upd} -${rem})`,
     ...top.map(c => {
       const b = c.before?.magnitude ?? 0;
       const a = c.after?.magnitude ?? 0;
@@ -152,14 +151,14 @@ export function runTick(args: RunTickArgs): { nextSnapshot: any; trace: Orchestr
       snapshotId: args.snapshot?.id ?? null,
     },
     stages,
-    atomChanges: finalApplied.changes,
-    atomsOutCount: finalApplied.atoms.length,
+    atomChanges: atomChanges as any,
+    atomsOutCount: workingAtoms.length,
     humanLog,
   };
 
   const nextSnapshot = {
     ...args.snapshot,
-    atoms: finalApplied.atoms,
+    atoms: workingAtoms,
     debug: {
       ...(args.snapshot?.debug || {}),
       orchestrator: trace,

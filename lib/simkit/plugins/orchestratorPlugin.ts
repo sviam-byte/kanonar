@@ -26,6 +26,65 @@ function pickSoftmax(offers: ActionOffer[], T: number, rngNext: () => number): A
   return xs[xs.length - 1];
 }
 
+function clamp01(x: number) {
+  if (!Number.isFinite(x)) return 0;
+  return Math.max(0, Math.min(1, x));
+}
+
+function computeSoftmaxTopK(offers: ActionOffer[], T: number, topK: number) {
+  const xs = offers
+    .filter((o) => !o.blocked && Number.isFinite(o.score))
+    .slice()
+    .sort(
+      (a, b) =>
+        b.score - a.score ||
+        String(a.kind).localeCompare(String(b.kind)) ||
+        String(a.targetId ?? '').localeCompare(String(b.targetId ?? ''))
+    );
+
+  const head = xs.slice(0, Math.max(1, topK));
+  if (!head.length) return { items: [] as any[] };
+
+  const t = Math.max(1e-6, Number.isFinite(T) ? T : 0);
+  if (t < 1e-4) {
+    // Greedy-ish: probability mass on best.
+    const bestKey = `${head[0].kind}:${head[0].actorId}:${String(head[0].targetId ?? '')}`;
+    return {
+      items: head.map((o, i) => {
+        const key = `${o.kind}:${o.actorId}:${String(o.targetId ?? '')}`;
+        return {
+          i,
+          key,
+          kind: o.kind,
+          actorId: o.actorId,
+          targetId: o.targetId ?? null,
+          score: Number(o.score ?? 0),
+          blocked: Boolean(o.blocked),
+          reason: o.reason ?? null,
+          prob: key === bestKey ? 1 : 0,
+        };
+      }),
+    };
+  }
+
+  const max = Math.max(...head.map((o) => Number(o.score ?? 0)));
+  const ws = head.map((o) => Math.exp((Number(o.score ?? 0) - max) / t));
+  const sum = ws.reduce((a, b) => a + b, 0) || 1;
+  return {
+    items: head.map((o, i) => ({
+      i,
+      key: `${o.kind}:${o.actorId}:${String(o.targetId ?? '')}`,
+      kind: o.kind,
+      actorId: o.actorId,
+      targetId: o.targetId ?? null,
+      score: Number(o.score ?? 0),
+      blocked: Boolean(o.blocked),
+      reason: o.reason ?? null,
+      prob: clamp01(ws[i] / sum),
+    })),
+  };
+}
+
 // Bridge: SimSnapshot -> GoalLabSnapshotV1Like (minimal, tolerant).
 function toGoalLabSnapshot(simSnapshot: any): any {
   return {
@@ -41,12 +100,130 @@ function toGoalLabSnapshot(simSnapshot: any): any {
 }
 
 export function makeOrchestratorPlugin(registry: ProducerSpec[]): SimPlugin {
-  const reg = buildRegistry(registry);
+  const simkitProducers: ProducerSpec[] = [
+    {
+      stageId: 'stage:sim',
+      name: 'sim:phase_atom',
+      version: '1',
+      priority: 100,
+      run: (ctx) => {
+        const phase = ctx.snapshot?.debug?.simkit?.phase;
+        if (!phase) {
+          return {
+            patch: { add: [], update: [], remove: [] },
+            trace: {
+              name: 'sim:phase_atom',
+              version: '1',
+              inputRefs: [],
+              outputs: { atomsAdded: [], atomsUpdated: [], atomsRemoved: [] },
+              why: [],
+            },
+          };
+        }
+
+        const atom = {
+          id: 'sim:phase',
+          magnitude: 1,
+          origin: 'derived' as const,
+          ns: 'sim',
+          kind: 'phase',
+          label: `phase:${String(phase)}`,
+          meta: { phase: String(phase) },
+        };
+        const existing = ctx.atomsIn.find((a) => a.id === atom.id);
+        return {
+          patch: existing
+            ? { add: [], update: [{ before: existing, after: atom }], remove: [] }
+            : { add: [atom], update: [], remove: [] },
+          trace: {
+            name: 'sim:phase_atom',
+            version: '1',
+            inputRefs: [],
+            outputs: {
+              atomsAdded: existing ? [] : [atom],
+              atomsUpdated: existing ? [{ before: existing, after: atom }] : [],
+              atomsRemoved: [],
+            },
+            why: [],
+          },
+        };
+      },
+    },
+    {
+      stageId: 'stage:decision',
+      name: 'sim:action_chosen_atoms',
+      version: '1',
+      priority: 100,
+      run: (ctx) => {
+        const chosen = Array.isArray(ctx.snapshot?.debug?.simkit?.chosenActions)
+          ? ctx.snapshot?.debug?.simkit?.chosenActions
+          : [];
+        if (!chosen.length) {
+          return {
+            patch: { add: [], update: [], remove: [] },
+            trace: {
+              name: 'sim:action_chosen_atoms',
+              version: '1',
+              inputRefs: [],
+              outputs: { atomsAdded: [], atomsUpdated: [], atomsRemoved: [] },
+              why: [],
+            },
+          };
+        }
+
+        const updates: { before: any; after: any }[] = [];
+        const adds: any[] = [];
+        for (const action of chosen) {
+          const actorId = String(action?.actorId ?? '');
+          if (!actorId) continue;
+          const atom = {
+            id: `action:chosen:${actorId}`,
+            magnitude: 1,
+            origin: 'derived' as const,
+            ns: 'sim',
+            kind: 'action',
+            label: `chosen:${String(action?.kind ?? '')}`,
+            meta: {
+              kind: action?.kind ?? null,
+              targetId: action?.targetId ?? null,
+              actorId,
+              tickId: ctx.tickId,
+            },
+          };
+          const existing = ctx.atomsIn.find((a) => a.id === atom.id);
+          if (existing) {
+            updates.push({ before: existing, after: atom });
+          } else {
+            adds.push(atom);
+          }
+        }
+
+        return {
+          patch: { add: adds, update: updates, remove: [] },
+          trace: {
+            name: 'sim:action_chosen_atoms',
+            version: '1',
+            inputRefs: [],
+            outputs: {
+              atomsAdded: adds,
+              atomsUpdated: updates,
+              atomsRemoved: [],
+            },
+            why: [],
+          },
+        };
+      },
+    },
+  ];
+  const reg = buildRegistry([...registry, ...simkitProducers]);
 
   // Persist previous orchestrator output across sim ticks.
   // Without this, temporal diffs inside the orchestrator are always relative to null.
   let prevDecisionSnapshot: any = null;
   let prevPostSnapshot: any = null;
+  let lastDecisionTrace: any = null;
+  // Carry atom state between pre/post passes and ticks to keep memory consistent.
+  let lastAtoms: any[] = [];
 
   return {
     id: 'plugin:orchestrator',
@@ -60,12 +237,13 @@ export function makeOrchestratorPlugin(registry: ProducerSpec[]): SimPlugin {
         characters: Object.values(world.characters || {}),
         locations: Object.values(world.locations || {}),
         events: (world.events || []).slice(),
-        atoms: [],
+        atoms: lastAtoms,
         debug: {
           simkit: {
             phase: 'pre',
             T: world.facts?.['sim:T'] ?? 0.2,
             offers,
+            seed: world.seed ?? null,
           },
         },
       };
@@ -80,6 +258,7 @@ export function makeOrchestratorPlugin(registry: ProducerSpec[]): SimPlugin {
       });
 
       prevDecisionSnapshot = nextSnapshot;
+      lastAtoms = (nextSnapshot?.atoms || []).slice();
 
       // Softmax policy: T -> 0 ~ greedy; larger T -> more stochastic.
       const T = Number(world.facts?.['sim:T'] ?? 0.2);
@@ -91,9 +270,30 @@ export function makeOrchestratorPlugin(registry: ProducerSpec[]): SimPlugin {
       }
 
       const actions: SimAction[] = [];
+      const perActor: Record<string, any> = {};
       for (const actorId of Object.keys(world.characters || {}).sort()) {
-        const best = pickSoftmax(byActor[actorId] || [], T, () => rng.next());
+        const actorOffers = byActor[actorId] || [];
+        const top = computeSoftmaxTopK(actorOffers, T, 25);
+        const best = pickSoftmax(actorOffers, T, () => rng.next());
         if (!best) continue;
+
+        const chosenKey = `${best.kind}:${best.actorId}:${String(best.targetId ?? '')}`;
+        const chosenProb = (top.items || []).find((x: any) => x.key === chosenKey)?.prob ?? null;
+        perActor[actorId] = {
+          actorId,
+          T,
+          chosen: {
+            kind: best.kind,
+            actorId: best.actorId,
+            targetId: best.targetId ?? null,
+            score: Number(best.score ?? 0),
+            prob: chosenProb,
+            reason: best.reason ?? null,
+            blocked: Boolean(best.blocked),
+          },
+          topK: top.items || [],
+        };
+
         actions.push({
           id: `act:${best.kind}:${tickIndex}:${actorId}:orc`,
           kind: best.kind,
@@ -102,11 +302,41 @@ export function makeOrchestratorPlugin(registry: ProducerSpec[]): SimPlugin {
         });
       }
 
+      lastDecisionTrace = {
+        tickIndex,
+        tickId: `simkit:decide:${tickIndex}`,
+        T,
+        actorCount: Object.keys(perActor).length,
+        perActor,
+      };
+
       return actions;
     },
 
     afterSnapshot: ({ snapshot, record }) => {
-      const goalSnapIn = toGoalLabSnapshot(snapshot);
+      const chosenActions = lastDecisionTrace?.perActor
+        ? Object.values(lastDecisionTrace.perActor || {}).map((d: any) => ({
+          actorId: d?.chosen?.actorId ?? d?.actorId ?? null,
+          kind: d?.chosen?.kind ?? null,
+          targetId: d?.chosen?.targetId ?? null,
+        }))
+        : (record?.trace?.actionsApplied || []).map((a: any) => ({
+          actorId: a?.actorId ?? null,
+          kind: a?.kind ?? null,
+          targetId: a?.targetId ?? null,
+        }));
+      const goalSnapIn = {
+        ...toGoalLabSnapshot(snapshot),
+        atoms: lastAtoms,
+        debug: {
+          ...(snapshot?.debug || {}),
+          simkit: {
+            ...(snapshot?.debug?.simkit || {}),
+            phase: 'post',
+            chosenActions,
+          },
+        },
+      };
 
       const { nextSnapshot, trace } = runTick({
         tickIndex: snapshot.tickIndex,
@@ -114,14 +344,18 @@ export function makeOrchestratorPlugin(registry: ProducerSpec[]): SimPlugin {
         prevSnapshot: prevPostSnapshot,
         overrides: null,
         registry: reg,
-        seed: null,
+        seed: snapshot?.debug?.simkit?.seed ?? null,
       });
 
       prevPostSnapshot = nextSnapshot;
+      lastAtoms = (nextSnapshot?.atoms || []).slice();
 
       // Save orchestrator output into record.plugins (simulator core does not depend on this)
       record.plugins = record.plugins || {};
       record.plugins.orchestrator = { snapshot: nextSnapshot, trace };
+      if (lastDecisionTrace && lastDecisionTrace.tickIndex === snapshot.tickIndex) {
+        record.plugins.orchestratorDecision = lastDecisionTrace;
+      }
 
       // Optionally mirror short human log into snapshot.debug for quick visibility.
       record.snapshot.debug = record.snapshot.debug || {};
