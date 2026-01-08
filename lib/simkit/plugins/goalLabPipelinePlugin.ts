@@ -56,7 +56,8 @@ function buildWorldStateFromSim(world: SimWorld, snapshot: SimSnapshot): WorldSt
       title: String(c?.name ?? entityId),
       locationId: locId,
       // pipeline reads agent.memory.beliefAtoms
-      memory: { beliefAtoms: [] },
+      // persisted by perceptionMemoryPlugin into world.facts[mem:beliefAtoms:<id>]
+      memory: { beliefAtoms: arr<any>((world as any)?.facts?.[`mem:beliefAtoms:${entityId}`]) },
       // keep room for extensions
       params: {
         stress: clamp01(Number(c?.stress ?? 0)),
