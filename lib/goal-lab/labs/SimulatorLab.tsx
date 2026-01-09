@@ -39,14 +39,10 @@ type SetupDraft = {
   placements: Record<string, string>;
 };
 
-function normalizePlacements(args: {
-  draft: SetupDraft;
-  nextLocIds?: string[];
-  nextCharIds?: string[];
-}) {
-  // Keep placements in sync with the current selection.
+function normalizePlacements(args: { draft: SetupDraft; nextLocIds?: string[]; nextCharIds?: string[] }) {
   const selectedLocIds = args.nextLocIds ?? args.draft.selectedLocIds;
   const selectedCharIds = args.nextCharIds ?? args.draft.selectedCharIds;
+
   const locSet = new Set(selectedLocIds);
   const nextPlacements: Record<string, string> = { ...args.draft.placements };
 
@@ -62,11 +58,7 @@ function normalizePlacements(args: {
     }
   }
 
-  return {
-    selectedLocIds,
-    selectedCharIds,
-    placements: nextPlacements,
-  };
+  return { selectedLocIds, selectedCharIds, placements: nextPlacements };
 }
 
 function validateDraft(d: SetupDraft) {
@@ -111,6 +103,7 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
   const [version, setVersion] = useState(0);
   const [runN, setRunN] = useState(10);
   const [temperatureDraft, setTemperatureDraft] = useState(0.2);
+
   const [setupDraft, setSetupDraft] = useState<SetupDraft>({
     selectedLocIds: [],
     selectedCharIds: [],
@@ -134,7 +127,14 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
   }
   const records = sim.records;
 
+  // If no ticks exist, default to the setup view.
+  useEffect(() => {
+    if ((simRef.current?.records?.length || 0) === 0) setTab('setup');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const setupProblems = useMemo(() => validateDraft(setupDraft), [setupDraft]);
+
   const selectedLocations = useMemo(
     () => catalogLocations.filter((l) => setupDraft.selectedLocIds.includes(l.entityId)),
     [catalogLocations, setupDraft.selectedLocIds]
@@ -143,12 +143,6 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
     () => catalogCharacters.filter((c) => setupDraft.selectedCharIds.includes(c.entityId)),
     [catalogCharacters, setupDraft.selectedCharIds]
   );
-
-  // If no ticks exist, default to the setup view.
-  useEffect(() => {
-    if ((simRef.current?.records?.length || 0) === 0) setTab('setup');
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   const curIdx = selected >= 0 ? selected : records.length - 1;
   const cur = curIdx >= 0 ? records[curIdx] : null;
@@ -164,7 +158,18 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
     }));
     xs.reverse(); // newest first
     return xs;
-  }, [version]);
+  }, [version, records]);
+
+  const tickActionSummary = useMemo(() => {
+    if (!cur?.trace?.actionsApplied?.length) return '';
+    const xs = cur.trace.actionsApplied.map((a: any) => {
+      const k = String(a?.kind ?? '');
+      const actor = String(a?.actorId ?? '');
+      const t = a?.targetId ? `→${String(a.targetId)}` : '';
+      return `${actor}:${k}${t}`;
+    });
+    return xs.slice(0, 6).join(' | ') + (xs.length > 6 ? ` …(+${xs.length - 6})` : '');
+  }, [cur, curIdx, version]);
 
   const orchestratorTrace = cur?.plugins?.orchestrator?.trace || null;
   const orchestratorSnapshot = cur?.plugins?.orchestrator?.snapshot || null;
@@ -254,6 +259,7 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
   }
 
   const canSimulate = setupProblems.length === 0;
+
   const draftPreviewSnapshot = useMemo(() => {
     if (!selectedLocations.length) return sim.getPreviewSnapshot();
     const world = makeSimWorldFromSelection({
@@ -264,6 +270,7 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
     });
     return buildSnapshot(world);
   }, [selectedLocations, selectedCharacters, setupDraft.placements, seedDraft, sim]);
+
   const scenarioId = sim.cfg.scenarioId;
 
   return (
@@ -370,6 +377,9 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
                       <div className="font-mono text-xs text-canon-muted mt-1">
                         actions={it.actions} events={it.events} atoms={it.atoms} pipelineStages={it.pipelineStages}
                       </div>
+                      {it.i === curIdx && tickActionSummary ? (
+                        <div className="mt-2 text-xs opacity-80">{tickActionSummary}</div>
+                      ) : null}
                     </button>
                   ))}
                 </div>
@@ -411,11 +421,7 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
 
             <div className="grow" />
 
-            {setupProblems.length ? (
-              <Badge tone="bad">issues: {setupProblems.length}</Badge>
-            ) : (
-              <Badge tone="good">scene ok</Badge>
-            )}
+            {setupProblems.length ? <Badge tone="bad">issues: {setupProblems.length}</Badge> : <Badge tone="good">scene ok</Badge>}
           </div>
 
           {records.length === 0 && tab !== 'setup' ? (
@@ -437,9 +443,7 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
               {tab === 'setup' ? (
                 <div className="flex flex-col gap-4">
                   <Card title="Scene Setup">
-                    <div className="text-sm opacity-80 mb-2">
-                      Собери сцену: выбери локации, персонажей и задай стартовые позиции.
-                    </div>
+                    <div className="text-sm opacity-80 mb-2">Собери сцену: выбери локации, персонажей и задай стартовые позиции.</div>
 
                     <div className="grid grid-cols-12 gap-4">
                       <div className="col-span-4">
@@ -472,7 +476,7 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
                           }}
                           className="w-full min-h-[220px] rounded-xl border border-canon-border bg-canon-card px-3 py-2 text-sm"
                         >
-                          {catalogCharacters.map((c) => (
+                          {catalogCharacters.map((c: any) => (
                             <option key={c.entityId} value={c.entityId}>
                               {c.title || c.entityId} ({c.entityId})
                             </option>
@@ -486,7 +490,7 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
                           <div className="text-sm opacity-70">Выбери хотя бы одного персонажа.</div>
                         ) : (
                           <div className="flex flex-col gap-3">
-                            {selectedCharacters.map((ch) => {
+                            {selectedCharacters.map((ch: any) => {
                               const fallbackLoc = setupDraft.selectedLocIds[0] || '';
                               const locId = setupDraft.placements[ch.entityId] || fallbackLoc;
                               return (
@@ -507,10 +511,8 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
                                       }));
                                     }}
                                   >
-                                    {!setupDraft.selectedLocIds.length ? (
-                                      <option value="">(нет выбранных локаций)</option>
-                                    ) : null}
-                                    {selectedLocations.map((loc) => (
+                                    {!setupDraft.selectedLocIds.length ? <option value="">(нет выбранных локаций)</option> : null}
+                                    {selectedLocations.map((loc: any) => (
                                       <option key={loc.entityId} value={loc.entityId}>
                                         {loc.title || loc.entityId}
                                       </option>
@@ -557,11 +559,11 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
                 <>
                   <Card title="Что произошло на тике">
                     <div className="font-mono text-sm opacity-90">
-                      tickIndex={cur.snapshot.tickIndex}
+                      tickIndex={cur!.snapshot.tickIndex}
                       <br />
-                      actionsApplied={cur.trace.actionsApplied.length} eventsApplied={cur.trace.eventsApplied.length}
+                      actionsApplied={cur!.trace.actionsApplied.length} eventsApplied={cur!.trace.eventsApplied.length}
                       <br />
-                      charsChanged={cur.trace.deltas.chars.length} factsChanged={Object.keys(cur.trace.deltas.facts || {}).length}
+                      charsChanged={cur!.trace.deltas.chars.length} factsChanged={Object.keys(cur!.trace.deltas.facts || {}).length}
                       <br />
                       orchestratorAtoms={(orchestratorSnapshot?.atoms || []).length} pipelineStages={pipelineStages.length}
                     </div>
@@ -569,14 +571,14 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
 
                   <Card title="Notes (человеческий лог симулятора)">
                     <pre className="font-mono text-sm opacity-90 whitespace-pre-wrap m-0">
-                      {(cur.trace.notes || []).join('\n') || '(empty)'}
+                      {(cur!.trace.notes || []).join('\n') || '(empty)'}
                     </pre>
                   </Card>
 
                   <Card title="Дельты персонажей">
                     <div className="font-mono text-xs opacity-90">
-                      {cur.trace.deltas.chars.length ? (
-                        cur.trace.deltas.chars.map((d: any) => (
+                      {cur!.trace.deltas.chars.length ? (
+                        cur!.trace.deltas.chars.map((d: any) => (
                           <div key={d.id} className="mb-2">
                             <b>{d.id}</b> :: {JSON.stringify(d.before)} → {JSON.stringify(d.after)}
                           </div>
@@ -594,7 +596,7 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
                 <>
                   <Card title="Персонажи">
                     <div className="font-mono text-sm opacity-90">
-                      {cur.snapshot.characters.map((c: any) => (
+                      {cur!.snapshot.characters.map((c: any) => (
                         <div key={c.id} className="mb-2">
                           <b>{c.id}</b> loc={c.locId} health={clamp01(c.health).toFixed(2)} energy={clamp01(c.energy).toFixed(2)}{' '}
                           stress={clamp01(c.stress).toFixed(2)}
@@ -605,7 +607,7 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
 
                   <Card title="Локации">
                     <div className="font-mono text-xs opacity-90">
-                      {cur.snapshot.locations.map((l: any) => (
+                      {cur!.snapshot.locations.map((l: any) => (
                         <div key={l.id} className="mb-4">
                           <div className="font-extrabold">
                             {l.id} <span className="opacity-70">{l.name}</span>
@@ -625,8 +627,8 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
                 <>
                   <Card title="Действия, которые были применены">
                     <div className="font-mono text-sm opacity-90">
-                      {cur.trace.actionsApplied.length ? (
-                        cur.trace.actionsApplied.map((a: any) => (
+                      {cur!.trace.actionsApplied.length ? (
+                        cur!.trace.actionsApplied.map((a: any) => (
                           <div key={a.id} className="mb-2">
                             <b>{a.kind}</b> actor={a.actorId}
                             {a.targetId ? ` target=${a.targetId}` : ''} <span className="opacity-70">({a.id})</span>
@@ -643,7 +645,7 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
                       <div className="opacity-70">(no validation trace)</div>
                     ) : (
                       <div className="font-mono text-xs whitespace-pre-wrap">
-                        {cur.trace.actionValidations.map((v: any) => {
+                        {cur!.trace.actionValidations.map((v: any) => {
                           const norm = v.normalizedTo
                             ? `${v.normalizedTo.kind}${v.normalizedTo.targetId ? `→${v.normalizedTo.targetId}` : ''}`
                             : '(none)';
@@ -667,14 +669,14 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
 
                   <Card title="Top предложений (actionsProposed)">
                     <div className="font-mono text-xs opacity-90">
-                      {(cur.trace.actionsProposed || []).slice(0, 120).map((o: any, i: number) => (
+                      {(cur!.trace.actionsProposed || []).slice(0, 120).map((o: any, i: number) => (
                         <div key={`${o.kind}:${o.actorId}:${o.targetId ?? ''}:${i}`} className="mb-1">
                           {o.blocked ? 'BLOCK' : 'OK'} score={Number(o.score ?? 0).toFixed(3)} kind={o.kind} actor={o.actorId}
                           {o.targetId ? ` target=${o.targetId}` : ''}
                           {o.reason ? ` // ${o.reason}` : ''}
                         </div>
                       ))}
-                      {(cur.trace.actionsProposed || []).length > 120 ? <div>…</div> : null}
+                      {(cur!.trace.actionsProposed || []).length > 120 ? <div>…</div> : null}
                     </div>
                   </Card>
                 </>
@@ -682,24 +684,22 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
 
               {/* EVENTS */}
               {tab === 'events' ? (
-                <>
-                  <Card title="События, которые были применены">
-                    <div className="font-mono text-xs opacity-90">
-                      {cur.trace.eventsApplied.length ? (
-                        cur.trace.eventsApplied.map((e: any) => (
-                          <div key={e.id} className="mb-3">
-                            <div className="font-extrabold">
-                              {e.type} <span className="opacity-70">({e.id})</span>
-                            </div>
-                            <div className="opacity-90">{JSON.stringify(e.payload || {})}</div>
+                <Card title="События, которые были применены">
+                  <div className="font-mono text-xs opacity-90">
+                    {cur!.trace.eventsApplied.length ? (
+                      cur!.trace.eventsApplied.map((e: any) => (
+                        <div key={e.id} className="mb-3">
+                          <div className="font-extrabold">
+                            {e.type} <span className="opacity-70">({e.id})</span>
                           </div>
-                        ))
-                      ) : (
-                        <div>(none)</div>
-                      )}
-                    </div>
-                  </Card>
-                </>
+                          <div className="opacity-90">{JSON.stringify(e.payload || {})}</div>
+                        </div>
+                      ))
+                    ) : (
+                      <div>(none)</div>
+                    )}
+                  </div>
+                </Card>
               ) : null}
 
               {/* PIPELINE */}
@@ -795,13 +795,16 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
               {/* ORCHESTRATOR */}
               {tab === 'orchestrator' ? (
                 <>
-                  <Card title="Decision trace (chosen + topK softmax)">
+                  <Card title="Decision trace (chosen + topK softmax probs)">
                     {!orchestratorDecision ? (
-                      <div className="opacity-70">(no orchestratorDecision on this tick)</div>
+                      <div className="opacity-70">
+                        Нет orchestratorDecision на этом тике. (Либо тиков ещё не было, либо плагин не записал decision trace.)
+                      </div>
                     ) : (
                       <div className="flex flex-col gap-4">
                         <div className="font-mono text-xs opacity-80">
-                          tickIndex={String(orchestratorDecision.tickIndex)} T={String(orchestratorDecision.T)}
+                          tickIndex={String(orchestratorDecision.tickIndex)} T={String(orchestratorDecision.T)} actors=
+                          {String(orchestratorDecision.actorCount ?? Object.keys(orchestratorDecision.perActor || {}).length)}
                         </div>
 
                         <div className="flex flex-col gap-3">
@@ -811,6 +814,9 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
                               const d = orchestratorDecision.perActor?.[actorId];
                               const ch = d?.chosen;
                               const topK = Array.isArray(d?.topK) ? d.topK : [];
+
+                              const chosenLabel = String(ch?.simKind ?? ch?.kind ?? ch?.key ?? ch?.possibilityId ?? '(none)');
+
                               return (
                                 <div key={actorId} className="rounded-2xl border border-canon-border bg-canon-card p-4">
                                   <div className="flex items-baseline justify-between gap-3">
@@ -821,26 +827,35 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
                                   </div>
 
                                   <div className="mt-2 font-mono text-sm">
-                                    chosen:{' '}
-                                    <b>{String(ch?.simKind ?? ch?.kind ?? ch?.key ?? ch?.possibilityId ?? '(none)')}</b>
+                                    chosen: <b>{chosenLabel}</b>
                                     {ch?.targetId ? ` target=${String(ch.targetId)}` : ''}
                                     {Number.isFinite(ch?.score) ? ` score=${Number(ch.score).toFixed(3)}` : ''}
                                     {Number.isFinite(ch?.cost) ? ` cost=${Number(ch.cost).toFixed(3)}` : ''}
                                     {ch?.prob != null ? ` prob=${Number(ch.prob).toFixed(3)}` : ''}
                                     {Array.isArray(ch?.blockedBy) && ch.blockedBy.length ? ` blockedBy=${ch.blockedBy.join(',')}` : ''}
+                                    {ch?.reason ? ` // ${String(ch.reason)}` : ''}
                                   </div>
 
                                   <div className="mt-3">
                                     <div className="font-bold text-sm">topK</div>
                                     <div className="font-mono text-xs opacity-90 mt-2">
-                                      {topK.slice(0, 25).map((o: any) => (
-                                        <div key={String(o.possibilityId ?? o.key ?? o.id)} className="mb-1">
-                                          prob={o.prob != null ? Number(o.prob).toFixed(3) : 'n/a'} score={Number(o.score ?? 0).toFixed(3)} cost={Number(o.cost ?? 0).toFixed(3)} allowed={String(Boolean(o.allowed))}{' '}
-                                          key={String(o.key ?? '')}
-                                          {o.targetId ? ` target=${String(o.targetId)}` : ''}
-                                          {Array.isArray(o.blockedBy) && o.blockedBy.length ? ` blockedBy=${o.blockedBy.join(',')}` : ''}
-                                        </div>
-                                      ))}
+                                      {topK.slice(0, 25).map((o: any) => {
+                                        const key = String(
+                                          o.possibilityId ?? o.key ?? o.id ?? `${o.kind ?? ''}:${o.targetId ?? ''}:${o.score ?? ''}`
+                                        );
+                                        return (
+                                          <div key={key} className="mb-1">
+                                            prob={o.prob != null ? Number(o.prob).toFixed(3) : 'n/a'} score=
+                                            {Number(o.score ?? 0).toFixed(3)} cost={Number(o.cost ?? 0).toFixed(3)} allowed=
+                                            {String(Boolean(o.allowed))}{' '}
+                                            key={String(o.key ?? o.possibilityId ?? '')}
+                                            {o.kind ? ` kind=${String(o.kind)}` : ''}
+                                            {o.targetId ? ` target=${String(o.targetId)}` : ''}
+                                            {Array.isArray(o.blockedBy) && o.blockedBy.length ? ` blockedBy=${o.blockedBy.join(',')}` : ''}
+                                            {o.reason ? ` // ${String(o.reason)}` : ''}
+                                          </div>
+                                        );
+                                      })}
                                       {topK.length > 25 ? <div>… (+{topK.length - 25})</div> : null}
                                     </div>
                                   </div>
@@ -899,7 +914,7 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
                   <div className="flex gap-2 flex-wrap mb-3">
                     <Button onClick={doExportRecord}>Export record.json</Button>
                     {orchestratorSnapshot ? (
-                      <Button onClick={() => jsonDownload(`goal-lab-snapshot-${cur.snapshot.tickIndex}.json`, orchestratorSnapshot)}>
+                      <Button onClick={() => jsonDownload(`goal-lab-snapshot-${cur!.snapshot.tickIndex}.json`, orchestratorSnapshot)}>
                         Export GoalLab snapshot.json
                       </Button>
                     ) : null}

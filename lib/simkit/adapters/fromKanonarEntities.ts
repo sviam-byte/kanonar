@@ -9,6 +9,26 @@ function clamp01(x: number) {
   return Math.max(0, Math.min(1, x));
 }
 
+function num(x: any, fb: number) {
+  const v = Number(x);
+  return Number.isFinite(v) ? v : fb;
+}
+
+function pickStress(ch: any) {
+  // Эвристика: если есть runtime-поля — используем их.
+  return clamp01(num(ch?.S ?? ch?.quickStates?.stress, 0.2));
+}
+
+function pickHealth(ch: any) {
+  // hp может быть 0..1 или 0..100 — нормируем аккуратно.
+  const hp = num(ch?.hp ?? ch?.quickStates?.health, 1.0);
+  return clamp01(hp > 1.0 ? hp / 100 : hp);
+}
+
+function pickEnergy(ch: any) {
+  return clamp01(num(ch?.v ?? ch?.quickStates?.energy, 0.7));
+}
+
 function locNeighborsFromConnections(loc: LocationEntity): string[] {
   // В data/locations.ts связи указаны entityId соседних локаций.
   return Object.keys(loc.connections || {});
@@ -66,6 +86,9 @@ export function makeSimWorldFromSelection(args: {
       neighbors: locNeighborsFromConnections(loc).filter((id) => locations.some((l) => l.entityId === id)),
       hazards: hazardsFromLocation(loc),
       norms: normsFromLocation(loc),
+      tags: (loc.properties?.tags || []) as any,
+      map: (loc as any).map ?? null,
+      entity: loc,
     };
   }
 
@@ -81,10 +104,11 @@ export function makeSimWorldFromSelection(args: {
       id: ch.entityId,
       name: ch.title || ch.entityId,
       locId,
-      stress: 0.2,
-      health: 1.0,
-      energy: 0.7,
-      tags: tagsFromCharacter(ch),
+      stress: pickStress(ch as any),
+      health: pickHealth(ch as any),
+      energy: pickEnergy(ch as any),
+      tags: Array.isArray((ch as any).tags) ? (ch as any).tags : tagsFromCharacter(ch),
+      entity: ch,
     };
   }
 

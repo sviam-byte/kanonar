@@ -15,6 +15,8 @@ export type SimCharacter = {
   energy: number;     // 0..1
 
   tags?: string[];
+  // исходная сущность Kanonar (CharacterEntity / AgentState-like)
+  entity?: any;
 };
 
 export type SimLocation = {
@@ -25,6 +27,10 @@ export type SimLocation = {
   hazards?: Record<string, number>;  // hazardKey -> 0..1
   norms?: Record<string, number>;    // normKey -> 0..1
   tags?: string[];
+  // карта/план локации из Kanonar (LocationEntity.map)
+  map?: any;
+  // исходная сущность Kanonar (LocationEntity)
+  entity?: any;
 };
 
 export type SimWorld = {
