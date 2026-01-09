@@ -47,7 +47,7 @@ export type SimWorld = {
   events: SimEvent[];
 };
 
-export type ActionKind = 'move' | 'wait' | 'talk' | 'work' | 'rest';
+export type ActionKind = 'move' | 'wait' | 'talk' | 'work' | 'rest' | 'start_intent';
 
 export type SimAction = {
   id: Id;                 // unique action instance id
@@ -102,6 +102,18 @@ export type TickTrace = {
     chars: Array<{ id: Id; before: Partial<SimCharacter>; after: Partial<SimCharacter> }>;
     facts: Record<string, { before: any; after: any }>;
   };
+
+  // Validation / atomicity trace (V1/V2/V3) for actions actually attempted this tick.
+  actionValidations?: Array<{
+    actionId: string;
+    actorId: string;
+    kind: ActionKind;
+    targetId?: string | null;
+    allowed: boolean;
+    singleTick: boolean;
+    reasons: string[];
+    normalizedTo?: { id: string; kind: ActionKind; targetId?: string | null } | null;
+  }>;
 
   notes: string[];
 };

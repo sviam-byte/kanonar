@@ -5,6 +5,7 @@ import type { SimWorld, SimAction, ActionOffer, SimTickRecord, TickTrace } from 
 import { RNG } from './rng';
 import { cloneWorld, buildSnapshot } from './world';
 import { proposeActions, applyAction, applyEvent } from './rules';
+import { validateActionStrict } from '../actions/validate';
 
 export type SimPlugin = {
   id: string;
@@ -97,6 +98,7 @@ export class SimKitSimulator {
     const actionsApplied: SimAction[] = [];
     const eventsApplied: any[] = [];
     const notes: string[] = [];
+    const actionValidations: NonNullable<TickTrace['actionValidations']> = [];
 
     // 1) применяем forcedActions (если есть), иначе — даём плагинам шанс выбрать действия
     const forced = this.takeForcedActions();
@@ -120,9 +122,36 @@ export class SimKitSimulator {
 
     if (actionsToApply.length) {
       for (const a of actionsToApply) {
-        const r = applyAction(this.world, a);
+        const vr = validateActionStrict(this.world, a);
+        let actionToApply: SimAction | null = null;
+
+        if (vr.allowed) {
+          actionToApply = vr.normalizedAction ? vr.normalizedAction : a;
+        } else {
+          actionToApply = vr.fallbackAction ? vr.fallbackAction : null;
+        }
+
+        actionValidations.push({
+          actionId: a.id,
+          actorId: a.actorId,
+          kind: a.kind,
+          targetId: a.targetId ?? null,
+          allowed: vr.allowed,
+          singleTick: vr.singleTick,
+          reasons: vr.reasons,
+          normalizedTo: actionToApply
+            ? { id: actionToApply.id, kind: actionToApply.kind, targetId: actionToApply.targetId ?? null }
+            : null,
+        });
+
+        if (!actionToApply) {
+          notes.push(`action dropped: ${a.id} reasons=${vr.reasons.join(',')}`);
+          continue;
+        }
+
+        const r = applyAction(this.world, actionToApply);
         this.world = r.world;
-        actionsApplied.push(a);
+        actionsApplied.push(actionToApply);
         notes.push(...r.notes);
         // события от действий идут в очередь событий этого тика
         this.world.events.push(...r.events);
@@ -138,9 +167,30 @@ export class SimKitSimulator {
           actorId: cId,
           targetId: best.targetId ?? null,
         };
-        const r = applyAction(this.world, a);
+        const vr = validateActionStrict(this.world, a);
+        const actionToApply = vr.allowed ? (vr.normalizedAction ? vr.normalizedAction : a) : (vr.fallbackAction || null);
+
+        actionValidations.push({
+          actionId: a.id,
+          actorId: a.actorId,
+          kind: a.kind,
+          targetId: a.targetId ?? null,
+          allowed: vr.allowed,
+          singleTick: vr.singleTick,
+          reasons: vr.reasons,
+          normalizedTo: actionToApply
+            ? { id: actionToApply.id, kind: actionToApply.kind, targetId: actionToApply.targetId ?? null }
+            : null,
+        });
+
+        if (!actionToApply) {
+          notes.push(`action dropped: ${a.id} reasons=${vr.reasons.join(',')}`);
+          continue;
+        }
+
+        const r = applyAction(this.world, actionToApply);
         this.world = r.world;
-        actionsApplied.push(a);
+        actionsApplied.push(actionToApply);
         notes.push(...r.notes);
         this.world.events.push(...r.events);
       }
@@ -188,6 +238,7 @@ export class SimKitSimulator {
       actionsApplied,
       eventsApplied,
       deltas: { chars: deltasChars, facts: deltasFacts },
+      actionValidations,
       notes,
     };
 
