@@ -31,7 +31,17 @@ type Props = {
   onPushToGoalLab?: (goalLabSnapshot: any) => void;
 };
 
-type TabId = 'setup' | 'summary' | 'world' | 'actions' | 'events' | 'pipeline' | 'orchestrator' | 'map' | 'json';
+type TabId =
+  | 'setup'
+  | 'summary'
+  | 'narrative'
+  | 'world'
+  | 'actions'
+  | 'events'
+  | 'pipeline'
+  | 'orchestrator'
+  | 'map'
+  | 'json';
 
 type SetupDraft = {
   selectedLocIds: string[];
@@ -84,6 +94,111 @@ function clamp01(x: number) {
   return Math.max(0, Math.min(1, x));
 }
 
+function toFixed2(x: any) {
+  const v = Number(x);
+  return Number.isFinite(v) ? v.toFixed(2) : 'NaN';
+}
+
+function buildNameIndex(snapshot: any) {
+  const m = new Map<string, string>();
+  for (const c of snapshot?.characters || []) m.set(String(c.id), String(c.name || c?.entity?.title || c.id));
+  for (const l of snapshot?.locations || []) m.set(String(l.id), String(l.name || l?.entity?.title || l.id));
+  return m;
+}
+
+function buildAtomIndex(orchestratorSnapshot: any) {
+  const m = new Map<string, any>();
+  const atoms = orchestratorSnapshot?.atoms || [];
+  for (const a of atoms) m.set(String(a?.id), a);
+  return m;
+}
+
+function formatReasons(chosen: any, atomById: Map<string, any>) {
+  const explicit = typeof chosen?.reason === 'string' ? chosen.reason.trim() : '';
+  const used = Array.isArray(chosen?.usedAtomIds) ? chosen.usedAtomIds.map(String) : [];
+
+  const hits = used.map((id) => atomById.get(id)).filter(Boolean);
+
+  const top = hits.slice(0, 3).map((a: any) => {
+    const label = String(a?.label || a?.id || 'atom');
+    const mag = toFixed2(a?.magnitude);
+    return `${label}=${mag}`;
+  });
+
+  if (explicit && top.length) return `${explicit}; ${top.join(', ')}${hits.length > 3 ? ` …(+${hits.length - 3})` : ''}`;
+  if (explicit) return explicit;
+  if (top.length) return `${top.join(', ')}${hits.length > 3 ? ` …(+${hits.length - 3})` : ''}`;
+  return '';
+}
+
+function formatOutcomeForActor(record: any, actorId: string) {
+  const d = (record?.trace?.deltas?.chars || []).find((x: any) => String(x?.id) === String(actorId));
+  if (!d?.before || !d?.after) return '';
+
+  const parts: string[] = [];
+
+  const bLoc = d.before.locId;
+  const aLoc = d.after.locId;
+  if (bLoc != null && aLoc != null && String(bLoc) !== String(aLoc)) parts.push(`loc: ${String(bLoc)}→${String(aLoc)}`);
+
+  for (const k of ['stress', 'energy', 'health']) {
+    const b = Number(d.before[k]);
+    const a = Number(d.after[k]);
+    if (!Number.isFinite(b) || !Number.isFinite(a)) continue;
+    const dx = a - b;
+    if (Math.abs(dx) < 1e-6) continue;
+    const sign = dx >= 0 ? '+' : '';
+    parts.push(`Δ${k}=${sign}${dx.toFixed(2)}`);
+  }
+
+  // Small bonus: count non-action events as consequences.
+  const ev = (record?.trace?.eventsApplied || []).filter((e: any) => {
+    const t = String(e?.type || '');
+    const aid = String(e?.payload?.actorId || '');
+    return aid === String(actorId) && !t.startsWith('action:');
+  });
+
+  if (ev.length) parts.push(`events(+${ev.length})`);
+
+  return parts.join(' ');
+}
+
+function buildNarrativeLinesForRecord(record: any) {
+  const tick = record?.snapshot?.tickIndex ?? -1;
+
+  const nameById = buildNameIndex(record?.snapshot);
+  const orchestratorSnapshot = record?.plugins?.orchestrator?.snapshot || null;
+  const atomById = buildAtomIndex(orchestratorSnapshot);
+  const perActor = record?.plugins?.orchestratorDecision?.perActor || {};
+
+  const lines: string[] = [];
+  const actions = record?.trace?.actionsApplied || [];
+
+  for (const a of actions) {
+    const actorId = String(a?.actorId || '');
+    const targetId = a?.targetId != null ? String(a.targetId) : '';
+    const actorName = nameById.get(actorId) || actorId;
+    const targetName = targetId ? nameById.get(targetId) || targetId : '';
+
+    const chosen = perActor?.[actorId]?.chosen || null;
+    const reasons = formatReasons(chosen, atomById);
+    const outcome = formatOutcomeForActor(record, actorId);
+
+    const scorePart =
+      chosen && Number.isFinite(Number(chosen.score))
+        ? ` (score=${Number(chosen.score).toFixed(3)}${Number.isFinite(Number(chosen.prob)) ? ` p=${Number(chosen.prob).toFixed(2)}` : ''})`
+        : '';
+
+    const tgt = targetName ? ` → ${targetName}` : '';
+    const why = reasons ? ` потому что ${reasons}` : '';
+    const got = outcome ? ` и получил ${outcome}` : '';
+
+    lines.push(`tick ${tick} · ${actorName}: ${String(a?.kind || 'action')}${tgt}${scorePart}${why}${got}`);
+  }
+
+  return lines;
+}
+
 // Normalize lists of ids to stable, trimmed string arrays for comparisons and display.
 function normalizeIdList(xs: Array<string | number | null | undefined>) {
   return xs.map((x) => String(x || '').trim()).filter(Boolean).sort();
@@ -99,6 +214,7 @@ function sameSet(a: string[], b: string[]) {
 
 export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
   const simRef = useRef<SimKitSimulator | null>(null);
+  const narrativeScrollRef = useRef<HTMLDivElement | null>(null);
 
   // Catalog: entities available for selection in the simulator setup.
   const catalogLocations = useMemo(
@@ -123,6 +239,9 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
   const [offersKeyFilter, setOffersKeyFilter] = useState<string>(''); // substring
   const [offersBlockedByFilter, setOffersBlockedByFilter] = useState<string>(''); // substring over blockedBy[]
   const [offersOnlyRejected, setOffersOnlyRejected] = useState<boolean>(false);
+  const [liveOn, setLiveOn] = useState(false);
+  const [liveHz, setLiveHz] = useState(2); // ticks per second
+  const [followLatest, setFollowLatest] = useState(true);
 
   const [setupDraft, setSetupDraft] = useState<SetupDraft>({
     selectedLocIds: [],
@@ -179,6 +298,23 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
     xs.reverse(); // newest first
     return xs;
   }, [version, records]);
+
+  const narrativeLines = useMemo(() => {
+    // Keep only the latest chunk to avoid DOM overload.
+    const N = 200;
+    const slice = records.slice(Math.max(0, records.length - N));
+    const out: string[] = [];
+    for (const r of slice) out.push(...buildNarrativeLinesForRecord(r));
+    return out;
+  }, [records, version]);
+
+  useEffect(() => {
+    if (tab !== 'narrative') return;
+    if (!followLatest) return;
+    const el = narrativeScrollRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  }, [tab, narrativeLines.length, followLatest]);
 
   const nameById = useMemo(() => {
     const map = new Map<string, string>();
@@ -352,6 +488,27 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
     hardRefreshAfterRun();
   }
 
+  useEffect(() => {
+    if (!liveOn) return;
+
+    const hz = Math.max(0.25, Number(liveHz) || 1);
+    const periodMs = Math.max(16, Math.round(1000 / hz));
+
+    const t = window.setInterval(() => {
+      try {
+        sim.step();
+        if (followLatest) setSelected(-1);
+        setVersion((v) => v + 1);
+      } catch (e) {
+        console.warn('Live tick failed; stopping live mode', e);
+        setLiveOn(false);
+      }
+    }, periodMs);
+
+    return () => window.clearInterval(t);
+    // simRef.current is stable; dependency is safe.
+  }, [liveOn, liveHz, followLatest, sim]);
+
   function exportSession() {
     const exp = buildExport({ scenarioId: sim.cfg.scenarioId, seed: sim.world.seed, records: sim.records });
     jsonDownload('simkit-session.json', exp);
@@ -512,6 +669,16 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
               <Button onClick={doReset}>Reset</Button>
             </div>
 
+            <div className="mt-3 flex items-center gap-2 flex-wrap">
+              <Badge>Live</Badge>
+              <span className="text-xs text-canon-muted font-mono">Hz</span>
+              <Input className="w-20" value={String(liveHz)} onChange={(e) => setLiveHz(Number(e.target.value))} />
+              <Button kind={liveOn ? 'danger' : 'primary'} onClick={() => setLiveOn((x) => !x)} disabled={!canSimulate}>
+                {liveOn ? 'Stop live' : 'Start live'}
+              </Button>
+              <Button onClick={() => setFollowLatest((x) => !x)}>{followLatest ? 'Follow: ON' : 'Follow: OFF'}</Button>
+            </div>
+
             <div className="mt-3 flex items-center gap-2">
               <span className="text-xs text-canon-muted font-mono">run</span>
               <Input className="w-24" value={String(runN)} onChange={(e) => setRunN(Number(e.target.value))} />
@@ -581,6 +748,9 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
             </TabButton>
             <TabButton active={tab === 'summary'} onClick={() => setTab('summary')}>
               Сводка
+            </TabButton>
+            <TabButton active={tab === 'narrative'} onClick={() => setTab('narrative')}>
+              Нарратив
             </TabButton>
             <TabButton active={tab === 'world'} onClick={() => setTab('world')}>
               Мир
@@ -774,6 +944,37 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
                     </div>
                   </Card>
                 </>
+              ) : null}
+
+              {/* NARRATIVE */}
+              {tab === 'narrative' ? (
+                <Card title="Нарративный лог (X сделал Y потому что Z и получил W)" bodyClassName="p-0">
+                  <div className="p-3 border-b border-canon-border flex items-center gap-2 flex-wrap">
+                    <Button kind={liveOn ? 'danger' : 'primary'} onClick={() => setLiveOn((x) => !x)} disabled={!canSimulate}>
+                      {liveOn ? 'Stop live' : 'Start live'}
+                    </Button>
+                    <span className="text-xs text-canon-muted font-mono">Hz</span>
+                    <Input className="w-20" value={String(liveHz)} onChange={(e) => setLiveHz(Number(e.target.value))} />
+
+                    <Button onClick={() => setFollowLatest((x) => !x)}>{followLatest ? 'Follow: ON' : 'Follow: OFF'}</Button>
+
+                    <div className="grow" />
+
+                    <Button onClick={() => copyJsonToClipboard({ lines: narrativeLines })} disabled={!narrativeLines.length}>
+                      Copy lines.json
+                    </Button>
+                    <Button
+                      onClick={() => downloadJsonFile({ lines: narrativeLines }, 'narrative-lines.json')}
+                      disabled={!narrativeLines.length}
+                    >
+                      Export lines.json
+                    </Button>
+                  </div>
+
+                  <div ref={narrativeScrollRef} className="max-h-[640px] overflow-auto p-3 font-mono text-xs whitespace-pre-wrap">
+                    {narrativeLines.length ? narrativeLines.join('\n') : '(empty)'}
+                  </div>
+                </Card>
               ) : null}
 
               {/* WORLD */}
