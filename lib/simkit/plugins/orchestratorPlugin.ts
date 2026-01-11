@@ -3,7 +3,7 @@
 
 import type { SimPlugin } from '../core/simulator';
 import type { SimAction, ActionOffer } from '../core/types';
-import type { ProducerSpec } from '../../orchestrator/types';
+import type { ProducerSpec, TickDebugFrameV1, TickDebugStageV1 } from '../../orchestrator/types';
 import { runTick } from '../../orchestrator/runTick';
 import { buildRegistry } from '../../orchestrator/registry';
 import type { ContextAtom } from '../../context/v2/types';
@@ -84,6 +84,20 @@ function isExecutableKey(k: string) {
   return k === 'wait' || k === 'rest' || k === 'talk' || k === 'observe' || k === 'ask_info' || k === 'negotiate';
 }
 
+// Count atoms by subject for UI summaries.
+function countAtomsBySubject(atomsAll: any[]): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const a of atomsAll || []) {
+    const subj = String((a as any)?.subject || 'global');
+    out[subj] = (out[subj] || 0) + 1;
+  }
+  return out;
+}
+
+// Helper to build a debug stage with consistent shape.
+function makeStage(id: TickDebugStageV1['id'], title: string, data: Record<string, any>): TickDebugStageV1 {
+  return { id, title, data };
+}
 function toSimActionFromPossibility(p: Possibility, tickIndex: number, actorId: string): SimAction | null {
   const k = keyFromPossibilityId(p.id);
   const targetId = (p as any)?.targetId ?? null;
@@ -278,6 +292,12 @@ export function makeOrchestratorPlugin(registry: ProducerSpec[]): SimPlugin {
 
   // Last decision trace per tick for UI.
   let lastDecisionTrace: any = null;
+  // High-level per-tick debug frame (S0..S6).
+  let lastDebugFrame: TickDebugFrameV1 | null = null;
+
+  // Ring buffer of high-level tick debug frames.
+  const debugFrames: TickDebugFrameV1[] = [];
+  const DEBUG_FRAMES_MAX = 80;
 
   return {
     id: 'plugin:orchestrator',
@@ -317,6 +337,7 @@ export function makeOrchestratorPlugin(registry: ProducerSpec[]): SimPlugin {
       // 2) Decide per-actor using GoalLab possibilities (preferred), fallback to SimKit offers if none executable.
       const T = Number(world.facts?.['sim:T'] ?? 0.2);
       const atomsAll = (preOut.nextSnapshot?.atoms || []) as ContextAtom[];
+      const atomsBySubject = countAtomsBySubject(atomsAll as any);
 
       const actions: SimAction[] = [];
       const perActor: Record<string, any> = {};
@@ -389,6 +410,21 @@ export function makeOrchestratorPlugin(registry: ProducerSpec[]): SimPlugin {
               blockedBy: (x as any)?.why?.blockedBy || [],
               reason: (x as any)?.why?.reason || null,
             })),
+            rejected: ranked
+              .filter((x: any) => !Boolean(x?.allowed))
+              .slice(0, 50)
+              .map((x: any) => ({
+                possibilityId: x.p?.id ?? x.id,
+                key: keyFromPossibilityId(x.p?.id ?? x.id),
+                targetId: (x.p as any)?.targetId ?? (x as any)?.targetId ?? null,
+                score: Number(x.score ?? 0),
+                cost: Number(x.cost ?? 0),
+                allowed: false,
+                blockedBy: (x as any)?.why?.blockedBy || [],
+                usedAtomIds: (x as any)?.why?.usedAtomIds || [],
+                reason: (x as any)?.why?.reason || null,
+              })),
+            rejectedCount: ranked.filter((x: any) => !Boolean(x?.allowed)).length,
           };
 
           continue;
@@ -438,6 +474,20 @@ export function makeOrchestratorPlugin(registry: ProducerSpec[]): SimPlugin {
               blockedBy: o.blocked ? ['offer_blocked'] : [],
               reason: o.reason ?? null,
             })),
+          rejected: actorOffers
+            .filter((o) => Boolean(o.blocked))
+            .slice(0, 50)
+            .map((o) => ({
+              key: `${String(o.kind)}:${String(o.targetId ?? '')}`,
+              kind: o.kind,
+              targetId: o.targetId ?? null,
+              score: Number(o.score ?? 0),
+              cost: Number((o as any)?.cost ?? 0),
+              allowed: false,
+              blockedBy: ['offer_blocked'],
+              reason: o.reason ?? null,
+            })),
+          rejectedCount: actorOffers.filter((o) => Boolean(o.blocked)).length,
         };
       }
 
@@ -447,7 +497,57 @@ export function makeOrchestratorPlugin(registry: ProducerSpec[]): SimPlugin {
         T,
         actorCount: Object.keys(perActor).length,
         perActor,
+        preTrace: preOut.trace,
+        atomsDigest: {
+          atomsTotal: atomsAll.length,
+          atomsBySubject,
+        },
       };
+
+      // High-level debug frame (S0..S6). S5/S6 will be completed in afterSnapshot().
+      const df: TickDebugFrameV1 = {
+        schema: 'KanonarTickDebugFrameV1',
+        tickIndex,
+        tickId: `simkit:tick:${tickIndex}`,
+        time: preSnap.time,
+        preTraceTickId: preOut.trace?.tickId ?? null,
+        stages: [
+          makeStage('S0', 'Input', {
+            seed: world.seed ?? null,
+            T,
+            actors: Object.keys(world.characters || {}).sort(),
+            locations: Object.keys(world.locations || {}).sort(),
+            eventsCount: Array.isArray(world.events) ? world.events.length : 0,
+            pluginMode: 'possibilities',
+          }),
+          makeStage('S1', 'Atoms', {
+            atomsTotal: atomsAll.length,
+            atomsBySubject,
+            humanLog: preOut.trace?.humanLog || [],
+          }),
+          makeStage('S2', 'Goals', { note: 'pending (Goal atoms not split yet)' }),
+          makeStage('S3', 'Offers', {
+            perActor: Object.fromEntries(
+              Object.entries(perActor).map(([aid, d]: any) => [
+                aid,
+                {
+                  mode: d?.mode,
+                  topK: d?.topK || [],
+                  rejectedCount: d?.rejectedCount ?? 0,
+                  rejected: d?.rejected || [],
+                },
+              ]),
+            ),
+          }),
+          makeStage('S4', 'Decision', {
+            perActor: Object.fromEntries(Object.entries(perActor).map(([aid, d]: any) => [aid, { chosen: d?.chosen || null }])),
+          }),
+          makeStage('S5', 'Consequences', { pending: true }),
+          makeStage('S6', 'Output', { pending: true }),
+        ],
+      };
+
+      (lastDecisionTrace as any).debugFrame = df;
 
       return actions;
     },
@@ -502,6 +602,43 @@ export function makeOrchestratorPlugin(registry: ProducerSpec[]): SimPlugin {
 
       if (lastDecisionTrace && lastDecisionTrace.tickIndex === snapshot.tickIndex) {
         record.plugins.orchestratorDecision = lastDecisionTrace;
+
+        // Finalize high-level debug frame.
+        const df: TickDebugFrameV1 | null = (lastDecisionTrace as any).debugFrame || null;
+        if (df) {
+          df.postTraceTickId = postOut.trace?.tickId ?? null;
+
+          // Best-effort: simulator record traces (may be absent).
+          const applied = Array.isArray((record as any)?.trace?.actionsApplied) ? (record as any).trace.actionsApplied : [];
+          const emitted = Array.isArray((record as any)?.trace?.eventsEmitted) ? (record as any).trace.eventsEmitted : [];
+
+          const s5 = df.stages.find((s) => s.id === 'S5');
+          if (s5) {
+            s5.data = {
+              pending: false,
+              actionsApplied: applied,
+              eventsEmitted: emitted,
+              chosenActions,
+            };
+          }
+
+          const s6 = df.stages.find((s) => s.id === 'S6');
+          if (s6) {
+            s6.data = {
+              pending: false,
+              postHumanLog: postOut.trace?.humanLog || [],
+              atomsOutCount: postOut.trace?.atomsOutCount ?? null,
+            };
+          }
+
+          lastDebugFrame = df;
+          debugFrames.push(df);
+          while (debugFrames.length > DEBUG_FRAMES_MAX) debugFrames.shift();
+
+          // удобные поля для UI
+          record.plugins.orchestratorDebugFrame = df;
+          record.plugins.orchestratorDebug = { current: df, history: debugFrames.slice() };
+        }
       }
 
       // Quick visibility

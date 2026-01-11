@@ -76,6 +76,30 @@ export type OrchestratorTraceV1 = {
   humanLog: string[];           // lines, ready for UI
 };
 
+// -----------------------------
+// High-level tick debug frame (UI-first)
+// -----------------------------
+export type TickStageId = 'S0' | 'S1' | 'S2' | 'S3' | 'S4' | 'S5' | 'S6';
+
+export type TickDebugStageV1 = {
+  id: TickStageId;
+  title: string;
+  // Keep JSON-friendly and extensible.
+  data: Record<string, any>;
+};
+
+export type TickDebugFrameV1 = {
+  schema: 'KanonarTickDebugFrameV1';
+  tickIndex: number;
+  tickId: string;
+  time: string; // ISO
+
+  preTraceTickId?: string | null;
+  postTraceTickId?: string | null;
+
+  stages: TickDebugStageV1[];
+};
+
 export type AtomPatch = {
   add: AtomV1[];
   update: { before: AtomV1; after: AtomV1 }[];
