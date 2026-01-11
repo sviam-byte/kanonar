@@ -20,6 +20,25 @@ function clamp01(x: number) {
   return Math.max(0, Math.min(1, x));
 }
 
+// Read actor filter from world.facts['sim:actors'] (array or comma-separated string).
+function readActorFilter(world: any): string[] | null {
+  const raw = world?.facts?.['sim:actors'];
+  if (!raw) return null;
+
+  if (Array.isArray(raw)) {
+    return raw.map((x) => String(x || '').trim()).filter(Boolean);
+  }
+
+  if (typeof raw === 'string') {
+    return raw
+      .split(',')
+      .map((x) => String(x || '').trim())
+      .filter(Boolean);
+  }
+
+  return null;
+}
+
 // Helper: softmax sampling (deterministic via rng) with temperature control.
 function pickSoftmax(offers: ActionOffer[], T: number, rngNext: () => number): ActionOffer | null {
   const xs = offers.filter((o) => !o.blocked && Number.isFinite(o.score) && o.score > 0);
@@ -349,7 +368,15 @@ export function makeOrchestratorPlugin(registry: ProducerSpec[]): SimPlugin {
         (offersByActor[k] = offersByActor[k] || []).push(o);
       }
 
-      for (const actorId of Object.keys(world.characters || {}).sort()) {
+      // Respect the "active cast" from world.facts['sim:actors'], falling back to all characters.
+      const actorFilter = readActorFilter(world);
+      const actorIds = (actorFilter && actorFilter.length ? actorFilter : Object.keys(world.characters || {}))
+        .map((x) => String(x || '').trim())
+        .filter(Boolean)
+        .filter((id) => Boolean((world.characters || {})[id]))
+        .sort();
+
+      for (const actorId of actorIds) {
         // Actor-scoped atoms (if your atoms encode subject; otherwise this is harmless).
         const atoms = atomsAll.filter((a: any) => {
           const subj = (a as any)?.subject;
@@ -515,7 +542,7 @@ export function makeOrchestratorPlugin(registry: ProducerSpec[]): SimPlugin {
           makeStage('S0', 'Input', {
             seed: world.seed ?? null,
             T,
-            actors: Object.keys(world.characters || {}).sort(),
+            actors: actorIds,
             locations: Object.keys(world.locations || {}).sort(),
             eventsCount: Array.isArray(world.events) ? world.events.length : 0,
             pluginMode: 'possibilities',
