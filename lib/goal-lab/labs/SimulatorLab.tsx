@@ -84,6 +84,19 @@ function clamp01(x: number) {
   return Math.max(0, Math.min(1, x));
 }
 
+// Normalize lists of ids to stable, trimmed string arrays for comparisons and display.
+function normalizeIdList(xs: Array<string | number | null | undefined>) {
+  return xs.map((x) => String(x || '').trim()).filter(Boolean).sort();
+}
+
+// Compare two lists as sets (order-insensitive).
+function sameSet(a: string[], b: string[]) {
+  if (a.length !== b.length) return false;
+  const aSorted = normalizeIdList(a);
+  const bSorted = normalizeIdList(b);
+  return aSorted.every((id, i) => id === bSorted[i]);
+}
+
 export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
   const simRef = useRef<SimKitSimulator | null>(null);
 
@@ -167,16 +180,37 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
     return xs;
   }, [version, records]);
 
+  const nameById = useMemo(() => {
+    const map = new Map<string, string>();
+    const snapshotChars = cur?.snapshot?.characters ?? null;
+
+    if (Array.isArray(snapshotChars)) {
+      for (const ch of snapshotChars) {
+        const id = String((ch as any)?.id ?? (ch as any)?.entityId ?? '');
+        const name = String((ch as any)?.name ?? (ch as any)?.title ?? (ch as any)?.entity?.title ?? '');
+        if (id && name) map.set(id, name);
+      }
+    } else {
+      for (const [id, ch] of Object.entries(sim.world.characters || {})) {
+        const name = String((ch as any)?.name ?? (ch as any)?.title ?? (ch as any)?.entity?.title ?? '');
+        if (name) map.set(String(id), name);
+      }
+    }
+
+    return map;
+  }, [cur, sim, version]);
+
   const tickActionSummary = useMemo(() => {
     if (!cur?.trace?.actionsApplied?.length) return '';
     const xs = cur.trace.actionsApplied.map((a: any) => {
       const k = String(a?.kind ?? '');
       const actor = String(a?.actorId ?? '');
+      const actorLabel = nameById.get(actor) ? `${nameById.get(actor)}<${actor}>` : actor;
       const t = a?.targetId ? `→${String(a.targetId)}` : '';
-      return `${actor}:${k}${t}`;
+      return `${actorLabel}:${k}${t}`;
     });
     return xs.slice(0, 6).join(' | ') + (xs.length > 6 ? ` …(+${xs.length - 6})` : '');
-  }, [cur, curIdx, version]);
+  }, [cur, curIdx, nameById, version]);
 
   const orchestratorTrace = cur?.plugins?.orchestrator?.trace || null;
   const orchestratorSnapshot = cur?.plugins?.orchestrator?.snapshot || null;
@@ -348,6 +382,10 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
       characters: selectedCharacters,
       placements: setupDraft.placements,
     });
+    // Persist active cast + temperature into world facts for the orchestrator.
+    world.facts = world.facts || {};
+    world.facts['sim:actors'] = Object.keys(world.characters || {}).sort();
+    world.facts['sim:T'] = temperatureDraft;
     sim.setInitialWorld(world, { seed: seedDraft, scenarioId: basicScenarioId });
     setSelected(-1);
     setVersion((v) => v + 1);
@@ -373,7 +411,29 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
     sim.world.facts['sim:T'] = safeValue;
   }
 
-  const canSimulate = setupProblems.length === 0;
+  const worldCharIds = useMemo(() => normalizeIdList(Object.keys(sim.world.characters || {})), [sim, version]);
+  const worldLocIds = useMemo(() => normalizeIdList(Object.keys(sim.world.locations || {})), [sim, version]);
+
+  const worldCastIds = useMemo(() => {
+    const raw = sim.world.facts?.['sim:actors'];
+    if (Array.isArray(raw)) return normalizeIdList(raw);
+    if (typeof raw === 'string') {
+      return normalizeIdList(
+        raw
+          .split(',')
+          .map((x) => String(x || '').trim())
+          .filter(Boolean)
+      );
+    }
+    return [];
+  }, [sim, version]);
+
+  const draftHasSelection = setupDraft.selectedLocIds.length > 0 || setupDraft.selectedCharIds.length > 0;
+  const worldMatchesDraft = !draftHasSelection
+    ? true
+    : sameSet(worldCharIds, setupDraft.selectedCharIds) && sameSet(worldLocIds, setupDraft.selectedLocIds);
+
+  const canSimulate = !draftHasSelection ? true : setupProblems.length === 0 && worldMatchesDraft;
 
   const draftPreviewSnapshot = useMemo(() => {
     if (!selectedLocations.length) return sim.getPreviewSnapshot();
@@ -395,6 +455,10 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
           <div className="text-lg font-semibold tracking-tight">Simulator Lab</div>
           <div className="text-xs text-canon-muted font-mono">
             simkit | worldTick={sim.world.tickIndex} | records={sim.records.length} | scenario={scenarioId}
+            <div className="text-[11px] text-canon-muted/80">
+              chars={worldCharIds.join(',') || '—'} | locs={worldLocIds.join(',') || '—'} | cast:{' '}
+              {worldCastIds.join(',') || '—'}
+            </div>
           </div>
           <div className="grow" />
 
@@ -428,6 +492,12 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
             <div className="text-sm text-canon-muted mb-3">
               Симулятор = мир → действия → события → снапшот. Нажми “Сделать 1 тик”, чтобы появились записи и отладка.
             </div>
+            {draftHasSelection && !worldMatchesDraft ? (
+              <div className="mb-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+                Вы выбрали сцену в табе Setup, но ещё не применили её к миру. Нажмите <b>Apply + Reset</b>, иначе тики
+                будут идти по предыдущему миру.
+              </div>
+            ) : null}
 
             <div className="flex gap-2 flex-wrap">
               <Button kind="primary" onClick={doStep} disabled={!canSimulate}>
@@ -546,7 +616,7 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
                 Сейчас записей нет, поэтому “смотреть” нечего. Симулятор создаёт записи только после тиков. Нажми кнопку ниже —
                 появится tick 0 и вся отладка.
               </div>
-              <Button kind="primary" onClick={doStep}>
+              <Button kind="primary" onClick={doStep} disabled={!canSimulate}>
                 Сделать 1 тик
               </Button>
             </div>
