@@ -103,6 +103,13 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
   const [version, setVersion] = useState(0);
   const [runN, setRunN] = useState(10);
   const [temperatureDraft, setTemperatureDraft] = useState(0.2);
+  // Orchestrator high-level debug viewer.
+  const [dbgFrameTickId, setDbgFrameTickId] = useState<string>('');
+  const [dbgStageId, setDbgStageId] = useState<'S0' | 'S1' | 'S2' | 'S3' | 'S4' | 'S5' | 'S6'>('S0');
+  const [offersActorFilter, setOffersActorFilter] = useState<string>(''); // substring
+  const [offersKeyFilter, setOffersKeyFilter] = useState<string>(''); // substring
+  const [offersBlockedByFilter, setOffersBlockedByFilter] = useState<string>(''); // substring over blockedBy[]
+  const [offersOnlyRejected, setOffersOnlyRejected] = useState<boolean>(false);
 
   const [setupDraft, setSetupDraft] = useState<SetupDraft>({
     selectedLocIds: [],
@@ -174,10 +181,118 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
   const orchestratorTrace = cur?.plugins?.orchestrator?.trace || null;
   const orchestratorSnapshot = cur?.plugins?.orchestrator?.snapshot || null;
   const orchestratorDecision = cur?.plugins?.orchestratorDecision || null;
+  const orchestratorDebug = (cur as any)?.plugins?.orchestratorDebug || null;
+  const orchestratorDebugFrame = (cur as any)?.plugins?.orchestratorDebugFrame || null;
 
   const pipelineOut = cur?.plugins?.goalLabPipeline || null;
   const pipeline = pipelineOut?.pipeline || null;
   const pipelineStages = pipeline?.stages || [];
+
+  const dbgHistory = useMemo(() => {
+    const xs = (orchestratorDebug?.history && Array.isArray(orchestratorDebug.history) ? orchestratorDebug.history : null) as
+      | any[]
+      | null;
+    if (xs && xs.length) return xs;
+    if (orchestratorDebugFrame) return [orchestratorDebugFrame];
+    return [];
+  }, [orchestratorDebug, orchestratorDebugFrame, curIdx, version]);
+
+  const dbgCurrentFrame = useMemo(() => {
+    if (!dbgHistory.length) return null;
+    if (dbgFrameTickId) {
+      const hit = dbgHistory.find((f: any) => String(f?.tickId ?? '') === String(dbgFrameTickId));
+      if (hit) return hit;
+    }
+    // Default: newest.
+    return dbgHistory[dbgHistory.length - 1];
+  }, [dbgHistory, dbgFrameTickId]);
+
+  const dbgStage = useMemo(() => {
+    const f = dbgCurrentFrame;
+    if (!f?.stages) return null;
+    return (f.stages as any[]).find((s) => String(s?.id) === String(dbgStageId)) || null;
+  }, [dbgCurrentFrame, dbgStageId]);
+
+  const dbgS3 = useMemo(() => {
+    const f = dbgCurrentFrame;
+    if (!f?.stages) return null;
+    return (f.stages as any[]).find((s) => String(s?.id) === 'S3') || null;
+  }, [dbgCurrentFrame]);
+
+  const offersPerActor = useMemo(() => {
+    const raw = dbgS3?.data?.perActor;
+    if (!raw || typeof raw !== 'object') return {};
+    return raw as Record<string, any>;
+  }, [dbgS3]);
+
+  const filteredActorIds = useMemo(() => {
+    const all = Object.keys(offersPerActor || {}).sort();
+    const aF = offersActorFilter.trim().toLowerCase();
+    if (!aF) return all;
+    return all.filter((id) => id.toLowerCase().includes(aF));
+  }, [offersPerActor, offersActorFilter]);
+
+  function offerKeyOf(o: any): string {
+    return String(o?.key ?? o?.possibilityId ?? o?.id ?? o?.kind ?? '');
+  }
+
+  function blockedByStr(o: any): string {
+    const bb = (o as any)?.blockedBy;
+    if (!Array.isArray(bb)) return '';
+    return bb.map((x) => String(x)).join(',');
+  }
+
+  function offerPassesFilters(o: any): boolean {
+    const kF = offersKeyFilter.trim().toLowerCase();
+    const bF = offersBlockedByFilter.trim().toLowerCase();
+    if (kF) {
+      const k = offerKeyOf(o).toLowerCase();
+      if (!k.includes(kF)) return false;
+    }
+    if (bF) {
+      const bb = blockedByStr(o).toLowerCase();
+      if (!bb.includes(bF)) return false;
+    }
+    return true;
+  }
+
+  async function copyJsonToClipboard(obj: any) {
+    try {
+      const txt = JSON.stringify(obj ?? null, null, 2);
+      await navigator.clipboard.writeText(txt);
+      // No toast system assumed; keep silent.
+    } catch (e) {
+      console.warn('copyJsonToClipboard failed', e);
+    }
+  }
+
+  function downloadJsonFile(obj: any, filename: string) {
+    try {
+      const txt = JSON.stringify(obj ?? null, null, 2);
+      const blob = new Blob([txt], { type: 'application/json;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.warn('downloadJsonFile failed', e);
+    }
+  }
+
+  useEffect(() => {
+    // Whenever we get a new history, default to newest tickId (stable).
+    if (!dbgHistory.length) return;
+    const newest = dbgHistory[dbgHistory.length - 1];
+    const newestId = String(newest?.tickId ?? '');
+    if (!dbgFrameTickId || !dbgHistory.some((f: any) => String(f?.tickId ?? '') === String(dbgFrameTickId))) {
+      setDbgFrameTickId(newestId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dbgHistory.length, curIdx, version]);
 
   function hardRefreshAfterRun() {
     setSelected(-1);
@@ -795,6 +910,272 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
               {/* ORCHESTRATOR */}
               {tab === 'orchestrator' ? (
                 <>
+                  <Card title="Tick Debug (S0–S6) + history">
+                    {!dbgHistory.length ? (
+                      <div className="opacity-70">
+                        Нет orchestratorDebug (ещё не было тиков или плагин не записал orchestratorDebugFrame).
+                      </div>
+                    ) : (
+                      <div className="flex flex-col gap-4">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <div className="font-mono text-xs opacity-70">tick:</div>
+                          <select
+                            className="px-2 py-1 rounded-lg border border-canon-border bg-canon-card text-sm"
+                            value={String(dbgFrameTickId)}
+                            onChange={(e) => setDbgFrameTickId(String(e.target.value))}
+                          >
+                            {dbgHistory
+                              .slice()
+                              .reverse() // newest first in UI
+                              .map((f: any) => {
+                                const id = String(f?.tickId ?? '');
+                                const ti = String(f?.tickIndex ?? '');
+                                const t = String(f?.time ?? '');
+                                return (
+                                  <option key={id} value={id}>
+                                    {ti} · {id} · {t}
+                                  </option>
+                                );
+                              })}
+                          </select>
+
+                          <div className="ml-auto font-mono text-xs opacity-70">
+                            frames={dbgHistory.length} stage={dbgStageId}
+                          </div>
+                        </div>
+
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            className="px-2 py-1 rounded-lg border border-canon-border bg-canon-card hover:bg-white/5 text-sm"
+                            onClick={() => copyJsonToClipboard(dbgCurrentFrame)}
+                            disabled={!dbgCurrentFrame}
+                            title="Copy current TickDebugFrame JSON to clipboard"
+                          >
+                            Copy tick JSON
+                          </button>
+                          <button
+                            className="px-2 py-1 rounded-lg border border-canon-border bg-canon-card hover:bg-white/5 text-sm"
+                            onClick={() => {
+                              if (!dbgCurrentFrame) return;
+                              const ti = String(dbgCurrentFrame.tickIndex ?? 'x');
+                              const id = String(dbgCurrentFrame.tickId ?? 'tick');
+                              downloadJsonFile(dbgCurrentFrame, `tick-${ti}-${id}.json`);
+                            }}
+                            disabled={!dbgCurrentFrame}
+                            title="Download current TickDebugFrame JSON"
+                          >
+                            Download tick JSON
+                          </button>
+
+                          <button
+                            className="ml-auto px-2 py-1 rounded-lg border border-canon-border bg-canon-card hover:bg-white/5 text-sm"
+                            onClick={() => copyJsonToClipboard(orchestratorDecision)}
+                            disabled={!orchestratorDecision}
+                            title="Copy orchestratorDecision JSON to clipboard"
+                          >
+                            Copy decision JSON
+                          </button>
+                          <button
+                            className="px-2 py-1 rounded-lg border border-canon-border bg-canon-card hover:bg-white/5 text-sm"
+                            onClick={() => {
+                              if (!orchestratorDecision) return;
+                              const ti = String(orchestratorDecision.tickIndex ?? 'x');
+                              downloadJsonFile(orchestratorDecision, `decision-${ti}.json`);
+                            }}
+                            disabled={!orchestratorDecision}
+                            title="Download orchestratorDecision JSON"
+                          >
+                            Download decision JSON
+                          </button>
+                        </div>
+
+                        <div className="flex flex-wrap gap-2">
+                          {(['S0', 'S1', 'S2', 'S3', 'S4', 'S5', 'S6'] as const).map((sid) => (
+                            <button
+                              key={sid}
+                              className={
+                                'px-2 py-1 rounded-lg border text-sm ' +
+                                (dbgStageId === sid
+                                  ? 'border-white/40 bg-white/10'
+                                  : 'border-canon-border bg-canon-card hover:bg-white/5')
+                              }
+                              onClick={() => setDbgStageId(sid)}
+                            >
+                              {sid}
+                            </button>
+                          ))}
+                        </div>
+
+                        {!dbgCurrentFrame ? (
+                          <div className="opacity-70">(no current frame)</div>
+                        ) : (
+                          <div className="rounded-2xl border border-canon-border bg-canon-card p-4">
+                            <div className="flex items-baseline justify-between gap-3">
+                              <div className="font-extrabold">
+                                tickIndex={String(dbgCurrentFrame.tickIndex)} · {String(dbgCurrentFrame.tickId)}
+                              </div>
+                              <div className="font-mono text-xs opacity-70">
+                                pre={String(dbgCurrentFrame.preTraceTickId ?? '')} post={String(dbgCurrentFrame.postTraceTickId ?? '')}
+                              </div>
+                            </div>
+
+                            <div className="mt-3 font-mono text-xs opacity-70">
+                              stage: <b>{String(dbgStage?.title ?? dbgStageId)}</b>
+                            </div>
+
+                            <pre className="mt-2 font-mono text-xs opacity-90 whitespace-pre-wrap m-0">
+                              {JSON.stringify(dbgStage?.data ?? {}, null, 2)}
+                            </pre>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </Card>
+
+                  <Card title="Offers Explorer (from S3)">
+                    {!dbgCurrentFrame ? (
+                      <div className="opacity-70">(no current frame)</div>
+                    ) : !dbgS3 ? (
+                      <div className="opacity-70">(S3 stage not found)</div>
+                    ) : (
+                      <div className="flex flex-col gap-4">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <div className="font-mono text-xs opacity-70">actor filter:</div>
+                          <input
+                            className="px-2 py-1 rounded-lg border border-canon-border bg-canon-card text-sm"
+                            value={offersActorFilter}
+                            onChange={(e) => setOffersActorFilter(String(e.target.value))}
+                            placeholder="substring (e.g. krystar)"
+                          />
+
+                          <div className="font-mono text-xs opacity-70 ml-2">key filter:</div>
+                          <input
+                            className="px-2 py-1 rounded-lg border border-canon-border bg-canon-card text-sm"
+                            value={offersKeyFilter}
+                            onChange={(e) => setOffersKeyFilter(String(e.target.value))}
+                            placeholder="substring (e.g. talk, escape)"
+                          />
+
+                          <div className="font-mono text-xs opacity-70 ml-2">blockedBy filter:</div>
+                          <input
+                            className="px-2 py-1 rounded-lg border border-canon-border bg-canon-card text-sm"
+                            value={offersBlockedByFilter}
+                            onChange={(e) => setOffersBlockedByFilter(String(e.target.value))}
+                            placeholder="substring (e.g. loc, permission)"
+                          />
+
+                          <label className="ml-auto flex items-center gap-2 text-sm">
+                            <input
+                              type="checkbox"
+                              checked={offersOnlyRejected}
+                              onChange={(e) => setOffersOnlyRejected(Boolean(e.target.checked))}
+                            />
+                            only rejected
+                          </label>
+                        </div>
+
+                        <div className="font-mono text-xs opacity-70">
+                          actors shown: {String(filteredActorIds.length)} / {String(Object.keys(offersPerActor || {}).length)}
+                        </div>
+
+                        <div className="flex flex-col gap-3">
+                          {filteredActorIds.map((actorId) => {
+                            const d = offersPerActor[actorId] || {};
+                            const mode = String(d?.mode ?? '');
+                            const topK = Array.isArray(d?.topK) ? d.topK : [];
+                            const rejected = Array.isArray(d?.rejected) ? d.rejected : [];
+                            const rejectedCount = Number(d?.rejectedCount ?? rejected.length ?? 0);
+
+                            const topKFiltered = topK.filter(offerPassesFilters);
+                            const rejFiltered = rejected.filter(offerPassesFilters);
+
+                            const shownTopK = offersOnlyRejected ? [] : topKFiltered;
+                            const shownRej = rejFiltered;
+
+                            // Skip fully empty after filters.
+                            if (!shownTopK.length && !shownRej.length) return null;
+
+                            return (
+                              <div key={actorId} className="rounded-2xl border border-canon-border bg-canon-card p-4">
+                                <div className="flex items-baseline justify-between gap-3">
+                                  <div className="font-bold">{actorId}</div>
+                                  <div className="font-mono text-xs opacity-70">
+                                    mode={mode} · topK={String(topK.length)}→{String(topKFiltered.length)} · rejected={String(rejectedCount)}
+                                    →{String(rejFiltered.length)}
+                                  </div>
+                                </div>
+
+                                {!offersOnlyRejected ? (
+                                  <div className="mt-3">
+                                    <div className="font-bold text-sm">topK (filtered)</div>
+                                    {!shownTopK.length ? (
+                                      <div className="font-mono text-xs opacity-60 mt-2">(none)</div>
+                                    ) : (
+                                      <div className="mt-2 flex flex-col gap-1">
+                                        {shownTopK.slice(0, 30).map((o: any, idx: number) => {
+                                          const k = offerKeyOf(o);
+                                          const score = Number(o?.score ?? 0);
+                                          const cost = Number(o?.cost ?? 0);
+                                          const allowed = Boolean(o?.allowed);
+                                          const prob = o?.prob;
+                                          const target = o?.targetId ? String(o.targetId) : '';
+                                          const bb = blockedByStr(o);
+                                          const reason = o?.reason ? String(o.reason) : '';
+
+                                          return (
+                                            <div key={`${k}:${idx}`} className="font-mono text-xs opacity-90">
+                                              score={score.toFixed(3)} cost={cost.toFixed(3)} allowed={String(allowed)}
+                                              {typeof prob === 'number' ? ` prob=${prob.toFixed(3)}` : ''} key={k}
+                                              {target ? ` target=${target}` : ''}
+                                              {bb ? ` blockedBy=${bb}` : ''}
+                                              {reason ? ` // ${reason}` : ''}
+                                            </div>
+                                          );
+                                        })}
+                                        {shownTopK.length > 30 ? (
+                                          <div className="font-mono text-xs opacity-60">… (+{shownTopK.length - 30})</div>
+                                        ) : null}
+                                      </div>
+                                    )}
+                                  </div>
+                                ) : null}
+
+                                <div className="mt-3">
+                                  <div className="font-bold text-sm">rejected (filtered)</div>
+                                  {!shownRej.length ? (
+                                    <div className="font-mono text-xs opacity-60 mt-2">(none)</div>
+                                  ) : (
+                                    <div className="mt-2 flex flex-col gap-1">
+                                      {shownRej.slice(0, 50).map((o: any, idx: number) => {
+                                        const k = offerKeyOf(o);
+                                        const score = Number(o?.score ?? 0);
+                                        const cost = Number(o?.cost ?? 0);
+                                        const target = o?.targetId ? String(o.targetId) : '';
+                                        const bb = blockedByStr(o);
+                                        const reason = o?.reason ? String(o.reason) : '';
+                                        return (
+                                          <div key={`${k}:rej:${idx}`} className="font-mono text-xs opacity-90">
+                                            score={score.toFixed(3)} cost={cost.toFixed(3)} allowed=false key={k}
+                                            {target ? ` target=${target}` : ''}
+                                            {bb ? ` blockedBy=${bb}` : ''}
+                                            {reason ? ` // ${reason}` : ''}
+                                          </div>
+                                        );
+                                      })}
+                                      {shownRej.length > 50 ? (
+                                        <div className="font-mono text-xs opacity-60">… (+{shownRej.length - 50})</div>
+                                      ) : null}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </Card>
+
                   <Card title="Decision trace (chosen + topK softmax probs)">
                     {!orchestratorDecision ? (
                       <div className="opacity-70">
@@ -814,6 +1195,8 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
                               const d = orchestratorDecision.perActor?.[actorId];
                               const ch = d?.chosen;
                               const topK = Array.isArray(d?.topK) ? d.topK : [];
+                              const rejected = Array.isArray(d?.rejected) ? d.rejected : [];
+                              const rejectedCount = Number(d?.rejectedCount ?? rejected.length ?? 0);
 
                               const chosenLabel = String(ch?.simKind ?? ch?.kind ?? ch?.key ?? ch?.possibilityId ?? '(none)');
 
@@ -858,6 +1241,35 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
                                       })}
                                       {topK.length > 25 ? <div>… (+{topK.length - 25})</div> : null}
                                     </div>
+                                  </div>
+
+                                  <div className="mt-3">
+                                    <div className="font-bold text-sm">rejected (first 25) · count={String(rejectedCount)}</div>
+                                    {!rejected.length ? (
+                                      <div className="font-mono text-xs opacity-60 mt-2">(none)</div>
+                                    ) : (
+                                      <div className="font-mono text-xs opacity-90 mt-2">
+                                        {rejected.slice(0, 25).map((o: any) => {
+                                          const key = String(
+                                            o.possibilityId ??
+                                              o.key ??
+                                              o.id ??
+                                              `${o.kind ?? ''}:${o.targetId ?? ''}:${o.score ?? ''}:${o.reason ?? ''}`
+                                          );
+                                          return (
+                                            <div key={key} className="mb-1">
+                                              score={Number(o.score ?? 0).toFixed(3)} cost={Number(o.cost ?? 0).toFixed(3)} allowed=false{' '}
+                                              key={String(o.key ?? o.possibilityId ?? '')}
+                                              {o.kind ? ` kind=${String(o.kind)}` : ''}
+                                              {o.targetId ? ` target=${String(o.targetId)}` : ''}
+                                              {Array.isArray(o.blockedBy) && o.blockedBy.length ? ` blockedBy=${o.blockedBy.join(',')}` : ''}
+                                              {o.reason ? ` // ${String(o.reason)}` : ''}
+                                            </div>
+                                          );
+                                        })}
+                                        {rejected.length > 25 ? <div>… (+{rejected.length - 25})</div> : null}
+                                      </div>
+                                    )}
                                   </div>
                                 </div>
                               );
