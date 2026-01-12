@@ -1,5 +1,6 @@
 
 import React from 'react';
+import type { ThinkingProfile, ActivityCaps } from '../types';
 import { AgentState, AgentPsychState, CopingProfile, DistortionProfile, AttachmentProfile, MoralDissonance, V42Metrics, DerivedMetrics, ToMDashboardMetrics, ToMV2DashboardMetrics } from '../types';
 import { MetricDisplay } from './MetricDisplay';
 import { ArchetypeDerivation } from './ArchetypeDerivation';
@@ -22,6 +23,63 @@ const GridSection: React.FC<{ title: string; children: React.ReactNode }> = ({ t
         </div>
     </Section>
 );
+
+const CognitionView: React.FC<{ thinking?: ThinkingProfile; caps?: ActivityCaps }> = ({ thinking, caps }) => {
+    if (!thinking && !caps) return null;
+    return (
+        <Section title="Мышление / Деятельность (Character Sheet)">
+            {thinking && (
+                <div className="space-y-2">
+                    <div className="text-xs text-canon-text-light">
+                        Доминирует: A={thinking.dominantA} · B={thinking.dominantB} · C={thinking.dominantC} · D={thinking.dominantD} · meta={thinking.metacognitiveGain.toFixed(2)}
+                    </div>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                        <MetricDisplay name="A enactive" value={thinking.representation.enactive} />
+                        <MetricDisplay name="A imagery" value={thinking.representation.imagery} />
+                        <MetricDisplay name="A verbal" value={thinking.representation.verbal} />
+                        <MetricDisplay name="A formal" value={thinking.representation.formal} />
+                    </div>
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+                        <MetricDisplay name="B deduct" value={thinking.inference.deductive} />
+                        <MetricDisplay name="B induct" value={thinking.inference.inductive} />
+                        <MetricDisplay name="B abduct" value={thinking.inference.abductive} />
+                        <MetricDisplay name="B causal" value={thinking.inference.causal} />
+                        <MetricDisplay name="B bayes" value={thinking.inference.bayesian} />
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                        <MetricDisplay name="C intuitive" value={thinking.control.intuitive} />
+                        <MetricDisplay name="C analytic" value={thinking.control.analytic} />
+                        <MetricDisplay name="C meta" value={thinking.control.metacognitive} />
+                    </div>
+                    <div className="grid grid-cols-2 md:grid-cols-6 gap-2">
+                        <MetricDisplay name="D understand" value={thinking.function.understanding} />
+                        <MetricDisplay name="D plan" value={thinking.function.planning} />
+                        <MetricDisplay name="D critical" value={thinking.function.critical} />
+                        <MetricDisplay name="D creative" value={thinking.function.creative} />
+                        <MetricDisplay name="D norm" value={thinking.function.normative} />
+                        <MetricDisplay name="D social" value={thinking.function.social} />
+                    </div>
+                </div>
+            )}
+            {caps && (
+                <div className="mt-3 grid grid-cols-2 md:grid-cols-4 gap-2">
+                    <MetricDisplay name="Ops" value={caps.operations} />
+                    <MetricDisplay name="Actions" value={caps.actions} />
+                    <MetricDisplay name="Activity" value={caps.activity} />
+                    <MetricDisplay name="Proactive" value={caps.proactive} />
+                    <MetricDisplay name="Regulatory" value={caps.regulatory} />
+                    <MetricDisplay name="Reflective" value={caps.reflective} />
+                    <MetricDisplay name="Communicative" value={caps.communicative} />
+                    <MetricDisplay name="Constructor" value={caps.constructor} />
+                    <MetricDisplay name="Creative" value={caps.creative} />
+                    <MetricDisplay name="Normative" value={caps.normative} />
+                    <MetricDisplay name="Existential" value={caps.existential} />
+                    <MetricDisplay name="Reactive" value={caps.reactive} />
+                </div>
+            )}
+        </Section>
+    );
+};
 
 // --- V4.2 Metrics Group ---
 const V42Group: React.FC<{ v42: V42Metrics | null | undefined, agent: AgentState }> = ({ v42, agent }) => {
@@ -135,6 +193,7 @@ export const AllMetricsView: React.FC<AllMetricsViewProps> = ({ agent }) => {
             
             {agent.psych && (
                 <>
+                    <CognitionView thinking={agent.psych.thinking} caps={agent.psych.activityCaps} />
                     <CopingView coping={agent.psych.coping} />
                     <DistortionsView distortion={agent.psych.distortion} />
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

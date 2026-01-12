@@ -31,6 +31,7 @@ import { mapCharacterToBehaviorParams } from '../lib/core/character_mapper';
 import { makeAgentRNG } from '../lib/core/noise';
 import { BlackSwanEditor } from '../components/BlackSwanEditor';
 import { AllMetricsView } from '../components/PsychStateView';
+import { deriveThinkingAndActivityFromCharacter } from '../lib/characters/thinkingProfile';
 import { BodyEditor } from '../components/BodyEditor';
 import { ArchetypeProfilePage } from '../components/ArchetypeProfilePage';
 import { computeArchetypeDefinition } from '../lib/archetypes/view-model';
@@ -251,7 +252,12 @@ export const EntityDetailPage: React.FC = () => {
       narrativeState: { episodes: [], narrative: [], maxNarrativeLength: 20 },
       influence: metrics?.influence ?? 0,
       prMonstro: metrics?.prMonstro ?? 0,
-      psych: characterCalculations.psych,
+      psych: (() => {
+          const basePsych = characterCalculations.psych;
+          const cog = deriveThinkingAndActivityFromCharacter(characterForCalc as any);
+          // Важно: это именно "Психика" вкладки сущности, а не тик-симуляция.
+          return basePsych ? { ...basePsych, thinking: cog.thinking, activityCaps: cog.activityCaps } : (basePsych as any);
+      })(),
       stress: characterForCalc.body?.acute?.stress ?? 0,
       reputation: characterForCalc.social?.audience_reputation[0]?.score ?? 50,
       fatigue: characterForCalc.body?.acute?.fatigue ?? 0,
