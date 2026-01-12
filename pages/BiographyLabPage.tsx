@@ -5,6 +5,7 @@ import { getEntitiesByType } from '../data';
 import { BiographyAnalysis } from '../components/BiographyAnalysis';
 import { HistoricalEventEditor } from '../components/HistoricalEventEditor';
 import { encodeCharacterToSnippet } from '../lib/character-snippet';
+import { ThinkingSimilarityPanel } from '../components/ThinkingSimilarityPanel';
 
 export const BiographyLabPage: React.FC = () => {
     const allCharacters = useMemo(() => (getEntitiesByType(EntityType.Character) as CharacterEntity[]), []);
@@ -83,9 +84,19 @@ export const BiographyLabPage: React.FC = () => {
                     </div>
                     
                     {/* Right: Analysis */}
-                    <div className="lg:col-span-8 bg-canon-bg-light border border-canon-border rounded-lg p-4 overflow-y-auto">
-                         <h3 className="font-bold text-canon-text mb-4">Матрица Влияния</h3>
-                         <BiographyAnalysis character={previewChar} events={events} />
+                    <div className="lg:col-span-8 overflow-y-auto space-y-4">
+                        <div className="bg-canon-bg-light border border-canon-border rounded-lg p-4">
+                            <h3 className="font-bold text-canon-text mb-4">Матрица Влияния</h3>
+                            <BiographyAnalysis character={previewChar} events={events} />
+                        </div>
+
+                        <ThinkingSimilarityPanel
+                          characters={allCharacters}
+                          anchorId={selectedCharId}
+                          onAnchorIdChange={setSelectedCharId}
+                          k={6}
+                          title="Похожие по мышлению (био слой)"
+                        />
                     </div>
                 </div>
             ) : (

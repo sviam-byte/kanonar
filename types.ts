@@ -1043,6 +1043,8 @@ export interface AgentPsychState {
     // --- Cognitive / activity metrics (derived, 0..1) ---
     thinking?: ThinkingProfile;
     activityCaps?: ActivityCaps;
+    // Cognitive profile (character-sheet + light posterior)
+    cognition?: CognitionProfile;
 }
 
 // --- Cognitive profile (characteristics shown on Character Card) ---
@@ -1078,6 +1080,49 @@ export interface ActivityCaps {
     creative: number;
     normative: number;
     existential: number;
+}
+
+// Extra scalars that drive "plan vs act now"
+export interface ActionDispositionScalars {
+    futureHorizon: number;           // E
+    uncertaintyTolerance: number;    // F
+    normPressureSensitivity: number; // G
+    actionBiasVsFreeze: number;      // H (1 = act, 0 = freeze)
+    // --- Thinking resources (R1–R3) ---
+    confidenceCalibration: number;   // R1: how well confidence tracks reality / updates
+    executiveCapacity: number;       // R2: working-memory + inhibition + sustained control
+    experimentalism: number;         // R3: tendency to run small tests / probes vs theorize or freeze
+}
+
+export interface PolicyKnobs {
+    planFirst: number;
+    actNow: number;
+    probeAndUpdate: number;
+}
+
+export interface CognitionEvidence {
+    // 0..1 evidence extracted from recent observed behavior
+    planRate?: number;
+    actRate?: number;
+    probeRate?: number;
+    waitRate?: number;
+    sampleSize?: number;
+}
+
+export interface CognitionProfile {
+    prior: {
+        thinking: ThinkingProfile;
+        activityCaps: ActivityCaps;
+        scalars: ActionDispositionScalars;
+        policy: PolicyKnobs;
+    };
+    posterior?: {
+        thinking: ThinkingProfile;
+        activityCaps: ActivityCaps;
+        scalars: ActionDispositionScalars;
+        policy: PolicyKnobs;
+        evidence?: CognitionEvidence;
+    };
 }
 
 export interface ContextGoal {

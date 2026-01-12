@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { AgentState, AgentPsychState, CopingProfile, DistortionProfile, AttachmentProfile, MoralDissonance, V42Metrics, DerivedMetrics, ToMDashboardMetrics, ToMV2DashboardMetrics } from '../types';
+import { AgentState, AgentPsychState, CopingProfile, DistortionProfile, AttachmentProfile, MoralDissonance, V42Metrics, DerivedMetrics, ToMDashboardMetrics, ToMV2DashboardMetrics, CognitionProfile } from '../types';
 import { MetricDisplay } from './MetricDisplay';
 import { ArchetypeDerivation } from './ArchetypeDerivation';
 
@@ -22,6 +22,49 @@ const GridSection: React.FC<{ title: string; children: React.ReactNode }> = ({ t
         </div>
     </Section>
 );
+
+const CognitionSection: React.FC<{ cognition?: CognitionProfile }> = ({ cognition }) => {
+    if (!cognition?.prior) return null;
+    const prior = cognition.prior;
+    const post = cognition.posterior;
+    return (
+        <Section title="Мышление / Деятельность (Hybrid: logic + fuzzy + bayes)">
+            <div className="text-xs opacity-80">
+                Prior доминанты: A={prior.thinking.dominantA} · B={prior.thinking.dominantB} · C={prior.thinking.dominantC} · D={prior.thinking.dominantD} · meta={prior.thinking.metacognitiveGain.toFixed(2)}
+            </div>
+            {post && (
+                <div className="mt-1 text-xs opacity-80">
+                    Posterior доминанты: A={post.thinking.dominantA} · B={post.thinking.dominantB} · C={post.thinking.dominantC} · D={post.thinking.dominantD} · meta={post.thinking.metacognitiveGain.toFixed(2)}
+                    {post.evidence?.sampleSize ? <span className="opacity-70"> · evidence n={post.evidence.sampleSize}</span> : null}
+                </div>
+            )}
+
+            <div className="mt-2 grid grid-cols-2 md:grid-cols-4 gap-2">
+                <MetricDisplay name="Policy planFirst" value={prior.policy.planFirst} />
+                <MetricDisplay name="Policy actNow" value={prior.policy.actNow} />
+                <MetricDisplay name="Policy probeAndUpdate" value={prior.policy.probeAndUpdate} />
+                <MetricDisplay name="Scalars horizon(E)" value={prior.scalars.futureHorizon} />
+                <MetricDisplay name="Scalars uncert(F)" value={prior.scalars.uncertaintyTolerance} />
+                <MetricDisplay name="Scalars norm(G)" value={prior.scalars.normPressureSensitivity} />
+                <MetricDisplay name="Scalars actVsFreeze(H)" value={prior.scalars.actionBiasVsFreeze} />
+                <MetricDisplay name="R1 confCal" value={prior.scalars.confidenceCalibration} />
+                <MetricDisplay name="R2 execCap" value={prior.scalars.executiveCapacity} />
+                <MetricDisplay name="R3 experimentalism" value={prior.scalars.experimentalism} />
+            </div>
+
+            <div className="mt-2 grid grid-cols-2 md:grid-cols-4 gap-2">
+                <MetricDisplay name="Caps ops" value={prior.activityCaps.operations} />
+                <MetricDisplay name="Caps actions" value={prior.activityCaps.actions} />
+                <MetricDisplay name="Caps activity" value={prior.activityCaps.activity} />
+                <MetricDisplay name="Caps proactive" value={prior.activityCaps.proactive} />
+                <MetricDisplay name="Caps regulatory" value={prior.activityCaps.regulatory} />
+                <MetricDisplay name="Caps reflective" value={prior.activityCaps.reflective} />
+                <MetricDisplay name="Caps communicative" value={prior.activityCaps.communicative} />
+                <MetricDisplay name="Caps constructor" value={prior.activityCaps.constructor} />
+            </div>
+        </Section>
+    );
+};
 
 // --- V4.2 Metrics Group ---
 const V42Group: React.FC<{ v42: V42Metrics | null | undefined, agent: AgentState }> = ({ v42, agent }) => {
@@ -135,6 +178,7 @@ export const AllMetricsView: React.FC<AllMetricsViewProps> = ({ agent }) => {
             
             {agent.psych && (
                 <>
+                    <CognitionSection cognition={agent.psych.cognition} />
                     <CopingView coping={agent.psych.coping} />
                     <DistortionsView distortion={agent.psych.distortion} />
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
