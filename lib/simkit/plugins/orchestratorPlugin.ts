@@ -100,7 +100,27 @@ function keyFromPossibilityId(id: string): string {
 }
 
 function isExecutableKey(k: string) {
-  return k === 'wait' || k === 'rest' || k === 'talk' || k === 'observe' || k === 'ask_info' || k === 'negotiate';
+  return (
+    k === 'wait' ||
+    k === 'rest' ||
+    k === 'talk' ||
+    k === 'work' ||
+    k === 'move' ||
+    k === 'observe' ||
+    k === 'ask_info' ||
+    k === 'negotiate'
+  );
+}
+
+function isTrivialKey(k: string) {
+  // Keys that represent "doing nothing" or extremely low-commitment sensing.
+  return k === 'wait' || k === 'observe';
+}
+
+function hasNonTrivialOffer(offers: ActionOffer[]) {
+  // If SimKit has ANY meaningful non-blocked action besides wait/rest,
+  // we prefer it over "wait" from possibilities (which exists unconditionally).
+  return (offers || []).some((o) => !o.blocked && o.kind !== 'wait' && o.kind !== 'rest');
 }
 
 // Count atoms by subject for UI summaries.
@@ -383,6 +403,8 @@ export function makeOrchestratorPlugin(registry: ProducerSpec[]): SimPlugin {
           return !subj || String(subj) === String(actorId);
         });
 
+        const actorOffers = offersByActor[actorId] || [];
+
         // Possibility route.
         const possAll = derivePossibilitiesRegistry({ selfId: actorId, atoms });
         const possExec = possAll.filter((p) => isExecutableKey(keyFromPossibilityId(p.id)));
@@ -395,8 +417,28 @@ export function makeOrchestratorPlugin(registry: ProducerSpec[]): SimPlugin {
           const pool = (allowed.length ? allowed : ranked) as any[];
           const picked = sampleSoftmax(pool, T, () => rng.next());
           const chosen = picked?.p || null;
+          const chosenKey = chosen ? keyFromPossibilityId(chosen.id) : '';
 
-          const act = chosen ? toSimActionFromPossibility(chosen, tickIndex, actorId) : null;
+          // If the possibility layer only yields "do nothing" (wait/observe) but SimKit offers
+          // contain a meaningful non-trivial action, prefer offers. This prevents the common
+          // failure mode where wait exists unconditionally and blocks offer-based motion/work.
+          const shouldOverrideWithOffer = Boolean(chosen && isTrivialKey(chosenKey) && hasNonTrivialOffer(actorOffers));
+
+          let act: SimAction | null = null;
+          let overriddenOffer: ActionOffer | null = null;
+          if (shouldOverrideWithOffer) {
+            overriddenOffer = pickSoftmax(actorOffers, T, () => rng.next());
+            if (overriddenOffer) {
+              act = {
+                id: `act:${overriddenOffer.kind}:${tickIndex}:${actorId}:orc:offer_override:${chosenKey}`,
+                kind: overriddenOffer.kind,
+                actorId,
+                targetId: overriddenOffer.targetId ?? null,
+              };
+            }
+          }
+
+          if (!act) act = chosen ? toSimActionFromPossibility(chosen, tickIndex, actorId) : null;
           if (act) actions.push(act);
 
           // topK probs computed over same pool prefix (stable + explainable)
@@ -409,7 +451,7 @@ export function makeOrchestratorPlugin(registry: ProducerSpec[]): SimPlugin {
 
           perActor[actorId] = {
             actorId,
-            mode: 'possibility',
+            mode: overriddenOffer ? 'offer_override' : 'possibility',
             T,
             chosen: chosen
               ? {
@@ -423,7 +465,18 @@ export function makeOrchestratorPlugin(registry: ProducerSpec[]): SimPlugin {
                   prob: chosenProb,
                   blockedBy: (picked as any)?.why?.blockedBy || [],
                   usedAtomIds: (picked as any)?.why?.usedAtomIds || [],
-                  reason: (picked as any)?.why?.reason || null,
+                  reason: overriddenOffer
+                    ? `override: ${chosenKey} -> offer:${String(overriddenOffer.kind)} (${String(overriddenOffer.reason || '')})`
+                    : (picked as any)?.why?.reason || null,
+                }
+              : null,
+            offerOverride: overriddenOffer
+              ? {
+                  kind: overriddenOffer.kind,
+                  targetId: overriddenOffer.targetId ?? null,
+                  score: Number(overriddenOffer.score ?? 0),
+                  blocked: Boolean(overriddenOffer.blocked),
+                  reason: overriddenOffer.reason ?? null,
                 }
               : null,
             topK: pool.slice(0, 25).map((x) => ({
@@ -458,7 +511,6 @@ export function makeOrchestratorPlugin(registry: ProducerSpec[]): SimPlugin {
         }
 
         // Fallback: SimKit offers route.
-        const actorOffers = offersByActor[actorId] || [];
         const bestOffer = pickSoftmax(actorOffers, T, () => rng.next());
         if (!bestOffer) continue;
 

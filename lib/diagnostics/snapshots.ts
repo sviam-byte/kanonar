@@ -30,11 +30,13 @@ export function makeCharacterDebugSnapshot(agent: AgentState, world: WorldState)
         activeFailureModes: agent.failureState?.activeModes || [],
         lastEpisodes: [], // Placeholder as episode tracking is heavy
         psych: agent.psych ? {
-            selfGap: 0, // Need computeSelfGap util or pass it
+            selfGap: agent.psych.selfGap ?? 0,
             narrative: agent.psych.narrative,
             moral: agent.psych.moral,
             coping: agent.psych.coping,
-            distortions: agent.psych.distortion
+            distortions: agent.psych.distortion,
+            thinking: agent.psych.thinking,
+            activityCaps: agent.psych.activityCaps
         } : undefined
     };
 }

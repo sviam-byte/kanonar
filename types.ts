@@ -1040,6 +1040,44 @@ export interface AgentPsychState {
     sysMode: 'SYS-1' | 'SYS-2';
     trauma: TraumaLoad;
     activeGoalModifiers?: Record<string, number>;
+    // --- Cognitive / activity metrics (derived, 0..1) ---
+    thinking?: ThinkingProfile;
+    activityCaps?: ActivityCaps;
+}
+
+// --- Cognitive profile (characteristics shown on Character Card) ---
+export type ThinkingAxisA = 'enactive' | 'imagery' | 'verbal' | 'formal';
+export type ThinkingAxisB = 'deductive' | 'inductive' | 'abductive' | 'causal' | 'bayesian';
+export type ThinkingAxisC = 'intuitive' | 'analytic' | 'metacognitive';
+export type ThinkingAxisD = 'understanding' | 'planning' | 'critical' | 'creative' | 'normative' | 'social';
+
+export interface ThinkingProfile {
+    representation: Record<ThinkingAxisA, number>;
+    inference: Record<ThinkingAxisB, number>;
+    control: Record<ThinkingAxisC, number>;
+    function: Record<ThinkingAxisD, number>;
+    dominantA: ThinkingAxisA;
+    dominantB: ThinkingAxisB;
+    dominantC: ThinkingAxisC;
+    dominantD: ThinkingAxisD;
+    metacognitiveGain: number;
+}
+
+export interface ActivityCaps {
+    operations: number;
+    actions: number;
+    activity: number;
+    reactive: number;
+    proactive: number;
+    regulatory: number;
+    reflective: number;
+    sensorimotor: number;
+    instrumental: number;
+    communicative: number;
+    constructor: number;
+    creative: number;
+    normative: number;
+    existential: number;
 }
 
 export interface ContextGoal {

@@ -1,13 +1,27 @@
 
-import { CharacterEntity, AgentPsychState, Episode, ArchetypePhase, TraumaLoad, DistortionProfile, NarrativeIdentity, AttachmentProfile, MoralDissonance, ResilienceProfile, CopingProfile, ExposureTraces, Worldview } from '../../types';
+import {
+    CharacterEntity,
+    AgentPsychState,
+    Episode,
+    ArchetypePhase,
+    TraumaLoad,
+    DistortionProfile,
+    NarrativeIdentity,
+    AttachmentProfile,
+    MoralDissonance,
+    ResilienceProfile,
+    CopingProfile,
+    ExposureTraces,
+    Worldview
+} from '../../types';
 import { computeBiographyLatent, BiographyLatent } from '../biography/lifeGoalsEngine';
 import { computeExposureTraces, computeWorldview } from '../biography/exposure';
 import { getNestedValue } from '../param-utils';
 import { computeSelfArchetypeVector } from '../archetypes/system';
+import { computeThinkingAndActivityCaps } from './thinking';
 
 const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
 const get = (c: CharacterEntity, key: string, def: number = 0.5) => getNestedValue(c.vector_base, key) ?? def;
-
 export function computeDistortionProfile(c: CharacterEntity, w: Worldview, b: BiographyLatent): DistortionProfile {
     // Traits
     const traitParanoia = get(c, 'C_betrayal_cost');
@@ -190,5 +204,49 @@ export function recomputeAgentPsychState(agent: AgentPsychState | undefined, cha
   
   const shadowActivation = (character as any).archetype?.shadowActivation ?? 0;
 
-  return { coping, distortion, narrative, attachment, moral, resilience, worldview, exposures, selfGap: moral.valueBehaviorGapTotal, shame: moral.shame, guilt: moral.guilt, shadowActivation, sysMode, trauma };
+  // --- Cognitive profile (thinking + activity capabilities) ---
+  const latents = (character as any).latents as Record<string, number> | undefined;
+  const tomQuality = (character as any).tomMetrics?.toM_Quality ?? (character as any).tomV2Metrics?.toM_Quality;
+  const tomUnc = (character as any).tomMetrics?.toM_Unc ?? (character as any).tomV2Metrics?.toM_Unc;
+  const { thinking, activityCaps } = computeThinkingAndActivityCaps({
+      psych: {
+          coping,
+          distortion,
+          narrative,
+          attachment,
+          moral,
+          resilience,
+          worldview,
+          exposures,
+          selfGap: moral.valueBehaviorGapTotal,
+          shame: moral.shame,
+          guilt: moral.guilt,
+          shadowActivation,
+          sysMode,
+          trauma
+      },
+      latents,
+      tomQuality,
+      tomUncertainty: tomUnc,
+      stress01: stress,
+  });
+
+  return {
+      coping,
+      distortion,
+      narrative,
+      attachment,
+      moral,
+      resilience,
+      worldview,
+      exposures,
+      selfGap: moral.valueBehaviorGapTotal,
+      shame: moral.shame,
+      guilt: moral.guilt,
+      shadowActivation,
+      sysMode,
+      trauma,
+      thinking,
+      activityCaps
+  };
 }
