@@ -113,6 +113,31 @@ function derivePredicates(c: CharacterLike) {
   // “метакогниция” как контроль качества мышления
   const metacog = avg(V(c, 'G_Metacog_accuracy', 0.5), ambiguityTol, V(c, 'E_Model_calibration', 0.5));
 
+  // --- R1 confidence calibration (separate from bayesian "style") ---
+  // Penalize calibration if distortions imply overconfidence/catastrophizing; reward model_calibration + metacog.
+  const overconf = V(c, 'distortion.overconfidence' as any, 0.5);
+  const catastroph = V(c, 'distortion.catastrophizing' as any, 0.5);
+  const confCal = clamp01(avg(V(c, 'E_Model_calibration', 0.5), metacog, 1 - 0.5 * overconf, 1 - 0.5 * catastroph));
+
+  // --- R2 executive capacity (resource, not "analytic preference") ---
+  // Combines discipline + low impulsivity + metacog + low stress reactivity.
+  const executiveCapacity = clamp01(
+    0.35 * V(c, 'B_cooldown_discipline', 0.5) +
+      0.25 * (1 - V(c, 'B_decision_temperature', 0.5)) +
+      0.25 * metacog +
+      0.15 * (1 - V(c, 'D_HPA_reactivity', 0.5))
+  );
+
+  // --- R3 experimentalism (small tests / probes) ---
+  // Reward exploration + abductive/causal inclination proxies + ambiguity tolerance; penalize avoidance.
+  const avoidance = V(c, 'coping.avoid' as any, 0.5);
+  const experimentalism = clamp01(
+    0.35 * V(c, 'B_exploration_rate', 0.4) +
+      0.20 * V(c, 'E_Skill_causal_surgery', 0.5) +
+      0.25 * ambiguityTol +
+      0.20 * (1 - avoidance)
+  );
+
   return {
     formalCapacity,
     sensorimotorIteration,
@@ -125,6 +150,9 @@ function derivePredicates(c: CharacterLike) {
     tom,
     normPressure,
     metacog,
+    confCal,
+    executiveCapacity,
+    experimentalism,
   };
 }
 
@@ -147,13 +175,15 @@ function deriveThinkingFromPredicates(p: ReturnType<typeof derivePredicates>) {
     inductive: 0.55 * p.sensorimotorIteration + 0.45 * p.ambiguityTol,
     abductive: 0.55 * p.ambiguityTol + 0.45 * p.metacog,
     causal: 0.55 * p.formalCapacity + 0.25 * p.futureHorizon + 0.20 * p.metacog,
-    bayesian: 0.55 * p.metacog + 0.45 * p.ambiguityTol,
+    // "bayesian" here is now explicitly tied to confidence calibration (R1) + metacog.
+    bayesian: 0.45 * p.metacog + 0.35 * p.ambiguityTol + 0.20 * p.confCal,
   };
 
   // Axis C (control)
   const ctrlScores: Record<ThinkingAxisC, number> = {
     intuitive: 0.65 * p.actionImpulse + 0.35 * (1 - p.needsControl),
-    analytic: 0.65 * p.needsControl + 0.35 * p.formalCapacity,
+    // analytic depends on actual executive resource (R2), not only preference
+    analytic: 0.45 * p.needsControl + 0.25 * p.formalCapacity + 0.30 * p.executiveCapacity,
     metacognitive: 0.85 * p.metacog + 0.15 * p.futureHorizon,
   };
 
@@ -162,7 +192,8 @@ function deriveThinkingFromPredicates(p: ReturnType<typeof derivePredicates>) {
     understanding: 0.55 * p.metacog + 0.45 * p.verbalCapacity,
     planning: 0.60 * p.futureHorizon + 0.25 * p.formalCapacity + 0.15 * p.needsControl,
     critical: 0.65 * p.metacog + 0.35 * p.formalCapacity,
-    creative: 0.60 * p.imageryCapacity + 0.40 * p.ambiguityTol,
+    // creative: add experimentalism (R3) (generative exploration)
+    creative: 0.45 * p.imageryCapacity + 0.25 * p.ambiguityTol + 0.30 * p.experimentalism,
     normative: 0.65 * p.normPressure + 0.35 * p.formalCapacity,
     social: 0.80 * p.tom + 0.20 * p.ambiguityTol,
   };
@@ -209,7 +240,15 @@ function deriveDispositionScalars(c: CharacterLike, p: ReturnType<typeof deriveP
   const freeze = clamp01(0.45 * V(c, 'D_HPA_reactivity', 0.5) + 0.35 * avoidance + 0.20 * (1 - agency));
   const actionBiasVsFreeze = clamp01(1 - freeze);
 
-  return { futureHorizon, uncertaintyTolerance, normPressureSensitivity, actionBiasVsFreeze };
+  return {
+    futureHorizon,
+    uncertaintyTolerance,
+    normPressureSensitivity,
+    actionBiasVsFreeze,
+    confidenceCalibration: clamp01(p.confCal),
+    executiveCapacity: clamp01(p.executiveCapacity),
+    experimentalism: clamp01(p.experimentalism),
+  };
 }
 
 /**
@@ -225,19 +264,33 @@ function deriveActivityCaps(c: CharacterLike, thinking: ThinkingProfile, scalars
 
   return {
     operations: clamp01(avg(enactiveSkill, discipline, scalars.actionBiasVsFreeze)),
-    actions: clamp01(avg(agency, thinking.function.planning, thinking.function.critical, scalars.uncertaintyTolerance)),
+    // actions improve with executive resource + confidence calibration (less thrash)
+    actions: clamp01(
+      avg(
+        agency,
+        thinking.function.planning,
+        thinking.function.critical,
+        scalars.uncertaintyTolerance,
+        scalars.executiveCapacity,
+        scalars.confidenceCalibration
+      )
+    ),
     activity: clamp01(avg(V(c, 'G_Narrative_agency', 0.5), thinking.metacognitiveGain, scalars.futureHorizon)),
 
     reactive: clamp01(avg(V(c, 'D_HPA_reactivity', 0.5), V(c, 'B_decision_temperature', 0.5), 1 - scalars.actionBiasVsFreeze)),
     proactive: clamp01(avg(scalars.futureHorizon, thinking.function.planning, scalars.actionBiasVsFreeze)),
-    regulatory: clamp01(avg(discipline, thinking.metacognitiveGain, 1 - V(c, 'B_decision_temperature', 0.5))),
-    reflective: clamp01(avg(thinking.metacognitiveGain, scalars.uncertaintyTolerance, V(c, 'F_Value_update_rate', 0.5))),
+    regulatory: clamp01(
+      avg(discipline, thinking.metacognitiveGain, 1 - V(c, 'B_decision_temperature', 0.5), scalars.executiveCapacity)
+    ),
+    reflective: clamp01(
+      avg(thinking.metacognitiveGain, scalars.uncertaintyTolerance, V(c, 'F_Value_update_rate', 0.5), scalars.confidenceCalibration)
+    ),
 
     sensorimotor: clamp01(avg(thinking.representation.enactive, enactiveSkill)),
     instrumental: clamp01(avg(thinking.representation.verbal, thinking.representation.formal, verbalSkill, formalSkill)),
     communicative: clamp01(avg(thinking.function.social, tom, C(c, 'diplomacy', 0.5), V(c, 'E_Skill_diplomacy_negotiation', 0.5))),
     constructor: clamp01(avg(thinking.representation.formal, thinking.function.planning, V(c, 'E_Skill_repair_topology', 0.5))),
-    creative: clamp01(avg(thinking.function.creative, thinking.representation.imagery, scalars.uncertaintyTolerance)),
+    creative: clamp01(avg(thinking.function.creative, thinking.representation.imagery, scalars.uncertaintyTolerance, scalars.experimentalism)),
     normative: clamp01(avg(thinking.function.normative, scalars.normPressureSensitivity)),
     existential: clamp01(avg(thinking.metacognitiveGain, scalars.futureHorizon, scalars.uncertaintyTolerance)),
   };
@@ -251,8 +304,9 @@ function derivePolicyKnobs(thinking: ThinkingProfile, caps: ActivityCaps, scalar
   const planFirst = clamp01(
     0.45 * thinking.control.analytic +
       0.35 * thinking.function.planning +
-      0.20 * scalars.futureHorizon -
-      0.20 * (1 - scalars.actionBiasVsFreeze)
+      0.20 * scalars.futureHorizon +
+      0.20 * scalars.executiveCapacity -
+      0.15 * (1 - scalars.actionBiasVsFreeze)
   );
 
   const actNow = clamp01(
@@ -267,7 +321,9 @@ function derivePolicyKnobs(thinking: ThinkingProfile, caps: ActivityCaps, scalar
       0.25 * thinking.inference.causal +
       0.20 * thinking.inference.bayesian +
       0.20 * thinking.control.metacognitive -
-      0.15 * (1 - scalars.uncertaintyTolerance)
+      0.10 * (1 - scalars.uncertaintyTolerance) +
+      0.20 * scalars.experimentalism +
+      0.10 * scalars.confidenceCalibration
   );
 
   // small coupling from capabilities: if actions low, reduce actNow
@@ -317,7 +373,7 @@ function evidenceLikelihood(thinking: ThinkingProfile, e: CognitionEvidence) {
     understanding: 1 + 1.0 * probe + 0.5 * plan,
     planning: 1 + 2.0 * plan + 0.7 * probe - 0.7 * act,
     critical: 1 + 1.2 * probe + 0.4 * plan,
-    creative: 1 + 0.6 * act + 0.6 * probe,
+    creative: 1 + 0.5 * act + 0.8 * probe,
     normative: 1 + 0.6 * plan - 0.4 * act + 0.6 * wait,
     social: 1 + 0.3 * probe + 0.3 * plan,
   };

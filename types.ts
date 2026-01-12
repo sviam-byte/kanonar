@@ -1088,6 +1088,10 @@ export interface ActionDispositionScalars {
     uncertaintyTolerance: number;    // F
     normPressureSensitivity: number; // G
     actionBiasVsFreeze: number;      // H (1 = act, 0 = freeze)
+    // --- Thinking resources (R1–R3) ---
+    confidenceCalibration: number;   // R1: how well confidence tracks reality / updates
+    executiveCapacity: number;       // R2: working-memory + inhibition + sustained control
+    experimentalism: number;         // R3: tendency to run small tests / probes vs theorize or freeze
 }
 
 export interface PolicyKnobs {

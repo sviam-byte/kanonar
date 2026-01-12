@@ -47,6 +47,9 @@ const CognitionSection: React.FC<{ cognition?: CognitionProfile }> = ({ cognitio
                 <MetricDisplay name="Scalars uncert(F)" value={prior.scalars.uncertaintyTolerance} />
                 <MetricDisplay name="Scalars norm(G)" value={prior.scalars.normPressureSensitivity} />
                 <MetricDisplay name="Scalars actVsFreeze(H)" value={prior.scalars.actionBiasVsFreeze} />
+                <MetricDisplay name="R1 confCal" value={prior.scalars.confidenceCalibration} />
+                <MetricDisplay name="R2 execCap" value={prior.scalars.executiveCapacity} />
+                <MetricDisplay name="R3 experimentalism" value={prior.scalars.experimentalism} />
             </div>
 
             <div className="mt-2 grid grid-cols-2 md:grid-cols-4 gap-2">
