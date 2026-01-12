@@ -21,6 +21,8 @@ import { updateGoalEcology } from '../goals/scoring';
 import { updateMassLayerEI } from '../mass/system_ei'; 
 import { buildDefaultMassNetworkEI } from '../mass/build_ei'; 
 import { Branch } from '../../types'; 
+import { calculateFieldMetrics } from '../archetypes/structural-metrics';
+import { recomputeAgentPsychState } from '../metrics/psych-layer';
 import { tickContext } from '../context/engine';
 import { makeDefaultTickConfig, makeScenarioTickConfig } from '../context/default-config';
 import { createEpisode, createObservation } from '../narrative/memory';
@@ -289,6 +291,21 @@ export async function runSimulationTick(world: WorldState): Promise<SimulationEv
     updateSystemEntities(world);
     world.agents.forEach(agent => checkFailureModes(agent, world));
     SystemObservation.captureWorldEpisode(world, events);
+
+    // --- Psych layer recompute (includes thinking/activityCaps) ---
+    // UI reads psych from debug snapshots; keep it fresh each tick.
+    for (const agent of world.agents) {
+        const trauma = (agent as any).trauma || { self: 0, others: 0, world: 0, system: 0 };
+        const fieldMetrics = calculateFieldMetrics(agent as any, trauma);
+        agent.psych = recomputeAgentPsychState(
+            agent.psych,
+            agent as any,
+            fieldMetrics,
+            agent.identityProfile?.archetypeObserved || null,
+            agent.archetype?.phase || 'normal',
+            agent.narrativeState?.episodes || []
+        );
+    }
     
     // --- Update Event Log ---
     if (world.eventLog) {
