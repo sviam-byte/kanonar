@@ -5,6 +5,7 @@ import { getEntitiesByType } from '../data';
 import { relations as STATIC_RELATIONS } from '../data/relations';
 import { EntityType } from '../enums';
 import type { CharacterEntity } from '../types';
+import { ThinkingSimilarityPanel } from '../components/ThinkingSimilarityPanel';
 
 type EdgeRow = {
   a: string;
@@ -275,8 +276,16 @@ export const RelationsLabPage: React.FC = () => {
   }, [sandboxCharacters, activeModule]);
   const [focusA, setFocusA] = useState<string>('');
   const [focusB, setFocusB] = useState<string>('');
+  const [anchorId, setAnchorId] = useState<string>('');
 
   const ids = useMemo(() => characters.map(c => c.entityId), [characters]);
+
+  React.useEffect(() => {
+    // prefer A if chosen, else keep current, else first
+    const pick = focusA || anchorId || ids[0] || '';
+    if (pick && pick !== anchorId) setAnchorId(pick);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusA, ids.join('|')]);
 
   const globalEdges: EdgeRow[] = useMemo(() => {
     const rows: EdgeRow[] = [];
@@ -411,6 +420,14 @@ export const RelationsLabPage: React.FC = () => {
           Rows: <span className="text-canon-text font-bold">{filtered.length}</span>
         </div>
       </div>
+
+      <ThinkingSimilarityPanel
+        characters={characters}
+        anchorId={anchorId || ids[0] || ''}
+        onAnchorIdChange={setAnchorId}
+        k={6}
+        title="Похожие по мышлению (соц слой)"
+      />
 
       <div className="border border-canon-border rounded-lg overflow-hidden">
         <div className="grid grid-cols-12 bg-canon-bg-light/40 text-xs text-canon-text-light px-3 py-2">
