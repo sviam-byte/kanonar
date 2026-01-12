@@ -31,7 +31,7 @@ import { mapCharacterToBehaviorParams } from '../lib/core/character_mapper';
 import { makeAgentRNG } from '../lib/core/noise';
 import { BlackSwanEditor } from '../components/BlackSwanEditor';
 import { AllMetricsView } from '../components/PsychStateView';
-import { deriveThinkingAndActivityFromCharacter } from '../lib/characters/thinkingProfile';
+import { deriveCognitionProfileFromCharacter, evidenceFromActionLabels } from '../lib/cognition/hybrid';
 import { BodyEditor } from '../components/BodyEditor';
 import { ArchetypeProfilePage } from '../components/ArchetypeProfilePage';
 import { computeArchetypeDefinition } from '../lib/archetypes/view-model';
@@ -254,9 +254,23 @@ export const EntityDetailPage: React.FC = () => {
       prMonstro: metrics?.prMonstro ?? 0,
       psych: (() => {
           const basePsych = characterCalculations.psych;
-          const cog = deriveThinkingAndActivityFromCharacter(characterForCalc as any);
+          if (!basePsych) return basePsych as any;
+
+          // Optional: if entity page has recent events, you can feed evidence.
+          // If you don't have any, keep it empty: posterior = undefined, prior still exists.
+          const recentLabels: string[] =
+            (characterCalculations as any)?.recentActionLabels ||
+            (characterCalculations as any)?.debug?.recentActionLabels ||
+            [];
+          const evidence = recentLabels.length ? evidenceFromActionLabels(recentLabels) : undefined;
+
+          const cognition = deriveCognitionProfileFromCharacter({
+            character: characterForCalc as any,
+            evidence,
+          });
+
           // Важно: это именно "Психика" вкладки сущности, а не тик-симуляция.
-          return basePsych ? { ...basePsych, thinking: cog.thinking, activityCaps: cog.activityCaps } : (basePsych as any);
+          return { ...basePsych, cognition };
       })(),
       stress: characterForCalc.body?.acute?.stress ?? 0,
       reputation: characterForCalc.social?.audience_reputation[0]?.score ?? 50,
