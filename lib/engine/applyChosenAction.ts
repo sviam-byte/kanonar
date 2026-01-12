@@ -125,6 +125,14 @@ export function applyChosenActionToWorld(args: {
       ...(typeof (p as any)?.meta === 'object' && (p as any)?.meta ? (p as any).meta : {}),
       label: p.label || null,
       score: typeof best.score === 'number' ? best.score : null,
+      // Preserve decision rationale (blocked/used atoms/parts) for narrative and debugging.
+      rationale: (best as any)?.why
+        ? {
+            blockedBy: (best as any).why.blockedBy || [],
+            usedAtomIds: Array.isArray((best as any).why.usedAtomIds) ? (best as any).why.usedAtomIds : [],
+            parts: (best as any).why.parts ?? null,
+          }
+        : null,
       scheduledFromTick: tickNow,
     },
   };

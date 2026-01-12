@@ -34,6 +34,11 @@ export const CharacterCard: React.FC<Props> = ({ character }) => {
   const safeTomQuality = tomQuality ?? 0.5;
   const safeTomUncertainty = tomUncertainty ?? 0.5;
   const safeSelfGap = psych?.selfGap ?? 0;
+  const thinking = psych?.thinking;
+  const activityCaps = psych?.activityCaps;
+  const affordanceEntries = activityCaps?.affordances ? Object.entries(activityCaps.affordances) : [];
+
+  const formatAffordanceLabel = (key: string) => key.replace(/_/g, ' ');
 
   return (
     <div className="w-full h-full rounded-xl border border-canon-border bg-canon-bg-light/30 p-4 text-canon-text shadow-inner overflow-y-auto custom-scrollbar">
@@ -144,6 +149,48 @@ export const CharacterCard: React.FC<Props> = ({ character }) => {
                     {psych.distortions.threatBias > 0.5 && <span className="px-1.5 py-0.5 bg-orange-500/20 text-orange-300 rounded text-[9px]">ThreatBias</span>}
                 </div>
              </div>
+        </div>
+      )}
+
+      {/* Thinking & Activity */}
+      {thinking && activityCaps && (
+        <div className="mb-5 p-3 bg-canon-bg/20 rounded-lg border border-canon-border/20 text-xs">
+          <h4 className="text-[10px] font-bold text-canon-text-light uppercase mb-2 tracking-wider">Thinking & Activity</h4>
+          <div className="space-y-2">
+            <div className="flex flex-wrap gap-2 text-[10px]">
+              <span className="px-2 py-0.5 rounded-full bg-canon-bg/50 border border-canon-border/30">
+                form: {thinking.dominant.form}
+              </span>
+              <span className="px-2 py-0.5 rounded-full bg-canon-bg/50 border border-canon-border/30">
+                inference: {thinking.dominant.inference}
+              </span>
+              <span className="px-2 py-0.5 rounded-full bg-canon-bg/50 border border-canon-border/30">
+                control: {thinking.dominant.control}
+              </span>
+              <span className="px-2 py-0.5 rounded-full bg-canon-bg/50 border border-canon-border/30">
+                function: {thinking.dominant.function}
+              </span>
+            </div>
+
+            <div className="text-[10px] text-canon-text-light uppercase">Affordances</div>
+            <div className="space-y-1.5">
+              {affordanceEntries.length ? (
+                affordanceEntries.map(([key, value]) => (
+                  <div key={key} className="flex items-center gap-2">
+                    <div className="w-28 text-[10px] text-canon-text-light truncate" title={formatAffordanceLabel(key)}>
+                      {formatAffordanceLabel(key)}
+                    </div>
+                    <div className="flex-1 h-1.5 bg-canon-bg rounded-full overflow-hidden">
+                      <div className="h-full bg-canon-blue" style={{ width: `${(Number(value) || 0) * 100}%` }}></div>
+                    </div>
+                    <div className="w-10 text-[10px] text-right">{((Number(value) || 0) * 100).toFixed(0)}%</div>
+                  </div>
+                ))
+              ) : (
+                <div className="text-[10px] text-canon-text-light italic">No affordances</div>
+              )}
+            </div>
+          </div>
         </div>
       )}
 

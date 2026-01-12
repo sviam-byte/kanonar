@@ -1,5 +1,28 @@
 
-import { CharacterEntity, AgentPsychState, Episode, ArchetypePhase, TraumaLoad, DistortionProfile, NarrativeIdentity, AttachmentProfile, MoralDissonance, ResilienceProfile, CopingProfile, ExposureTraces, Worldview } from '../../types';
+import {
+    CharacterEntity,
+    AgentPsychState,
+    Episode,
+    ArchetypePhase,
+    TraumaLoad,
+    DistortionProfile,
+    NarrativeIdentity,
+    AttachmentProfile,
+    MoralDissonance,
+    ResilienceProfile,
+    CopingProfile,
+    ExposureTraces,
+    Worldview,
+    ThinkingAxesProfile,
+    ThinkingFormKind,
+    ThinkingInferenceKind,
+    ThinkingControlKind,
+    ThinkingFunctionKind,
+    ActivityCapabilityProfile,
+    ActivityLevelKind,
+    ActivityControlKind,
+    ActivitySpaceKind
+} from '../../types';
 import { computeBiographyLatent, BiographyLatent } from '../biography/lifeGoalsEngine';
 import { computeExposureTraces, computeWorldview } from '../biography/exposure';
 import { getNestedValue } from '../param-utils';
@@ -8,6 +31,134 @@ import { computeSelfArchetypeVector } from '../archetypes/system';
 const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
 const get = (c: CharacterEntity, key: string, def: number = 0.5) => getNestedValue(c.vector_base, key) ?? def;
 
+function normDist<T extends string>(xs: Record<T, number>, eps = 1e-9): Record<T, number> {
+    let sum = 0;
+    for (const k of Object.keys(xs) as T[]) sum += Math.max(0, Number(xs[k]) || 0);
+    const out = {} as Record<T, number>;
+    const d = sum > eps ? sum : 1;
+    for (const k of Object.keys(xs) as T[]) out[k] = clamp01((Math.max(0, Number(xs[k]) || 0)) / d);
+    return out;
+}
+
+function argmaxKey<T extends string>(xs: Record<T, number>): T {
+    let bestK = Object.keys(xs)[0] as T;
+    let bestV = -Infinity;
+    for (const k of Object.keys(xs) as T[]) {
+        const v = Number(xs[k]) || 0;
+        if (v > bestV) {
+            bestV = v;
+            bestK = k;
+        }
+    }
+    return bestK;
+}
+
+function avg(...xs: number[]) {
+    const n = xs.length;
+    if (!n) return 0;
+    let s = 0;
+    for (const v of xs) s += Number.isFinite(v) ? v : 0;
+    return s / n;
+}
+
+// --- New: cognitive style (axes) and activity capabilities ---
+function computeThinkingAxesProfile(c: CharacterEntity): ThinkingAxesProfile {
+    const formRaw: Record<ThinkingFormKind, number> = {
+        enactive: avg(get(c, 'D_fine_motor'), get(c, 'E_Skill_ops_fieldcraft'), 1 - get(c, 'B_discount_rate')),
+        imagistic: avg(get(c, 'A_Aesthetic_Meaning'), get(c, 'E_Epi_volume'), get(c, 'E_KB_topos')),
+        verbal: avg(get(c, 'A_Knowledge_Truth'), get(c, 'A_Legitimacy_Procedure'), get(c, 'E_KB_civic')),
+        formal: avg(get(c, 'E_Model_calibration'), get(c, 'G_Metacog_accuracy'), get(c, 'E_KB_topos'))
+    };
+    const form = normDist(formRaw);
+
+    const inferenceRaw: Record<ThinkingInferenceKind, number> = {
+        deductive: avg(get(c, 'A_Legitimacy_Procedure'), get(c, 'A_Tradition_Continuity'), get(c, 'B_cooldown_discipline')),
+        inductive: avg(get(c, 'B_exploration_rate'), get(c, 'E_Epi_volume'), get(c, 'F_Plasticity')),
+        abductive: avg(get(c, 'A_Knowledge_Truth'), get(c, 'E_Model_calibration'), get(c, 'B_tolerance_ambiguity')),
+        causal: avg(get(c, 'E_Skill_causal_surgery'), get(c, 'A_Causality_Sanctity'), get(c, 'E_Model_calibration')),
+        bayesian: avg(get(c, 'E_Model_calibration'), get(c, 'G_Metacog_accuracy'), get(c, 'B_tolerance_ambiguity'))
+    };
+    const inference = normDist(inferenceRaw);
+
+    const intuitive = clamp01(avg(get(c, 'B_decision_temperature'), 1 - get(c, 'B_cooldown_discipline'), get(c, 'D_HPA_reactivity')));
+    const analytic = clamp01(avg(1 - get(c, 'B_decision_temperature'), get(c, 'B_goal_coherence'), get(c, 'B_cooldown_discipline')));
+    const metacognitive = clamp01(avg(get(c, 'G_Metacog_accuracy'), get(c, 'B_tolerance_ambiguity'), get(c, 'E_Model_calibration')));
+    const control = normDist<ThinkingControlKind>({ intuitive, analytic, metacognitive });
+
+    const functionRaw: Record<ThinkingFunctionKind, number> = {
+        understanding: avg(get(c, 'A_Knowledge_Truth'), get(c, 'E_Model_calibration'), get(c, 'B_tolerance_ambiguity')),
+        planning: avg(get(c, 'B_goal_coherence'), get(c, 'B_cooldown_discipline'), 1 - get(c, 'B_discount_rate')),
+        critical: avg(get(c, 'G_Metacog_accuracy'), get(c, 'A_Knowledge_Truth'), 1 - get(c, 'C_reputation_sensitivity')),
+        creative: avg(get(c, 'A_Aesthetic_Meaning'), get(c, 'B_exploration_rate'), get(c, 'F_Plasticity')),
+        normative: avg(get(c, 'A_Justice_Fairness'), get(c, 'A_Legitimacy_Procedure'), get(c, 'A_Tradition_Continuity')),
+        social_tom: avg(get(c, 'C_reciprocity_index'), get(c, 'C_dominance_empathy'), get(c, 'C_coalition_loyalty'))
+    };
+    const fn = normDist(functionRaw);
+
+    const dominant = {
+        form: argmaxKey(form),
+        inference: argmaxKey(inference),
+        control: argmaxKey(control),
+        function: argmaxKey(fn)
+    };
+
+    const metacognitiveGain = clamp01(avg(control.metacognitive, get(c, 'G_Metacog_accuracy')));
+    return { form, inference, control, function: fn, dominant, metacognitiveGain };
+}
+
+function computeActivityCapabilities(c: CharacterEntity, thinking: ThinkingAxesProfile): ActivityCapabilityProfile {
+    const levels: Record<ActivityLevelKind, number> = {
+        operations: clamp01(avg(get(c, 'D_fine_motor'), get(c, 'B_cooldown_discipline'), get(c, 'D_sleep_resilience'))),
+        actions: clamp01(
+            avg(
+                get(c, 'B_goal_coherence'),
+                get(c, 'E_Model_calibration'),
+                avg(get(c, 'E_Skill_ops_fieldcraft'), get(c, 'E_Skill_diplomacy_negotiation'), get(c, 'E_Skill_repair_topology'))
+            )
+        ),
+        activity: clamp01(avg(get(c, 'G_Narrative_agency'), get(c, 'A_Aesthetic_Meaning'), get(c, 'A_Knowledge_Truth')))
+    };
+
+    const control: Record<ActivityControlKind, number> = {
+        reactive: clamp01(avg(get(c, 'D_HPA_reactivity'), get(c, 'B_decision_temperature'), 1 - get(c, 'B_cooldown_discipline'))),
+        proactive: clamp01(avg(get(c, 'B_goal_coherence'), 1 - get(c, 'B_discount_rate'), 1 - get(c, 'B_decision_temperature'))),
+        regulatory: clamp01(avg(get(c, 'B_cooldown_discipline'), get(c, 'G_Metacog_accuracy'), get(c, 'D_sleep_resilience'))),
+        reflective: clamp01(avg(get(c, 'G_Narrative_agency'), get(c, 'B_tolerance_ambiguity'), get(c, 'F_Value_update_rate')))
+    };
+
+    const spaces: Record<ActivitySpaceKind, number> = {
+        sensorimotor: clamp01(avg(get(c, 'D_fine_motor'), get(c, 'E_Skill_ops_fieldcraft'), levels.operations)),
+        instrumental: clamp01(avg(get(c, 'A_Knowledge_Truth'), get(c, 'E_KB_stem'), get(c, 'E_Model_calibration'))),
+        communicative: clamp01(avg(get(c, 'E_Skill_diplomacy_negotiation'), get(c, 'C_reciprocity_index'), get(c, 'C_dominance_empathy'))),
+        constructive: clamp01(avg(get(c, 'E_Model_calibration'), get(c, 'E_Skill_repair_topology'), thinking.form.formal, thinking.function.planning)),
+        creative: clamp01(avg(get(c, 'A_Aesthetic_Meaning'), get(c, 'F_Plasticity'), thinking.function.creative)),
+        normative: clamp01(avg(get(c, 'A_Legitimacy_Procedure'), get(c, 'A_Justice_Fairness'), thinking.function.normative)),
+        existential: clamp01(avg(get(c, 'G_Narrative_agency'), get(c, 'A_Aesthetic_Meaning'), get(c, 'B_tolerance_ambiguity')))
+    };
+
+    const debug_diagnosis = clamp01(avg(thinking.inference.abductive, thinking.inference.causal, thinking.control.metacognitive, spaces.instrumental));
+    const system_building = clamp01(avg(thinking.form.formal, thinking.function.planning, spaces.constructive, levels.actions));
+    const negotiation_coordination = clamp01(avg(thinking.function.social_tom, spaces.communicative, thinking.function.normative));
+    const craft_iterate = clamp01(avg(thinking.form.enactive, thinking.control.intuitive, spaces.sensorimotor, levels.operations));
+    const design_story = clamp01(avg(thinking.form.imagistic, thinking.function.creative, spaces.creative, levels.activity));
+    const governance_rules = clamp01(avg(thinking.function.normative, thinking.inference.deductive, spaces.normative, thinking.function.planning));
+    const self_authorship = clamp01(avg(thinking.control.metacognitive, spaces.existential, levels.activity, thinking.function.understanding));
+
+    return {
+        levels,
+        control,
+        spaces,
+        affordances: {
+            debug_diagnosis,
+            system_building,
+            negotiation_coordination,
+            craft_iterate,
+            design_story,
+            governance_rules,
+            self_authorship
+        }
+    };
+}
 export function computeDistortionProfile(c: CharacterEntity, w: Worldview, b: BiographyLatent): DistortionProfile {
     // Traits
     const traitParanoia = get(c, 'C_betrayal_cost');
@@ -190,5 +341,25 @@ export function recomputeAgentPsychState(agent: AgentPsychState | undefined, cha
   
   const shadowActivation = (character as any).archetype?.shadowActivation ?? 0;
 
-  return { coping, distortion, narrative, attachment, moral, resilience, worldview, exposures, selfGap: moral.valueBehaviorGapTotal, shame: moral.shame, guilt: moral.guilt, shadowActivation, sysMode, trauma };
+  const thinking = computeThinkingAxesProfile(character);
+  const activityCaps = computeActivityCapabilities(character, thinking);
+
+  return {
+      coping,
+      distortion,
+      narrative,
+      attachment,
+      moral,
+      resilience,
+      worldview,
+      exposures,
+      thinking,
+      activityCaps,
+      selfGap: moral.valueBehaviorGapTotal,
+      shame: moral.shame,
+      guilt: moral.guilt,
+      shadowActivation,
+      sysMode,
+      trauma
+  };
 }

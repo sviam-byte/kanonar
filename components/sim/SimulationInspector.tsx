@@ -4,6 +4,7 @@ import { makeWorldDebugSnapshot } from "../../lib/diagnostics/snapshots";
 import { WorldDashboard } from "./WorldDashboard";
 import { CharacterCard } from "./CharacterCard";
 import { TimelineScrubber } from "./TimelineScrubber";
+import { NarrativeLog } from "./NarrativeLog";
 import type { WorldState } from "../../types";
 
 interface Props {
@@ -67,12 +68,17 @@ export const SimulationInspector: React.FC<Props> = ({ worldHistory }) => {
       />
 
       <div className="flex min-h-0 flex-1 gap-4 overflow-hidden">
-        <div className="flex-1 min-w-0 overflow-hidden flex flex-col">
-          <WorldDashboard
-            world={worldSnapshot}
-            onSelectCharacter={(id) => setSelectedCharacterId(id)}
-            selectedCharacterId={selectedCharacterId}
-          />
+        <div className="flex-1 min-w-0 overflow-hidden flex flex-col gap-4">
+          <div className="flex-1 min-h-0 overflow-hidden">
+            <WorldDashboard
+              world={worldSnapshot}
+              onSelectCharacter={(id) => setSelectedCharacterId(id)}
+              selectedCharacterId={selectedCharacterId}
+            />
+          </div>
+          <div className="h-[260px] shrink-0">
+            <NarrativeLog worldHistory={worldHistory} currentTick={currentTick} playing={playing} />
+          </div>
         </div>
         <div className="w-[380px] shrink-0 overflow-hidden flex flex-col">
           {selectedCharacter ? (
