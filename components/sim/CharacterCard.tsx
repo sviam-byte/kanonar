@@ -36,9 +36,10 @@ export const CharacterCard: React.FC<Props> = ({ character }) => {
   const safeSelfGap = psych?.selfGap ?? 0;
   const thinking = psych?.thinking;
   const activityCaps = psych?.activityCaps;
-  const affordanceEntries = activityCaps?.affordances ? Object.entries(activityCaps.affordances) : [];
-
-  const formatAffordanceLabel = (key: string) => key.replace(/_/g, ' ');
+  const metacognitiveGain = thinking?.metacognitiveGain ?? 0;
+  const safeOps = activityCaps?.operations ?? 0;
+  const safeActs = activityCaps?.actions ?? 0;
+  const safeMotif = activityCaps?.activity ?? 0;
 
   return (
     <div className="w-full h-full rounded-xl border border-canon-border bg-canon-bg-light/30 p-4 text-canon-text shadow-inner overflow-y-auto custom-scrollbar">
@@ -152,43 +153,42 @@ export const CharacterCard: React.FC<Props> = ({ character }) => {
         </div>
       )}
 
-      {/* Thinking & Activity */}
+      {/* Cognition & Activity */}
       {thinking && activityCaps && (
         <div className="mb-5 p-3 bg-canon-bg/20 rounded-lg border border-canon-border/20 text-xs">
-          <h4 className="text-[10px] font-bold text-canon-text-light uppercase mb-2 tracking-wider">Thinking & Activity</h4>
+          <h4 className="text-[10px] font-bold text-canon-text-light uppercase mb-2 tracking-wider">Cognition & Activity</h4>
           <div className="space-y-2">
             <div className="flex flex-wrap gap-2 text-[10px]">
               <span className="px-2 py-0.5 rounded-full bg-canon-bg/50 border border-canon-border/30">
-                form: {thinking.dominant.form}
+                A: {thinking.dominantA}
               </span>
               <span className="px-2 py-0.5 rounded-full bg-canon-bg/50 border border-canon-border/30">
-                inference: {thinking.dominant.inference}
+                B: {thinking.dominantB}
               </span>
               <span className="px-2 py-0.5 rounded-full bg-canon-bg/50 border border-canon-border/30">
-                control: {thinking.dominant.control}
+                C: {thinking.dominantC}
               </span>
               <span className="px-2 py-0.5 rounded-full bg-canon-bg/50 border border-canon-border/30">
-                function: {thinking.dominant.function}
+                D: {thinking.dominantD}
+              </span>
+              <span className="px-2 py-0.5 rounded-full bg-canon-bg/50 border border-canon-border/30">
+                metacog: {(metacognitiveGain * 100).toFixed(0)}%
               </span>
             </div>
 
-            <div className="text-[10px] text-canon-text-light uppercase">Affordances</div>
-            <div className="space-y-1.5">
-              {affordanceEntries.length ? (
-                affordanceEntries.map(([key, value]) => (
-                  <div key={key} className="flex items-center gap-2">
-                    <div className="w-28 text-[10px] text-canon-text-light truncate" title={formatAffordanceLabel(key)}>
-                      {formatAffordanceLabel(key)}
-                    </div>
-                    <div className="flex-1 h-1.5 bg-canon-bg rounded-full overflow-hidden">
-                      <div className="h-full bg-canon-blue" style={{ width: `${(Number(value) || 0) * 100}%` }}></div>
-                    </div>
-                    <div className="w-10 text-[10px] text-right">{((Number(value) || 0) * 100).toFixed(0)}%</div>
-                  </div>
-                ))
-              ) : (
-                <div className="text-[10px] text-canon-text-light italic">No affordances</div>
-              )}
+            <div className="grid grid-cols-3 gap-2 text-[10px]">
+              <div className="rounded border border-canon-border/20 bg-canon-bg/40 p-2">
+                <div className="text-canon-text-light uppercase">Ops</div>
+                <div className="font-mono">{(safeOps * 100).toFixed(0)}%</div>
+              </div>
+              <div className="rounded border border-canon-border/20 bg-canon-bg/40 p-2">
+                <div className="text-canon-text-light uppercase">Acts</div>
+                <div className="font-mono">{(safeActs * 100).toFixed(0)}%</div>
+              </div>
+              <div className="rounded border border-canon-border/20 bg-canon-bg/40 p-2">
+                <div className="text-canon-text-light uppercase">Motif</div>
+                <div className="font-mono">{(safeMotif * 100).toFixed(0)}%</div>
+              </div>
             </div>
           </div>
         </div>

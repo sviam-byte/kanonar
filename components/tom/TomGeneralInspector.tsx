@@ -253,6 +253,7 @@ interface SharedTabProps {
 const TabObserver: React.FC<SharedTabProps> = ({ dossier, params, agent, outputs, activeTooltip, onToggleTooltip, dyad, observations }) => {
     const biases = params.biases || {};
     const psy = dossier.analysis?.psych_profile || {};
+    const thinking = agent.psych?.thinking;
     
     // Read calculated error profile from output if available, else calc locally
     const errorProfile = outputs.errorProfile || {
@@ -323,6 +324,34 @@ const TabObserver: React.FC<SharedTabProps> = ({ dossier, params, agent, outputs
                         variables={{ Hostile: biases.hostile_attribution || 0, Catastrophizing: psy.distortion?.catastrophizing || 0 }}
                     />}
                 />
+            </Card>
+
+            <Card title="Cognition (Thinking)" icon="🧠">
+                {thinking ? (
+                    <div className="space-y-3 text-xs">
+                        <div className="flex flex-wrap gap-2">
+                            <span className="px-2 py-0.5 rounded-full bg-canon-bg/60 border border-canon-border/30">
+                                A: {thinking.dominantA}
+                            </span>
+                            <span className="px-2 py-0.5 rounded-full bg-canon-bg/60 border border-canon-border/30">
+                                B: {thinking.dominantB}
+                            </span>
+                            <span className="px-2 py-0.5 rounded-full bg-canon-bg/60 border border-canon-border/30">
+                                C: {thinking.dominantC}
+                            </span>
+                            <span className="px-2 py-0.5 rounded-full bg-canon-bg/60 border border-canon-border/30">
+                                D: {thinking.dominantD}
+                            </span>
+                        </div>
+                        <ValueBar
+                            label="Metacognitive Gain"
+                            value={thinking.metacognitiveGain ?? 0}
+                            color="bg-canon-blue"
+                        />
+                    </div>
+                ) : (
+                    <div className="text-[10px] text-canon-text-light italic">No cognitive profile</div>
+                )}
             </Card>
 
             <Card title="2. Профиль Ошибок (Error Profile)" icon="⚠️">

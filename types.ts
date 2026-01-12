@@ -1024,64 +1024,6 @@ export interface MoralDissonance {
     perAxis: any[];
 }
 
-// --- Cognitive Style / Thinking Axes (Psyche Layer) ---
-export type ThinkingFormKind = 'enactive' | 'imagistic' | 'verbal' | 'formal';
-export type ThinkingInferenceKind = 'deductive' | 'inductive' | 'abductive' | 'causal' | 'bayesian';
-export type ThinkingControlKind = 'intuitive' | 'analytic' | 'metacognitive';
-export type ThinkingFunctionKind =
-    | 'understanding'
-    | 'planning'
-    | 'critical'
-    | 'creative'
-    | 'normative'
-    | 'social_tom';
-
-export interface ThinkingAxesProfile {
-    // Distributions (0..1, sum≈1 within each axis)
-    form: Record<ThinkingFormKind, number>;
-    inference: Record<ThinkingInferenceKind, number>;
-    control: Record<ThinkingControlKind, number>;
-    function: Record<ThinkingFunctionKind, number>;
-    // Convenience
-    dominant: {
-        form: ThinkingFormKind;
-        inference: ThinkingInferenceKind;
-        control: ThinkingControlKind;
-        function: ThinkingFunctionKind;
-    };
-    // Key scalar used elsewhere (0..1)
-    metacognitiveGain: number;
-}
-
-export type ActivityLevelKind = 'operations' | 'actions' | 'activity';
-export type ActivityControlKind = 'reactive' | 'proactive' | 'regulatory' | 'reflective';
-export type ActivitySpaceKind =
-    | 'sensorimotor'
-    | 'instrumental'
-    | 'communicative'
-    | 'constructive'
-    | 'creative'
-    | 'normative'
-    | 'existential';
-
-export interface ActivityCapabilityProfile {
-    // 0..1 (not necessarily summing)
-    levels: Record<ActivityLevelKind, number>;
-    control: Record<ActivityControlKind, number>;
-    spaces: Record<ActivitySpaceKind, number>;
-    // Bridging: "мышление → доступные действия"
-    affordances: Record<
-        | 'debug_diagnosis'
-        | 'system_building'
-        | 'negotiation_coordination'
-        | 'craft_iterate'
-        | 'design_story'
-        | 'governance_rules'
-        | 'self_authorship',
-        number
-    >;
-}
-
 export interface AgentPsychState {
     coping: CopingProfile;
     distortion: DistortionProfile;
@@ -1091,8 +1033,6 @@ export interface AgentPsychState {
     resilience: ResilienceProfile;
     worldview: Worldview;
     exposures: ExposureTraces;
-    thinking?: ThinkingAxesProfile;
-    activityCaps?: ActivityCapabilityProfile;
     selfGap: number;
     shame?: number;
     guilt?: number;
@@ -1100,6 +1040,44 @@ export interface AgentPsychState {
     sysMode: 'SYS-1' | 'SYS-2';
     trauma: TraumaLoad;
     activeGoalModifiers?: Record<string, number>;
+    // --- Cognitive / activity metrics (derived, 0..1) ---
+    thinking?: ThinkingProfile;
+    activityCaps?: ActivityCaps;
+}
+
+// --- Cognitive profile (characteristics shown on Character Card) ---
+export type ThinkingAxisA = 'enactive' | 'imagery' | 'verbal' | 'formal';
+export type ThinkingAxisB = 'deductive' | 'inductive' | 'abductive' | 'causal' | 'bayesian';
+export type ThinkingAxisC = 'intuitive' | 'analytic' | 'metacognitive';
+export type ThinkingAxisD = 'understanding' | 'planning' | 'critical' | 'creative' | 'normative' | 'social';
+
+export interface ThinkingProfile {
+    representation: Record<ThinkingAxisA, number>;
+    inference: Record<ThinkingAxisB, number>;
+    control: Record<ThinkingAxisC, number>;
+    function: Record<ThinkingAxisD, number>;
+    dominantA: ThinkingAxisA;
+    dominantB: ThinkingAxisB;
+    dominantC: ThinkingAxisC;
+    dominantD: ThinkingAxisD;
+    metacognitiveGain: number;
+}
+
+export interface ActivityCaps {
+    operations: number;
+    actions: number;
+    activity: number;
+    reactive: number;
+    proactive: number;
+    regulatory: number;
+    reflective: number;
+    sensorimotor: number;
+    instrumental: number;
+    communicative: number;
+    constructor: number;
+    creative: number;
+    normative: number;
+    existential: number;
 }
 
 export interface ContextGoal {
