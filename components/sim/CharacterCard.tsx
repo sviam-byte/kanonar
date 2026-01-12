@@ -1,6 +1,8 @@
 
-import React from "react";
+import React, { useMemo } from "react";
 import { CharacterDebugSnapshot } from "../../types";
+import { deriveThinkingAndActivityFromCharacter } from "../../lib/characters/thinkingProfile";
+import { Badge } from "../ui/primitives";
 
 interface Props {
   character: CharacterDebugSnapshot;
@@ -25,6 +27,14 @@ export const CharacterCard: React.FC<Props> = ({ character }) => {
     lastEpisodes,
     psych
   } = character;
+
+  const cog = useMemo(() => {
+    try {
+      return deriveThinkingAndActivityFromCharacter(character as any);
+    } catch {
+      return null;
+    }
+  }, [character]);
   
   // Safe getters
   const safeStress = stress ?? 0;
@@ -34,12 +44,6 @@ export const CharacterCard: React.FC<Props> = ({ character }) => {
   const safeTomQuality = tomQuality ?? 0.5;
   const safeTomUncertainty = tomUncertainty ?? 0.5;
   const safeSelfGap = psych?.selfGap ?? 0;
-  const thinking = psych?.thinking;
-  const activityCaps = psych?.activityCaps;
-  const metacognitiveGain = thinking?.metacognitiveGain ?? 0;
-  const safeOps = activityCaps?.operations ?? 0;
-  const safeActs = activityCaps?.actions ?? 0;
-  const safeMotif = activityCaps?.activity ?? 0;
 
   return (
     <div className="w-full h-full rounded-xl border border-canon-border bg-canon-bg-light/30 p-4 text-canon-text shadow-inner overflow-y-auto custom-scrollbar">
@@ -153,46 +157,39 @@ export const CharacterCard: React.FC<Props> = ({ character }) => {
         </div>
       )}
 
-      {/* Cognition & Activity */}
-      {thinking && activityCaps && (
+      {/* Thinking & Activity (static character sheet metrics) */}
+      {cog ? (
         <div className="mb-5 p-3 bg-canon-bg/20 rounded-lg border border-canon-border/20 text-xs">
-          <h4 className="text-[10px] font-bold text-canon-text-light uppercase mb-2 tracking-wider">Cognition & Activity</h4>
-          <div className="space-y-2">
-            <div className="flex flex-wrap gap-2 text-[10px]">
-              <span className="px-2 py-0.5 rounded-full bg-canon-bg/50 border border-canon-border/30">
-                A: {thinking.dominantA}
-              </span>
-              <span className="px-2 py-0.5 rounded-full bg-canon-bg/50 border border-canon-border/30">
-                B: {thinking.dominantB}
-              </span>
-              <span className="px-2 py-0.5 rounded-full bg-canon-bg/50 border border-canon-border/30">
-                C: {thinking.dominantC}
-              </span>
-              <span className="px-2 py-0.5 rounded-full bg-canon-bg/50 border border-canon-border/30">
-                D: {thinking.dominantD}
-              </span>
-              <span className="px-2 py-0.5 rounded-full bg-canon-bg/50 border border-canon-border/30">
-                metacog: {(metacognitiveGain * 100).toFixed(0)}%
-              </span>
-            </div>
+          <div className="flex items-center gap-2">
+            <Badge>Thinking</Badge>
+            <span className="text-xs opacity-70">
+              A:{cog.thinking.dominantA} · B:{cog.thinking.dominantB} · C:{cog.thinking.dominantC} · D:{cog.thinking.dominantD}
+            </span>
+            <div className="grow" />
+            <span className="text-xs opacity-70">meta={cog.thinking.metacognitiveGain.toFixed(2)}</span>
+          </div>
 
-            <div className="grid grid-cols-3 gap-2 text-[10px]">
-              <div className="rounded border border-canon-border/20 bg-canon-bg/40 p-2">
-                <div className="text-canon-text-light uppercase">Ops</div>
-                <div className="font-mono">{(safeOps * 100).toFixed(0)}%</div>
-              </div>
-              <div className="rounded border border-canon-border/20 bg-canon-bg/40 p-2">
-                <div className="text-canon-text-light uppercase">Acts</div>
-                <div className="font-mono">{(safeActs * 100).toFixed(0)}%</div>
-              </div>
-              <div className="rounded border border-canon-border/20 bg-canon-bg/40 p-2">
-                <div className="text-canon-text-light uppercase">Motif</div>
-                <div className="font-mono">{(safeMotif * 100).toFixed(0)}%</div>
-              </div>
-            </div>
+          <div className="mt-2 text-xs opacity-80">
+            <div>Form: en={cog.thinking.representation.enactive.toFixed(2)} im={cog.thinking.representation.imagery.toFixed(2)} vb={cog.thinking.representation.verbal.toFixed(2)} fm={cog.thinking.representation.formal.toFixed(2)}</div>
+            <div>Infer: dd={cog.thinking.inference.deductive.toFixed(2)} in={cog.thinking.inference.inductive.toFixed(2)} ab={cog.thinking.inference.abductive.toFixed(2)} ca={cog.thinking.inference.causal.toFixed(2)} by={cog.thinking.inference.bayesian.toFixed(2)}</div>
+            <div>Ctrl: i={cog.thinking.control.intuitive.toFixed(2)} a={cog.thinking.control.analytic.toFixed(2)} m={cog.thinking.control.metacognitive.toFixed(2)}</div>
+            <div>Fn: u={cog.thinking.function.understanding.toFixed(2)} p={cog.thinking.function.planning.toFixed(2)} k={cog.thinking.function.critical.toFixed(2)} c={cog.thinking.function.creative.toFixed(2)} n={cog.thinking.function.normative.toFixed(2)} s={cog.thinking.function.social.toFixed(2)}</div>
+          </div>
+
+          <div className="mt-2 flex flex-wrap gap-2 text-xs">
+            <Badge>Ops {cog.activityCaps.operations.toFixed(2)}</Badge>
+            <Badge>Acts {cog.activityCaps.actions.toFixed(2)}</Badge>
+            <Badge>Motif {cog.activityCaps.activity.toFixed(2)}</Badge>
+            <Badge>Pro {cog.activityCaps.proactive.toFixed(2)}</Badge>
+            <Badge>Reg {cog.activityCaps.regulatory.toFixed(2)}</Badge>
+            <Badge>Refl {cog.activityCaps.reflective.toFixed(2)}</Badge>
+            <Badge>Comm {cog.activityCaps.communicative.toFixed(2)}</Badge>
+            <Badge>Build {cog.activityCaps.constructor.toFixed(2)}</Badge>
+            <Badge>Create {cog.activityCaps.creative.toFixed(2)}</Badge>
+            <Badge>Norm {cog.activityCaps.normative.toFixed(2)}</Badge>
           </div>
         </div>
-      )}
+      ) : null}
 
       {/* ToM */}
       <div className="mb-5">
