@@ -12,6 +12,72 @@ function clamp01(x: number) {
   return Math.max(0, Math.min(1, x));
 }
 
+type CtxVec = {
+  danger: number;
+  uncertainty: number;
+  surveillance: number;
+  crowd: number;
+  privacy: number;
+};
+
+function readCtxVec(atoms: ContextAtom[], selfId: string): CtxVec {
+  const getCtxMag = (id: string, fb = 0) => {
+    const a = atoms.find(x => x?.id === id);
+    const m = (a as any)?.magnitude;
+    return (typeof m === 'number' && Number.isFinite(m)) ? m : fb;
+  };
+  return {
+    danger: clamp01(getCtxMag(`ctx:danger:${selfId}`, 0)),
+    uncertainty: clamp01(getCtxMag(`ctx:uncertainty:${selfId}`, 0)),
+    surveillance: clamp01(getCtxMag(`ctx:surveillance:${selfId}`, 0)),
+    crowd: clamp01(getCtxMag(`ctx:crowd:${selfId}`, 0)),
+    privacy: clamp01(getCtxMag(`ctx:privacy:${selfId}`, 0)),
+  };
+}
+
+function keyFromPossibilityId(id: string): string {
+  const parts = String(id || '').split(':');
+  return parts[1] || parts[0] || '';
+}
+
+function contextKeyMod(k: string, ctx: CtxVec): number {
+  // Возвращает мультипликативный модификатор ~ [0.55 .. 1.65]
+  // Идея: контекст должен реально "переключать" режимы, а не слегка шевелить.
+  const D = ctx.danger;
+  const U = ctx.uncertainty;
+  const S = ctx.surveillance;
+  const C = ctx.crowd;
+  const P = ctx.privacy;
+
+  // базовый режим
+  let m = 1.0;
+
+  if (k === 'wait') {
+    // ждать хуже при опасности/неопределенности
+    m *= (1 - 0.55 * D) * (1 - 0.35 * U);
+  }
+  if (k === 'rest' || k === 'work') {
+    // отдых/работа плохо при опасности; работа плохо при высокой неопределенности
+    m *= (1 - 0.65 * D) * (k === 'work' ? (1 - 0.25 * U) : 1);
+  }
+  if (k === 'observe') {
+    // наблюдать хорошо при опасности/неопределенности
+    m *= (1 + 0.55 * U + 0.25 * D);
+  }
+  if (k === 'move') {
+    // двигаться (перемещение/перестройка позиции) хорошо при опасности
+    m *= (1 + 0.45 * D);
+  }
+  if (k === 'talk' || k === 'ask_info' || k === 'negotiate') {
+    // социальные действия: лучше при неопределенности, хуже при надзоре/толпе/низкой приватности
+    const infoBonus = (k === 'ask_info') ? 0.55 * U : 0.25 * U;
+    const socialPenalty = 0.55 * S + 0.35 * C + 0.45 * (1 - P);
+    m *= (1 + infoBonus) * (1 - socialPenalty);
+  }
+
+  return clamp01(Math.max(0.55, Math.min(1.65, m)));
+}
+
 function get(atoms: ContextAtom[], id: string, fb = 0) {
   const a = atoms.find(x => x.id === id);
   const m = (a as any)?.magnitude;
@@ -244,7 +310,13 @@ export function scorePossibility(args: {
   // Mix with base utility (keep conservative to avoid goal dominance).
   const mixedUtility = clamp01(0.80 * raw + 0.20 * goalUtility);
 
-  const allowedScore = gate.allowed ? mixedUtility : 0;
+  // Контекстный key-mod (после базовых весов, чтобы реально влиять на итог).
+  const ctxVec = readCtxVec(atoms, selfId);
+  const ctxKey = keyFromPossibilityId(p.id);
+  const ctxMod = contextKeyMod(ctxKey, ctxVec);
+  const adjustedUtility = clamp01(mixedUtility * ctxMod);
+
+  const allowedScore = gate.allowed ? adjustedUtility : 0;
 
   const usedAtomIds = [
     ...(p.trace?.usedAtomIds || []),
@@ -260,6 +332,11 @@ export function scorePossibility(args: {
     `feat:char:${selfId}:trait.order`,
     `feat:char:${selfId}:trait.normSensitivity`,
     ...(dangerCtx.id ? [dangerCtx.id] : pickCtxId('danger', selfId)),
+    `ctx:danger:${selfId}`,
+    `ctx:uncertainty:${selfId}`,
+    `ctx:surveillance:${selfId}`,
+    `ctx:crowd:${selfId}`,
+    `ctx:privacy:${selfId}`,
     ...(targetId ? [
       `world:map:hazardBetween:${selfId}:${targetId}`,
       `soc:allyHazardBetween:${selfId}:${targetId}`,
@@ -297,6 +374,10 @@ export function scorePossibility(args: {
           planParts: plan.parts,
           danger: dangerCtx.magnitude,
           dangerLayer: dangerCtx.layer,
+          ctxKey,
+          ctxMod,
+          ctxVec,
+          adjustedUtility,
           allowed: gate.allowed,
         }
       }
@@ -322,7 +403,11 @@ export function scorePossibility(args: {
         planBoost,
         goalUtilityRaw,
         goalDomainParts,
-        planParts: plan.parts
+        planParts: plan.parts,
+        ctxKey,
+        ctxMod,
+        ctxVec,
+        adjustedUtility,
       },
       blockedBy: gate.blockedBy
     },

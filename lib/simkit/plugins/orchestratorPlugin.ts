@@ -146,9 +146,9 @@ function toSimActionFromPossibility(p: Possibility, tickIndex: number, actorId: 
     wait: 'wait',
     rest: 'rest',
     talk: 'talk',
-    observe: 'wait',
-    ask_info: 'talk',
-    negotiate: 'talk',
+    observe: 'observe',
+    ask_info: 'ask_info',
+    negotiate: 'negotiate',
   };
 
   const kind = kindMap[k];
@@ -180,6 +180,9 @@ function toGoalLabSnapshot(simSnapshot: any): any {
       tickIndex: simSnapshot?.tickIndex ?? null,
     };
     if ((base as any).locationId == null && c?.locId) (base as any).locationId = c.locId;
+    // важно для WorldState-пайплайна: Stage0/relations ожидают world.agents[] с entityId/locationId
+    if ((base as any).entityId == null && c?.id) (base as any).entityId = c.id;
+    if ((base as any).id == null && c?.id) (base as any).id = c.id;
     return base;
   });
 
@@ -198,8 +201,13 @@ function toGoalLabSnapshot(simSnapshot: any): any {
     id: simSnapshot?.id,
     time: simSnapshot?.time,
     tickIndex: simSnapshot?.tickIndex,
+    // WorldState-совместимость (Stage0/relations/world.locations.ts)
+    tick: simSnapshot?.tickIndex ?? 0,
+    agents: characters,
     characters,
     locations,
+    // на некоторых местах код ожидает "entities" как алиас
+    entities: characters,
     events: simSnapshot?.events || [],
     atoms: [], // orchestrator will fill
     debug: simSnapshot?.debug || {},

@@ -47,7 +47,16 @@ export type SimWorld = {
   events: SimEvent[];
 };
 
-export type ActionKind = 'move' | 'wait' | 'talk' | 'work' | 'rest' | 'start_intent';
+export type ActionKind =
+  | 'move'
+  | 'wait'
+  | 'rest'
+  | 'work'
+  | 'talk'
+  | 'observe'
+  | 'ask_info'
+  | 'negotiate'
+  | 'start_intent';
 
 export type SimAction = {
   id: Id;                 // unique action instance id

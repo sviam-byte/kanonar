@@ -275,6 +275,118 @@ const TalkSpec: ActionSpec = {
   },
 };
 
+const ObserveSpec: ActionSpec = {
+  kind: 'observe',
+  enumerate: ({ world, actorId }) => {
+    // базово всегда возможно; чуть выше, чем wait, но ниже "настоящих" действий
+    const c = getChar(world, actorId);
+    const loc = getLoc(world, c.locId);
+    const radiation = Number(loc.hazards?.['radiation'] ?? 0);
+    // чем опаснее, тем чаще "озираемся"
+    const score = clamp01(0.12 + 0.22 * radiation);
+    return [{ kind: 'observe', actorId, score }];
+  },
+  validateV1: ({ world, offer }) => validateCommon(world, offer),
+  validateV2: ({ world, offer }) => {
+    const base = validateCommon(world, offer);
+    const c = getChar(world, base.actorId);
+    if (normLevel(world, c.locId, 'no_observe') >= 0.7) {
+      return { ...base, blocked: true, reason: 'norm:no_observe', score: 0 };
+    }
+    return base;
+  },
+  classifyV3: () => 'single',
+  apply: ({ world, action }) => {
+    const notes: string[] = [];
+    const events: SimEvent[] = [];
+    const c = getChar(world, action.actorId);
+    // "наблюдение" снижает стресс и фиксирует факт
+    c.stress = clamp01(c.stress - 0.015);
+    world.facts[`observe:${c.id}:${world.tickIndex}`] = true;
+    world.facts['observe:count'] = (world.facts['observe:count'] ?? 0) + 1;
+    notes.push(`${c.id} observes`);
+    events.push(mkActionEvent(world, 'action:observe', { actorId: c.id, locationId: c.locId }));
+    return { world, events, notes };
+  },
+};
+
+const AskInfoSpec: ActionSpec = {
+  kind: 'ask_info',
+  enumerate: ({ world, actorId }) => {
+    const c = getChar(world, actorId);
+    const out: ActionOffer[] = [];
+    for (const other of Object.values(world.characters)) {
+      if (other.id === c.id) continue;
+      if (other.locId !== c.locId) continue;
+      out.push({ kind: 'ask_info', actorId, targetId: other.id, score: 0.18 });
+    }
+    return out;
+  },
+  validateV1: ({ world, offer }) => {
+    const base = validateCommon(world, offer);
+    try {
+      const c = getChar(world, base.actorId);
+      const otherId = String(base.targetId ?? '');
+      const other = world.characters[otherId];
+      if (!other) return { ...base, blocked: true, reason: 'v1:no-target', score: 0 };
+      if (other.locId !== c.locId) return { ...base, blocked: true, reason: 'v1:not-same-location', score: 0 };
+      return base;
+    } catch {
+      return { ...base, blocked: true, reason: 'v1:invalid', score: 0 };
+    }
+  },
+  validateV2: ({ world, offer }) => {
+    const base = validateCommon(world, offer);
+    const c = getChar(world, base.actorId);
+    if (normLevel(world, c.locId, 'no_talk') >= 0.7) {
+      return { ...base, blocked: true, reason: 'norm:no_talk', score: 0 };
+    }
+    return base;
+  },
+  classifyV3: () => 'single',
+  apply: ({ world, action }) => {
+    const notes: string[] = [];
+    const events: SimEvent[] = [];
+    const c = getChar(world, action.actorId);
+    const otherId = String(action.targetId ?? '');
+    // "вопрос" обычно чуть повышает стресс (риск), но увеличивает счетчик знания
+    c.stress = clamp01(c.stress + 0.005);
+    world.facts[`ask_info:${c.id}:${otherId}`] = (world.facts[`ask_info:${c.id}:${otherId}`] ?? 0) + 1;
+    notes.push(`${c.id} asks info from ${otherId}`);
+    events.push(mkActionEvent(world, 'action:ask_info', { actorId: c.id, targetId: otherId, locationId: c.locId }));
+    return { world, events, notes };
+  },
+};
+
+const NegotiateSpec: ActionSpec = {
+  kind: 'negotiate',
+  enumerate: ({ world, actorId }) => {
+    const c = getChar(world, actorId);
+    const out: ActionOffer[] = [];
+    for (const other of Object.values(world.characters)) {
+      if (other.id === c.id) continue;
+      if (other.locId !== c.locId) continue;
+      out.push({ kind: 'negotiate', actorId, targetId: other.id, score: 0.16 });
+    }
+    return out;
+  },
+  validateV1: ({ world, offer }) => AskInfoSpec.validateV1({ world, actorId: offer.actorId, offer }),
+  validateV2: ({ world, offer }) => AskInfoSpec.validateV2({ world, actorId: offer.actorId, offer }),
+  classifyV3: () => 'single',
+  apply: ({ world, action }) => {
+    const notes: string[] = [];
+    const events: SimEvent[] = [];
+    const c = getChar(world, action.actorId);
+    const otherId = String(action.targetId ?? '');
+    // переговоры немного "съедают энергию"
+    c.energy = clamp01(c.energy - 0.02);
+    world.facts[`negotiate:${c.id}:${otherId}`] = (world.facts[`negotiate:${c.id}:${otherId}`] ?? 0) + 1;
+    notes.push(`${c.id} negotiates with ${otherId}`);
+    events.push(mkActionEvent(world, 'action:negotiate', { actorId: c.id, targetId: otherId, locationId: c.locId }));
+    return { world, events, notes };
+  },
+};
+
 const StartIntentSpec: ActionSpec = {
   kind: 'start_intent',
   enumerate: () => [],
@@ -314,6 +426,9 @@ export const ACTION_SPECS: Record<ActionKind, ActionSpec> = {
   work: WorkSpec,
   move: MoveSpec,
   talk: TalkSpec,
+  observe: ObserveSpec,
+  ask_info: AskInfoSpec,
+  negotiate: NegotiateSpec,
   start_intent: StartIntentSpec,
 };
 
