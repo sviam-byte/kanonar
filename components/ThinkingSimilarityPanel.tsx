@@ -133,7 +133,7 @@ export const ThinkingSimilarityPanel: React.FC<{
           <div className="mt-3">
             <div className="text-sm font-bold text-canon-text">Трактовка якоря: {anchor.c.title || anchor.c.entityId}</div>
             {(() => {
-              const it = interpretThinking(anchor.thinking, anchor.caps);
+              const it = interpretThinking(anchor.thinking, anchor.caps, anchor.cog?.prior?.debug?.predicates);
               return (
                 <div className="mt-1 text-xs text-canon-text-light space-y-1">
                   <div>{it.summary.join(' ')}</div>
@@ -151,7 +151,7 @@ export const ThinkingSimilarityPanel: React.FC<{
             <div className="mt-2 space-y-2">
               {neighbors.map((nn, idx) => {
                 const x = nn.item;
-                const it = interpretThinking(x.thinking, x.caps);
+                const it = interpretThinking(x.thinking, x.caps, x.cog?.prior?.debug?.predicates);
                 const deltas = topDeltas(anchor.vec, x.vec, 6);
                 return (
                   <div key={x.c.entityId + ':' + idx} className="border border-canon-border/60 rounded p-2">

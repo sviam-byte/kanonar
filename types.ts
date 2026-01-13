@@ -1115,6 +1115,10 @@ export interface CognitionProfile {
         activityCaps: ActivityCaps;
         scalars: ActionDispositionScalars;
         policy: PolicyKnobs;
+        debug?: {
+            predicates?: Record<string, number>;
+            repScoresRaw?: Record<string, number>;
+        };
     };
     posterior?: {
         thinking: ThinkingProfile;

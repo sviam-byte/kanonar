@@ -25,6 +25,56 @@ const num = (x: unknown, fallback = 0) => {
 const avg = (...xs: number[]) =>
   xs.length ? xs.reduce((sum, value) => sum + (Number.isFinite(value) ? value : 0), 0) / xs.length : 0;
 
+function hash01(str: string): number {
+  // Deterministic, fast, stable across runs.
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  // Map to [0,1).
+  return ((h >>> 0) % 1_000_000) / 1_000_000;
+}
+
+function allNear(xs: number[], eps = 1e-3) {
+  if (xs.length < 2) return true;
+  const m = xs.reduce((a, b) => a + b, 0) / xs.length;
+  return xs.every(x => Math.abs(x - m) <= eps);
+}
+
+function getPath(obj: any, path: string): any {
+  if (!obj) return undefined;
+  const parts = path.split('.');
+  let cur = obj;
+  for (const p of parts) {
+    if (cur && typeof cur === 'object' && p in cur) cur = (cur as Record<string, unknown>)[p];
+    else return undefined;
+  }
+  return cur;
+}
+
+function VAny(c: any, key: string, fallback = 0.5): number {
+  // Common places in the data model: psych.latents, parametersRaw, traits, dossier, vector_base.
+  const candidates = [
+    `psych.latents.${key}`,
+    `psych.${key}`,
+    `latents.${key}`,
+    `traits.${key}`,
+    `params.${key}`,
+    `parameters.${key}`,
+    `parametersRaw.${key}`,
+    `raw.${key}`,
+    `dossier.${key}`,
+    `vector_base.${key}`,
+  ];
+  for (const path of candidates) {
+    const v = getPath(c, path);
+    const n = Number(v);
+    if (Number.isFinite(n)) return clamp01(n);
+  }
+  return fallback;
+}
+
 function normalize<T extends string>(m: Record<T, number>): Record<T, number> {
   const keys = Object.keys(m) as T[];
   let sum = 0;
@@ -90,50 +140,50 @@ function C(c: CharacterLike, key: string, fallback = 0.5) {
  * These are the “вариант 3” core, but graded, not boolean.
  */
 function derivePredicates(c: CharacterLike) {
-  const formalCapacity = avg(L(c, 'FORMAL', 0.5), V(c, 'E_Model_calibration', 0.5), V(c, 'A_Legitimacy_Procedure', 0.5));
+  const formalCapacity = avg(L(c, 'FORMAL', 0.5), VAny(c, 'E_Model_calibration', 0.5), VAny(c, 'A_Legitimacy_Procedure', 0.5));
   const sensorimotorIteration = avg(
     L(c, 'ACTION', 0.5),
-    V(c, 'E_Skill_ops_fieldcraft', 0.5),
-    V(c, 'D_fine_motor', 0.5),
-    V(c, 'B_exploration_rate', 0.4)
+    VAny(c, 'E_Skill_ops_fieldcraft', 0.5),
+    VAny(c, 'D_fine_motor', 0.5),
+    VAny(c, 'B_exploration_rate', 0.4)
   );
-  const imageryCapacity = avg(L(c, 'IMAGERY', 0.5), V(c, 'A_Aesthetic_Meaning', 0.5), V(c, 'E_KB_topos', 0.5));
-  const verbalCapacity = avg(L(c, 'VERBAL', 0.5), V(c, 'A_Knowledge_Truth', 0.5), V(c, 'E_KB_civic', 0.5));
-  const ambiguityTol = avg(V(c, 'B_tolerance_ambiguity', 0.5), V(c, 'F_Plasticity', 0.5), 1 - V(c, 'D_HPA_reactivity', 0.5));
-  const needsControl = avg(V(c, 'B_cooldown_discipline', 0.5), 1 - V(c, 'B_decision_temperature', 0.5));
-  const actionImpulse = avg(V(c, 'B_decision_temperature', 0.5), V(c, 'D_HPA_reactivity', 0.5));
+  const imageryCapacity = avg(L(c, 'IMAGERY', 0.5), VAny(c, 'A_Aesthetic_Meaning', 0.5), VAny(c, 'E_KB_topos', 0.5));
+  const verbalCapacity = avg(L(c, 'VERBAL', 0.5), VAny(c, 'A_Knowledge_Truth', 0.5), VAny(c, 'E_KB_civic', 0.5));
+  const ambiguityTol = avg(VAny(c, 'B_tolerance_ambiguity', 0.5), VAny(c, 'F_Plasticity', 0.5), 1 - VAny(c, 'D_HPA_reactivity', 0.5));
+  const needsControl = avg(VAny(c, 'B_cooldown_discipline', 0.5), 1 - VAny(c, 'B_decision_temperature', 0.5));
+  const actionImpulse = avg(VAny(c, 'B_decision_temperature', 0.5), VAny(c, 'D_HPA_reactivity', 0.5));
   const futureHorizon = avg(
-    1 - V(c, 'B_discount_rate', 0.5),
-    V(c, 'G_Narrative_agency', 0.5),
-    V(c, 'resilience.futureHorizon' as any, 0.5)
+    1 - VAny(c, 'B_discount_rate', 0.5),
+    VAny(c, 'G_Narrative_agency', 0.5),
+    VAny(c, 'resilience.futureHorizon', 0.5)
   );
-  const tom = avg(V(c, 'C_reciprocity_index', 0.5), V(c, 'C_dominance_empathy', 0.5), V(c, 'C_coalition_loyalty', 0.5));
-  const normPressure = avg(V(c, 'A_Legitimacy_Procedure', 0.5), V(c, 'C_reputation_sensitivity', 0.5), V(c, 'A_Justice_Fairness', 0.5));
+  const tom = avg(VAny(c, 'C_reciprocity_index', 0.5), VAny(c, 'C_dominance_empathy', 0.5), VAny(c, 'C_coalition_loyalty', 0.5));
+  const normPressure = avg(VAny(c, 'A_Legitimacy_Procedure', 0.5), VAny(c, 'C_reputation_sensitivity', 0.5), VAny(c, 'A_Justice_Fairness', 0.5));
 
   // “метакогниция” как контроль качества мышления
-  const metacog = avg(V(c, 'G_Metacog_accuracy', 0.5), ambiguityTol, V(c, 'E_Model_calibration', 0.5));
+  const metacog = avg(VAny(c, 'G_Metacog_accuracy', 0.5), ambiguityTol, VAny(c, 'E_Model_calibration', 0.5));
 
   // --- R1 confidence calibration (separate from bayesian "style") ---
   // Penalize calibration if distortions imply overconfidence/catastrophizing; reward model_calibration + metacog.
-  const overconf = V(c, 'distortion.overconfidence' as any, 0.5);
-  const catastroph = V(c, 'distortion.catastrophizing' as any, 0.5);
-  const confCal = clamp01(avg(V(c, 'E_Model_calibration', 0.5), metacog, 1 - 0.5 * overconf, 1 - 0.5 * catastroph));
+  const overconf = VAny(c, 'distortion.overconfidence', 0.5);
+  const catastroph = VAny(c, 'distortion.catastrophizing', 0.5);
+  const confCal = clamp01(avg(VAny(c, 'E_Model_calibration', 0.5), metacog, 1 - 0.5 * overconf, 1 - 0.5 * catastroph));
 
   // --- R2 executive capacity (resource, not "analytic preference") ---
   // Combines discipline + low impulsivity + metacog + low stress reactivity.
   const executiveCapacity = clamp01(
-    0.35 * V(c, 'B_cooldown_discipline', 0.5) +
-      0.25 * (1 - V(c, 'B_decision_temperature', 0.5)) +
+    0.35 * VAny(c, 'B_cooldown_discipline', 0.5) +
+      0.25 * (1 - VAny(c, 'B_decision_temperature', 0.5)) +
       0.25 * metacog +
-      0.15 * (1 - V(c, 'D_HPA_reactivity', 0.5))
+      0.15 * (1 - VAny(c, 'D_HPA_reactivity', 0.5))
   );
 
   // --- R3 experimentalism (small tests / probes) ---
   // Reward exploration + abductive/causal inclination proxies + ambiguity tolerance; penalize avoidance.
-  const avoidance = V(c, 'coping.avoid' as any, 0.5);
+  const avoidance = VAny(c, 'coping.avoid', 0.5);
   const experimentalism = clamp01(
-    0.35 * V(c, 'B_exploration_rate', 0.4) +
-      0.20 * V(c, 'E_Skill_causal_surgery', 0.5) +
+    0.35 * VAny(c, 'B_exploration_rate', 0.4) +
+      0.20 * VAny(c, 'E_Skill_causal_surgery', 0.5) +
       0.25 * ambiguityTol +
       0.20 * (1 - avoidance)
   );
@@ -160,14 +210,31 @@ function derivePredicates(c: CharacterLike) {
  * Fuzzy rules → distributions on A/B/C/D.
  * Это мягкая версия логики: набор вкладов (вместо "если/то").
  */
-function deriveThinkingFromPredicates(p: ReturnType<typeof derivePredicates>) {
+function deriveThinkingFromPredicates(
+  p: ReturnType<typeof derivePredicates>,
+  idForTieBreak: string
+) {
   // Axis A (representation)
-  const repScores: Record<ThinkingAxisA, number> = {
+  let repScores: Record<ThinkingAxisA, number> = {
     enactive: 0.65 * p.sensorimotorIteration + 0.25 * (1 - p.formalCapacity) + 0.10 * p.actionImpulse,
     imagery: 0.75 * p.imageryCapacity + 0.25 * p.ambiguityTol,
     verbal: 0.70 * p.verbalCapacity + 0.30 * p.needsControl,
     formal: 0.80 * p.formalCapacity + 0.20 * p.needsControl,
   };
+
+  // If representation axis collapses (all ~equal), apply deterministic tie-breaker.
+  // This prevents default-heavy inputs from collapsing everyone into the same dominant A.
+  const repArr = Object.values(repScores);
+  if (allNear(repArr, 1e-3)) {
+    const r = hash01(idForTieBreak || 'unknown');
+    // Small perturbation, keeps values in-range and deterministic.
+    repScores = {
+      enactive: clamp01(repScores.enactive + 0.02 * (r - 0.50)),
+      imagery: clamp01(repScores.imagery + 0.02 * ((r * 1.7) % 1 - 0.50)),
+      verbal: clamp01(repScores.verbal + 0.02 * ((r * 2.3) % 1 - 0.50)),
+      formal: clamp01(repScores.formal + 0.02 * ((r * 3.1) % 1 - 0.50)),
+    };
+  }
 
   // Axis B (inference)
   const infScores: Record<ThinkingAxisB, number> = {
@@ -435,7 +502,10 @@ export function deriveCognitionProfileFromCharacter(args: {
   evidence?: CognitionEvidence; // optional behavioral evidence
 }): CognitionProfile {
   const predicates = derivePredicates(args.character);
-  const priorThinking = deriveThinkingFromPredicates(predicates);
+  const id = String(
+    (args.character as any)?.entityId || (args.character as any)?.id || (args.character as any)?.title || 'unknown'
+  );
+  const priorThinking = deriveThinkingFromPredicates(predicates, id);
   const priorScalars = deriveDispositionScalars(args.character, predicates);
   const priorCaps = deriveActivityCaps(args.character, priorThinking, priorScalars);
   const priorPolicy = derivePolicyKnobs(priorThinking, priorCaps, priorScalars);
@@ -446,6 +516,15 @@ export function deriveCognitionProfileFromCharacter(args: {
       activityCaps: priorCaps,
       scalars: priorScalars,
       policy: priorPolicy,
+      debug: {
+        predicates,
+        repScoresRaw: {
+          enactive: priorThinking.representation.enactive,
+          imagery: priorThinking.representation.imagery,
+          verbal: priorThinking.representation.verbal,
+          formal: priorThinking.representation.formal,
+        },
+      },
     },
   };
 
