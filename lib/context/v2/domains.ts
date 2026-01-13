@@ -46,6 +46,9 @@ export function computeDomainsFromAtoms(
 
     // Social support: look for canonical soc support atoms if present
     const support = maxByPrefix('soc:support_near:', 0);
+    // Быстрый усилитель: если было "услышанное" общение — повышаем социальную релевантность.
+    const heardSpeech = atoms.some((a) => String((a as any)?.id || '').includes('ctx:speech:seen:')
+      && (a as any)?.magnitude > 0.2);
     const attachment = clamp01(0.6 * intimacy * (1 - danger) + 0.4 * support);
     const avoidance = clamp01(0.5 * danger + 0.3 * surveillance + 0.2 * crowding);
     const care_help = maxByPrefix('mind:careNeed:', 0); // fallback; keep legacy care signals below if you want
@@ -58,7 +61,7 @@ export function computeDomainsFromAtoms(
       avoidance,
       attachment,
       'care/help': clamp01(care_help),
-      social: clamp01((support + crowding) / 2),
+      social: clamp01((support + crowding) / 2 + (heardSpeech ? 0.15 : 0)),
       status: clamp01(hierarchy * 0.5),
       scarcity: Number.isFinite(ctxScarcity) ? clamp01(ctxScarcity) : 0,
       timePressure: Number.isFinite(ctxTimePressure) ? clamp01(ctxTimePressure) : 0,

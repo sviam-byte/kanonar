@@ -72,6 +72,18 @@ export type SimEvent = {
   payload?: any;
 };
 
+export type SpeechEventV1 = {
+  schema: 'SpeechEventV1';
+  actorId: string;
+  targetId: string;
+  act: 'inform' | 'ask' | 'threaten' | 'promise' | 'negotiate';
+  // атомы, которые говорящий “передаёт” (прототип: просто список id/mag)
+  atoms: Array<{ id: string; magnitude?: number; confidence?: number; meta?: any }>;
+  // опционально: “тема” и краткая строка (для UI)
+  topic?: string;
+  text?: string;
+};
+
 export type ActionOffer = {
   kind: ActionKind;
   actorId: Id;

@@ -6,6 +6,7 @@ import { Possibility } from '../possibilities/catalog';
 import { computeActionCost } from './costModel';
 import { gatePossibility } from './gating';
 import { arr } from '../utils/arr';
+import type { ActionOffer } from './types';
 
 function clamp01(x: number) {
   if (!Number.isFinite(x)) return 0;
@@ -413,5 +414,28 @@ export function scorePossibility(args: {
     },
     atoms: actionAtoms,
     p
+  };
+}
+
+/**
+ * Minimal offer wrapper for UI/debug consumers.
+ * Keeps the scoring "why" payload attached to a simplified shape.
+ */
+export function toActionOffer(args: {
+  selfId: string;
+  atoms: ContextAtom[];
+  p: Possibility;
+}): ActionOffer {
+  const { selfId, atoms, p } = args;
+  const scored = scorePossibility({ selfId, atoms, p });
+  const targetId = (p as any)?.targetId ?? null;
+  return {
+    id: p.id,
+    key: getActionKey(p),
+    score: scored.score,
+    blocked: !scored.allowed,
+    targetId,
+    meta: (p as any)?.meta ?? null,
+    why: scored.why ?? null,
   };
 }

@@ -134,3 +134,37 @@ export type ProducerSpec = {
   run: Producer;
   priority?: number;             // ordering within stage
 };
+
+export type DecisionExplanationV1 = {
+  schema: 'DecisionExplanationV1';
+  tickIndex: number;
+  selfId: string;
+  chosen: {
+    id: string;
+    key: string;
+    score: number;
+    blocked?: boolean;
+    targetId?: string | null;
+    meta?: any;
+  };
+  topOffers: Array<{
+    id: string;
+    key: string;
+    score: number;
+    blocked?: boolean;
+    targetId?: string | null;
+    why?: any; // score trace (atoms/goals/mods)
+  }>;
+  inputs: {
+    temperature: number;
+    rngSeed?: string | number;
+  };
+  notes?: string[];
+};
+
+export type OrchestratorTickDebugV1 = {
+  schema: 'OrchestratorTickDebugV1';
+  tickIndex: number;
+  perAgent: Record<string, any>;
+  explanations?: Record<string, DecisionExplanationV1>;
+};

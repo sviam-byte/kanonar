@@ -3,7 +3,8 @@
 
 import type { SimPlugin } from '../core/simulator';
 import type { SimAction, ActionOffer } from '../core/types';
-import type { ProducerSpec, TickDebugFrameV1, TickDebugStageV1 } from '../../orchestrator/types';
+import type { DecisionExplanationV1, ProducerSpec, TickDebugFrameV1, TickDebugStageV1 } from '../../orchestrator/types';
+import { atomsFromSpeechEvent } from '../../context/v2/ingestSpeech';
 import { runTick } from '../../orchestrator/runTick';
 import { buildRegistry } from '../../orchestrator/registry';
 import type { ContextAtom } from '../../context/v2/types';
@@ -197,7 +198,8 @@ function toGoalLabSnapshot(simSnapshot: any): any {
     return base;
   });
 
-  return {
+  const tickIndex = simSnapshot?.tickIndex ?? 0;
+  const base = {
     id: simSnapshot?.id,
     time: simSnapshot?.time,
     tickIndex: simSnapshot?.tickIndex,
@@ -209,9 +211,20 @@ function toGoalLabSnapshot(simSnapshot: any): any {
     // на некоторых местах код ожидает "entities" как алиас
     entities: characters,
     events: simSnapshot?.events || [],
-    atoms: [], // orchestrator will fill
+    atoms: [], // orchestrator will fill; speech ingestion below adds initial atoms
     debug: simSnapshot?.debug || {},
   };
+
+  // PROTO: ingest speech events into ContextAtoms for targets.
+  const evs = Array.isArray(base.events) ? base.events : [];
+  for (const e of evs) {
+    if (e?.type !== 'speech:v1') continue;
+    const payload = e?.payload;
+    const atoms = atomsFromSpeechEvent(payload, tickIndex);
+    for (const a of atoms) base.atoms.push(a);
+  }
+
+  return base;
 }
 
 // -----------------------------
@@ -388,6 +401,7 @@ export function makeOrchestratorPlugin(registry: ProducerSpec[]): SimPlugin {
 
       const actions: SimAction[] = [];
       const perActor: Record<string, any> = {};
+      const explanations: Record<string, DecisionExplanationV1> = {};
 
       // Pre-index offers by actor once.
       const offersByActor: Record<string, ActionOffer[]> = {};
@@ -515,6 +529,38 @@ export function makeOrchestratorPlugin(registry: ProducerSpec[]): SimPlugin {
             rejectedCount: ranked.filter((x: any) => !Boolean(x?.allowed)).length,
           };
 
+          const chosenId = overriddenOffer
+            ? `offer:${String(overriddenOffer.kind)}:${String(overriddenOffer.targetId ?? '')}`
+            : (chosen?.id ?? '');
+          const explanationNotes = overriddenOffer
+            ? [`override:${chosenKey} -> offer:${String(overriddenOffer.kind)}`]
+            : [];
+          if (chosenId) {
+            explanations[actorId] = {
+              schema: 'DecisionExplanationV1',
+              tickIndex,
+              selfId: actorId,
+              chosen: {
+                id: chosenId,
+                key: overriddenOffer ? String(overriddenOffer.kind) : String(chosenKey),
+                score: Number(overriddenOffer?.score ?? picked?.score ?? decision.best?.score ?? 0),
+                blocked: overriddenOffer ? Boolean(overriddenOffer.blocked) : !Boolean(picked?.allowed ?? decision.best?.allowed ?? true),
+                targetId: overriddenOffer?.targetId ?? (chosen as any)?.targetId ?? null,
+                meta: overriddenOffer ? { mode: 'offer_override', reason: overriddenOffer.reason ?? null } : { mode: 'possibility' },
+              },
+              topOffers: ranked.slice(0, 8).map((x: any) => ({
+                id: x.p?.id ?? x.id,
+                key: keyFromPossibilityId(x.p?.id ?? x.id),
+                score: Number(x.score ?? 0),
+                blocked: !Boolean(x.allowed),
+                targetId: (x.p as any)?.targetId ?? (x as any)?.targetId ?? null,
+                why: x.why ?? null,
+              })),
+              inputs: { temperature: T, rngSeed: world.seed ?? null },
+              notes: explanationNotes.length ? explanationNotes : undefined,
+            };
+          }
+
           continue;
         }
 
@@ -576,6 +622,34 @@ export function makeOrchestratorPlugin(registry: ProducerSpec[]): SimPlugin {
             })),
           rejectedCount: actorOffers.filter((o) => Boolean(o.blocked)).length,
         };
+
+        explanations[actorId] = {
+          schema: 'DecisionExplanationV1',
+          tickIndex,
+          selfId: actorId,
+          chosen: {
+            id: `offer:${String(bestOffer.kind)}:${String(bestOffer.targetId ?? '')}`,
+            key: String(bestOffer.kind),
+            score: Number(bestOffer.score ?? 0),
+            blocked: Boolean(bestOffer.blocked),
+            targetId: bestOffer.targetId ?? null,
+            meta: { mode: 'offer_fallback', reason: bestOffer.reason ?? null },
+          },
+          topOffers: actorOffers
+            .filter((o) => Number.isFinite(o.score))
+            .slice()
+            .sort((a, b) => Number(b.score ?? 0) - Number(a.score ?? 0))
+            .slice(0, 8)
+            .map((o) => ({
+              id: `offer:${String(o.kind)}:${String(o.targetId ?? '')}`,
+              key: String(o.kind),
+              score: Number(o.score ?? 0),
+              blocked: Boolean(o.blocked),
+              targetId: o.targetId ?? null,
+              why: null,
+            })),
+          inputs: { temperature: T, rngSeed: world.seed ?? null },
+        };
       }
 
       lastDecisionTrace = {
@@ -584,6 +658,7 @@ export function makeOrchestratorPlugin(registry: ProducerSpec[]): SimPlugin {
         T,
         actorCount: Object.keys(perActor).length,
         perActor,
+        explanations,
         preTrace: preOut.trace,
         atomsDigest: {
           atomsTotal: atomsAll.length,
@@ -731,6 +806,9 @@ export function makeOrchestratorPlugin(registry: ProducerSpec[]): SimPlugin {
       // Quick visibility
       record.snapshot.debug = record.snapshot.debug || {};
       record.snapshot.debug.orchestratorHumanLog = postOut.trace?.humanLog || [];
+      if (lastDecisionTrace?.explanations && lastDecisionTrace.tickIndex === snapshot.tickIndex) {
+        record.snapshot.debug.explanations = lastDecisionTrace.explanations;
+      }
     },
   };
 }

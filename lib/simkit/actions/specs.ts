@@ -7,7 +7,7 @@
 // - classify V3 (single tick vs intent) — v1: all are single
 // - apply (effects + events)
 
-import type { ActionKind, ActionOffer, SimAction, SimEvent, SimWorld } from '../core/types';
+import type { ActionKind, ActionOffer, SimAction, SimEvent, SimWorld, SpeechEventV1 } from '../core/types';
 import { getChar, getLoc } from '../core/world';
 
 const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
@@ -271,6 +271,19 @@ const TalkSpec: ActionSpec = {
       targetId: otherId,
       locationId: c.locId,
     }));
+    // Прототип: "разговор" как сигнал, который можно превратить в atoms в GoalLab.
+    const speech: SpeechEventV1 = {
+      schema: 'SpeechEventV1',
+      actorId: c.id,
+      targetId: otherId,
+      act: 'inform',
+      topic: 'talk',
+      text: 'shares an update',
+      atoms: [
+        { id: `speech:talk:${c.id}:${otherId}`, magnitude: 1, confidence: 0.85, meta: { kind: 'talk' } },
+      ],
+    };
+    events.push(mkActionEvent(world, 'speech:v1', speech));
     return { world, events, notes };
   },
 };
@@ -354,6 +367,18 @@ const AskInfoSpec: ActionSpec = {
     world.facts[`ask_info:${c.id}:${otherId}`] = (world.facts[`ask_info:${c.id}:${otherId}`] ?? 0) + 1;
     notes.push(`${c.id} asks info from ${otherId}`);
     events.push(mkActionEvent(world, 'action:ask_info', { actorId: c.id, targetId: otherId, locationId: c.locId }));
+    const speech: SpeechEventV1 = {
+      schema: 'SpeechEventV1',
+      actorId: c.id,
+      targetId: otherId,
+      act: 'ask',
+      topic: 'info',
+      text: 'asks for information',
+      atoms: [
+        { id: `speech:ask:${c.id}:${otherId}`, magnitude: 1, confidence: 0.9, meta: { kind: 'ask_info' } },
+      ],
+    };
+    events.push(mkActionEvent(world, 'speech:v1', speech));
     return { world, events, notes };
   },
 };
@@ -383,6 +408,18 @@ const NegotiateSpec: ActionSpec = {
     world.facts[`negotiate:${c.id}:${otherId}`] = (world.facts[`negotiate:${c.id}:${otherId}`] ?? 0) + 1;
     notes.push(`${c.id} negotiates with ${otherId}`);
     events.push(mkActionEvent(world, 'action:negotiate', { actorId: c.id, targetId: otherId, locationId: c.locId }));
+    const speech: SpeechEventV1 = {
+      schema: 'SpeechEventV1',
+      actorId: c.id,
+      targetId: otherId,
+      act: 'negotiate',
+      topic: 'terms',
+      text: 'proposes terms',
+      atoms: [
+        { id: `speech:negotiate:${c.id}:${otherId}`, magnitude: 1, confidence: 0.85, meta: { kind: 'negotiate' } },
+      ],
+    };
+    events.push(mkActionEvent(world, 'speech:v1', speech));
     return { world, events, notes };
   },
 };
