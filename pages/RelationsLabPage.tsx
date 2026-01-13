@@ -257,22 +257,47 @@ export const RelationsLabPage: React.FC = () => {
   const { characters: sandboxCharacters } = useSandbox();
   const { activeModule } = useAccess();
 
-  const characters: CharacterEntity[] = useMemo(() => {
-    // 1) If sandbox is populated, use it.
-    if (Array.isArray(sandboxCharacters) && sandboxCharacters.length > 0) return sandboxCharacters;
+  function uniqById(xs: CharacterEntity[]): CharacterEntity[] {
+    const m = new Map<string, CharacterEntity>();
+    for (const c of xs || []) {
+      const id = String((c as any)?.entityId || '');
+      if (!id) continue;
+      if (!m.has(id)) m.set(id, c);
+      else {
+        // Prefer the "richer" object if duplicates exist.
+        const prev = m.get(id)!;
+        const prevScore =
+          (Array.isArray((prev as any).historicalEvents) ? (prev as any).historicalEvents.length : 0) +
+          ((prev as any).roles?.relations?.length ?? 0);
+        const nextScore =
+          (Array.isArray((c as any).historicalEvents) ? (c as any).historicalEvents.length : 0) +
+          ((c as any).roles?.relations?.length ?? 0);
+        if (nextScore > prevScore) m.set(id, c);
+      }
+    }
+    return Array.from(m.values());
+  }
 
-    // 2) Otherwise, prefer the active module whitelist.
+  const characters: CharacterEntity[] = useMemo(() => {
+    const out: CharacterEntity[] = [];
+
+    // (A) registry (base superset)
+    out.push(...((getEntitiesByType(EntityType.Character) as CharacterEntity[]) || []));
+
+    // (B) active module (may include module-only chars)
     if (activeModule) {
       try {
-        const cs = activeModule.getCharacters();
-        if (Array.isArray(cs) && cs.length > 0) return cs;
+        const cs = activeModule.getCharacters?.();
+        if (Array.isArray(cs)) out.push(...(cs as CharacterEntity[]));
       } catch {
-        // Ignore module errors and fall through to registry.
+        // ignore
       }
     }
 
-    // 3) Otherwise, return all characters from the registry.
-    return getEntitiesByType(EntityType.Character) as CharacterEntity[];
+    // (C) sandbox overrides/edits (but must not hide others)
+    if (Array.isArray(sandboxCharacters)) out.push(...sandboxCharacters);
+
+    return uniqById(out);
   }, [sandboxCharacters, activeModule]);
   const [focusA, setFocusA] = useState<string>('');
   const [focusB, setFocusB] = useState<string>('');
