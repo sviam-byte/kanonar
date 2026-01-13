@@ -200,14 +200,21 @@ function toGoalLabSnapshot(simSnapshot: any): any {
   });
 
   const locations = locsIn.map((l: any) => {
-    const base = l?.entity ? { ...(l.entity as any) } : { id: l?.id, entityId: l?.id, title: l?.name };
-    if ((base as any).map == null && l?.map != null) (base as any).map = l.map;
-    (base as any).simkit = {
-      hazards: l?.hazards ?? null,
-      norms: l?.norms ?? null,
-      tickIndex: simSnapshot?.tickIndex ?? null,
+    // ВАЖНО: не теряем GoalLab place.map / image / nav / features
+    const base = (l && typeof l === 'object') ? { ...l } : { id: String(l) };
+    const id = base.id ?? l?.locationId ?? l?.entityId;
+    return {
+      ...base,
+      id,
+      title: base.title ?? base.name ?? id,
+      // normalize: иногда картинка лежит в base.image, иногда в base.map.image
+      map: base.map ?? (base.image ? { image: base.image } : null),
+      simkit: {
+        hazards: base.hazards ?? l?.hazards ?? null,
+        norms: base.norms ?? l?.norms ?? null,
+        tickIndex: simSnapshot?.tickIndex ?? null,
+      },
     };
-    return base;
   });
 
   const tickIndex = simSnapshot?.tickIndex ?? 0;

@@ -11,6 +11,7 @@ import { makeOrchestratorPlugin } from '../../simkit/plugins/orchestratorPlugin'
 import { makeGoalLabPipelinePlugin } from '../../simkit/plugins/goalLabPipelinePlugin';
 import { makeSimWorldFromSelection } from '../../simkit/adapters/fromKanonarEntities';
 import { SimMapView } from '../../../components/SimMapView';
+import { LocationMapView } from '../../../components/LocationMapView';
 import { LocationImportPanel } from '../../../components/ScenarioSetup/LocationImportPanel';
 import { PlacementPanel } from '../../../components/ScenarioSetup/PlacementPanel';
 import { Badge, Button, Card, Input, Select, TabButton } from '../../../components/ui/primitives';
@@ -273,6 +274,8 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
   const [liveOn, setLiveOn] = useState(false);
   const [liveHz, setLiveHz] = useState(2); // ticks per second
   const [followLatest, setFollowLatest] = useState(true);
+  const [mapLocId, setMapLocId] = useState<string>('');
+  const [mapCharId, setMapCharId] = useState<string | null>(null);
 
   const [setupDraft, setSetupDraft] = useState<SetupDraft>({
     selectedLocIds: [],
@@ -318,6 +321,15 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
 
   const curIdx = selected >= 0 ? selected : records.length - 1;
   const cur = curIdx >= 0 ? records[curIdx] : null;
+
+  useEffect(() => {
+    const locs = cur?.snapshot?.locations || [];
+    if (!locs.length) return;
+    const nextId = mapLocId && locs.some((l: any) => l.id === mapLocId)
+      ? mapLocId
+      : String(locs[0]?.id || '');
+    if (nextId && nextId !== mapLocId) setMapLocId(nextId);
+  }, [cur, mapLocId]);
 
   const tickItems = useMemo(() => {
     const xs = records.map((r, i) => ({
@@ -1652,9 +1664,53 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
 
               {/* MAP */}
               {tab === 'map' ? (
-                <Card title="Карта мира">
-                  <SimMapView sim={sim} snapshot={cur?.snapshot || null} onMove={pushManualMove} />
-                </Card>
+                <div className="grid grid-cols-12 gap-4">
+                  <div className="col-span-4">
+                    <Card title="Place">
+                      <div className="text-xs opacity-70 mb-1">Выбери локацию</div>
+                      <select
+                        className="canon-input w-full"
+                        value={mapLocId || ''}
+                        onChange={(e) => setMapLocId(e.target.value)}
+                      >
+                        {(cur?.snapshot?.locations || []).map((l: any) => (
+                          <option key={l.id} value={l.id}>{l.title ?? l.name ?? l.id}</option>
+                        ))}
+                      </select>
+
+                      <div className="text-xs opacity-70 mt-3">Подсветка персонажа</div>
+                      <select
+                        className="canon-input w-full mt-1"
+                        value={mapCharId || ''}
+                        onChange={(e) => setMapCharId(e.target.value || null)}
+                      >
+                        <option value="">(none)</option>
+                        {(cur?.snapshot?.characters || []).map((c: any) => (
+                          <option key={c.id} value={c.id}>{c.title ?? c.name ?? c.id}</option>
+                        ))}
+                      </select>
+                    </Card>
+
+                    <Card title="Карта мира (узлы/связи)">
+                      <SimMapView sim={sim} snapshot={cur?.snapshot || null} onMove={pushManualMove} />
+                    </Card>
+                  </div>
+
+                  <div className="col-span-8">
+                    {(() => {
+                      const loc = (cur?.snapshot?.locations || []).find((l: any) => l.id === mapLocId);
+                      if (!loc) return <Card title="Карта локации">(нет выбранной локации)</Card>;
+                      return (
+                        <LocationMapView
+                          location={loc}
+                          characters={cur?.snapshot?.characters || []}
+                          highlightId={mapCharId}
+                          onPickCharacter={(id) => setMapCharId(id)}
+                        />
+                      );
+                    })()}
+                  </div>
+                </div>
               ) : null}
 
               {/* JSON */}
