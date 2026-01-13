@@ -1,4 +1,5 @@
 import React, { useMemo, useRef, useState } from 'react';
+import { getPlaceMapImage } from '../../lib/places/getPlaceMapImage';
 
 type PointKind = 'danger' | 'safe';
 
@@ -6,16 +7,10 @@ function clamp01(x: number) {
   return Math.max(0, Math.min(1, x));
 }
 
-function getMapImage(loc: any): string | null {
-  const img = loc?.map?.image ?? loc?.image ?? loc?.mapImage ?? null;
-  if (typeof img !== 'string' || !img.length) return null;
-  if (img.startsWith('images/')) return `/${img}`;
-  return img;
-}
-
-function getMapSize(loc: any) {
-  const w = Number(loc?.map?.width ?? loc?.width ?? 1024);
-  const h = Number(loc?.map?.height ?? loc?.height ?? 768);
+function getMapSize(place: any) {
+  // Fall back to a stable aspect ratio when the map size is missing.
+  const w = Number(place?.map?.width ?? place?.width ?? 1024);
+  const h = Number(place?.map?.height ?? place?.height ?? 768);
   return { w: Number.isFinite(w) ? w : 1024, h: Number.isFinite(h) ? h : 768 };
 }
 
@@ -24,7 +19,7 @@ function makeId(prefix: string) {
 }
 
 function clientToMapXY(e: React.PointerEvent, box: DOMRect, mapW: number, mapH: number) {
-  // Map coordinates in [0..mapW], [0..mapH] with preservedAspectRatio "meet".
+  // Convert client pointer coordinates into map space.
   const px = e.clientX - box.left;
   const py = e.clientY - box.top;
   const sx = mapW / box.width;
@@ -35,22 +30,19 @@ function clientToMapXY(e: React.PointerEvent, box: DOMRect, mapW: number, mapH: 
 export function PlacementMapEditor({
   draft,
   setDraft,
-  locationId,
+  place,
   actorIds,
 }: {
   draft: any;
   setDraft: (d: any) => void;
-  locationId: string;
+  place: any;
   actorIds: string[];
 }) {
-  const loc = useMemo(() => {
-    const xs = [...(draft.locations || []), ...(draft.locationSpecs || [])];
-    return xs.find((l: any) => String(l?.id) === String(locationId)) ?? null;
-  }, [draft, locationId]);
+  const locationId = String(place?.id ?? place?.entityId ?? '');
+  const img = getPlaceMapImage(place);
+  const { w: mapW, h: mapH } = getMapSize(place);
 
-  const img = getMapImage(loc);
-  const { w: mapW, h: mapH } = getMapSize(loc);
-
+  // Keep placements scoped to the selected place/location.
   const placements = (draft.placements || []).filter((p: any) => p.locationId === locationId);
   const hazardPoints = (draft.hazardPoints || []).filter((p: any) => p.locationId === locationId);
 
@@ -68,6 +60,7 @@ export function PlacementMapEditor({
   }, [draft]);
 
   function upsertPlacement(characterId: string, x: number, y: number) {
+    // Persist XY placements (nodeId intentionally cleared).
     const nextAll = Array.isArray(draft.placements) ? [...draft.placements] : [];
     const idx = nextAll.findIndex((p: any) => p.characterId === characterId && p.locationId === locationId);
     const item = { characterId, locationId, x, y, nodeId: null };
@@ -77,6 +70,7 @@ export function PlacementMapEditor({
   }
 
   function addHazard(kind: PointKind, x: number, y: number) {
+    // Create a new hazard/safe point in map-space coordinates.
     const nextAll = Array.isArray(draft.hazardPoints) ? [...draft.hazardPoints] : [];
     nextAll.push({
       id: makeId(kind),
@@ -92,6 +86,7 @@ export function PlacementMapEditor({
   }
 
   function updateHazard(id: string, patch: any) {
+    // Patch the selected point in place.
     const nextAll = Array.isArray(draft.hazardPoints) ? [...draft.hazardPoints] : [];
     const idx = nextAll.findIndex((p: any) => p.id === id);
     if (idx < 0) return;
@@ -100,6 +95,7 @@ export function PlacementMapEditor({
   }
 
   function removeHazard(id: string) {
+    // Drop the point from the draft list.
     const nextAll = (draft.hazardPoints || []).filter((p: any) => p.id !== id);
     setDraft({ ...draft, hazardPoints: nextAll });
     if (selectedPointId === id) setSelectedPointId(null);
@@ -127,12 +123,14 @@ export function PlacementMapEditor({
 
   function startDragActor(e: React.PointerEvent, actorId: string) {
     e.stopPropagation();
+    // Capture drag start on actor markers.
     dragRef.current = { kind: 'actor', id: actorId };
     (e.target as any).setPointerCapture?.(e.pointerId);
   }
 
   function startDragPoint(e: React.PointerEvent, pointId: string) {
     e.stopPropagation();
+    // Capture drag start on hazard markers.
     dragRef.current = { kind: 'point', id: pointId };
     setSelectedPointId(pointId);
     (e.target as any).setPointerCapture?.(e.pointerId);
@@ -167,7 +165,7 @@ export function PlacementMapEditor({
     <div className="canon-card p-3 space-y-3">
       <div className="flex flex-wrap gap-2 items-center">
         <div className="text-sm font-semibold">Placement</div>
-        <div className="text-xs opacity-70">{locationId}</div>
+        <div className="text-xs opacity-70">{locationId || '—'}</div>
 
         <div className="ml-auto flex flex-wrap gap-2">
           <button className="canon-button" onClick={() => setMode('place_actor')}>
@@ -218,13 +216,13 @@ export function PlacementMapEditor({
         {img ? (
           <img
             src={img}
-            alt={loc?.title ?? loc?.id}
+            alt={place?.title ?? place?.id ?? 'map'}
             className="absolute inset-0 w-full h-full object-contain select-none"
             draggable={false}
           />
         ) : (
           <div className="absolute inset-0 flex items-center justify-center text-xs opacity-70">
-            No map image on this place (expected location.map.image or location.image)
+            No map image on this place (expected place.map.image / place.image / place.assets.map)
           </div>
         )}
 

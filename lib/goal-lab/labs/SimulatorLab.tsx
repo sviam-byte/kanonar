@@ -12,8 +12,6 @@ import { makeGoalLabPipelinePlugin } from '../../simkit/plugins/goalLabPipelineP
 import { makeSimWorldFromSelection } from '../../simkit/adapters/fromKanonarEntities';
 import { SimMapView } from '../../../components/SimMapView';
 import { LocationMapView } from '../../../components/LocationMapView';
-import { LocationImportPanel } from '../../../components/ScenarioSetup/LocationImportPanel';
-import { PlacementPanel } from '../../../components/ScenarioSetup/PlacementPanel';
 import { PlacementMapEditor } from '../../../components/ScenarioSetup/PlacementMapEditor';
 import { Badge, Button, Card, Input, Select, TabButton } from '../../../components/ui/primitives';
 import { EntityType } from '../../../enums';
@@ -954,35 +952,6 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-12 gap-4 mt-4">
-                      <div className="col-span-6">
-                        <LocationImportPanel
-                          draft={setupDraft}
-                          setDraft={(next) => {
-                            setSetupDraft((d) => ({
-                              ...d,
-                              locationSpecs: next.locationSpecs || [],
-                            }));
-                          }}
-                        />
-                      </div>
-                      <div className="col-span-6">
-                        <PlacementPanel
-                          draft={{
-                            ...setupDraft,
-                            characters: selectedCharacters.map((c: any) => ({ id: c.entityId, title: c.title || c.entityId })),
-                            locations: selectedLocations.map((l: any) => ({ id: l.entityId, title: l.title || l.entityId })),
-                          }}
-                          setDraft={(next) => {
-                            setSetupDraft((d) => ({
-                              ...d,
-                              placements: next.placements || [],
-                            }));
-                          }}
-                        />
-                      </div>
-                    </div>
-
                     {setupDraft.selectedLocIds.length > 0 && setupDraft.selectedCharIds.length > 0 ? (
                       <div className="mt-4 space-y-3">
                         <div className="canon-card p-2">
@@ -1016,7 +985,7 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
                               hazardPoints: next.hazardPoints || [],
                             }));
                           }}
-                          locationId={setupMapLocId}
+                          place={selectedLocations.find((loc: any) => loc.entityId === setupMapLocId) ?? null}
                           actorIds={setupDraft.selectedCharIds}
                         />
                       </div>
