@@ -77,6 +77,13 @@ function validateCommon(_world: SimWorld, o: ActionOffer): ActionOffer {
   };
 }
 
+function featuresAtNode(world: SimWorld, locId: string, nodeId: string | undefined) {
+  const loc = getLoc(world, locId);
+  const xs = Array.isArray((loc as any)?.features) ? (loc as any).features : [];
+  if (!nodeId) return xs;
+  return xs.filter((f: any) => !f.nodeId || f.nodeId === nodeId);
+}
+
 const WaitSpec: ActionSpec = {
   kind: 'wait',
   enumerate: ({ actorId }) => [{ kind: 'wait', actorId, score: 0.1 }],
@@ -123,44 +130,25 @@ const RestSpec: ActionSpec = {
   },
 };
 
-const WorkSpec: ActionSpec = {
-  kind: 'work',
-  enumerate: ({ world, actorId }) => {
-    const c = getChar(world, actorId);
-    return [{ kind: 'work', actorId, score: clamp01((c.energy - 0.2) * 0.8) }];
-  },
-  validateV1: ({ world, offer }) => validateCommon(world, offer),
-  validateV2: ({ world, offer }) => {
-    const base = validateCommon(world, offer);
-    const c = getChar(world, base.actorId);
-    if (normLevel(world, c.locId, 'no_work') >= 0.7) {
-      return { ...base, blocked: true, reason: 'norm:no_work', score: 0 };
-    }
-    return base;
-  },
-  classifyV3: () => 'single',
-  apply: ({ world, action }) => {
-    const notes: string[] = [];
-    const events: SimEvent[] = [];
-    const c = getChar(world, action.actorId);
-    c.energy = clamp01(c.energy - 0.06);
-    c.stress = clamp01(c.stress + 0.03);
-    world.facts['work:count'] = (world.facts['work:count'] ?? 0) + 1;
-    notes.push(`${c.id} works`);
-    events.push(mkActionEvent(world, 'action:work', {
-      actorId: c.id,
-      locationId: c.locId,
-      factKey: 'work:count',
-    }));
-    return { world, events, notes };
-  },
-};
-
 const MoveSpec: ActionSpec = {
   kind: 'move',
   enumerate: ({ world, actorId }) => {
     const c = getChar(world, actorId);
     const loc = getLoc(world, c.locId);
+    const curNode = c.pos?.nodeId;
+    const nav = loc.nav;
+    if (nav?.nodes?.length && curNode) {
+      const neighbors = nav.edges
+        .filter((e) => e.a === curNode || e.b === curNode)
+        .map((e) => (e.a === curNode ? e.b : e.a));
+      const uniq = Array.from(new Set(neighbors));
+      return uniq.map((nid) => ({
+        kind: 'move',
+        actorId,
+        targetNodeId: nid,
+        score: 0.14,
+      }));
+    }
     const out: ActionOffer[] = [];
     for (const n of loc.neighbors || []) {
       out.push({ kind: 'move', actorId, targetId: n, score: 0.2 });
@@ -172,9 +160,18 @@ const MoveSpec: ActionSpec = {
     try {
       const c = getChar(world, base.actorId);
       const fromLoc = getLoc(world, c.locId);
-      const to = String(base.targetId ?? '');
-      const ok = !!to && (fromLoc.neighbors || []).includes(to);
-      if (!ok) return { ...base, blocked: true, reason: 'v1:not-a-neighbor', score: 0 };
+      if (base.targetNodeId && fromLoc?.nav?.nodes?.length) {
+        const cur = c.pos?.nodeId;
+        if (!cur) return { ...base, blocked: true, reason: 'v1:no-pos', score: 0 };
+        const ok = fromLoc.nav.edges.some((e) =>
+          (e.a === cur && e.b === base.targetNodeId) || (e.b === cur && e.a === base.targetNodeId)
+        );
+        if (!ok) return { ...base, blocked: true, reason: 'v1:not-neighbor', score: 0 };
+      } else {
+        const to = String(base.targetId ?? '');
+        const ok = !!to && (fromLoc.neighbors || []).includes(to);
+        if (!ok) return { ...base, blocked: true, reason: 'v1:not-a-neighbor', score: 0 };
+      }
       return base;
     } catch {
       return { ...base, blocked: true, reason: 'v1:invalid', score: 0 };
@@ -193,6 +190,19 @@ const MoveSpec: ActionSpec = {
     const notes: string[] = [];
     const events: SimEvent[] = [];
     const c = getChar(world, action.actorId);
+    if (action.targetNodeId) {
+      const loc = getLoc(world, c.locId);
+      const n = loc?.nav?.nodes?.find((x) => x.id === action.targetNodeId);
+      c.pos = { nodeId: action.targetNodeId, x: n?.x, y: n?.y };
+      c.energy = clamp01(c.energy - 0.01);
+      notes.push(`${c.id} moves to node ${action.targetNodeId}`);
+      events.push(mkActionEvent(world, 'action:move_local', {
+        actorId: c.id,
+        locationId: c.locId,
+        nodeId: action.targetNodeId,
+      }));
+      return { world, events, notes };
+    }
     const to = String(action.targetId ?? '');
     const from = c.locId;
     const fromLoc = getLoc(world, from);
@@ -221,6 +231,91 @@ const MoveSpec: ActionSpec = {
       locationId: to,
     }));
     return { world, events, notes };
+  },
+};
+
+const InspectFeatureSpec: ActionSpec = {
+  kind: 'inspect_feature',
+  enumerate: ({ world, actorId }) => {
+    const c = getChar(world, actorId);
+    const feats = featuresAtNode(world, c.locId, c.pos?.nodeId);
+    return feats.slice(0, 6).map((f: any) => ({
+      kind: 'inspect_feature',
+      actorId,
+      meta: { featureId: f.id, featureKind: f.kind },
+      score: 0.17,
+    }));
+  },
+  validateV1: ({ world, offer }) => validateCommon(world, offer),
+  validateV2: ({ world, offer }) => validateCommon(world, offer),
+  classifyV3: () => 'single',
+  apply: ({ world, action }) => {
+    const c = getChar(world, action.actorId);
+    const fid = String(action.meta?.featureId || '');
+    c.stress = clamp01(c.stress - 0.005);
+    world.facts[`inspected:${c.id}:${fid}`] = (world.facts[`inspected:${c.id}:${fid}`] ?? 0) + 1;
+    return {
+      world,
+      events: [mkActionEvent(world, 'action:inspect_feature', { actorId: c.id, locationId: c.locId, featureId: fid })],
+      notes: [`${c.id} inspects ${fid}`],
+    };
+  },
+};
+
+const RepairFeatureSpec: ActionSpec = {
+  kind: 'repair_feature',
+  enumerate: ({ world, actorId }) => {
+    const c = getChar(world, actorId);
+    const feats = featuresAtNode(world, c.locId, c.pos?.nodeId).filter((f: any) => (f.tags || []).includes('repairable'));
+    return feats.slice(0, 6).map((f: any) => ({
+      kind: 'repair_feature',
+      actorId,
+      meta: { featureId: f.id, featureKind: f.kind },
+      score: 0.16,
+    }));
+  },
+  validateV1: ({ world, offer }) => validateCommon(world, offer),
+  validateV2: ({ world, offer }) => validateCommon(world, offer),
+  classifyV3: () => 'single',
+  apply: ({ world, action }) => {
+    const c = getChar(world, action.actorId);
+    const fid = String(action.meta?.featureId || '');
+    c.energy = clamp01(c.energy - 0.05);
+    c.stress = clamp01(c.stress + 0.01);
+    world.facts[`repaired:${c.id}:${fid}`] = (world.facts[`repaired:${c.id}:${fid}`] ?? 0) + 1;
+    return {
+      world,
+      events: [mkActionEvent(world, 'action:repair_feature', { actorId: c.id, locationId: c.locId, featureId: fid })],
+      notes: [`${c.id} repairs ${fid}`],
+    };
+  },
+};
+
+const ScavengeFeatureSpec: ActionSpec = {
+  kind: 'scavenge_feature',
+  enumerate: ({ world, actorId }) => {
+    const c = getChar(world, actorId);
+    const feats = featuresAtNode(world, c.locId, c.pos?.nodeId).filter((f: any) => (f.tags || []).includes('loot'));
+    return feats.slice(0, 6).map((f: any) => ({
+      kind: 'scavenge_feature',
+      actorId,
+      meta: { featureId: f.id, featureKind: f.kind },
+      score: 0.15,
+    }));
+  },
+  validateV1: ({ world, offer }) => validateCommon(world, offer),
+  validateV2: ({ world, offer }) => validateCommon(world, offer),
+  classifyV3: () => 'single',
+  apply: ({ world, action }) => {
+    const c = getChar(world, action.actorId);
+    const fid = String(action.meta?.featureId || '');
+    c.energy = clamp01(c.energy - 0.03);
+    world.facts[`scavenged:${c.id}:${fid}`] = (world.facts[`scavenged:${c.id}:${fid}`] ?? 0) + 1;
+    return {
+      world,
+      events: [mkActionEvent(world, 'action:scavenge_feature', { actorId: c.id, locationId: c.locId, featureId: fid })],
+      notes: [`${c.id} scavenges ${fid}`],
+    };
   },
 };
 
@@ -323,15 +418,17 @@ const ObserveSpec: ActionSpec = {
   },
 };
 
-const AskInfoSpec: ActionSpec = {
-  kind: 'ask_info',
+const QuestionAboutSpec: ActionSpec = {
+  kind: 'question_about',
   enumerate: ({ world, actorId }) => {
     const c = getChar(world, actorId);
     const out: ActionOffer[] = [];
+    const feats = featuresAtNode(world, c.locId, c.pos?.nodeId);
+    const topic = feats[0]?.id || 'situation';
     for (const other of Object.values(world.characters)) {
       if (other.id === c.id) continue;
       if (other.locId !== c.locId) continue;
-      out.push({ kind: 'ask_info', actorId, targetId: other.id, score: 0.18 });
+      out.push({ kind: 'question_about', actorId, targetId: other.id, meta: { topic }, score: 0.18 });
     }
     return out;
   },
@@ -362,20 +459,26 @@ const AskInfoSpec: ActionSpec = {
     const events: SimEvent[] = [];
     const c = getChar(world, action.actorId);
     const otherId = String(action.targetId ?? '');
+    const topic = String(action.meta?.topic || 'situation');
     // "вопрос" обычно чуть повышает стресс (риск), но увеличивает счетчик знания
     c.stress = clamp01(c.stress + 0.005);
-    world.facts[`ask_info:${c.id}:${otherId}`] = (world.facts[`ask_info:${c.id}:${otherId}`] ?? 0) + 1;
-    notes.push(`${c.id} asks info from ${otherId}`);
-    events.push(mkActionEvent(world, 'action:ask_info', { actorId: c.id, targetId: otherId, locationId: c.locId }));
+    world.facts[`question:${c.id}:${otherId}:${topic}`] = (world.facts[`question:${c.id}:${otherId}:${topic}`] ?? 0) + 1;
+    notes.push(`${c.id} questions ${otherId} about ${topic}`);
+    events.push(mkActionEvent(world, 'action:question_about', {
+      actorId: c.id,
+      targetId: otherId,
+      topic,
+      locationId: c.locId,
+    }));
     const speech: SpeechEventV1 = {
       schema: 'SpeechEventV1',
       actorId: c.id,
       targetId: otherId,
       act: 'ask',
-      topic: 'info',
-      text: 'asks for information',
+      topic,
+      text: `asks about ${topic}`,
       atoms: [
-        { id: `speech:ask:${c.id}:${otherId}`, magnitude: 1, confidence: 0.9, meta: { kind: 'ask_info' } },
+        { id: `speech:ask:${c.id}:${otherId}:${topic}`, magnitude: 1, confidence: 0.9, meta: { kind: 'question_about' } },
       ],
     };
     events.push(mkActionEvent(world, 'speech:v1', speech));
@@ -395,8 +498,8 @@ const NegotiateSpec: ActionSpec = {
     }
     return out;
   },
-  validateV1: ({ world, offer }) => AskInfoSpec.validateV1({ world, actorId: offer.actorId, offer }),
-  validateV2: ({ world, offer }) => AskInfoSpec.validateV2({ world, actorId: offer.actorId, offer }),
+  validateV1: ({ world, offer }) => QuestionAboutSpec.validateV1({ world, actorId: offer.actorId, offer }),
+  validateV2: ({ world, offer }) => QuestionAboutSpec.validateV2({ world, actorId: offer.actorId, offer }),
   classifyV3: () => 'single',
   apply: ({ world, action }) => {
     const notes: string[] = [];
@@ -460,12 +563,14 @@ const StartIntentSpec: ActionSpec = {
 export const ACTION_SPECS: Record<ActionKind, ActionSpec> = {
   wait: WaitSpec,
   rest: RestSpec,
-  work: WorkSpec,
   move: MoveSpec,
   talk: TalkSpec,
   observe: ObserveSpec,
-  ask_info: AskInfoSpec,
+  question_about: QuestionAboutSpec,
   negotiate: NegotiateSpec,
+  inspect_feature: InspectFeatureSpec,
+  repair_feature: RepairFeatureSpec,
+  scavenge_feature: ScavengeFeatureSpec,
   start_intent: StartIntentSpec,
 };
 

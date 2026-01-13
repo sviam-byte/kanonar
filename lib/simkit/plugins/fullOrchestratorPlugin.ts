@@ -232,13 +232,28 @@ export function makeFullOrchestratorPlugin(opts?: { T?: number }): SimPlugin {
         const kind = String(chosenMeta?.kind || '').trim();
         const targetId = chosenMeta?.targetId != null ? String(chosenMeta.targetId) : ((chosen as any)?.p?.targetId ?? null);
 
-        const finalKind = ['move', 'wait', 'talk', 'work', 'rest'].includes(kind) ? (kind as any) : 'wait';
+        const finalKind = [
+          'move',
+          'wait',
+          'talk',
+          'rest',
+          'observe',
+          'question_about',
+          'negotiate',
+          'inspect_feature',
+          'repair_feature',
+          'scavenge_feature',
+        ].includes(kind)
+          ? (kind as any)
+          : 'wait';
 
         actions.push({
           id: `act:${finalKind}:${tickIndex}:${actorId}`,
           kind: finalKind,
           actorId,
           targetId: targetId != null ? String(targetId) : null,
+          targetNodeId: chosenMeta?.targetNodeId ?? null,
+          meta: chosenMeta?.meta ?? null,
           payload: {
             policy: {
               T,

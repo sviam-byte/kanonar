@@ -105,11 +105,14 @@ function isExecutableKey(k: string) {
     k === 'wait' ||
     k === 'rest' ||
     k === 'talk' ||
-    k === 'work' ||
     k === 'move' ||
     k === 'observe' ||
-    k === 'ask_info' ||
-    k === 'negotiate'
+    k === 'question_about' ||
+    k === 'negotiate' ||
+    k === 'inspect_feature' ||
+    k === 'repair_feature' ||
+    k === 'scavenge_feature' ||
+    k === 'ask_info' // legacy alias -> question_about
   );
 }
 
@@ -141,6 +144,8 @@ function makeStage(id: TickDebugStageV1['id'], title: string, data: Record<strin
 function toSimActionFromPossibility(p: Possibility, tickIndex: number, actorId: string): SimAction | null {
   const k = keyFromPossibilityId(p.id);
   const targetId = (p as any)?.targetId ?? null;
+  const targetNodeId = (p as any)?.targetNodeId ?? null;
+  const meta = (p as any)?.meta ?? null;
 
   // NOTE: keep mapping conservative; extend as you add more executable keys.
   const kindMap: Record<string, string> = {
@@ -148,8 +153,13 @@ function toSimActionFromPossibility(p: Possibility, tickIndex: number, actorId: 
     rest: 'rest',
     talk: 'talk',
     observe: 'observe',
-    ask_info: 'ask_info',
+    question_about: 'question_about',
     negotiate: 'negotiate',
+    inspect_feature: 'inspect_feature',
+    repair_feature: 'repair_feature',
+    scavenge_feature: 'scavenge_feature',
+    // legacy alias
+    ask_info: 'question_about',
   };
 
   const kind = kindMap[k];
@@ -160,6 +170,8 @@ function toSimActionFromPossibility(p: Possibility, tickIndex: number, actorId: 
     kind,
     actorId,
     targetId: targetId || null,
+    targetNodeId: targetNodeId || null,
+    meta,
   };
 }
 
@@ -456,6 +468,8 @@ export function makeOrchestratorPlugin(registry: ProducerSpec[]): SimPlugin {
                 kind: overriddenOffer.kind,
                 actorId,
                 targetId: overriddenOffer.targetId ?? null,
+                targetNodeId: (overriddenOffer as any).targetNodeId ?? null,
+                meta: (overriddenOffer as any).meta ?? null,
               };
             }
           }
@@ -573,6 +587,8 @@ export function makeOrchestratorPlugin(registry: ProducerSpec[]): SimPlugin {
           kind: bestOffer.kind,
           actorId,
           targetId: bestOffer.targetId ?? null,
+          targetNodeId: (bestOffer as any).targetNodeId ?? null,
+          meta: (bestOffer as any).meta ?? null,
         });
 
         perActor[actorId] = {

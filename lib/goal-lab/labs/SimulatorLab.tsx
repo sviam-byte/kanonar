@@ -11,6 +11,8 @@ import { makeOrchestratorPlugin } from '../../simkit/plugins/orchestratorPlugin'
 import { makeGoalLabPipelinePlugin } from '../../simkit/plugins/goalLabPipelinePlugin';
 import { makeSimWorldFromSelection } from '../../simkit/adapters/fromKanonarEntities';
 import { SimMapView } from '../../../components/SimMapView';
+import { LocationImportPanel } from '../../../components/ScenarioSetup/LocationImportPanel';
+import { PlacementPanel } from '../../../components/ScenarioSetup/PlacementPanel';
 import { Badge, Button, Card, Input, Select, TabButton } from '../../../components/ui/primitives';
 import { EntityType } from '../../../enums';
 import { getEntitiesByType, getAllCharactersWithRuntime } from '../../../data';
@@ -46,7 +48,15 @@ type TabId =
 type SetupDraft = {
   selectedLocIds: string[];
   selectedCharIds: string[];
-  placements: Record<string, string>;
+  locPlacements: Record<string, string>;
+  placements: Array<{
+    characterId: string;
+    locationId: string;
+    nodeId: string;
+    x?: number;
+    y?: number;
+  }>;
+  locationSpecs: any[];
 };
 
 function normalizePlacements(args: { draft: SetupDraft; nextLocIds?: string[]; nextCharIds?: string[] }) {
@@ -54,21 +64,36 @@ function normalizePlacements(args: { draft: SetupDraft; nextLocIds?: string[]; n
   const selectedCharIds = args.nextCharIds ?? args.draft.selectedCharIds;
 
   const locSet = new Set(selectedLocIds);
-  const nextPlacements: Record<string, string> = { ...args.draft.placements };
+  const nextLocPlacements: Record<string, string> = { ...args.draft.locPlacements };
 
-  for (const id of Object.keys(nextPlacements)) {
-    if (!selectedCharIds.includes(id)) delete nextPlacements[id];
+  for (const id of Object.keys(nextLocPlacements)) {
+    if (!selectedCharIds.includes(id)) delete nextLocPlacements[id];
   }
 
   const fallbackLocId = selectedLocIds[0];
   if (fallbackLocId) {
     for (const id of selectedCharIds) {
-      const locId = nextPlacements[id];
-      if (!locSet.has(locId)) nextPlacements[id] = fallbackLocId;
+      const locId = nextLocPlacements[id];
+      if (!locSet.has(locId)) nextLocPlacements[id] = fallbackLocId;
     }
   }
 
-  return { selectedLocIds, selectedCharIds, placements: nextPlacements };
+  const nextNodePlacements = (args.draft.placements || [])
+    .filter((p) => selectedCharIds.includes(p.characterId))
+    .map((p) => {
+      if (!locSet.has(p.locationId)) {
+        return fallbackLocId ? { ...p, locationId: fallbackLocId } : p;
+      }
+      return p;
+    });
+
+  return {
+    selectedLocIds,
+    selectedCharIds,
+    locPlacements: nextLocPlacements,
+    placements: nextNodePlacements,
+    locationSpecs: args.draft.locationSpecs || [],
+  };
 }
 
 function validateDraft(d: SetupDraft) {
@@ -77,9 +102,15 @@ function validateDraft(d: SetupDraft) {
   if (!d.selectedCharIds.length) problems.push('Нужен минимум 1 выбранный персонаж.');
 
   const locSet = new Set(d.selectedLocIds);
-  for (const [chId, locId] of Object.entries(d.placements)) {
+  for (const [chId, locId] of Object.entries(d.locPlacements)) {
     if (!d.selectedCharIds.includes(chId)) continue;
     if (!locSet.has(locId)) problems.push(`Персонаж ${chId}: стартовая locId=${locId} не выбрана.`);
+  }
+  for (const p of d.placements || []) {
+    if (!d.selectedCharIds.includes(p.characterId)) continue;
+    if (!locSet.has(p.locationId)) {
+      problems.push(`Персонаж ${p.characterId}: placement locationId=${p.locationId} не выбрана.`);
+    }
   }
 
   return problems;
@@ -246,7 +277,9 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
   const [setupDraft, setSetupDraft] = useState<SetupDraft>({
     selectedLocIds: [],
     selectedCharIds: [],
-    placements: {},
+    locPlacements: {},
+    placements: [],
+    locationSpecs: [],
   });
 
   if (!simRef.current) {
@@ -537,7 +570,9 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
       seed: Number(seedDraft) || 1,
       locations: selectedLocations,
       characters: selectedCharacters,
-      placements: setupDraft.placements,
+      placements: setupDraft.locPlacements,
+      locationSpecs: setupDraft.locationSpecs,
+      nodePlacements: setupDraft.placements,
     });
     // Persist active cast + temperature into world facts for the orchestrator.
     world.facts = world.facts || {};
@@ -598,10 +633,12 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
       seed: Number(seedDraft) || 1,
       locations: selectedLocations,
       characters: selectedCharacters,
-      placements: setupDraft.placements,
+      placements: setupDraft.locPlacements,
+      locationSpecs: setupDraft.locationSpecs,
+      nodePlacements: setupDraft.placements,
     });
     return buildSnapshot(world);
-  }, [selectedLocations, selectedCharacters, setupDraft.placements, seedDraft, sim]);
+  }, [selectedLocations, selectedCharacters, setupDraft.locPlacements, setupDraft.locationSpecs, setupDraft.placements, seedDraft, sim]);
 
   const scenarioId = sim.cfg.scenarioId;
 
@@ -847,7 +884,7 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
                           <div className="flex flex-col gap-3">
                             {selectedCharacters.map((ch: any) => {
                               const fallbackLoc = setupDraft.selectedLocIds[0] || '';
-                              const locId = setupDraft.placements[ch.entityId] || fallbackLoc;
+                              const locId = setupDraft.locPlacements[ch.entityId] || fallbackLoc;
                               return (
                                 <div key={ch.entityId} className="grid grid-cols-12 gap-2 items-center">
                                   <div className="col-span-6 text-sm">
@@ -862,7 +899,7 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
                                       const nextLocId = e.target.value;
                                       setSetupDraft((d) => ({
                                         ...d,
-                                        placements: { ...d.placements, [ch.entityId]: nextLocId },
+                                        locPlacements: { ...d.locPlacements, [ch.entityId]: nextLocId },
                                       }));
                                     }}
                                   >
@@ -878,6 +915,35 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
                             })}
                           </div>
                         )}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-12 gap-4 mt-4">
+                      <div className="col-span-6">
+                        <LocationImportPanel
+                          draft={setupDraft}
+                          setDraft={(next) => {
+                            setSetupDraft((d) => ({
+                              ...d,
+                              locationSpecs: next.locationSpecs || [],
+                            }));
+                          }}
+                        />
+                      </div>
+                      <div className="col-span-6">
+                        <PlacementPanel
+                          draft={{
+                            ...setupDraft,
+                            characters: selectedCharacters.map((c: any) => ({ id: c.entityId, title: c.title || c.entityId })),
+                            locations: selectedLocations.map((l: any) => ({ id: l.entityId, title: l.title || l.entityId })),
+                          }}
+                          setDraft={(next) => {
+                            setSetupDraft((d) => ({
+                              ...d,
+                              placements: next.placements || [],
+                            }));
+                          }}
+                        />
                       </div>
                     </div>
 

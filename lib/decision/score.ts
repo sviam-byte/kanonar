@@ -57,9 +57,10 @@ function contextKeyMod(k: string, ctx: CtxVec): number {
     // ждать хуже при опасности/неопределенности
     m *= (1 - 0.55 * D) * (1 - 0.35 * U);
   }
-  if (k === 'rest' || k === 'work') {
+  if (k === 'rest' || k === 'work' || k === 'inspect_feature' || k === 'repair_feature' || k === 'scavenge_feature') {
     // отдых/работа плохо при опасности; работа плохо при высокой неопределенности
-    m *= (1 - 0.65 * D) * (k === 'work' ? (1 - 0.25 * U) : 1);
+    const isWorklike = k === 'work' || k === 'repair_feature' || k === 'scavenge_feature';
+    m *= (1 - 0.65 * D) * (isWorklike ? (1 - 0.25 * U) : 1);
   }
   if (k === 'observe') {
     // наблюдать хорошо при опасности/неопределенности
@@ -69,9 +70,9 @@ function contextKeyMod(k: string, ctx: CtxVec): number {
     // двигаться (перемещение/перестройка позиции) хорошо при опасности
     m *= (1 + 0.45 * D);
   }
-  if (k === 'talk' || k === 'ask_info' || k === 'negotiate') {
+  if (k === 'talk' || k === 'ask_info' || k === 'question_about' || k === 'negotiate') {
     // социальные действия: лучше при неопределенности, хуже при надзоре/толпе/низкой приватности
-    const infoBonus = (k === 'ask_info') ? 0.55 * U : 0.25 * U;
+    const infoBonus = (k === 'ask_info' || k === 'question_about') ? 0.55 * U : 0.25 * U;
     const socialPenalty = 0.55 * S + 0.35 * C + 0.45 * (1 - P);
     m *= (1 + infoBonus) * (1 - socialPenalty);
   }
