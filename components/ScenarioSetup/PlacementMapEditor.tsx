@@ -7,6 +7,7 @@ type PointKind = 'danger' | 'safe';
 function clamp01(x: number) {
   return Math.max(0, Math.min(1, x));
 }
+const clamp = (x: number, a: number, b: number) => Math.max(a, Math.min(b, x));
 
 function getMapSize(place: any) {
   // Fall back to a stable aspect ratio when the map size is missing.
@@ -46,6 +47,16 @@ export function PlacementMapEditor({
   const gridScale = 32;
   const img = getPlaceMapImage(place);
   const { w: mapW, h: mapH } = getMapSize(place);
+  const minDim = Math.max(1, Math.min(mapW, mapH));
+
+  // Marker sizes are in map units (SVG viewBox units). Normalize by map size.
+  const actorR = clamp(minDim * 0.012, 3.5, 10); // was 12 (too big on small maps)
+  const pointCoreR = clamp(minDim * 0.010, 3.0, 10); // core dot
+  const ringMax = clamp(minDim * 0.45, 40, 4000); // cap ring visualization
+  const labelFont = clamp(minDim * 0.020, 9, 16);
+
+  const hazardTypesDanger = ['generic', 'fire', 'toxic', 'sniper', 'crowd', 'dark', 'noise'];
+  const hazardTypesSafe = ['generic', 'cover', 'healing', 'safe_zone', 'light', 'quiet'];
 
   // Keep placements scoped to the selected place/location.
   const placements = (draft.placements || []).filter((p: any) => p.locationId === locationId);
@@ -83,8 +94,9 @@ export function PlacementMapEditor({
       kind,
       x,
       y,
-      radius: 120,
+      radius: clamp(minDim * 0.18, 30, Math.max(mapW, mapH)),
       strength: kind === 'danger' ? 0.8 : 0.7,
+      hazardType: 'generic',
       tags: [],
     });
     setDraft({ ...draft, hazardPoints: nextAll });
@@ -191,7 +203,7 @@ export function PlacementMapEditor({
       <div className="flex flex-wrap gap-2 items-center">
         <div className="text-xs opacity-70">Actor:</div>
         <select
-          className="canon-input"
+          className="canon-input bg-black/40 text-white border border-canon-border"
           value={selectedActorId}
           onChange={(e) => setSelectedActorId(e.target.value)}
           disabled={mode !== 'place_actor'}
@@ -234,20 +246,20 @@ export function PlacementMapEditor({
                   <circle
                     cx={p.x}
                     cy={p.y}
-                    r={Math.max(8, Math.min(24, (p.radius || 120) * 0.12))}
+                    r={pointCoreR}
                     opacity={p.id === selectedPointId ? 0.95 : 0.75}
                   />
                   {/* radius ring (visual only) */}
                   <circle
                     cx={p.x}
                     cy={p.y}
-                    r={Math.max(12, Math.min(260, p.radius || 120))}
+                    r={clamp(Number(p.radius || 0), 10, ringMax)}
                     opacity={0.15}
                     fill="none"
                     stroke="currentColor"
                   />
-                  <text x={p.x + 10} y={p.y + 4} fontSize={12} opacity={0.9}>
-                    {p.kind}:{Math.round(100 * clamp01(p.strength || 0))}%
+                  <text x={p.x + actorR + 4} y={p.y + 4} fontSize={labelFont} opacity={0.9}>
+                    {p.kind}/{p.hazardType || 'generic'}:{Math.round(100 * clamp01(p.strength || 0))}%
                   </text>
                 </g>
               ))}
@@ -259,8 +271,8 @@ export function PlacementMapEditor({
                 const c = actorById.get(String(id));
                 return (
                   <g key={id} onPointerDown={(e) => startDragActor(e, id)} style={{ cursor: 'grab' }}>
-                    <circle cx={p.x} cy={p.y} r={12} opacity={0.9} />
-                    <text x={p.x + 14} y={p.y + 4} fontSize={12} opacity={0.95}>
+                    <circle cx={p.x} cy={p.y} r={actorR} opacity={0.9} />
+                    <text x={p.x + actorR + 4} y={p.y + 4} fontSize={labelFont} opacity={0.95}>
                       {c?.title ?? c?.name ?? id}
                     </text>
                   </g>
@@ -302,20 +314,20 @@ export function PlacementMapEditor({
                 <circle
                   cx={p.x}
                   cy={p.y}
-                  r={Math.max(8, Math.min(24, (p.radius || 120) * 0.12))}
+                  r={pointCoreR}
                   opacity={p.id === selectedPointId ? 0.95 : 0.75}
                 />
                 {/* radius ring (visual only) */}
                 <circle
                   cx={p.x}
                   cy={p.y}
-                  r={Math.max(12, Math.min(260, p.radius || 120))}
+                  r={clamp(Number(p.radius || 0), 10, ringMax)}
                   opacity={0.15}
                   fill="none"
                   stroke="currentColor"
                 />
-                <text x={p.x + 10} y={p.y + 4} fontSize={12} opacity={0.9}>
-                  {p.kind}:{Math.round(100 * clamp01(p.strength || 0))}%
+                <text x={p.x + actorR + 4} y={p.y + 4} fontSize={labelFont} opacity={0.9}>
+                  {p.kind}/{p.hazardType || 'generic'}:{Math.round(100 * clamp01(p.strength || 0))}%
                 </text>
               </g>
             ))}
@@ -327,8 +339,8 @@ export function PlacementMapEditor({
               const c = actorById.get(String(id));
               return (
                 <g key={id} onPointerDown={(e) => startDragActor(e, id)} style={{ cursor: 'grab' }}>
-                  <circle cx={p.x} cy={p.y} r={12} opacity={0.9} />
-                  <text x={p.x + 14} y={p.y + 4} fontSize={12} opacity={0.95}>
+                  <circle cx={p.x} cy={p.y} r={actorR} opacity={0.9} />
+                  <text x={p.x + actorR + 4} y={p.y + 4} fontSize={labelFont} opacity={0.95}>
                     {c?.title ?? c?.name ?? id}
                   </text>
                 </g>
@@ -349,9 +361,37 @@ export function PlacementMapEditor({
             <div className="text-xs opacity-70 ml-2">kind</div>
             <div className="text-xs">{selectedPoint.kind}</div>
 
+            <div className="text-xs opacity-70 ml-2">type</div>
+            <select
+              className="canon-input bg-black/40 text-white border border-canon-border"
+              value={String(selectedPoint.hazardType ?? 'generic')}
+              onChange={(e) => updateHazard(selectedPoint.id, { hazardType: e.target.value })}
+            >
+              {(selectedPoint.kind === 'danger' ? hazardTypesDanger : hazardTypesSafe).map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
+
+            <div className="text-xs opacity-70 ml-2">tags</div>
+            <input
+              className="canon-input bg-black/40 text-white border border-canon-border"
+              value={String((selectedPoint.tags || []).join(', '))}
+              onChange={(e) =>
+                updateHazard(selectedPoint.id, {
+                  tags: String(e.target.value || '')
+                    .split(',')
+                    .map((x) => x.trim())
+                    .filter(Boolean),
+                })
+              }
+              style={{ width: 220 }}
+            />
+
             <div className="text-xs opacity-70 ml-2">strength</div>
             <input
-              className="canon-input"
+              className="canon-input bg-black/40 text-white border border-canon-border"
               type="number"
               step="0.05"
               min="0"
@@ -363,7 +403,7 @@ export function PlacementMapEditor({
 
             <div className="text-xs opacity-70 ml-2">radius</div>
             <input
-              className="canon-input"
+              className="canon-input bg-black/40 text-white border border-canon-border"
               type="number"
               step="10"
               min="10"

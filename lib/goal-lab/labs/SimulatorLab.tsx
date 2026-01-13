@@ -13,6 +13,7 @@ import { makeSimWorldFromSelection } from '../../simkit/adapters/fromKanonarEnti
 import { SimMapView } from '../../../components/SimMapView';
 import { LocationMapView } from '../../../components/LocationMapView';
 import { PlacementMapEditor } from '../../../components/ScenarioSetup/PlacementMapEditor';
+import { LivePlacementMiniMap } from '../../../components/ScenarioSetup/LivePlacementMiniMap';
 import { importLocationFromGoalLab } from '../../simkit/locations/goallabImport';
 import { Badge, Button, Card, Input, Select, TabButton } from '../../../components/ui/primitives';
 import { EntityType } from '../../../enums';
@@ -278,6 +279,7 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
   const [mapLocId, setMapLocId] = useState<string>('');
   const [mapCharId, setMapCharId] = useState<string | null>(null);
   const [setupMapLocId, setSetupMapLocId] = useState<string>('');
+  const [dockLocId, setDockLocId] = useState<string>('');
 
   const [setupDraft, setSetupDraft] = useState<SetupDraft>({
     selectedLocIds: [],
@@ -638,6 +640,17 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
     setVersion((v) => v + 1);
   }
 
+  function pushManualMoveXY(actorId: string, x: number, y: number, locationId: string) {
+    if (!actorId) return;
+    sim.forcedActions.push({
+      id: `ui:move_xy:${sim.world.tickIndex}:${actorId}:${Math.round(x)}:${Math.round(y)}`,
+      kind: 'move_xy',
+      actorId,
+      payload: { x, y, locationId },
+    } as any);
+    setVersion((v) => v + 1);
+  }
+
   // Temperature for action sampling in the orchestrator policy (T -> 0 = greedy).
   function updateTemperature(value: number) {
     const safeValue = Number.isFinite(value) ? value : 0;
@@ -694,8 +707,22 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
 
   const scenarioId = sim.cfg.scenarioId;
 
+  // Initialize the docked minimap location once the world has locations.
+  useEffect(() => {
+    if (dockLocId) return;
+    const ids = Object.keys(sim.world.locations || {}).sort();
+    if (ids.length) setDockLocId(ids[0]);
+  }, [dockLocId, sim.world.locations]);
+
   return (
     <div className="h-full w-full p-4">
+      <LivePlacementMiniMap
+        snapshot={cur?.snapshot ?? sim.getPreviewSnapshot()}
+        worldFacts={sim.world.facts}
+        selectedLocId={dockLocId || Object.keys(sim.world.locations || {}).sort()[0] || ''}
+        onSelectLocId={setDockLocId}
+        onMoveXY={pushManualMoveXY}
+      />
       <div className="sticky top-0 z-20 mb-4">
         <div className="rounded-canon border border-canon-border bg-canon-panel/70 backdrop-blur-md shadow-canon-1 px-5 py-3 flex items-center gap-3">
           <div className="text-lg font-semibold tracking-tight">Simulator Lab</div>

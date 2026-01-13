@@ -63,6 +63,7 @@ export type SimWorld = {
 
 export type ActionKind =
   | 'move'
+  | 'move_xy'
   | 'wait'
   | 'rest'
   | 'talk'
@@ -81,6 +82,7 @@ export type SimAction = {
   targetId?: Id | null;   // персонаж или локация (по смыслу)
   // навигация внутри локации
   targetNodeId?: string | null;
+  // move_xy: map-space move inside current location (or payload.locationId)
   path?: string[] | null;
   meta?: any;
   payload?: any;

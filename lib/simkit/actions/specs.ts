@@ -11,6 +11,7 @@ import type { ActionKind, ActionOffer, SimAction, SimEvent, SimWorld, SpeechEven
 import { getChar, getLoc } from '../core/world';
 
 const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
+const clamp = (x: number, a: number, b: number) => Math.max(a, Math.min(b, x));
 
 export type Atomicity = 'single' | 'intent';
 
@@ -126,6 +127,54 @@ const RestSpec: ActionSpec = {
     c.stress = clamp01(c.stress - 0.03);
     notes.push(`${c.id} rests`);
     events.push(mkActionEvent(world, 'action:rest', { actorId: c.id, locationId: c.locId }));
+    return { world, events, notes };
+  },
+};
+
+const MoveXYSpec: ActionSpec = {
+  kind: 'move_xy',
+  // UI-only: do not enumerate in policy offers (only forcedActions).
+  enumerate: () => [],
+  validateV1: ({ world, offer }) => {
+    const base = validateCommon(world, offer);
+    try {
+      const c = getChar(world, base.actorId);
+      const locId = String((offer as any)?.payload?.locationId ?? c.locId);
+      const loc = getLoc(world, locId);
+      const mapW = Number((loc as any)?.map?.width ?? (loc as any)?.width ?? 1024);
+      const mapH = Number((loc as any)?.map?.height ?? (loc as any)?.height ?? 768);
+      const x = Number((offer as any)?.payload?.x);
+      const y = Number((offer as any)?.payload?.y);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) return { ...base, blocked: true, reason: 'v1:bad-xy', score: 0 };
+      if (!Number.isFinite(mapW) || !Number.isFinite(mapH)) return { ...base, blocked: true, reason: 'v1:bad-map', score: 0 };
+      // Allow a small out-of-bounds margin (UI drags), clamp in apply.
+      if (x < -50 || y < -50 || x > mapW + 50 || y > mapH + 50) {
+        return { ...base, blocked: true, reason: 'v1:xy-oob', score: 0 };
+      }
+      return base;
+    } catch {
+      return { ...base, blocked: true, reason: 'v1:invalid', score: 0 };
+    }
+  },
+  validateV2: ({ world, offer }) => validateCommon(world, offer),
+  classifyV3: () => 'single',
+  apply: ({ world, action }) => {
+    const notes: string[] = [];
+    const events: SimEvent[] = [];
+    const c = getChar(world, action.actorId);
+    const locId = String(action.payload?.locationId ?? c.locId);
+    const loc = getLoc(world, locId);
+    const mapW = Number((loc as any)?.map?.width ?? (loc as any)?.width ?? 1024);
+    const mapH = Number((loc as any)?.map?.height ?? (loc as any)?.height ?? 768);
+    const x0 = Number(action.payload?.x);
+    const y0 = Number(action.payload?.y);
+    const x = Number.isFinite(x0) ? clamp(x0, 0, mapW) : (c.pos?.x ?? 0);
+    const y = Number.isFinite(y0) ? clamp(y0, 0, mapH) : (c.pos?.y ?? 0);
+    // Only local reposition (no locId change).
+    c.pos = { nodeId: null, x, y };
+    c.energy = clamp01(c.energy - 0.005);
+    notes.push(`${c.id} moves_xy to (${Math.round(x)},${Math.round(y)})`);
+    events.push(mkActionEvent(world, 'action:move_xy', { actorId: c.id, locationId: c.locId, x, y }));
     return { world, events, notes };
   },
 };
@@ -564,6 +613,7 @@ export const ACTION_SPECS: Record<ActionKind, ActionSpec> = {
   wait: WaitSpec,
   rest: RestSpec,
   move: MoveSpec,
+  move_xy: MoveXYSpec,
   talk: TalkSpec,
   observe: ObserveSpec,
   question_about: QuestionAboutSpec,
