@@ -38,7 +38,11 @@ function l2norm(v: number[]) {
  * Build a normalized vector that encodes thinking axes + caps.
  * Used for cosine-distance similarity comparisons.
  */
-export function thinkingVector(th: ThinkingProfile, caps?: ActivityCaps): number[] {
+export function thinkingVector(
+  th: ThinkingProfile,
+  caps?: ActivityCaps,
+  opts?: { normalize?: boolean }
+): number[] {
   const v: number[] = [];
 
   for (const k of AX_A) v.push(clamp01(th?.representation?.[k], 0));
@@ -54,10 +58,12 @@ export function thinkingVector(th: ThinkingProfile, caps?: ActivityCaps): number
     for (let i = 0; i < CAPS_KEYS.length; i++) v.push(0);
   }
 
-  // normalize to unit vector for cosine distance stability
-  const n = l2norm(v);
-  if (n > 1e-9) {
-    for (let i = 0; i < v.length; i++) v[i] /= n;
+  if (opts?.normalize !== false) {
+    // Normalize to unit vector for cosine distance stability.
+    const n = l2norm(v);
+    if (n > 1e-9) {
+      for (let i = 0; i < v.length; i++) v[i] /= n;
+    }
   }
   return v;
 }
@@ -83,4 +89,27 @@ export function nearestByThinkingVector<T>(
     .map(x => ({ item: x.item, distance: cosineDistance(anchor, x.vec) }))
     .sort((p, q) => p.distance - q.distance);
   return scored.slice(0, Math.max(0, k));
+}
+
+export function vectorStats(vs: number[][]) {
+  if (!vs.length) return null;
+  const dim = vs[0].length;
+  const mean = new Array(dim).fill(0);
+  for (const v of vs) {
+    for (let i = 0; i < dim; i++) mean[i] += (v[i] ?? 0);
+  }
+  for (let i = 0; i < dim; i++) mean[i] /= vs.length;
+
+  const vari = new Array(dim).fill(0);
+  for (const v of vs) {
+    for (let i = 0; i < dim; i++) {
+      const d = (v[i] ?? 0) - mean[i];
+      vari[i] += d * d;
+    }
+  }
+  for (let i = 0; i < dim; i++) vari[i] /= Math.max(1, vs.length - 1);
+
+  const meanVar = vari.reduce((a, b) => a + b, 0) / dim;
+  const nearConstDims = vari.filter(x => x < 1e-8).length;
+  return { dim, meanVar, nearConstDims };
 }

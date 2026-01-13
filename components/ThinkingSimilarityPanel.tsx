@@ -2,9 +2,12 @@ import React, { useMemo, useState } from 'react';
 import type { CharacterEntity } from '../types';
 import { Branch } from '../types';
 import { calculateAllCharacterMetrics } from '../lib/metrics';
+import { deriveCognitionProfileFromCharacter } from '../lib/cognition/hybrid';
 import { computeThinkingAndActivityCaps } from '../lib/metrics/thinking';
 import { interpretThinking } from '../lib/metrics/thinkingInterpret';
-import { nearestByThinkingVector, thinkingVector } from '../lib/metrics/thinkingVector';
+import { cosineDistance, vectorStats } from '../lib/metrics/thinkingVector';
+import { cognitionVector } from '../lib/metrics/cognitionVector';
+import { topDeltas } from '../lib/metrics/vectorExplain';
 
 function clamp01(x: unknown, fallback = 0.5) {
   const n = Number(x);
@@ -17,6 +20,7 @@ type Item = {
   thinking: any;
   caps: any;
   vec: number[];
+  cog: any;
 };
 
 /**
@@ -47,8 +51,15 @@ export const ThinkingSimilarityPanel: React.FC<{
           stress01: clamp01(m.stress, 0.4),
         });
 
-        const vec = thinkingVector(thinking, activityCaps);
-        out.push({ c, thinking, caps: activityCaps, vec });
+        let cognition = (psych as any).cognition;
+        if (!cognition) {
+          // Fallback: derive from character entity itself (trait-level prior).
+          cognition = deriveCognitionProfileFromCharacter({ character: c as any });
+          (psych as any).cognition = cognition;
+        }
+        const vec = cognitionVector(cognition, { normalize: true });
+        if (!vec.length) continue;
+        out.push({ c, thinking, caps: activityCaps, vec, cog: cognition });
       } catch {
         // ignore broken chars
       }
@@ -61,8 +72,13 @@ export const ThinkingSimilarityPanel: React.FC<{
   const neighbors = useMemo(() => {
     if (!anchor) return [];
     const pool = items.filter(x => x.c.entityId !== anchor.c.entityId);
-    return nearestByThinkingVector(anchor.vec, pool.map(x => ({ item: x, vec: x.vec })), k);
+    return pool
+      .map(x => ({ item: x, distance: cosineDistance(anchor.vec, x.vec) }))
+      .sort((a, b) => a.distance - b.distance)
+      .slice(0, k);
   }, [anchor, items, k]);
+
+  const stats = useMemo(() => vectorStats(items.map(x => x.vec)), [items]);
 
   if (!characters?.length) return null;
 
@@ -71,7 +87,7 @@ export const ThinkingSimilarityPanel: React.FC<{
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="font-bold text-canon-text">{title}</div>
-          <div className="text-xs text-canon-text-light">Косинусная дистанция по вектору мышления (A+B+C+D + caps).</div>
+          <div className="text-xs text-canon-text-light">Косинусная дистанция по вектору когниции (мышление + скаляры + policy + caps).</div>
         </div>
 
         <div className="flex gap-2 items-center">
@@ -99,6 +115,15 @@ export const ThinkingSimilarityPanel: React.FC<{
         </div>
       </div>
 
+      {stats && (
+        <div className="mt-3 text-xs text-canon-text-light">
+          vec-dims={stats.dim} · meanVar={stats.meanVar.toFixed(6)} · nearConstDims={stats.nearConstDims}/{stats.dim}
+          {stats.meanVar < 1e-6 || stats.nearConstDims > stats.dim * 0.9 ? (
+            <span className="ml-2 text-red-300">(Вектора почти константны → все расстояния будут ~0.001)</span>
+          ) : null}
+        </div>
+      )}
+
       {!anchor && (
         <div className="mt-3 text-sm text-canon-text-light">Недостаточно данных психики/латентов для построения профиля.</div>
       )}
@@ -108,7 +133,7 @@ export const ThinkingSimilarityPanel: React.FC<{
           <div className="mt-3">
             <div className="text-sm font-bold text-canon-text">Трактовка якоря: {anchor.c.title || anchor.c.entityId}</div>
             {(() => {
-              const it = interpretThinking(anchor.thinking, anchor.caps);
+              const it = interpretThinking(anchor.thinking, anchor.caps, anchor.cog?.prior?.debug?.predicates);
               return (
                 <div className="mt-1 text-xs text-canon-text-light space-y-1">
                   <div>{it.summary.join(' ')}</div>
@@ -126,7 +151,8 @@ export const ThinkingSimilarityPanel: React.FC<{
             <div className="mt-2 space-y-2">
               {neighbors.map((nn, idx) => {
                 const x = nn.item;
-                const it = interpretThinking(x.thinking, x.caps);
+                const it = interpretThinking(x.thinking, x.caps, x.cog?.prior?.debug?.predicates);
+                const deltas = topDeltas(anchor.vec, x.vec, 6);
                 return (
                   <div key={x.c.entityId + ':' + idx} className="border border-canon-border/60 rounded p-2">
                     <div className="flex items-baseline justify-between gap-3">
@@ -137,6 +163,11 @@ export const ThinkingSimilarityPanel: React.FC<{
                     {it.tendencies.length > 0 && <div className="mt-1 text-xs text-canon-text-light">Склонности: {it.tendencies.join(' ')}</div>}
                     {it.risks.length > 0 && <div className="mt-1 text-xs text-canon-text-light">Риски: {it.risks.join(' ')}</div>}
                     {showWhy && <div className="mt-1 text-[11px] text-canon-text-light opacity-90">{it.why.join(' · ')}</div>}
+                    {showWhy && (
+                      <div className="mt-1 text-[11px] text-canon-text-light opacity-80">
+                        TopΔ dims: {deltas.map(z => `#${z.i}:${z.d.toFixed(4)}`).join(' · ')}
+                      </div>
+                    )}
                   </div>
                 );
               })}

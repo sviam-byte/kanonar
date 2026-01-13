@@ -46,7 +46,11 @@ export type ThinkingInterpretation = {
  * Deterministic interpretation for thinking axes + activity caps.
  * Produces concise summary/tendencies/risks that can be reused across panels.
  */
-export function interpretThinking(th: ThinkingProfile, caps?: ActivityCaps): ThinkingInterpretation {
+export function interpretThinking(
+  th: ThinkingProfile,
+  caps?: ActivityCaps,
+  debugPred?: Record<string, number>
+): ThinkingInterpretation {
   const summary: string[] = [];
   const tendencies: string[] = [];
   const risks: string[] = [];
@@ -97,6 +101,27 @@ export function interpretThinking(th: ThinkingProfile, caps?: ActivityCaps): Thi
 
   if (caps) {
     why.push(`Caps: ops=${fmt(ops)} act=${fmt(act)} pro=${fmt(proactive)} re=${fmt(reactive)} reg=${fmt(regulatory)} ref=${fmt(reflective)}`);
+  }
+
+  // Optional: show predicates to diagnose "everything identical".
+  if (debugPred) {
+    const keys = [
+      'formalCapacity',
+      'verbalCapacity',
+      'imageryCapacity',
+      'sensorimotorIteration',
+      'ambiguityTol',
+      'needsControl',
+      'futureHorizon',
+      'tom',
+      'normPressure',
+      'metacog',
+    ];
+    const line = keys
+      .filter(k => debugPred[k] != null)
+      .map(k => `${k}=${fmt(Number(debugPred[k]))}`)
+      .join(' · ');
+    if (line) why.push(`Pred: ${line}`);
   }
 
   return { summary, tendencies, risks, why };
