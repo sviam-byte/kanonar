@@ -84,8 +84,9 @@ export function makeSimWorldFromSelection(args: {
     x?: number;
     y?: number;
   }>;
+  hazardPoints?: Array<any>;
 }): SimWorld {
-  const { seed, locations, characters, placements, locationSpecs, nodePlacements } = args;
+  const { seed, locations, characters, placements, locationSpecs, nodePlacements, hazardPoints } = args;
 
   const locMap: SimWorld['locations'] = {};
   for (const loc of locations) {
@@ -141,7 +142,11 @@ export function makeSimWorldFromSelection(args: {
     const ch = chMap[p.characterId];
     if (!ch) continue;
     if (p.locationId && locMap[p.locationId]) ch.locId = p.locationId;
-    if (p.nodeId) ch.pos = { nodeId: p.nodeId, x: p.x, y: p.y };
+    ch.pos = {
+      nodeId: p.nodeId ?? null,
+      x: p.x ?? null,
+      y: p.y ?? null,
+    };
   }
 
   for (const ch of Object.values(chMap)) {
@@ -155,7 +160,9 @@ export function makeSimWorldFromSelection(args: {
   return {
     tickIndex: 0,
     seed,
-    facts: {},
+    facts: {
+      hazardPoints: Array.isArray(hazardPoints) ? hazardPoints : [],
+    },
     events: [],
     locations: locMap,
     characters: chMap,

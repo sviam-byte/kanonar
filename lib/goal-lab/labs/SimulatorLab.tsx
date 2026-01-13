@@ -14,6 +14,7 @@ import { SimMapView } from '../../../components/SimMapView';
 import { LocationMapView } from '../../../components/LocationMapView';
 import { LocationImportPanel } from '../../../components/ScenarioSetup/LocationImportPanel';
 import { PlacementPanel } from '../../../components/ScenarioSetup/PlacementPanel';
+import { PlacementMapEditor } from '../../../components/ScenarioSetup/PlacementMapEditor';
 import { Badge, Button, Card, Input, Select, TabButton } from '../../../components/ui/primitives';
 import { EntityType } from '../../../enums';
 import { getEntitiesByType, getAllCharactersWithRuntime } from '../../../data';
@@ -53,11 +54,12 @@ type SetupDraft = {
   placements: Array<{
     characterId: string;
     locationId: string;
-    nodeId: string;
+    nodeId: string | null;
     x?: number;
     y?: number;
   }>;
   locationSpecs: any[];
+  hazardPoints: Array<any>;
 };
 
 function normalizePlacements(args: { draft: SetupDraft; nextLocIds?: string[]; nextCharIds?: string[] }) {
@@ -276,6 +278,7 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
   const [followLatest, setFollowLatest] = useState(true);
   const [mapLocId, setMapLocId] = useState<string>('');
   const [mapCharId, setMapCharId] = useState<string | null>(null);
+  const [setupMapLocId, setSetupMapLocId] = useState<string>('');
 
   const [setupDraft, setSetupDraft] = useState<SetupDraft>({
     selectedLocIds: [],
@@ -283,6 +286,7 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
     locPlacements: {},
     placements: [],
     locationSpecs: [],
+    hazardPoints: [],
   });
 
   if (!simRef.current) {
@@ -330,6 +334,15 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
       : String(locs[0]?.id || '');
     if (nextId && nextId !== mapLocId) setMapLocId(nextId);
   }, [cur, mapLocId]);
+
+  useEffect(() => {
+    const locs = setupDraft.selectedLocIds || [];
+    if (!locs.length) return;
+    const nextId = setupMapLocId && locs.includes(setupMapLocId)
+      ? setupMapLocId
+      : String(locs[0] || '');
+    if (nextId && nextId !== setupMapLocId) setSetupMapLocId(nextId);
+  }, [setupDraft.selectedLocIds, setupMapLocId]);
 
   const tickItems = useMemo(() => {
     const xs = records.map((r, i) => ({
@@ -585,6 +598,7 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
       placements: setupDraft.locPlacements,
       locationSpecs: setupDraft.locationSpecs,
       nodePlacements: setupDraft.placements,
+      hazardPoints: setupDraft.hazardPoints,
     });
     // Persist active cast + temperature into world facts for the orchestrator.
     world.facts = world.facts || {};
@@ -648,9 +662,19 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
       placements: setupDraft.locPlacements,
       locationSpecs: setupDraft.locationSpecs,
       nodePlacements: setupDraft.placements,
+      hazardPoints: setupDraft.hazardPoints,
     });
     return buildSnapshot(world);
-  }, [selectedLocations, selectedCharacters, setupDraft.locPlacements, setupDraft.locationSpecs, setupDraft.placements, seedDraft, sim]);
+  }, [
+    selectedLocations,
+    selectedCharacters,
+    setupDraft.locPlacements,
+    setupDraft.locationSpecs,
+    setupDraft.placements,
+    setupDraft.hazardPoints,
+    seedDraft,
+    sim,
+  ]);
 
   const scenarioId = sim.cfg.scenarioId;
 
@@ -958,6 +982,45 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
                         />
                       </div>
                     </div>
+
+                    {setupDraft.selectedLocIds.length > 0 && setupDraft.selectedCharIds.length > 0 ? (
+                      <div className="mt-4 space-y-3">
+                        <div className="canon-card p-2">
+                          <div className="text-xs opacity-70 mb-1">Карта для расстановки</div>
+                          <select
+                            className="canon-input w-full"
+                            value={setupMapLocId || ''}
+                            onChange={(e) => setSetupMapLocId(e.target.value)}
+                          >
+                            {setupDraft.selectedLocIds.map((id) => {
+                              const loc = selectedLocations.find((l: any) => l.entityId === id);
+                              return (
+                                <option key={id} value={id}>
+                                  {loc?.title ?? id}
+                                </option>
+                              );
+                            })}
+                          </select>
+                        </div>
+
+                        <PlacementMapEditor
+                          draft={{
+                            ...setupDraft,
+                            characters: selectedCharacters.map((c: any) => ({ id: c.entityId, title: c.title || c.entityId })),
+                            locations: selectedLocations.map((l: any) => ({ id: l.entityId, title: l.title || l.entityId })),
+                          }}
+                          setDraft={(next) => {
+                            setSetupDraft((d) => ({
+                              ...d,
+                              placements: next.placements || [],
+                              hazardPoints: next.hazardPoints || [],
+                            }));
+                          }}
+                          locationId={setupMapLocId}
+                          actorIds={setupDraft.selectedCharIds}
+                        />
+                      </div>
+                    ) : null}
 
                     {setupProblems.length > 0 && (
                       <div className="mt-3 rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-sm">

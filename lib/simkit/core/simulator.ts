@@ -7,6 +7,37 @@ import { cloneWorld, buildSnapshot } from './world';
 import { proposeActions, applyAction, applyEvent } from './rules';
 import { validateActionStrict } from '../actions/validate';
 
+function clamp01(x: number) {
+  return Math.max(0, Math.min(1, x));
+}
+
+function applyHazardPoints(world: SimWorld) {
+  const points = Array.isArray((world.facts as any)?.hazardPoints) ? (world.facts as any).hazardPoints : [];
+  if (!points.length) return;
+  for (const c of Object.values(world.characters as any)) {
+    const locId = (c as any).locId;
+    const x = Number((c as any).pos?.x);
+    const y = Number((c as any).pos?.y);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+    let danger = 0;
+    let safe = 0;
+    for (const p of points) {
+      if (p.locationId !== locId) continue;
+      const dx = x - Number(p.x);
+      const dy = y - Number(p.y);
+      const r = Math.max(10, Number(p.radius ?? 120));
+      const d2 = dx * dx + dy * dy;
+      const falloff = Math.exp(-d2 / (2 * r * r));
+      const s = clamp01(Number(p.strength ?? 0.7)) * falloff;
+      if (p.kind === 'danger') danger += s;
+      else safe += s;
+    }
+    const danger01 = clamp01(danger - 0.8 * safe);
+    (world.facts as any)[`ctx:danger:${(c as any).id}`] = danger01;
+    (world.facts as any)[`ctx:privacy:${(c as any).id}`] = clamp01(0.5 + 0.5 * safe - 0.4 * danger);
+  }
+}
+
 export type SimPlugin = {
   id: string;
   // Optional pre-step decision hook: can return actions to apply before default heuristic.
@@ -92,6 +123,9 @@ export class SimKitSimulator {
 
   step(): SimTickRecord {
     const w0 = cloneWorld(this.world);
+
+    // Apply hazard/safe map points into world facts before scoring/actions.
+    applyHazardPoints(this.world);
 
     const offers = proposeActions(this.world);
 

@@ -11,7 +11,7 @@ export type SimCharacter = {
   locId: Id;
   // позиция на карте локации (внутренний граф)
   pos?: {
-    nodeId: string;
+    nodeId: string | null;
     x?: number;
     y?: number;
   };

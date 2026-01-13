@@ -73,7 +73,11 @@ export function worldFromScenarioDraft(draft: any): SimWorld {
     const ch = characters[p.characterId];
     if (!ch) continue;
     if (p.locationId) ch.locId = p.locationId;
-    if (p.nodeId) ch.pos = { nodeId: p.nodeId, x: p.x, y: p.y };
+    ch.pos = {
+      nodeId: p.nodeId ?? null,
+      x: p.x ?? null,
+      y: p.y ?? null,
+    };
   }
 
   // ensure everyone has pos.nodeId if location has nav
@@ -88,7 +92,9 @@ export function worldFromScenarioDraft(draft: any): SimWorld {
   return {
     tickIndex: 0,
     seed: draft.seed ?? 1,
-    facts: {},
+    facts: {
+      hazardPoints: Array.isArray(draft.hazardPoints) ? draft.hazardPoints : [],
+    },
     events: [],
     locations,
     characters,
