@@ -50,8 +50,9 @@ export const LocationVectorMap: React.FC<Props> = ({ map, showGrid = true, scale
             const isWalkable = cell.walkable;
 
             // Visual style
-            let bg = 'transparent';
-            let border = showGrid ? 'rgba(255, 255, 255, 0.05)' : 'transparent';
+            // Default grid is intentionally visible (setup/placement needs a readable map).
+            let bg = showGrid ? 'rgba(255, 255, 255, 0.03)' : 'transparent';
+            let border = showGrid ? 'rgba(255, 255, 255, 0.10)' : 'transparent';
             let zIndex = 20;
 
             if (showGrid) {
