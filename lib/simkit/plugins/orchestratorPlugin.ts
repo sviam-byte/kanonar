@@ -3,7 +3,8 @@
 
 import type { SimPlugin } from '../core/simulator';
 import type { SimAction, ActionOffer } from '../core/types';
-import type { ProducerSpec, TickDebugFrameV1, TickDebugStageV1 } from '../../orchestrator/types';
+import type { DecisionExplanationV1, ProducerSpec, TickDebugFrameV1, TickDebugStageV1 } from '../../orchestrator/types';
+import { atomsFromSpeechEvent } from '../../context/v2/ingestSpeech';
 import { runTick } from '../../orchestrator/runTick';
 import { buildRegistry } from '../../orchestrator/registry';
 import type { ContextAtom } from '../../context/v2/types';
@@ -104,11 +105,14 @@ function isExecutableKey(k: string) {
     k === 'wait' ||
     k === 'rest' ||
     k === 'talk' ||
-    k === 'work' ||
     k === 'move' ||
     k === 'observe' ||
-    k === 'ask_info' ||
-    k === 'negotiate'
+    k === 'question_about' ||
+    k === 'negotiate' ||
+    k === 'inspect_feature' ||
+    k === 'repair_feature' ||
+    k === 'scavenge_feature' ||
+    k === 'ask_info' // legacy alias -> question_about
   );
 }
 
@@ -140,15 +144,22 @@ function makeStage(id: TickDebugStageV1['id'], title: string, data: Record<strin
 function toSimActionFromPossibility(p: Possibility, tickIndex: number, actorId: string): SimAction | null {
   const k = keyFromPossibilityId(p.id);
   const targetId = (p as any)?.targetId ?? null;
+  const targetNodeId = (p as any)?.targetNodeId ?? null;
+  const meta = (p as any)?.meta ?? null;
 
   // NOTE: keep mapping conservative; extend as you add more executable keys.
   const kindMap: Record<string, string> = {
     wait: 'wait',
     rest: 'rest',
     talk: 'talk',
-    observe: 'wait',
-    ask_info: 'talk',
-    negotiate: 'talk',
+    observe: 'observe',
+    question_about: 'question_about',
+    negotiate: 'negotiate',
+    inspect_feature: 'inspect_feature',
+    repair_feature: 'repair_feature',
+    scavenge_feature: 'scavenge_feature',
+    // legacy alias
+    ask_info: 'question_about',
   };
 
   const kind = kindMap[k];
@@ -159,6 +170,8 @@ function toSimActionFromPossibility(p: Possibility, tickIndex: number, actorId: 
     kind,
     actorId,
     targetId: targetId || null,
+    targetNodeId: targetNodeId || null,
+    meta,
   };
 }
 
@@ -180,30 +193,57 @@ function toGoalLabSnapshot(simSnapshot: any): any {
       tickIndex: simSnapshot?.tickIndex ?? null,
     };
     if ((base as any).locationId == null && c?.locId) (base as any).locationId = c.locId;
+    // важно для WorldState-пайплайна: Stage0/relations ожидают world.agents[] с entityId/locationId
+    if ((base as any).entityId == null && c?.id) (base as any).entityId = c.id;
+    if ((base as any).id == null && c?.id) (base as any).id = c.id;
     return base;
   });
 
   const locations = locsIn.map((l: any) => {
-    const base = l?.entity ? { ...(l.entity as any) } : { id: l?.id, entityId: l?.id, title: l?.name };
-    if ((base as any).map == null && l?.map != null) (base as any).map = l.map;
-    (base as any).simkit = {
-      hazards: l?.hazards ?? null,
-      norms: l?.norms ?? null,
-      tickIndex: simSnapshot?.tickIndex ?? null,
+    // ВАЖНО: не теряем GoalLab place.map / image / nav / features
+    const base = (l && typeof l === 'object') ? { ...l } : { id: String(l) };
+    const id = base.id ?? l?.locationId ?? l?.entityId;
+    return {
+      ...base,
+      id,
+      title: base.title ?? base.name ?? id,
+      // normalize: иногда картинка лежит в base.image, иногда в base.map.image
+      map: base.map ?? (base.image ? { image: base.image } : null),
+      simkit: {
+        hazards: base.hazards ?? l?.hazards ?? null,
+        norms: base.norms ?? l?.norms ?? null,
+        tickIndex: simSnapshot?.tickIndex ?? null,
+      },
     };
-    return base;
   });
 
-  return {
+  const tickIndex = simSnapshot?.tickIndex ?? 0;
+  const base = {
     id: simSnapshot?.id,
     time: simSnapshot?.time,
     tickIndex: simSnapshot?.tickIndex,
+    // WorldState-совместимость (Stage0/relations/world.locations.ts)
+    tick: simSnapshot?.tickIndex ?? 0,
+    agents: characters,
     characters,
     locations,
+    // на некоторых местах код ожидает "entities" как алиас
+    entities: characters,
     events: simSnapshot?.events || [],
-    atoms: [], // orchestrator will fill
+    atoms: [], // orchestrator will fill; speech ingestion below adds initial atoms
     debug: simSnapshot?.debug || {},
   };
+
+  // PROTO: ingest speech events into ContextAtoms for targets.
+  const evs = Array.isArray(base.events) ? base.events : [];
+  for (const e of evs) {
+    if (e?.type !== 'speech:v1') continue;
+    const payload = e?.payload;
+    const atoms = atomsFromSpeechEvent(payload, tickIndex);
+    for (const a of atoms) base.atoms.push(a);
+  }
+
+  return base;
 }
 
 // -----------------------------
@@ -380,6 +420,7 @@ export function makeOrchestratorPlugin(registry: ProducerSpec[]): SimPlugin {
 
       const actions: SimAction[] = [];
       const perActor: Record<string, any> = {};
+      const explanations: Record<string, DecisionExplanationV1> = {};
 
       // Pre-index offers by actor once.
       const offersByActor: Record<string, ActionOffer[]> = {};
@@ -434,6 +475,8 @@ export function makeOrchestratorPlugin(registry: ProducerSpec[]): SimPlugin {
                 kind: overriddenOffer.kind,
                 actorId,
                 targetId: overriddenOffer.targetId ?? null,
+                targetNodeId: (overriddenOffer as any).targetNodeId ?? null,
+                meta: (overriddenOffer as any).meta ?? null,
               };
             }
           }
@@ -507,6 +550,38 @@ export function makeOrchestratorPlugin(registry: ProducerSpec[]): SimPlugin {
             rejectedCount: ranked.filter((x: any) => !Boolean(x?.allowed)).length,
           };
 
+          const chosenId = overriddenOffer
+            ? `offer:${String(overriddenOffer.kind)}:${String(overriddenOffer.targetId ?? '')}`
+            : (chosen?.id ?? '');
+          const explanationNotes = overriddenOffer
+            ? [`override:${chosenKey} -> offer:${String(overriddenOffer.kind)}`]
+            : [];
+          if (chosenId) {
+            explanations[actorId] = {
+              schema: 'DecisionExplanationV1',
+              tickIndex,
+              selfId: actorId,
+              chosen: {
+                id: chosenId,
+                key: overriddenOffer ? String(overriddenOffer.kind) : String(chosenKey),
+                score: Number(overriddenOffer?.score ?? picked?.score ?? decision.best?.score ?? 0),
+                blocked: overriddenOffer ? Boolean(overriddenOffer.blocked) : !Boolean(picked?.allowed ?? decision.best?.allowed ?? true),
+                targetId: overriddenOffer?.targetId ?? (chosen as any)?.targetId ?? null,
+                meta: overriddenOffer ? { mode: 'offer_override', reason: overriddenOffer.reason ?? null } : { mode: 'possibility' },
+              },
+              topOffers: ranked.slice(0, 8).map((x: any) => ({
+                id: x.p?.id ?? x.id,
+                key: keyFromPossibilityId(x.p?.id ?? x.id),
+                score: Number(x.score ?? 0),
+                blocked: !Boolean(x.allowed),
+                targetId: (x.p as any)?.targetId ?? (x as any)?.targetId ?? null,
+                why: x.why ?? null,
+              })),
+              inputs: { temperature: T, rngSeed: world.seed ?? null },
+              notes: explanationNotes.length ? explanationNotes : undefined,
+            };
+          }
+
           continue;
         }
 
@@ -519,6 +594,8 @@ export function makeOrchestratorPlugin(registry: ProducerSpec[]): SimPlugin {
           kind: bestOffer.kind,
           actorId,
           targetId: bestOffer.targetId ?? null,
+          targetNodeId: (bestOffer as any).targetNodeId ?? null,
+          meta: (bestOffer as any).meta ?? null,
         });
 
         perActor[actorId] = {
@@ -568,6 +645,34 @@ export function makeOrchestratorPlugin(registry: ProducerSpec[]): SimPlugin {
             })),
           rejectedCount: actorOffers.filter((o) => Boolean(o.blocked)).length,
         };
+
+        explanations[actorId] = {
+          schema: 'DecisionExplanationV1',
+          tickIndex,
+          selfId: actorId,
+          chosen: {
+            id: `offer:${String(bestOffer.kind)}:${String(bestOffer.targetId ?? '')}`,
+            key: String(bestOffer.kind),
+            score: Number(bestOffer.score ?? 0),
+            blocked: Boolean(bestOffer.blocked),
+            targetId: bestOffer.targetId ?? null,
+            meta: { mode: 'offer_fallback', reason: bestOffer.reason ?? null },
+          },
+          topOffers: actorOffers
+            .filter((o) => Number.isFinite(o.score))
+            .slice()
+            .sort((a, b) => Number(b.score ?? 0) - Number(a.score ?? 0))
+            .slice(0, 8)
+            .map((o) => ({
+              id: `offer:${String(o.kind)}:${String(o.targetId ?? '')}`,
+              key: String(o.kind),
+              score: Number(o.score ?? 0),
+              blocked: Boolean(o.blocked),
+              targetId: o.targetId ?? null,
+              why: null,
+            })),
+          inputs: { temperature: T, rngSeed: world.seed ?? null },
+        };
       }
 
       lastDecisionTrace = {
@@ -576,6 +681,7 @@ export function makeOrchestratorPlugin(registry: ProducerSpec[]): SimPlugin {
         T,
         actorCount: Object.keys(perActor).length,
         perActor,
+        explanations,
         preTrace: preOut.trace,
         atomsDigest: {
           atomsTotal: atomsAll.length,
@@ -723,6 +829,9 @@ export function makeOrchestratorPlugin(registry: ProducerSpec[]): SimPlugin {
       // Quick visibility
       record.snapshot.debug = record.snapshot.debug || {};
       record.snapshot.debug.orchestratorHumanLog = postOut.trace?.humanLog || [];
+      if (lastDecisionTrace?.explanations && lastDecisionTrace.tickIndex === snapshot.tickIndex) {
+        record.snapshot.debug.explanations = lastDecisionTrace.explanations;
+      }
     },
   };
 }

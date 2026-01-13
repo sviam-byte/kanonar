@@ -3,6 +3,7 @@
 
 import type { LocationEntity, CharacterEntity } from '../../../types';
 import type { SimWorld } from '../core/types';
+import { importLocationFromGoalLab } from '../locations/goallabImport';
 
 function clamp01(x: number) {
   if (!Number.isFinite(x)) return 0;
@@ -75,8 +76,17 @@ export function makeSimWorldFromSelection(args: {
   locations: LocationEntity[];
   characters: CharacterEntity[];
   placements: Record<string, string>;
+  locationSpecs?: Array<any>;
+  nodePlacements?: Array<{
+    characterId: string;
+    locationId: string;
+    nodeId: string;
+    x?: number;
+    y?: number;
+  }>;
+  hazardPoints?: Array<any>;
 }): SimWorld {
-  const { seed, locations, characters, placements } = args;
+  const { seed, locations, characters, placements, locationSpecs, nodePlacements, hazardPoints } = args;
 
   const locMap: SimWorld['locations'] = {};
   for (const loc of locations) {
@@ -90,6 +100,22 @@ export function makeSimWorldFromSelection(args: {
       map: (loc as any).map ?? null,
       entity: loc,
     };
+  }
+
+  // GoalLab specs override/extend map+nav features for selected locations.
+  for (const spec of locationSpecs || []) {
+    if (!spec?.id) continue;
+    const imported = importLocationFromGoalLab(spec);
+    const base = locMap[spec.id];
+    locMap[spec.id] = base
+      ? {
+          ...base,
+          map: imported.map ?? base.map ?? null,
+          nav: imported.nav ?? base.nav,
+          features: imported.features ?? base.features,
+          hazards: { ...(base.hazards || {}), ...(imported.hazards || {}) },
+        }
+      : imported;
   }
 
   const firstLoc = locations[0]?.entityId || 'loc:missing';
@@ -112,10 +138,31 @@ export function makeSimWorldFromSelection(args: {
     };
   }
 
+  for (const p of nodePlacements || []) {
+    const ch = chMap[p.characterId];
+    if (!ch) continue;
+    if (p.locationId && locMap[p.locationId]) ch.locId = p.locationId;
+    ch.pos = {
+      nodeId: p.nodeId ?? null,
+      x: p.x ?? null,
+      y: p.y ?? null,
+    };
+  }
+
+  for (const ch of Object.values(chMap)) {
+    if (!ch.pos?.nodeId) {
+      const loc = locMap[ch.locId];
+      const n0 = loc?.nav?.nodes?.[0];
+      if (n0) ch.pos = { nodeId: n0.id, x: n0.x, y: n0.y };
+    }
+  }
+
   return {
     tickIndex: 0,
     seed,
-    facts: {},
+    facts: {
+      hazardPoints: Array.isArray(hazardPoints) ? hazardPoints : [],
+    },
     events: [],
     locations: locMap,
     characters: chMap,

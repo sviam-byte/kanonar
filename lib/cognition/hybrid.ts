@@ -561,9 +561,9 @@ export function evidenceFromActionLabels(labels: string[]): CognitionEvidence {
   const n = xs.length;
   if (!n) return { sampleSize: 0 };
 
-  const isPlan = (s: string) => /plan|prepare|negotiate|ask_info|observe|analy/i.test(s);
-  const isProbe = (s: string) => /observe|ask_info|probe|test|inspect|analy/i.test(s);
-  const isAct = (s: string) => /move|work|attack|build|act|repair/i.test(s);
+  const isPlan = (s: string) => /plan|prepare|negotiate|ask_info|question_about|observe|analy/i.test(s);
+  const isProbe = (s: string) => /observe|ask_info|question_about|probe|test|inspect|analy/i.test(s);
+  const isAct = (s: string) => /move|work|attack|build|act|repair|inspect_feature|scavenge_feature/i.test(s);
   const isWait = (s: string) => /wait|rest|idle/i.test(s);
 
   let plan = 0;

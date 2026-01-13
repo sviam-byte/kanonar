@@ -116,6 +116,7 @@ export type AtomNamespace =
   | 'threat'  // Threat / Risk analysis
   | 'rel'     // Relationships (static/memory)
   | 'event'   // Events / Timeline
+  | 'speech'  // Speech/communication events (proto)
   | 'misc'    // Fallback
   | 'feat';   // Features
 

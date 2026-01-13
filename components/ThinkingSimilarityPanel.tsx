@@ -3,7 +3,6 @@ import type { CharacterEntity } from '../types';
 import { Branch } from '../types';
 import { calculateAllCharacterMetrics } from '../lib/metrics';
 import { deriveCognitionProfileFromCharacter } from '../lib/cognition/hybrid';
-import { computeThinkingAndActivityCaps } from '../lib/metrics/thinking';
 import { interpretThinking } from '../lib/metrics/thinkingInterpret';
 import { cosineDistance, vectorStats } from '../lib/metrics/thinkingVector';
 import { cognitionVector } from '../lib/metrics/cognitionVector';
@@ -43,20 +42,20 @@ export const ThinkingSimilarityPanel: React.FC<{
         const psych = (m.psych || (m.modifiableCharacter as any)?.psych) as any;
         if (!psych) continue;
 
-        const { thinking, activityCaps } = computeThinkingAndActivityCaps({
-          psych,
-          latents: m.latents,
-          tomQuality: clamp01(m.tomMetrics?.toM_Quality, 0.5),
-          tomUncertainty: clamp01(m.tomMetrics?.toM_Unc, 0.5),
-          stress01: clamp01(m.stress, 0.4),
-        });
-
         let cognition = (psych as any).cognition;
         if (!cognition) {
           // Fallback: derive from character entity itself (trait-level prior).
           cognition = deriveCognitionProfileFromCharacter({ character: c as any });
           (psych as any).cognition = cognition;
         }
+        // IMPORTANT:
+        // Панель "похожести" должна интерпретировать тот же источник,
+        // из которого строится вектор (cognitionVector -> cog.prior.*).
+        // Иначе получается рассинхрон и дефолтные латенты ("FORMAL/ACTION" отсутствуют)
+        // сваливают всех в "абстрактно-теор".
+        const thinking = cognition?.prior?.thinking;
+        const activityCaps = cognition?.prior?.activityCaps;
+        if (!thinking) continue;
         const vec = cognitionVector(cognition, { normalize: true });
         if (!vec.length) continue;
         out.push({ c, thinking, caps: activityCaps, vec, cog: cognition });
