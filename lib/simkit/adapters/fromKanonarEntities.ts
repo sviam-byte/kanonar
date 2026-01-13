@@ -150,7 +150,15 @@ export function makeSimWorldFromSelection(args: {
   }
 
   for (const ch of Object.values(chMap)) {
-    if (!ch.pos?.nodeId) {
+    // IMPORTANT:
+    // PlacementMapEditor produces XY placements with nodeId=null.
+    // Do NOT override XY with nav node fallback, otherwise hazards/atoms can't use map-space points.
+    const hasXY =
+      ch.pos != null &&
+      Number.isFinite((ch.pos as any).x) &&
+      Number.isFinite((ch.pos as any).y);
+
+    if (!ch.pos?.nodeId && !hasXY) {
       const loc = locMap[ch.locId];
       const n0 = loc?.nav?.nodes?.[0];
       if (n0) ch.pos = { nodeId: n0.id, x: n0.x, y: n0.y };

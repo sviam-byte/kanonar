@@ -83,7 +83,6 @@ export function SimMapView({ sim, snapshot, onMove }: Props) {
           ))}
         </select>
 
-        <div className="text-sm opacity-70">Кликни по соседней локации — добавится forced move на следующий тик.</div>
       </div>
 
       <div className="rounded-2xl border border-canon-border bg-canon-card p-3 overflow-hidden">
@@ -209,9 +208,6 @@ export function SimMapView({ sim, snapshot, onMove }: Props) {
         </svg>
       </div>
 
-      <div className="font-mono text-xs opacity-70">
-        queue(forcedActions)={sim.forcedActions.length} | T={String(sim.world.facts?.['sim:T'] ?? 0.2)}
-      </div>
     </div>
   );
 }
