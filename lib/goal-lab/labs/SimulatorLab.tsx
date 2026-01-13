@@ -13,6 +13,7 @@ import { makeSimWorldFromSelection } from '../../simkit/adapters/fromKanonarEnti
 import { SimMapView } from '../../../components/SimMapView';
 import { LocationMapView } from '../../../components/LocationMapView';
 import { PlacementMapEditor } from '../../../components/ScenarioSetup/PlacementMapEditor';
+import { MapViewer } from '../../../components/locations/MapViewer';
 import { LivePlacementMiniMap } from '../../../components/ScenarioSetup/LivePlacementMiniMap';
 import { importLocationFromGoalLab } from '../../simkit/locations/goallabImport';
 import { Badge, Button, Card, Input, Select, TabButton } from '../../../components/ui/primitives';
@@ -1085,6 +1086,35 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
                         Применить сцену и сбросить
                       </Button>
                     </div>
+                  </Card>
+
+                  <Card title="Map Preview">
+                    {(() => {
+                      const place = selectedLocations.find((loc: any) => loc.entityId === setupMapLocId) ?? null;
+                      const map = place?.map ?? null;
+                      if (!map) return <div className="text-xs opacity-70">No place.map for preview</div>;
+
+                      const placements = Array.isArray(setupDraft?.placements) ? setupDraft.placements : [];
+                      const hazardPoints = Array.isArray(setupDraft?.hazardPoints) ? setupDraft.hazardPoints : [];
+                      const locId = String(place.entityId ?? place.id ?? '');
+
+                      const hs: Array<{ x: number; y: number; color: string; size?: number }> = [];
+                      for (const p of placements) {
+                        if (String(p.locationId) !== locId) continue;
+                        hs.push({ x: Number(p.x), y: Number(p.y), color: 'rgba(255,255,255,0.85)', size: 0.85 });
+                      }
+                      for (const pt of hazardPoints) {
+                        if (String(pt.locationId) !== locId) continue;
+                        const isDanger = pt.kind === 'danger';
+                        hs.push({
+                          x: Number(pt.x),
+                          y: Number(pt.y),
+                          color: isDanger ? 'rgba(255,60,60,0.85)' : 'rgba(60,255,140,0.85)',
+                          size: 0.75,
+                        });
+                      }
+                      return <MapViewer map={map} highlights={hs} />;
+                    })()}
                   </Card>
                 </div>
               ) : null}
