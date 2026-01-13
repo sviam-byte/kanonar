@@ -1,5 +1,6 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { getPlaceMapImage } from '../../lib/places/getPlaceMapImage';
+import { LocationVectorMap } from '../locations/LocationVectorMap';
 
 type PointKind = 'danger' | 'safe';
 
@@ -39,6 +40,10 @@ export function PlacementMapEditor({
   actorIds: string[];
 }) {
   const locationId = String(place?.id ?? place?.entityId ?? '');
+  const mapObj = place?.map;
+  // Vector maps expose a cell grid; fall back to image rendering otherwise.
+  const isVectorMap = !!(mapObj && Array.isArray((mapObj as any).cells));
+  const gridScale = 32;
   const img = getPlaceMapImage(place);
   const { w: mapW, h: mapH } = getMapSize(place);
 
@@ -205,72 +210,133 @@ export function PlacementMapEditor({
         <div className="text-xs">{mode}</div>
       </div>
 
-      <div
-        ref={wrapRef}
-        className="relative w-full overflow-hidden rounded-xl canon-border"
-        style={{ aspectRatio: `${mapW} / ${mapH}` }}
-        onPointerDown={onMapPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-      >
-        {img ? (
-          <img
-            src={img}
-            alt={place?.title ?? place?.id ?? 'map'}
-            className="absolute inset-0 w-full h-full object-contain select-none"
-            draggable={false}
-          />
-        ) : (
-          <div className="absolute inset-0 flex items-center justify-center text-xs opacity-70">
-            No map image on this place (expected place.map.image / place.image / place.assets.map)
+      {isVectorMap ? (
+        <div className="canon-border rounded-xl p-2 overflow-auto">
+          <div
+            ref={wrapRef}
+            className="relative"
+            style={{ width: mapW * gridScale, height: mapH * gridScale }}
+            onPointerDown={onMapPointerDown}
+            onPointerMove={onPointerMove}
+            onPointerUp={onPointerUp}
+          >
+            {/* Vector grid rendering keeps setup/placement readable even without images. */}
+            <LocationVectorMap map={mapObj} showGrid={true} scale={gridScale} />
+
+            <svg
+              className="absolute inset-0 w-full h-full"
+              viewBox={`0 0 ${mapW} ${mapH}`}
+              preserveAspectRatio="none"
+            >
+              {/* hazard/safe points */}
+              {hazardPoints.map((p: any) => (
+                <g key={p.id} onPointerDown={(e) => startDragPoint(e, p.id)} style={{ cursor: 'grab' }}>
+                  <circle
+                    cx={p.x}
+                    cy={p.y}
+                    r={Math.max(8, Math.min(24, (p.radius || 120) * 0.12))}
+                    opacity={p.id === selectedPointId ? 0.95 : 0.75}
+                  />
+                  {/* radius ring (visual only) */}
+                  <circle
+                    cx={p.x}
+                    cy={p.y}
+                    r={Math.max(12, Math.min(260, p.radius || 120))}
+                    opacity={0.15}
+                    fill="none"
+                    stroke="currentColor"
+                  />
+                  <text x={p.x + 10} y={p.y + 4} fontSize={12} opacity={0.9}>
+                    {p.kind}:{Math.round(100 * clamp01(p.strength || 0))}%
+                  </text>
+                </g>
+              ))}
+
+              {/* actors */}
+              {actorIds.map((id) => {
+                const p = placementByActor.get(String(id));
+                if (!p || p.x == null || p.y == null) return null;
+                const c = actorById.get(String(id));
+                return (
+                  <g key={id} onPointerDown={(e) => startDragActor(e, id)} style={{ cursor: 'grab' }}>
+                    <circle cx={p.x} cy={p.y} r={12} opacity={0.9} />
+                    <text x={p.x + 14} y={p.y + 4} fontSize={12} opacity={0.95}>
+                      {c?.title ?? c?.name ?? id}
+                    </text>
+                  </g>
+                );
+              })}
+            </svg>
           </div>
-        )}
-
-        <svg
-          className="absolute inset-0 w-full h-full"
-          viewBox={`0 0 ${mapW} ${mapH}`}
-          preserveAspectRatio="xMidYMid meet"
+        </div>
+      ) : (
+        <div
+          ref={wrapRef}
+          className="relative w-full overflow-hidden rounded-xl canon-border"
+          style={{ aspectRatio: `${mapW} / ${mapH}` }}
+          onPointerDown={onMapPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
         >
-          {/* hazard/safe points */}
-          {hazardPoints.map((p: any) => (
-            <g key={p.id} onPointerDown={(e) => startDragPoint(e, p.id)} style={{ cursor: 'grab' }}>
-              <circle
-                cx={p.x}
-                cy={p.y}
-                r={Math.max(8, Math.min(24, (p.radius || 120) * 0.12))}
-                opacity={p.id === selectedPointId ? 0.95 : 0.75}
-              />
-              {/* radius ring (visual only) */}
-              <circle
-                cx={p.x}
-                cy={p.y}
-                r={Math.max(12, Math.min(260, p.radius || 120))}
-                opacity={0.15}
-                fill="none"
-                stroke="currentColor"
-              />
-              <text x={p.x + 10} y={p.y + 4} fontSize={12} opacity={0.9}>
-                {p.kind}:{Math.round(100 * clamp01(p.strength || 0))}%
-              </text>
-            </g>
-          ))}
+          {img ? (
+            <img
+              src={img}
+              alt={place?.title ?? place?.id ?? 'map'}
+              className="absolute inset-0 w-full h-full object-contain select-none"
+              draggable={false}
+            />
+          ) : (
+            <div className="absolute inset-0 flex items-center justify-center text-xs opacity-70">
+              No map image on this place (expected place.map.image / place.image / place.assets.map)
+            </div>
+          )}
 
-          {/* actors */}
-          {actorIds.map((id) => {
-            const p = placementByActor.get(String(id));
-            if (!p || p.x == null || p.y == null) return null;
-            const c = actorById.get(String(id));
-            return (
-              <g key={id} onPointerDown={(e) => startDragActor(e, id)} style={{ cursor: 'grab' }}>
-                <circle cx={p.x} cy={p.y} r={12} opacity={0.9} />
-                <text x={p.x + 14} y={p.y + 4} fontSize={12} opacity={0.95}>
-                  {c?.title ?? c?.name ?? id}
+          <svg
+            className="absolute inset-0 w-full h-full"
+            viewBox={`0 0 ${mapW} ${mapH}`}
+            preserveAspectRatio="xMidYMid meet"
+          >
+            {/* hazard/safe points */}
+            {hazardPoints.map((p: any) => (
+              <g key={p.id} onPointerDown={(e) => startDragPoint(e, p.id)} style={{ cursor: 'grab' }}>
+                <circle
+                  cx={p.x}
+                  cy={p.y}
+                  r={Math.max(8, Math.min(24, (p.radius || 120) * 0.12))}
+                  opacity={p.id === selectedPointId ? 0.95 : 0.75}
+                />
+                {/* radius ring (visual only) */}
+                <circle
+                  cx={p.x}
+                  cy={p.y}
+                  r={Math.max(12, Math.min(260, p.radius || 120))}
+                  opacity={0.15}
+                  fill="none"
+                  stroke="currentColor"
+                />
+                <text x={p.x + 10} y={p.y + 4} fontSize={12} opacity={0.9}>
+                  {p.kind}:{Math.round(100 * clamp01(p.strength || 0))}%
                 </text>
               </g>
-            );
-          })}
-        </svg>
-      </div>
+            ))}
+
+            {/* actors */}
+            {actorIds.map((id) => {
+              const p = placementByActor.get(String(id));
+              if (!p || p.x == null || p.y == null) return null;
+              const c = actorById.get(String(id));
+              return (
+                <g key={id} onPointerDown={(e) => startDragActor(e, id)} style={{ cursor: 'grab' }}>
+                  <circle cx={p.x} cy={p.y} r={12} opacity={0.9} />
+                  <text x={p.x + 14} y={p.y + 4} fontSize={12} opacity={0.95}>
+                    {c?.title ?? c?.name ?? id}
+                  </text>
+                </g>
+              );
+            })}
+          </svg>
+        </div>
+      )}
 
       {/* Point inspector */}
       <div className="canon-card p-2">
