@@ -88,6 +88,15 @@ function parseVolume(raw: unknown): 'whisper' | 'normal' | 'shout' {
   return 'normal';
 }
 
+function autoVolume(world: SimWorld, aId: string, bId: string): 'whisper' | 'normal' | 'shout' {
+  const cfg = getSpatialConfig(world);
+  const d = distSameLocation(world, aId, bId);
+  if (!Number.isFinite(d)) return 'normal';
+  if (d <= cfg.whisperRange * 0.9) return 'whisper';
+  if (d <= cfg.talkRange) return 'normal';
+  return 'shout';
+}
+
 function featuresAtNode(world: SimWorld, locId: string, nodeId: string | undefined) {
   const loc = getLoc(world, locId);
   const xs = Array.isArray((loc as any)?.features) ? (loc as any).features : [];
@@ -102,14 +111,13 @@ const WaitSpec: ActionSpec = {
   validateV2: ({ world, offer }) => validateCommon(world, offer),
   classifyV3: () => 'single',
   apply: ({ world, action }) => {
-    const notes: string[] = [];
-    const events: SimEvent[] = [];
     const c = getChar(world, action.actorId);
-    c.energy = clamp01(c.energy + 0.02);
-    c.stress = clamp01(c.stress - 0.01);
-    notes.push(`${c.id} waits`);
-    events.push(mkActionEvent(world, 'action:wait', { actorId: c.id, locationId: c.locId }));
-    return { world, events, notes };
+    c.energy = clamp01(c.energy + 0.01);
+    return {
+      world,
+      events: [mkActionEvent(world, 'action:wait', { actorId: c.id, locationId: c.locId })],
+      notes: [`${c.id} waits`],
+    };
   },
 };
 
@@ -408,7 +416,8 @@ const TalkSpec: ActionSpec = {
     for (const other of Object.values(world.characters)) {
       if (other.id === c.id) continue;
       if (other.locId !== c.locId) continue;
-      out.push({ kind: 'talk', actorId, targetId: other.id, meta: { volume: 'normal' }, score: 0.15 });
+      const volume = autoVolume(world, c.id, other.id);
+      out.push({ kind: 'talk', actorId, targetId: other.id, meta: { volume }, score: 0.15 });
     }
     return out;
   },
@@ -549,36 +558,19 @@ const AttackSpec: ActionSpec = {
 
 const ObserveSpec: ActionSpec = {
   kind: 'observe',
-  enumerate: ({ world, actorId }) => {
-    // базово всегда возможно; чуть выше, чем wait, но ниже "настоящих" действий
-    const c = getChar(world, actorId);
-    const loc = getLoc(world, c.locId);
-    const radiation = Number(loc.hazards?.['radiation'] ?? 0);
-    // чем опаснее, тем чаще "озираемся"
-    const score = clamp01(0.12 + 0.22 * radiation);
-    return [{ kind: 'observe', actorId, score }];
-  },
+  enumerate: ({ actorId }) => [{ kind: 'observe', actorId, score: 0.12 }],
   validateV1: ({ world, offer }) => validateCommon(world, offer),
-  validateV2: ({ world, offer }) => {
-    const base = validateCommon(world, offer);
-    const c = getChar(world, base.actorId);
-    if (normLevel(world, c.locId, 'no_observe') >= 0.7) {
-      return { ...base, blocked: true, reason: 'norm:no_observe', score: 0 };
-    }
-    return base;
-  },
+  validateV2: ({ world, offer }) => validateCommon(world, offer),
   classifyV3: () => 'single',
   apply: ({ world, action }) => {
-    const notes: string[] = [];
-    const events: SimEvent[] = [];
     const c = getChar(world, action.actorId);
-    // "наблюдение" снижает стресс и фиксирует факт
-    c.stress = clamp01(c.stress - 0.015);
-    world.facts[`observe:${c.id}:${world.tickIndex}`] = true;
-    world.facts['observe:count'] = (world.facts['observe:count'] ?? 0) + 1;
-    notes.push(`${c.id} observes`);
-    events.push(mkActionEvent(world, 'action:observe', { actorId: c.id, locationId: c.locId }));
-    return { world, events, notes };
+    c.energy = clamp01(c.energy - 0.01);
+    world.facts[`observeBoost:${c.id}`] = world.tickIndex;
+    return {
+      world,
+      events: [mkActionEvent(world, 'action:observe', { actorId: c.id, locationId: c.locId })],
+      notes: [`${c.id} observes carefully`],
+    };
   },
 };
 
@@ -592,7 +584,8 @@ const QuestionAboutSpec: ActionSpec = {
     for (const other of Object.values(world.characters)) {
       if (other.id === c.id) continue;
       if (other.locId !== c.locId) continue;
-      out.push({ kind: 'question_about', actorId, targetId: other.id, meta: { topic, volume: 'normal' }, score: 0.18 });
+      const volume = autoVolume(world, c.id, other.id);
+      out.push({ kind: 'question_about', actorId, targetId: other.id, meta: { topic, volume }, score: 0.18 });
     }
     return out;
   },
@@ -670,7 +663,8 @@ const NegotiateSpec: ActionSpec = {
     for (const other of Object.values(world.characters)) {
       if (other.id === c.id) continue;
       if (other.locId !== c.locId) continue;
-      out.push({ kind: 'negotiate', actorId, targetId: other.id, meta: { volume: 'normal' }, score: 0.16 });
+      const volume = autoVolume(world, c.id, other.id);
+      out.push({ kind: 'negotiate', actorId, targetId: other.id, meta: { volume }, score: 0.16 });
     }
     return out;
   },

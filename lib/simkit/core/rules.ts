@@ -4,7 +4,7 @@
 import type { SimWorld, SimAction, ActionOffer, SimEvent, SpeechEventV1 } from './types';
 import { getChar, getLoc } from './world';
 import { enumerateActionOffers, applyActionViaSpec } from '../actions/specs';
-import { canHear } from './spatial';
+import { canHear, distSameLocation, getSpatialConfig } from './spatial';
 
 const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
 
@@ -89,6 +89,40 @@ export function applyEvent(w: SimWorld, e: SimEvent): { world: SimWorld; notes: 
     w.facts['inboxAtoms'] = inbox;
 
     notes.push(`speech:v1 ${speakerId} -> [${recips.join(', ')}] (${volume})`);
+  }
+
+  if (e.type?.startsWith('action:')) {
+    const actorId = String((e.payload || {})?.actorId ?? '');
+    const actor = w.characters[actorId];
+    if (actor) {
+      for (const other of Object.values(w.characters)) {
+        if (other.id === actorId) continue;
+        if (other.locId !== actor.locId) continue;
+
+        // базово: все видят action, если близко
+        const d = distSameLocation(w, actorId, other.id);
+        if (!Number.isFinite(d) || d > getSpatialConfig(w).talkRange * 1.2) continue;
+
+        const inbox = (w.facts['inboxAtoms'] && typeof w.facts['inboxAtoms'] === 'object')
+          ? w.facts['inboxAtoms']
+          : {};
+        const arr = Array.isArray(inbox[other.id]) ? inbox[other.id] : [];
+
+        arr.push({
+          id: `obs:${e.type}:${actorId}:${w.tickIndex}`,
+          magnitude: 1,
+          confidence: 0.9,
+          meta: {
+            from: actorId,
+            observedAction: e.type,
+            tickIndex: w.tickIndex,
+          },
+        });
+
+        inbox[other.id] = arr;
+        w.facts['inboxAtoms'] = inbox;
+      }
+    }
   }
 
   return { world: w, notes };

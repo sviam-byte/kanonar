@@ -164,11 +164,17 @@ export function inferAtomOrigin(source: ContextSource, id: string): AtomOrigin {
   return 'world';
 }
 
-export function normalizeAtom<T extends ContextAtom>(atom: T): T {
-  const ns = atom.ns ?? inferAtomNamespace(atom);
-  const origin = atom.origin ?? inferAtomOrigin(atom.source, atom.id);
-  const out: any = { ...atom, ns, origin };
-  const id = String(out.id || '');
+export function normalizeAtom(atom: Partial<ContextAtom>): ContextAtom {
+  const id = String(atom.id ?? `atom:${Math.random().toString(36).slice(2)}`);
+  const ns = atom.ns ?? inferAtomNamespace({ ...(atom as ContextAtom), id });
+  const origin = atom.origin ?? inferAtomOrigin(atom.source ?? 'unknown', id);
+  const out: any = {
+    ...atom,
+    id,
+    ns,
+    origin,
+    confidence: typeof atom.confidence === 'number' ? atom.confidence : 0.5,
+  };
 
   // ---- AtomSpec resolve -> quark codex fields ----
   // Единственный источник правды: atomSpecs.ts (через resolveAtomSpec)

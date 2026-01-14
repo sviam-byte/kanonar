@@ -4,6 +4,7 @@
 import React, { useMemo, useState } from 'react';
 import type { SimSnapshot, SimLocation, SimCharacter } from '../lib/simkit/core/types';
 import type { SimKitSimulator } from '../lib/simkit/core/simulator';
+import { DEFAULT_SPATIAL_CONFIG } from '../lib/simkit/core/spatial';
 
 type Props = {
   sim: SimKitSimulator;
@@ -18,6 +19,7 @@ export function SimMapView({ sim, snapshot, onMove }: Props) {
 
   const locs: SimLocation[] = snapshot?.locations || [];
   const chars: SimCharacter[] = snapshot?.characters || [];
+  const cfg = sim?.world?.facts?.spatial ?? DEFAULT_SPATIAL_CONFIG;
 
   const locById = useMemo(() => {
     const m: Record<string, SimLocation> = {};
@@ -180,6 +182,24 @@ export function SimMapView({ sim, snapshot, onMove }: Props) {
             const isSel = c.id === actorId;
             return (
               <g key={c.id}>
+                {isSel && (
+                  <>
+                    <circle
+                      cx={p.x + dx}
+                      cy={p.y + dy}
+                      r={cfg.talkRange}
+                      stroke="rgba(120,160,255,0.15)"
+                      fill="none"
+                    />
+                    <circle
+                      cx={p.x + dx}
+                      cy={p.y + dy}
+                      r={cfg.attackRange}
+                      stroke="rgba(255,80,80,0.2)"
+                      fill="none"
+                    />
+                  </>
+                )}
                 <circle
                   cx={p.x + dx}
                   cy={p.y + dy}

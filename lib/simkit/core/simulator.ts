@@ -3,9 +3,11 @@
 
 import type { SimWorld, SimAction, ActionOffer, SimTickRecord, TickTrace } from './types';
 import { RNG } from './rng';
-import { cloneWorld, buildSnapshot } from './world';
+import { cloneWorld, buildSnapshot, ensureCharacterPos } from './world';
 import { proposeActions, applyAction, applyEvent } from './rules';
 import { validateActionStrict } from '../actions/validate';
+import { normalizeAtom } from '../../context/v2/infer';
+import type { ContextAtom } from '../../context/v2/types';
 
 function clamp01(x: number) {
   return Math.max(0, Math.min(1, x));
@@ -124,6 +126,10 @@ export class SimKitSimulator {
   step(): SimTickRecord {
     const w0 = cloneWorld(this.world);
 
+    for (const id of Object.keys(this.world.characters)) {
+      ensureCharacterPos(this.world, id);
+    }
+
     // Apply hazard/safe map points into world facts before scoring/actions.
     applyHazardPoints(this.world);
 
@@ -238,6 +244,45 @@ export class SimKitSimulator {
       this.world = r.world;
       eventsApplied.push(e);
       notes.push(...r.notes);
+    }
+
+    // --- integrate inboxAtoms into agentAtoms (with simple trust gate v0)
+    const inbox = (this.world.facts['inboxAtoms'] && typeof this.world.facts['inboxAtoms'] === 'object')
+      ? this.world.facts['inboxAtoms']
+      : null;
+
+    if (inbox) {
+      for (const [agentId, atoms] of Object.entries(inbox as Record<string, any[]>)) {
+        const c = this.world.characters[agentId];
+        if (!c) continue;
+
+        const arr: ContextAtom[] = [];
+        const boostTick = this.world.facts[`observeBoost:${agentId}`];
+        const boosted = Number.isFinite(boostTick) && this.world.tickIndex === boostTick + 1;
+        for (const a of atoms) {
+          // v0: принять всё, но с пониженной уверенностью
+          const conf = typeof a.confidence === 'number' ? a.confidence : 0.6;
+          const atom: ContextAtom = normalizeAtom({
+            id: a.id,
+            kind: 'ctx',
+            magnitude: typeof a.magnitude === 'number' ? a.magnitude : 1,
+            confidence: boosted ? Math.min(1, conf + 0.2) : conf,
+            origin: {
+              type: 'speech',
+              from: a.meta?.from ?? null,
+              tickIndex: this.world.tickIndex,
+            },
+            meta: a.meta ?? {},
+          });
+          arr.push(atom);
+        }
+
+        const key = `agentAtoms:${agentId}`;
+        const prev = Array.isArray(this.world.facts[key]) ? this.world.facts[key] : [];
+        this.world.facts[key] = prev.concat(arr);
+      }
+
+      delete this.world.facts['inboxAtoms'];
     }
 
     // 3) строим снапшот
