@@ -1,29 +1,31 @@
+// components/ScenarioSetup/PlacementMapEditor.tsx
 import React, { useMemo, useState } from 'react';
 import type { LocationMap } from '../../types';
-import { MapViewer } from '../locations/MapViewer';
+import { LocationVectorMap } from '../locations/LocationVectorMap';
 
 type Mode = 'place_actor' | 'add_danger' | 'add_safe' | 'select';
 
 type Placement = {
   characterId: string;
   locationId: string;
-  x: number;
-  y: number;
+  x: number; // CELL X
+  y: number; // CELL Y
+  nodeId?: string | null; // keep compat if other code expects it
 };
 
 type HazardPoint = {
   id: string;
   locationId: string;
   kind: 'danger' | 'safe';
-  x: number;
-  y: number;
+  x: number; // CELL X
+  y: number; // CELL Y
   radius: number; // in CELLS
   strength: number; // 0..1
   tags?: string[];
 };
 
 function clamp01(x: number) {
-  return Math.max(0, Math.min(1, x));
+  return Number.isFinite(x) ? Math.max(0, Math.min(1, x)) : 0;
 }
 
 function makeId(prefix: string) {
@@ -46,14 +48,18 @@ export function PlacementMapEditor({
   actorIds: string[];
 }) {
   const locId = String(place?.entityId ?? place?.id ?? '');
-  const map: LocationMap | null = place?.map && typeof place.map === 'object' ? (place.map as LocationMap) : null;
+  const map: LocationMap | null =
+    place?.map && typeof place.map === 'object' ? (place.map as LocationMap) : null;
 
   const [mode, setMode] = useState<Mode>('place_actor');
-  const [selectedActorId, setSelectedActorId] = useState<string>(() => actorIds?.[0] ?? '');
+  const [selectedActorId, setSelectedActorId] = useState<string>(() => String(actorIds?.[0] ?? ''));
   const [selectedPointId, setSelectedPointId] = useState<string | null>(null);
 
   const characters = Array.isArray(draft?.characters) ? draft.characters : [];
-  const actorTitle = (id: string) => characters.find((c: any) => String(c.id) === String(id))?.title ?? id;
+  const actorTitle = (id: string) =>
+    characters.find((c: any) => String(c.id) === String(id))?.title ??
+    characters.find((c: any) => String(c.id) === String(id))?.name ??
+    id;
 
   const placementsAll: Placement[] = Array.isArray(draft?.placements) ? draft.placements : [];
   const hazardAll: HazardPoint[] = Array.isArray(draft?.hazardPoints) ? draft.hazardPoints : [];
@@ -86,7 +92,7 @@ export function PlacementMapEditor({
         (p: any) => !(String(p.locationId) === locId && String(p.characterId) === String(actorId))
       ),
     ];
-    next.push({ characterId: actorId, locationId: locId, x, y });
+    next.push({ characterId: actorId, locationId: locId, x, y, nodeId: null });
     setDraft({ ...draft, placements: next });
   }
 
@@ -130,26 +136,32 @@ export function PlacementMapEditor({
       }
       return;
     }
+
     if (mode === 'place_actor') {
       if (!selectedActorId) return;
       upsertPlacement(selectedActorId, x, y);
       return;
     }
+
     if (mode === 'add_danger') return void addHazard('danger', x, y);
     if (mode === 'add_safe') return void addHazard('safe', x, y);
   }
 
   const highlights = useMemo(() => {
     const hs: Array<{ x: number; y: number; color: string; size?: number }> = [];
+
+    // actors: one cell (GoalLab-like)
     for (const p of placements) {
       const isSel = String(p.characterId) === String(selectedActorId);
       hs.push({
         x: p.x,
         y: p.y,
         color: isSel ? '#00e5ff' : 'rgba(255,255,255,0.85)',
-        size: 0.85, // одна клетка (GoalLab)
+        size: 0.85,
       });
     }
+
+    // marks: also one cell (slightly smaller)
     for (const pt of hazardPoints) {
       const isSel = pt.id === selectedPointId;
       hs.push({
@@ -166,16 +178,31 @@ export function PlacementMapEditor({
         size: 0.75,
       });
     }
+
     return hs;
   }, [placements, hazardPoints, selectedActorId, selectedPointId]);
 
-  const selectedPoint = selectedPointId ? hazardPoints.find((p) => p.id === selectedPointId) ?? null : null;
+  const selectedPoint =
+    selectedPointId ? hazardPoints.find((p) => String(p.id) === String(selectedPointId)) ?? null : null;
 
-  if (!map || !locId) {
+  if (!locId || !map) {
     return (
       <div className="canon-card p-3">
         <div className="text-sm font-semibold mb-2">Placement</div>
         <div className="text-xs opacity-70">No place.map (LocationMap) для расстановки.</div>
+      </div>
+    );
+  }
+
+  const isVectorOk = Array.isArray((map as any).cells) && Number.isFinite((map as any).width) && Number.isFinite((map as any).height);
+
+  if (!isVectorOk) {
+    return (
+      <div className="canon-card p-3">
+        <div className="text-sm font-semibold mb-2">Placement</div>
+        <div className="text-xs opacity-70">
+          place.map есть, но не выглядит как LocationMap (нет cells/width/height). Импорт локации должен давать grid.
+        </div>
       </div>
     );
   }
@@ -203,6 +230,7 @@ export function PlacementMapEditor({
       </div>
 
       <div className="grid grid-cols-12 gap-3">
+        {/* left panel */}
         <div className="col-span-3 space-y-3">
           <div className="canon-card p-2">
             <div className="text-[11px] opacity-70 mb-1">Mode</div>
@@ -219,11 +247,11 @@ export function PlacementMapEditor({
             >
               {actorIds.map((id) => (
                 <option key={id} value={id}>
-                  {actorTitle(id)}
+                  {actorTitle(String(id))}
                 </option>
               ))}
             </select>
-            <div className="text-[11px] opacity-60 mt-2">Place/Select: клик по клетке ставит/выбирает.</div>
+            <div className="text-[11px] opacity-60 mt-2">Клик по клетке ставит/выбирает.</div>
           </div>
 
           <div className="canon-card p-2">
@@ -260,6 +288,21 @@ export function PlacementMapEditor({
             {selectedPoint ? (
               <div className="space-y-2">
                 <div className="text-xs font-mono">{selectedPoint.id}</div>
+
+                <div className="flex items-center gap-2">
+                  <div className="text-[11px] opacity-70 w-16">kind</div>
+                  <select
+                    className="canon-input w-24"
+                    value={selectedPoint.kind}
+                    onChange={(e) =>
+                      updateHazard(selectedPoint.id, { kind: e.target.value as 'danger' | 'safe' })
+                    }
+                  >
+                    <option value="danger">danger</option>
+                    <option value="safe">safe</option>
+                  </select>
+                </div>
+
                 <div className="flex items-center gap-2">
                   <div className="text-[11px] opacity-70 w-16">strength</div>
                   <input
@@ -269,9 +312,12 @@ export function PlacementMapEditor({
                     max={1}
                     step={0.05}
                     value={String(selectedPoint.strength)}
-                    onChange={(e) => updateHazard(selectedPoint.id, { strength: clamp01(Number(e.target.value)) })}
+                    onChange={(e) =>
+                      updateHazard(selectedPoint.id, { strength: clamp01(Number(e.target.value)) })
+                    }
                   />
                 </div>
+
                 <div className="flex items-center gap-2">
                   <div className="text-[11px] opacity-70 w-16">radius</div>
                   <input
@@ -281,21 +327,40 @@ export function PlacementMapEditor({
                     max={64}
                     step={1}
                     value={String(selectedPoint.radius)}
-                    onChange={(e) => updateHazard(selectedPoint.id, { radius: Math.max(1, Number(e.target.value) || 1) })}
+                    onChange={(e) =>
+                      updateHazard(selectedPoint.id, {
+                        radius: Math.max(1, Math.floor(Number(e.target.value) || 1)),
+                      })
+                    }
                   />
                 </div>
+
                 <button className="canon-button w-full" onClick={() => removeHazard(selectedPoint.id)}>
                   Delete
                 </button>
               </div>
             ) : (
-              <div className="text-xs opacity-60">Select mode → click a cell with a mark</div>
+              <div className="text-xs opacity-60">Select mode → клик по клетке с меткой</div>
             )}
           </div>
         </div>
 
-        <div className="col-span-9 h-[520px]">
-          <MapViewer map={map} onCellClick={onCellClick} highlights={highlights} />
+        {/* map */}
+        <div className="col-span-9">
+          <div className="canon-border rounded-xl p-2 overflow-auto">
+            <LocationVectorMap
+              map={map}
+              showGrid={true}
+              scale={32}
+              onCellClick={onCellClick}
+              highlightCells={highlights}
+            />
+          </div>
+
+          <div className="text-[11px] opacity-70 mt-2">
+            Place actor: ставит выбранного актора в клетку. Add danger/safe: создаёт метку в клетке. Select: выбирает
+            актора/метку по клику.
+          </div>
         </div>
       </div>
     </div>
