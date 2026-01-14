@@ -9,11 +9,12 @@ type Props = {
   world: SimWorld;
   locationId: string;
   height?: number;
+  focusCharId?: string;
 };
 
 type XY = { x: number; y: number };
 
-export function SimMapView({ world, locationId, height = 360 }: Props) {
+export function SimMapView({ world, locationId, height = 360, focusCharId }: Props) {
   const loc: any = world.locations?.[locationId];
   const cfg = (world.facts as any)?.spatial ?? DEFAULT_SPATIAL_CONFIG;
 
@@ -80,6 +81,7 @@ export function SimMapView({ world, locationId, height = 360 }: Props) {
           const x = Number(c?.pos?.x ?? 0);
           const y = Number(c?.pos?.y ?? 0);
           const label = String(c?.name ?? c?.id).slice(0, 10);
+          const isFocus = focusCharId && c.id === focusCharId;
 
           return (
             <g key={c.id} transform={`translate(${x},${y})`}>
@@ -87,7 +89,12 @@ export function SimMapView({ world, locationId, height = 360 }: Props) {
               <circle r={cfg.attackRange} fill="none" stroke="rgba(255,120,120,0.12)" strokeWidth={1} />
               <circle r={cfg.talkRange} fill="none" stroke="rgba(140,180,255,0.10)" strokeWidth={1} />
 
-              <circle r={7} fill="rgba(255,255,255,0.85)" stroke="rgba(0,0,0,0.6)" strokeWidth={2} />
+              <circle
+                r={isFocus ? 9 : 7}
+                fill={isFocus ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.85)'}
+                stroke={isFocus ? 'rgba(255,220,120,0.75)' : 'rgba(0,0,0,0.6)'}
+                strokeWidth={isFocus ? 3 : 2}
+              />
               <text x={10} y={4} fontSize={12} fill="rgba(255,255,255,0.85)">
                 {label}
               </text>
