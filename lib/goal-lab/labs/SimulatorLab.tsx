@@ -13,6 +13,9 @@ import { makeSimWorldFromSelection } from '../../simkit/adapters/fromKanonarEnti
 import { SimMapView } from '../../../components/SimMapView';
 import { LocationMapView } from '../../../components/LocationMapView';
 import { PlacementMapEditor } from '../../../components/ScenarioSetup/PlacementMapEditor';
+import { MapViewer } from '../../../components/locations/MapViewer';
+import { LivePlacementMiniMap } from '../../../components/ScenarioSetup/LivePlacementMiniMap';
+import { importLocationFromGoalLab } from '../../simkit/locations/goallabImport';
 import { Badge, Button, Card, Input, Select, TabButton } from '../../../components/ui/primitives';
 import { EntityType } from '../../../enums';
 import { getEntitiesByType, getAllCharactersWithRuntime } from '../../../data';
@@ -277,6 +280,7 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
   const [mapLocId, setMapLocId] = useState<string>('');
   const [mapCharId, setMapCharId] = useState<string | null>(null);
   const [setupMapLocId, setSetupMapLocId] = useState<string>('');
+  const [dockLocId, setDockLocId] = useState<string>('');
 
   const [setupDraft, setSetupDraft] = useState<SetupDraft>({
     selectedLocIds: [],
@@ -320,6 +324,23 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
     () => catalogCharacters.filter((c) => setupDraft.selectedCharIds.includes(c.entityId)),
     [catalogCharacters, setupDraft.selectedCharIds]
   );
+
+  // PlacementMapEditor should render the SAME map that will be used by makeSimWorldFromSelection().
+  // If a GoalLabLocationV1 spec is imported for this location, prefer its map/nav/features.
+  const setupPlaceForEditor = useMemo(() => {
+    const base = selectedLocations.find((loc: any) => loc.entityId === setupMapLocId) ?? null;
+    if (!base) return null;
+    const spec = (setupDraft.locationSpecs || []).find((s: any) => String(s?.id) === String(setupMapLocId));
+    if (!spec) return base;
+    const imported = importLocationFromGoalLab(spec as any);
+    return {
+      ...base,
+      map: imported.map ?? (base as any).map ?? null,
+      nav: imported.nav ?? (base as any).nav,
+      features: imported.features ?? (base as any).features,
+      hazards: { ...(((base as any).hazards as any) || {}), ...(imported.hazards || {}) },
+    };
+  }, [selectedLocations, setupMapLocId, setupDraft.locationSpecs]);
 
   const curIdx = selected >= 0 ? selected : records.length - 1;
   const cur = curIdx >= 0 ? records[curIdx] : null;
@@ -620,6 +641,17 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
     setVersion((v) => v + 1);
   }
 
+  function pushManualMoveXY(actorId: string, x: number, y: number, locationId: string) {
+    if (!actorId) return;
+    sim.forcedActions.push({
+      id: `ui:move_xy:${sim.world.tickIndex}:${actorId}:${Math.round(x)}:${Math.round(y)}`,
+      kind: 'move_xy',
+      actorId,
+      payload: { x, y, locationId },
+    } as any);
+    setVersion((v) => v + 1);
+  }
+
   // Temperature for action sampling in the orchestrator policy (T -> 0 = greedy).
   function updateTemperature(value: number) {
     const safeValue = Number.isFinite(value) ? value : 0;
@@ -676,8 +708,22 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
 
   const scenarioId = sim.cfg.scenarioId;
 
+  // Initialize the docked minimap location once the world has locations.
+  useEffect(() => {
+    if (dockLocId) return;
+    const ids = Object.keys(sim.world.locations || {}).sort();
+    if (ids.length) setDockLocId(ids[0]);
+  }, [dockLocId, sim.world.locations]);
+
   return (
     <div className="h-full w-full p-4">
+      <LivePlacementMiniMap
+        snapshot={cur?.snapshot ?? sim.getPreviewSnapshot()}
+        worldFacts={sim.world.facts}
+        selectedLocId={dockLocId || Object.keys(sim.world.locations || {}).sort()[0] || ''}
+        onSelectLocId={setDockLocId}
+        onMoveXY={pushManualMoveXY}
+      />
       <div className="sticky top-0 z-20 mb-4">
         <div className="rounded-canon border border-canon-border bg-canon-panel/70 backdrop-blur-md shadow-canon-1 px-5 py-3 flex items-center gap-3">
           <div className="text-lg font-semibold tracking-tight">Simulator Lab</div>
@@ -868,94 +914,121 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
               {/* SETUP */}
               {tab === 'setup' ? (
                 <div className="flex flex-col gap-4">
-                  <Card title="Scene Setup">
-                    <div className="text-sm opacity-80 mb-2">Собери сцену: выбери локации, персонажей и задай стартовые позиции.</div>
+                  <Card title="Сетап сцены">
+                    <div className="flex items-start gap-3 flex-wrap mb-3">
+                      <div className="min-w-[280px]">
+                        <div className="text-sm opacity-80">
+                          Выбери локации и персонажей, назначь стартовые локации и расставь на карте (включая точки
+                          опасности/безопасности).
+                        </div>
+                        <div className="text-xs opacity-60 mt-1">
+                          Важно: расстановка по XY работает только если карта для выбранной локации реально загружена.
+                        </div>
+                      </div>
+                      <div className="grow" />
+                      {setupProblems.length ? (
+                        <Badge tone="bad">ошибки: {setupProblems.length}</Badge>
+                      ) : (
+                        <Badge tone="good">готово</Badge>
+                      )}
+                    </div>
 
                     <div className="grid grid-cols-12 gap-4">
                       <div className="col-span-4">
-                        <div className="font-semibold mb-2">Локации (multi-select)</div>
-                        <select
-                          multiple
-                          value={setupDraft.selectedLocIds}
-                          onChange={(e) => {
-                            const nextIds = Array.from(e.currentTarget.selectedOptions).map((o) => o.value);
-                            setSetupDraft((d) => normalizePlacements({ draft: d, nextLocIds: nextIds }));
-                          }}
-                          className="w-full min-h-[220px] rounded-xl border border-canon-border bg-canon-card px-3 py-2 text-sm"
-                        >
-                          {catalogLocations.map((l) => (
-                            <option key={l.entityId} value={l.entityId}>
-                              {l.title || l.entityId} ({l.entityId})
-                            </option>
-                          ))}
-                        </select>
+                        <div className="canon-card p-3">
+                          <div className="font-semibold">Локации</div>
+                          <div className="text-xs opacity-60 mb-2">Ctrl/Shift для мультивыбора</div>
+                          <select
+                            multiple
+                            value={setupDraft.selectedLocIds}
+                            onChange={(e) => {
+                              const nextIds = Array.from(e.currentTarget.selectedOptions).map((o) => o.value);
+                              setSetupDraft((d) => normalizePlacements({ draft: d, nextLocIds: nextIds }));
+                            }}
+                            className="w-full min-h-[220px] rounded-xl border border-canon-border bg-black/20 px-3 py-2 text-sm"
+                          >
+                            {catalogLocations.map((l) => (
+                              <option key={l.entityId} value={l.entityId}>
+                                {l.title || l.entityId} ({l.entityId})
+                              </option>
+                            ))}
+                          </select>
+                        </div>
                       </div>
 
                       <div className="col-span-4">
-                        <div className="font-semibold mb-2">Персонажи (multi-select)</div>
-                        <select
-                          multiple
-                          value={setupDraft.selectedCharIds}
-                          onChange={(e) => {
-                            const nextIds = Array.from(e.currentTarget.selectedOptions).map((o) => o.value);
-                            setSetupDraft((d) => normalizePlacements({ draft: d, nextCharIds: nextIds }));
-                          }}
-                          className="w-full min-h-[220px] rounded-xl border border-canon-border bg-canon-card px-3 py-2 text-sm"
-                        >
-                          {catalogCharacters.map((c: any) => (
-                            <option key={c.entityId} value={c.entityId}>
-                              {c.title || c.entityId} ({c.entityId})
-                            </option>
-                          ))}
-                        </select>
+                        <div className="canon-card p-3">
+                          <div className="font-semibold">Персонажи</div>
+                          <div className="text-xs opacity-60 mb-2">Ctrl/Shift для мультивыбора</div>
+                          <select
+                            multiple
+                            value={setupDraft.selectedCharIds}
+                            onChange={(e) => {
+                              const nextIds = Array.from(e.currentTarget.selectedOptions).map((o) => o.value);
+                              setSetupDraft((d) => normalizePlacements({ draft: d, nextCharIds: nextIds }));
+                            }}
+                            className="w-full min-h-[220px] rounded-xl border border-canon-border bg-black/20 px-3 py-2 text-sm"
+                          >
+                            {catalogCharacters.map((c: any) => (
+                              <option key={c.entityId} value={c.entityId}>
+                                {c.title || c.entityId} ({c.entityId})
+                              </option>
+                            ))}
+                          </select>
+                        </div>
                       </div>
 
                       <div className="col-span-4">
-                        <div className="font-semibold mb-2">Расстановка</div>
-                        {selectedCharacters.length === 0 ? (
-                          <div className="text-sm opacity-70">Выбери хотя бы одного персонажа.</div>
-                        ) : (
-                          <div className="flex flex-col gap-3">
-                            {selectedCharacters.map((ch: any) => {
-                              const fallbackLoc = setupDraft.selectedLocIds[0] || '';
-                              const locId = setupDraft.locPlacements[ch.entityId] || fallbackLoc;
-                              return (
-                                <div key={ch.entityId} className="grid grid-cols-12 gap-2 items-center">
-                                  <div className="col-span-6 text-sm">
-                                    {ch.title || ch.entityId}
-                                    <div className="text-xs opacity-60">{ch.entityId}</div>
+                        <div className="canon-card p-3">
+                          <div className="font-semibold mb-2">Стартовые локации персонажей</div>
+                          {selectedCharacters.length === 0 ? (
+                            <div className="text-sm opacity-70">Выбери хотя бы одного персонажа.</div>
+                          ) : (
+                            <div className="flex flex-col gap-3">
+                              {selectedCharacters.map((ch: any) => {
+                                const fallbackLoc = setupDraft.selectedLocIds[0] || '';
+                                const locId = setupDraft.locPlacements[ch.entityId] || fallbackLoc;
+                                return (
+                                  <div key={ch.entityId} className="grid grid-cols-12 gap-2 items-center">
+                                    <div className="col-span-6 text-sm">
+                                      {ch.title || ch.entityId}
+                                      <div className="text-xs opacity-60">{ch.entityId}</div>
+                                    </div>
+                                    <Select
+                                      className="col-span-6 bg-black/20"
+                                      value={locId}
+                                      disabled={!setupDraft.selectedLocIds.length}
+                                      onChange={(e) => {
+                                        const nextLocId = e.target.value;
+                                        setSetupDraft((d) => ({
+                                          ...d,
+                                          locPlacements: { ...d.locPlacements, [ch.entityId]: nextLocId },
+                                        }));
+                                      }}
+                                    >
+                                      {!setupDraft.selectedLocIds.length ? (
+                                        <option value="">(нет выбранных локаций)</option>
+                                      ) : null}
+                                      {selectedLocations.map((loc: any) => (
+                                        <option key={loc.entityId} value={loc.entityId}>
+                                          {loc.title || loc.entityId}
+                                        </option>
+                                      ))}
+                                    </Select>
                                   </div>
-                                  <Select
-                                    className="col-span-6 bg-black/20"
-                                    value={locId}
-                                    disabled={!setupDraft.selectedLocIds.length}
-                                    onChange={(e) => {
-                                      const nextLocId = e.target.value;
-                                      setSetupDraft((d) => ({
-                                        ...d,
-                                        locPlacements: { ...d.locPlacements, [ch.entityId]: nextLocId },
-                                      }));
-                                    }}
-                                  >
-                                    {!setupDraft.selectedLocIds.length ? <option value="">(нет выбранных локаций)</option> : null}
-                                    {selectedLocations.map((loc: any) => (
-                                      <option key={loc.entityId} value={loc.entityId}>
-                                        {loc.title || loc.entityId}
-                                      </option>
-                                    ))}
-                                  </Select>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
 
                     {setupDraft.selectedLocIds.length > 0 && setupDraft.selectedCharIds.length > 0 ? (
                       <div className="mt-4 space-y-3">
-                        <div className="canon-card p-2">
-                          <div className="text-xs opacity-70 mb-1">Карта для расстановки</div>
+                        <div className="canon-card p-3">
+                          <div className="font-semibold mb-2">Редактор карты (позиции + опасности)</div>
+                          <div className="text-xs opacity-60 mb-2">Выбери локацию, по которой расставляешь.</div>
                           <select
                             className="canon-input w-full"
                             value={setupMapLocId || ''}
@@ -972,22 +1045,24 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
                           </select>
                         </div>
 
-                        <PlacementMapEditor
-                          draft={{
-                            ...setupDraft,
-                            characters: selectedCharacters.map((c: any) => ({ id: c.entityId, title: c.title || c.entityId })),
-                            locations: selectedLocations.map((l: any) => ({ id: l.entityId, title: l.title || l.entityId })),
-                          }}
-                          setDraft={(next) => {
-                            setSetupDraft((d) => ({
-                              ...d,
-                              placements: next.placements || [],
-                              hazardPoints: next.hazardPoints || [],
-                            }));
-                          }}
-                          place={selectedLocations.find((loc: any) => loc.entityId === setupMapLocId) ?? null}
-                          actorIds={setupDraft.selectedCharIds}
-                        />
+                        <div className="rounded-2xl border border-canon-border bg-black/10 p-2">
+                          <PlacementMapEditor
+                            draft={{
+                              ...setupDraft,
+                              characters: selectedCharacters.map((c: any) => ({ id: c.entityId, title: c.title || c.entityId })),
+                              locations: selectedLocations.map((l: any) => ({ id: l.entityId, title: l.title || l.entityId })),
+                            }}
+                            setDraft={(next) => {
+                              setSetupDraft((d) => ({
+                                ...d,
+                                placements: next.placements || [],
+                                hazardPoints: next.hazardPoints || [],
+                              }));
+                            }}
+                            place={setupPlaceForEditor}
+                            actorIds={setupDraft.selectedCharIds}
+                          />
+                        </div>
                       </div>
                     ) : null}
 
@@ -1008,13 +1083,38 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
                       </div>
                       <div className="grow" />
                       <Button kind="primary" disabled={setupProblems.length > 0} onClick={applySceneFromDraft}>
-                        Apply Scene + Reset
+                        Применить сцену и сбросить
                       </Button>
                     </div>
                   </Card>
 
                   <Card title="Map Preview">
-                    <SimMapView sim={sim} snapshot={draftPreviewSnapshot} onMove={pushManualMove} />
+                    {(() => {
+                      const place = selectedLocations.find((loc: any) => loc.entityId === setupMapLocId) ?? null;
+                      const map = place?.map ?? null;
+                      if (!map) return <div className="text-xs opacity-70">No place.map for preview</div>;
+
+                      const placements = Array.isArray(setupDraft?.placements) ? setupDraft.placements : [];
+                      const hazardPoints = Array.isArray(setupDraft?.hazardPoints) ? setupDraft.hazardPoints : [];
+                      const locId = String(place.entityId ?? place.id ?? '');
+
+                      const hs: Array<{ x: number; y: number; color: string; size?: number }> = [];
+                      for (const p of placements) {
+                        if (String(p.locationId) !== locId) continue;
+                        hs.push({ x: Number(p.x), y: Number(p.y), color: 'rgba(255,255,255,0.85)', size: 0.85 });
+                      }
+                      for (const pt of hazardPoints) {
+                        if (String(pt.locationId) !== locId) continue;
+                        const isDanger = pt.kind === 'danger';
+                        hs.push({
+                          x: Number(pt.x),
+                          y: Number(pt.y),
+                          color: isDanger ? 'rgba(255,60,60,0.85)' : 'rgba(60,255,140,0.85)',
+                          size: 0.75,
+                        });
+                      }
+                      return <MapViewer map={map} highlights={hs} />;
+                    })()}
                   </Card>
                 </div>
               ) : null}

@@ -8,7 +8,7 @@ import { arr } from '../../lib/utils/arr';
 interface MapViewerProps {
     map: LocationMap;
     onCellClick?: (x: number, y: number) => void;
-    highlights?: Array<{x: number, y: number, color: string}>;
+    highlights?: Array<{x: number, y: number, color: string, size?: number}>;
     isEditor?: boolean;
     onMapChange?: (map: LocationMap) => void;
 }
