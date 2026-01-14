@@ -14,6 +14,24 @@ function clamp01(x: number) {
   return Number.isFinite(x) ? Math.max(0, Math.min(1, x)) : 0;
 }
 
+function snapChar(world: SimWorld, id: string) {
+  const c: any = world.characters?.[id];
+  return c ? { health: Number(c.health ?? 0), stress: Number(c.stress ?? 0), energy: Number(c.energy ?? 0) } : null;
+}
+
+function delta(a: any, b: any) {
+  if (!a || !b) return null;
+  return { dHealth: b.health - a.health, dStress: b.stress - a.stress, dEnergy: b.energy - a.energy };
+}
+
+function attachSelfDelta(events: SimEvent[], actorId: string, selfDelta: any) {
+  for (const ev of events) {
+    if (ev?.type?.startsWith('action:') && ev.payload?.actorId === actorId) {
+      ev.payload.selfDelta = selfDelta;
+    }
+  }
+}
+
 function applyHazardPoints(world: SimWorld) {
   const points = Array.isArray((world.facts as any)?.hazardPoints) ? (world.facts as any).hazardPoints : [];
   if (!points.length) return;
@@ -190,7 +208,11 @@ export class SimKitSimulator {
           continue;
         }
 
+        const before = snapChar(this.world, actionToApply.actorId);
         const r = applyAction(this.world, actionToApply);
+        const after = snapChar(r.world, actionToApply.actorId);
+        const selfDelta = delta(before, after);
+        attachSelfDelta(r.events, actionToApply.actorId, selfDelta);
         this.world = r.world;
         actionsApplied.push(actionToApply);
         notes.push(...r.notes);
@@ -229,7 +251,11 @@ export class SimKitSimulator {
           continue;
         }
 
+        const before = snapChar(this.world, actionToApply.actorId);
         const r = applyAction(this.world, actionToApply);
+        const after = snapChar(r.world, actionToApply.actorId);
+        const selfDelta = delta(before, after);
+        attachSelfDelta(r.events, actionToApply.actorId, selfDelta);
         this.world = r.world;
         actionsApplied.push(actionToApply);
         notes.push(...r.notes);

@@ -13,6 +13,7 @@ import { distSameLocation, getCharXY, getSpatialConfig } from '../core/spatial';
 
 const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
 const clamp = (x: number, a: number, b: number) => Math.max(a, Math.min(b, x));
+const hypot = (dx: number, dy: number) => Math.sqrt(dx * dx + dy * dy);
 
 export type Atomicity = 'single' | 'intent';
 
@@ -107,6 +108,94 @@ function mkSpeechAtoms(kind: string, fromId: string, toId: string, extra?: any) 
   return [base];
 }
 
+function nearestNavNode(loc: any, x: number, y: number, maxDist: number): { id: string; x: number; y: number } | null {
+  const nodes = loc?.nav?.nodes;
+  if (!Array.isArray(nodes) || !nodes.length) return null;
+  let best: any = null;
+  let bd = Infinity;
+  for (const n of nodes) {
+    const dx = Number(n.x) - x;
+    const dy = Number(n.y) - y;
+    const d = hypot(dx, dy);
+    if (d < bd) {
+      bd = d;
+      best = n;
+    }
+  }
+  if (!best) return null;
+  return bd <= maxDist ? { id: String(best.id), x: Number(best.x), y: Number(best.y) } : null;
+}
+
+function enumerateMoveXYOffers(world: SimWorld, actorId: string): ActionOffer[] {
+  const c = getChar(world, actorId);
+  const loc = getLoc(world, c.locId);
+  const cfg = getSpatialConfig(world);
+  const cur = getCharXY(world, c.id);
+
+  const offers: ActionOffer[] = [];
+
+  // 1) If we have nav graph + current node, offer moves to adjacent nodes.
+  const nodeId = String(c.pos?.nodeId ?? '');
+  const nodes = loc?.nav?.nodes ?? [];
+  const edges = loc?.nav?.edges ?? [];
+  if (nodeId && Array.isArray(nodes) && Array.isArray(edges) && edges.length) {
+    const neigh = edges
+      .filter((e: any) => String(e.a) === nodeId || String(e.b) === nodeId)
+      .map((e: any) => (String(e.a) === nodeId ? String(e.b) : String(e.a)));
+
+    for (const nid of neigh.slice(0, 8)) {
+      const n = nodes.find((nn: any) => String(nn.id) === nid);
+      if (!n) continue;
+      const x = Number(n.x);
+      const y = Number(n.y);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+      const dx = x - cur.x;
+      const dy = y - cur.y;
+      const d = hypot(dx, dy);
+      if (!Number.isFinite(d) || d <= 0) continue;
+      if (d > cfg.moveMaxStep * 1.05) continue;
+      offers.push({
+        kind: 'move_xy',
+        actorId,
+        payload: { locationId: c.locId, x, y },
+        meta: { toNodeId: nid },
+        score: 0.14,
+      });
+    }
+  }
+
+  // 2) Small “patrol” step towards closest other character.
+  let bestOther: string | null = null;
+  let bestD = Infinity;
+  for (const o of Object.values(world.characters)) {
+    if (o.id === c.id) continue;
+    if (o.locId !== c.locId) continue;
+    const d = distSameLocation(world, c.id, o.id);
+    if (Number.isFinite(d) && d < bestD) {
+      bestD = d;
+      bestOther = o.id;
+    }
+  }
+  if (bestOther && Number.isFinite(bestD) && bestD > cfg.attackRange * 0.95) {
+    const to = getCharXY(world, bestOther);
+    const dx = to.x - cur.x;
+    const dy = to.y - cur.y;
+    const d = hypot(dx, dy);
+    if (Number.isFinite(d) && d > 1e-6) {
+      const t = Math.min(1, cfg.moveMaxStep / d);
+      offers.push({
+        kind: 'move_xy',
+        actorId,
+        payload: { locationId: c.locId, x: cur.x + dx * t, y: cur.y + dy * t },
+        meta: { toward: bestOther },
+        score: 0.11,
+      });
+    }
+  }
+
+  return offers;
+}
+
 function featuresAtNode(world: SimWorld, locId: string, nodeId: string | undefined) {
   const loc = getLoc(world, locId);
   const xs = Array.isArray((loc as any)?.features) ? (loc as any).features : [];
@@ -161,8 +250,7 @@ const RestSpec: ActionSpec = {
 
 const MoveXYSpec: ActionSpec = {
   kind: 'move_xy',
-  // UI-only: do not enumerate in policy offers (only forcedActions).
-  enumerate: () => [],
+  enumerate: ({ world, actorId }) => enumerateMoveXYOffers(world, actorId),
   validateV1: ({ world, offer }) => {
     const base = validateCommon(world, offer);
     try {
@@ -175,16 +263,12 @@ const MoveXYSpec: ActionSpec = {
       const y = Number((offer as any)?.payload?.y);
       if (!Number.isFinite(x) || !Number.isFinite(y)) return { ...base, blocked: true, reason: 'v1:bad-xy', score: 0 };
       if (!Number.isFinite(mapW) || !Number.isFinite(mapH)) return { ...base, blocked: true, reason: 'v1:bad-map', score: 0 };
-      // Allow a small out-of-bounds margin (UI drags), clamp in apply.
-      if (x < -50 || y < -50 || x > mapW + 50 || y > mapH + 50) {
-        return { ...base, blocked: true, reason: 'v1:xy-oob', score: 0 };
-      }
       // Per-tick max step (prevents teleport drags).
       const cfg = getSpatialConfig(world);
       const cur = getCharXY(world, c.id);
       const dx = x - cur.x;
       const dy = y - cur.y;
-      const d = Math.sqrt(dx * dx + dy * dy);
+      const d = hypot(dx, dy);
       if (Number.isFinite(d) && d > cfg.moveMaxStep * 1.25) {
         return { ...base, blocked: true, reason: 'v1:step-too-far', score: 0 };
       }
@@ -199,31 +283,44 @@ const MoveXYSpec: ActionSpec = {
     const notes: string[] = [];
     const events: SimEvent[] = [];
     const c = getChar(world, action.actorId);
-    const locId = String(action.payload?.locationId ?? c.locId);
-    const loc = getLoc(world, locId);
+    const loc = getLoc(world, c.locId);
     const mapW = Number((loc as any)?.map?.width ?? (loc as any)?.width ?? 1024);
     const mapH = Number((loc as any)?.map?.height ?? (loc as any)?.height ?? 768);
     const cfg = getSpatialConfig(world);
+    const cur = getCharXY(world, c.id);
+
     const x0 = Number(action.payload?.x);
     const y0 = Number(action.payload?.y);
-    const goalX = Number.isFinite(x0) ? clamp(x0, 0, mapW) : (c.pos?.x ?? 0);
-    const goalY = Number.isFinite(y0) ? clamp(y0, 0, mapH) : (c.pos?.y ?? 0);
+    const gx = Number.isFinite(x0) ? clamp(x0, 0, mapW) : cur.x;
+    const gy = Number.isFinite(y0) ? clamp(y0, 0, mapH) : cur.y;
 
-    const cur = getCharXY(world, c.id);
-    const dx = goalX - cur.x;
-    const dy = goalY - cur.y;
-    const d = Math.sqrt(dx * dx + dy * dy);
+    const dx = gx - cur.x;
+    const dy = gy - cur.y;
+    const d = hypot(dx, dy);
     const maxStep = Math.max(1e-6, Number(cfg.moveMaxStep));
     const t = (Number.isFinite(d) && d > maxStep) ? (maxStep / d) : 1;
+
     const x = cur.x + dx * t;
     const y = cur.y + dy * t;
-    // Only local reposition (no locId change).
-    c.pos = { nodeId: null, x, y };
+
+    // Snap to nearest node if close (keeps nodeId consistent for nav-based offers)
+    const snap = nearestNavNode(loc, x, y, 12);
+    c.pos = {
+      nodeId: snap ? snap.id : (c.pos?.nodeId ?? null),
+      x: snap ? snap.x : x,
+      y: snap ? snap.y : y,
+    };
     // energy cost scales with moved distance
     const moved = Number.isFinite(d) ? Math.min(d, maxStep) : 0;
     c.energy = clamp01(c.energy - clamp01(moved / maxStep) * 0.012);
-    notes.push(`${c.id} moves_xy to (${Math.round(x)},${Math.round(y)})`);
-    events.push(mkActionEvent(world, 'action:move_xy', { actorId: c.id, locationId: c.locId, x, y }));
+    notes.push(`${c.id} moves_xy to (${Math.round(c.pos.x)},${Math.round(c.pos.y)})`);
+    events.push(mkActionEvent(world, 'action:move_xy', {
+      actorId: c.id,
+      locationId: c.locId,
+      x: c.pos.x,
+      y: c.pos.y,
+      nodeId: c.pos.nodeId ?? null,
+    }));
     return { world, events, notes };
   },
 };
@@ -422,10 +519,13 @@ const TalkSpec: ActionSpec = {
   kind: 'talk',
   enumerate: ({ world, actorId }) => {
     const c = getChar(world, actorId);
+    const cfg = getSpatialConfig(world);
     const out: ActionOffer[] = [];
     for (const other of Object.values(world.characters)) {
       if (other.id === c.id) continue;
       if (other.locId !== c.locId) continue;
+      const d = distSameLocation(world, c.id, other.id);
+      if (!Number.isFinite(d) || d > cfg.talkRange) continue;
       const volume = autoVolume(world, c.id, other.id);
       out.push({ kind: 'talk', actorId, targetId: other.id, meta: { volume }, score: 0.15 });
     }
@@ -586,12 +686,15 @@ const QuestionAboutSpec: ActionSpec = {
   kind: 'question_about',
   enumerate: ({ world, actorId }) => {
     const c = getChar(world, actorId);
+    const cfg = getSpatialConfig(world);
     const out: ActionOffer[] = [];
     const feats = featuresAtNode(world, c.locId, c.pos?.nodeId);
     const topic = feats[0]?.id || 'situation';
     for (const other of Object.values(world.characters)) {
       if (other.id === c.id) continue;
       if (other.locId !== c.locId) continue;
+      const d = distSameLocation(world, c.id, other.id);
+      if (!Number.isFinite(d) || d > cfg.talkRange) continue;
       const volume = autoVolume(world, c.id, other.id);
       out.push({ kind: 'question_about', actorId, targetId: other.id, meta: { topic, volume }, score: 0.18 });
     }
@@ -665,10 +768,13 @@ const NegotiateSpec: ActionSpec = {
   intentTicks: 3,
   enumerate: ({ world, actorId }) => {
     const c = getChar(world, actorId);
+    const cfg = getSpatialConfig(world);
     const out: ActionOffer[] = [];
     for (const other of Object.values(world.characters)) {
       if (other.id === c.id) continue;
       if (other.locId !== c.locId) continue;
+      const d = distSameLocation(world, c.id, other.id);
+      if (!Number.isFinite(d) || d > cfg.talkRange) continue;
       const volume = autoVolume(world, c.id, other.id);
       out.push({ kind: 'negotiate', actorId, targetId: other.id, meta: { volume }, score: 0.16 });
     }

@@ -1,233 +1,100 @@
 // components/SimMapView.tsx
-// Simple interactive map for SimKit: locations graph + characters + click-to-move.
+// Location map view for SimKit: characters + movement trails + interaction radii.
 
-import React, { useMemo, useState } from 'react';
-import type { SimSnapshot, SimLocation, SimCharacter } from '../lib/simkit/core/types';
-import type { SimKitSimulator } from '../lib/simkit/core/simulator';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import type { SimWorld } from '../lib/simkit/core/types';
 import { DEFAULT_SPATIAL_CONFIG } from '../lib/simkit/core/spatial';
 
 type Props = {
-  sim: SimKitSimulator;
-  snapshot: SimSnapshot | null;
-  onMove?: (actorId: string, targetLocId: string) => void;
+  world: SimWorld;
+  locationId: string;
+  height?: number;
 };
 
-type Pos = { x: number; y: number };
+type XY = { x: number; y: number };
 
-export function SimMapView({ sim, snapshot, onMove }: Props) {
-  const [selectedActor, setSelectedActor] = useState<string>('');
+export function SimMapView({ world, locationId, height = 360 }: Props) {
+  const loc: any = world.locations?.[locationId];
+  const cfg = (world.facts as any)?.spatial ?? DEFAULT_SPATIAL_CONFIG;
 
-  const locs: SimLocation[] = snapshot?.locations || [];
-  const chars: SimCharacter[] = snapshot?.characters || [];
-  const cfg = sim?.world?.facts?.spatial ?? DEFAULT_SPATIAL_CONFIG;
+  const chars = useMemo(() => {
+    return Object.values(world.characters || {}).filter((c: any) => c.locId === locationId);
+  }, [world, locationId]);
 
-  const locById = useMemo(() => {
-    const m: Record<string, SimLocation> = {};
-    for (const l of locs) m[l.id] = l;
-    return m;
-  }, [locs]);
+  // Movement trails (prev pos)
+  const prevRef = useRef<Record<string, XY>>({});
+  const [prev, setPrev] = useState<Record<string, XY>>({});
 
-  const positions: Record<string, Pos> = useMemo(() => {
-    // Deterministic ring layout for locations.
-    const ids = locs.map((l) => l.id).slice().sort();
-    const out: Record<string, Pos> = {};
-    const W = 900;
-    const H = 520;
-    const cx0 = W / 2;
-    const cy0 = H / 2;
-    const r = Math.min(W, H) * 0.35;
-    const n = Math.max(1, ids.length);
+  useEffect(() => {
+    const next: Record<string, XY> = {};
+    for (const c of chars as any[]) {
+      if (c?.pos && Number.isFinite(c.pos.x) && Number.isFinite(c.pos.y)) next[c.id] = { x: c.pos.x, y: c.pos.y };
+    }
+    setPrev(prevRef.current);
+    prevRef.current = next;
+  }, [world.tickIndex, locationId, chars]);
 
-    ids.forEach((id, i) => {
-      const a = (2 * Math.PI * i) / n;
-      out[id] = { x: cx0 + r * Math.cos(a), y: cy0 + r * Math.sin(a) };
-    });
-    return out;
-  }, [locs]);
-
-  const actorIds = useMemo(() => chars.map((c) => c.id).sort(), [chars]);
-  const actorId = selectedActor || actorIds[0] || '';
-  const actor = useMemo(() => chars.find((c) => c.id === actorId) || null, [chars, actorId]);
-  const neighborSet = useMemo(() => {
-    if (!actor) return new Set<string>();
-    const from = locById[actor.locId];
-    return new Set<string>(from?.neighbors || []);
-  }, [actor, locById]);
-
-  function isNeighbor(fromId: string, toId: string) {
-    const from = locById[fromId];
-    return !!from && (from.neighbors || []).includes(toId);
-  }
-
-  function offerManualMove(toLocId: string) {
-    if (!actor) return;
-    if (!isNeighbor(actor.locId, toLocId)) return;
-
-    // Delegate forced action creation to the parent to keep manual mode logic centralized.
-    onMove?.(actor.id, toLocId);
-  }
-
-  if (!snapshot) return <div className="text-sm opacity-70">Нет снапшота. Сделай хотя бы 1 тик.</div>;
+  const mapW = Number(loc?.map?.width ?? loc?.width ?? 1024);
+  const mapH = Number(loc?.map?.height ?? loc?.height ?? 768);
 
   return (
-    <div className="h-full w-full flex flex-col gap-3">
-      <div className="flex items-center gap-2 flex-wrap">
-        <div className="font-mono text-sm opacity-80">actor</div>
-        <select
-          value={actorId}
-          onChange={(e) => setSelectedActor(e.target.value)}
-          className="px-3 py-2 rounded-xl border border-canon-border bg-canon-card"
-        >
-          {actorIds.map((id) => (
-            <option key={id} value={id}>
-              {id}
-            </option>
-          ))}
-        </select>
+    <div className="rounded-2xl overflow-hidden border border-white/10 bg-black/20" style={{ height }}>
+      <svg viewBox={`0 0 ${mapW} ${mapH}`} width="100%" height="100%">
+        {/* Background (optional image) */}
+        {loc?.map?.imageUrl ? (
+          <image
+            href={loc.map.imageUrl}
+            x={0}
+            y={0}
+            width={mapW}
+            height={mapH}
+            preserveAspectRatio="xMidYMid slice"
+            opacity={0.95}
+          />
+        ) : (
+          <rect x={0} y={0} width={mapW} height={mapH} />
+        )}
 
-      </div>
+        {/* Trails */}
+        {chars.map((c: any) => {
+          const p0 = prev[c.id];
+          const p1 = c?.pos && Number.isFinite(c.pos.x) && Number.isFinite(c.pos.y) ? { x: c.pos.x, y: c.pos.y } : null;
+          if (!p0 || !p1) return null;
+          const moved = Math.hypot(p1.x - p0.x, p1.y - p0.y);
+          if (moved < 1) return null;
+          return (
+            <line
+              key={`trail:${c.id}`}
+              x1={p0.x}
+              y1={p0.y}
+              x2={p1.x}
+              y2={p1.y}
+              stroke="rgba(255,255,255,0.20)"
+              strokeWidth={2}
+            />
+          );
+        })}
 
-      <div className="rounded-2xl border border-canon-border bg-canon-card p-3 overflow-hidden">
-        <svg viewBox="0 0 900 520" className="w-full h-[520px]">
-          <rect x="0" y="0" width="900" height="520" fill="rgba(255,255,255,0.02)" />
-          <g opacity={0.25}>
-            {Array.from({ length: 22 }).map((_, i) => (
-              <line
-                key={`v${i}`}
-                x1={i * 42}
-                y1={0}
-                x2={i * 42}
-                y2={520}
-                stroke="rgba(255,255,255,0.05)"
-              />
-            ))}
-            {Array.from({ length: 13 }).map((_, i) => (
-              <line
-                key={`h${i}`}
-                x1={0}
-                y1={i * 42}
-                x2={900}
-                y2={i * 42}
-                stroke="rgba(255,255,255,0.05)"
-              />
-            ))}
-          </g>
+        {/* Characters */}
+        {chars.map((c: any) => {
+          const x = Number(c?.pos?.x ?? 0);
+          const y = Number(c?.pos?.y ?? 0);
+          const label = String(c?.name ?? c?.id).slice(0, 10);
 
-          {/* edges */}
-          {locs.flatMap((l) => {
-            const p1 = positions[l.id];
-            return (l.neighbors || []).map((nId) => {
-              // рисуем ребро один раз
-              if (String(l.id) > String(nId)) return null;
-              const p2 = positions[nId];
-              if (!p1 || !p2) return null;
-              return (
-                <line
-                  key={`${l.id}--${nId}`}
-                  x1={p1.x}
-                  y1={p1.y}
-                  x2={p2.x}
-                  y2={p2.y}
-                  stroke="currentColor"
-                  opacity={0.25}
-                  strokeWidth={2}
-                />
-              );
-            });
-          })}
+          return (
+            <g key={c.id} transform={`translate(${x},${y})`}>
+              {/* interaction radii (optional) */}
+              <circle r={cfg.attackRange} fill="none" stroke="rgba(255,120,120,0.12)" strokeWidth={1} />
+              <circle r={cfg.talkRange} fill="none" stroke="rgba(140,180,255,0.10)" strokeWidth={1} />
 
-          {/* nodes */}
-          {locs.map((l) => {
-            const p = positions[l.id];
-            if (!p) return null;
-
-            // подсветка: является ли узел доступным перемещением для выбранного актора
-            const canMove = actor ? isNeighbor(actor.locId, l.id) : false;
-            const isActorLoc = actor ? actor.locId === l.id : false;
-            // Flag for rendering neighbor tiles; avoid shadowing the isNeighbor() helper.
-            const isNbr = neighborSet.has(l.id);
-            const nodeRadius = isActorLoc ? 30 : 26;
-
-            return (
-              <g
-                key={l.id}
-                onClick={() => canMove && offerManualMove(l.id)}
-                style={{ cursor: canMove ? 'pointer' : 'default' }}
-              >
-                <circle
-                  cx={p.x}
-                  cy={p.y}
-                  r={nodeRadius}
-                  fill={isActorLoc ? 'rgba(102,217,255,0.18)' : isNbr ? 'rgba(102,217,255,0.08)' : 'none'}
-                  stroke="currentColor"
-                  opacity={canMove ? 0.95 : 0.5}
-                  strokeWidth={canMove ? 3.5 : 2.2}
-                />
-                <text x={p.x} y={p.y - 34} textAnchor="middle" fontSize="12" opacity={0.8}>
-                  {l.name}
-                </text>
-                <text x={p.x} y={p.y + 4} textAnchor="middle" fontSize="11" opacity={0.7}>
-                  {l.id}
-                </text>
-              </g>
-            );
-          })}
-
-          {/* characters */}
-          {chars.map((c, idx) => {
-            const p = positions[c.locId];
-            if (!p) return null;
-            const dx = (idx % 3) * 10 - 10;
-            const dy = Math.floor(idx / 3) * 10 - 10;
-            const isSel = c.id === actorId;
-            return (
-              <g key={c.id}>
-                {isSel && (
-                  <>
-                    <circle
-                      cx={p.x + dx}
-                      cy={p.y + dy}
-                      r={cfg.talkRange}
-                      stroke="rgba(120,160,255,0.15)"
-                      fill="none"
-                    />
-                    <circle
-                      cx={p.x + dx}
-                      cy={p.y + dy}
-                      r={cfg.attackRange}
-                      stroke="rgba(255,80,80,0.2)"
-                      fill="none"
-                    />
-                  </>
-                )}
-                <circle
-                  cx={p.x + dx}
-                  cy={p.y + dy}
-                  r={8}
-                  fill="currentColor"
-                  opacity={isSel ? 0.95 : 0.6}
-                />
-                <text x={p.x + dx + 12} y={p.y + dy + 4} fontSize="11" opacity={0.8}>
-                  {c.name}
-                </text>
-              </g>
-            );
-          })}
-
-          {/* legend */}
-          <g transform="translate(16 16)">
-            <rect width="210" height="64" rx="10" fill="rgba(18,23,36,0.7)" stroke="rgba(255,255,255,0.08)" />
-            <text x="12" y="20" fontSize="11" opacity={0.8}>
-              Legend
-            </text>
-            <circle cx="18" cy="38" r="7" fill="rgba(102,217,255,0.18)" stroke="currentColor" opacity={0.8} />
-            <text x="32" y="42" fontSize="11" opacity={0.8}>
-              selected actor location
-            </text>
-          </g>
-        </svg>
-      </div>
-
+              <circle r={7} fill="rgba(255,255,255,0.85)" stroke="rgba(0,0,0,0.6)" strokeWidth={2} />
+              <text x={10} y={4} fontSize={12} fill="rgba(255,255,255,0.85)">
+                {label}
+              </text>
+            </g>
+          );
+        })}
+      </svg>
     </div>
   );
 }

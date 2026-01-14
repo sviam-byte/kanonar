@@ -1805,8 +1805,8 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
 
               {/* MAP */}
               {tab === 'map' ? (
-                <div className="grid grid-cols-12 gap-4">
-                  <div className="col-span-4">
+                <div className="grid grid-cols-[420px_1fr] gap-4">
+                  <div className="sticky top-3 self-start">
                     <Card title="Place">
                       <div className="text-xs opacity-70 mb-1">Выбери локацию</div>
                       <select
@@ -1832,12 +1832,21 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
                       </select>
                     </Card>
 
-                    <Card title="Карта мира (узлы/связи)">
-                      <SimMapView sim={sim} snapshot={cur?.snapshot || null} onMove={pushManualMove} />
+                    <Card title="Карта локации (симуляция)">
+                      <SimMapView
+                        world={sim.world}
+                        locationId={
+                          mapLocId
+                          || cur?.snapshot?.locations?.[0]?.id
+                          || Object.keys(sim.world.locations || {})[0]
+                          || ''
+                        }
+                        height={420}
+                      />
                     </Card>
                   </div>
 
-                  <div className="col-span-8">
+                  <div className="min-w-0">
                     {(() => {
                       const loc = (cur?.snapshot?.locations || []).find((l: any) => l.id === mapLocId);
                       if (!loc) return <Card title="Карта локации">(нет выбранной локации)</Card>;
