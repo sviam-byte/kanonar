@@ -682,6 +682,7 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
     : sameSet(worldCharIds, setupDraft.selectedCharIds) && sameSet(worldLocIds, setupDraft.selectedLocIds);
 
   const canSimulate = !draftHasSelection ? true : setupProblems.length === 0 && worldMatchesDraft;
+  const inboxDebug = sim.world.facts?.[`debug:inbox:${sim.world.tickIndex}`];
 
   const draftPreviewSnapshot = useMemo(() => {
     if (!selectedLocations.length) return sim.getPreviewSnapshot();
@@ -1139,6 +1140,14 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
                       {(cur!.trace.notes || []).join('\n') || '(empty)'}
                     </pre>
                   </Card>
+
+                  {inboxDebug ? (
+                    <Card title="Inbox acceptance debug">
+                      <pre className="text-xs opacity-90 whitespace-pre-wrap">
+                        {JSON.stringify(inboxDebug, null, 2)}
+                      </pre>
+                    </Card>
+                  ) : null}
 
                   <Card title="Дельты персонажей">
                     <div className="font-mono text-xs opacity-90">

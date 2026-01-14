@@ -97,6 +97,16 @@ function autoVolume(world: SimWorld, aId: string, bId: string): 'whisper' | 'nor
   return 'shout';
 }
 
+function mkSpeechAtoms(kind: string, fromId: string, toId: string, extra?: any) {
+  const base = {
+    id: `ctx:${kind}:${fromId}:${toId}`,
+    magnitude: 1,
+    confidence: 0.8,
+    meta: { kind, ...extra },
+  };
+  return [base];
+}
+
 function featuresAtNode(world: SimWorld, locId: string, nodeId: string | undefined) {
   const loc = getLoc(world, locId);
   const xs = Array.isArray((loc as any)?.features) ? (loc as any).features : [];
@@ -475,9 +485,7 @@ const TalkSpec: ActionSpec = {
       volume,
       topic: 'talk',
       text: 'shares an update',
-      atoms: [
-        { id: `speech:talk:${c.id}:${otherId}`, magnitude: 1, confidence: 0.85, meta: { kind: 'talk' } },
-      ],
+      atoms: mkSpeechAtoms('talk', c.id, otherId, { tone: 'neutral' }),
     };
     events.push(mkActionEvent(world, 'speech:v1', speech));
     return { world, events, notes };
@@ -645,9 +653,7 @@ const QuestionAboutSpec: ActionSpec = {
       volume,
       topic,
       text: `asks about ${topic}`,
-      atoms: [
-        { id: `speech:ask:${c.id}:${otherId}:${topic}`, magnitude: 1, confidence: 0.9, meta: { kind: 'question_about' } },
-      ],
+      atoms: mkSpeechAtoms('question', c.id, otherId, { topic }),
     };
     events.push(mkActionEvent(world, 'speech:v1', speech));
     return { world, events, notes };
@@ -690,9 +696,7 @@ const NegotiateSpec: ActionSpec = {
       volume,
       topic: 'terms',
       text: 'proposes terms',
-      atoms: [
-        { id: `speech:negotiate:${c.id}:${otherId}`, magnitude: 1, confidence: 0.85, meta: { kind: 'negotiate' } },
-      ],
+      atoms: mkSpeechAtoms('negotiate', c.id, otherId, { topic: 'terms' }),
     };
     events.push(mkActionEvent(world, 'speech:v1', speech));
     return { world, events, notes };
@@ -737,7 +741,7 @@ const StartIntentSpec: ActionSpec = {
 
 const ContinueIntentSpec: ActionSpec = {
   kind: 'continue_intent',
-  enumerate: () => [],
+  enumerate: ({ actorId }) => [{ kind: 'continue_intent', actorId, score: 0.35 }],
   validateV1: ({ world, offer }) => {
     const base = validateCommon(world, offer);
     const c = getChar(world, base.actorId);
@@ -807,7 +811,7 @@ const ContinueIntentSpec: ActionSpec = {
 
 const AbortIntentSpec: ActionSpec = {
   kind: 'abort_intent',
-  enumerate: () => [],
+  enumerate: ({ actorId }) => [{ kind: 'abort_intent', actorId, score: 0.12 }],
   validateV1: ({ world, offer }) => {
     const base = validateCommon(world, offer);
     const c = getChar(world, base.actorId);

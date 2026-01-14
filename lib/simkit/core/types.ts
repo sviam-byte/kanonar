@@ -47,6 +47,16 @@ export type SimLocation = {
   entity?: any;
 };
 
+export type SimWorldFacts = Record<string, any> & {
+  spatial?: any;
+  inboxAtoms?: Record<string, any[]>;
+  [k: `agentAtoms:${string}`]: any[];
+  [k: `quarantineAtoms:${string}`]: any[];
+  [k: `intent:${string}`]: any;
+  [k: `observeBoost:${string}`]: number;
+  relations?: any;
+};
+
 export type SimWorld = {
   tickIndex: number;
   seed: number;
@@ -55,7 +65,7 @@ export type SimWorld = {
   locations: Record<Id, SimLocation>;
 
   // глобальные факты/ресурсы
-  facts: Record<string, any>;
+  facts: SimWorldFacts;
 
   // очередь событий “на этот тик” (и/или на будущее)
   events: SimEvent[];

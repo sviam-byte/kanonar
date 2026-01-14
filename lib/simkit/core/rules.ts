@@ -4,7 +4,7 @@
 import type { SimWorld, SimAction, ActionOffer, SimEvent, SpeechEventV1 } from './types';
 import { getChar, getLoc } from './world';
 import { enumerateActionOffers, applyActionViaSpec } from '../actions/specs';
-import { canHear, distSameLocation, getSpatialConfig } from './spatial';
+import { canHear, distSameLocation, getSpatialConfig, privacyOf } from './spatial';
 
 const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
 
@@ -55,6 +55,8 @@ export function applyEvent(w: SimWorld, e: SimEvent): { world: SimWorld; notes: 
     const volume = (s?.volume || 'normal') as 'whisper' | 'normal' | 'shout';
 
     // Determine recipients by spatial + volume.
+    const locId = speaker.locId;
+    const speakerPrivacy = privacyOf(w, locId, speaker.pos?.nodeId ?? null);
     const recips: string[] = [];
     for (const other of Object.values(w.characters)) {
       if (other.id === speakerId) continue;
@@ -69,6 +71,7 @@ export function applyEvent(w: SimWorld, e: SimEvent): { world: SimWorld; notes: 
     for (const rid of recips) {
       const key = String(rid);
       const arr = Array.isArray(inbox[key]) ? inbox[key] : [];
+      const d = distSameLocation(w, speakerId, rid);
       for (const a of (s?.atoms || [])) {
         arr.push({
           id: String(a.id),
@@ -81,6 +84,8 @@ export function applyEvent(w: SimWorld, e: SimEvent): { world: SimWorld; notes: 
             act: s?.act,
             topic: s?.topic,
             tickIndex: w.tickIndex,
+            distance: Number.isFinite(d) ? d : null,
+            speakerPrivacy,
           },
         });
       }
@@ -109,9 +114,9 @@ export function applyEvent(w: SimWorld, e: SimEvent): { world: SimWorld; notes: 
         const arr = Array.isArray(inbox[other.id]) ? inbox[other.id] : [];
 
         arr.push({
-          id: `obs:${e.type}:${actorId}:${w.tickIndex}`,
+          id: `ctx:observe:${e.type}:${actorId}:${w.tickIndex}`,
           magnitude: 1,
-          confidence: 0.9,
+          confidence: 0.85,
           meta: {
             from: actorId,
             observedAction: e.type,
