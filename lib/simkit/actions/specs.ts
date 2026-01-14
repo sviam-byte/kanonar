@@ -9,6 +9,7 @@
 
 import type { ActionKind, ActionOffer, SimAction, SimEvent, SimWorld, SpeechEventV1 } from '../core/types';
 import { getChar, getLoc } from '../core/world';
+import { distSameLocation, getCharXY, getSpatialConfig } from '../core/spatial';
 
 const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
 const clamp = (x: number, a: number, b: number) => Math.max(a, Math.min(b, x));
@@ -76,6 +77,12 @@ function validateCommon(_world: SimWorld, o: ActionOffer): ActionOffer {
     blocked: Boolean(o.blocked),
     reason: o.reason ?? null,
   };
+}
+
+function parseVolume(raw: unknown): 'whisper' | 'normal' | 'shout' {
+  const v = String(raw ?? 'normal');
+  if (v === 'whisper' || v === 'shout') return v;
+  return 'normal';
 }
 
 function featuresAtNode(world: SimWorld, locId: string, nodeId: string | undefined) {
@@ -151,6 +158,15 @@ const MoveXYSpec: ActionSpec = {
       if (x < -50 || y < -50 || x > mapW + 50 || y > mapH + 50) {
         return { ...base, blocked: true, reason: 'v1:xy-oob', score: 0 };
       }
+      // Per-tick max step (prevents teleport drags).
+      const cfg = getSpatialConfig(world);
+      const cur = getCharXY(world, c.id);
+      const dx = x - cur.x;
+      const dy = y - cur.y;
+      const d = Math.sqrt(dx * dx + dy * dy);
+      if (Number.isFinite(d) && d > cfg.moveMaxStep * 1.25) {
+        return { ...base, blocked: true, reason: 'v1:step-too-far', score: 0 };
+      }
       return base;
     } catch {
       return { ...base, blocked: true, reason: 'v1:invalid', score: 0 };
@@ -166,13 +182,25 @@ const MoveXYSpec: ActionSpec = {
     const loc = getLoc(world, locId);
     const mapW = Number((loc as any)?.map?.width ?? (loc as any)?.width ?? 1024);
     const mapH = Number((loc as any)?.map?.height ?? (loc as any)?.height ?? 768);
+    const cfg = getSpatialConfig(world);
     const x0 = Number(action.payload?.x);
     const y0 = Number(action.payload?.y);
-    const x = Number.isFinite(x0) ? clamp(x0, 0, mapW) : (c.pos?.x ?? 0);
-    const y = Number.isFinite(y0) ? clamp(y0, 0, mapH) : (c.pos?.y ?? 0);
+    const goalX = Number.isFinite(x0) ? clamp(x0, 0, mapW) : (c.pos?.x ?? 0);
+    const goalY = Number.isFinite(y0) ? clamp(y0, 0, mapH) : (c.pos?.y ?? 0);
+
+    const cur = getCharXY(world, c.id);
+    const dx = goalX - cur.x;
+    const dy = goalY - cur.y;
+    const d = Math.sqrt(dx * dx + dy * dy);
+    const maxStep = Math.max(1e-6, Number(cfg.moveMaxStep));
+    const t = (Number.isFinite(d) && d > maxStep) ? (maxStep / d) : 1;
+    const x = cur.x + dx * t;
+    const y = cur.y + dy * t;
     // Only local reposition (no locId change).
     c.pos = { nodeId: null, x, y };
-    c.energy = clamp01(c.energy - 0.005);
+    // energy cost scales with moved distance
+    const moved = Number.isFinite(d) ? Math.min(d, maxStep) : 0;
+    c.energy = clamp01(c.energy - clamp01(moved / maxStep) * 0.012);
     notes.push(`${c.id} moves_xy to (${Math.round(x)},${Math.round(y)})`);
     events.push(mkActionEvent(world, 'action:move_xy', { actorId: c.id, locationId: c.locId, x, y }));
     return { world, events, notes };
@@ -376,7 +404,7 @@ const TalkSpec: ActionSpec = {
     for (const other of Object.values(world.characters)) {
       if (other.id === c.id) continue;
       if (other.locId !== c.locId) continue;
-      out.push({ kind: 'talk', actorId, targetId: other.id, score: 0.15 });
+      out.push({ kind: 'talk', actorId, targetId: other.id, meta: { volume: 'normal' }, score: 0.15 });
     }
     return out;
   },
@@ -388,6 +416,15 @@ const TalkSpec: ActionSpec = {
       const other = world.characters[otherId];
       if (!other) return { ...base, blocked: true, reason: 'v1:no-target', score: 0 };
       if (other.locId !== c.locId) return { ...base, blocked: true, reason: 'v1:not-same-location', score: 0 };
+
+      // Spatial gating: whisper/normal require proximity; shout is wide.
+      const cfg = getSpatialConfig(world);
+      const volume = parseVolume((offer as any)?.meta?.volume);
+      const d = distSameLocation(world, c.id, otherId);
+      const maxD = (volume === 'whisper') ? cfg.whisperRange : (volume === 'shout') ? cfg.shoutRange : cfg.talkRange;
+      if (Number.isFinite(d) && d > maxD) {
+        return { ...base, blocked: true, reason: 'v1:too-far', score: 0 };
+      }
       return base;
     } catch {
       return { ...base, blocked: true, reason: 'v1:invalid', score: 0 };
@@ -407,6 +444,7 @@ const TalkSpec: ActionSpec = {
     const events: SimEvent[] = [];
     const c = getChar(world, action.actorId);
     const otherId = String(action.targetId ?? '');
+    const volume = parseVolume(action.meta?.volume);
     c.stress = clamp01(c.stress - 0.02);
     world.facts[`talk:${c.id}:${otherId}`] = (world.facts[`talk:${c.id}:${otherId}`] ?? 0) + 1;
     notes.push(`${c.id} talks to ${otherId}`);
@@ -421,6 +459,7 @@ const TalkSpec: ActionSpec = {
       actorId: c.id,
       targetId: otherId,
       act: 'inform',
+      volume,
       topic: 'talk',
       text: 'shares an update',
       atoms: [
@@ -428,6 +467,78 @@ const TalkSpec: ActionSpec = {
       ],
     };
     events.push(mkActionEvent(world, 'speech:v1', speech));
+    return { world, events, notes };
+  },
+};
+
+const AttackSpec: ActionSpec = {
+  kind: 'attack',
+  enumerate: ({ world, actorId }) => {
+    const c = getChar(world, actorId);
+    const cfg = getSpatialConfig(world);
+    const out: ActionOffer[] = [];
+    for (const other of Object.values(world.characters)) {
+      if (other.id === c.id) continue;
+      if (other.locId !== c.locId) continue;
+      const d = distSameLocation(world, c.id, other.id);
+      if (!Number.isFinite(d) || d > cfg.attackRange) continue;
+      out.push({ kind: 'attack', actorId, targetId: other.id, score: 0.08 });
+    }
+    return out;
+  },
+  validateV1: ({ world, offer }) => {
+    const base = validateCommon(world, offer);
+    try {
+      const c = getChar(world, base.actorId);
+      const otherId = String(base.targetId ?? '');
+      const other = world.characters[otherId];
+      if (!other) return { ...base, blocked: true, reason: 'v1:no-target', score: 0 };
+      if (other.locId !== c.locId) return { ...base, blocked: true, reason: 'v1:not-same-location', score: 0 };
+      const cfg = getSpatialConfig(world);
+      const d = distSameLocation(world, c.id, otherId);
+      if (Number.isFinite(d) && d > cfg.attackRange) {
+        return { ...base, blocked: true, reason: 'v1:too-far', score: 0 };
+      }
+      return base;
+    } catch {
+      return { ...base, blocked: true, reason: 'v1:invalid', score: 0 };
+    }
+  },
+  validateV2: ({ world, offer }) => {
+    const base = validateCommon(world, offer);
+    const c = getChar(world, base.actorId);
+    if (normLevel(world, c.locId, 'no_violence') >= 0.7) {
+      return { ...base, blocked: true, reason: 'norm:no_violence', score: 0 };
+    }
+    return base;
+  },
+  classifyV3: () => 'single',
+  apply: ({ world, action }) => {
+    const notes: string[] = [];
+    const events: SimEvent[] = [];
+    const c = getChar(world, action.actorId);
+    const targetId = String(action.targetId ?? '');
+    const t = world.characters[targetId];
+    if (!t || t.locId !== c.locId) {
+      notes.push(`${c.id} attack blocked (no target)`);
+      events.push(mkActionEvent(world, 'action:attack', { actorId: c.id, targetId: targetId || null, ok: false, locationId: c.locId }));
+      return { world, events, notes };
+    }
+    const cfg = getSpatialConfig(world);
+    const d = distSameLocation(world, c.id, targetId);
+    if (Number.isFinite(d) && d > cfg.attackRange) {
+      notes.push(`${c.id} attack blocked (too far)`);
+      events.push(mkActionEvent(world, 'action:attack', { actorId: c.id, targetId, ok: false, reason: 'too_far', locationId: c.locId }));
+      return { world, events, notes };
+    }
+
+    // Minimal combat: stress spike + small health delta.
+    c.stress = clamp01(c.stress + 0.03);
+    c.energy = clamp01(c.energy - 0.02);
+    t.health = clamp01(t.health - 0.08);
+    t.stress = clamp01(t.stress + 0.06);
+    notes.push(`${c.id} attacks ${targetId}`);
+    events.push(mkActionEvent(world, 'action:attack', { actorId: c.id, targetId, ok: true, locationId: c.locId }));
     return { world, events, notes };
   },
 };
@@ -477,7 +588,7 @@ const QuestionAboutSpec: ActionSpec = {
     for (const other of Object.values(world.characters)) {
       if (other.id === c.id) continue;
       if (other.locId !== c.locId) continue;
-      out.push({ kind: 'question_about', actorId, targetId: other.id, meta: { topic }, score: 0.18 });
+      out.push({ kind: 'question_about', actorId, targetId: other.id, meta: { topic, volume: 'normal' }, score: 0.18 });
     }
     return out;
   },
@@ -489,6 +600,15 @@ const QuestionAboutSpec: ActionSpec = {
       const other = world.characters[otherId];
       if (!other) return { ...base, blocked: true, reason: 'v1:no-target', score: 0 };
       if (other.locId !== c.locId) return { ...base, blocked: true, reason: 'v1:not-same-location', score: 0 };
+
+      // Spatial gating (same as talk).
+      const cfg = getSpatialConfig(world);
+      const volume = parseVolume((offer as any)?.meta?.volume);
+      const d = distSameLocation(world, c.id, otherId);
+      const maxD = (volume === 'whisper') ? cfg.whisperRange : (volume === 'shout') ? cfg.shoutRange : cfg.talkRange;
+      if (Number.isFinite(d) && d > maxD) {
+        return { ...base, blocked: true, reason: 'v1:too-far', score: 0 };
+      }
       return base;
     } catch {
       return { ...base, blocked: true, reason: 'v1:invalid', score: 0 };
@@ -509,6 +629,7 @@ const QuestionAboutSpec: ActionSpec = {
     const c = getChar(world, action.actorId);
     const otherId = String(action.targetId ?? '');
     const topic = String(action.meta?.topic || 'situation');
+    const volume = parseVolume(action.meta?.volume);
     // "вопрос" обычно чуть повышает стресс (риск), но увеличивает счетчик знания
     c.stress = clamp01(c.stress + 0.005);
     world.facts[`question:${c.id}:${otherId}:${topic}`] = (world.facts[`question:${c.id}:${otherId}:${topic}`] ?? 0) + 1;
@@ -524,6 +645,7 @@ const QuestionAboutSpec: ActionSpec = {
       actorId: c.id,
       targetId: otherId,
       act: 'ask',
+      volume,
       topic,
       text: `asks about ${topic}`,
       atoms: [
@@ -543,7 +665,7 @@ const NegotiateSpec: ActionSpec = {
     for (const other of Object.values(world.characters)) {
       if (other.id === c.id) continue;
       if (other.locId !== c.locId) continue;
-      out.push({ kind: 'negotiate', actorId, targetId: other.id, score: 0.16 });
+      out.push({ kind: 'negotiate', actorId, targetId: other.id, meta: { volume: 'normal' }, score: 0.16 });
     }
     return out;
   },
@@ -555,6 +677,7 @@ const NegotiateSpec: ActionSpec = {
     const events: SimEvent[] = [];
     const c = getChar(world, action.actorId);
     const otherId = String(action.targetId ?? '');
+    const volume = parseVolume(action.meta?.volume);
     // переговоры немного "съедают энергию"
     c.energy = clamp01(c.energy - 0.02);
     world.facts[`negotiate:${c.id}:${otherId}`] = (world.facts[`negotiate:${c.id}:${otherId}`] ?? 0) + 1;
@@ -565,6 +688,7 @@ const NegotiateSpec: ActionSpec = {
       actorId: c.id,
       targetId: otherId,
       act: 'negotiate',
+      volume,
       topic: 'terms',
       text: 'proposes terms',
       atoms: [
@@ -615,6 +739,7 @@ export const ACTION_SPECS: Record<ActionKind, ActionSpec> = {
   move: MoveSpec,
   move_xy: MoveXYSpec,
   talk: TalkSpec,
+  attack: AttackSpec,
   observe: ObserveSpec,
   question_about: QuestionAboutSpec,
   negotiate: NegotiateSpec,

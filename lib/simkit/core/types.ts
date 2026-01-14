@@ -67,6 +67,7 @@ export type ActionKind =
   | 'wait'
   | 'rest'
   | 'talk'
+  | 'attack'
   | 'observe'
   | 'question_about'
   | 'negotiate'
@@ -99,6 +100,8 @@ export type SpeechEventV1 = {
   actorId: string;
   targetId: string;
   act: 'inform' | 'ask' | 'threaten' | 'promise' | 'negotiate';
+  // loudness affects who can hear (spatial rules)
+  volume?: 'whisper' | 'normal' | 'shout';
   // атомы, которые говорящий “передаёт” (прототип: просто список id/mag)
   atoms: Array<{ id: string; magnitude?: number; confidence?: number; meta?: any }>;
   // опционально: “тема” и краткая строка (для UI)
