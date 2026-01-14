@@ -36,6 +36,9 @@ export type ActionSpec = {
   validateV1: (ctx: ValidateCtx) => ActionOffer;
   validateV2: (ctx: ValidateCtx) => ActionOffer;
   classifyV3: (ctx: ValidateCtx) => Atomicity;
+  // If classifyV3() returns 'intent', this is the default number of ticks to run.
+  // The intent runtime may still override this via payload.
+  intentTicks?: number;
   apply: (ctx: ApplyCtx) => { world: SimWorld; events: SimEvent[]; notes: string[] };
 };
 
@@ -341,6 +344,7 @@ const InspectFeatureSpec: ActionSpec = {
 
 const RepairFeatureSpec: ActionSpec = {
   kind: 'repair_feature',
+  intentTicks: 3,
   enumerate: ({ world, actorId }) => {
     const c = getChar(world, actorId);
     const feats = featuresAtNode(world, c.locId, c.pos?.nodeId).filter((f: any) => (f.tags || []).includes('repairable'));
@@ -353,7 +357,7 @@ const RepairFeatureSpec: ActionSpec = {
   },
   validateV1: ({ world, offer }) => validateCommon(world, offer),
   validateV2: ({ world, offer }) => validateCommon(world, offer),
-  classifyV3: () => 'single',
+  classifyV3: () => 'intent',
   apply: ({ world, action }) => {
     const c = getChar(world, action.actorId);
     const fid = String(action.meta?.featureId || '');
@@ -659,6 +663,7 @@ const QuestionAboutSpec: ActionSpec = {
 
 const NegotiateSpec: ActionSpec = {
   kind: 'negotiate',
+  intentTicks: 3,
   enumerate: ({ world, actorId }) => {
     const c = getChar(world, actorId);
     const out: ActionOffer[] = [];
@@ -671,7 +676,7 @@ const NegotiateSpec: ActionSpec = {
   },
   validateV1: ({ world, offer }) => QuestionAboutSpec.validateV1({ world, actorId: offer.actorId, offer }),
   validateV2: ({ world, offer }) => QuestionAboutSpec.validateV2({ world, actorId: offer.actorId, offer }),
-  classifyV3: () => 'single',
+  classifyV3: () => 'intent',
   apply: ({ world, action }) => {
     const notes: string[] = [];
     const events: SimEvent[] = [];
@@ -714,25 +719,126 @@ const StartIntentSpec: ActionSpec = {
     const payload = action.payload && typeof action.payload === 'object' ? action.payload : {};
     const intent = payload.intent || null;
     const intentId = String(payload.intentId || `intent:${c.id}:${world.tickIndex}`);
+    const remainingTicks = Math.max(1, Number(payload.remainingTicks ?? 2));
 
     // Minimal intent storage: one active intent per actor (v0).
     world.facts[`intent:${c.id}`] = {
       id: intentId,
       startedAtTick: world.tickIndex,
+      remainingTicks,
       intent,
     };
 
-    notes.push(`${c.id} starts intent ${intentId}`);
+    notes.push(`${c.id} starts intent ${intentId} (remainingTicks=${remainingTicks})`);
     events.push(mkActionEvent(world, 'action:start_intent', {
       actorId: c.id,
       locationId: c.locId,
       intentId,
+      remainingTicks,
       intent,
     }));
     return { world, events, notes };
   },
 };
 
+const ContinueIntentSpec: ActionSpec = {
+  kind: 'continue_intent',
+  enumerate: () => [],
+  validateV1: ({ world, offer }) => {
+    const base = validateCommon(world, offer);
+    const c = getChar(world, base.actorId);
+    const cur = world.facts[`intent:${c.id}`];
+    if (!cur) return { ...base, blocked: true, reason: 'intent:none', score: 0 };
+    return base;
+  },
+  validateV2: ({ world, offer }) => validateCommon(world, offer),
+  classifyV3: () => 'single',
+  apply: ({ world, action }) => {
+    const notes: string[] = [];
+    const events: SimEvent[] = [];
+    const c = getChar(world, action.actorId);
+    const key = `intent:${c.id}`;
+    const cur = world.facts[key];
+    if (!cur || typeof cur !== 'object') {
+      notes.push(`${c.id} continue_intent: none`);
+      events.push(mkActionEvent(world, 'action:continue_intent', { actorId: c.id, ok: false, reason: 'none' }));
+      return { world, events, notes };
+    }
+
+    const remainingBefore = Math.max(0, Number((cur as any).remainingTicks ?? 0));
+    const remainingAfter = Math.max(0, remainingBefore - 1);
+    (cur as any).remainingTicks = remainingAfter;
+    world.facts[key] = cur;
+
+    notes.push(`${c.id} continues intent ${(cur as any).id} (${remainingBefore} -> ${remainingAfter})`);
+    events.push(mkActionEvent(world, 'action:continue_intent', {
+      actorId: c.id,
+      locationId: c.locId,
+      intentId: (cur as any).id,
+      remainingBefore,
+      remainingAfter,
+      ok: true,
+    }));
+
+    if (remainingAfter <= 0) {
+      const original = (cur as any)?.intent?.originalAction;
+      if (original && typeof original === 'object' && original.kind && ACTION_SPECS[original.kind as ActionKind]) {
+        const oa: SimAction = {
+          id: `act:intent_complete:${world.tickIndex}:${c.id}:${String(original.kind)}`,
+          kind: original.kind as ActionKind,
+          actorId: c.id,
+          targetId: original.targetId ?? null,
+          payload: original.payload ?? null,
+          meta: original.meta ?? null,
+        };
+        const spec = ACTION_SPECS[oa.kind];
+        const r = spec.apply({ world, action: oa });
+        world = r.world;
+        events.push(...r.events);
+        notes.push(...r.notes.map((x) => `intent.complete: ${x}`));
+      } else {
+        notes.push(`${c.id} intent complete: no originalAction`);
+      }
+      delete world.facts[key];
+      events.push(mkActionEvent(world, 'action:intent_complete', {
+        actorId: c.id,
+        locationId: c.locId,
+        intentId: (cur as any).id,
+      }));
+    }
+
+    return { world, events, notes };
+  },
+};
+
+const AbortIntentSpec: ActionSpec = {
+  kind: 'abort_intent',
+  enumerate: () => [],
+  validateV1: ({ world, offer }) => {
+    const base = validateCommon(world, offer);
+    const c = getChar(world, base.actorId);
+    const cur = world.facts[`intent:${c.id}`];
+    if (!cur) return { ...base, blocked: true, reason: 'intent:none', score: 0 };
+    return base;
+  },
+  validateV2: ({ world, offer }) => validateCommon(world, offer),
+  classifyV3: () => 'single',
+  apply: ({ world, action }) => {
+    const notes: string[] = [];
+    const events: SimEvent[] = [];
+    const c = getChar(world, action.actorId);
+    const key = `intent:${c.id}`;
+    const cur = world.facts[key];
+    delete world.facts[key];
+    notes.push(`${c.id} aborts intent ${String((cur as any)?.id ?? 'unknown')}`);
+    events.push(mkActionEvent(world, 'action:abort_intent', {
+      actorId: c.id,
+      locationId: c.locId,
+      intentId: (cur as any)?.id ?? null,
+    }));
+    return { world, events, notes };
+  },
+};
 export const ACTION_SPECS: Record<ActionKind, ActionSpec> = {
   wait: WaitSpec,
   rest: RestSpec,
@@ -747,6 +853,8 @@ export const ACTION_SPECS: Record<ActionKind, ActionSpec> = {
   repair_feature: RepairFeatureSpec,
   scavenge_feature: ScavengeFeatureSpec,
   start_intent: StartIntentSpec,
+  continue_intent: ContinueIntentSpec,
+  abort_intent: AbortIntentSpec,
 };
 
 export function enumerateActionOffers(world: SimWorld): ActionOffer[] {
@@ -755,6 +863,23 @@ export function enumerateActionOffers(world: SimWorld): ActionOffer[] {
 
   for (const actorId of actorIds) {
     const ctx: OfferCtx = { world, actorId };
+
+    // If an actor has an active intent, restrict offers to continue/abort/wait.
+    const hasIntent = Boolean(world.facts[`intent:${actorId}`]);
+    if (hasIntent) {
+      for (const kind of ['continue_intent', 'abort_intent', 'wait'] as ActionKind[]) {
+        const spec = ACTION_SPECS[kind];
+        const raw = spec.enumerate(ctx);
+        const seeds: ActionOffer[] = raw.length ? raw : [{ kind, actorId, score: kind === 'continue_intent' ? 0.35 : 0.15 }];
+        for (const o of seeds) {
+          const v1 = spec.validateV1({ ...ctx, offer: o });
+          const v2 = spec.validateV2({ ...ctx, offer: v1 });
+          offers.push(v2);
+        }
+      }
+      continue;
+    }
+
     for (const kind of Object.keys(ACTION_SPECS).sort() as ActionKind[]) {
       const spec = ACTION_SPECS[kind];
       const raw = spec.enumerate(ctx);

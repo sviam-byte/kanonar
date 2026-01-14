@@ -74,6 +74,7 @@ export function validateActionStrict(world: SimWorld, a: SimAction): ValidationR
 
   const atomicity = spec.classifyV3({ world, actorId: a.actorId, offer: v2 });
   if (atomicity === 'intent') {
+    const intentTicks = Math.max(1, Number((spec as any).intentTicks ?? 2));
     const intentId = `intent:${a.actorId}:${world.tickIndex}:${a.kind}`;
     const normalized: SimAction = {
       id: `act:start_intent:${world.tickIndex}:${a.actorId}:${a.kind}`,
@@ -82,6 +83,7 @@ export function validateActionStrict(world: SimWorld, a: SimAction): ValidationR
       targetId: a.targetId ?? null,
       payload: {
         intentId,
+        remainingTicks: intentTicks,
         intent: {
           originalAction: {
             id: a.id,
@@ -89,6 +91,7 @@ export function validateActionStrict(world: SimWorld, a: SimAction): ValidationR
             actorId: a.actorId,
             targetId: a.targetId ?? null,
             payload: a.payload ?? null,
+            meta: (a as any).meta ?? null,
           },
         },
       },

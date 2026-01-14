@@ -74,7 +74,9 @@ export type ActionKind =
   | 'inspect_feature'
   | 'repair_feature'
   | 'scavenge_feature'
-  | 'start_intent';
+  | 'start_intent'
+  | 'continue_intent'
+  | 'abort_intent';
 
 export type SimAction = {
   id: Id;                 // unique action instance id
