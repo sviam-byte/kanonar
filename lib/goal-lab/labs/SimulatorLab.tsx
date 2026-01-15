@@ -277,10 +277,10 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
   const [liveOn, setLiveOn] = useState(false);
   const [liveHz, setLiveHz] = useState(2); // ticks per second
   const [followLatest, setFollowLatest] = useState(true);
-  const [mapLocId, setMapLocId] = useState<string>('');
-  const [mapCharId, setMapCharId] = useState<string | null>(null);
-  const [setupMapLocId, setSetupMapLocId] = useState<string>('');
+  // Docked map context for the Map tab.
   const [dockLocId, setDockLocId] = useState<string>('');
+  const [dockCharId, setDockCharId] = useState<string | null>(null);
+  const [setupMapLocId, setSetupMapLocId] = useState<string>('');
 
   const [setupDraft, setSetupDraft] = useState<SetupDraft>({
     selectedLocIds: [],
@@ -344,15 +344,6 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
 
   const curIdx = selected >= 0 ? selected : records.length - 1;
   const cur = curIdx >= 0 ? records[curIdx] : null;
-
-  useEffect(() => {
-    const locs = cur?.snapshot?.locations || [];
-    if (!locs.length) return;
-    const nextId = mapLocId && locs.some((l: any) => l.id === mapLocId)
-      ? mapLocId
-      : String(locs[0]?.id || '');
-    if (nextId && nextId !== mapLocId) setMapLocId(nextId);
-  }, [cur, mapLocId]);
 
   useEffect(() => {
     const locs = setupDraft.selectedLocIds || [];
@@ -760,124 +751,137 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
         </div>
       </div>
 
-      <div className="grid grid-cols-[420px_1fr_520px] gap-4 min-h-0">
-        {/* LEFT: MAP + selectors (always visible) */}
+      <div className="grid grid-cols-[420px_1fr] gap-4 min-h-0">
+        {/* LEFT: tick list / controls */}
         <div className="min-h-0 flex flex-col gap-4">
-          <Card title="Place">
-            <div className="text-xs opacity-70 mb-1">Выбери локацию</div>
-            <select className="canon-input w-full" value={mapLocId || ''} onChange={(e) => setMapLocId(e.target.value)}>
-              {(cur?.snapshot?.locations || []).map((l: any) => (
-                <option key={l.id} value={l.id}>
-                  {l.title ?? l.name ?? l.id}
-                </option>
-              ))}
-            </select>
+          <Card title="Controls">
+            <div className="text-sm text-canon-muted mb-3">
+              Симулятор = мир → действия → события → снапшот. Нажми “Сделать 1 тик”, чтобы появились записи и отладка.
+            </div>
+            {draftHasSelection && !worldMatchesDraft ? (
+              <div className="mb-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+                Вы выбрали сцену в табе Setup, но ещё не применили её к миру. Нажмите <b>Apply + Reset</b>, иначе тики
+                будут идти по предыдущему миру.
+              </div>
+            ) : null}
 
-            <div className="text-xs opacity-70 mt-3">Подсветка персонажа</div>
-            <select className="canon-input w-full mt-1" value={mapCharId || ''} onChange={(e) => setMapCharId(e.target.value || null)}>
-              <option value="">(none)</option>
-              {(cur?.snapshot?.characters || []).map((c: any) => (
-                <option key={c.id} value={c.id}>
-                  {c.title ?? c.name ?? c.id}
-                </option>
-              ))}
-            </select>
-
-            <div className="mt-3 flex gap-2 flex-wrap">
+            <div className="flex gap-2 flex-wrap">
               <Button kind="primary" onClick={doStep} disabled={!canSimulate}>
                 Сделать 1 тик
               </Button>
+              <Button onClick={() => doRun(10)} disabled={!canSimulate}>
+                Run ×10
+              </Button>
+              <Button onClick={() => doRun(100)} disabled={!canSimulate}>
+                Run ×100
+              </Button>
+              <Button onClick={doReset}>Reset</Button>
+            </div>
+
+            <div className="mt-3 flex items-center gap-2 flex-wrap">
+              <Badge>Live</Badge>
+              <span className="text-xs text-canon-muted font-mono">Hz</span>
+              <Input className="w-20" value={String(liveHz)} onChange={(e) => setLiveHz(Number(e.target.value))} />
               <Button kind={liveOn ? 'danger' : 'primary'} onClick={() => setLiveOn((x) => !x)} disabled={!canSimulate}>
                 {liveOn ? 'Stop live' : 'Start live'}
               </Button>
-              <span className="text-xs text-canon-muted font-mono self-center">Hz</span>
-              <Input className="w-20" value={String(liveHz)} onChange={(e) => setLiveHz(Number(e.target.value))} />
-            </div>
-          </Card>
-
-          <Card title="Карта мира (узлы/связи)">
-            <SimMapView sim={sim} snapshot={cur?.snapshot || null} onMove={pushManualMove} />
-          </Card>
-
-          <div className="flex-1 min-h-0 overflow-auto">
-            {(() => {
-              const loc = (cur?.snapshot?.locations || []).find((l: any) => l.id === mapLocId);
-              if (!loc) return <Card title="Карта локации">(нет выбранной локации)</Card>;
-              return (
-                <LocationMapView
-                  location={loc}
-                  characters={cur?.snapshot?.characters || []}
-                  highlightId={mapCharId}
-                  onPickCharacter={(id) => setMapCharId(id)}
-                />
-              );
-            })()}
-          </div>
-        </div>
-
-        {/* MIDDLE: NARRATIVE (always visible) */}
-        <div className="min-h-0 flex flex-col gap-4">
-          <Card title="Нарративный лог (вживую)" bodyClassName="p-0">
-            <div className="p-3 border-b border-canon-border flex items-center gap-2 flex-wrap">
               <Button onClick={() => setFollowLatest((x) => !x)}>{followLatest ? 'Follow: ON' : 'Follow: OFF'}</Button>
-              <div className="grow" />
-              <Button onClick={() => copyJsonToClipboard({ lines: narrativeLines })} disabled={!narrativeLines.length}>
-                Copy lines.json
-              </Button>
-              <Button onClick={() => downloadJsonFile({ lines: narrativeLines }, 'narrative-lines.json')} disabled={!narrativeLines.length}>
-                Export lines.json
-              </Button>
             </div>
 
-            <div ref={narrativeScrollRef} className="flex-1 min-h-0 overflow-auto p-3 font-mono text-xs whitespace-pre-wrap">
-              {narrativeLines.length ? narrativeLines.join('\n') : '(empty)'}
+            <div className="mt-3 flex items-center gap-2">
+              <span className="text-xs text-canon-muted font-mono">run</span>
+              <Input className="w-24" value={String(runN)} onChange={(e) => setRunN(Number(e.target.value))} />
+              <Button onClick={() => doRun(runN)} disabled={!canSimulate}>
+                Run N
+              </Button>
             </div>
+          </Card>
+
+          <Card title="History" bodyClassName="p-0">
+            {records.length === 0 ? (
+              <div className="text-sm text-canon-muted p-5">
+                Пока пусто. Сделай 1 тик — появится список тиков, и можно будет смотреть мир/действия/события/пайплайн/оркестратор.
+              </div>
+            ) : (
+              <div className="max-h-[360px] overflow-auto p-3 flex flex-col gap-2">
+                <div className="flex gap-2 flex-wrap mb-2">
+                  <Button onClick={() => setSelected(-1)}>Latest</Button>
+                  <Button onClick={() => setSelected(Math.max(0, records.length - 1))}>Oldest</Button>
+                  <Button onClick={doExportRecord} disabled={!cur}>
+                    Export record.json
+                  </Button>
+                  <Button onClick={doExportTrace} disabled={!orchestratorTrace}>
+                    Export trace.json
+                  </Button>
+                  <Button onClick={doExportPipeline} disabled={!pipelineOut}>
+                    Export pipeline.json
+                  </Button>
+                  {onPushToGoalLab && orchestratorSnapshot ? (
+                    <Button onClick={() => onPushToGoalLab(orchestratorSnapshot)}>Push → GoalLab</Button>
+                  ) : null}
+                </div>
+
+                <div className="flex flex-col gap-2">
+                  {tickItems.map((it) => (
+                    <button
+                      key={it.i}
+                      onClick={() => setSelected(it.i)}
+                      className={cx(
+                        'text-left rounded-xl border border-canon-border p-3 bg-canon-card/80 hover:bg-white/5 transition',
+                        it.i === curIdx && 'bg-white/10'
+                      )}
+                    >
+                      <div className="flex items-baseline justify-between gap-2">
+                        <div className="font-extrabold">tick {it.tick}</div>
+                        <div className="font-mono text-xs text-canon-muted">#{it.i}</div>
+                      </div>
+                      <div className="font-mono text-xs text-canon-muted mt-1">
+                        actions={it.actions} events={it.events} atoms={it.atoms} pipelineStages={it.pipelineStages}
+                      </div>
+                      {it.i === curIdx && tickActionSummary ? (
+                        <div className="mt-2 text-xs opacity-80">{tickActionSummary}</div>
+                      ) : null}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </Card>
         </div>
 
-        {/* RIGHT: TABS + tick list */}
+        {/* RIGHT: tabs */}
         <div className="min-h-0 flex flex-col gap-4">
-          <Card title="Ticks" bodyClassName="p-0">
-            <div className="p-3 border-b border-canon-border flex gap-2 flex-wrap">
-              <Button onClick={doReset}>Reset</Button>
-              <Button onClick={doExportRecord} disabled={!cur}>Export record.json</Button>
-              <Button onClick={doExportTrace} disabled={!orchestratorTrace}>Export trace.json</Button>
-              <Button onClick={doExportPipeline} disabled={!pipelineOut}>Export pipeline.json</Button>
-              {onPushToGoalLab && orchestratorSnapshot ? <Button onClick={() => onPushToGoalLab(orchestratorSnapshot)}>Push → GoalLab</Button> : null}
-            </div>
-
-            <div className="max-h-[260px] overflow-auto p-3 flex flex-col gap-2">
-              {tickItems.map((it) => (
-                <button
-                  key={it.i}
-                  onClick={() => setSelected(it.i)}
-                  className={cx(
-                    'text-left rounded-xl border border-canon-border p-3 bg-canon-card/80 hover:bg-white/5 transition',
-                    it.i === curIdx && 'bg-white/10'
-                  )}
-                >
-                  <div className="flex items-baseline justify-between gap-2">
-                    <div className="font-extrabold">tick {it.tick}</div>
-                    <div className="font-mono text-xs text-canon-muted">#{it.i}</div>
-                  </div>
-                  <div className="font-mono text-xs text-canon-muted mt-1">
-                    actions={it.actions} events={it.events} atoms={it.atoms} pipelineStages={it.pipelineStages}
-                  </div>
-                  {it.i === curIdx && tickActionSummary ? <div className="mt-2 text-xs opacity-80">{tickActionSummary}</div> : null}
-                </button>
-              ))}
-            </div>
-          </Card>
-
           <div className="flex flex-wrap gap-2">
-            <TabButton active={tab === 'setup'} onClick={() => setTab('setup')}>Setup</TabButton>
-            <TabButton active={tab === 'summary'} onClick={() => setTab('summary')}>Сводка</TabButton>
-            <TabButton active={tab === 'world'} onClick={() => setTab('world')}>Мир</TabButton>
-            <TabButton active={tab === 'actions'} onClick={() => setTab('actions')}>Действия</TabButton>
-            <TabButton active={tab === 'events'} onClick={() => setTab('events')}>События</TabButton>
-            <TabButton active={tab === 'pipeline'} onClick={() => setTab('pipeline')}>Pipeline (S0–S8)</TabButton>
-            <TabButton active={tab === 'orchestrator'} onClick={() => setTab('orchestrator')}>Оркестратор</TabButton>
-            <TabButton active={tab === 'json'} onClick={() => setTab('json')}>JSON</TabButton>
+            <TabButton active={tab === 'setup'} onClick={() => setTab('setup')}>
+              Setup
+            </TabButton>
+            <TabButton active={tab === 'summary'} onClick={() => setTab('summary')}>
+              Сводка
+            </TabButton>
+            <TabButton active={tab === 'narrative'} onClick={() => setTab('narrative')}>
+              Нарратив
+            </TabButton>
+            <TabButton active={tab === 'world'} onClick={() => setTab('world')}>
+              Мир
+            </TabButton>
+            <TabButton active={tab === 'actions'} onClick={() => setTab('actions')}>
+              Действия
+            </TabButton>
+            <TabButton active={tab === 'events'} onClick={() => setTab('events')}>
+              События
+            </TabButton>
+            <TabButton active={tab === 'pipeline'} onClick={() => setTab('pipeline')}>
+              Pipeline (S0–S8)
+            </TabButton>
+            <TabButton active={tab === 'orchestrator'} onClick={() => setTab('orchestrator')}>
+              Оркестратор
+            </TabButton>
+            <TabButton active={tab === 'map'} onClick={() => setTab('map')}>
+              Map
+            </TabButton>
+            <TabButton active={tab === 'json'} onClick={() => setTab('json')}>
+              JSON
+            </TabButton>
 
             <div className="grow" />
             {setupProblems.length ? <Badge tone="bad">issues: {setupProblems.length}</Badge> : <Badge tone="good">scene ok</Badge>}
@@ -1153,30 +1157,18 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
 
               {/* NARRATIVE */}
               {tab === 'narrative' ? (
-                <Card title="Нарративный лог (X сделал Y потому что Z и получил W)" bodyClassName="p-0">
+                <Card title="Нарративный лог" bodyClassName="p-0">
                   <div className="p-3 border-b border-canon-border flex items-center gap-2 flex-wrap">
-                    <Button kind={liveOn ? 'danger' : 'primary'} onClick={() => setLiveOn((x) => !x)} disabled={!canSimulate}>
-                      {liveOn ? 'Stop live' : 'Start live'}
-                    </Button>
-                    <span className="text-xs text-canon-muted font-mono">Hz</span>
-                    <Input className="w-20" value={String(liveHz)} onChange={(e) => setLiveHz(Number(e.target.value))} />
-
                     <Button onClick={() => setFollowLatest((x) => !x)}>{followLatest ? 'Follow: ON' : 'Follow: OFF'}</Button>
-
                     <div className="grow" />
-
                     <Button onClick={() => copyJsonToClipboard({ lines: narrativeLines })} disabled={!narrativeLines.length}>
                       Copy lines.json
                     </Button>
-                    <Button
-                      onClick={() => downloadJsonFile({ lines: narrativeLines }, 'narrative-lines.json')}
-                      disabled={!narrativeLines.length}
-                    >
+                    <Button onClick={() => downloadJsonFile({ lines: narrativeLines }, 'narrative-lines.json')} disabled={!narrativeLines.length}>
                       Export lines.json
                     </Button>
                   </div>
-
-                  <div ref={narrativeScrollRef} className="max-h-[640px] overflow-auto p-3 font-mono text-xs whitespace-pre-wrap">
+                  <div ref={narrativeScrollRef} className="flex-1 min-h-0 overflow-auto p-3 font-mono text-xs whitespace-pre-wrap">
                     {narrativeLines.length ? narrativeLines.join('\n') : '(empty)'}
                   </div>
                 </Card>
@@ -1791,61 +1783,21 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
 
               {/* MAP */}
               {tab === 'map' ? (
-                <div className="grid grid-cols-[420px_1fr] gap-4">
-                  <div className="sticky top-3 self-start">
-                    <Card title="Place">
-                      <div className="text-xs opacity-70 mb-1">Выбери локацию</div>
-                      <select
-                        className="canon-input w-full"
-                        value={mapLocId || ''}
-                        onChange={(e) => setMapLocId(e.target.value)}
-                      >
-                        {(cur?.snapshot?.locations || []).map((l: any) => (
-                          <option key={l.id} value={l.id}>{l.title ?? l.name ?? l.id}</option>
-                        ))}
-                      </select>
+                <div className="flex flex-col gap-4">
+                  {/* 1) мировая карта/граф */}
+                  <Card title="Карта мира (узлы/связи)">
+                    <SimMapView sim={sim} snapshot={cur?.snapshot || null} onMove={pushManualMove} />
+                  </Card>
 
-                      <div className="text-xs opacity-70 mt-3">Подсветка персонажа</div>
-                      <select
-                        className="canon-input w-full mt-1"
-                        value={mapCharId || ''}
-                        onChange={(e) => setMapCharId(e.target.value || null)}
-                      >
-                        <option value="">(none)</option>
-                        {(cur?.snapshot?.characters || []).map((c: any) => (
-                          <option key={c.id} value={c.id}>{c.title ?? c.name ?? c.id}</option>
-                        ))}
-                      </select>
-                    </Card>
-
-                    <Card title="Карта локации (симуляция)">
-                      <SimMapView
-                        world={sim.world}
-                        locationId={
-                          mapLocId
-                          || cur?.snapshot?.locations?.[0]?.id
-                          || Object.keys(sim.world.locations || {})[0]
-                          || ''
-                        }
-                        height={420}
-                      />
-                    </Card>
-                  </div>
-
-                  <div className="min-w-0">
-                    {(() => {
-                      const loc = (cur?.snapshot?.locations || []).find((l: any) => l.id === mapLocId);
-                      if (!loc) return <Card title="Карта локации">(нет выбранной локации)</Card>;
-                      return (
-                        <LocationMapView
-                          location={loc}
-                          characters={cur?.snapshot?.characters || []}
-                          highlightId={mapCharId}
-                          onPickCharacter={(id) => setMapCharId(id)}
-                        />
-                      );
-                    })()}
-                  </div>
+                  {/* 2) карта конкретной локации */}
+                  <Card title="Карта локации">
+                    <LocationMapView
+                      location={(cur?.snapshot?.locations || []).find((l: any) => l.id === dockLocId) ?? null}
+                      characters={cur?.snapshot?.characters || []}
+                      highlightId={dockCharId}
+                      onPickCharacter={(id) => setDockCharId(id)}
+                    />
+                  </Card>
                 </div>
               ) : null}
 
