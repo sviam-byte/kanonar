@@ -47,6 +47,16 @@ export type SimLocation = {
   entity?: any;
 };
 
+export type SimWorldFacts = Record<string, any> & {
+  spatial?: any;
+  inboxAtoms?: Record<string, any[]>;
+  [k: `agentAtoms:${string}`]: any[];
+  [k: `quarantineAtoms:${string}`]: any[];
+  [k: `intent:${string}`]: any;
+  [k: `observeBoost:${string}`]: number;
+  relations?: any;
+};
+
 export type SimWorld = {
   tickIndex: number;
   seed: number;
@@ -55,7 +65,7 @@ export type SimWorld = {
   locations: Record<Id, SimLocation>;
 
   // глобальные факты/ресурсы
-  facts: Record<string, any>;
+  facts: SimWorldFacts;
 
   // очередь событий “на этот тик” (и/или на будущее)
   events: SimEvent[];
@@ -67,13 +77,16 @@ export type ActionKind =
   | 'wait'
   | 'rest'
   | 'talk'
+  | 'attack'
   | 'observe'
   | 'question_about'
   | 'negotiate'
   | 'inspect_feature'
   | 'repair_feature'
   | 'scavenge_feature'
-  | 'start_intent';
+  | 'start_intent'
+  | 'continue_intent'
+  | 'abort_intent';
 
 export type SimAction = {
   id: Id;                 // unique action instance id
@@ -99,6 +112,8 @@ export type SpeechEventV1 = {
   actorId: string;
   targetId: string;
   act: 'inform' | 'ask' | 'threaten' | 'promise' | 'negotiate';
+  // loudness affects who can hear (spatial rules)
+  volume?: 'whisper' | 'normal' | 'shout';
   // атомы, которые говорящий “передаёт” (прототип: просто список id/mag)
   atoms: Array<{ id: string; magnitude?: number; confidence?: number; meta?: any }>;
   // опционально: “тема” и краткая строка (для UI)
