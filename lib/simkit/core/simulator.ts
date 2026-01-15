@@ -3,12 +3,15 @@
 
 import type { SimWorld, SimAction, ActionOffer, SimTickRecord, TickTrace } from './types';
 import { RNG } from './rng';
-import { cloneWorld, buildSnapshot } from './world';
+import { cloneWorld, buildSnapshot, ensureCharacterPos } from './world';
 import { proposeActions, applyAction, applyEvent } from './rules';
 import { validateActionStrict } from '../actions/validate';
+import { normalizeAtom } from '../../context/v2/infer';
+import type { ContextAtom } from '../../context/v2/types';
+import { decideAcceptance } from './trust';
 
 function clamp01(x: number) {
-  return Math.max(0, Math.min(1, x));
+  return Number.isFinite(x) ? Math.max(0, Math.min(1, x)) : 0;
 }
 
 function applyHazardPoints(world: SimWorld) {
@@ -124,6 +127,11 @@ export class SimKitSimulator {
   step(): SimTickRecord {
     const w0 = cloneWorld(this.world);
 
+    // Ensure every character has a valid position before spatial logic runs.
+    for (const id of Object.keys(this.world.characters)) {
+      ensureCharacterPos(this.world, id);
+    }
+
     // Apply hazard/safe map points into world facts before scoring/actions.
     applyHazardPoints(this.world);
 
@@ -238,6 +246,84 @@ export class SimKitSimulator {
       this.world = r.world;
       eventsApplied.push(e);
       notes.push(...r.notes);
+    }
+
+    // 2.5) integrate inboxAtoms into agentAtoms with trust/compat gating.
+    const inbox = (this.world.facts['inboxAtoms'] && typeof this.world.facts['inboxAtoms'] === 'object')
+      ? this.world.facts['inboxAtoms']
+      : null;
+
+    if (inbox) {
+      const dbgKey = `debug:inbox:${this.world.tickIndex}`;
+      const dbg: any = { tickIndex: this.world.tickIndex, perAgent: {} };
+
+      for (const [agentId, atoms] of Object.entries(inbox as Record<string, any[]>)) {
+        const c = this.world.characters[agentId];
+        if (!c) continue;
+
+        const accepted: ContextAtom[] = [];
+        const quarantined: ContextAtom[] = [];
+        const rejected: any[] = [];
+
+        for (const a of (Array.isArray(atoms) ? atoms : [])) {
+          const speakerId = String(a?.meta?.from ?? '');
+          const baseConf = typeof a?.confidence === 'number' ? a.confidence : 0.6;
+
+          // If no speaker specified (e.g., observation), accept but lower weight.
+          const decision = speakerId
+            ? decideAcceptance(this.world, agentId, speakerId, baseConf)
+            : { weight: 0.65, status: 'accept' as const, reasons: ['no_speaker'], trust: 0.5, compat: 0.6 };
+
+          const mag = typeof a?.magnitude === 'number' ? a.magnitude : 1;
+          const conf = clamp01(baseConf * decision.weight);
+
+          const atom: ContextAtom = normalizeAtom({
+            id: String(a.id),
+            kind: 'ctx',
+            source: a?.meta?.observedAction ? 'observation' : 'speech',
+            magnitude: mag,
+            confidence: conf,
+            origin: 'obs',
+            meta: {
+              ...(a?.meta ?? {}),
+              origin: {
+                type: a?.meta?.observedAction ? 'observation' : 'speech',
+                from: speakerId || null,
+                tickIndex: this.world.tickIndex,
+              },
+              accept: {
+                status: decision.status,
+                weight: decision.weight,
+                reasons: decision.reasons,
+                trust: decision.trust,
+                compat: decision.compat,
+              },
+            },
+          });
+
+          if (decision.status === 'accept') accepted.push(atom);
+          else if (decision.status === 'quarantine') quarantined.push(atom);
+          else rejected.push({ id: atom.id, from: speakerId || null, reasons: decision.reasons, trust: decision.trust, compat: decision.compat });
+        }
+
+        const keyA = `agentAtoms:${agentId}`;
+        const prevA = Array.isArray(this.world.facts[keyA]) ? this.world.facts[keyA] : [];
+        this.world.facts[keyA] = prevA.concat(accepted);
+
+        const keyQ = `quarantineAtoms:${agentId}`;
+        const prevQ = Array.isArray(this.world.facts[keyQ]) ? this.world.facts[keyQ] : [];
+        this.world.facts[keyQ] = prevQ.concat(quarantined);
+
+        (dbg.perAgent as any)[agentId] = {
+          accepted: accepted.length,
+          quarantined: quarantined.length,
+          rejected: rejected.length,
+          rejectedItems: rejected.slice(0, 12),
+        };
+      }
+
+      this.world.facts[dbgKey] = dbg;
+      delete this.world.facts['inboxAtoms'];
     }
 
     // 3) строим снапшот

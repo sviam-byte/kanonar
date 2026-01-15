@@ -164,10 +164,28 @@ export function inferAtomOrigin(source: ContextSource, id: string): AtomOrigin {
   return 'world';
 }
 
-export function normalizeAtom<T extends ContextAtom>(atom: T): T {
-  const ns = atom.ns ?? inferAtomNamespace(atom);
-  const origin = atom.origin ?? inferAtomOrigin(atom.source, atom.id);
-  const out: any = { ...atom, ns, origin };
+export function normalizeAtom<T extends ContextAtom>(atom: T): T;
+export function normalizeAtom(atom: Partial<ContextAtom>): ContextAtom;
+export function normalizeAtom(atom: Partial<ContextAtom>): ContextAtom {
+  // Normalize minimal shape for callers that pass partial atoms.
+  const seedId = atom.id ?? `atom:${Math.random().toString(36).slice(2)}`;
+  const seedSource = atom.source ?? 'event';
+  const seedKind = atom.kind ?? 'ctx';
+  const seedMag = typeof atom.magnitude === 'number' ? atom.magnitude : 1;
+  const seedConf = typeof atom.confidence === 'number' ? atom.confidence : 0.5;
+
+  const ns = atom.ns ?? inferAtomNamespace({ ...atom, id: String(seedId), kind: seedKind, source: seedSource });
+  const origin = atom.origin ?? inferAtomOrigin(seedSource, String(seedId));
+  const out: any = {
+    ...atom,
+    id: String(seedId),
+    source: seedSource,
+    kind: seedKind,
+    magnitude: seedMag,
+    confidence: seedConf,
+    ns,
+    origin,
+  };
   const id = String(out.id || '');
 
   // ---- AtomSpec resolve -> quark codex fields ----

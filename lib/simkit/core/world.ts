@@ -39,6 +39,21 @@ export function buildSnapshot(w: SimWorld, opts?: { events?: any[] }): SimSnapsh
   };
 }
 
+// Ensure that a character has a usable position; fallback to first nav node or origin.
+export function ensureCharacterPos(world: SimWorld, charId: string) {
+  const c = world.characters[charId];
+  if (!c) return;
+  if (!c.pos) {
+    const loc = world.locations[c.locId];
+    const node = loc?.nav?.nodes?.[0];
+    if (node) {
+      c.pos = { nodeId: node.id, x: node.x, y: node.y };
+    } else {
+      c.pos = { nodeId: null, x: 0, y: 0 };
+    }
+  }
+}
+
 export function worldFromScenarioDraft(draft: any): SimWorld {
   const locations: Record<string, SimLocation> = {};
   // 1) SimKit locations

@@ -344,6 +344,12 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
 
   const curIdx = selected >= 0 ? selected : records.length - 1;
   const cur = curIdx >= 0 ? records[curIdx] : null;
+  const inboxDebug = useMemo(() => {
+    const tick = cur?.snapshot?.tickIndex;
+    if (tick == null) return null;
+    const key = `debug:inbox:${tick}`;
+    return (cur?.trace?.deltas?.facts as any)?.[key]?.after ?? null;
+  }, [cur]);
 
   useEffect(() => {
     const locs = cur?.snapshot?.locations || [];
@@ -1215,6 +1221,12 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
                       ))}
                     </div>
                   </Card>
+
+                  {inboxDebug ? (
+                    <Card title="Inbox atoms (debug)">
+                      <pre className="text-xs opacity-90 whitespace-pre-wrap">{JSON.stringify(inboxDebug, null, 2)}</pre>
+                    </Card>
+                  ) : null}
                 </>
               ) : null}
 
