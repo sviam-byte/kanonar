@@ -277,10 +277,10 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
   const [liveOn, setLiveOn] = useState(false);
   const [liveHz, setLiveHz] = useState(2); // ticks per second
   const [followLatest, setFollowLatest] = useState(true);
-  const [mapLocId, setMapLocId] = useState<string>('');
-  const [mapCharId, setMapCharId] = useState<string | null>(null);
-  const [setupMapLocId, setSetupMapLocId] = useState<string>('');
+  // Docked map context for the Map tab.
   const [dockLocId, setDockLocId] = useState<string>('');
+  const [dockCharId, setDockCharId] = useState<string | null>(null);
+  const [setupMapLocId, setSetupMapLocId] = useState<string>('');
 
   const [setupDraft, setSetupDraft] = useState<SetupDraft>({
     selectedLocIds: [],
@@ -344,15 +344,6 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
 
   const curIdx = selected >= 0 ? selected : records.length - 1;
   const cur = curIdx >= 0 ? records[curIdx] : null;
-
-  useEffect(() => {
-    const locs = cur?.snapshot?.locations || [];
-    if (!locs.length) return;
-    const nextId = mapLocId && locs.some((l: any) => l.id === mapLocId)
-      ? mapLocId
-      : String(locs[0]?.id || '');
-    if (nextId && nextId !== mapLocId) setMapLocId(nextId);
-  }, [cur, mapLocId]);
 
   useEffect(() => {
     const locs = setupDraft.selectedLocIds || [];
@@ -682,6 +673,7 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
     : sameSet(worldCharIds, setupDraft.selectedCharIds) && sameSet(worldLocIds, setupDraft.selectedLocIds);
 
   const canSimulate = !draftHasSelection ? true : setupProblems.length === 0 && worldMatchesDraft;
+  const inboxDebug = sim.world.facts?.[`debug:inbox:${sim.world.tickIndex}`];
 
   const draftPreviewSnapshot = useMemo(() => {
     if (!selectedLocations.length) return sim.getPreviewSnapshot();
@@ -759,9 +751,9 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
         </div>
       </div>
 
-      <div className="grid grid-cols-12 gap-4 min-h-0">
-        {/* Left */}
-        <div className="col-span-3 min-h-0 flex flex-col gap-4">
+      <div className="grid grid-cols-[420px_1fr] gap-4 min-h-0">
+        {/* LEFT: tick list / controls */}
+        <div className="min-h-0 flex flex-col gap-4">
           <Card title="Controls">
             <div className="text-sm text-canon-muted mb-3">
               Симулятор = мир → действия → события → снапшот. Нажми “Сделать 1 тик”, чтобы появились записи и отладка.
@@ -857,9 +849,9 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
           </Card>
         </div>
 
-        {/* Right */}
-        <div className="col-span-9 min-h-0 flex flex-col gap-4">
-          <div className="flex flex-wrap gap-2 mb-4">
+        {/* RIGHT: tabs */}
+        <div className="min-h-0 flex flex-col gap-4">
+          <div className="flex flex-wrap gap-2">
             <TabButton active={tab === 'setup'} onClick={() => setTab('setup')}>
               Setup
             </TabButton>
@@ -892,7 +884,6 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
             </TabButton>
 
             <div className="grow" />
-
             {setupProblems.length ? <Badge tone="bad">issues: {setupProblems.length}</Badge> : <Badge tone="good">scene ok</Badge>}
           </div>
 
@@ -1140,6 +1131,14 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
                     </pre>
                   </Card>
 
+                  {inboxDebug ? (
+                    <Card title="Inbox acceptance debug">
+                      <pre className="text-xs opacity-90 whitespace-pre-wrap">
+                        {JSON.stringify(inboxDebug, null, 2)}
+                      </pre>
+                    </Card>
+                  ) : null}
+
                   <Card title="Дельты персонажей">
                     <div className="font-mono text-xs opacity-90">
                       {cur!.trace.deltas.chars.length ? (
@@ -1158,30 +1157,18 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
 
               {/* NARRATIVE */}
               {tab === 'narrative' ? (
-                <Card title="Нарративный лог (X сделал Y потому что Z и получил W)" bodyClassName="p-0">
+                <Card title="Нарративный лог" bodyClassName="p-0">
                   <div className="p-3 border-b border-canon-border flex items-center gap-2 flex-wrap">
-                    <Button kind={liveOn ? 'danger' : 'primary'} onClick={() => setLiveOn((x) => !x)} disabled={!canSimulate}>
-                      {liveOn ? 'Stop live' : 'Start live'}
-                    </Button>
-                    <span className="text-xs text-canon-muted font-mono">Hz</span>
-                    <Input className="w-20" value={String(liveHz)} onChange={(e) => setLiveHz(Number(e.target.value))} />
-
                     <Button onClick={() => setFollowLatest((x) => !x)}>{followLatest ? 'Follow: ON' : 'Follow: OFF'}</Button>
-
                     <div className="grow" />
-
                     <Button onClick={() => copyJsonToClipboard({ lines: narrativeLines })} disabled={!narrativeLines.length}>
                       Copy lines.json
                     </Button>
-                    <Button
-                      onClick={() => downloadJsonFile({ lines: narrativeLines }, 'narrative-lines.json')}
-                      disabled={!narrativeLines.length}
-                    >
+                    <Button onClick={() => downloadJsonFile({ lines: narrativeLines }, 'narrative-lines.json')} disabled={!narrativeLines.length}>
                       Export lines.json
                     </Button>
                   </div>
-
-                  <div ref={narrativeScrollRef} className="max-h-[640px] overflow-auto p-3 font-mono text-xs whitespace-pre-wrap">
+                  <div ref={narrativeScrollRef} className="flex-1 min-h-0 overflow-auto p-3 font-mono text-xs whitespace-pre-wrap">
                     {narrativeLines.length ? narrativeLines.join('\n') : '(empty)'}
                   </div>
                 </Card>
@@ -1796,52 +1783,21 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
 
               {/* MAP */}
               {tab === 'map' ? (
-                <div className="grid grid-cols-12 gap-4">
-                  <div className="col-span-4">
-                    <Card title="Place">
-                      <div className="text-xs opacity-70 mb-1">Выбери локацию</div>
-                      <select
-                        className="canon-input w-full"
-                        value={mapLocId || ''}
-                        onChange={(e) => setMapLocId(e.target.value)}
-                      >
-                        {(cur?.snapshot?.locations || []).map((l: any) => (
-                          <option key={l.id} value={l.id}>{l.title ?? l.name ?? l.id}</option>
-                        ))}
-                      </select>
+                <div className="flex flex-col gap-4">
+                  {/* 1) мировая карта/граф */}
+                  <Card title="Карта мира (узлы/связи)">
+                    <SimMapView sim={sim} snapshot={cur?.snapshot || null} onMove={pushManualMove} />
+                  </Card>
 
-                      <div className="text-xs opacity-70 mt-3">Подсветка персонажа</div>
-                      <select
-                        className="canon-input w-full mt-1"
-                        value={mapCharId || ''}
-                        onChange={(e) => setMapCharId(e.target.value || null)}
-                      >
-                        <option value="">(none)</option>
-                        {(cur?.snapshot?.characters || []).map((c: any) => (
-                          <option key={c.id} value={c.id}>{c.title ?? c.name ?? c.id}</option>
-                        ))}
-                      </select>
-                    </Card>
-
-                    <Card title="Карта мира (узлы/связи)">
-                      <SimMapView sim={sim} snapshot={cur?.snapshot || null} onMove={pushManualMove} />
-                    </Card>
-                  </div>
-
-                  <div className="col-span-8">
-                    {(() => {
-                      const loc = (cur?.snapshot?.locations || []).find((l: any) => l.id === mapLocId);
-                      if (!loc) return <Card title="Карта локации">(нет выбранной локации)</Card>;
-                      return (
-                        <LocationMapView
-                          location={loc}
-                          characters={cur?.snapshot?.characters || []}
-                          highlightId={mapCharId}
-                          onPickCharacter={(id) => setMapCharId(id)}
-                        />
-                      );
-                    })()}
-                  </div>
+                  {/* 2) карта конкретной локации */}
+                  <Card title="Карта локации">
+                    <LocationMapView
+                      location={(cur?.snapshot?.locations || []).find((l: any) => l.id === dockLocId) ?? null}
+                      characters={cur?.snapshot?.characters || []}
+                      highlightId={dockCharId}
+                      onPickCharacter={(id) => setDockCharId(id)}
+                    />
+                  </Card>
                 </div>
               ) : null}
 

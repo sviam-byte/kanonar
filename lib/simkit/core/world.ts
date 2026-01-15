@@ -23,6 +23,21 @@ export function getLoc(w: SimWorld, id: Id): SimLocation {
   return l;
 }
 
+// Ensure character has a valid positional stub for spatial logic.
+export function ensureCharacterPos(world: SimWorld, charId: string) {
+  const c = world.characters[charId];
+  if (!c) return;
+  if (!c.pos) {
+    const loc = world.locations[c.locId];
+    const node = loc?.nav?.nodes?.[0];
+    if (node) {
+      c.pos = { nodeId: node.id, x: node.x, y: node.y };
+    } else {
+      c.pos = { nodeId: null, x: 0, y: 0 };
+    }
+  }
+}
+
 export function buildSnapshot(w: SimWorld, opts?: { events?: any[] }): SimSnapshot {
   return {
     schema: 'SimKitSnapshotV1',
