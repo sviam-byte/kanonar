@@ -114,7 +114,8 @@ export function LivePlacementMiniMap({
           <div
             ref={wrapRef}
             className="relative w-full overflow-hidden rounded-xl border border-canon-border bg-black/15"
-            style={{ aspectRatio: `${mapW} / ${mapH}` }}
+            // IMPORTANT: prevent this block from growing and overlapping other UI in sticky layouts.
+            style={{ aspectRatio: `${mapW} / ${mapH}`, maxHeight: 320 }}
             onPointerMove={onPointerMove}
             onPointerUp={onPointerUp}
           >
@@ -126,7 +127,10 @@ export function LivePlacementMiniMap({
                 draggable={false}
               />
             ) : (
-              <div className="absolute inset-0 flex items-center justify-center text-xs opacity-70">No map</div>
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 text-xs opacity-70">
+                <div>No map</div>
+                <div className="opacity-60">markers still should render</div>
+              </div>
             )}
 
             <svg className="absolute inset-0 w-full h-full" viewBox={`0 0 ${mapW} ${mapH}`} preserveAspectRatio="xMidYMid meet">

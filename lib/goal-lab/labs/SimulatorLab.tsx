@@ -763,12 +763,14 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
       <div className="grid grid-cols-12 gap-4 min-h-0">
         {/* Left (pinned map + world lists + controls) */}
         <div className="col-span-3 min-h-0 flex flex-col gap-4">
-          <div className="sticky top-24 z-10">
+          {/* Pinned, but MUST NOT overlap other cards: keep low z and clip. */}
+          <div className="sticky top-24 z-0">
             <Card title="Map (Live)" bodyClassName="p-0">
-              <div className="p-3">
+              <div className="p-3 overflow-hidden">
                 <LivePlacementMiniMap
                   chrome={false}
                   variant="embedded"
+                  widthPx={0}
                   snapshot={cur?.snapshot ?? sim.getPreviewSnapshot()}
                   worldFacts={sim.world.facts}
                   selectedLocId={dockLocId || Object.keys(sim.world.locations || {}).sort()[0] || ''}
