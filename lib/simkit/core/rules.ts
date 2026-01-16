@@ -51,32 +51,60 @@ export function applyEvent(w: SimWorld, e: SimEvent): { world: SimWorld; notes: 
     if (!speakerId || !w.characters[speakerId]) {
       return { world: w, notes };
     }
+
     const speaker = w.characters[speakerId];
     const volume = (s?.volume || 'normal') as 'whisper' | 'normal' | 'shout';
+    const targetId = String(s?.targetId || '');
+    const atoms = Array.isArray(s?.atoms) ? s?.atoms : [];
 
-    // Determine recipients by spatial + volume.
-    const recips: string[] = [];
+    // Delivery policy:
+    // - whisper: only the explicit target can hear (if in range)
+    // - normal: target + local overhearers (reduced confidence)
+    // - shout: everyone in same location who can hear (reduced confidence)
+    const recipients: Array<{ id: string; overhear: boolean; confMul: number }> = [];
+
+    if (targetId && w.characters[targetId]) {
+      const heard = canHear(w, speakerId, targetId, volume);
+      if (heard) {
+        recipients.push({ id: targetId, overhear: false, confMul: 1.0 });
+      } else {
+        notes.push(`speech inaudible for target: ${speakerId} -> ${targetId}`);
+      }
+    }
+
+    // Overhear logic for same-location listeners.
     for (const other of Object.values(w.characters)) {
       if (other.id === speakerId) continue;
+      if (targetId && other.id === targetId) continue;
       if (other.locId !== speaker.locId) continue;
-      if (canHear(w, speakerId, other.id, volume)) {
-        recips.push(other.id);
-      }
+      if (volume === 'whisper') continue;
+
+      const heard = canHear(w, speakerId, other.id, volume);
+      if (!heard) continue;
+
+      const confMul = volume === 'shout' ? 0.55 : 0.7;
+      recipients.push({ id: other.id, overhear: true, confMul });
+    }
+
+    if (!recipients.length) {
+      notes.push(`speech dropped (no recipients): ${speakerId}`);
+      return { world: w, notes };
     }
 
     // Store delivered atoms per recipient (for GoalLab / ToM later).
     const inbox = (w.facts['inboxAtoms'] && typeof w.facts['inboxAtoms'] === 'object') ? w.facts['inboxAtoms'] : {};
     const locId = speaker.locId;
     const speakerPrivacy = privacyOf(w, locId, speaker.pos?.nodeId ?? null);
-    for (const rid of recips) {
-      const key = String(rid);
+    for (const r of recipients) {
+      const key = String(r.id);
       const arr = Array.isArray((inbox as any)[key]) ? (inbox as any)[key] : [];
-      const d = distSameLocation(w, speakerId, rid);
-      for (const a of (s?.atoms || [])) {
+      const d = distSameLocation(w, speakerId, r.id);
+      for (const a of atoms) {
+        const baseConf = typeof a.confidence === 'number' ? a.confidence : 0.7;
         arr.push({
           id: String(a.id),
           magnitude: typeof a.magnitude === 'number' ? a.magnitude : 1,
-          confidence: typeof a.confidence === 'number' ? a.confidence : 0.7,
+          confidence: clamp01(baseConf * r.confMul),
           meta: {
             ...(a.meta || {}),
             from: speakerId,
@@ -86,6 +114,8 @@ export function applyEvent(w: SimWorld, e: SimEvent): { world: SimWorld; notes: 
             tickIndex: w.tickIndex,
             distance: Number.isFinite(d) ? d : null,
             speakerPrivacy,
+            // Mark that the recipient overheard rather than being explicitly targeted.
+            overhear: r.overhear,
           },
         });
       }
@@ -93,7 +123,9 @@ export function applyEvent(w: SimWorld, e: SimEvent): { world: SimWorld; notes: 
     }
     w.facts['inboxAtoms'] = inbox as any;
 
-    notes.push(`speech:v1 ${speakerId} -> [${recips.join(', ')}] (${volume})`);
+    notes.push(
+      `speech:v1 ${speakerId} -> ${targetId || '(broadcast)'} recips=${recipients.length} (${volume})`
+    );
   }
 
   if (e.type?.startsWith('action:')) {

@@ -250,6 +250,8 @@ function sameSet(a: string[], b: string[]) {
 export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
   const simRef = useRef<SimKitSimulator | null>(null);
   const narrativeScrollRef = useRef<HTMLDivElement | null>(null);
+  // Center column viewer (always live): narrative vs raw JSON log.
+  const [centerMode, setCenterMode] = useState<'narrative' | 'json'>('narrative');
 
   // Catalog: entities available for selection in the simulator setup.
   const catalogLocations = useMemo(
@@ -392,12 +394,12 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
   }, [records, version]);
 
   useEffect(() => {
-    if (tab !== 'narrative') return;
+    // Center log follows latest tick if enabled.
     if (!followLatest) return;
     const el = narrativeScrollRef.current;
     if (!el) return;
     el.scrollTop = el.scrollHeight;
-  }, [tab, narrativeLines.length, followLatest]);
+  }, [narrativeLines.length, followLatest, centerMode]);
 
   const nameById = useMemo(() => {
     const map = new Map<string, string>();
@@ -723,13 +725,6 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
 
   return (
     <div className="h-full w-full p-4">
-      <LivePlacementMiniMap
-        snapshot={cur?.snapshot ?? sim.getPreviewSnapshot()}
-        worldFacts={sim.world.facts}
-        selectedLocId={dockLocId || Object.keys(sim.world.locations || {}).sort()[0] || ''}
-        onSelectLocId={setDockLocId}
-        onMoveXY={pushManualMoveXY}
-      />
       <div className="sticky top-0 z-20 mb-4">
         <div className="rounded-canon border border-canon-border bg-canon-panel/70 backdrop-blur-md shadow-canon-1 px-5 py-3 flex items-center gap-3">
           <div className="text-lg font-semibold tracking-tight">Simulator Lab</div>
@@ -766,8 +761,53 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
       </div>
 
       <div className="grid grid-cols-12 gap-4 min-h-0">
-        {/* Left */}
+        {/* Left (pinned map + world lists + controls) */}
         <div className="col-span-3 min-h-0 flex flex-col gap-4">
+          <div className="sticky top-[84px] z-10">
+            <Card title="Map (live)" bodyClassName="p-2">
+              <LivePlacementMiniMap
+                snapshot={cur?.snapshot ?? sim.getPreviewSnapshot()}
+                worldFacts={sim.world.facts}
+                selectedLocId={dockLocId || Object.keys(sim.world.locations || {}).sort()[0] || ''}
+                onSelectLocId={setDockLocId}
+                onMoveXY={pushManualMoveXY}
+              />
+            </Card>
+
+            <Card title="World" bodyClassName="p-3">
+              <div className="text-xs text-canon-muted mb-2">Локации в мире</div>
+              <select
+                value={dockLocId || Object.keys(sim.world.locations || {}).sort()[0] || ''}
+                onChange={(e) => setDockLocId(e.target.value)}
+                className="w-full rounded-xl border border-canon-border bg-black/20 px-3 py-2 text-sm"
+              >
+                {Object.keys(sim.world.locations || {})
+                  .sort()
+                  .map((id) => (
+                    <option key={id} value={id}>
+                      {id}
+                    </option>
+                  ))}
+              </select>
+
+              <div className="text-xs text-canon-muted mt-3 mb-2">Персонажи</div>
+              <select
+                value={mapCharId || ''}
+                onChange={(e) => setMapCharId(e.target.value || null)}
+                className="w-full rounded-xl border border-canon-border bg-black/20 px-3 py-2 text-sm"
+              >
+                <option value="">(none)</option>
+                {Object.keys(sim.world.characters || {})
+                  .sort()
+                  .map((id) => (
+                    <option key={id} value={id}>
+                      {nameById.get(id) ? `${nameById.get(id)} (${id})` : id}
+                    </option>
+                  ))}
+              </select>
+            </Card>
+          </div>
+
           <Card title="Controls">
             <div className="text-sm text-canon-muted mb-3">
               Симулятор = мир → действия → события → снапшот. Нажми “Сделать 1 тик”, чтобы появились записи и отладка.
@@ -811,13 +851,59 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
             </div>
           </Card>
 
+        </div>
+
+        {/* Center (real-time log) */}
+        <div className="col-span-5 min-h-0 flex flex-col gap-4">
+          <Card
+            title="Log (live)"
+            right={
+              <div className="flex items-center gap-2">
+                <Button kind={centerMode === 'narrative' ? 'primary' : 'ghost'} onClick={() => setCenterMode('narrative')}>
+                  Narrative
+                </Button>
+                <Button kind={centerMode === 'json' ? 'primary' : 'ghost'} onClick={() => setCenterMode('json')}>
+                  JSON
+                </Button>
+                <Button onClick={() => setFollowLatest((x) => !x)}>{followLatest ? 'Follow: ON' : 'Follow: OFF'}</Button>
+              </div>
+            }
+            bodyClassName="p-0"
+          >
+            <div ref={narrativeScrollRef} className="h-[calc(100vh-240px)] overflow-auto p-3 font-mono text-xs whitespace-pre-wrap">
+              {centerMode === 'narrative' ? (
+                narrativeLines.length ? narrativeLines.join('\n') : '—'
+              ) : (
+                // JSON log: one compact line per tick (latest first).
+                tickItems
+                  .slice(0, 200)
+                  .map((it) => {
+                    const r = records[it.i];
+                    const tick = r?.snapshot?.tickIndex ?? it.tick;
+                    const actions = (r?.trace?.actionsApplied || []).map((a: any) => ({
+                      kind: a?.kind,
+                      actorId: a?.actorId,
+                      targetId: a?.targetId ?? null,
+                    }));
+                    const events = (r?.trace?.eventsApplied || []).map((e: any) => e?.type);
+                    return JSON.stringify({ tick, actions, events });
+                  })
+                  .reverse()
+                  .join('\n')
+              )}
+            </div>
+          </Card>
+        </div>
+
+        {/* Right (history + details tabs) */}
+        <div className="col-span-4 min-h-0 flex flex-col gap-4">
           <Card title="History" bodyClassName="p-0">
             {records.length === 0 ? (
               <div className="text-sm text-canon-muted p-5">
                 Пока пусто. Сделай 1 тик — появится список тиков, и можно будет смотреть мир/действия/события/пайплайн/оркестратор.
               </div>
             ) : (
-              <div className="max-h-[360px] overflow-auto p-3 flex flex-col gap-2">
+              <div className="max-h-[320px] overflow-auto p-3 flex flex-col gap-2">
                 <div className="flex gap-2 flex-wrap mb-2">
                   <Button onClick={() => setSelected(-1)}>Latest</Button>
                   <Button onClick={() => setSelected(Math.max(0, records.length - 1))}>Oldest</Button>
@@ -861,19 +947,13 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
               </div>
             )}
           </Card>
-        </div>
 
-        {/* Right */}
-        <div className="col-span-9 min-h-0 flex flex-col gap-4">
           <div className="flex flex-wrap gap-2 mb-4">
             <TabButton active={tab === 'setup'} onClick={() => setTab('setup')}>
               Setup
             </TabButton>
             <TabButton active={tab === 'summary'} onClick={() => setTab('summary')}>
               Сводка
-            </TabButton>
-            <TabButton active={tab === 'narrative'} onClick={() => setTab('narrative')}>
-              Нарратив
             </TabButton>
             <TabButton active={tab === 'world'} onClick={() => setTab('world')}>
               Мир
@@ -1160,37 +1240,6 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
                     </div>
                   </Card>
                 </>
-              ) : null}
-
-              {/* NARRATIVE */}
-              {tab === 'narrative' ? (
-                <Card title="Нарративный лог (X сделал Y потому что Z и получил W)" bodyClassName="p-0">
-                  <div className="p-3 border-b border-canon-border flex items-center gap-2 flex-wrap">
-                    <Button kind={liveOn ? 'danger' : 'primary'} onClick={() => setLiveOn((x) => !x)} disabled={!canSimulate}>
-                      {liveOn ? 'Stop live' : 'Start live'}
-                    </Button>
-                    <span className="text-xs text-canon-muted font-mono">Hz</span>
-                    <Input className="w-20" value={String(liveHz)} onChange={(e) => setLiveHz(Number(e.target.value))} />
-
-                    <Button onClick={() => setFollowLatest((x) => !x)}>{followLatest ? 'Follow: ON' : 'Follow: OFF'}</Button>
-
-                    <div className="grow" />
-
-                    <Button onClick={() => copyJsonToClipboard({ lines: narrativeLines })} disabled={!narrativeLines.length}>
-                      Copy lines.json
-                    </Button>
-                    <Button
-                      onClick={() => downloadJsonFile({ lines: narrativeLines }, 'narrative-lines.json')}
-                      disabled={!narrativeLines.length}
-                    >
-                      Export lines.json
-                    </Button>
-                  </div>
-
-                  <div ref={narrativeScrollRef} className="max-h-[640px] overflow-auto p-3 font-mono text-xs whitespace-pre-wrap">
-                    {narrativeLines.length ? narrativeLines.join('\n') : '(empty)'}
-                  </div>
-                </Card>
               ) : null}
 
               {/* WORLD */}
