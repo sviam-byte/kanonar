@@ -149,19 +149,75 @@ export function makeSimWorldFromSelection(args: {
     };
   }
 
-  for (const ch of Object.values(chMap)) {
-    // IMPORTANT:
-    // PlacementMapEditor produces XY placements with nodeId=null.
-    // Do NOT override XY with nav node fallback, otherwise hazards/atoms can't use map-space points.
-    const hasXY =
-      ch.pos != null &&
-      Number.isFinite((ch.pos as any).x) &&
-      Number.isFinite((ch.pos as any).y);
+  // --- Auto placement (required to start a scene):
+  // If nothing has usable XY, scatter the cast so markers are visible and draggable.
+  const allChars = Object.values(chMap);
+  const placedCount = allChars.reduce((acc, c: any) => {
+    const x = Number(c?.pos?.x);
+    const y = Number(c?.pos?.y);
+    return acc + (Number.isFinite(x) && Number.isFinite(y) ? 1 : 0);
+  }, 0);
 
-    if (!ch.pos?.nodeId && !hasXY) {
-      const loc = locMap[ch.locId];
-      const n0 = loc?.nav?.nodes?.[0];
-      if (n0) ch.pos = { nodeId: n0.id, x: n0.x, y: n0.y };
+  // Ensure every char has a pos object (even if empty).
+  for (const c of allChars as any[]) {
+    if (!c.pos) c.pos = { nodeId: null, x: null, y: null };
+  }
+
+  if (placedCount === 0) {
+    // 1) If a location has nav nodes, distribute across nodes.
+    const byLoc: Record<string, any[]> = {};
+    for (const c of allChars as any[]) {
+      const locId = c.locId && locMap[c.locId] ? c.locId : firstLoc;
+      c.locId = locId;
+      (byLoc[locId] ||= []).push(c);
+    }
+
+    for (const [locId, xs] of Object.entries(byLoc)) {
+      const loc = locMap[locId];
+      const navNodes = Array.isArray((loc as any)?.nav?.nodes) ? (loc as any).nav.nodes : [];
+      if (navNodes.length) {
+        for (let i = 0; i < xs.length; i++) {
+          const n = navNodes[i % navNodes.length];
+          xs[i].pos = { nodeId: String(n.id), x: Number(n.x), y: Number(n.y) };
+        }
+        continue;
+      }
+
+      // 2) Otherwise, scatter on map bounds (fallback 1024x768).
+      const mapW = Number((loc as any)?.map?.width ?? (loc as any)?.width ?? 1024);
+      const mapH = Number((loc as any)?.map?.height ?? (loc as any)?.height ?? 768);
+      const w = Number.isFinite(mapW) ? mapW : 1024;
+      const h = Number.isFinite(mapH) ? mapH : 768;
+      const cx = w / 2;
+      const cy = h / 2;
+
+      for (let i = 0; i < xs.length; i++) {
+        const r = Math.min(w, h) * (0.06 + 0.02 * Math.sqrt(i));
+        const a = i * 0.85;
+        xs[i].pos = { nodeId: null, x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) };
+      }
+    }
+  } else {
+    // Some placements exist; just ensure missing ones get a sane fallback.
+    for (const c of allChars as any[]) {
+      // IMPORTANT:
+      // PlacementMapEditor produces XY placements with nodeId=null.
+      // Do NOT override XY with nav node fallback, otherwise hazards/atoms can't use map-space points.
+      const hasXY = Number.isFinite(Number(c?.pos?.x)) && Number.isFinite(Number(c?.pos?.y));
+      if (hasXY) continue;
+      const loc = locMap[c.locId];
+      const n0 = (loc as any)?.nav?.nodes?.[0];
+      if (n0) {
+        c.pos = { nodeId: String(n0.id), x: Number(n0.x), y: Number(n0.y) };
+        continue;
+      }
+      const mapW = Number((loc as any)?.map?.width ?? (loc as any)?.width ?? 1024);
+      const mapH = Number((loc as any)?.map?.height ?? (loc as any)?.height ?? 768);
+      c.pos = {
+        nodeId: null,
+        x: (Number.isFinite(mapW) ? mapW : 1024) / 2,
+        y: (Number.isFinite(mapH) ? mapH : 768) / 2,
+      };
     }
   }
 

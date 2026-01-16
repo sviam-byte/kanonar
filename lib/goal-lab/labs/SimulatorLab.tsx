@@ -763,7 +763,7 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
       <div className="grid grid-cols-12 gap-4 min-h-0">
         {/* Left (pinned map + world lists + controls) */}
         <div className="col-span-3 min-h-0 flex flex-col gap-4">
-          {/* Pinned, but MUST NOT overlap other cards: keep low z and clip. */}
+          {/* Map is pinned. Everything else in the left column scrolls normally (no overlap). */}
           <div className="sticky top-24 z-0">
             <Card title="Map (Live)" bodyClassName="p-0">
               <div className="p-3 overflow-hidden">
@@ -779,40 +779,40 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
                 />
               </div>
             </Card>
-
-            <Card title="World" bodyClassName="p-3">
-              <div className="text-xs text-canon-muted mb-2">Локации в мире</div>
-              <select
-                value={dockLocId || Object.keys(sim.world.locations || {}).sort()[0] || ''}
-                onChange={(e) => setDockLocId(e.target.value)}
-                className="w-full rounded-xl border border-canon-border bg-black/20 px-3 py-2 text-sm"
-              >
-                {Object.keys(sim.world.locations || {})
-                  .sort()
-                  .map((id) => (
-                    <option key={id} value={id}>
-                      {id}
-                    </option>
-                  ))}
-              </select>
-
-              <div className="text-xs text-canon-muted mt-3 mb-2">Персонажи</div>
-              <select
-                value={mapCharId || ''}
-                onChange={(e) => setMapCharId(e.target.value || null)}
-                className="w-full rounded-xl border border-canon-border bg-black/20 px-3 py-2 text-sm"
-              >
-                <option value="">(none)</option>
-                {Object.keys(sim.world.characters || {})
-                  .sort()
-                  .map((id) => (
-                    <option key={id} value={id}>
-                      {nameById.get(id) ? `${nameById.get(id)} (${id})` : id}
-                    </option>
-                  ))}
-              </select>
-            </Card>
           </div>
+
+          <Card title="World" bodyClassName="p-3">
+            <div className="text-xs text-canon-muted mb-2">Локации в мире</div>
+            <select
+              value={dockLocId || Object.keys(sim.world.locations || {}).sort()[0] || ''}
+              onChange={(e) => setDockLocId(e.target.value)}
+              className="w-full rounded-xl border border-canon-border bg-black/20 px-3 py-2 text-sm"
+            >
+              {Object.keys(sim.world.locations || {})
+                .sort()
+                .map((id) => (
+                  <option key={id} value={id}>
+                    {id}
+                  </option>
+                ))}
+            </select>
+
+            <div className="text-xs text-canon-muted mt-3 mb-2">Персонажи</div>
+            <select
+              value={mapCharId || ''}
+              onChange={(e) => setMapCharId(e.target.value || null)}
+              className="w-full rounded-xl border border-canon-border bg-black/20 px-3 py-2 text-sm"
+            >
+              <option value="">(none)</option>
+              {Object.keys(sim.world.characters || {})
+                .sort()
+                .map((id) => (
+                  <option key={id} value={id}>
+                    {nameById.get(id) ? `${nameById.get(id)} (${id})` : id}
+                  </option>
+                ))}
+            </select>
+          </Card>
 
           <Card title="Controls">
             <div className="text-sm text-canon-muted mb-3">

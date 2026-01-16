@@ -1,7 +1,26 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { getPlaceMapImage } from '../../lib/places/getPlaceMapImage';
+import type { SvgShape } from '../../types';
 
 const clamp = (x: number, a: number, b: number) => Math.max(a, Math.min(b, x));
+
+function renderSvgShape(shape: SvgShape, key: string): React.ReactNode {
+  const Tag = shape.tag as any;
+  const attrs: any = (shape as any)?.attrs || {};
+  const props: any = {};
+  for (const [k, v] of Object.entries(attrs)) {
+    const camelKey = k.replace(/-([a-z])/g, (g) => g[1].toUpperCase());
+    props[camelKey] = v;
+  }
+  return (
+    <Tag key={key} {...props}>
+      {(shape as any).content}
+      {Array.isArray((shape as any).children)
+        ? (shape as any).children.map((ch: any, i: number) => renderSvgShape(ch as any, `${key}-${i}`))
+        : null}
+    </Tag>
+  );
+}
 
 function getMapSize(place: any) {
   const w = Number(place?.map?.width ?? place?.width ?? 1024);
@@ -126,14 +145,41 @@ export function LivePlacementMiniMap({
                 className="absolute inset-0 w-full h-full object-contain select-none"
                 draggable={false}
               />
-            ) : (
-              <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 text-xs opacity-70">
-                <div>No map</div>
-                <div className="opacity-60">markers still should render</div>
-              </div>
-            )}
+            ) : null}
 
             <svg className="absolute inset-0 w-full h-full" viewBox={`0 0 ${mapW} ${mapH}`} preserveAspectRatio="xMidYMid meet">
+              {/* fallback map renderer (vector/cell maps) when no image is provided */}
+              {!img ? (
+                <g opacity={1}>
+                  {/* subtle checker */}
+                  <defs>
+                    <pattern id="miniMapGrid" width="40" height="40" patternUnits="userSpaceOnUse">
+                      <rect x="0" y="0" width="40" height="40" fill="rgba(0,0,0,0.35)" />
+                      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth="1" />
+                      <path d="M 20 0 V 40 M 0 20 H 40" fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="1" />
+                    </pattern>
+                  </defs>
+                  <rect x="0" y="0" width={mapW} height={mapH} fill="url(#miniMapGrid)" />
+
+                  {Array.isArray((place as any)?.map?.visuals)
+                    ? (place as any).map.visuals.map((s: any, i: number) => renderSvgShape(s as any, `vis-${i}`))
+                    : null}
+
+                  {Array.isArray((place as any)?.map?.exits)
+                    ? (place as any).map.exits.map((ex: any, i: number) => (
+                        <g key={`ex-${i}`} opacity={0.85}>
+                          <circle
+                            cx={Number(ex.x) * (mapW / Math.max(1, Number((place as any)?.map?.width ?? mapW)))}
+                            cy={Number(ex.y) * (mapH / Math.max(1, Number((place as any)?.map?.height ?? mapH)))}
+                            r={clamp(minDim * 0.010, 3, 8)}
+                            fill="rgba(120,200,255,0.9)"
+                          />
+                        </g>
+                      ))
+                    : null}
+                </g>
+              ) : null}
+
               {/* hazards (read-only preview) */}
               {hazards.map((p: any) => (
                 <g key={p.id} opacity={0.75}>
