@@ -24,6 +24,8 @@ export function LivePlacementMiniMap({
   onSelectLocId,
   onMoveXY,
   widthPx = 360,
+  variant = 'floating',
+  chrome = true,
 }: {
   snapshot: any | null;
   worldFacts: any;
@@ -31,6 +33,10 @@ export function LivePlacementMiniMap({
   onSelectLocId: (id: string) => void;
   onMoveXY: (actorId: string, x: number, y: number, locationId: string) => void;
   widthPx?: number;
+  /** Render as a fixed overlay or embedded into a parent layout. */
+  variant?: 'floating' | 'embedded';
+  /** Hide the panel chrome when the parent provides its own card. */
+  chrome?: boolean;
 }) {
   const [collapsed, setCollapsed] = useState(false);
   const wrapRef = useRef<HTMLDivElement | null>(null);
@@ -83,8 +89,95 @@ export function LivePlacementMiniMap({
 
   if (!snapshot) return null;
 
+  const outerClass = variant === 'floating' ? 'fixed top-24 left-4 z-40' : 'w-full';
+  const outerStyle = variant === 'floating' ? { width: widthPx } : undefined;
+
+  const mapBody = (
+    <>
+      {!collapsed ? (
+        <div className={chrome ? 'px-3 pb-3 space-y-2' : 'space-y-2'}>
+          <div className="flex items-center gap-2">
+            <div className="text-xs opacity-70">Location</div>
+            <select
+              className="canon-input bg-black/40 text-white border border-canon-border w-full"
+              value={selectedLocId}
+              onChange={(e) => onSelectLocId(e.target.value)}
+            >
+              {locs.map((l: any) => (
+                <option key={l.id} value={l.id}>
+                  {l.title ?? l.id}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div
+            ref={wrapRef}
+            className="relative w-full overflow-hidden rounded-xl border border-canon-border bg-black/15"
+            style={{ aspectRatio: `${mapW} / ${mapH}` }}
+            onPointerMove={onPointerMove}
+            onPointerUp={onPointerUp}
+          >
+            {img ? (
+              <img
+                src={img}
+                alt={place?.title ?? place?.id ?? 'map'}
+                className="absolute inset-0 w-full h-full object-contain select-none"
+                draggable={false}
+              />
+            ) : (
+              <div className="absolute inset-0 flex items-center justify-center text-xs opacity-70">No map</div>
+            )}
+
+            <svg className="absolute inset-0 w-full h-full" viewBox={`0 0 ${mapW} ${mapH}`} preserveAspectRatio="xMidYMid meet">
+              {/* hazards (read-only preview) */}
+              {hazards.map((p: any) => (
+                <g key={p.id} opacity={0.75}>
+                  <circle cx={p.x} cy={p.y} r={clamp(minDim * 0.010, 3, 10)} />
+                  <circle
+                    cx={p.x}
+                    cy={p.y}
+                    r={clamp(Number(p.radius || 0), 10, clamp(minDim * 0.45, 40, 4000))}
+                    fill="none"
+                    opacity={0.12}
+                    stroke="currentColor"
+                  />
+                </g>
+              ))}
+
+              {/* actors (drag to move_xy) */}
+              {localChars.map((c: any) => {
+                const x = Number(c?.pos?.x);
+                const y = Number(c?.pos?.y);
+                if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+                return (
+                  <g key={c.id} onPointerDown={(e) => startDragActor(e, c.id)} style={{ cursor: 'grab' }}>
+                    <circle cx={x} cy={y} r={actorR} opacity={0.95} />
+                    <text x={x + actorR + 4} y={y + 4} fontSize={labelFont} opacity={0.95}>
+                      {c.title ?? c.name ?? c.id}
+                    </text>
+                  </g>
+                );
+              })}
+            </svg>
+          </div>
+
+          <div className="text-[11px] opacity-60">Drag actors to move inside this location (move_xy).</div>
+        </div>
+      ) : null}
+    </>
+  );
+
+  if (!chrome) {
+    return (
+      <div className={outerClass} style={outerStyle}>
+        {mapBody}
+      </div>
+    );
+  }
+
   return (
-    <div className="fixed top-24 left-4 z-40" style={{ width: widthPx }}>
+    <div className={outerClass} style={outerStyle}>
       <div className="rounded-2xl border border-canon-border bg-canon-panel/80 backdrop-blur-md shadow-canon-2 overflow-hidden">
         <div className="px-3 py-2 flex items-center gap-2">
           <div className="text-sm font-semibold">Map</div>
@@ -93,78 +186,7 @@ export function LivePlacementMiniMap({
             {collapsed ? 'Expand' : 'Collapse'}
           </button>
         </div>
-
-        {!collapsed ? (
-          <div className="px-3 pb-3 space-y-2">
-            <div className="flex items-center gap-2">
-              <div className="text-xs opacity-70">Location</div>
-              <select
-                className="canon-input bg-black/40 text-white border border-canon-border w-full"
-                value={selectedLocId}
-                onChange={(e) => onSelectLocId(e.target.value)}
-              >
-                {locs.map((l: any) => (
-                  <option key={l.id} value={l.id}>
-                    {l.title ?? l.id}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div
-              ref={wrapRef}
-              className="relative w-full overflow-hidden rounded-xl border border-canon-border bg-black/15"
-              style={{ aspectRatio: `${mapW} / ${mapH}` }}
-              onPointerMove={onPointerMove}
-              onPointerUp={onPointerUp}
-            >
-              {img ? (
-                <img
-                  src={img}
-                  alt={place?.title ?? place?.id ?? 'map'}
-                  className="absolute inset-0 w-full h-full object-contain select-none"
-                  draggable={false}
-                />
-              ) : (
-                <div className="absolute inset-0 flex items-center justify-center text-xs opacity-70">No map</div>
-              )}
-
-              <svg className="absolute inset-0 w-full h-full" viewBox={`0 0 ${mapW} ${mapH}`} preserveAspectRatio="xMidYMid meet">
-                {/* hazards (read-only preview) */}
-                {hazards.map((p: any) => (
-                  <g key={p.id} opacity={0.75}>
-                    <circle cx={p.x} cy={p.y} r={clamp(minDim * 0.010, 3, 10)} />
-                    <circle
-                      cx={p.x}
-                      cy={p.y}
-                      r={clamp(Number(p.radius || 0), 10, clamp(minDim * 0.45, 40, 4000))}
-                      fill="none"
-                      opacity={0.12}
-                      stroke="currentColor"
-                    />
-                  </g>
-                ))}
-
-                {/* actors (drag to move_xy) */}
-                {localChars.map((c: any) => {
-                  const x = Number(c?.pos?.x);
-                  const y = Number(c?.pos?.y);
-                  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
-                  return (
-                    <g key={c.id} onPointerDown={(e) => startDragActor(e, c.id)} style={{ cursor: 'grab' }}>
-                      <circle cx={x} cy={y} r={actorR} opacity={0.95} />
-                      <text x={x + actorR + 4} y={y + 4} fontSize={labelFont} opacity={0.95}>
-                        {c.title ?? c.name ?? c.id}
-                      </text>
-                    </g>
-                  );
-                })}
-              </svg>
-            </div>
-
-            <div className="text-[11px] opacity-60">Drag actors to move inside this location (move_xy).</div>
-          </div>
-        ) : null}
+        {mapBody}
       </div>
     </div>
   );

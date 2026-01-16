@@ -763,15 +763,19 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
       <div className="grid grid-cols-12 gap-4 min-h-0">
         {/* Left (pinned map + world lists + controls) */}
         <div className="col-span-3 min-h-0 flex flex-col gap-4">
-          <div className="sticky top-[84px] z-10">
-            <Card title="Map (live)" bodyClassName="p-2">
-              <LivePlacementMiniMap
-                snapshot={cur?.snapshot ?? sim.getPreviewSnapshot()}
-                worldFacts={sim.world.facts}
-                selectedLocId={dockLocId || Object.keys(sim.world.locations || {}).sort()[0] || ''}
-                onSelectLocId={setDockLocId}
-                onMoveXY={pushManualMoveXY}
-              />
+          <div className="sticky top-24 z-10">
+            <Card title="Map (Live)" bodyClassName="p-0">
+              <div className="p-3">
+                <LivePlacementMiniMap
+                  chrome={false}
+                  variant="embedded"
+                  snapshot={cur?.snapshot ?? sim.getPreviewSnapshot()}
+                  worldFacts={sim.world.facts}
+                  selectedLocId={dockLocId || Object.keys(sim.world.locations || {}).sort()[0] || ''}
+                  onSelectLocId={setDockLocId}
+                  onMoveXY={pushManualMoveXY}
+                />
+              </div>
             </Card>
 
             <Card title="World" bodyClassName="p-3">
