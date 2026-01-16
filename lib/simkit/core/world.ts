@@ -40,17 +40,50 @@ export function buildSnapshot(w: SimWorld, opts?: { events?: any[] }): SimSnapsh
 }
 
 // Ensure that a character has a usable position; fallback to first nav node or origin.
-export function ensureCharacterPos(world: SimWorld, charId: string) {
+export function ensureCharacterPos(world: SimWorld, charId: string, orderIndex?: number) {
   const c = world.characters[charId];
   if (!c) return;
-  if (!c.pos) {
-    const loc = world.locations[c.locId];
-    const node = loc?.nav?.nodes?.[0];
-    if (node) {
-      c.pos = { nodeId: node.id, x: node.x, y: node.y };
-    } else {
-      c.pos = { nodeId: null, x: 0, y: 0 };
-    }
+  const loc = world.locations[c.locId];
+  const navNodes = Array.isArray(loc?.nav?.nodes) ? loc!.nav!.nodes : [];
+
+  if (!c.pos) c.pos = { nodeId: null, x: null as any, y: null as any };
+
+  // Prefer nav graph if present.
+  if (!c.pos.nodeId && navNodes.length) {
+    const idx = Number.isFinite(orderIndex as any) ? Number(orderIndex) : 0;
+    const n = navNodes[idx % navNodes.length] || navNodes[0];
+    c.pos.nodeId = String(n.id);
+    c.pos.x = Number(n.x);
+    c.pos.y = Number(n.y);
+    return;
+  }
+
+  const x0 = Number((c as any).pos?.x);
+  const y0 = Number((c as any).pos?.y);
+  const okXY = Number.isFinite(x0) && Number.isFinite(y0);
+
+  const mapW = Number((loc as any)?.map?.width ?? (loc as any)?.width);
+  const mapH = Number((loc as any)?.map?.height ?? (loc as any)?.height);
+  const hasMap = Number.isFinite(mapW) && Number.isFinite(mapH) && mapW > 0 && mapH > 0;
+
+  // If we have a map, but coords are missing/invalid, scatter deterministically.
+  if (!okXY && hasMap) {
+    const idx = Number.isFinite(orderIndex as any) ? Number(orderIndex) : 0;
+    const cx = mapW / 2;
+    const cy = mapH / 2;
+    const r = Math.min(mapW, mapH) * (0.06 + 0.02 * Math.sqrt(idx));
+    const a = idx * 0.85;
+    c.pos.x = cx + r * Math.cos(a);
+    c.pos.y = cy + r * Math.sin(a);
+    c.pos.nodeId = c.pos.nodeId ?? null;
+    return;
+  }
+
+  // Final fallback: origin.
+  if (!okXY) {
+    c.pos.x = 0;
+    c.pos.y = 0;
+    c.pos.nodeId = c.pos.nodeId ?? null;
   }
 }
 

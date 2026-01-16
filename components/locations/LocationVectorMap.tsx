@@ -11,10 +11,15 @@ interface Props {
     scale?: number;
     highlightCells?: Array<{x: number, y: number, color: string, size?: number}>; // size is a multiplier of scale
     onCellClick?: (x: number, y: number) => void;
+    // Suppress <text> visuals (and any textual content) from the vector layer.
+    // Useful for placement maps where labels can look like "random letters".
+    hideTextVisuals?: boolean;
 }
 
-const renderSvgShape = (shape: SvgShape, keyPrefix: string): React.ReactNode => {
+const renderSvgShape = (shape: SvgShape, keyPrefix: string, hideText: boolean): React.ReactNode => {
     const Tag = shape.tag as any;
+
+    if (hideText && String(shape.tag).toLowerCase() === 'text') return null;
     
     // Convert hyphenated attributes to camelCase for React
     const props: any = {};
@@ -30,15 +35,22 @@ const renderSvgShape = (shape: SvgShape, keyPrefix: string): React.ReactNode => 
     
     return (
         <Tag key={keyPrefix} {...props}>
-            {shape.content}
+            {hideText ? null : shape.content}
             {arr((shape as any).children)
                 .filter(Boolean)
-                .map((child, i) => renderSvgShape(child as any, `${keyPrefix}-${i}`))}
+                .map((child, i) => renderSvgShape(child as any, `${keyPrefix}-${i}`, hideText))}
         </Tag>
     );
 };
 
-export const LocationVectorMap: React.FC<Props> = ({ map, showGrid = true, scale = 30, highlightCells = [], onCellClick }) => {
+export const LocationVectorMap: React.FC<Props> = ({
+    map,
+    showGrid = true,
+    scale = 30,
+    highlightCells = [],
+    onCellClick,
+    hideTextVisuals = false,
+}) => {
     const { width, height, visuals, cells, exits } = map;
 
     // Grid Overlay - Always render interactive layer if onCellClick is present
@@ -187,14 +199,16 @@ export const LocationVectorMap: React.FC<Props> = ({ map, showGrid = true, scale
             >
                 {arr(visuals)
                     .filter(Boolean)
-                    .map((shape: any, i: number) => renderSvgShape(shape, `vec-${i}`))}
+                    .map((shape: any, i: number) => renderSvgShape(shape, `vec-${i}`, hideTextVisuals))}
                 
                 {arr(exits)
                     .filter(Boolean)
                     .map((exit: any, i: number) => (
                     <g key={`exit-${i}`} transform={`translate(${exit.x}, ${exit.y})`}>
                         <rect x="0.1" y="0.1" width="0.8" height="0.8" fill="none" stroke="#00aaff" strokeWidth="0.05" strokeDasharray="0.1 0.05" rx="0.1" />
-                        <text x="0.5" y="0.6" fontSize="0.25" fill="#00aaff" textAnchor="middle" style={{ pointerEvents: 'none', fontWeight: 'bold' }}>EXIT</text>
+                        {hideTextVisuals ? null : (
+                          <text x="0.5" y="0.6" fontSize="0.25" fill="#00aaff" textAnchor="middle" style={{ pointerEvents: 'none', fontWeight: 'bold' }}>EXIT</text>
+                        )}
                     </g>
                 ))}
             </svg>
