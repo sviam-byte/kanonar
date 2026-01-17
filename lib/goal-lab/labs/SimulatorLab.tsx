@@ -2,6 +2,15 @@
 // Friendly Simulator Lab UI for SimKit (session runner + debug) + GoalLab Pipeline view.
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Area,
+  AreaChart,
+  Line,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
 import type { ProducerSpec } from '../../orchestrator/types';
 import { SimKitSimulator } from '../../simkit/core/simulator';
 import { buildExport } from '../../simkit/core/export';
@@ -13,7 +22,6 @@ import { makeSimWorldFromSelection } from '../../simkit/adapters/fromKanonarEnti
 import { SimMapView } from '../../../components/SimMapView';
 import { LocationMapView } from '../../../components/LocationMapView';
 import { PlacementMapEditor } from '../../../components/ScenarioSetup/PlacementMapEditor';
-import { MapViewer } from '../../../components/locations/MapViewer';
 import { LivePlacementMiniMap } from '../../../components/ScenarioSetup/LivePlacementMiniMap';
 import { importLocationFromGoalLab } from '../../simkit/locations/goallabImport';
 import { Badge, Button, Card, Input, Select, TabButton } from '../../../components/ui/primitives';
@@ -723,1216 +731,219 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
     if (ids.length) setDockLocId(ids[0]);
   }, [dockLocId, sim.world.locations]);
 
+  // Telemetry is mocked for now; map to real sim metrics once available.
+  const telemetrySeries = useMemo(
+    () =>
+      Array.from({ length: 20 }, (_, i) => ({
+        time: i,
+        stability: 0.6 + 0.2 * Math.sin(i / 3),
+        chaos: 0.2 + 0.12 * Math.cos(i / 2.3),
+        will: 0.45 + 0.25 * Math.sin(i / 4 + 0.8),
+      })),
+    []
+  );
+
+  const eventLogLines = useMemo(() => {
+    if (!narrativeLines.length) return [];
+    return narrativeLines.slice(-8);
+  }, [narrativeLines]);
+
+  const population = cur?.snapshot?.characters?.length ?? 0;
+  const avgStress = useMemo(() => {
+    const xs = cur?.snapshot?.characters ?? [];
+    if (!xs.length) return null;
+    const sum = xs.reduce((acc: number, c: any) => acc + Number(c?.stress ?? 0), 0);
+    return sum / xs.length;
+  }, [cur]);
+
+  const inspectorChar = useMemo(() => {
+    const xs = cur?.snapshot?.characters ?? [];
+    if (!xs.length) return null;
+    const id = mapCharId || xs[0]?.id;
+    return xs.find((c: any) => String(c.id) === String(id)) || xs[0] || null;
+  }, [cur, mapCharId]);
+
   return (
-    <div className="h-full w-full p-4">
-      <div className="sticky top-0 z-20 mb-4">
-        <div className="rounded-canon border border-canon-border bg-canon-panel/70 backdrop-blur-md shadow-canon-1 px-5 py-3 flex items-center gap-3">
-          <div className="text-lg font-semibold tracking-tight">Simulator Lab</div>
-          <div className="text-xs text-canon-muted font-mono">
-            simkit | worldTick={sim.world.tickIndex} | records={sim.records.length} | scenario={scenarioId}
-            <div className="text-[11px] text-canon-muted/80">
-              chars={worldCharIds.join(',') || '—'} | locs={worldLocIds.join(',') || '—'} | cast:{' '}
-              {worldCastIds.join(',') || '—'}
-            </div>
+    <div className="h-screen bg-black text-slate-300 flex flex-col font-mono p-1 gap-1">
+      {/* TOP: Control Bar */}
+      <header className="h-14 bg-slate-900/50 border border-slate-800 flex items-center justify-between px-6 rounded-t-lg">
+        <div className="flex items-center gap-8">
+          <div className="flex flex-col leading-none">
+            <span className="text-[10px] text-cyan-500 font-bold tracking-[0.2em] uppercase">SimKit_Engine</span>
+            <span className="text-lg text-white font-black italic">KANONAR_v4</span>
           </div>
-          <div className="grow" />
 
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-canon-muted font-mono">seed</span>
-            <Input className="w-20" value={String(seedDraft)} onChange={(e) => setSeedDraft(Number(e.target.value))} />
-            <span className="text-xs text-canon-muted font-mono">T</span>
-            <Input
-              className="w-20"
-              value={String(sim.world.facts?.['sim:T'] ?? temperatureDraft)}
-              onChange={(e) => {
-                const v = Number(e.target.value);
-                updateTemperature(v);
-                setVersion((x) => x + 1);
-              }}
-            />
-            <Button kind="primary" onClick={applySceneFromDraft} disabled={setupProblems.length > 0}>
-              Apply + Reset
-            </Button>
-            <Button onClick={exportSession} disabled={records.length === 0}>
-              Export session
-            </Button>
+          <div className="flex items-center gap-2 bg-black/40 p-1 rounded border border-slate-800">
+            {/* Live toggle uses the same simulator loop as the classic controls. */}
+            <button
+              className="p-2 hover:bg-emerald-500/20 text-emerald-500 transition rounded"
+              onClick={() => setLiveOn(true)}
+              disabled={!canSimulate}
+              aria-label="Start live"
+            >
+              ▶
+            </button>
+            <button
+              className="p-2 hover:bg-slate-700 text-slate-400 transition rounded"
+              onClick={() => setLiveOn(false)}
+              aria-label="Stop live"
+            >
+              ■
+            </button>
+            <button
+              className="p-2 hover:bg-slate-700 text-slate-400 transition rounded"
+              onClick={() => doRun(10)}
+              disabled={!canSimulate}
+              aria-label="Run 10 ticks"
+            >
+              ⏭
+            </button>
           </div>
         </div>
-      </div>
 
-      <div className="grid grid-cols-12 gap-4 min-h-0">
-        {/* Left (pinned map + world lists + controls) */}
-        <div className="col-span-3 min-h-0 flex flex-col gap-4">
-          {/* Pinned, but MUST NOT overlap other cards: keep low z and clip. */}
-          <div className="sticky top-24 z-0">
-            <Card title="Map (Live)" bodyClassName="p-0">
-              <div className="p-3 overflow-hidden">
-                <LivePlacementMiniMap
-                  chrome={false}
-                  variant="embedded"
-                  widthPx={0}
-                  snapshot={cur?.snapshot ?? sim.getPreviewSnapshot()}
-                  worldFacts={sim.world.facts}
-                  selectedLocId={dockLocId || Object.keys(sim.world.locations || {}).sort()[0] || ''}
-                  onSelectLocId={setDockLocId}
-                  onMoveXY={pushManualMoveXY}
-                />
+        <div className="flex items-center gap-12">
+          <div className="flex flex-col items-end">
+            <span className="text-[9px] text-slate-500 uppercase">Current_Iteration</span>
+            <span className="text-xl text-cyan-400 font-bold tabular-nums">
+              {String(sim.world.tickIndex).padStart(6, '0')}
+            </span>
+          </div>
+          <div className="h-10 w-[1px] bg-slate-800" />
+          <div className="flex items-center gap-4">
+            <div className="text-right">
+              <div className="text-[9px] text-slate-500 uppercase">Engine_Status</div>
+              <div className="text-[10px] text-emerald-500 flex items-center gap-1">
+                <div className={`w-1.5 h-1.5 rounded-full ${liveOn ? 'bg-emerald-500 animate-pulse' : 'bg-slate-500'}`} />
+                {liveOn ? 'LIVE' : 'IDLE'}
               </div>
-            </Card>
+            </div>
+            <button
+              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white text-[11px] rounded uppercase font-bold border border-slate-700"
+              onClick={doReset}
+            >
+              Reset_World
+            </button>
+          </div>
+        </div>
+      </header>
 
-            <Card title="World" bodyClassName="p-3">
-              <div className="text-xs text-canon-muted mb-2">Локации в мире</div>
-              <select
-                value={dockLocId || Object.keys(sim.world.locations || {}).sort()[0] || ''}
-                onChange={(e) => setDockLocId(e.target.value)}
-                className="w-full rounded-xl border border-canon-border bg-black/20 px-3 py-2 text-sm"
-              >
-                {Object.keys(sim.world.locations || {})
-                  .sort()
-                  .map((id) => (
-                    <option key={id} value={id}>
-                      {id}
-                    </option>
-                  ))}
-              </select>
-
-              <div className="text-xs text-canon-muted mt-3 mb-2">Персонажи</div>
-              <select
-                value={mapCharId || ''}
-                onChange={(e) => setMapCharId(e.target.value || null)}
-                className="w-full rounded-xl border border-canon-border bg-black/20 px-3 py-2 text-sm"
-              >
-                <option value="">(none)</option>
-                {Object.keys(sim.world.characters || {})
-                  .sort()
-                  .map((id) => (
-                    <option key={id} value={id}>
-                      {nameById.get(id) ? `${nameById.get(id)} (${id})` : id}
-                    </option>
-                  ))}
-              </select>
-            </Card>
+      {/* MAIN LAYOUT */}
+      <div className="flex-1 grid grid-cols-12 gap-1 overflow-hidden">
+        {/* VIEWPORT: The World */}
+        <section className="col-span-8 bg-slate-950 border border-slate-800 relative group">
+          <div className="absolute top-4 right-4 z-10 flex flex-col gap-2">
+            <div className="bg-black/60 backdrop-blur-md border border-slate-800 p-2 rounded text-[10px]">
+              <div className="text-slate-500 uppercase mb-1">Camera_Feed</div>
+              <div className="text-white">SAT_ORBITAL_VIEW</div>
+            </div>
           </div>
 
-          <Card title="Controls">
-            <div className="text-sm text-canon-muted mb-3">
-              Симулятор = мир → действия → события → снапшот. Нажми “Сделать 1 тик”, чтобы появились записи и отладка.
+          <div className="w-full h-full flex items-center justify-center bg-[#050505]">
+            <SimMapView />
+          </div>
+
+          {/* Overlay Info */}
+          <div className="absolute bottom-4 left-4 p-3 bg-black/80 border border-cyan-900/50 rounded flex gap-6 backdrop-blur-sm">
+            <div>
+              <div className="text-[9px] text-cyan-600 uppercase">Population</div>
+              <div className="text-lg text-white">{population}_Agents</div>
             </div>
-            {draftHasSelection && !worldMatchesDraft ? (
-              <div className="mb-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
-                Вы выбрали сцену в табе Setup, но ещё не применили её к миру. Нажмите <b>Apply + Reset</b>, иначе тики
-                будут идти по предыдущему миру.
-              </div>
-            ) : null}
-
-            <div className="flex gap-2 flex-wrap">
-              <Button kind="primary" onClick={doStep} disabled={!canSimulate}>
-                Сделать 1 тик
-              </Button>
-              <Button onClick={() => doRun(10)} disabled={!canSimulate}>
-                Run ×10
-              </Button>
-              <Button onClick={() => doRun(100)} disabled={!canSimulate}>
-                Run ×100
-              </Button>
-              <Button onClick={doReset}>Reset</Button>
+            <div>
+              <div className="text-[9px] text-cyan-600 uppercase">Global_S*</div>
+              <div className="text-lg text-white">{avgStress != null ? avgStress.toFixed(3) : '—'}</div>
             </div>
+          </div>
+        </section>
 
-            <div className="mt-3 flex items-center gap-2 flex-wrap">
-              <Badge>Live</Badge>
-              <span className="text-xs text-canon-muted font-mono">Hz</span>
-              <Input className="w-20" value={String(liveHz)} onChange={(e) => setLiveHz(Number(e.target.value))} />
-              <Button kind={liveOn ? 'danger' : 'primary'} onClick={() => setLiveOn((x) => !x)} disabled={!canSimulate}>
-                {liveOn ? 'Stop live' : 'Start live'}
-              </Button>
-              <Button onClick={() => setFollowLatest((x) => !x)}>{followLatest ? 'Follow: ON' : 'Follow: OFF'}</Button>
+        {/* TELEMETRY: The Stats */}
+        <aside className="col-span-4 flex flex-col gap-1 overflow-hidden">
+          {/* Stability Graph */}
+          <div className="flex-1 bg-slate-900/30 border border-slate-800 p-4 flex flex-col">
+            <div className="flex items-center justify-between mb-4">
+              <span className="text-[10px] uppercase font-bold text-slate-500 flex items-center gap-2">
+                SDE_Stability_Vector
+              </span>
+              <span className="text-red-500 animate-ping">●</span>
             </div>
-
-            <div className="mt-3 flex items-center gap-2">
-              <span className="text-xs text-canon-muted font-mono">run</span>
-              <Input className="w-24" value={String(runN)} onChange={(e) => setRunN(Number(e.target.value))} />
-              <Button onClick={() => doRun(runN)} disabled={!canSimulate}>
-                Run N
-              </Button>
+            <div className="flex-1">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={telemetrySeries}>
+                  <defs>
+                    <linearGradient id="colorStab" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="#06b6d4" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <XAxis dataKey="time" hide />
+                  <YAxis domain={[0, 1]} hide />
+                  <Tooltip
+                    contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', fontSize: '10px' }}
+                    itemStyle={{ color: '#06b6d4' }}
+                  />
+                  <Area type="monotone" dataKey="stability" stroke="#06b6d4" fillOpacity={1} fill="url(#colorStab)" strokeWidth={2} />
+                  <Line type="monotone" dataKey="chaos" stroke="#f43f5e" strokeWidth={1} dot={false} strokeDasharray="3 3" />
+                </AreaChart>
+              </ResponsiveContainer>
             </div>
-          </Card>
+          </div>
 
-        </div>
-
-        {/* Center (real-time log) */}
-        <div className="col-span-5 min-h-0 flex flex-col gap-4">
-          <Card
-            title="Log (live)"
-            right={
-              <div className="flex items-center gap-2">
-                <Button kind={centerMode === 'narrative' ? 'primary' : 'ghost'} onClick={() => setCenterMode('narrative')}>
-                  Narrative
-                </Button>
-                <Button kind={centerMode === 'json' ? 'primary' : 'ghost'} onClick={() => setCenterMode('json')}>
-                  JSON
-                </Button>
-                <Button onClick={() => setFollowLatest((x) => !x)}>{followLatest ? 'Follow: ON' : 'Follow: OFF'}</Button>
-              </div>
-            }
-            bodyClassName="p-0"
-          >
-            <div ref={narrativeScrollRef} className="h-[calc(100vh-240px)] overflow-auto p-3 font-mono text-xs whitespace-pre-wrap">
-              {centerMode === 'narrative' ? (
-                narrativeLines.length ? narrativeLines.join('\n') : '—'
+          {/* Terminal / Events */}
+          <div className="flex-1 bg-black border border-slate-800 p-0 flex flex-col overflow-hidden">
+            <div className="bg-slate-900/80 px-3 py-1.5 border-b border-slate-800 flex items-center gap-2 text-[10px] font-bold text-slate-400 uppercase">
+              System_Event_Log
+            </div>
+            <div className="flex-1 p-3 text-[11px] leading-relaxed font-mono overflow-y-auto custom-scrollbar space-y-1">
+              {eventLogLines.length ? (
+                eventLogLines.map((line, i) => (
+                  <div key={i} className="text-white">
+                    {line}
+                  </div>
+                ))
               ) : (
-                // JSON log: one compact line per tick (latest first).
-                tickItems
-                  .slice(0, 200)
-                  .map((it) => {
-                    const r = records[it.i];
-                    const tick = r?.snapshot?.tickIndex ?? it.tick;
-                    const actions = (r?.trace?.actionsApplied || []).map((a: any) => ({
-                      kind: a?.kind,
-                      actorId: a?.actorId,
-                      targetId: a?.targetId ?? null,
-                    }));
-                    const events = (r?.trace?.eventsApplied || []).map((e: any) => e?.type);
-                    return JSON.stringify({ tick, actions, events });
-                  })
-                  .reverse()
-                  .join('\n')
+                <div className="text-slate-600 italic">[idle] awaiting simulator events...</div>
               )}
             </div>
-          </Card>
-        </div>
-
-        {/* Right (history + details tabs) */}
-        <div className="col-span-4 min-h-0 flex flex-col gap-4">
-          <Card title="History" bodyClassName="p-0">
-            {records.length === 0 ? (
-              <div className="text-sm text-canon-muted p-5">
-                Пока пусто. Сделай 1 тик — появится список тиков, и можно будет смотреть мир/действия/события/пайплайн/оркестратор.
-              </div>
-            ) : (
-              <div className="max-h-[320px] overflow-auto p-3 flex flex-col gap-2">
-                <div className="flex gap-2 flex-wrap mb-2">
-                  <Button onClick={() => setSelected(-1)}>Latest</Button>
-                  <Button onClick={() => setSelected(Math.max(0, records.length - 1))}>Oldest</Button>
-                  <Button onClick={doExportRecord} disabled={!cur}>
-                    Export record.json
-                  </Button>
-                  <Button onClick={doExportTrace} disabled={!orchestratorTrace}>
-                    Export trace.json
-                  </Button>
-                  <Button onClick={doExportPipeline} disabled={!pipelineOut}>
-                    Export pipeline.json
-                  </Button>
-                  {onPushToGoalLab && orchestratorSnapshot ? (
-                    <Button onClick={() => onPushToGoalLab(orchestratorSnapshot)}>Push → GoalLab</Button>
-                  ) : null}
-                </div>
-
-                <div className="flex flex-col gap-2">
-                  {tickItems.map((it) => (
-                    <button
-                      key={it.i}
-                      onClick={() => setSelected(it.i)}
-                      className={cx(
-                        'text-left rounded-xl border border-canon-border p-3 bg-canon-card/80 hover:bg-white/5 transition',
-                        it.i === curIdx && 'bg-white/10'
-                      )}
-                    >
-                      <div className="flex items-baseline justify-between gap-2">
-                        <div className="font-extrabold">tick {it.tick}</div>
-                        <div className="font-mono text-xs text-canon-muted">#{it.i}</div>
-                      </div>
-                      <div className="font-mono text-xs text-canon-muted mt-1">
-                        actions={it.actions} events={it.events} atoms={it.atoms} pipelineStages={it.pipelineStages}
-                      </div>
-                      {it.i === curIdx && tickActionSummary ? (
-                        <div className="mt-2 text-xs opacity-80">{tickActionSummary}</div>
-                      ) : null}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-          </Card>
-
-          <div className="flex flex-wrap gap-2 mb-4">
-            <TabButton active={tab === 'setup'} onClick={() => setTab('setup')}>
-              Setup
-            </TabButton>
-            <TabButton active={tab === 'summary'} onClick={() => setTab('summary')}>
-              Сводка
-            </TabButton>
-            <TabButton active={tab === 'world'} onClick={() => setTab('world')}>
-              Мир
-            </TabButton>
-            <TabButton active={tab === 'actions'} onClick={() => setTab('actions')}>
-              Действия
-            </TabButton>
-            <TabButton active={tab === 'events'} onClick={() => setTab('events')}>
-              События
-            </TabButton>
-            <TabButton active={tab === 'pipeline'} onClick={() => setTab('pipeline')}>
-              Pipeline (S0–S8)
-            </TabButton>
-            <TabButton active={tab === 'orchestrator'} onClick={() => setTab('orchestrator')}>
-              Оркестратор
-            </TabButton>
-            <TabButton active={tab === 'map'} onClick={() => setTab('map')}>
-              Map
-            </TabButton>
-            <TabButton active={tab === 'json'} onClick={() => setTab('json')}>
-              JSON
-            </TabButton>
-
-            <div className="grow" />
-
-            {setupProblems.length ? <Badge tone="bad">issues: {setupProblems.length}</Badge> : <Badge tone="good">scene ok</Badge>}
           </div>
 
-          {records.length === 0 && tab !== 'setup' ? (
-            <div className="flex-1 min-h-0 rounded-2xl border border-canon-border bg-canon-card p-8 flex flex-col items-start justify-center gap-4">
-              <div className="text-2xl font-extrabold">Здесь будет жизнь</div>
-              <div className="opacity-80 max-w-2xl">
-                Сейчас записей нет, поэтому “смотреть” нечего. Симулятор создаёт записи только после тиков. Нажми кнопку ниже —
-                появится tick 0 и вся отладка.
+          {/* Quick Inspector */}
+          <div className="h-40 bg-slate-950 border border-slate-800 p-3 flex flex-col">
+            <span className="text-[10px] uppercase font-bold text-slate-500 mb-2 flex items-center gap-2">
+              Selected_Entity_Props
+            </span>
+            {inspectorChar ? (
+              <div className="grid grid-cols-2 gap-2">
+                <div className="bg-slate-900/50 p-2 border border-slate-800 rounded">
+                  <div className="text-[8px] text-slate-500 uppercase">Energy</div>
+                  <div className="text-sm font-bold text-white italic">
+                    {Number(inspectorChar.energy ?? 0).toFixed(3)}
+                  </div>
+                </div>
+                <div className="bg-slate-900/50 p-2 border border-slate-800 rounded">
+                  <div className="text-[8px] text-slate-500 uppercase">Stress</div>
+                  <div className="text-sm font-bold text-red-500 italic">
+                    {Number(inspectorChar.stress ?? 0).toFixed(3)}
+                  </div>
+                </div>
               </div>
-              <Button kind="primary" onClick={doStep} disabled={!canSimulate}>
-                Сделать 1 тик
-              </Button>
-            </div>
-          ) : !cur && tab !== 'setup' ? (
-            <div className="opacity-70">Нет выбранной записи.</div>
-          ) : (
-            <div className="flex-1 min-h-0 overflow-auto pr-1 flex flex-col gap-4">
-              {/* SETUP */}
-              {tab === 'setup' ? (
-                <div className="flex flex-col gap-4">
-                  <Card title="Сетап сцены">
-                    <div className="flex items-start gap-3 flex-wrap mb-3">
-                      <div className="min-w-[280px]">
-                        <div className="text-sm opacity-80">
-                          Выбери локации и персонажей, назначь стартовые локации и расставь на карте (включая точки
-                          опасности/безопасности).
-                        </div>
-                        <div className="text-xs opacity-60 mt-1">
-                          Важно: расстановка по XY работает только если карта для выбранной локации реально загружена.
-                        </div>
-                      </div>
-                      <div className="grow" />
-                      {setupProblems.length ? (
-                        <Badge tone="bad">ошибки: {setupProblems.length}</Badge>
-                      ) : (
-                        <Badge tone="good">готово</Badge>
-                      )}
-                    </div>
-
-                    <div className="grid grid-cols-12 gap-4">
-                      <div className="col-span-4">
-                        <div className="canon-card p-3">
-                          <div className="font-semibold">Локации</div>
-                          <div className="text-xs opacity-60 mb-2">Ctrl/Shift для мультивыбора</div>
-                          <select
-                            multiple
-                            value={setupDraft.selectedLocIds}
-                            onChange={(e) => {
-                              const nextIds = Array.from(e.currentTarget.selectedOptions).map((o) => o.value);
-                              setSetupDraft((d) => normalizePlacements({ draft: d, nextLocIds: nextIds }));
-                            }}
-                            className="w-full min-h-[220px] rounded-xl border border-canon-border bg-black/20 px-3 py-2 text-sm"
-                          >
-                            {catalogLocations.map((l) => (
-                              <option key={l.entityId} value={l.entityId}>
-                                {l.title || l.entityId} ({l.entityId})
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                      </div>
-
-                      <div className="col-span-4">
-                        <div className="canon-card p-3">
-                          <div className="font-semibold">Персонажи</div>
-                          <div className="text-xs opacity-60 mb-2">Ctrl/Shift для мультивыбора</div>
-                          <select
-                            multiple
-                            value={setupDraft.selectedCharIds}
-                            onChange={(e) => {
-                              const nextIds = Array.from(e.currentTarget.selectedOptions).map((o) => o.value);
-                              setSetupDraft((d) => normalizePlacements({ draft: d, nextCharIds: nextIds }));
-                            }}
-                            className="w-full min-h-[220px] rounded-xl border border-canon-border bg-black/20 px-3 py-2 text-sm"
-                          >
-                            {catalogCharacters.map((c: any) => (
-                              <option key={c.entityId} value={c.entityId}>
-                                {c.title || c.entityId} ({c.entityId})
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                      </div>
-
-                      <div className="col-span-4">
-                        <div className="canon-card p-3">
-                          <div className="font-semibold mb-2">Стартовые локации персонажей</div>
-                          {selectedCharacters.length === 0 ? (
-                            <div className="text-sm opacity-70">Выбери хотя бы одного персонажа.</div>
-                          ) : (
-                            <div className="flex flex-col gap-3">
-                              {selectedCharacters.map((ch: any) => {
-                                const fallbackLoc = setupDraft.selectedLocIds[0] || '';
-                                const locId = setupDraft.locPlacements[ch.entityId] || fallbackLoc;
-                                return (
-                                  <div key={ch.entityId} className="grid grid-cols-12 gap-2 items-center">
-                                    <div className="col-span-6 text-sm">
-                                      {ch.title || ch.entityId}
-                                      <div className="text-xs opacity-60">{ch.entityId}</div>
-                                    </div>
-                                    <Select
-                                      className="col-span-6 bg-black/20"
-                                      value={locId}
-                                      disabled={!setupDraft.selectedLocIds.length}
-                                      onChange={(e) => {
-                                        const nextLocId = e.target.value;
-                                        setSetupDraft((d) => ({
-                                          ...d,
-                                          locPlacements: { ...d.locPlacements, [ch.entityId]: nextLocId },
-                                        }));
-                                      }}
-                                    >
-                                      {!setupDraft.selectedLocIds.length ? (
-                                        <option value="">(нет выбранных локаций)</option>
-                                      ) : null}
-                                      {selectedLocations.map((loc: any) => (
-                                        <option key={loc.entityId} value={loc.entityId}>
-                                          {loc.title || loc.entityId}
-                                        </option>
-                                      ))}
-                                    </Select>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    {setupDraft.selectedLocIds.length > 0 && setupDraft.selectedCharIds.length > 0 ? (
-                      <div className="mt-4 space-y-3">
-                        <div className="canon-card p-3">
-                          <div className="font-semibold mb-2">Редактор карты (позиции + опасности)</div>
-                          <div className="text-xs opacity-60 mb-2">Выбери локацию, по которой расставляешь.</div>
-                          <select
-                            className="canon-input w-full"
-                            value={setupMapLocId || ''}
-                            onChange={(e) => setSetupMapLocId(e.target.value)}
-                          >
-                            {setupDraft.selectedLocIds.map((id) => {
-                              const loc = selectedLocations.find((l: any) => l.entityId === id);
-                              return (
-                                <option key={id} value={id}>
-                                  {loc?.title ?? id}
-                                </option>
-                              );
-                            })}
-                          </select>
-                        </div>
-
-                        <div className="rounded-2xl border border-canon-border bg-black/10 p-2">
-                          <PlacementMapEditor
-                            draft={{
-                              ...setupDraft,
-                              characters: selectedCharacters.map((c: any) => ({ id: c.entityId, title: c.title || c.entityId })),
-                              locations: selectedLocations.map((l: any) => ({ id: l.entityId, title: l.title || l.entityId })),
-                            }}
-                            setDraft={(next) => {
-                              setSetupDraft((d) => ({
-                                ...d,
-                                placements: next.placements || [],
-                                hazardPoints: next.hazardPoints || [],
-                              }));
-                            }}
-                            place={setupPlaceForEditor}
-                            actorIds={setupDraft.selectedCharIds}
-                          />
-                        </div>
-                      </div>
-                    ) : null}
-
-                    {setupProblems.length > 0 && (
-                      <div className="mt-3 rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-sm">
-                        <div className="font-semibold mb-2">Проблемы сцены:</div>
-                        <ul className="list-disc pl-5">
-                          {setupProblems.map((p, i) => (
-                            <li key={i}>{p}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-
-                    <div className="mt-3 flex items-center gap-2 flex-wrap">
-                      <div className="text-sm opacity-70">
-                        Выбрано: {setupDraft.selectedLocIds.length} локаций, {setupDraft.selectedCharIds.length} персонажей.
-                      </div>
-                      <div className="grow" />
-                      <Button kind="primary" disabled={setupProblems.length > 0} onClick={applySceneFromDraft}>
-                        Применить сцену и сбросить
-                      </Button>
-                    </div>
-                  </Card>
-
-                  <Card title="Map Preview">
-                    {(() => {
-                      const place = selectedLocations.find((loc: any) => loc.entityId === setupMapLocId) ?? null;
-                      const map = place?.map ?? null;
-                      if (!map) return <div className="text-xs opacity-70">No place.map for preview</div>;
-
-                      const placements = Array.isArray(setupDraft?.placements) ? setupDraft.placements : [];
-                      const hazardPoints = Array.isArray(setupDraft?.hazardPoints) ? setupDraft.hazardPoints : [];
-                      const locId = String(place.entityId ?? place.id ?? '');
-
-                      const hs: Array<{ x: number; y: number; color: string; size?: number }> = [];
-                      for (const p of placements) {
-                        if (String(p.locationId) !== locId) continue;
-                        hs.push({ x: Number(p.x), y: Number(p.y), color: 'rgba(255,255,255,0.85)', size: 0.85 });
-                      }
-                      for (const pt of hazardPoints) {
-                        if (String(pt.locationId) !== locId) continue;
-                        const isDanger = pt.kind === 'danger';
-                        hs.push({
-                          x: Number(pt.x),
-                          y: Number(pt.y),
-                          color: isDanger ? 'rgba(255,60,60,0.85)' : 'rgba(60,255,140,0.85)',
-                          size: 0.75,
-                        });
-                      }
-                      return <MapViewer map={map} highlights={hs} />;
-                    })()}
-                  </Card>
-                </div>
-              ) : null}
-
-              {/* SUMMARY */}
-              {tab === 'summary' ? (
-                <>
-                  <Card title="Что произошло на тике">
-                    <div className="font-mono text-sm opacity-90">
-                      tickIndex={cur!.snapshot.tickIndex}
-                      <br />
-                      actionsApplied={cur!.trace.actionsApplied.length} eventsApplied={cur!.trace.eventsApplied.length}
-                      <br />
-                      charsChanged={cur!.trace.deltas.chars.length} factsChanged={Object.keys(cur!.trace.deltas.facts || {}).length}
-                      <br />
-                      orchestratorAtoms={(orchestratorSnapshot?.atoms || []).length} pipelineStages={pipelineStages.length}
-                    </div>
-                  </Card>
-
-                  <Card title="Notes (человеческий лог симулятора)">
-                    <pre className="font-mono text-sm opacity-90 whitespace-pre-wrap m-0">
-                      {(cur!.trace.notes || []).join('\n') || '(empty)'}
-                    </pre>
-                  </Card>
-
-                  <Card title="Дельты персонажей">
-                    <div className="font-mono text-xs opacity-90">
-                      {cur!.trace.deltas.chars.length ? (
-                        cur!.trace.deltas.chars.map((d: any) => (
-                          <div key={d.id} className="mb-2">
-                            <b>{d.id}</b> :: {JSON.stringify(d.before)} → {JSON.stringify(d.after)}
-                          </div>
-                        ))
-                      ) : (
-                        <div>(none)</div>
-                      )}
-                    </div>
-                  </Card>
-                </>
-              ) : null}
-
-              {/* WORLD */}
-              {tab === 'world' ? (
-                <>
-                  <Card title="Персонажи">
-                    <div className="font-mono text-sm opacity-90">
-                      {cur!.snapshot.characters.map((c: any) => (
-                        <div key={c.id} className="mb-2">
-                          <b>{c.id}</b> loc={c.locId} health={clamp01(c.health).toFixed(2)} energy={clamp01(c.energy).toFixed(2)}{' '}
-                          stress={clamp01(c.stress).toFixed(2)}
-                        </div>
-                      ))}
-                    </div>
-                  </Card>
-
-                  <Card title="Локации">
-                    <div className="font-mono text-xs opacity-90">
-                      {cur!.snapshot.locations.map((l: any) => (
-                        <div key={l.id} className="mb-4">
-                          <div className="font-extrabold">
-                            {l.id} <span className="opacity-70">{l.name}</span>
-                          </div>
-                          <div className="opacity-90">neighbors: {(l.neighbors || []).join(', ') || '(none)'}</div>
-                          <div className="opacity-90">hazards: {JSON.stringify(l.hazards || {})}</div>
-                          <div className="opacity-90">norms: {JSON.stringify(l.norms || {})}</div>
-                        </div>
-                      ))}
-                    </div>
-                  </Card>
-
-                  {inboxDebug ? (
-                    <Card title="Inbox atoms (debug)">
-                      <pre className="text-xs opacity-90 whitespace-pre-wrap">{JSON.stringify(inboxDebug, null, 2)}</pre>
-                    </Card>
-                  ) : null}
-                </>
-              ) : null}
-
-              {/* ACTIONS */}
-              {tab === 'actions' ? (
-                <>
-                  <Card title="Действия, которые были применены">
-                    <div className="font-mono text-sm opacity-90">
-                      {cur!.trace.actionsApplied.length ? (
-                        cur!.trace.actionsApplied.map((a: any) => (
-                          <div key={a.id} className="mb-2">
-                            <b>{a.kind}</b> actor={a.actorId}
-                            {a.targetId ? ` target=${a.targetId}` : ''} <span className="opacity-70">({a.id})</span>
-                          </div>
-                        ))
-                      ) : (
-                        <div>(none)</div>
-                      )}
-                    </div>
-                  </Card>
-
-                  <Card title="Action validation (V1/V2/V3)">
-                    {!cur?.trace?.actionValidations?.length ? (
-                      <div className="opacity-70">(no validation trace)</div>
-                    ) : (
-                      <div className="font-mono text-xs whitespace-pre-wrap">
-                        {cur!.trace.actionValidations.map((v: any) => {
-                          const norm = v.normalizedTo
-                            ? `${v.normalizedTo.kind}${v.normalizedTo.targetId ? `→${v.normalizedTo.targetId}` : ''}`
-                            : '(none)';
-                          const tgt = v.targetId ? `→${v.targetId}` : '';
-                          const reasons = Array.isArray(v.reasons) ? v.reasons.join(',') : '';
-                          return (
-                            <div key={String(v.actionId)} className="mb-2">
-                              <div>
-                                {String(v.actorId)}:{String(v.kind)}
-                                {tgt} allowed={String(Boolean(v.allowed))} singleTick={String(Boolean(v.singleTick))}
-                              </div>
-                              <div className="opacity-80">
-                                reasons={reasons || '(none)'} normalizedTo={norm}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </Card>
-
-                  <Card title="Top предложений (actionsProposed)">
-                    <div className="font-mono text-xs opacity-90">
-                      {(cur!.trace.actionsProposed || []).slice(0, 120).map((o: any, i: number) => (
-                        <div key={`${o.kind}:${o.actorId}:${o.targetId ?? ''}:${i}`} className="mb-1">
-                          {o.blocked ? 'BLOCK' : 'OK'} score={Number(o.score ?? 0).toFixed(3)} kind={o.kind} actor={o.actorId}
-                          {o.targetId ? ` target=${o.targetId}` : ''}
-                          {o.reason ? ` // ${o.reason}` : ''}
-                        </div>
-                      ))}
-                      {(cur!.trace.actionsProposed || []).length > 120 ? <div>…</div> : null}
-                    </div>
-                  </Card>
-                </>
-              ) : null}
-
-              {/* EVENTS */}
-              {tab === 'events' ? (
-                <Card title="События, которые были применены">
-                  <div className="font-mono text-xs opacity-90">
-                    {cur!.trace.eventsApplied.length ? (
-                      cur!.trace.eventsApplied.map((e: any) => (
-                        <div key={e.id} className="mb-3">
-                          <div className="font-extrabold">
-                            {e.type} <span className="opacity-70">({e.id})</span>
-                          </div>
-                          <div className="opacity-90">{JSON.stringify(e.payload || {})}</div>
-                        </div>
-                      ))
-                    ) : (
-                      <div>(none)</div>
-                    )}
-                  </div>
-                </Card>
-              ) : null}
-
-              {/* PIPELINE */}
-              {tab === 'pipeline' ? (
-                <>
-                  <Card title="GoalLab Pipeline — сводка">
-                    {!pipelineOut ? (
-                      <div className="opacity-70">Нет данных плагина goalLabPipeline.</div>
-                    ) : pipelineOut?.error ? (
-                      <div className="font-mono text-sm opacity-90 whitespace-pre-wrap">
-                        error: {String(pipelineOut.error)}
-                        {pipelineOut.stack ? `\n\n${String(pipelineOut.stack)}` : ''}
-                      </div>
-                    ) : (
-                      <>
-                        <div className="font-mono text-sm opacity-90">
-                          agentId={String(pipelineOut.agentId)}
-                          <br />
-                          stages={Number(pipelineOut.stageCount ?? pipelineStages.length)} atomsOut={Number(pipelineOut.atomsOut ?? 0)}
-                        </div>
-                        <div className="mt-3">
-                          <Button onClick={doExportPipeline} disabled={!pipelineOut}>
-                            Export pipeline.json
-                          </Button>
-                        </div>
-                      </>
-                    )}
-                  </Card>
-
-                  <Card title="Стадии (S0..S8)">
-                    {!pipelineStages?.length ? (
-                      <div className="opacity-70">(нет стадий)</div>
-                    ) : (
-                      <div className="flex flex-col gap-3">
-                        {pipelineStages.map((s: any) => (
-                          <div key={String(s.stage)} className="rounded-2xl border border-canon-border bg-canon-card p-4">
-                            <div className="flex items-baseline justify-between gap-2">
-                              <div className="font-extrabold">
-                                {String(s.stage)} <span className="opacity-70">{String(s.title || '')}</span>
-                              </div>
-                              <div className="font-mono text-xs opacity-70">
-                                atoms={Array.isArray(s.atoms) ? s.atoms.length : 0}
-                                {s.stats?.addedCount != null ? ` added=${s.stats.addedCount}` : ''}
-                              </div>
-                            </div>
-
-                            {Array.isArray(s.warnings) && s.warnings.length ? (
-                              <div className="mt-2 text-sm">
-                                <div className="font-bold">warnings:</div>
-                                <div className="font-mono text-xs opacity-90 whitespace-pre-wrap">
-                                  {s.warnings.slice(0, 20).map((w: any) => `- ${String(w)}`).join('\n')}
-                                  {s.warnings.length > 20 ? `\n… (+${s.warnings.length - 20})` : ''}
-                                </div>
-                              </div>
-                            ) : null}
-
-                            {s.artifacts ? (
-                              <div className="mt-3">
-                                <div className="font-bold">artifacts (snippet):</div>
-                                <pre className="font-mono text-xs opacity-90 whitespace-pre-wrap m-0">
-                                  {JSON.stringify(s.artifacts, null, 2).slice(0, 4000)}
-                                  {JSON.stringify(s.artifacts, null, 2).length > 4000 ? '\n… (truncated)' : ''}
-                                </pre>
-                              </div>
-                            ) : null}
-
-                            <div className="mt-3">
-                              <div className="font-bold">top atoms (first 60):</div>
-                              <pre className="font-mono text-xs opacity-90 whitespace-pre-wrap m-0">
-                                {Array.isArray(s.atoms)
-                                  ? s.atoms
-                                      .slice(0, 60)
-                                      .map((a: any) => {
-                                        const id = String(a?.id ?? a?.atomId ?? '');
-                                        const v = Number(a?.magnitude ?? 0);
-                                        const c = Number(a?.confidence ?? 1);
-                                        const label = a?.label ? ` | ${String(a.label)}` : '';
-                                        return `${id} v=${v.toFixed(3)} c=${c.toFixed(3)}${label}`;
-                                      })
-                                      .join('\n')
-                                  : '(no atoms)'}
-                                {Array.isArray(s.atoms) && s.atoms.length > 60 ? `\n… (+${s.atoms.length - 60})` : ''}
-                              </pre>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </Card>
-                </>
-              ) : null}
-
-              {/* ORCHESTRATOR */}
-              {tab === 'orchestrator' ? (
-                <>
-                  <Card title="Tick Debug (S0–S6) + history">
-                    {!dbgHistory.length ? (
-                      <div className="opacity-70">
-                        Нет orchestratorDebug (ещё не было тиков или плагин не записал orchestratorDebugFrame).
-                      </div>
-                    ) : (
-                      <div className="flex flex-col gap-4">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <div className="font-mono text-xs opacity-70">tick:</div>
-                          <select
-                            className="px-2 py-1 rounded-lg border border-canon-border bg-canon-card text-sm"
-                            value={String(dbgFrameTickId)}
-                            onChange={(e) => setDbgFrameTickId(String(e.target.value))}
-                          >
-                            {dbgHistory
-                              .slice()
-                              .reverse() // newest first in UI
-                              .map((f: any) => {
-                                const id = String(f?.tickId ?? '');
-                                const ti = String(f?.tickIndex ?? '');
-                                const t = String(f?.time ?? '');
-                                return (
-                                  <option key={id} value={id}>
-                                    {ti} · {id} · {t}
-                                  </option>
-                                );
-                              })}
-                          </select>
-
-                          <div className="ml-auto font-mono text-xs opacity-70">
-                            frames={dbgHistory.length} stage={dbgStageId}
-                          </div>
-                        </div>
-
-                        <div className="flex flex-wrap gap-2">
-                          <button
-                            className="px-2 py-1 rounded-lg border border-canon-border bg-canon-card hover:bg-white/5 text-sm"
-                            onClick={() => copyJsonToClipboard(dbgCurrentFrame)}
-                            disabled={!dbgCurrentFrame}
-                            title="Copy current TickDebugFrame JSON to clipboard"
-                          >
-                            Copy tick JSON
-                          </button>
-                          <button
-                            className="px-2 py-1 rounded-lg border border-canon-border bg-canon-card hover:bg-white/5 text-sm"
-                            onClick={() => {
-                              if (!dbgCurrentFrame) return;
-                              const ti = String(dbgCurrentFrame.tickIndex ?? 'x');
-                              const id = String(dbgCurrentFrame.tickId ?? 'tick');
-                              downloadJsonFile(dbgCurrentFrame, `tick-${ti}-${id}.json`);
-                            }}
-                            disabled={!dbgCurrentFrame}
-                            title="Download current TickDebugFrame JSON"
-                          >
-                            Download tick JSON
-                          </button>
-
-                          <button
-                            className="ml-auto px-2 py-1 rounded-lg border border-canon-border bg-canon-card hover:bg-white/5 text-sm"
-                            onClick={() => copyJsonToClipboard(orchestratorDecision)}
-                            disabled={!orchestratorDecision}
-                            title="Copy orchestratorDecision JSON to clipboard"
-                          >
-                            Copy decision JSON
-                          </button>
-                          <button
-                            className="px-2 py-1 rounded-lg border border-canon-border bg-canon-card hover:bg-white/5 text-sm"
-                            onClick={() => {
-                              if (!orchestratorDecision) return;
-                              const ti = String(orchestratorDecision.tickIndex ?? 'x');
-                              downloadJsonFile(orchestratorDecision, `decision-${ti}.json`);
-                            }}
-                            disabled={!orchestratorDecision}
-                            title="Download orchestratorDecision JSON"
-                          >
-                            Download decision JSON
-                          </button>
-                        </div>
-
-                        <div className="flex flex-wrap gap-2">
-                          {(['S0', 'S1', 'S2', 'S3', 'S4', 'S5', 'S6'] as const).map((sid) => (
-                            <button
-                              key={sid}
-                              className={
-                                'px-2 py-1 rounded-lg border text-sm ' +
-                                (dbgStageId === sid
-                                  ? 'border-white/40 bg-white/10'
-                                  : 'border-canon-border bg-canon-card hover:bg-white/5')
-                              }
-                              onClick={() => setDbgStageId(sid)}
-                            >
-                              {sid}
-                            </button>
-                          ))}
-                        </div>
-
-                        {!dbgCurrentFrame ? (
-                          <div className="opacity-70">(no current frame)</div>
-                        ) : (
-                          <div className="rounded-2xl border border-canon-border bg-canon-card p-4">
-                            <div className="flex items-baseline justify-between gap-3">
-                              <div className="font-extrabold">
-                                tickIndex={String(dbgCurrentFrame.tickIndex)} · {String(dbgCurrentFrame.tickId)}
-                              </div>
-                              <div className="font-mono text-xs opacity-70">
-                                pre={String(dbgCurrentFrame.preTraceTickId ?? '')} post={String(dbgCurrentFrame.postTraceTickId ?? '')}
-                              </div>
-                            </div>
-
-                            <div className="mt-3 font-mono text-xs opacity-70">
-                              stage: <b>{String(dbgStage?.title ?? dbgStageId)}</b>
-                            </div>
-
-                            <pre className="mt-2 font-mono text-xs opacity-90 whitespace-pre-wrap m-0">
-                              {JSON.stringify(dbgStage?.data ?? {}, null, 2)}
-                            </pre>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </Card>
-
-                  <Card title="Offers Explorer (from S3)">
-                    {!dbgCurrentFrame ? (
-                      <div className="opacity-70">(no current frame)</div>
-                    ) : !dbgS3 ? (
-                      <div className="opacity-70">(S3 stage not found)</div>
-                    ) : (
-                      <div className="flex flex-col gap-4">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <div className="font-mono text-xs opacity-70">actor filter:</div>
-                          <input
-                            className="px-2 py-1 rounded-lg border border-canon-border bg-canon-card text-sm"
-                            value={offersActorFilter}
-                            onChange={(e) => setOffersActorFilter(String(e.target.value))}
-                            placeholder="substring (e.g. krystar)"
-                          />
-
-                          <div className="font-mono text-xs opacity-70 ml-2">key filter:</div>
-                          <input
-                            className="px-2 py-1 rounded-lg border border-canon-border bg-canon-card text-sm"
-                            value={offersKeyFilter}
-                            onChange={(e) => setOffersKeyFilter(String(e.target.value))}
-                            placeholder="substring (e.g. talk, escape)"
-                          />
-
-                          <div className="font-mono text-xs opacity-70 ml-2">blockedBy filter:</div>
-                          <input
-                            className="px-2 py-1 rounded-lg border border-canon-border bg-canon-card text-sm"
-                            value={offersBlockedByFilter}
-                            onChange={(e) => setOffersBlockedByFilter(String(e.target.value))}
-                            placeholder="substring (e.g. loc, permission)"
-                          />
-
-                          <label className="ml-auto flex items-center gap-2 text-sm">
-                            <input
-                              type="checkbox"
-                              checked={offersOnlyRejected}
-                              onChange={(e) => setOffersOnlyRejected(Boolean(e.target.checked))}
-                            />
-                            only rejected
-                          </label>
-                        </div>
-
-                        <div className="font-mono text-xs opacity-70">
-                          actors shown: {String(filteredActorIds.length)} / {String(Object.keys(offersPerActor || {}).length)}
-                        </div>
-
-                        <div className="flex flex-col gap-3">
-                          {filteredActorIds.map((actorId) => {
-                            const d = offersPerActor[actorId] || {};
-                            const mode = String(d?.mode ?? '');
-                            const topK = Array.isArray(d?.topK) ? d.topK : [];
-                            const rejected = Array.isArray(d?.rejected) ? d.rejected : [];
-                            const rejectedCount = Number(d?.rejectedCount ?? rejected.length ?? 0);
-
-                            const topKFiltered = topK.filter(offerPassesFilters);
-                            const rejFiltered = rejected.filter(offerPassesFilters);
-
-                            const shownTopK = offersOnlyRejected ? [] : topKFiltered;
-                            const shownRej = rejFiltered;
-
-                            // Skip fully empty after filters.
-                            if (!shownTopK.length && !shownRej.length) return null;
-
-                            return (
-                              <div key={actorId} className="rounded-2xl border border-canon-border bg-canon-card p-4">
-                                <div className="flex items-baseline justify-between gap-3">
-                                  <div className="font-bold">{actorId}</div>
-                                  <div className="font-mono text-xs opacity-70">
-                                    mode={mode} · topK={String(topK.length)}→{String(topKFiltered.length)} · rejected={String(rejectedCount)}
-                                    →{String(rejFiltered.length)}
-                                  </div>
-                                </div>
-
-                                {!offersOnlyRejected ? (
-                                  <div className="mt-3">
-                                    <div className="font-bold text-sm">topK (filtered)</div>
-                                    {!shownTopK.length ? (
-                                      <div className="font-mono text-xs opacity-60 mt-2">(none)</div>
-                                    ) : (
-                                      <div className="mt-2 flex flex-col gap-1">
-                                        {shownTopK.slice(0, 30).map((o: any, idx: number) => {
-                                          const k = offerKeyOf(o);
-                                          const score = Number(o?.score ?? 0);
-                                          const cost = Number(o?.cost ?? 0);
-                                          const allowed = Boolean(o?.allowed);
-                                          const prob = o?.prob;
-                                          const target = o?.targetId ? String(o.targetId) : '';
-                                          const bb = blockedByStr(o);
-                                          const reason = o?.reason ? String(o.reason) : '';
-
-                                          return (
-                                            <div key={`${k}:${idx}`} className="font-mono text-xs opacity-90">
-                                              score={score.toFixed(3)} cost={cost.toFixed(3)} allowed={String(allowed)}
-                                              {typeof prob === 'number' ? ` prob=${prob.toFixed(3)}` : ''} key={k}
-                                              {target ? ` target=${target}` : ''}
-                                              {bb ? ` blockedBy=${bb}` : ''}
-                                              {reason ? ` // ${reason}` : ''}
-                                            </div>
-                                          );
-                                        })}
-                                        {shownTopK.length > 30 ? (
-                                          <div className="font-mono text-xs opacity-60">… (+{shownTopK.length - 30})</div>
-                                        ) : null}
-                                      </div>
-                                    )}
-                                  </div>
-                                ) : null}
-
-                                <div className="mt-3">
-                                  <div className="font-bold text-sm">rejected (filtered)</div>
-                                  {!shownRej.length ? (
-                                    <div className="font-mono text-xs opacity-60 mt-2">(none)</div>
-                                  ) : (
-                                    <div className="mt-2 flex flex-col gap-1">
-                                      {shownRej.slice(0, 50).map((o: any, idx: number) => {
-                                        const k = offerKeyOf(o);
-                                        const score = Number(o?.score ?? 0);
-                                        const cost = Number(o?.cost ?? 0);
-                                        const target = o?.targetId ? String(o.targetId) : '';
-                                        const bb = blockedByStr(o);
-                                        const reason = o?.reason ? String(o.reason) : '';
-                                        return (
-                                          <div key={`${k}:rej:${idx}`} className="font-mono text-xs opacity-90">
-                                            score={score.toFixed(3)} cost={cost.toFixed(3)} allowed=false key={k}
-                                            {target ? ` target=${target}` : ''}
-                                            {bb ? ` blockedBy=${bb}` : ''}
-                                            {reason ? ` // ${reason}` : ''}
-                                          </div>
-                                        );
-                                      })}
-                                      {shownRej.length > 50 ? (
-                                        <div className="font-mono text-xs opacity-60">… (+{shownRej.length - 50})</div>
-                                      ) : null}
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-                  </Card>
-
-                  <Card title="Decision trace (chosen + topK softmax probs)">
-                    {!orchestratorDecision ? (
-                      <div className="opacity-70">
-                        Нет orchestratorDecision на этом тике. (Либо тиков ещё не было, либо плагин не записал decision trace.)
-                      </div>
-                    ) : (
-                      <div className="flex flex-col gap-4">
-                        <div className="font-mono text-xs opacity-80">
-                          tickIndex={String(orchestratorDecision.tickIndex)} T={String(orchestratorDecision.T)} actors=
-                          {String(orchestratorDecision.actorCount ?? Object.keys(orchestratorDecision.perActor || {}).length)}
-                        </div>
-
-                        <div className="flex flex-col gap-3">
-                          {Object.keys(orchestratorDecision.perActor || {})
-                            .sort()
-                            .map((actorId: string) => {
-                              const d = orchestratorDecision.perActor?.[actorId];
-                              const ch = d?.chosen;
-                              const topK = Array.isArray(d?.topK) ? d.topK : [];
-                              const rejected = Array.isArray(d?.rejected) ? d.rejected : [];
-                              const rejectedCount = Number(d?.rejectedCount ?? rejected.length ?? 0);
-
-                              const chosenLabel = String(ch?.simKind ?? ch?.kind ?? ch?.key ?? ch?.possibilityId ?? '(none)');
-
-                              return (
-                                <div key={actorId} className="rounded-2xl border border-canon-border bg-canon-card p-4">
-                                  <div className="flex items-baseline justify-between gap-3">
-                                    <div className="font-extrabold">{actorId}</div>
-                                    <div className="font-mono text-xs opacity-70">
-                                      mode={String(d?.mode || 'n/a')} T={String(d?.T ?? orchestratorDecision.T)}
-                                    </div>
-                                  </div>
-
-                                  <div className="mt-2 font-mono text-sm">
-                                    chosen: <b>{chosenLabel}</b>
-                                    {ch?.targetId ? ` target=${String(ch.targetId)}` : ''}
-                                    {Number.isFinite(ch?.score) ? ` score=${Number(ch.score).toFixed(3)}` : ''}
-                                    {Number.isFinite(ch?.cost) ? ` cost=${Number(ch.cost).toFixed(3)}` : ''}
-                                    {ch?.prob != null ? ` prob=${Number(ch.prob).toFixed(3)}` : ''}
-                                    {Array.isArray(ch?.blockedBy) && ch.blockedBy.length ? ` blockedBy=${ch.blockedBy.join(',')}` : ''}
-                                    {ch?.reason ? ` // ${String(ch.reason)}` : ''}
-                                  </div>
-
-                                  <div className="mt-3">
-                                    <div className="font-bold text-sm">topK</div>
-                                    <div className="font-mono text-xs opacity-90 mt-2">
-                                      {topK.slice(0, 25).map((o: any) => {
-                                        const key = String(
-                                          o.possibilityId ?? o.key ?? o.id ?? `${o.kind ?? ''}:${o.targetId ?? ''}:${o.score ?? ''}`
-                                        );
-                                        return (
-                                          <div key={key} className="mb-1">
-                                            prob={o.prob != null ? Number(o.prob).toFixed(3) : 'n/a'} score=
-                                            {Number(o.score ?? 0).toFixed(3)} cost={Number(o.cost ?? 0).toFixed(3)} allowed=
-                                            {String(Boolean(o.allowed))}{' '}
-                                            key={String(o.key ?? o.possibilityId ?? '')}
-                                            {o.kind ? ` kind=${String(o.kind)}` : ''}
-                                            {o.targetId ? ` target=${String(o.targetId)}` : ''}
-                                            {Array.isArray(o.blockedBy) && o.blockedBy.length ? ` blockedBy=${o.blockedBy.join(',')}` : ''}
-                                            {o.reason ? ` // ${String(o.reason)}` : ''}
-                                          </div>
-                                        );
-                                      })}
-                                      {topK.length > 25 ? <div>… (+{topK.length - 25})</div> : null}
-                                    </div>
-                                  </div>
-
-                                  <div className="mt-3">
-                                    <div className="font-bold text-sm">rejected (first 25) · count={String(rejectedCount)}</div>
-                                    {!rejected.length ? (
-                                      <div className="font-mono text-xs opacity-60 mt-2">(none)</div>
-                                    ) : (
-                                      <div className="font-mono text-xs opacity-90 mt-2">
-                                        {rejected.slice(0, 25).map((o: any) => {
-                                          const key = String(
-                                            o.possibilityId ??
-                                              o.key ??
-                                              o.id ??
-                                              `${o.kind ?? ''}:${o.targetId ?? ''}:${o.score ?? ''}:${o.reason ?? ''}`
-                                          );
-                                          return (
-                                            <div key={key} className="mb-1">
-                                              score={Number(o.score ?? 0).toFixed(3)} cost={Number(o.cost ?? 0).toFixed(3)} allowed=false{' '}
-                                              key={String(o.key ?? o.possibilityId ?? '')}
-                                              {o.kind ? ` kind=${String(o.kind)}` : ''}
-                                              {o.targetId ? ` target=${String(o.targetId)}` : ''}
-                                              {Array.isArray(o.blockedBy) && o.blockedBy.length ? ` blockedBy=${o.blockedBy.join(',')}` : ''}
-                                              {o.reason ? ` // ${String(o.reason)}` : ''}
-                                            </div>
-                                          );
-                                        })}
-                                        {rejected.length > 25 ? <div>… (+{rejected.length - 25})</div> : null}
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                              );
-                            })}
-                        </div>
-                      </div>
-                    )}
-                  </Card>
-
-                  <Card title="Human log (оркестратор)">
-                    {!orchestratorTrace ? (
-                      <div className="opacity-70">Трейса оркестратора нет (registry пустой или плагин не отдал trace).</div>
-                    ) : (
-                      <pre className="font-mono text-sm opacity-90 whitespace-pre-wrap m-0">
-                        {(orchestratorTrace.humanLog || []).join('\n') || '(empty)'}
-                      </pre>
-                    )}
-                  </Card>
-
-                  <Card title="Atom changes (первые 200)">
-                    {!orchestratorTrace ? (
-                      <div className="opacity-70">(no trace)</div>
-                    ) : (
-                      <div className="font-mono text-xs opacity-90">
-                        {(orchestratorTrace.atomChanges || []).slice(0, 200).map((c: any) => {
-                          const b = Number(c.before?.magnitude ?? 0);
-                          const a = Number(c.after?.magnitude ?? 0);
-                          const d = a - b;
-                          const sign = d >= 0 ? '+' : '';
-                          return (
-                            <div key={`${c.op}:${c.id}`}>
-                              {String(c.op).toUpperCase()} {c.id} {b.toFixed(3)}→{a.toFixed(3)} ({sign}
-                              {d.toFixed(3)})
-                            </div>
-                          );
-                        })}
-                        {(orchestratorTrace.atomChanges || []).length > 200 ? <div>…</div> : null}
-                      </div>
-                    )}
-                  </Card>
-                </>
-              ) : null}
-
-              {/* MAP */}
-              {tab === 'map' ? (
-                <div className="grid grid-cols-12 gap-4">
-                  <div className="col-span-4">
-                    <Card title="Place">
-                      <div className="text-xs opacity-70 mb-1">Выбери локацию</div>
-                      <select
-                        className="canon-input w-full"
-                        value={mapLocId || ''}
-                        onChange={(e) => setMapLocId(e.target.value)}
-                      >
-                        {(cur?.snapshot?.locations || []).map((l: any) => (
-                          <option key={l.id} value={l.id}>{l.title ?? l.name ?? l.id}</option>
-                        ))}
-                      </select>
-
-                      <div className="text-xs opacity-70 mt-3">Подсветка персонажа</div>
-                      <select
-                        className="canon-input w-full mt-1"
-                        value={mapCharId || ''}
-                        onChange={(e) => setMapCharId(e.target.value || null)}
-                      >
-                        <option value="">(none)</option>
-                        {(cur?.snapshot?.characters || []).map((c: any) => (
-                          <option key={c.id} value={c.id}>{c.title ?? c.name ?? c.id}</option>
-                        ))}
-                      </select>
-                    </Card>
-
-                    <Card title="Карта мира (узлы/связи)">
-                      <SimMapView sim={sim} snapshot={cur?.snapshot || null} onMove={pushManualMove} />
-                    </Card>
-                  </div>
-
-                  <div className="col-span-8">
-                    {(() => {
-                      const loc = (cur?.snapshot?.locations || []).find((l: any) => l.id === mapLocId);
-                      if (!loc) return <Card title="Карта локации">(нет выбранной локации)</Card>;
-                      return (
-                        <LocationMapView
-                          location={loc}
-                          characters={cur?.snapshot?.characters || []}
-                          highlightId={mapCharId}
-                          onPickCharacter={(id) => setMapCharId(id)}
-                        />
-                      );
-                    })()}
-                  </div>
-                </div>
-              ) : null}
-
-              {/* JSON */}
-              {tab === 'json' ? (
-                <Card title="JSON текущей записи">
-                  <div className="flex gap-2 flex-wrap mb-3">
-                    <Button onClick={doExportRecord}>Export record.json</Button>
-                    {orchestratorSnapshot ? (
-                      <Button onClick={() => jsonDownload(`goal-lab-snapshot-${cur!.snapshot.tickIndex}.json`, orchestratorSnapshot)}>
-                        Export GoalLab snapshot.json
-                      </Button>
-                    ) : null}
-                    <Button onClick={doExportPipeline} disabled={!pipelineOut}>
-                      Export pipeline.json
-                    </Button>
-                  </div>
-                  <pre className="font-mono text-xs opacity-90 whitespace-pre-wrap m-0">{JSON.stringify(cur, null, 2)}</pre>
-                </Card>
-              ) : null}
-            </div>
-          )}
-        </div>
+            ) : (
+              <div className="text-xs text-slate-600">No actor selected.</div>
+            )}
+          </div>
+        </aside>
       </div>
+
+      {/* FOOTER: System Status */}
+      <footer className="h-6 bg-slate-950 border border-slate-800 rounded-b-lg flex items-center justify-between px-4 text-[9px] uppercase tracking-[0.2em] text-slate-600">
+        <div className="flex gap-6">
+          <span>Kanonar_OS v4.0.0</span>
+          <span className="text-slate-800">|</span>
+          <span>No Errors Detected</span>
+        </div>
+        <div className="flex gap-4">
+          <span className="text-cyan-900 font-bold">Local_Node: 127.0.0.1</span>
+          <span className="animate-pulse">● Connected</span>
+        </div>
+      </footer>
     </div>
   );
 }

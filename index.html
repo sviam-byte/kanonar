@@ -83,6 +83,12 @@
   }
   *::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.18); }
 
+  /* custom-scrollbar: compact, subtle scrollbars for dense panels */
+  .custom-scrollbar::-webkit-scrollbar { width: 4px; height: 4px; }
+  .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+  .custom-scrollbar::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 10px; }
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #334155; }
+
   /* focus ring consistency */
   :focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(102,217,255,0.25); border-radius: 10px; }
 </style>
