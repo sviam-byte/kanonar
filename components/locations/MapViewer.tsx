@@ -11,9 +11,11 @@ interface MapViewerProps {
     highlights?: Array<{x: number, y: number, color: string, size?: number}>;
     isEditor?: boolean;
     onMapChange?: (map: LocationMap) => void;
+    // Forwarded to LocationVectorMap.
+    hideTextVisuals?: boolean;
 }
 
-export const MapViewer: React.FC<MapViewerProps> = ({ map, onCellClick, highlights, isEditor, onMapChange }) => {
+export const MapViewer: React.FC<MapViewerProps> = ({ map, onCellClick, highlights, isEditor, onMapChange, hideTextVisuals }) => {
     const [scale, setScale] = useState(1);
     const containerRef = useRef<HTMLDivElement>(null);
     
@@ -72,11 +74,11 @@ export const MapViewer: React.FC<MapViewerProps> = ({ map, onCellClick, highligh
                          <div className="relative">
                             <LocationMapEditor map={map} onChange={onMapChange} cellSize={32} />
                             <div className="absolute inset-0 pointer-events-none">
-                                <LocationVectorMap map={map} showGrid={false} scale={32} highlightCells={arr(highlights)} />
+                                <LocationVectorMap map={map} showGrid={false} scale={32} highlightCells={arr(highlights)} hideTextVisuals={hideTextVisuals} />
                             </div>
                          </div>
                      ) : (
-                         <LocationVectorMap map={map} showGrid={true} scale={32} highlightCells={arr(highlights)} onCellClick={onCellClick} />
+                         <LocationVectorMap map={map} showGrid={true} scale={32} highlightCells={arr(highlights)} onCellClick={onCellClick} hideTextVisuals={hideTextVisuals} />
                      )}
                 </div>
             </div>

@@ -85,6 +85,9 @@ export class SimKitSimulator {
     this.rng = new RNG(cfg.seed);
     this.world = cloneWorld(cfg.initialWorld);
     this.world.seed = cfg.seed;
+    // Ensure placements exist for immediate UI rendering (before the first tick).
+    const ids = Object.keys(this.world.characters).sort();
+    for (let i = 0; i < ids.length; i++) ensureCharacterPos(this.world, ids[i], i);
   }
 
   reset(seed?: number) {
@@ -92,6 +95,9 @@ export class SimKitSimulator {
     this.rng = new RNG(s);
     this.world = cloneWorld(this.cfg.initialWorld);
     this.world.seed = s;
+    // Precompute placements so UI has a sane map before the first tick.
+    const ids = Object.keys(this.world.characters).sort();
+    for (let i = 0; i < ids.length; i++) ensureCharacterPos(this.world, ids[i], i);
     this.records = [];
     this.forcedActions = [];
   }
@@ -128,8 +134,9 @@ export class SimKitSimulator {
     const w0 = cloneWorld(this.world);
 
     // Ensure every character has a valid position before spatial logic runs.
-    for (const id of Object.keys(this.world.characters)) {
-      ensureCharacterPos(this.world, id);
+    const ids = Object.keys(this.world.characters).sort();
+    for (let i = 0; i < ids.length; i++) {
+      ensureCharacterPos(this.world, ids[i], i);
     }
 
     // Apply hazard/safe map points into world facts before scoring/actions.

@@ -13,7 +13,6 @@ import { makeSimWorldFromSelection } from '../../simkit/adapters/fromKanonarEnti
 import { SimMapView } from '../../../components/SimMapView';
 import { LocationMapView } from '../../../components/LocationMapView';
 import { PlacementMapEditor } from '../../../components/ScenarioSetup/PlacementMapEditor';
-import { MapViewer } from '../../../components/locations/MapViewer';
 import { LivePlacementMiniMap } from '../../../components/ScenarioSetup/LivePlacementMiniMap';
 import { importLocationFromGoalLab } from '../../simkit/locations/goallabImport';
 import { Badge, Button, Card, Input, Select, TabButton } from '../../../components/ui/primitives';
@@ -763,7 +762,7 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
       <div className="grid grid-cols-12 gap-4 min-h-0">
         {/* Left (pinned map + world lists + controls) */}
         <div className="col-span-3 min-h-0 flex flex-col gap-4">
-          {/* Pinned, but MUST NOT overlap other cards: keep low z and clip. */}
+          {/* Map is pinned. Everything else in the left column scrolls normally (no overlap). */}
           <div className="sticky top-24 z-0">
             <Card title="Map (Live)" bodyClassName="p-0">
               <div className="p-3 overflow-hidden">
@@ -776,43 +775,44 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
                   selectedLocId={dockLocId || Object.keys(sim.world.locations || {}).sort()[0] || ''}
                   onSelectLocId={setDockLocId}
                   onMoveXY={pushManualMoveXY}
+                  activeActorId={mapCharId || null}
                 />
               </div>
             </Card>
-
-            <Card title="World" bodyClassName="p-3">
-              <div className="text-xs text-canon-muted mb-2">Локации в мире</div>
-              <select
-                value={dockLocId || Object.keys(sim.world.locations || {}).sort()[0] || ''}
-                onChange={(e) => setDockLocId(e.target.value)}
-                className="w-full rounded-xl border border-canon-border bg-black/20 px-3 py-2 text-sm"
-              >
-                {Object.keys(sim.world.locations || {})
-                  .sort()
-                  .map((id) => (
-                    <option key={id} value={id}>
-                      {id}
-                    </option>
-                  ))}
-              </select>
-
-              <div className="text-xs text-canon-muted mt-3 mb-2">Персонажи</div>
-              <select
-                value={mapCharId || ''}
-                onChange={(e) => setMapCharId(e.target.value || null)}
-                className="w-full rounded-xl border border-canon-border bg-black/20 px-3 py-2 text-sm"
-              >
-                <option value="">(none)</option>
-                {Object.keys(sim.world.characters || {})
-                  .sort()
-                  .map((id) => (
-                    <option key={id} value={id}>
-                      {nameById.get(id) ? `${nameById.get(id)} (${id})` : id}
-                    </option>
-                  ))}
-              </select>
-            </Card>
           </div>
+
+          <Card title="World" bodyClassName="p-3">
+            <div className="text-xs text-canon-muted mb-2">Локации в мире</div>
+            <select
+              value={dockLocId || Object.keys(sim.world.locations || {}).sort()[0] || ''}
+              onChange={(e) => setDockLocId(e.target.value)}
+              className="w-full rounded-xl border border-canon-border bg-black/20 px-3 py-2 text-sm"
+            >
+              {Object.keys(sim.world.locations || {})
+                .sort()
+                .map((id) => (
+                  <option key={id} value={id}>
+                    {id}
+                  </option>
+                ))}
+            </select>
+
+            <div className="text-xs text-canon-muted mt-3 mb-2">Персонажи</div>
+            <select
+              value={mapCharId || ''}
+              onChange={(e) => setMapCharId(e.target.value || null)}
+              className="w-full rounded-xl border border-canon-border bg-black/20 px-3 py-2 text-sm"
+            >
+              <option value="">(none)</option>
+              {Object.keys(sim.world.characters || {})
+                .sort()
+                .map((id) => (
+                  <option key={id} value={id}>
+                    {nameById.get(id) ? `${nameById.get(id)} (${id})` : id}
+                  </option>
+                ))}
+            </select>
+          </Card>
 
           <Card title="Controls">
             <div className="text-sm text-canon-muted mb-3">
@@ -1180,34 +1180,7 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
                     </div>
                   </Card>
 
-                  <Card title="Map Preview">
-                    {(() => {
-                      const place = selectedLocations.find((loc: any) => loc.entityId === setupMapLocId) ?? null;
-                      const map = place?.map ?? null;
-                      if (!map) return <div className="text-xs opacity-70">No place.map for preview</div>;
-
-                      const placements = Array.isArray(setupDraft?.placements) ? setupDraft.placements : [];
-                      const hazardPoints = Array.isArray(setupDraft?.hazardPoints) ? setupDraft.hazardPoints : [];
-                      const locId = String(place.entityId ?? place.id ?? '');
-
-                      const hs: Array<{ x: number; y: number; color: string; size?: number }> = [];
-                      for (const p of placements) {
-                        if (String(p.locationId) !== locId) continue;
-                        hs.push({ x: Number(p.x), y: Number(p.y), color: 'rgba(255,255,255,0.85)', size: 0.85 });
-                      }
-                      for (const pt of hazardPoints) {
-                        if (String(pt.locationId) !== locId) continue;
-                        const isDanger = pt.kind === 'danger';
-                        hs.push({
-                          x: Number(pt.x),
-                          y: Number(pt.y),
-                          color: isDanger ? 'rgba(255,60,60,0.85)' : 'rgba(60,255,140,0.85)',
-                          size: 0.75,
-                        });
-                      }
-                      return <MapViewer map={map} highlights={hs} />;
-                    })()}
-                  </Card>
+                  
                 </div>
               ) : null}
 
