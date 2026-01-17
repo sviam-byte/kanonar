@@ -390,7 +390,7 @@ export const GoalSandbox: React.FC = () => {
 
   /**
    * Lock the map viewport after the first map selection to avoid resize jitter.
-   * We normalize map dimensions to pixels so grids don't collapse into tiny boxes.
+   * Fixed px size keeps the frame stable across different map metadata shapes.
    */
   useEffect(() => {
     if (!activeMap) {
@@ -406,35 +406,7 @@ export const GoalSandbox: React.FC = () => {
     }
 
     if (lockedMapViewport) return;
-
-    const mw =
-      (activeMap as any)?.width ??
-      (activeMap as any)?.w ??
-      (activeMap as any)?.meta?.width ??
-      (activeMap as any)?.grid?.width ??
-      null;
-
-    const mh =
-      (activeMap as any)?.height ??
-      (activeMap as any)?.h ??
-      (activeMap as any)?.meta?.height ??
-      (activeMap as any)?.grid?.height ??
-      null;
-
-    let baseW = Number.isFinite(Number(mw)) ? Number(mw) : 960;
-    let baseH = Number.isFinite(Number(mh)) ? Number(mh) : 540;
-
-    // If we only have grid sizes, convert them into pixel units.
-    if (baseW <= 128 && baseH <= 128) {
-      baseW *= 32;
-      baseH *= 32;
-    }
-
-    const MAX_W = 1100;
-    const MAX_H = 700;
-    const k = Math.min(MAX_W / baseW, MAX_H / baseH, 1);
-
-    setLockedMapViewport({ w: Math.round(baseW * k), h: Math.round(baseH * k) });
+    setLockedMapViewport({ w: 980, h: 620 });
     lockedMapIdRef.current = nextMapId || 'map';
   }, [activeMap, lockedMapViewport]);
 
@@ -1686,8 +1658,8 @@ export const GoalSandbox: React.FC = () => {
   }, [pipelineV1]);
 
   // Fixed map frame size (locked on first map selection).
-  const frameW = lockedMapViewport?.w ?? 960;
-  const frameH = lockedMapViewport?.h ?? 540;
+  const frameW = lockedMapViewport?.w ?? 980;
+  const frameH = lockedMapViewport?.h ?? 620;
   const tomRows = tomMatrixForPerspective ?? [];
 
   return (
@@ -1793,15 +1765,14 @@ export const GoalSandbox: React.FC = () => {
 
       {/* CENTER: map + debug/tom/pipeline/compare tabs */}
       <main className="flex-1 flex flex-col relative min-w-0 bg-black">
-        <div className="flex-1 relative min-h-0 flex items-center justify-center bg-black">
+        <div className="flex-1 relative min-h-0 flex items-center justify-center bg-black overflow-hidden">
           {/* Background grid to keep the canvas feeling alive when empty. */}
           <div className="absolute inset-0 opacity-[0.08] pointer-events-none bg-[linear-gradient(to_right,#1e293b_1px,transparent_1px),linear-gradient(to_bottom,#1e293b_1px,transparent_1px)] bg-[size:40px_40px]" />
           <div
-            className="relative border border-slate-800 bg-slate-950/40 overflow-hidden shadow-[0_0_0_1px_rgba(148,163,184,0.15)]"
+            className="relative flex-none border border-slate-800 bg-slate-950/40 overflow-hidden shadow-[0_0_0_1px_rgba(148,163,184,0.15)]"
             style={{
               width: frameW,
               height: frameH,
-              borderRadius: 6,
             }}
           >
             <div className="absolute inset-0 pointer-events-none bg-gradient-to-b from-white/5 to-transparent" />

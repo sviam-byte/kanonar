@@ -17,6 +17,7 @@ import { PlacementMapEditor } from '../../../components/ScenarioSetup/PlacementM
 
 import { EntityType } from '../../../enums';
 import { getEntitiesByType, getAllCharactersWithRuntime } from '../../../data';
+import { useSandbox } from '../../../contexts/SandboxContext';
 
 function jsonDownload(filename: string, data: any) {
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -63,6 +64,7 @@ function pad4(n: number) {
 }
 
 export const SimulatorLab: React.FC<Props> = ({ orchestratorRegistry, onPushToGoalLab }) => {
+  const { sandboxState } = useSandbox();
   // --------- Entities (источник правды) ----------
   const locations = useMemo(() => getEntitiesByType(EntityType.Location) as any[], []);
   const charactersAll = useMemo(() => getAllCharactersWithRuntime() as any[], []);
@@ -184,8 +186,15 @@ export const SimulatorLab: React.FC<Props> = ({ orchestratorRegistry, onPushToGo
       // если адаптер поддерживает — пусть возьмёт
     } as any);
 
+    // гарантия: registry всегда массив, даже если пропы/контекст не заполнены
+    const registrySafe = Array.isArray(orchestratorRegistry)
+      ? orchestratorRegistry
+      : Array.isArray((sandboxState as any)?.orchestratorRegistry)
+        ? (sandboxState as any).orchestratorRegistry
+        : [];
+
     const orchestratorPlugin = makeOrchestratorPlugin({
-      registry: orchestratorRegistry,
+      registry: registrySafe,
       onPushToGoalLab,
     } as any);
 

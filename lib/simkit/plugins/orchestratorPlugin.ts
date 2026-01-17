@@ -249,7 +249,8 @@ function toGoalLabSnapshot(simSnapshot: any): any {
 // -----------------------------
 // Plugin
 // -----------------------------
-export function makeOrchestratorPlugin(registry: ProducerSpec[]): SimPlugin {
+export function makeOrchestratorPlugin(opts: { registry?: any; onPushToGoalLab?: any }): SimPlugin {
+  const registry = Array.isArray(opts?.registry) ? opts.registry : [];
   // Built-in producers for sim-phase + chosen-action atoms (helps GoalLab pipeline & debugging).
   const simkitProducers: ProducerSpec[] = [
     {
