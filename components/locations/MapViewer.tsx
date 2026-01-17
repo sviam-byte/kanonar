@@ -47,7 +47,7 @@ export const MapViewer: React.FC<MapViewerProps> = ({ map, onCellClick, highligh
     const handleZoomOut = () => setScale(s => Math.max(0.2, s - 0.1));
 
     return (
-        <div className="flex flex-col h-full bg-black border border-canon-border rounded-lg overflow-hidden relative">
+        <div className="flex flex-col w-full h-full bg-black border border-canon-border rounded-lg overflow-hidden relative">
             {/* Controls */}
             <div className="absolute top-2 right-2 z-20 flex flex-col gap-1">
                 <button onClick={handleZoomIn} className="w-6 h-6 bg-canon-bg border border-canon-border rounded text-canon-text hover:bg-canon-accent hover:text-black font-bold">+</button>
