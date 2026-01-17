@@ -723,7 +723,7 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
   }, [dockLocId, sim.world.locations]);
 
   return (
-    <div className="h-full w-full p-4">
+    <div className="h-full w-full p-2 bg-[#020617] text-slate-300 font-mono overflow-hidden">
       <div className="sticky top-0 z-20 mb-4">
         <div className="rounded-canon border border-canon-border bg-canon-panel/70 backdrop-blur-md shadow-canon-1 px-5 py-3 flex items-center gap-3">
           <div className="text-lg font-semibold tracking-tight">Simulator Lab</div>
