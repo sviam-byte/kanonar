@@ -19,7 +19,6 @@ import { normalizeWorldShape } from '../../lib/world/normalizeWorldShape';
 import { scoreContextualGoals } from '../../lib/context/v2/scoring';
 import type { ContextAtom } from '../../lib/context/v2/types';
 import { DebugShell } from './DebugShell';
-import { FrontShell } from './FrontShell';
 import { allLocations } from '../../data/locations';
 import { computeLocationGoalsForAgent } from '../../lib/context/v2/locationGoals';
 import { computeTomGoalsForAgent } from '../../lib/context/v2/tomGoals';
@@ -203,76 +202,14 @@ export const GoalSandbox: React.FC = () => {
   const [locationMode, setLocationMode] = useState<'preset' | 'custom'>('preset');
   const [selectedLocationId, setSelectedLocationId] = useState<string>('');
   const [placingActorId, setPlacingActorId] = useState<string | null>(null);
-  // Goal Lab layout: allow collapsing the context sidebar for focus.
-  const [isSidebarOpen, setSidebarOpen] = useState(true);
+  // Bottom analysis panel selector (debug / tom / pipeline).
+  const [panel, setPanel] = useState<'debug' | 'tom' | 'pipeline'>('debug');
 
   // Debug & Overrides
   const [affectOverrides, setAffectOverrides] = useState<Partial<AffectState>>({});
   const [selectedEventIds, setSelectedEventIds] = useState<Set<string>>(new Set());
   const [manualAtoms, setManualAtoms] = useState<ContextAtom[]>([]);
   const [pipelineStageId, setPipelineStageId] = useState<string>('S5');
-
-  // UI mode: a compact “front” view for normal use, and a “debug” view for pipeline/atoms.
-  const [uiMode, setUiMode] = useState<'front' | 'debug'>(() => {
-    try {
-      return (localStorage.getItem('goalsandbox.uiMode.v1') as any) === 'debug' ? 'debug' : 'front';
-    } catch {
-      return 'front';
-    }
-  });
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('goalsandbox.uiMode.v1', uiMode);
-    } catch {}
-  }, [uiMode]);
-
-  // Top toolbar collapse (persisted)
-  const [toolbarCollapsed, setToolbarCollapsed] = useState(() => {
-    try {
-      const raw = localStorage.getItem('goalsandbox.toolbarCollapsed.v1');
-      if (raw === '1') return true;
-    } catch {}
-    return false;
-  });
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('goalsandbox.toolbarCollapsed.v1', toolbarCollapsed ? '1' : '0');
-    } catch {}
-  }, [toolbarCollapsed]);
-
-  // Stage bar collapse (persisted)
-  const [stageBarCollapsed, setStageBarCollapsed] = useState(() => {
-    try {
-      const raw = localStorage.getItem('goalsandbox.stageBarCollapsed.v1');
-      if (raw === '1') return true;
-    } catch {}
-    return false;
-  });
-  const [advancedExportsOpen, setAdvancedExportsOpen] = useState(false);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('goalsandbox.stageBarCollapsed.v1', stageBarCollapsed ? '1' : '0');
-    } catch {}
-  }, [stageBarCollapsed]);
-
-  // HUD / headers collapse (persisted)
-  const [hudCollapsed, setHudCollapsed] = useState<boolean>(() => {
-    try {
-      const v = localStorage.getItem('goalSandbox.hudCollapsed');
-      return v === '1';
-    } catch {
-      return false;
-    }
-  });
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('goalSandbox.hudCollapsed', hudCollapsed ? '1' : '0');
-    } catch {}
-  }, [hudCollapsed]);
 
   // NOTE: Do not mutate worldState via affect overrides. Affect is materialized as atoms inside buildGoalLabContext.
 
@@ -1227,6 +1164,9 @@ export const GoalSandbox: React.FC = () => {
     return rows;
   }, [worldState, participantIds, perspectiveId]);
 
+  // Defensive alias for downstream components that expect a list of ToM rows.
+  const tomRows = Array.isArray(tomMatrixForPerspective) ? tomMatrixForPerspective : [];
+
   const castRows = useMemo(() => {
     if (!worldState) return [];
 
@@ -1700,125 +1640,70 @@ export const GoalSandbox: React.FC = () => {
   const activeAgentLabel = actorLabels[selectedAgentId] || selectedAgentId || '—';
 
   return (
-    <div className="flex h-[calc(100vh-48px)] bg-[#020617] text-slate-200 overflow-hidden font-sans">
-      {/* LEFT SIDEBAR: Context & Controls */}
-      <aside
-        className={`${
-          isSidebarOpen ? 'w-[320px]' : 'w-12'
-        } transition-all duration-300 border-r border-slate-800 bg-slate-950/50 backdrop-blur-md flex flex-col z-20`}
-      >
-        <div className="flex items-center justify-between p-3 border-b border-slate-800 bg-slate-900/50">
-          {isSidebarOpen ? (
-            <span className="text-[10px] font-bold uppercase tracking-widest text-cyan-500 flex items-center gap-2">
-              Context_Parameters
-            </span>
-          ) : null}
-          <button
-            onClick={() => setSidebarOpen(!isSidebarOpen)}
-            className="p-1 hover:bg-slate-800 rounded transition text-slate-500"
-            aria-label="Toggle context sidebar"
-          >
-            <span className={`block transition-transform ${isSidebarOpen ? 'rotate-180' : ''}`}>›</span>
-          </button>
+    <div className="h-[calc(100vh-48px)] bg-[#020617] flex overflow-hidden font-sans">
+      {/* LEFT: Инпуты и Слайдеры */}
+      <aside className="w-[320px] border-r border-slate-800 bg-slate-950/80 flex flex-col shrink-0">
+        <div className="h-10 border-b border-slate-800 flex items-center px-4 bg-slate-900/30">
+          <span className="text-[10px] font-black text-cyan-500 uppercase flex items-center gap-2">
+            🧠 Atomic_Inputs
+          </span>
         </div>
-
-        {isSidebarOpen ? (
-          <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-6">
-            {/* Primary control stack */}
-            <GoalLabControls
-              allCharacters={allCharacters}
-              allLocations={allLocations as any}
-              events={eventRegistry.getAll() as any}
-              computedAtoms={asArray<any>((snapshotV1?.atoms ?? (snapshot as any)?.atoms) as any)}
-              selectedAgentId={selectedAgentId}
-              onSelectAgent={handleSelectAgent}
-              selectedLocationId={selectedLocationId}
-              onSelectLocation={setSelectedLocationId}
-              locationMode={locationMode}
-              onLocationModeChange={setLocationMode}
-              selectedEventIds={selectedEventIds}
-              onToggleEvent={id =>
-                setSelectedEventIds(prev => {
-                  const n = new Set(prev);
-                  if (n.has(id)) n.delete(id);
-                  else n.add(id);
-                  return n;
-                })
-              }
-              manualAtoms={manualAtoms}
-              onChangeManualAtoms={setManualAtoms}
-              nearbyActors={nearbyActors}
-              onNearbyActorsChange={handleNearbyActorsChange}
-              placingActorId={placingActorId}
-              onStartPlacement={setPlacingActorId}
-              affectOverrides={affectOverrides}
-              onAffectOverridesChange={setAffectOverrides}
-              onRunTicks={handleRunTicks}
-              onResetSim={handleResetSim}
-              onDownloadScene={onDownloadScene}
-              onImportSceneDumpV2={handleImportSceneDumpV2}
-              world={worldState as any}
-              onWorldChange={(w: any) => setWorldState(normalizeWorldShape(w)) as any}
-              participantIds={participantIds}
-              onAddParticipant={handleAddParticipant}
-              onRemoveParticipant={handleRemoveParticipant}
-              onLoadScene={handleLoadScene}
-              perspectiveAgentId={perspectiveId}
-              onSelectPerspective={setPerspectiveAgentId}
-              sceneControl={sceneControl}
-              onSceneControlChange={setSceneControl}
-              scenePresets={Object.values(SCENE_PRESETS) as any}
-            />
-
-            {/* Small system status line for quick confidence checks */}
-            <div className="pt-4 border-t border-slate-800/50">
-              <div className="text-[9px] uppercase text-slate-500 mb-2">System_Integrity</div>
-              <div className="h-1 w-full bg-slate-800 rounded-full overflow-hidden">
-                <div className="h-full bg-cyan-600 w-[85%] shadow-[0_0_8px_rgba(6,182,212,0.5)]" />
-              </div>
-            </div>
-          </div>
-        ) : null}
+        <div className="flex-1 overflow-y-auto custom-scrollbar p-4">
+          <GoalLabControls
+            allCharacters={allCharacters}
+            allLocations={allLocations as any}
+            events={eventRegistry.getAll() as any}
+            computedAtoms={asArray<any>((snapshotV1?.atoms ?? (snapshot as any)?.atoms) as any)}
+            selectedAgentId={selectedAgentId}
+            onSelectAgent={handleSelectAgent}
+            selectedLocationId={selectedLocationId}
+            onSelectLocation={setSelectedLocationId}
+            locationMode={locationMode}
+            onLocationModeChange={setLocationMode}
+            selectedEventIds={selectedEventIds}
+            onToggleEvent={id =>
+              setSelectedEventIds(prev => {
+                const n = new Set(prev);
+                if (n.has(id)) n.delete(id);
+                else n.add(id);
+                return n;
+              })
+            }
+            manualAtoms={manualAtoms}
+            onChangeManualAtoms={setManualAtoms}
+            nearbyActors={nearbyActors}
+            onNearbyActorsChange={handleNearbyActorsChange}
+            placingActorId={placingActorId}
+            onStartPlacement={setPlacingActorId}
+            affectOverrides={affectOverrides}
+            onAffectOverridesChange={setAffectOverrides}
+            onRunTicks={handleRunTicks}
+            onResetSim={handleResetSim}
+            onDownloadScene={onDownloadScene}
+            onImportSceneDumpV2={handleImportSceneDumpV2}
+            world={worldState as any}
+            onWorldChange={(w: any) => setWorldState(normalizeWorldShape(w)) as any}
+            participantIds={participantIds}
+            onAddParticipant={handleAddParticipant}
+            onRemoveParticipant={handleRemoveParticipant}
+            onLoadScene={handleLoadScene}
+            perspectiveAgentId={perspectiveId}
+            onSelectPerspective={setPerspectiveAgentId}
+            sceneControl={sceneControl}
+            onSceneControlChange={setSceneControl}
+            scenePresets={Object.values(SCENE_PRESETS) as any}
+          />
+        </div>
       </aside>
 
-      {/* CENTER: Viewport & Simulation Map */}
-      <main className="flex-1 relative flex flex-col min-w-0 bg-[#020617]">
-        {/* Top Mini-Header */}
-        <div className="h-10 border-b border-slate-800/50 flex items-center justify-between px-4 bg-slate-950/20">
-          <div className="flex gap-4 items-center">
-            <button
-              onClick={() => setUiMode('debug')}
-              className={`text-[11px] uppercase tracking-tighter px-3 py-1 rounded-sm transition ${
-                uiMode === 'debug'
-                  ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/30'
-                  : 'text-slate-500 hover:text-slate-300'
-              }`}
-            >
-              Debug_View
-            </button>
-            <button
-              onClick={() => setUiMode('front')}
-              className={`text-[11px] uppercase tracking-tighter px-3 py-1 rounded-sm transition ${
-                uiMode === 'front'
-                  ? 'bg-purple-500/10 text-purple-400 border border-purple-500/30'
-                  : 'text-slate-500 hover:text-slate-300'
-              }`}
-            >
-              Front_User_View
-            </button>
-          </div>
-          <div className="flex items-center gap-4 text-[10px] font-mono text-slate-500">
-            <span>MEM: 1.2GB</span>
-            <span className="text-emerald-500">TPS: 60</span>
-          </div>
-        </div>
+      {/* CENTER: Мир и интерактив */}
+      <main className="flex-1 flex flex-col min-w-0">
+        <div className="flex-1 relative bg-black flex items-center justify-center">
+          {/* Сетка подложки */}
+          <div className="absolute inset-0 opacity-10 pointer-events-none bg-[linear-gradient(to_right,#1e293b_1px,transparent_1px),linear-gradient(to_bottom,#1e293b_1px,transparent_1px)] bg-[size:40px_40px]" />
 
-        {/* The Map Container */}
-        <div className="flex-1 relative overflow-hidden group">
-          <div className="absolute inset-0 opacity-20 pointer-events-none bg-[url('https://grainy-gradients.vercel.app/noise.svg')] bg-repeat" />
-          <div className="absolute inset-0 flex items-center justify-center">
-            {/* Central world map for scene inspection and placement */}
-            <div className="h-[min(70vh,720px)] w-[min(70vh,720px)]">
+          <div className="z-10 w-full h-full flex items-center justify-center">
+            {activeMap ? (
               <MapViewer
                 map={activeMap}
                 isEditor={locationMode === 'custom' && !placingActorId}
@@ -1826,73 +1711,112 @@ export const GoalSandbox: React.FC = () => {
                 onCellClick={handleActorClick}
                 highlights={mapHighlights as any}
               />
-            </div>
+            ) : (
+              <div className="text-slate-600 text-sm">Нет активной карты для просмотра.</div>
+            )}
           </div>
 
-          {/* Floating UI Elements */}
-          <div className="absolute top-6 left-6 p-4 bg-slate-950/80 border border-slate-800 rounded-lg backdrop-blur-xl shadow-2xl border-l-4 border-l-cyan-500">
-            <h3 className="text-[10px] uppercase text-slate-500 font-bold mb-1">Active_Entity</h3>
-            <div className="text-xl font-light tracking-tight text-white flex items-center gap-3">
-              {activeAgentLabel}
+          {/* Инфо-панель текущего агента */}
+          <div className="absolute top-6 left-6 p-4 bg-slate-950/90 border border-slate-800 rounded flex gap-4 backdrop-blur-md">
+            <div className="w-12 h-12 bg-cyan-500/10 border border-cyan-500/30 rounded flex items-center justify-center text-cyan-500">
+              ⚡
+            </div>
+            <div>
+              <div className="text-[10px] text-slate-500 uppercase font-bold">Subject_Status</div>
+              <div className="text-lg text-white font-light tracking-tight">{activeAgentLabel}</div>
             </div>
           </div>
         </div>
 
-        {/* Bottom Shell (Conditional) */}
-        <div className="h-1/3 border-t border-slate-800 bg-slate-950/80 backdrop-blur-md overflow-hidden flex flex-col">
-          {fatalError ? (
-            <div className="bg-red-900/40 border-b border-red-500/60 text-red-200 p-3 text-xs">
-              Goal Lab error: {fatalError}
-            </div>
-          ) : null}
-          {runtimeError && !fatalError ? (
-            <div className="bg-amber-900/30 border-b border-amber-500/60 text-amber-100 p-3 text-xs">
-              Goal Lab warning: {runtimeError}
-            </div>
-          ) : null}
-          {uiMode === 'debug' ? (
-            <DebugShell
-              snapshotV1={snapshotV1 as any}
-              pipelineV1={pipelineV1 as any}
-              pipelineFrame={pipelineFrame as any}
-              pipelineStageId={currentPipelineStageId}
-              onChangePipelineStageId={setPipelineStageId}
-              castRows={castRows}
-              perspectiveId={perspectiveId}
-              onSetPerspectiveId={setPerspectiveAgentId}
-              passportAtoms={passportAtoms}
-              passportMeta={canonicalAtoms as any}
-              contextualMind={contextualMind as any}
-              locationScores={locationScores as any}
-              tomScores={tomScores as any}
-              tom={(worldState as any)?.tom?.[perspectiveId as any]}
-              atomDiff={atomDiff as any}
-              sceneDump={sceneDumpV2 as any}
-              onDownloadScene={onDownloadScene}
-              onImportScene={handleImportSceneClick}
-              manualAtoms={manualAtoms}
-              onChangeManualAtoms={setManualAtoms}
-              onExportPipelineStage={handleExportPipelineStage}
-              onExportPipelineAll={handleExportPipelineAll}
-              onExportFullDebug={handleExportFullDebug}
-            />
-          ) : (
-            <FrontShell
-              snapshotV1={snapshotV1 as any}
-              selfId={perspectiveId || ''}
-              actorLabels={actorLabels}
-              setManualAtom={setManualAtom}
-            />
-          )}
-        </div>
+        {/* BOTTOM: Детальный разбор (Pipeline) */}
+        <section className="h-1/3 border-t border-slate-800 bg-slate-950/90 overflow-hidden flex flex-col">
+          <div className="h-8 border-b border-slate-800 flex items-center px-4 gap-4 bg-slate-900/50">
+            {['debug', 'tom', 'pipeline'].map((p) => (
+              <button
+                key={p}
+                onClick={() => setPanel(p as any)}
+                className={`text-[9px] font-bold uppercase tracking-widest transition ${
+                  panel === p ? 'text-cyan-400 border-b border-cyan-400' : 'text-slate-500'
+                }`}
+              >
+                {p}
+              </button>
+            ))}
+          </div>
+          <div className="flex-1 overflow-hidden">
+            {panel === 'debug' ? (
+              <DebugShell
+                snapshotV1={snapshotV1 as any}
+                pipelineV1={pipelineV1 as any}
+                pipelineFrame={pipelineFrame as any}
+                pipelineStageId={currentPipelineStageId}
+                onChangePipelineStageId={setPipelineStageId}
+                castRows={castRows}
+                perspectiveId={perspectiveId}
+                onSetPerspectiveId={setPerspectiveAgentId}
+                passportAtoms={passportAtoms}
+                passportMeta={canonicalAtoms as any}
+                contextualMind={contextualMind as any}
+                locationScores={locationScores as any}
+                tomScores={tomScores as any}
+                tom={(worldState as any)?.tom?.[perspectiveId as any]}
+                atomDiff={atomDiff as any}
+                sceneDump={sceneDumpV2 as any}
+                onDownloadScene={onDownloadScene}
+                onImportScene={handleImportSceneClick}
+                manualAtoms={manualAtoms}
+                onChangeManualAtoms={setManualAtoms}
+                onExportPipelineStage={handleExportPipelineStage}
+                onExportPipelineAll={handleExportPipelineAll}
+                onExportFullDebug={handleExportFullDebug}
+              />
+            ) : null}
+
+            {panel === 'tom' ? (
+              <div className="h-full overflow-y-auto custom-scrollbar p-4 text-xs text-slate-300">
+                {tomRows.length ? (
+                  tomRows.map((row: any, idx: number) => (
+                    <div key={`${row.me}-${row.other}-${idx}`} className="mb-2 border border-slate-800/60 rounded p-2">
+                      <div className="text-slate-500 uppercase text-[10px]">{row.me} → {row.other}</div>
+                      <pre className="whitespace-pre-wrap text-[11px] text-slate-200">{JSON.stringify(row.dyad, null, 2)}</pre>
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-slate-600">ToM rows are not available yet.</div>
+                )}
+              </div>
+            ) : null}
+
+            {panel === 'pipeline' ? (
+              <div className="h-full overflow-y-auto custom-scrollbar p-4 text-xs text-slate-300">
+                {pipelineV1?.stages?.length ? (
+                  <div className="grid grid-cols-2 gap-3">
+                    {pipelineV1.stages.map((stage: any, idx: number) => (
+                      <div key={stage.id ?? idx} className="border border-slate-800/60 rounded p-3 bg-slate-900/40">
+                        <div className="text-[10px] text-cyan-400 uppercase">Stage {stage.id ?? idx}</div>
+                        <div className="text-[11px] text-slate-400">Atoms: {(stage?.atoms || []).length}</div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-slate-600">Pipeline stages not available yet.</div>
+                )}
+              </div>
+            ) : null}
+          </div>
+        </section>
       </main>
 
-      {/* RIGHT SIDEBAR: Analytical Results */}
-      <aside className="w-[420px] border-l border-slate-800 bg-slate-950/80 backdrop-blur-md flex flex-col shadow-2xl">
-        <div className="p-3 border-b border-slate-800 bg-slate-900/50 flex items-center gap-2 text-xs font-bold uppercase text-slate-400">
-          Goal_Hierarchy_Analysis
+      {/* RIGHT: Результаты расчетов (GoalLabResults) */}
+      <aside className="w-[450px] border-l border-slate-800 bg-slate-950/50 backdrop-blur-xl flex flex-col shrink-0">
+        <div className="h-10 border-b border-slate-800 flex items-center justify-between px-4 bg-slate-900/30">
+          <span className="text-[10px] font-black text-slate-400 uppercase flex items-center gap-2">
+            ▤ Weight_Distribution
+          </span>
+          <span className="text-slate-600">i</span>
         </div>
         <div className="flex-1 overflow-y-auto custom-scrollbar">
+          {/* Передаем ToM rows, чтобы исключить ошибки в GoalLabResults. */}
           <GoalLabResults
             context={snapshot as any}
             frame={computed.frame as any}
@@ -1922,19 +1846,6 @@ export const GoalSandbox: React.FC = () => {
           />
         </div>
       </aside>
-
-      {/* Hidden import input for scene bundles */}
-      <input
-        ref={importInputRef}
-        type="file"
-        accept="application/json"
-        style={{ display: 'none' }}
-        onChange={e => {
-          const file = e.target.files?.[0];
-          if (file) handleImportSceneFile(file);
-          e.currentTarget.value = '';
-        }}
-      />
     </div>
   );
 };

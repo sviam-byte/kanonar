@@ -2,15 +2,6 @@
 // Friendly Simulator Lab UI for SimKit (session runner + debug) + GoalLab Pipeline view.
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import {
-  Area,
-  AreaChart,
-  Line,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts';
 import type { ProducerSpec } from '../../orchestrator/types';
 import { SimKitSimulator } from '../../simkit/core/simulator';
 import { buildExport } from '../../simkit/core/export';
@@ -20,11 +11,8 @@ import { makeOrchestratorPlugin } from '../../simkit/plugins/orchestratorPlugin'
 import { makeGoalLabPipelinePlugin } from '../../simkit/plugins/goalLabPipelinePlugin';
 import { makeSimWorldFromSelection } from '../../simkit/adapters/fromKanonarEntities';
 import { SimMapView } from '../../../components/SimMapView';
-import { LocationMapView } from '../../../components/LocationMapView';
 import { PlacementMapEditor } from '../../../components/ScenarioSetup/PlacementMapEditor';
-import { LivePlacementMiniMap } from '../../../components/ScenarioSetup/LivePlacementMiniMap';
 import { importLocationFromGoalLab } from '../../simkit/locations/goallabImport';
-import { Badge, Button, Card, Input, Select, TabButton } from '../../../components/ui/primitives';
 import { EntityType } from '../../../enums';
 import { getEntitiesByType, getAllCharactersWithRuntime } from '../../../data';
 import type { LocationEntity, CharacterEntity } from '../../../types';
@@ -257,9 +245,6 @@ function sameSet(a: string[], b: string[]) {
 
 export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
   const simRef = useRef<SimKitSimulator | null>(null);
-  const narrativeScrollRef = useRef<HTMLDivElement | null>(null);
-  // Center column viewer (always live): narrative vs raw JSON log.
-  const [centerMode, setCenterMode] = useState<'narrative' | 'json'>('narrative');
 
   // Catalog: entities available for selection in the simulator setup.
   const catalogLocations = useMemo(
@@ -273,6 +258,8 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
 
   const [seedDraft, setSeedDraft] = useState(5);
   const [tab, setTab] = useState<TabId>('summary');
+  // Simulator UI mode: setup or sim.
+  const [mode, setMode] = useState<'setup' | 'sim'>('setup');
   const [selected, setSelected] = useState<number>(-1); // record index, -1 = latest
   const [version, setVersion] = useState(0);
   const [runN, setRunN] = useState(10);
@@ -290,7 +277,6 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
   const [mapLocId, setMapLocId] = useState<string>('');
   const [mapCharId, setMapCharId] = useState<string | null>(null);
   const [setupMapLocId, setSetupMapLocId] = useState<string>('');
-  const [dockLocId, setDockLocId] = useState<string>('');
 
   const [setupDraft, setSetupDraft] = useState<SetupDraft>({
     selectedLocIds: [],
@@ -320,7 +306,7 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
 
   // If no ticks exist, default to the setup view.
   useEffect(() => {
-    if ((simRef.current?.records?.length || 0) === 0) setTab('setup');
+    if ((simRef.current?.records?.length || 0) === 0) setMode('setup');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -400,14 +386,6 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
     for (const r of slice) out.push(...buildNarrativeLinesForRecord(r));
     return out;
   }, [records, version]);
-
-  useEffect(() => {
-    // Center log follows latest tick if enabled.
-    if (!followLatest) return;
-    const el = narrativeScrollRef.current;
-    if (!el) return;
-    el.scrollTop = el.scrollHeight;
-  }, [narrativeLines.length, followLatest, centerMode]);
 
   const nameById = useMemo(() => {
     const map = new Map<string, string>();
@@ -722,228 +700,279 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
     sim,
   ]);
 
-  const scenarioId = sim.cfg.scenarioId;
+  const simTabs: Array<{ id: TabId; label: string; icon: string }> = [
+    { id: 'summary', label: 'Сводка', icon: '▦' },
+    { id: 'world', label: 'Мир', icon: '◎' },
+    { id: 'actions', label: 'Действия', icon: '⚡' },
+    { id: 'events', label: 'События', icon: '✶' },
+    { id: 'pipeline', label: 'Pipeline (S0–S8)', icon: '☰' },
+    { id: 'orchestrator', label: 'Оркестратор', icon: '⎈' },
+    { id: 'map', label: 'Map', icon: '▣' },
+    { id: 'json', label: 'JSON', icon: '{}' },
+  ];
 
-  // Initialize the docked minimap location once the world has locations.
-  useEffect(() => {
-    if (dockLocId) return;
-    const ids = Object.keys(sim.world.locations || {}).sort();
-    if (ids.length) setDockLocId(ids[0]);
-  }, [dockLocId, sim.world.locations]);
-
-  // Telemetry is mocked for now; map to real sim metrics once available.
-  const telemetrySeries = useMemo(
-    () =>
-      Array.from({ length: 20 }, (_, i) => ({
-        time: i,
-        stability: 0.6 + 0.2 * Math.sin(i / 3),
-        chaos: 0.2 + 0.12 * Math.cos(i / 2.3),
-        will: 0.45 + 0.25 * Math.sin(i / 4 + 0.8),
-      })),
-    []
-  );
-
-  const eventLogLines = useMemo(() => {
-    if (!narrativeLines.length) return [];
-    return narrativeLines.slice(-8);
-  }, [narrativeLines]);
-
-  const population = cur?.snapshot?.characters?.length ?? 0;
-  const avgStress = useMemo(() => {
-    const xs = cur?.snapshot?.characters ?? [];
-    if (!xs.length) return null;
-    const sum = xs.reduce((acc: number, c: any) => acc + Number(c?.stress ?? 0), 0);
-    return sum / xs.length;
-  }, [cur]);
-
-  const inspectorChar = useMemo(() => {
-    const xs = cur?.snapshot?.characters ?? [];
-    if (!xs.length) return null;
-    const id = mapCharId || xs[0]?.id;
-    return xs.find((c: any) => String(c.id) === String(id)) || xs[0] || null;
-  }, [cur, mapCharId]);
+  const currentTick = cur?.snapshot?.tickIndex ?? sim.world.tickIndex;
 
   return (
-    <div className="h-screen bg-black text-slate-300 flex flex-col font-mono p-1 gap-1">
-      {/* TOP: Control Bar */}
-      <header className="h-14 bg-slate-900/50 border border-slate-800 flex items-center justify-between px-6 rounded-t-lg">
-        <div className="flex items-center gap-8">
-          <div className="flex flex-col leading-none">
-            <span className="text-[10px] text-cyan-500 font-bold tracking-[0.2em] uppercase">SimKit_Engine</span>
-            <span className="text-lg text-white font-black italic">KANONAR_v4</span>
+    <div className="h-screen bg-[#020617] text-slate-300 flex flex-col font-mono overflow-hidden">
+      {/* HEADER: Управление симуляцией */}
+      <header className="h-14 bg-slate-900/80 border-b border-slate-800 flex items-center justify-between px-6 backdrop-blur-md shrink-0">
+        <div className="flex items-center gap-6">
+          <div className="flex flex-col">
+            <span className="text-[10px] text-cyan-500 font-bold tracking-[0.2em] uppercase italic">Kanonar_SimKit</span>
+            <div className="flex items-center gap-2">
+              <div
+                className={`w-2 h-2 rounded-full ${mode === 'sim' ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`}
+              />
+              <span className="text-sm text-white font-bold uppercase">
+                {mode === 'setup' ? 'Configuration' : `Tick: ${currentTick}`}
+              </span>
+            </div>
           </div>
 
-          <div className="flex items-center gap-2 bg-black/40 p-1 rounded border border-slate-800">
-            {/* Live toggle uses the same simulator loop as the classic controls. */}
+          <div className="flex bg-black/40 p-1 rounded border border-slate-800 ml-4">
             <button
-              className="p-2 hover:bg-emerald-500/20 text-emerald-500 transition rounded"
-              onClick={() => setLiveOn(true)}
-              disabled={!canSimulate}
-              aria-label="Start live"
+              onClick={() => setMode('setup')}
+              className={`px-4 py-1.5 flex items-center gap-2 text-[11px] rounded transition ${
+                mode === 'setup' ? 'bg-slate-700 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'
+              }`}
             >
-              ▶
+              ⚙ SETUP
             </button>
             <button
-              className="p-2 hover:bg-slate-700 text-slate-400 transition rounded"
-              onClick={() => setLiveOn(false)}
-              aria-label="Stop live"
+              onClick={() => setMode('sim')}
+              className={`px-4 py-1.5 flex items-center gap-2 text-[11px] rounded transition ${
+                mode === 'sim' ? 'bg-emerald-600/20 text-emerald-400' : 'text-slate-500 hover:text-slate-300'
+              }`}
             >
-              ■
-            </button>
-            <button
-              className="p-2 hover:bg-slate-700 text-slate-400 transition rounded"
-              onClick={() => doRun(10)}
-              disabled={!canSimulate}
-              aria-label="Run 10 ticks"
-            >
-              ⏭
+              ▶ RUN_SIM
             </button>
           </div>
         </div>
 
-        <div className="flex items-center gap-12">
-          <div className="flex flex-col items-end">
-            <span className="text-[9px] text-slate-500 uppercase">Current_Iteration</span>
-            <span className="text-xl text-cyan-400 font-bold tabular-nums">
-              {String(sim.world.tickIndex).padStart(6, '0')}
-            </span>
-          </div>
-          <div className="h-10 w-[1px] bg-slate-800" />
-          <div className="flex items-center gap-4">
-            <div className="text-right">
-              <div className="text-[9px] text-slate-500 uppercase">Engine_Status</div>
-              <div className="text-[10px] text-emerald-500 flex items-center gap-1">
-                <div className={`w-1.5 h-1.5 rounded-full ${liveOn ? 'bg-emerald-500 animate-pulse' : 'bg-slate-500'}`} />
-                {liveOn ? 'LIVE' : 'IDLE'}
-              </div>
+        <div className="flex items-center gap-4">
+          {mode === 'sim' ? (
+            <div className="flex items-center gap-2 bg-slate-800/50 px-3 py-1 rounded border border-slate-700">
+              <button
+                className="text-slate-400 hover:text-white"
+                onClick={() => setLiveOn(false)}
+                aria-label="Stop live"
+              >
+                ■
+              </button>
+              <div className="w-[1px] h-4 bg-slate-700 mx-2" />
+              <button
+                className="text-cyan-400 hover:text-cyan-300 flex items-center gap-1 text-[11px] font-bold"
+                onClick={doStep}
+                disabled={!canSimulate}
+              >
+                ⏭ NEXT_TICK
+              </button>
             </div>
-            <button
-              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white text-[11px] rounded uppercase font-bold border border-slate-700"
-              onClick={doReset}
-            >
-              Reset_World
-            </button>
-          </div>
+          ) : null}
         </div>
       </header>
 
-      {/* MAIN LAYOUT */}
-      <div className="flex-1 grid grid-cols-12 gap-1 overflow-hidden">
-        {/* VIEWPORT: The World */}
-        <section className="col-span-8 bg-slate-950 border border-slate-800 relative group">
-          <div className="absolute top-4 right-4 z-10 flex flex-col gap-2">
-            <div className="bg-black/60 backdrop-blur-md border border-slate-800 p-2 rounded text-[10px]">
-              <div className="text-slate-500 uppercase mb-1">Camera_Feed</div>
-              <div className="text-white">SAT_ORBITAL_VIEW</div>
-            </div>
+      <div className="flex-1 flex overflow-hidden">
+        {/* LEFT: History Rail (Список тиков) */}
+        <aside className="w-48 border-r border-slate-800 bg-slate-950/40 flex flex-col shrink-0">
+          <div className="p-3 border-b border-slate-800 text-[10px] font-bold text-slate-500 uppercase flex items-center gap-2">
+            ⌛ History_Log
           </div>
-
-          <div className="w-full h-full flex items-center justify-center bg-[#050505]">
-            <SimMapView />
-          </div>
-
-          {/* Overlay Info */}
-          <div className="absolute bottom-4 left-4 p-3 bg-black/80 border border-cyan-900/50 rounded flex gap-6 backdrop-blur-sm">
-            <div>
-              <div className="text-[9px] text-cyan-600 uppercase">Population</div>
-              <div className="text-lg text-white">{population}_Agents</div>
-            </div>
-            <div>
-              <div className="text-[9px] text-cyan-600 uppercase">Global_S*</div>
-              <div className="text-lg text-white">{avgStress != null ? avgStress.toFixed(3) : '—'}</div>
-            </div>
-          </div>
-        </section>
-
-        {/* TELEMETRY: The Stats */}
-        <aside className="col-span-4 flex flex-col gap-1 overflow-hidden">
-          {/* Stability Graph */}
-          <div className="flex-1 bg-slate-900/30 border border-slate-800 p-4 flex flex-col">
-            <div className="flex items-center justify-between mb-4">
-              <span className="text-[10px] uppercase font-bold text-slate-500 flex items-center gap-2">
-                SDE_Stability_Vector
-              </span>
-              <span className="text-red-500 animate-ping">●</span>
-            </div>
-            <div className="flex-1">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={telemetrySeries}>
-                  <defs>
-                    <linearGradient id="colorStab" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="#06b6d4" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <XAxis dataKey="time" hide />
-                  <YAxis domain={[0, 1]} hide />
-                  <Tooltip
-                    contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', fontSize: '10px' }}
-                    itemStyle={{ color: '#06b6d4' }}
-                  />
-                  <Area type="monotone" dataKey="stability" stroke="#06b6d4" fillOpacity={1} fill="url(#colorStab)" strokeWidth={2} />
-                  <Line type="monotone" dataKey="chaos" stroke="#f43f5e" strokeWidth={1} dot={false} strokeDasharray="3 3" />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-
-          {/* Terminal / Events */}
-          <div className="flex-1 bg-black border border-slate-800 p-0 flex flex-col overflow-hidden">
-            <div className="bg-slate-900/80 px-3 py-1.5 border-b border-slate-800 flex items-center gap-2 text-[10px] font-bold text-slate-400 uppercase">
-              System_Event_Log
-            </div>
-            <div className="flex-1 p-3 text-[11px] leading-relaxed font-mono overflow-y-auto custom-scrollbar space-y-1">
-              {eventLogLines.length ? (
-                eventLogLines.map((line, i) => (
-                  <div key={i} className="text-white">
-                    {line}
-                  </div>
-                ))
-              ) : (
-                <div className="text-slate-600 italic">[idle] awaiting simulator events...</div>
-              )}
-            </div>
-          </div>
-
-          {/* Quick Inspector */}
-          <div className="h-40 bg-slate-950 border border-slate-800 p-3 flex flex-col">
-            <span className="text-[10px] uppercase font-bold text-slate-500 mb-2 flex items-center gap-2">
-              Selected_Entity_Props
-            </span>
-            {inspectorChar ? (
-              <div className="grid grid-cols-2 gap-2">
-                <div className="bg-slate-900/50 p-2 border border-slate-800 rounded">
-                  <div className="text-[8px] text-slate-500 uppercase">Energy</div>
-                  <div className="text-sm font-bold text-white italic">
-                    {Number(inspectorChar.energy ?? 0).toFixed(3)}
-                  </div>
-                </div>
-                <div className="bg-slate-900/50 p-2 border border-slate-800 rounded">
-                  <div className="text-[8px] text-slate-500 uppercase">Stress</div>
-                  <div className="text-sm font-bold text-red-500 italic">
-                    {Number(inspectorChar.stress ?? 0).toFixed(3)}
-                  </div>
-                </div>
+          <div className="flex-1 overflow-y-auto custom-scrollbar">
+            {tickItems.length === 0 ? (
+              <div className="p-4 text-[10px] text-slate-600 italic leading-relaxed">
+                Пока пусто. Сделай 1 тик — появится список состояний.
               </div>
             ) : (
-              <div className="text-xs text-slate-600">No actor selected.</div>
+              tickItems.map((t) => (
+                <button
+                  key={t.i}
+                  onClick={() => {
+                    setSelected(t.i);
+                    setMode('sim');
+                  }}
+                  className={`w-full text-left px-4 py-2 border-b border-slate-900 text-[11px] transition ${
+                    curIdx === t.i
+                      ? 'bg-cyan-500/10 text-cyan-400 border-l-2 border-l-cyan-500'
+                      : 'hover:bg-slate-900 text-slate-500'
+                  }`}
+                >
+                  TICK_{String(t.tick).padStart(4, '0')}
+                </button>
+              ))
             )}
           </div>
         </aside>
-      </div>
 
-      {/* FOOTER: System Status */}
-      <footer className="h-6 bg-slate-950 border border-slate-800 rounded-b-lg flex items-center justify-between px-4 text-[9px] uppercase tracking-[0.2em] text-slate-600">
-        <div className="flex gap-6">
-          <span>Kanonar_OS v4.0.0</span>
-          <span className="text-slate-800">|</span>
-          <span>No Errors Detected</span>
-        </div>
-        <div className="flex gap-4">
-          <span className="text-cyan-900 font-bold">Local_Node: 127.0.0.1</span>
-          <span className="animate-pulse">● Connected</span>
-        </div>
-      </footer>
+        {/* MAIN: Content Area */}
+        <main className="flex-1 flex flex-col min-w-0 bg-[#020617]">
+          {/* Internal Tabs */}
+          <nav className="h-10 bg-slate-900/30 border-b border-slate-800 flex overflow-x-auto no-scrollbar shrink-0">
+            {simTabs.map((tabItem) => (
+              <button
+                key={tabItem.id}
+                onClick={() => setTab(tabItem.id)}
+                className={`flex items-center gap-2 px-4 whitespace-nowrap text-[10px] font-bold uppercase tracking-tighter transition border-r border-slate-800/50 ${
+                  tab === tabItem.id
+                    ? 'bg-slate-800 text-white shadow-[inset_0_-2px_0_#06b6d4]'
+                    : 'text-slate-500 hover:bg-slate-900/50 hover:text-slate-300'
+                }`}
+              >
+                {tabItem.icon} {tabItem.label}
+              </button>
+            ))}
+          </nav>
+
+          {/* Tab Content Display */}
+          <div className="flex-1 overflow-hidden relative">
+            {mode === 'setup' ? (
+              <div className="h-full bg-slate-950/20 flex flex-col">
+                <div className="px-4 py-3 border-b border-slate-800 flex flex-wrap items-center gap-3 text-[11px]">
+                  <div className="text-slate-400 uppercase">Setup_Location</div>
+                  <select
+                    value={setupMapLocId}
+                    onChange={(e) => setSetupMapLocId(e.target.value)}
+                    className="bg-slate-900/60 border border-slate-700 rounded px-2 py-1 text-slate-200"
+                  >
+                    {setupDraft.selectedLocIds.map((id) => (
+                      <option key={id} value={id}>
+                        {id}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="ml-auto flex items-center gap-2">
+                    {setupProblems.length ? (
+                      <span className="text-amber-400">issues: {setupProblems.length}</span>
+                    ) : (
+                      <span className="text-emerald-400">scene ok</span>
+                    )}
+                    <button
+                      className="px-3 py-1.5 bg-emerald-600/20 text-emerald-200 border border-emerald-500/40 rounded"
+                      onClick={applySceneFromDraft}
+                      disabled={setupProblems.length > 0}
+                    >
+                      Apply + Reset
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex-1 overflow-hidden">
+                  {setupPlaceForEditor ? (
+                    <PlacementMapEditor
+                      draft={{
+                        placements: setupDraft.placements,
+                        hazardPoints: setupDraft.hazardPoints,
+                        characters: selectedCharacters,
+                      }}
+                      setDraft={(next: any) => {
+                        setSetupDraft((prev) => ({
+                          ...prev,
+                          placements: next.placements || prev.placements,
+                          hazardPoints: next.hazardPoints || prev.hazardPoints,
+                        }));
+                      }}
+                      place={setupPlaceForEditor}
+                      actorIds={setupDraft.selectedCharIds}
+                    />
+                  ) : (
+                    <div className="h-full flex items-center justify-center text-slate-600 text-sm">
+                      Выберите локацию с картой для расстановки.
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="h-full flex flex-col">
+                {tab === 'map' ? (
+                  <div className="h-full p-4">
+                    <SimMapView sim={sim} snapshot={cur?.snapshot || null} onMove={pushManualMove} />
+                  </div>
+                ) : null}
+
+                {tab === 'pipeline' ? (
+                  <div className="flex-1 p-6 grid grid-cols-3 gap-4 overflow-y-auto custom-scrollbar">
+                    {(pipelineStages.length ? pipelineStages : Array.from({ length: 9 })).map((s: any, idx: number) => (
+                      <div
+                        key={s?.id ?? idx}
+                        className="bg-slate-900/50 border border-slate-800 p-4 rounded-lg hover:border-cyan-500/50 transition group"
+                      >
+                        <div className="text-[10px] text-cyan-600 font-bold mb-2 flex justify-between">
+                          <span>STAGE_{idx}</span>
+                          <span className="group-hover:text-cyan-400 transition">DETAILED_VIEW</span>
+                        </div>
+                        <div className="text-xs text-white font-bold mb-1 uppercase">
+                          {s?.id ? String(s.id) : `Stage_${idx}`}
+                        </div>
+                        <div className="text-[10px] text-slate-500 font-mono">
+                          Status: <span className="text-emerald-500 font-bold underline">{s ? 'PROCESSED' : 'PENDING'}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+
+                {tab === 'json' ? (
+                  <div className="flex-1 p-4 font-mono text-[11px] overflow-auto bg-black/50 custom-scrollbar">
+                    <pre className="text-blue-400">{JSON.stringify(cur || { tick: currentTick }, null, 2)}</pre>
+                  </div>
+                ) : null}
+
+                {tab === 'summary' ? (
+                  <div className="flex-1 flex flex-col gap-4 p-6 overflow-y-auto custom-scrollbar">
+                    <div className="text-slate-400 uppercase text-[11px]">Tick Summary</div>
+                    <div className="text-sm text-slate-200">
+                      Tick {currentTick} • actions={cur?.trace?.actionsApplied?.length ?? 0} • events={cur?.trace?.eventsApplied?.length ?? 0}
+                    </div>
+                    <div className="text-xs text-slate-500">{tickActionSummary || 'No actions yet.'}</div>
+                  </div>
+                ) : null}
+
+                {tab === 'world' ? (
+                  <div className="flex-1 p-6 overflow-y-auto custom-scrollbar text-sm text-slate-300">
+                    <div>Characters: {(cur?.snapshot?.characters || []).length}</div>
+                    <div>Locations: {(cur?.snapshot?.locations || []).length}</div>
+                  </div>
+                ) : null}
+
+                {tab === 'actions' ? (
+                  <div className="flex-1 p-6 overflow-y-auto custom-scrollbar text-xs font-mono">
+                    {(cur?.trace?.actionsApplied || []).length ? (
+                      cur!.trace.actionsApplied.map((a: any) => (
+                        <div key={a.id}>{JSON.stringify(a)}</div>
+                      ))
+                    ) : (
+                      <div className="text-slate-600">No actions yet.</div>
+                    )}
+                  </div>
+                ) : null}
+
+                {tab === 'events' ? (
+                  <div className="flex-1 p-6 overflow-y-auto custom-scrollbar text-xs font-mono">
+                    {(cur?.trace?.eventsApplied || []).length ? (
+                      cur!.trace.eventsApplied.map((e: any) => (
+                        <div key={e.id}>{JSON.stringify(e)}</div>
+                      ))
+                    ) : (
+                      <div className="text-slate-600">No events yet.</div>
+                    )}
+                  </div>
+                ) : null}
+
+                {tab === 'orchestrator' ? (
+                  <div className="flex-1 p-6 overflow-y-auto custom-scrollbar text-xs font-mono">
+                    {orchestratorSnapshot ? (
+                      <pre className="whitespace-pre-wrap">{JSON.stringify(orchestratorSnapshot, null, 2)}</pre>
+                    ) : (
+                      <div className="text-slate-600">No orchestrator snapshot.</div>
+                    )}
+                  </div>
+                ) : null}
+              </div>
+            )}
+          </div>
+        </main>
+      </div>
     </div>
   );
 }
