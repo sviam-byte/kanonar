@@ -30,6 +30,8 @@ function jsonDownload(filename: string, data: any) {
 type Props = {
   orchestratorRegistry: ProducerSpec[];
   onPushToGoalLab?: (goalLabSnapshot: any) => void;
+  catalogCharacters?: CharacterEntity[];
+  catalogLocations?: LocationEntity[];
 };
 
 type TabId =
@@ -243,18 +245,25 @@ function sameSet(a: string[], b: string[]) {
   return aSorted.every((id, i) => id === bSorted[i]);
 }
 
-export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
+export function SimulatorLab({
+  orchestratorRegistry,
+  onPushToGoalLab,
+  catalogCharacters: catalogCharactersProp,
+  catalogLocations: catalogLocationsProp,
+}: Props) {
   const simRef = useRef<SimKitSimulator | null>(null);
 
   // Catalog: entities available for selection in the simulator setup.
-  const catalogLocations = useMemo(
-    () =>
-      (getEntitiesByType(EntityType.Location) as LocationEntity[]).filter(
-        (l) => (l.versionTags || []).length === 0 || (l.versionTags || []).includes('current' as any)
-      ),
-    []
+  const catalogLocations = useMemo(() => {
+    const base = (catalogLocationsProp || getEntitiesByType(EntityType.Location)) as LocationEntity[];
+    return base.filter(
+      (l) => (l.versionTags || []).length === 0 || (l.versionTags || []).includes('current' as any)
+    );
+  }, [catalogLocationsProp]);
+  const catalogCharacters = useMemo(
+    () => (catalogCharactersProp ? catalogCharactersProp : getAllCharactersWithRuntime()),
+    [catalogCharactersProp]
   );
-  const catalogCharacters = useMemo(() => getAllCharactersWithRuntime(), []);
 
   const [seedDraft, setSeedDraft] = useState(5);
   const [tab, setTab] = useState<TabId>('summary');
@@ -277,6 +286,10 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
   const [mapLocId, setMapLocId] = useState<string>('');
   const [mapCharId, setMapCharId] = useState<string | null>(null);
   const [setupMapLocId, setSetupMapLocId] = useState<string>('');
+  // Manual environment facts (ctx:*) injected into world.facts on reset/apply.
+  const [manualFacts, setManualFacts] = useState<Array<{ key: string; value: number }>>([]);
+  const [manualFactKey, setManualFactKey] = useState('');
+  const [manualFactValue, setManualFactValue] = useState('');
 
   const [setupDraft, setSetupDraft] = useState<SetupDraft>({
     selectedLocIds: [],
@@ -540,10 +553,19 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
     setVersion((v) => v + 1);
   }
 
+  function applyManualFacts(facts: Record<string, any>) {
+    for (const entry of manualFacts) {
+      const key = String(entry.key || '').trim();
+      if (!key) continue;
+      facts[key] = Number(entry.value);
+    }
+  }
+
   function doReset() {
     sim.reset(seedDraft);
     sim.world.facts = sim.world.facts || {};
     sim.world.facts['sim:T'] = temperatureDraft;
+    applyManualFacts(sim.world.facts);
     setTab('summary');
     setSelected(-1);
     setVersion((v) => v + 1);
@@ -617,6 +639,7 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
     world.facts = world.facts || {};
     world.facts['sim:actors'] = Object.keys(world.characters || {}).sort();
     world.facts['sim:T'] = temperatureDraft;
+    applyManualFacts(world.facts);
     sim.setInitialWorld(world, { seed: seedDraft, scenarioId: basicScenarioId });
     setSelected(-1);
     setVersion((v) => v + 1);
@@ -855,6 +878,65 @@ export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
                       Apply + Reset
                     </button>
                   </div>
+                </div>
+
+                <div className="px-4 py-3 border-b border-slate-800 text-[11px] space-y-2">
+                  <div className="text-slate-400 uppercase">Environment_Facts (ctx:*)</div>
+                  <div className="flex flex-wrap gap-2 items-center">
+                    <input
+                      value={manualFactKey}
+                      onChange={(e) => setManualFactKey(e.target.value)}
+                      placeholder="ctx:danger"
+                      className="bg-slate-900/60 border border-slate-700 rounded px-2 py-1 text-slate-200"
+                    />
+                    <input
+                      value={manualFactValue}
+                      onChange={(e) => setManualFactValue(e.target.value)}
+                      placeholder="0.5"
+                      className="bg-slate-900/60 border border-slate-700 rounded px-2 py-1 text-slate-200 w-24"
+                    />
+                    <button
+                      className="px-3 py-1.5 bg-slate-800/60 text-slate-200 border border-slate-700 rounded"
+                      onClick={() => {
+                        const key = manualFactKey.trim();
+                        const value = Number(manualFactValue);
+                        if (!key || !Number.isFinite(value)) return;
+                        setManualFacts((prev) => {
+                          const next = prev.filter((f) => f.key !== key);
+                          next.push({ key, value });
+                          return next;
+                        });
+                        setManualFactKey('');
+                        setManualFactValue('');
+                      }}
+                    >
+                      Add_Fact
+                    </button>
+                  </div>
+                  {manualFacts.length ? (
+                    <div className="flex flex-wrap gap-2">
+                      {manualFacts.map((fact) => (
+                        <div
+                          key={fact.key}
+                          className="flex items-center gap-2 bg-slate-900/50 border border-slate-800 rounded px-2 py-1"
+                        >
+                          <span className="text-slate-200">{fact.key}</span>
+                          <span className="text-cyan-400">{fact.value.toFixed(2)}</span>
+                          <button
+                            className="text-slate-500 hover:text-red-400"
+                            onClick={() =>
+                              setManualFacts((prev) => prev.filter((f) => f.key !== fact.key))
+                            }
+                            aria-label={`Remove ${fact.key}`}
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-slate-600">Add ctx:* facts to influence SDE before running.</div>
+                  )}
                 </div>
 
                 <div className="flex-1 overflow-hidden">
