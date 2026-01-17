@@ -1,1911 +1,247 @@
-// lib/goal-lab/labs/SimulatorLab.tsx
-// Friendly Simulator Lab UI for SimKit (session runner + debug) + GoalLab Pipeline view.
-
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import type { ProducerSpec } from '../../orchestrator/types';
-import { SimKitSimulator } from '../../simkit/core/simulator';
-import { buildExport } from '../../simkit/core/export';
-import { buildSnapshot } from '../../simkit/core/world';
-import { basicScenarioId, makeBasicWorld } from '../../simkit/scenarios/basicScenario';
-import { makeOrchestratorPlugin } from '../../simkit/plugins/orchestratorPlugin';
-import { makeGoalLabPipelinePlugin } from '../../simkit/plugins/goalLabPipelinePlugin';
-import { makeSimWorldFromSelection } from '../../simkit/adapters/fromKanonarEntities';
+import React, { useMemo, useState } from 'react';
+import { useSandbox } from '../../../contexts/SandboxContext';
 import { SimMapView } from '../../../components/SimMapView';
-import { LocationMapView } from '../../../components/LocationMapView';
 import { PlacementMapEditor } from '../../../components/ScenarioSetup/PlacementMapEditor';
-import { LivePlacementMiniMap } from '../../../components/ScenarioSetup/LivePlacementMiniMap';
-import { importLocationFromGoalLab } from '../../simkit/locations/goallabImport';
-import { Badge, Button, Card, Input, Select, TabButton } from '../../../components/ui/primitives';
-import { EntityType } from '../../../enums';
-import { getEntitiesByType, getAllCharactersWithRuntime } from '../../../data';
-import type { LocationEntity, CharacterEntity } from '../../../types';
 
-function jsonDownload(filename: string, data: any) {
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
+type SetupStage = 'loc' | 'entities' | 'env';
+
+function safeName(e: any) {
+  return String(e?.name || e?.title || e?.id || '—');
 }
 
-type Props = {
-  orchestratorRegistry: ProducerSpec[];
-  onPushToGoalLab?: (goalLabSnapshot: any) => void;
-};
+const Icon: React.FC<{ label: string }> = ({ label }) => (
+  <span className="inline-flex items-center justify-center text-[11px] leading-none" aria-hidden="true">
+    {label}
+  </span>
+);
 
-type TabId =
-  | 'setup'
-  | 'summary'
-  | 'narrative'
-  | 'world'
-  | 'actions'
-  | 'events'
-  | 'pipeline'
-  | 'orchestrator'
-  | 'map'
-  | 'json';
+export const SimulatorLab: React.FC = () => {
+  const { sandboxState, entities } = useSandbox();
+  const [setupStage, setSetupStage] = useState<SetupStage>('loc');
 
-type SetupDraft = {
-  selectedLocIds: string[];
-  selectedCharIds: string[];
-  locPlacements: Record<string, string>;
-  placements: Array<{
-    characterId: string;
-    locationId: string;
-    nodeId: string | null;
-    x?: number;
-    y?: number;
-  }>;
-  locationSpecs: any[];
-  hazardPoints: Array<any>;
-};
+  // NOTE: Use sandboxState.actions.* to avoid assuming concrete runner APIs.
+  const actions = (sandboxState as any)?.actions;
 
-function normalizePlacements(args: { draft: SetupDraft; nextLocIds?: string[]; nextCharIds?: string[] }) {
-  const selectedLocIds = args.nextLocIds ?? args.draft.selectedLocIds;
-  const selectedCharIds = args.nextCharIds ?? args.draft.selectedCharIds;
+  const isRunning = Boolean((sandboxState as any)?.isSimRunning);
+  const selectedLocId =
+    (sandboxState as any)?.simAnchorLocationId ||
+    (sandboxState as any)?.selectedLocationId ||
+    (sandboxState as any)?.activeLocationId ||
+    null;
 
-  const locSet = new Set(selectedLocIds);
-  const nextLocPlacements: Record<string, string> = { ...args.draft.locPlacements };
+  const characters = useMemo(
+    () => (entities || []).filter((e: any) => e?.type === 'character' || e?.type === 'essence' || e?.type === 'actor'),
+    [entities]
+  );
+  const locations = useMemo(() => (entities || []).filter((e: any) => e?.type === 'location'), [entities]);
 
-  for (const id of Object.keys(nextLocPlacements)) {
-    if (!selectedCharIds.includes(id)) delete nextLocPlacements[id];
-  }
+  const selectedLoc = useMemo(
+    () => locations.find((l: any) => String(l?.id) === String(selectedLocId)),
+    [locations, selectedLocId]
+  );
 
-  const fallbackLocId = selectedLocIds[0];
-  if (fallbackLocId) {
-    for (const id of selectedCharIds) {
-      const locId = nextLocPlacements[id];
-      if (!locSet.has(locId)) nextLocPlacements[id] = fallbackLocId;
-    }
-  }
+  const startSim = () => actions?.startSim?.() ?? null;
+  const stopSim = () => actions?.stopSim?.() ?? null;
+  const nextTick = () => actions?.nextTick?.() ?? actions?.stepSim?.() ?? null;
 
-  const nextNodePlacements = (args.draft.placements || [])
-    .filter((p) => selectedCharIds.includes(p.characterId))
-    .map((p) => {
-      if (!locSet.has(p.locationId)) {
-        return fallbackLocId ? { ...p, locationId: fallbackLocId } : p;
-      }
-      return p;
-    });
+  /**
+   * Try multiple setters so the UI works across Sandbox implementations.
+   * If none exist, keep the warning so integrators can wire it up.
+   */
+  const setAnchor = (locId: string) => {
+    if (actions?.setSimAnchorLocationId) return actions.setSimAnchorLocationId(locId);
+    if (actions?.setSelectedLocationId) return actions.setSelectedLocationId(locId);
+    if (actions?.setActiveLocationId) return actions.setActiveLocationId(locId);
 
-  return {
-    selectedLocIds,
-    selectedCharIds,
-    locPlacements: nextLocPlacements,
-    placements: nextNodePlacements,
-    locationSpecs: args.draft.locationSpecs || [],
+    console.warn('No sandbox actions to set anchor location. Implement setSimAnchorLocationId/setSelectedLocationId.');
   };
-}
-
-function validateDraft(d: SetupDraft) {
-  const problems: string[] = [];
-  if (!d.selectedLocIds.length) problems.push('Нужна минимум 1 выбранная локация.');
-  if (!d.selectedCharIds.length) problems.push('Нужен минимум 1 выбранный персонаж.');
-
-  const locSet = new Set(d.selectedLocIds);
-  for (const [chId, locId] of Object.entries(d.locPlacements)) {
-    if (!d.selectedCharIds.includes(chId)) continue;
-    if (!locSet.has(locId)) problems.push(`Персонаж ${chId}: стартовая locId=${locId} не выбрана.`);
-  }
-  for (const p of d.placements || []) {
-    if (!d.selectedCharIds.includes(p.characterId)) continue;
-    if (!locSet.has(p.locationId)) {
-      problems.push(`Персонаж ${p.characterId}: placement locationId=${p.locationId} не выбрана.`);
-    }
-  }
-
-  return problems;
-}
-
-function cx(...xs: Array<string | false | null | undefined>) {
-  return xs.filter(Boolean).join(' ');
-}
-
-function clamp01(x: number) {
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(0, Math.min(1, x));
-}
-
-function toFixed2(x: any) {
-  const v = Number(x);
-  return Number.isFinite(v) ? v.toFixed(2) : 'NaN';
-}
-
-function buildNameIndex(snapshot: any) {
-  const m = new Map<string, string>();
-  for (const c of snapshot?.characters || []) m.set(String(c.id), String(c.name || c?.entity?.title || c.id));
-  for (const l of snapshot?.locations || []) m.set(String(l.id), String(l.name || l?.entity?.title || l.id));
-  return m;
-}
-
-function buildAtomIndex(orchestratorSnapshot: any) {
-  const m = new Map<string, any>();
-  const atoms = orchestratorSnapshot?.atoms || [];
-  for (const a of atoms) m.set(String(a?.id), a);
-  return m;
-}
-
-function formatReasons(chosen: any, atomById: Map<string, any>) {
-  const explicit = typeof chosen?.reason === 'string' ? chosen.reason.trim() : '';
-  const used = Array.isArray(chosen?.usedAtomIds) ? chosen.usedAtomIds.map(String) : [];
-
-  const hits = used.map((id) => atomById.get(id)).filter(Boolean);
-
-  const top = hits.slice(0, 3).map((a: any) => {
-    const label = String(a?.label || a?.id || 'atom');
-    const mag = toFixed2(a?.magnitude);
-    return `${label}=${mag}`;
-  });
-
-  if (explicit && top.length) return `${explicit}; ${top.join(', ')}${hits.length > 3 ? ` …(+${hits.length - 3})` : ''}`;
-  if (explicit) return explicit;
-  if (top.length) return `${top.join(', ')}${hits.length > 3 ? ` …(+${hits.length - 3})` : ''}`;
-  return '';
-}
-
-function formatOutcomeForActor(record: any, actorId: string) {
-  const d = (record?.trace?.deltas?.chars || []).find((x: any) => String(x?.id) === String(actorId));
-  if (!d?.before || !d?.after) return '';
-
-  const parts: string[] = [];
-
-  const bLoc = d.before.locId;
-  const aLoc = d.after.locId;
-  if (bLoc != null && aLoc != null && String(bLoc) !== String(aLoc)) parts.push(`loc: ${String(bLoc)}→${String(aLoc)}`);
-
-  for (const k of ['stress', 'energy', 'health']) {
-    const b = Number(d.before[k]);
-    const a = Number(d.after[k]);
-    if (!Number.isFinite(b) || !Number.isFinite(a)) continue;
-    const dx = a - b;
-    if (Math.abs(dx) < 1e-6) continue;
-    const sign = dx >= 0 ? '+' : '';
-    parts.push(`Δ${k}=${sign}${dx.toFixed(2)}`);
-  }
-
-  // Small bonus: count non-action events as consequences.
-  const ev = (record?.trace?.eventsApplied || []).filter((e: any) => {
-    const t = String(e?.type || '');
-    const aid = String(e?.payload?.actorId || '');
-    return aid === String(actorId) && !t.startsWith('action:');
-  });
-
-  if (ev.length) parts.push(`events(+${ev.length})`);
-
-  return parts.join(' ');
-}
-
-function buildNarrativeLinesForRecord(record: any) {
-  const tick = record?.snapshot?.tickIndex ?? -1;
-
-  const nameById = buildNameIndex(record?.snapshot);
-  const orchestratorSnapshot = record?.plugins?.orchestrator?.snapshot || null;
-  const atomById = buildAtomIndex(orchestratorSnapshot);
-  const perActor = record?.plugins?.orchestratorDecision?.perActor || {};
-
-  const lines: string[] = [];
-  const actions = record?.trace?.actionsApplied || [];
-
-  for (const a of actions) {
-    const actorId = String(a?.actorId || '');
-    const targetId = a?.targetId != null ? String(a.targetId) : '';
-    const actorName = nameById.get(actorId) || actorId;
-    const targetName = targetId ? nameById.get(targetId) || targetId : '';
-
-    const chosen = perActor?.[actorId]?.chosen || null;
-    const reasons = formatReasons(chosen, atomById);
-    const outcome = formatOutcomeForActor(record, actorId);
-
-    const scorePart =
-      chosen && Number.isFinite(Number(chosen.score))
-        ? ` (score=${Number(chosen.score).toFixed(3)}${Number.isFinite(Number(chosen.prob)) ? ` p=${Number(chosen.prob).toFixed(2)}` : ''})`
-        : '';
-
-    const tgt = targetName ? ` → ${targetName}` : '';
-    const why = reasons ? ` потому что ${reasons}` : '';
-    const got = outcome ? ` и получил ${outcome}` : '';
-
-    lines.push(`tick ${tick} · ${actorName}: ${String(a?.kind || 'action')}${tgt}${scorePart}${why}${got}`);
-  }
-
-  return lines;
-}
-
-// Normalize lists of ids to stable, trimmed string arrays for comparisons and display.
-function normalizeIdList(xs: Array<string | number | null | undefined>) {
-  return xs.map((x) => String(x || '').trim()).filter(Boolean).sort();
-}
-
-// Compare two lists as sets (order-insensitive).
-function sameSet(a: string[], b: string[]) {
-  if (a.length !== b.length) return false;
-  const aSorted = normalizeIdList(a);
-  const bSorted = normalizeIdList(b);
-  return aSorted.every((id, i) => id === bSorted[i]);
-}
-
-export function SimulatorLab({ orchestratorRegistry, onPushToGoalLab }: Props) {
-  const simRef = useRef<SimKitSimulator | null>(null);
-  const narrativeScrollRef = useRef<HTMLDivElement | null>(null);
-  // Center column viewer (always live): narrative vs raw JSON log.
-  const [centerMode, setCenterMode] = useState<'narrative' | 'json'>('narrative');
-
-  // Catalog: entities available for selection in the simulator setup.
-  const catalogLocations = useMemo(
-    () =>
-      (getEntitiesByType(EntityType.Location) as LocationEntity[]).filter(
-        (l) => (l.versionTags || []).length === 0 || (l.versionTags || []).includes('current' as any)
-      ),
-    []
-  );
-  const catalogCharacters = useMemo(() => getAllCharactersWithRuntime(), []);
-
-  const [seedDraft, setSeedDraft] = useState(5);
-  const [tab, setTab] = useState<TabId>('summary');
-  const [selected, setSelected] = useState<number>(-1); // record index, -1 = latest
-  const [version, setVersion] = useState(0);
-  const [runN, setRunN] = useState(10);
-  const [temperatureDraft, setTemperatureDraft] = useState(0.2);
-  // Orchestrator high-level debug viewer.
-  const [dbgFrameTickId, setDbgFrameTickId] = useState<string>('');
-  const [dbgStageId, setDbgStageId] = useState<'S0' | 'S1' | 'S2' | 'S3' | 'S4' | 'S5' | 'S6'>('S0');
-  const [offersActorFilter, setOffersActorFilter] = useState<string>(''); // substring
-  const [offersKeyFilter, setOffersKeyFilter] = useState<string>(''); // substring
-  const [offersBlockedByFilter, setOffersBlockedByFilter] = useState<string>(''); // substring over blockedBy[]
-  const [offersOnlyRejected, setOffersOnlyRejected] = useState<boolean>(false);
-  const [liveOn, setLiveOn] = useState(false);
-  const [liveHz, setLiveHz] = useState(2); // ticks per second
-  const [followLatest, setFollowLatest] = useState(true);
-  const [mapLocId, setMapLocId] = useState<string>('');
-  const [mapCharId, setMapCharId] = useState<string | null>(null);
-  const [setupMapLocId, setSetupMapLocId] = useState<string>('');
-  const [dockLocId, setDockLocId] = useState<string>('');
-
-  const [setupDraft, setSetupDraft] = useState<SetupDraft>({
-    selectedLocIds: [],
-    selectedCharIds: [],
-    locPlacements: {},
-    placements: [],
-    locationSpecs: [],
-    hazardPoints: [],
-  });
-
-  if (!simRef.current) {
-    simRef.current = new SimKitSimulator({
-      scenarioId: basicScenarioId,
-      seed: seedDraft,
-      initialWorld: makeBasicWorld(),
-      maxRecords: 5000,
-      plugins: [makeGoalLabPipelinePlugin(), makeOrchestratorPlugin(orchestratorRegistry)],
-    });
-  }
-
-  const sim = simRef.current;
-  sim.world.facts = sim.world.facts || {};
-  if (sim.world.facts['sim:T'] == null) {
-    sim.world.facts['sim:T'] = temperatureDraft;
-  }
-  const records = sim.records;
-
-  // If no ticks exist, default to the setup view.
-  useEffect(() => {
-    if ((simRef.current?.records?.length || 0) === 0) setTab('setup');
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const setupProblems = useMemo(() => validateDraft(setupDraft), [setupDraft]);
-
-  const selectedLocations = useMemo(
-    () => catalogLocations.filter((l) => setupDraft.selectedLocIds.includes(l.entityId)),
-    [catalogLocations, setupDraft.selectedLocIds]
-  );
-  const selectedCharacters = useMemo(
-    () => catalogCharacters.filter((c) => setupDraft.selectedCharIds.includes(c.entityId)),
-    [catalogCharacters, setupDraft.selectedCharIds]
-  );
-
-  // PlacementMapEditor should render the SAME map that will be used by makeSimWorldFromSelection().
-  // If a GoalLabLocationV1 spec is imported for this location, prefer its map/nav/features.
-  const setupPlaceForEditor = useMemo(() => {
-    const base = selectedLocations.find((loc: any) => loc.entityId === setupMapLocId) ?? null;
-    if (!base) return null;
-    const spec = (setupDraft.locationSpecs || []).find((s: any) => String(s?.id) === String(setupMapLocId));
-    if (!spec) return base;
-    const imported = importLocationFromGoalLab(spec as any);
-    return {
-      ...base,
-      map: imported.map ?? (base as any).map ?? null,
-      nav: imported.nav ?? (base as any).nav,
-      features: imported.features ?? (base as any).features,
-      hazards: { ...(((base as any).hazards as any) || {}), ...(imported.hazards || {}) },
-    };
-  }, [selectedLocations, setupMapLocId, setupDraft.locationSpecs]);
-
-  const curIdx = selected >= 0 ? selected : records.length - 1;
-  const cur = curIdx >= 0 ? records[curIdx] : null;
-  const inboxDebug = useMemo(() => {
-    const tick = cur?.snapshot?.tickIndex;
-    if (tick == null) return null;
-    const key = `debug:inbox:${tick}`;
-    return (cur?.trace?.deltas?.facts as any)?.[key]?.after ?? null;
-  }, [cur]);
-
-  useEffect(() => {
-    const locs = cur?.snapshot?.locations || [];
-    if (!locs.length) return;
-    const nextId = mapLocId && locs.some((l: any) => l.id === mapLocId)
-      ? mapLocId
-      : String(locs[0]?.id || '');
-    if (nextId && nextId !== mapLocId) setMapLocId(nextId);
-  }, [cur, mapLocId]);
-
-  useEffect(() => {
-    const locs = setupDraft.selectedLocIds || [];
-    if (!locs.length) return;
-    const nextId = setupMapLocId && locs.includes(setupMapLocId)
-      ? setupMapLocId
-      : String(locs[0] || '');
-    if (nextId && nextId !== setupMapLocId) setSetupMapLocId(nextId);
-  }, [setupDraft.selectedLocIds, setupMapLocId]);
-
-  const tickItems = useMemo(() => {
-    const xs = records.map((r, i) => ({
-      i,
-      tick: r?.snapshot?.tickIndex ?? i,
-      actions: r?.trace?.actionsApplied?.length ?? 0,
-      events: r?.trace?.eventsApplied?.length ?? 0,
-      atoms: (r?.plugins?.orchestrator?.snapshot?.atoms || []).length,
-      pipelineStages: (r?.plugins?.goalLabPipeline?.pipeline?.stages || []).length,
-    }));
-    xs.reverse(); // newest first
-    return xs;
-  }, [version, records]);
-
-  const narrativeLines = useMemo(() => {
-    // Keep only the latest chunk to avoid DOM overload.
-    const N = 200;
-    const slice = records.slice(Math.max(0, records.length - N));
-    const out: string[] = [];
-    for (const r of slice) out.push(...buildNarrativeLinesForRecord(r));
-    return out;
-  }, [records, version]);
-
-  useEffect(() => {
-    // Center log follows latest tick if enabled.
-    if (!followLatest) return;
-    const el = narrativeScrollRef.current;
-    if (!el) return;
-    el.scrollTop = el.scrollHeight;
-  }, [narrativeLines.length, followLatest, centerMode]);
-
-  const nameById = useMemo(() => {
-    const map = new Map<string, string>();
-    const snapshotChars = cur?.snapshot?.characters ?? null;
-
-    if (Array.isArray(snapshotChars)) {
-      for (const ch of snapshotChars) {
-        const id = String((ch as any)?.id ?? (ch as any)?.entityId ?? '');
-        const name = String((ch as any)?.name ?? (ch as any)?.title ?? (ch as any)?.entity?.title ?? '');
-        if (id && name) map.set(id, name);
-      }
-    } else {
-      for (const [id, ch] of Object.entries(sim.world.characters || {})) {
-        const name = String((ch as any)?.name ?? (ch as any)?.title ?? (ch as any)?.entity?.title ?? '');
-        if (name) map.set(String(id), name);
-      }
-    }
-
-    return map;
-  }, [cur, sim, version]);
-
-  const tickActionSummary = useMemo(() => {
-    if (!cur?.trace?.actionsApplied?.length) return '';
-    const xs = cur.trace.actionsApplied.map((a: any) => {
-      const k = String(a?.kind ?? '');
-      const actor = String(a?.actorId ?? '');
-      const actorLabel = nameById.get(actor) ? `${nameById.get(actor)}<${actor}>` : actor;
-      const t = a?.targetId ? `→${String(a.targetId)}` : '';
-      return `${actorLabel}:${k}${t}`;
-    });
-    return xs.slice(0, 6).join(' | ') + (xs.length > 6 ? ` …(+${xs.length - 6})` : '');
-  }, [cur, curIdx, nameById, version]);
-
-  const orchestratorTrace = cur?.plugins?.orchestrator?.trace || null;
-  const orchestratorSnapshot = cur?.plugins?.orchestrator?.snapshot || null;
-  const orchestratorDecision = cur?.plugins?.orchestratorDecision || null;
-  const orchestratorDebug = (cur as any)?.plugins?.orchestratorDebug || null;
-  const orchestratorDebugFrame = (cur as any)?.plugins?.orchestratorDebugFrame || null;
-
-  const pipelineOut = cur?.plugins?.goalLabPipeline || null;
-  const pipeline = pipelineOut?.pipeline || null;
-  const pipelineStages = pipeline?.stages || [];
-
-  const dbgHistory = useMemo(() => {
-    const xs = (orchestratorDebug?.history && Array.isArray(orchestratorDebug.history) ? orchestratorDebug.history : null) as
-      | any[]
-      | null;
-    if (xs && xs.length) return xs;
-    if (orchestratorDebugFrame) return [orchestratorDebugFrame];
-    return [];
-  }, [orchestratorDebug, orchestratorDebugFrame, curIdx, version]);
-
-  const dbgCurrentFrame = useMemo(() => {
-    if (!dbgHistory.length) return null;
-    if (dbgFrameTickId) {
-      const hit = dbgHistory.find((f: any) => String(f?.tickId ?? '') === String(dbgFrameTickId));
-      if (hit) return hit;
-    }
-    // Default: newest.
-    return dbgHistory[dbgHistory.length - 1];
-  }, [dbgHistory, dbgFrameTickId]);
-
-  const dbgStage = useMemo(() => {
-    const f = dbgCurrentFrame;
-    if (!f?.stages) return null;
-    return (f.stages as any[]).find((s) => String(s?.id) === String(dbgStageId)) || null;
-  }, [dbgCurrentFrame, dbgStageId]);
-
-  const dbgS3 = useMemo(() => {
-    const f = dbgCurrentFrame;
-    if (!f?.stages) return null;
-    return (f.stages as any[]).find((s) => String(s?.id) === 'S3') || null;
-  }, [dbgCurrentFrame]);
-
-  const offersPerActor = useMemo(() => {
-    const raw = dbgS3?.data?.perActor;
-    if (!raw || typeof raw !== 'object') return {};
-    return raw as Record<string, any>;
-  }, [dbgS3]);
-
-  const filteredActorIds = useMemo(() => {
-    const all = Object.keys(offersPerActor || {}).sort();
-    const aF = offersActorFilter.trim().toLowerCase();
-    if (!aF) return all;
-    return all.filter((id) => id.toLowerCase().includes(aF));
-  }, [offersPerActor, offersActorFilter]);
-
-  function offerKeyOf(o: any): string {
-    return String(o?.key ?? o?.possibilityId ?? o?.id ?? o?.kind ?? '');
-  }
-
-  function blockedByStr(o: any): string {
-    const bb = (o as any)?.blockedBy;
-    if (!Array.isArray(bb)) return '';
-    return bb.map((x) => String(x)).join(',');
-  }
-
-  function offerPassesFilters(o: any): boolean {
-    const kF = offersKeyFilter.trim().toLowerCase();
-    const bF = offersBlockedByFilter.trim().toLowerCase();
-    if (kF) {
-      const k = offerKeyOf(o).toLowerCase();
-      if (!k.includes(kF)) return false;
-    }
-    if (bF) {
-      const bb = blockedByStr(o).toLowerCase();
-      if (!bb.includes(bF)) return false;
-    }
-    return true;
-  }
-
-  async function copyJsonToClipboard(obj: any) {
-    try {
-      const txt = JSON.stringify(obj ?? null, null, 2);
-      await navigator.clipboard.writeText(txt);
-      // No toast system assumed; keep silent.
-    } catch (e) {
-      console.warn('copyJsonToClipboard failed', e);
-    }
-  }
-
-  function downloadJsonFile(obj: any, filename: string) {
-    try {
-      const txt = JSON.stringify(obj ?? null, null, 2);
-      const blob = new Blob([txt], { type: 'application/json;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-    } catch (e) {
-      console.warn('downloadJsonFile failed', e);
-    }
-  }
-
-  useEffect(() => {
-    // Whenever we get a new history, default to newest tickId (stable).
-    if (!dbgHistory.length) return;
-    const newest = dbgHistory[dbgHistory.length - 1];
-    const newestId = String(newest?.tickId ?? '');
-    if (!dbgFrameTickId || !dbgHistory.some((f: any) => String(f?.tickId ?? '') === String(dbgFrameTickId))) {
-      setDbgFrameTickId(newestId);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dbgHistory.length, curIdx, version]);
-
-  function hardRefreshAfterRun() {
-    setSelected(-1);
-    setVersion((v) => v + 1);
-  }
-
-  function doReset() {
-    sim.reset(seedDraft);
-    sim.world.facts = sim.world.facts || {};
-    sim.world.facts['sim:T'] = temperatureDraft;
-    setTab('summary');
-    setSelected(-1);
-    setVersion((v) => v + 1);
-  }
-
-  function doStep() {
-    sim.step();
-    hardRefreshAfterRun();
-  }
-
-  function doRun(n: number) {
-    sim.run(n);
-    hardRefreshAfterRun();
-  }
-
-  useEffect(() => {
-    if (!liveOn) return;
-
-    const hz = Math.max(0.25, Number(liveHz) || 1);
-    const periodMs = Math.max(16, Math.round(1000 / hz));
-
-    const t = window.setInterval(() => {
-      try {
-        sim.step();
-        if (followLatest) setSelected(-1);
-        setVersion((v) => v + 1);
-      } catch (e) {
-        console.warn('Live tick failed; stopping live mode', e);
-        setLiveOn(false);
-      }
-    }, periodMs);
-
-    return () => window.clearInterval(t);
-    // simRef.current is stable; dependency is safe.
-  }, [liveOn, liveHz, followLatest, sim]);
-
-  function exportSession() {
-    const exp = buildExport({ scenarioId: sim.cfg.scenarioId, seed: sim.world.seed, records: sim.records });
-    jsonDownload('simkit-session.json', exp);
-  }
-
-  function doExportTrace() {
-    if (!orchestratorTrace) return;
-    jsonDownload(`orchestrator-${orchestratorTrace.tickId}.json`, orchestratorTrace);
-  }
-
-  function doExportRecord() {
-    if (!cur) return;
-    jsonDownload(`simkit-record-${cur.snapshot.tickIndex}.json`, cur);
-  }
-
-  function doExportPipeline() {
-    if (!cur) return;
-    const tick = cur.snapshot.tickIndex;
-    const data = pipelineOut?.pipeline ?? pipelineOut;
-    if (!data) return;
-    jsonDownload(`goal-lab-pipeline-${tick}.json`, data);
-  }
-
-  function applySceneFromDraft() {
-    const world = makeSimWorldFromSelection({
-      seed: Number(seedDraft) || 1,
-      locations: selectedLocations,
-      characters: selectedCharacters,
-      placements: setupDraft.locPlacements,
-      locationSpecs: setupDraft.locationSpecs,
-      nodePlacements: setupDraft.placements,
-      hazardPoints: setupDraft.hazardPoints,
-    });
-    // Persist active cast + temperature into world facts for the orchestrator.
-    world.facts = world.facts || {};
-    world.facts['sim:actors'] = Object.keys(world.characters || {}).sort();
-    world.facts['sim:T'] = temperatureDraft;
-    sim.setInitialWorld(world, { seed: seedDraft, scenarioId: basicScenarioId });
-    setSelected(-1);
-    setVersion((v) => v + 1);
-    setTab('summary');
-  }
-
-  function pushManualMove(actorId: string, targetLocId: string) {
-    if (!actorId || !targetLocId) return;
-    // Manual move goes straight to forcedActions to bypass orchestrator selection.
-    sim.forcedActions.push({
-      id: `ui:move:${sim.world.tickIndex}:${actorId}:${targetLocId}`,
-      kind: 'move',
-      actorId,
-      targetId: targetLocId,
-    });
-    setVersion((v) => v + 1);
-  }
-
-  function pushManualMoveXY(actorId: string, x: number, y: number, locationId: string) {
-    if (!actorId) return;
-    sim.forcedActions.push({
-      id: `ui:move_xy:${sim.world.tickIndex}:${actorId}:${Math.round(x)}:${Math.round(y)}`,
-      kind: 'move_xy',
-      actorId,
-      payload: { x, y, locationId },
-    } as any);
-    setVersion((v) => v + 1);
-  }
-
-  // Temperature for action sampling in the orchestrator policy (T -> 0 = greedy).
-  function updateTemperature(value: number) {
-    const safeValue = Number.isFinite(value) ? value : 0;
-    setTemperatureDraft(safeValue);
-    sim.world.facts['sim:T'] = safeValue;
-  }
-
-  const worldCharIds = useMemo(() => normalizeIdList(Object.keys(sim.world.characters || {})), [sim, version]);
-  const worldLocIds = useMemo(() => normalizeIdList(Object.keys(sim.world.locations || {})), [sim, version]);
-
-  const worldCastIds = useMemo(() => {
-    const raw = sim.world.facts?.['sim:actors'];
-    if (Array.isArray(raw)) return normalizeIdList(raw);
-    if (typeof raw === 'string') {
-      return normalizeIdList(
-        raw
-          .split(',')
-          .map((x) => String(x || '').trim())
-          .filter(Boolean)
-      );
-    }
-    return [];
-  }, [sim, version]);
-
-  const draftHasSelection = setupDraft.selectedLocIds.length > 0 || setupDraft.selectedCharIds.length > 0;
-  const worldMatchesDraft = !draftHasSelection
-    ? true
-    : sameSet(worldCharIds, setupDraft.selectedCharIds) && sameSet(worldLocIds, setupDraft.selectedLocIds);
-
-  const canSimulate = !draftHasSelection ? true : setupProblems.length === 0 && worldMatchesDraft;
-
-  const draftPreviewSnapshot = useMemo(() => {
-    if (!selectedLocations.length) return sim.getPreviewSnapshot();
-    const world = makeSimWorldFromSelection({
-      seed: Number(seedDraft) || 1,
-      locations: selectedLocations,
-      characters: selectedCharacters,
-      placements: setupDraft.locPlacements,
-      locationSpecs: setupDraft.locationSpecs,
-      nodePlacements: setupDraft.placements,
-      hazardPoints: setupDraft.hazardPoints,
-    });
-    return buildSnapshot(world);
-  }, [
-    selectedLocations,
-    selectedCharacters,
-    setupDraft.locPlacements,
-    setupDraft.locationSpecs,
-    setupDraft.placements,
-    setupDraft.hazardPoints,
-    seedDraft,
-    sim,
-  ]);
-
-  const scenarioId = sim.cfg.scenarioId;
-
-  // Initialize the docked minimap location once the world has locations.
-  useEffect(() => {
-    if (dockLocId) return;
-    const ids = Object.keys(sim.world.locations || {}).sort();
-    if (ids.length) setDockLocId(ids[0]);
-  }, [dockLocId, sim.world.locations]);
 
   return (
-    <div className="h-full w-full p-2 bg-[#020617] text-slate-300 font-mono overflow-hidden">
-      <div className="sticky top-0 z-20 mb-4">
-        <div className="rounded-canon border border-canon-border bg-canon-panel/70 backdrop-blur-md shadow-canon-1 px-5 py-3 flex items-center gap-3">
-          <div className="text-lg font-semibold tracking-tight">Simulator Lab</div>
-          <div className="text-xs text-canon-muted font-mono">
-            simkit | worldTick={sim.world.tickIndex} | records={sim.records.length} | scenario={scenarioId}
-            <div className="text-[11px] text-canon-muted/80">
-              chars={worldCharIds.join(',') || '—'} | locs={worldLocIds.join(',') || '—'} | cast:{' '}
-              {worldCastIds.join(',') || '—'}
-            </div>
-          </div>
-          <div className="grow" />
-
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-canon-muted font-mono">seed</span>
-            <Input className="w-20" value={String(seedDraft)} onChange={(e) => setSeedDraft(Number(e.target.value))} />
-            <span className="text-xs text-canon-muted font-mono">T</span>
-            <Input
-              className="w-20"
-              value={String(sim.world.facts?.['sim:T'] ?? temperatureDraft)}
-              onChange={(e) => {
-                const v = Number(e.target.value);
-                updateTemperature(v);
-                setVersion((x) => x + 1);
-              }}
-            />
-            <Button kind="primary" onClick={applySceneFromDraft} disabled={setupProblems.length > 0}>
-              Apply + Reset
-            </Button>
-            <Button onClick={exportSession} disabled={records.length === 0}>
-              Export session
-            </Button>
-          </div>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-12 gap-4 min-h-0">
-        {/* Left (pinned map + world lists + controls) */}
-        <div className="col-span-3 min-h-0 flex flex-col gap-4">
-          {/* Map is pinned. Everything else in the left column scrolls normally (no overlap). */}
-          <div className="sticky top-24 z-0">
-            <Card title="Map (Live)" bodyClassName="p-0">
-              <div className="p-3 overflow-hidden">
-                <LivePlacementMiniMap
-                  chrome={false}
-                  variant="embedded"
-                  widthPx={0}
-                  snapshot={cur?.snapshot ?? sim.getPreviewSnapshot()}
-                  worldFacts={sim.world.facts}
-                  selectedLocId={dockLocId || Object.keys(sim.world.locations || {}).sort()[0] || ''}
-                  onSelectLocId={setDockLocId}
-                  onMoveXY={pushManualMoveXY}
-                  activeActorId={mapCharId || null}
-                />
-              </div>
-            </Card>
+    <div className="h-screen bg-black text-slate-300 flex flex-col font-mono p-1 gap-1 overflow-hidden">
+      {/* TOP CONTROL BAR */}
+      <header className="h-12 bg-slate-900/80 border border-slate-800 flex items-center justify-between px-6 shrink-0">
+        <div className="flex items-center gap-8">
+          <div className="flex flex-col">
+            <span className="text-[9px] text-cyan-500 font-bold uppercase tracking-widest">Setup_Engine</span>
+            <span className="text-sm text-white font-black italic">KANONAR_SIMKIT</span>
           </div>
 
-          <Card title="World" bodyClassName="p-3">
-            <div className="text-xs text-canon-muted mb-2">Локации в мире</div>
-            <select
-              value={dockLocId || Object.keys(sim.world.locations || {}).sort()[0] || ''}
-              onChange={(e) => setDockLocId(e.target.value)}
-              className="w-full rounded-xl border border-canon-border bg-black/20 px-3 py-2 text-sm"
+          <div className="flex bg-black/40 p-0.5 rounded border border-slate-800">
+            <button
+              onClick={() => (isRunning ? stopSim() : startSim())}
+              className={`px-4 py-1 flex items-center gap-2 text-[10px] rounded transition ${
+                isRunning
+                  ? 'bg-red-900/20 text-red-300'
+                  : 'bg-emerald-600/20 text-emerald-300 shadow-lg shadow-emerald-500/10'
+              }`}
             >
-              {Object.keys(sim.world.locations || {})
-                .sort()
-                .map((id) => (
-                  <option key={id} value={id}>
-                    {id}
-                  </option>
-                ))}
-            </select>
-
-            <div className="text-xs text-canon-muted mt-3 mb-2">Персонажи</div>
-            <select
-              value={mapCharId || ''}
-              onChange={(e) => setMapCharId(e.target.value || null)}
-              className="w-full rounded-xl border border-canon-border bg-black/20 px-3 py-2 text-sm"
-            >
-              <option value="">(none)</option>
-              {Object.keys(sim.world.characters || {})
-                .sort()
-                .map((id) => (
-                  <option key={id} value={id}>
-                    {nameById.get(id) ? `${nameById.get(id)} (${id})` : id}
-                  </option>
-                ))}
-            </select>
-          </Card>
-
-          <Card title="Controls">
-            <div className="text-sm text-canon-muted mb-3">
-              Симулятор = мир → действия → события → снапшот. Нажми “Сделать 1 тик”, чтобы появились записи и отладка.
-            </div>
-            {draftHasSelection && !worldMatchesDraft ? (
-              <div className="mb-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
-                Вы выбрали сцену в табе Setup, но ещё не применили её к миру. Нажмите <b>Apply + Reset</b>, иначе тики
-                будут идти по предыдущему миру.
-              </div>
-            ) : null}
-
-            <div className="flex gap-2 flex-wrap">
-              <Button kind="primary" onClick={doStep} disabled={!canSimulate}>
-                Сделать 1 тик
-              </Button>
-              <Button onClick={() => doRun(10)} disabled={!canSimulate}>
-                Run ×10
-              </Button>
-              <Button onClick={() => doRun(100)} disabled={!canSimulate}>
-                Run ×100
-              </Button>
-              <Button onClick={doReset}>Reset</Button>
-            </div>
-
-            <div className="mt-3 flex items-center gap-2 flex-wrap">
-              <Badge>Live</Badge>
-              <span className="text-xs text-canon-muted font-mono">Hz</span>
-              <Input className="w-20" value={String(liveHz)} onChange={(e) => setLiveHz(Number(e.target.value))} />
-              <Button kind={liveOn ? 'danger' : 'primary'} onClick={() => setLiveOn((x) => !x)} disabled={!canSimulate}>
-                {liveOn ? 'Stop live' : 'Start live'}
-              </Button>
-              <Button onClick={() => setFollowLatest((x) => !x)}>{followLatest ? 'Follow: ON' : 'Follow: OFF'}</Button>
-            </div>
-
-            <div className="mt-3 flex items-center gap-2">
-              <span className="text-xs text-canon-muted font-mono">run</span>
-              <Input className="w-24" value={String(runN)} onChange={(e) => setRunN(Number(e.target.value))} />
-              <Button onClick={() => doRun(runN)} disabled={!canSimulate}>
-                Run N
-              </Button>
-            </div>
-          </Card>
-
-        </div>
-
-        {/* Center (real-time log) */}
-        <div className="col-span-5 min-h-0 flex flex-col gap-4">
-          <Card
-            title="Log (live)"
-            right={
-              <div className="flex items-center gap-2">
-                <Button kind={centerMode === 'narrative' ? 'primary' : 'ghost'} onClick={() => setCenterMode('narrative')}>
-                  Narrative
-                </Button>
-                <Button kind={centerMode === 'json' ? 'primary' : 'ghost'} onClick={() => setCenterMode('json')}>
-                  JSON
-                </Button>
-                <Button onClick={() => setFollowLatest((x) => !x)}>{followLatest ? 'Follow: ON' : 'Follow: OFF'}</Button>
-              </div>
-            }
-            bodyClassName="p-0"
-          >
-            <div ref={narrativeScrollRef} className="h-[calc(100vh-240px)] overflow-auto p-3 font-mono text-xs whitespace-pre-wrap">
-              {centerMode === 'narrative' ? (
-                narrativeLines.length ? narrativeLines.join('\n') : '—'
+              {isRunning ? (
+                <>
+                  <Icon label="⏳" /> STOP
+                </>
               ) : (
-                // JSON log: one compact line per tick (latest first).
-                tickItems
-                  .slice(0, 200)
-                  .map((it) => {
-                    const r = records[it.i];
-                    const tick = r?.snapshot?.tickIndex ?? it.tick;
-                    const actions = (r?.trace?.actionsApplied || []).map((a: any) => ({
-                      kind: a?.kind,
-                      actorId: a?.actorId,
-                      targetId: a?.targetId ?? null,
-                    }));
-                    const events = (r?.trace?.eventsApplied || []).map((e: any) => e?.type);
-                    return JSON.stringify({ tick, actions, events });
-                  })
-                  .reverse()
-                  .join('\n')
+                <>
+                  <Icon label="▶" /> START_SIM
+                </>
+              )}
+            </button>
+
+            <button
+              onClick={nextTick}
+              className="ml-2 px-4 py-1 flex items-center gap-2 text-[10px] rounded transition bg-cyan-500/10 text-cyan-300 hover:bg-cyan-500/15"
+              title="Сделать один тик"
+            >
+              <Icon label="⏭" /> NEXT_TICK
+            </button>
+          </div>
+        </div>
+
+        <div className="flex gap-4">
+          {(['loc', 'entities', 'env'] as SetupStage[]).map((s) => (
+            <button
+              key={s}
+              onClick={() => setSetupStage(s)}
+              className={`text-[9px] px-2 py-1 uppercase font-bold transition border-b-2 ${
+                setupStage === s ? 'border-cyan-500 text-cyan-300' : 'border-transparent text-slate-500 hover:text-slate-300'
+              }`}
+            >
+              {s === 'loc' ? 'Setup_Location' : s === 'entities' ? 'Populate_World' : 'Environment_Facts'}
+            </button>
+          ))}
+        </div>
+      </header>
+
+      <div className="flex-1 grid grid-cols-12 gap-1 overflow-hidden">
+        {/* LEFT: Setup / Map Viewport */}
+        <section className="col-span-8 bg-[#020617] border border-slate-800 relative overflow-hidden">
+          {isRunning ? (
+            <SimMapView />
+          ) : (
+            <div className="h-full overflow-hidden">
+              {setupStage === 'loc' && (
+                <div className="h-full flex flex-col p-6 overflow-y-auto custom-scrollbar">
+                  <div className="flex justify-between items-center mb-6">
+                    <div>
+                      <h2 className="text-xl font-light text-white tracking-tight">Select_Simulation_Anchor</h2>
+                      <div className="text-[11px] text-slate-500 mt-1">
+                        Selected: <span className="text-cyan-300">{selectedLoc ? safeName(selectedLoc) : '—'}</span>
+                      </div>
+                    </div>
+
+                    <span className="text-[10px] text-amber-400 bg-amber-500/10 px-2 py-1 rounded border border-amber-500/20 flex items-center gap-2">
+                      <Icon label="⚠" /> {selectedLoc ? 'Anchor OK' : 'No_Target_Location'}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-3">
+                    {locations.map((loc: any) => {
+                      const isSel = String(loc?.id) === String(selectedLocId);
+                      return (
+                        <button
+                          key={String(loc?.id)}
+                          onClick={() => setAnchor(String(loc?.id))}
+                          className={`text-left p-4 bg-slate-900/30 border rounded hover:border-cyan-500/50 cursor-pointer transition group ${
+                            isSel ? 'border-cyan-500/80' : 'border-slate-800'
+                          }`}
+                        >
+                          <div className="text-[10px] text-slate-500 group-hover:text-cyan-300">LOCATION_ID</div>
+                          <div className="text-sm font-bold text-white mb-4">{safeName(loc)}</div>
+                          <div className="text-[10px] uppercase font-black text-cyan-300">
+                            {isSel ? 'Selected' : 'Select_Anchor'}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {setupStage === 'entities' && (
+                <div className="h-full">
+                  {/* Placement editor for scenario setup. */}
+                  <PlacementMapEditor />
+                </div>
+              )}
+
+              {setupStage === 'env' && (
+                <div className="h-full p-6 overflow-y-auto custom-scrollbar">
+                  <div className="text-[10px] text-slate-500 uppercase font-bold mb-3 flex items-center gap-2">
+                    <Icon label="🌐" /> Environment_Facts (ctx:*)
+                  </div>
+
+                  <div className="bg-black/40 border border-slate-800 rounded p-4 text-[11px] text-slate-300">
+                    Тут должен быть UI для ctx-атомов симуляции. Если у тебя уже есть такой в другом месте —
+                    просто перенеси компонент сюда.
+                    <div className="mt-3 text-[10px] text-slate-500">
+                      (Пример: actions.addContextAtom('ctx:danger', 0.8))
+                    </div>
+                  </div>
+                </div>
               )}
             </div>
-          </Card>
-        </div>
+          )}
+        </section>
 
-        {/* Right (history + details tabs) */}
-        <div className="col-span-4 min-h-0 flex flex-col gap-4">
-          <Card title="History" bodyClassName="p-0">
-            {records.length === 0 ? (
-              <div className="text-sm text-canon-muted p-5">
-                Пока пусто. Сделай 1 тик — появится список тиков, и можно будет смотреть мир/действия/события/пайплайн/оркестратор.
-              </div>
-            ) : (
-              <div className="max-h-[320px] overflow-auto p-3 flex flex-col gap-2">
-                <div className="flex gap-2 flex-wrap mb-2">
-                  <Button onClick={() => setSelected(-1)}>Latest</Button>
-                  <Button onClick={() => setSelected(Math.max(0, records.length - 1))}>Oldest</Button>
-                  <Button onClick={doExportRecord} disabled={!cur}>
-                    Export record.json
-                  </Button>
-                  <Button onClick={doExportTrace} disabled={!orchestratorTrace}>
-                    Export trace.json
-                  </Button>
-                  <Button onClick={doExportPipeline} disabled={!pipelineOut}>
-                    Export pipeline.json
-                  </Button>
-                  {onPushToGoalLab && orchestratorSnapshot ? (
-                    <Button onClick={() => onPushToGoalLab(orchestratorSnapshot)}>Push → GoalLab</Button>
-                  ) : null}
+        {/* RIGHT: Character List + Quick Info */}
+        <aside className="col-span-4 flex flex-col gap-1 overflow-hidden">
+          <div className="flex-1 bg-slate-900/20 border border-slate-800 flex flex-col overflow-hidden">
+            <div className="p-3 bg-slate-900/40 border-b border-slate-800 flex items-center gap-2 text-[10px] font-bold text-slate-400 uppercase">
+              <Icon label="👥" /> Available_Characters
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar">
+              {characters.map((char: any) => (
+                <div
+                  key={String(char?.id)}
+                  className="p-2 border border-slate-800 bg-black/40 hover:border-cyan-900 flex justify-between items-center transition"
+                >
+                  <div className="min-w-0">
+                    <div className="text-[11px] text-white font-bold truncate">{safeName(char)}</div>
+                    <div className="text-[9px] text-slate-500 uppercase tracking-tighter truncate">
+                      id: {String(char?.id)}
+                    </div>
+                  </div>
+
+                  <button
+                    className="text-[10px] bg-slate-800 hover:bg-cyan-900 px-2 py-1 rounded"
+                    onClick={() => actions?.addToScene?.(String(char?.id)) ?? null}
+                    title="Добавить персонажа в сцену/плейсменты"
+                  >
+                    ADD
+                  </button>
                 </div>
-
-                <div className="flex flex-col gap-2">
-                  {tickItems.map((it) => (
-                    <button
-                      key={it.i}
-                      onClick={() => setSelected(it.i)}
-                      className={cx(
-                        'text-left rounded-xl border border-canon-border p-3 bg-canon-card/80 hover:bg-white/5 transition',
-                        it.i === curIdx && 'bg-white/10'
-                      )}
-                    >
-                      <div className="flex items-baseline justify-between gap-2">
-                        <div className="font-extrabold">tick {it.tick}</div>
-                        <div className="font-mono text-xs text-canon-muted">#{it.i}</div>
-                      </div>
-                      <div className="font-mono text-xs text-canon-muted mt-1">
-                        actions={it.actions} events={it.events} atoms={it.atoms} pipelineStages={it.pipelineStages}
-                      </div>
-                      {it.i === curIdx && tickActionSummary ? (
-                        <div className="mt-2 text-xs opacity-80">{tickActionSummary}</div>
-                      ) : null}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-          </Card>
-
-          <div className="flex flex-wrap gap-2 mb-4">
-            <TabButton active={tab === 'setup'} onClick={() => setTab('setup')}>
-              Setup
-            </TabButton>
-            <TabButton active={tab === 'summary'} onClick={() => setTab('summary')}>
-              Сводка
-            </TabButton>
-            <TabButton active={tab === 'world'} onClick={() => setTab('world')}>
-              Мир
-            </TabButton>
-            <TabButton active={tab === 'actions'} onClick={() => setTab('actions')}>
-              Действия
-            </TabButton>
-            <TabButton active={tab === 'events'} onClick={() => setTab('events')}>
-              События
-            </TabButton>
-            <TabButton active={tab === 'pipeline'} onClick={() => setTab('pipeline')}>
-              Pipeline (S0–S8)
-            </TabButton>
-            <TabButton active={tab === 'orchestrator'} onClick={() => setTab('orchestrator')}>
-              Оркестратор
-            </TabButton>
-            <TabButton active={tab === 'map'} onClick={() => setTab('map')}>
-              Map
-            </TabButton>
-            <TabButton active={tab === 'json'} onClick={() => setTab('json')}>
-              JSON
-            </TabButton>
-
-            <div className="grow" />
-
-            {setupProblems.length ? <Badge tone="bad">issues: {setupProblems.length}</Badge> : <Badge tone="good">scene ok</Badge>}
+              ))}
+            </div>
           </div>
 
-          {records.length === 0 && tab !== 'setup' ? (
-            <div className="flex-1 min-h-0 rounded-2xl border border-canon-border bg-canon-card p-8 flex flex-col items-start justify-center gap-4">
-              <div className="text-2xl font-extrabold">Здесь будет жизнь</div>
-              <div className="opacity-80 max-w-2xl">
-                Сейчас записей нет, поэтому “смотреть” нечего. Симулятор создаёт записи только после тиков. Нажми кнопку ниже —
-                появится tick 0 и вся отладка.
+          <div className="h-40 bg-slate-950 border border-slate-800 p-4 flex flex-col">
+            <div className="text-[10px] font-bold text-slate-500 uppercase mb-2 flex items-center gap-2">
+              <Icon label="🛡" /> Anchor_Status
+            </div>
+            <div className="text-[11px] text-slate-300">
+              Location: <span className="text-cyan-300">{selectedLoc ? safeName(selectedLoc) : '— not selected —'}</span>
+            </div>
+            <div className="mt-2 text-[10px] text-slate-500">
+              Если кнопка выбора не работает — проверь, что у тебя есть один из setters:
+              <div className="mt-1 text-slate-400">
+                actions.setSimAnchorLocationId / setSelectedLocationId / setActiveLocationId
               </div>
-              <Button kind="primary" onClick={doStep} disabled={!canSimulate}>
-                Сделать 1 тик
-              </Button>
             </div>
-          ) : !cur && tab !== 'setup' ? (
-            <div className="opacity-70">Нет выбранной записи.</div>
-          ) : (
-            <div className="flex-1 min-h-0 overflow-auto pr-1 flex flex-col gap-4">
-              {/* SETUP */}
-              {tab === 'setup' ? (
-                <div className="flex flex-col gap-4">
-                  <Card title="Сетап сцены">
-                    <div className="flex items-start gap-3 flex-wrap mb-3">
-                      <div className="min-w-[280px]">
-                        <div className="text-sm opacity-80">
-                          Выбери локации и персонажей, назначь стартовые локации и расставь на карте (включая точки
-                          опасности/безопасности).
-                        </div>
-                        <div className="text-xs opacity-60 mt-1">
-                          Важно: расстановка по XY работает только если карта для выбранной локации реально загружена.
-                        </div>
-                      </div>
-                      <div className="grow" />
-                      {setupProblems.length ? (
-                        <Badge tone="bad">ошибки: {setupProblems.length}</Badge>
-                      ) : (
-                        <Badge tone="good">готово</Badge>
-                      )}
-                    </div>
-
-                    <div className="grid grid-cols-12 gap-4">
-                      <div className="col-span-4">
-                        <div className="canon-card p-3">
-                          <div className="font-semibold">Локации</div>
-                          <div className="text-xs opacity-60 mb-2">Ctrl/Shift для мультивыбора</div>
-                          <select
-                            multiple
-                            value={setupDraft.selectedLocIds}
-                            onChange={(e) => {
-                              const nextIds = Array.from(e.currentTarget.selectedOptions).map((o) => o.value);
-                              setSetupDraft((d) => normalizePlacements({ draft: d, nextLocIds: nextIds }));
-                            }}
-                            className="w-full min-h-[220px] rounded-xl border border-canon-border bg-black/20 px-3 py-2 text-sm"
-                          >
-                            {catalogLocations.map((l) => (
-                              <option key={l.entityId} value={l.entityId}>
-                                {l.title || l.entityId} ({l.entityId})
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                      </div>
-
-                      <div className="col-span-4">
-                        <div className="canon-card p-3">
-                          <div className="font-semibold">Персонажи</div>
-                          <div className="text-xs opacity-60 mb-2">Ctrl/Shift для мультивыбора</div>
-                          <select
-                            multiple
-                            value={setupDraft.selectedCharIds}
-                            onChange={(e) => {
-                              const nextIds = Array.from(e.currentTarget.selectedOptions).map((o) => o.value);
-                              setSetupDraft((d) => normalizePlacements({ draft: d, nextCharIds: nextIds }));
-                            }}
-                            className="w-full min-h-[220px] rounded-xl border border-canon-border bg-black/20 px-3 py-2 text-sm"
-                          >
-                            {catalogCharacters.map((c: any) => (
-                              <option key={c.entityId} value={c.entityId}>
-                                {c.title || c.entityId} ({c.entityId})
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                      </div>
-
-                      <div className="col-span-4">
-                        <div className="canon-card p-3">
-                          <div className="font-semibold mb-2">Стартовые локации персонажей</div>
-                          {selectedCharacters.length === 0 ? (
-                            <div className="text-sm opacity-70">Выбери хотя бы одного персонажа.</div>
-                          ) : (
-                            <div className="flex flex-col gap-3">
-                              {selectedCharacters.map((ch: any) => {
-                                const fallbackLoc = setupDraft.selectedLocIds[0] || '';
-                                const locId = setupDraft.locPlacements[ch.entityId] || fallbackLoc;
-                                return (
-                                  <div key={ch.entityId} className="grid grid-cols-12 gap-2 items-center">
-                                    <div className="col-span-6 text-sm">
-                                      {ch.title || ch.entityId}
-                                      <div className="text-xs opacity-60">{ch.entityId}</div>
-                                    </div>
-                                    <Select
-                                      className="col-span-6 bg-black/20"
-                                      value={locId}
-                                      disabled={!setupDraft.selectedLocIds.length}
-                                      onChange={(e) => {
-                                        const nextLocId = e.target.value;
-                                        setSetupDraft((d) => ({
-                                          ...d,
-                                          locPlacements: { ...d.locPlacements, [ch.entityId]: nextLocId },
-                                        }));
-                                      }}
-                                    >
-                                      {!setupDraft.selectedLocIds.length ? (
-                                        <option value="">(нет выбранных локаций)</option>
-                                      ) : null}
-                                      {selectedLocations.map((loc: any) => (
-                                        <option key={loc.entityId} value={loc.entityId}>
-                                          {loc.title || loc.entityId}
-                                        </option>
-                                      ))}
-                                    </Select>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    {setupDraft.selectedLocIds.length > 0 && setupDraft.selectedCharIds.length > 0 ? (
-                      <div className="mt-4 space-y-3">
-                        <div className="canon-card p-3">
-                          <div className="font-semibold mb-2">Редактор карты (позиции + опасности)</div>
-                          <div className="text-xs opacity-60 mb-2">Выбери локацию, по которой расставляешь.</div>
-                          <select
-                            className="canon-input w-full"
-                            value={setupMapLocId || ''}
-                            onChange={(e) => setSetupMapLocId(e.target.value)}
-                          >
-                            {setupDraft.selectedLocIds.map((id) => {
-                              const loc = selectedLocations.find((l: any) => l.entityId === id);
-                              return (
-                                <option key={id} value={id}>
-                                  {loc?.title ?? id}
-                                </option>
-                              );
-                            })}
-                          </select>
-                        </div>
-
-                        <div className="rounded-2xl border border-canon-border bg-black/10 p-2">
-                          <PlacementMapEditor
-                            draft={{
-                              ...setupDraft,
-                              characters: selectedCharacters.map((c: any) => ({ id: c.entityId, title: c.title || c.entityId })),
-                              locations: selectedLocations.map((l: any) => ({ id: l.entityId, title: l.title || l.entityId })),
-                            }}
-                            setDraft={(next) => {
-                              setSetupDraft((d) => ({
-                                ...d,
-                                placements: next.placements || [],
-                                hazardPoints: next.hazardPoints || [],
-                              }));
-                            }}
-                            place={setupPlaceForEditor}
-                            actorIds={setupDraft.selectedCharIds}
-                          />
-                        </div>
-                      </div>
-                    ) : null}
-
-                    {setupProblems.length > 0 && (
-                      <div className="mt-3 rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-sm">
-                        <div className="font-semibold mb-2">Проблемы сцены:</div>
-                        <ul className="list-disc pl-5">
-                          {setupProblems.map((p, i) => (
-                            <li key={i}>{p}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-
-                    <div className="mt-3 flex items-center gap-2 flex-wrap">
-                      <div className="text-sm opacity-70">
-                        Выбрано: {setupDraft.selectedLocIds.length} локаций, {setupDraft.selectedCharIds.length} персонажей.
-                      </div>
-                      <div className="grow" />
-                      <Button kind="primary" disabled={setupProblems.length > 0} onClick={applySceneFromDraft}>
-                        Применить сцену и сбросить
-                      </Button>
-                    </div>
-                  </Card>
-
-                  
-                </div>
-              ) : null}
-
-              {/* SUMMARY */}
-              {tab === 'summary' ? (
-                <>
-                  <Card title="Что произошло на тике">
-                    <div className="font-mono text-sm opacity-90">
-                      tickIndex={cur!.snapshot.tickIndex}
-                      <br />
-                      actionsApplied={cur!.trace.actionsApplied.length} eventsApplied={cur!.trace.eventsApplied.length}
-                      <br />
-                      charsChanged={cur!.trace.deltas.chars.length} factsChanged={Object.keys(cur!.trace.deltas.facts || {}).length}
-                      <br />
-                      orchestratorAtoms={(orchestratorSnapshot?.atoms || []).length} pipelineStages={pipelineStages.length}
-                    </div>
-                  </Card>
-
-                  <Card title="Notes (человеческий лог симулятора)">
-                    <pre className="font-mono text-sm opacity-90 whitespace-pre-wrap m-0">
-                      {(cur!.trace.notes || []).join('\n') || '(empty)'}
-                    </pre>
-                  </Card>
-
-                  <Card title="Дельты персонажей">
-                    <div className="font-mono text-xs opacity-90">
-                      {cur!.trace.deltas.chars.length ? (
-                        cur!.trace.deltas.chars.map((d: any) => (
-                          <div key={d.id} className="mb-2">
-                            <b>{d.id}</b> :: {JSON.stringify(d.before)} → {JSON.stringify(d.after)}
-                          </div>
-                        ))
-                      ) : (
-                        <div>(none)</div>
-                      )}
-                    </div>
-                  </Card>
-                </>
-              ) : null}
-
-              {/* WORLD */}
-              {tab === 'world' ? (
-                <>
-                  <Card title="Персонажи">
-                    <div className="font-mono text-sm opacity-90">
-                      {cur!.snapshot.characters.map((c: any) => (
-                        <div key={c.id} className="mb-2">
-                          <b>{c.id}</b> loc={c.locId} health={clamp01(c.health).toFixed(2)} energy={clamp01(c.energy).toFixed(2)}{' '}
-                          stress={clamp01(c.stress).toFixed(2)}
-                        </div>
-                      ))}
-                    </div>
-                  </Card>
-
-                  <Card title="Локации">
-                    <div className="font-mono text-xs opacity-90">
-                      {cur!.snapshot.locations.map((l: any) => (
-                        <div key={l.id} className="mb-4">
-                          <div className="font-extrabold">
-                            {l.id} <span className="opacity-70">{l.name}</span>
-                          </div>
-                          <div className="opacity-90">neighbors: {(l.neighbors || []).join(', ') || '(none)'}</div>
-                          <div className="opacity-90">hazards: {JSON.stringify(l.hazards || {})}</div>
-                          <div className="opacity-90">norms: {JSON.stringify(l.norms || {})}</div>
-                        </div>
-                      ))}
-                    </div>
-                  </Card>
-
-                  {inboxDebug ? (
-                    <Card title="Inbox atoms (debug)">
-                      <pre className="text-xs opacity-90 whitespace-pre-wrap">{JSON.stringify(inboxDebug, null, 2)}</pre>
-                    </Card>
-                  ) : null}
-                </>
-              ) : null}
-
-              {/* ACTIONS */}
-              {tab === 'actions' ? (
-                <>
-                  <Card title="Действия, которые были применены">
-                    <div className="font-mono text-sm opacity-90">
-                      {cur!.trace.actionsApplied.length ? (
-                        cur!.trace.actionsApplied.map((a: any) => (
-                          <div key={a.id} className="mb-2">
-                            <b>{a.kind}</b> actor={a.actorId}
-                            {a.targetId ? ` target=${a.targetId}` : ''} <span className="opacity-70">({a.id})</span>
-                          </div>
-                        ))
-                      ) : (
-                        <div>(none)</div>
-                      )}
-                    </div>
-                  </Card>
-
-                  <Card title="Action validation (V1/V2/V3)">
-                    {!cur?.trace?.actionValidations?.length ? (
-                      <div className="opacity-70">(no validation trace)</div>
-                    ) : (
-                      <div className="font-mono text-xs whitespace-pre-wrap">
-                        {cur!.trace.actionValidations.map((v: any) => {
-                          const norm = v.normalizedTo
-                            ? `${v.normalizedTo.kind}${v.normalizedTo.targetId ? `→${v.normalizedTo.targetId}` : ''}`
-                            : '(none)';
-                          const tgt = v.targetId ? `→${v.targetId}` : '';
-                          const reasons = Array.isArray(v.reasons) ? v.reasons.join(',') : '';
-                          return (
-                            <div key={String(v.actionId)} className="mb-2">
-                              <div>
-                                {String(v.actorId)}:{String(v.kind)}
-                                {tgt} allowed={String(Boolean(v.allowed))} singleTick={String(Boolean(v.singleTick))}
-                              </div>
-                              <div className="opacity-80">
-                                reasons={reasons || '(none)'} normalizedTo={norm}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </Card>
-
-                  <Card title="Top предложений (actionsProposed)">
-                    <div className="font-mono text-xs opacity-90">
-                      {(cur!.trace.actionsProposed || []).slice(0, 120).map((o: any, i: number) => (
-                        <div key={`${o.kind}:${o.actorId}:${o.targetId ?? ''}:${i}`} className="mb-1">
-                          {o.blocked ? 'BLOCK' : 'OK'} score={Number(o.score ?? 0).toFixed(3)} kind={o.kind} actor={o.actorId}
-                          {o.targetId ? ` target=${o.targetId}` : ''}
-                          {o.reason ? ` // ${o.reason}` : ''}
-                        </div>
-                      ))}
-                      {(cur!.trace.actionsProposed || []).length > 120 ? <div>…</div> : null}
-                    </div>
-                  </Card>
-                </>
-              ) : null}
-
-              {/* EVENTS */}
-              {tab === 'events' ? (
-                <Card title="События, которые были применены">
-                  <div className="font-mono text-xs opacity-90">
-                    {cur!.trace.eventsApplied.length ? (
-                      cur!.trace.eventsApplied.map((e: any) => (
-                        <div key={e.id} className="mb-3">
-                          <div className="font-extrabold">
-                            {e.type} <span className="opacity-70">({e.id})</span>
-                          </div>
-                          <div className="opacity-90">{JSON.stringify(e.payload || {})}</div>
-                        </div>
-                      ))
-                    ) : (
-                      <div>(none)</div>
-                    )}
-                  </div>
-                </Card>
-              ) : null}
-
-              {/* PIPELINE */}
-              {tab === 'pipeline' ? (
-                <>
-                  <Card title="GoalLab Pipeline — сводка">
-                    {!pipelineOut ? (
-                      <div className="opacity-70">Нет данных плагина goalLabPipeline.</div>
-                    ) : pipelineOut?.error ? (
-                      <div className="font-mono text-sm opacity-90 whitespace-pre-wrap">
-                        error: {String(pipelineOut.error)}
-                        {pipelineOut.stack ? `\n\n${String(pipelineOut.stack)}` : ''}
-                      </div>
-                    ) : (
-                      <>
-                        <div className="font-mono text-sm opacity-90">
-                          agentId={String(pipelineOut.agentId)}
-                          <br />
-                          stages={Number(pipelineOut.stageCount ?? pipelineStages.length)} atomsOut={Number(pipelineOut.atomsOut ?? 0)}
-                        </div>
-                        <div className="mt-3">
-                          <Button onClick={doExportPipeline} disabled={!pipelineOut}>
-                            Export pipeline.json
-                          </Button>
-                        </div>
-                      </>
-                    )}
-                  </Card>
-
-                  <Card title="Стадии (S0..S8)">
-                    {!pipelineStages?.length ? (
-                      <div className="opacity-70">(нет стадий)</div>
-                    ) : (
-                      <div className="flex flex-col gap-3">
-                        {pipelineStages.map((s: any) => (
-                          <div key={String(s.stage)} className="rounded-2xl border border-canon-border bg-canon-card p-4">
-                            <div className="flex items-baseline justify-between gap-2">
-                              <div className="font-extrabold">
-                                {String(s.stage)} <span className="opacity-70">{String(s.title || '')}</span>
-                              </div>
-                              <div className="font-mono text-xs opacity-70">
-                                atoms={Array.isArray(s.atoms) ? s.atoms.length : 0}
-                                {s.stats?.addedCount != null ? ` added=${s.stats.addedCount}` : ''}
-                              </div>
-                            </div>
-
-                            {Array.isArray(s.warnings) && s.warnings.length ? (
-                              <div className="mt-2 text-sm">
-                                <div className="font-bold">warnings:</div>
-                                <div className="font-mono text-xs opacity-90 whitespace-pre-wrap">
-                                  {s.warnings.slice(0, 20).map((w: any) => `- ${String(w)}`).join('\n')}
-                                  {s.warnings.length > 20 ? `\n… (+${s.warnings.length - 20})` : ''}
-                                </div>
-                              </div>
-                            ) : null}
-
-                            {s.artifacts ? (
-                              <div className="mt-3">
-                                <div className="font-bold">artifacts (snippet):</div>
-                                <pre className="font-mono text-xs opacity-90 whitespace-pre-wrap m-0">
-                                  {JSON.stringify(s.artifacts, null, 2).slice(0, 4000)}
-                                  {JSON.stringify(s.artifacts, null, 2).length > 4000 ? '\n… (truncated)' : ''}
-                                </pre>
-                              </div>
-                            ) : null}
-
-                            <div className="mt-3">
-                              <div className="font-bold">top atoms (first 60):</div>
-                              <pre className="font-mono text-xs opacity-90 whitespace-pre-wrap m-0">
-                                {Array.isArray(s.atoms)
-                                  ? s.atoms
-                                      .slice(0, 60)
-                                      .map((a: any) => {
-                                        const id = String(a?.id ?? a?.atomId ?? '');
-                                        const v = Number(a?.magnitude ?? 0);
-                                        const c = Number(a?.confidence ?? 1);
-                                        const label = a?.label ? ` | ${String(a.label)}` : '';
-                                        return `${id} v=${v.toFixed(3)} c=${c.toFixed(3)}${label}`;
-                                      })
-                                      .join('\n')
-                                  : '(no atoms)'}
-                                {Array.isArray(s.atoms) && s.atoms.length > 60 ? `\n… (+${s.atoms.length - 60})` : ''}
-                              </pre>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </Card>
-                </>
-              ) : null}
-
-              {/* ORCHESTRATOR */}
-              {tab === 'orchestrator' ? (
-                <>
-                  <Card title="Tick Debug (S0–S6) + history">
-                    {!dbgHistory.length ? (
-                      <div className="opacity-70">
-                        Нет orchestratorDebug (ещё не было тиков или плагин не записал orchestratorDebugFrame).
-                      </div>
-                    ) : (
-                      <div className="flex flex-col gap-4">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <div className="font-mono text-xs opacity-70">tick:</div>
-                          <select
-                            className="px-2 py-1 rounded-lg border border-canon-border bg-canon-card text-sm"
-                            value={String(dbgFrameTickId)}
-                            onChange={(e) => setDbgFrameTickId(String(e.target.value))}
-                          >
-                            {dbgHistory
-                              .slice()
-                              .reverse() // newest first in UI
-                              .map((f: any) => {
-                                const id = String(f?.tickId ?? '');
-                                const ti = String(f?.tickIndex ?? '');
-                                const t = String(f?.time ?? '');
-                                return (
-                                  <option key={id} value={id}>
-                                    {ti} · {id} · {t}
-                                  </option>
-                                );
-                              })}
-                          </select>
-
-                          <div className="ml-auto font-mono text-xs opacity-70">
-                            frames={dbgHistory.length} stage={dbgStageId}
-                          </div>
-                        </div>
-
-                        <div className="flex flex-wrap gap-2">
-                          <button
-                            className="px-2 py-1 rounded-lg border border-canon-border bg-canon-card hover:bg-white/5 text-sm"
-                            onClick={() => copyJsonToClipboard(dbgCurrentFrame)}
-                            disabled={!dbgCurrentFrame}
-                            title="Copy current TickDebugFrame JSON to clipboard"
-                          >
-                            Copy tick JSON
-                          </button>
-                          <button
-                            className="px-2 py-1 rounded-lg border border-canon-border bg-canon-card hover:bg-white/5 text-sm"
-                            onClick={() => {
-                              if (!dbgCurrentFrame) return;
-                              const ti = String(dbgCurrentFrame.tickIndex ?? 'x');
-                              const id = String(dbgCurrentFrame.tickId ?? 'tick');
-                              downloadJsonFile(dbgCurrentFrame, `tick-${ti}-${id}.json`);
-                            }}
-                            disabled={!dbgCurrentFrame}
-                            title="Download current TickDebugFrame JSON"
-                          >
-                            Download tick JSON
-                          </button>
-
-                          <button
-                            className="ml-auto px-2 py-1 rounded-lg border border-canon-border bg-canon-card hover:bg-white/5 text-sm"
-                            onClick={() => copyJsonToClipboard(orchestratorDecision)}
-                            disabled={!orchestratorDecision}
-                            title="Copy orchestratorDecision JSON to clipboard"
-                          >
-                            Copy decision JSON
-                          </button>
-                          <button
-                            className="px-2 py-1 rounded-lg border border-canon-border bg-canon-card hover:bg-white/5 text-sm"
-                            onClick={() => {
-                              if (!orchestratorDecision) return;
-                              const ti = String(orchestratorDecision.tickIndex ?? 'x');
-                              downloadJsonFile(orchestratorDecision, `decision-${ti}.json`);
-                            }}
-                            disabled={!orchestratorDecision}
-                            title="Download orchestratorDecision JSON"
-                          >
-                            Download decision JSON
-                          </button>
-                        </div>
-
-                        <div className="flex flex-wrap gap-2">
-                          {(['S0', 'S1', 'S2', 'S3', 'S4', 'S5', 'S6'] as const).map((sid) => (
-                            <button
-                              key={sid}
-                              className={
-                                'px-2 py-1 rounded-lg border text-sm ' +
-                                (dbgStageId === sid
-                                  ? 'border-white/40 bg-white/10'
-                                  : 'border-canon-border bg-canon-card hover:bg-white/5')
-                              }
-                              onClick={() => setDbgStageId(sid)}
-                            >
-                              {sid}
-                            </button>
-                          ))}
-                        </div>
-
-                        {!dbgCurrentFrame ? (
-                          <div className="opacity-70">(no current frame)</div>
-                        ) : (
-                          <div className="rounded-2xl border border-canon-border bg-canon-card p-4">
-                            <div className="flex items-baseline justify-between gap-3">
-                              <div className="font-extrabold">
-                                tickIndex={String(dbgCurrentFrame.tickIndex)} · {String(dbgCurrentFrame.tickId)}
-                              </div>
-                              <div className="font-mono text-xs opacity-70">
-                                pre={String(dbgCurrentFrame.preTraceTickId ?? '')} post={String(dbgCurrentFrame.postTraceTickId ?? '')}
-                              </div>
-                            </div>
-
-                            <div className="mt-3 font-mono text-xs opacity-70">
-                              stage: <b>{String(dbgStage?.title ?? dbgStageId)}</b>
-                            </div>
-
-                            <pre className="mt-2 font-mono text-xs opacity-90 whitespace-pre-wrap m-0">
-                              {JSON.stringify(dbgStage?.data ?? {}, null, 2)}
-                            </pre>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </Card>
-
-                  <Card title="Offers Explorer (from S3)">
-                    {!dbgCurrentFrame ? (
-                      <div className="opacity-70">(no current frame)</div>
-                    ) : !dbgS3 ? (
-                      <div className="opacity-70">(S3 stage not found)</div>
-                    ) : (
-                      <div className="flex flex-col gap-4">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <div className="font-mono text-xs opacity-70">actor filter:</div>
-                          <input
-                            className="px-2 py-1 rounded-lg border border-canon-border bg-canon-card text-sm"
-                            value={offersActorFilter}
-                            onChange={(e) => setOffersActorFilter(String(e.target.value))}
-                            placeholder="substring (e.g. krystar)"
-                          />
-
-                          <div className="font-mono text-xs opacity-70 ml-2">key filter:</div>
-                          <input
-                            className="px-2 py-1 rounded-lg border border-canon-border bg-canon-card text-sm"
-                            value={offersKeyFilter}
-                            onChange={(e) => setOffersKeyFilter(String(e.target.value))}
-                            placeholder="substring (e.g. talk, escape)"
-                          />
-
-                          <div className="font-mono text-xs opacity-70 ml-2">blockedBy filter:</div>
-                          <input
-                            className="px-2 py-1 rounded-lg border border-canon-border bg-canon-card text-sm"
-                            value={offersBlockedByFilter}
-                            onChange={(e) => setOffersBlockedByFilter(String(e.target.value))}
-                            placeholder="substring (e.g. loc, permission)"
-                          />
-
-                          <label className="ml-auto flex items-center gap-2 text-sm">
-                            <input
-                              type="checkbox"
-                              checked={offersOnlyRejected}
-                              onChange={(e) => setOffersOnlyRejected(Boolean(e.target.checked))}
-                            />
-                            only rejected
-                          </label>
-                        </div>
-
-                        <div className="font-mono text-xs opacity-70">
-                          actors shown: {String(filteredActorIds.length)} / {String(Object.keys(offersPerActor || {}).length)}
-                        </div>
-
-                        <div className="flex flex-col gap-3">
-                          {filteredActorIds.map((actorId) => {
-                            const d = offersPerActor[actorId] || {};
-                            const mode = String(d?.mode ?? '');
-                            const topK = Array.isArray(d?.topK) ? d.topK : [];
-                            const rejected = Array.isArray(d?.rejected) ? d.rejected : [];
-                            const rejectedCount = Number(d?.rejectedCount ?? rejected.length ?? 0);
-
-                            const topKFiltered = topK.filter(offerPassesFilters);
-                            const rejFiltered = rejected.filter(offerPassesFilters);
-
-                            const shownTopK = offersOnlyRejected ? [] : topKFiltered;
-                            const shownRej = rejFiltered;
-
-                            // Skip fully empty after filters.
-                            if (!shownTopK.length && !shownRej.length) return null;
-
-                            return (
-                              <div key={actorId} className="rounded-2xl border border-canon-border bg-canon-card p-4">
-                                <div className="flex items-baseline justify-between gap-3">
-                                  <div className="font-bold">{actorId}</div>
-                                  <div className="font-mono text-xs opacity-70">
-                                    mode={mode} · topK={String(topK.length)}→{String(topKFiltered.length)} · rejected={String(rejectedCount)}
-                                    →{String(rejFiltered.length)}
-                                  </div>
-                                </div>
-
-                                {!offersOnlyRejected ? (
-                                  <div className="mt-3">
-                                    <div className="font-bold text-sm">topK (filtered)</div>
-                                    {!shownTopK.length ? (
-                                      <div className="font-mono text-xs opacity-60 mt-2">(none)</div>
-                                    ) : (
-                                      <div className="mt-2 flex flex-col gap-1">
-                                        {shownTopK.slice(0, 30).map((o: any, idx: number) => {
-                                          const k = offerKeyOf(o);
-                                          const score = Number(o?.score ?? 0);
-                                          const cost = Number(o?.cost ?? 0);
-                                          const allowed = Boolean(o?.allowed);
-                                          const prob = o?.prob;
-                                          const target = o?.targetId ? String(o.targetId) : '';
-                                          const bb = blockedByStr(o);
-                                          const reason = o?.reason ? String(o.reason) : '';
-
-                                          return (
-                                            <div key={`${k}:${idx}`} className="font-mono text-xs opacity-90">
-                                              score={score.toFixed(3)} cost={cost.toFixed(3)} allowed={String(allowed)}
-                                              {typeof prob === 'number' ? ` prob=${prob.toFixed(3)}` : ''} key={k}
-                                              {target ? ` target=${target}` : ''}
-                                              {bb ? ` blockedBy=${bb}` : ''}
-                                              {reason ? ` // ${reason}` : ''}
-                                            </div>
-                                          );
-                                        })}
-                                        {shownTopK.length > 30 ? (
-                                          <div className="font-mono text-xs opacity-60">… (+{shownTopK.length - 30})</div>
-                                        ) : null}
-                                      </div>
-                                    )}
-                                  </div>
-                                ) : null}
-
-                                <div className="mt-3">
-                                  <div className="font-bold text-sm">rejected (filtered)</div>
-                                  {!shownRej.length ? (
-                                    <div className="font-mono text-xs opacity-60 mt-2">(none)</div>
-                                  ) : (
-                                    <div className="mt-2 flex flex-col gap-1">
-                                      {shownRej.slice(0, 50).map((o: any, idx: number) => {
-                                        const k = offerKeyOf(o);
-                                        const score = Number(o?.score ?? 0);
-                                        const cost = Number(o?.cost ?? 0);
-                                        const target = o?.targetId ? String(o.targetId) : '';
-                                        const bb = blockedByStr(o);
-                                        const reason = o?.reason ? String(o.reason) : '';
-                                        return (
-                                          <div key={`${k}:rej:${idx}`} className="font-mono text-xs opacity-90">
-                                            score={score.toFixed(3)} cost={cost.toFixed(3)} allowed=false key={k}
-                                            {target ? ` target=${target}` : ''}
-                                            {bb ? ` blockedBy=${bb}` : ''}
-                                            {reason ? ` // ${reason}` : ''}
-                                          </div>
-                                        );
-                                      })}
-                                      {shownRej.length > 50 ? (
-                                        <div className="font-mono text-xs opacity-60">… (+{shownRej.length - 50})</div>
-                                      ) : null}
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-                  </Card>
-
-                  <Card title="Decision trace (chosen + topK softmax probs)">
-                    {!orchestratorDecision ? (
-                      <div className="opacity-70">
-                        Нет orchestratorDecision на этом тике. (Либо тиков ещё не было, либо плагин не записал decision trace.)
-                      </div>
-                    ) : (
-                      <div className="flex flex-col gap-4">
-                        <div className="font-mono text-xs opacity-80">
-                          tickIndex={String(orchestratorDecision.tickIndex)} T={String(orchestratorDecision.T)} actors=
-                          {String(orchestratorDecision.actorCount ?? Object.keys(orchestratorDecision.perActor || {}).length)}
-                        </div>
-
-                        <div className="flex flex-col gap-3">
-                          {Object.keys(orchestratorDecision.perActor || {})
-                            .sort()
-                            .map((actorId: string) => {
-                              const d = orchestratorDecision.perActor?.[actorId];
-                              const ch = d?.chosen;
-                              const topK = Array.isArray(d?.topK) ? d.topK : [];
-                              const rejected = Array.isArray(d?.rejected) ? d.rejected : [];
-                              const rejectedCount = Number(d?.rejectedCount ?? rejected.length ?? 0);
-
-                              const chosenLabel = String(ch?.simKind ?? ch?.kind ?? ch?.key ?? ch?.possibilityId ?? '(none)');
-
-                              return (
-                                <div key={actorId} className="rounded-2xl border border-canon-border bg-canon-card p-4">
-                                  <div className="flex items-baseline justify-between gap-3">
-                                    <div className="font-extrabold">{actorId}</div>
-                                    <div className="font-mono text-xs opacity-70">
-                                      mode={String(d?.mode || 'n/a')} T={String(d?.T ?? orchestratorDecision.T)}
-                                    </div>
-                                  </div>
-
-                                  <div className="mt-2 font-mono text-sm">
-                                    chosen: <b>{chosenLabel}</b>
-                                    {ch?.targetId ? ` target=${String(ch.targetId)}` : ''}
-                                    {Number.isFinite(ch?.score) ? ` score=${Number(ch.score).toFixed(3)}` : ''}
-                                    {Number.isFinite(ch?.cost) ? ` cost=${Number(ch.cost).toFixed(3)}` : ''}
-                                    {ch?.prob != null ? ` prob=${Number(ch.prob).toFixed(3)}` : ''}
-                                    {Array.isArray(ch?.blockedBy) && ch.blockedBy.length ? ` blockedBy=${ch.blockedBy.join(',')}` : ''}
-                                    {ch?.reason ? ` // ${String(ch.reason)}` : ''}
-                                  </div>
-
-                                  <div className="mt-3">
-                                    <div className="font-bold text-sm">topK</div>
-                                    <div className="font-mono text-xs opacity-90 mt-2">
-                                      {topK.slice(0, 25).map((o: any) => {
-                                        const key = String(
-                                          o.possibilityId ?? o.key ?? o.id ?? `${o.kind ?? ''}:${o.targetId ?? ''}:${o.score ?? ''}`
-                                        );
-                                        return (
-                                          <div key={key} className="mb-1">
-                                            prob={o.prob != null ? Number(o.prob).toFixed(3) : 'n/a'} score=
-                                            {Number(o.score ?? 0).toFixed(3)} cost={Number(o.cost ?? 0).toFixed(3)} allowed=
-                                            {String(Boolean(o.allowed))}{' '}
-                                            key={String(o.key ?? o.possibilityId ?? '')}
-                                            {o.kind ? ` kind=${String(o.kind)}` : ''}
-                                            {o.targetId ? ` target=${String(o.targetId)}` : ''}
-                                            {Array.isArray(o.blockedBy) && o.blockedBy.length ? ` blockedBy=${o.blockedBy.join(',')}` : ''}
-                                            {o.reason ? ` // ${String(o.reason)}` : ''}
-                                          </div>
-                                        );
-                                      })}
-                                      {topK.length > 25 ? <div>… (+{topK.length - 25})</div> : null}
-                                    </div>
-                                  </div>
-
-                                  <div className="mt-3">
-                                    <div className="font-bold text-sm">rejected (first 25) · count={String(rejectedCount)}</div>
-                                    {!rejected.length ? (
-                                      <div className="font-mono text-xs opacity-60 mt-2">(none)</div>
-                                    ) : (
-                                      <div className="font-mono text-xs opacity-90 mt-2">
-                                        {rejected.slice(0, 25).map((o: any) => {
-                                          const key = String(
-                                            o.possibilityId ??
-                                              o.key ??
-                                              o.id ??
-                                              `${o.kind ?? ''}:${o.targetId ?? ''}:${o.score ?? ''}:${o.reason ?? ''}`
-                                          );
-                                          return (
-                                            <div key={key} className="mb-1">
-                                              score={Number(o.score ?? 0).toFixed(3)} cost={Number(o.cost ?? 0).toFixed(3)} allowed=false{' '}
-                                              key={String(o.key ?? o.possibilityId ?? '')}
-                                              {o.kind ? ` kind=${String(o.kind)}` : ''}
-                                              {o.targetId ? ` target=${String(o.targetId)}` : ''}
-                                              {Array.isArray(o.blockedBy) && o.blockedBy.length ? ` blockedBy=${o.blockedBy.join(',')}` : ''}
-                                              {o.reason ? ` // ${String(o.reason)}` : ''}
-                                            </div>
-                                          );
-                                        })}
-                                        {rejected.length > 25 ? <div>… (+{rejected.length - 25})</div> : null}
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                              );
-                            })}
-                        </div>
-                      </div>
-                    )}
-                  </Card>
-
-                  <Card title="Human log (оркестратор)">
-                    {!orchestratorTrace ? (
-                      <div className="opacity-70">Трейса оркестратора нет (registry пустой или плагин не отдал trace).</div>
-                    ) : (
-                      <pre className="font-mono text-sm opacity-90 whitespace-pre-wrap m-0">
-                        {(orchestratorTrace.humanLog || []).join('\n') || '(empty)'}
-                      </pre>
-                    )}
-                  </Card>
-
-                  <Card title="Atom changes (первые 200)">
-                    {!orchestratorTrace ? (
-                      <div className="opacity-70">(no trace)</div>
-                    ) : (
-                      <div className="font-mono text-xs opacity-90">
-                        {(orchestratorTrace.atomChanges || []).slice(0, 200).map((c: any) => {
-                          const b = Number(c.before?.magnitude ?? 0);
-                          const a = Number(c.after?.magnitude ?? 0);
-                          const d = a - b;
-                          const sign = d >= 0 ? '+' : '';
-                          return (
-                            <div key={`${c.op}:${c.id}`}>
-                              {String(c.op).toUpperCase()} {c.id} {b.toFixed(3)}→{a.toFixed(3)} ({sign}
-                              {d.toFixed(3)})
-                            </div>
-                          );
-                        })}
-                        {(orchestratorTrace.atomChanges || []).length > 200 ? <div>…</div> : null}
-                      </div>
-                    )}
-                  </Card>
-                </>
-              ) : null}
-
-              {/* MAP */}
-              {tab === 'map' ? (
-                <div className="grid grid-cols-12 gap-4">
-                  <div className="col-span-4">
-                    <Card title="Place">
-                      <div className="text-xs opacity-70 mb-1">Выбери локацию</div>
-                      <select
-                        className="canon-input w-full"
-                        value={mapLocId || ''}
-                        onChange={(e) => setMapLocId(e.target.value)}
-                      >
-                        {(cur?.snapshot?.locations || []).map((l: any) => (
-                          <option key={l.id} value={l.id}>{l.title ?? l.name ?? l.id}</option>
-                        ))}
-                      </select>
-
-                      <div className="text-xs opacity-70 mt-3">Подсветка персонажа</div>
-                      <select
-                        className="canon-input w-full mt-1"
-                        value={mapCharId || ''}
-                        onChange={(e) => setMapCharId(e.target.value || null)}
-                      >
-                        <option value="">(none)</option>
-                        {(cur?.snapshot?.characters || []).map((c: any) => (
-                          <option key={c.id} value={c.id}>{c.title ?? c.name ?? c.id}</option>
-                        ))}
-                      </select>
-                    </Card>
-
-                    <Card title="Карта мира (узлы/связи)">
-                      <SimMapView sim={sim} snapshot={cur?.snapshot || null} onMove={pushManualMove} />
-                    </Card>
-                  </div>
-
-                  <div className="col-span-8">
-                    {(() => {
-                      const loc = (cur?.snapshot?.locations || []).find((l: any) => l.id === mapLocId);
-                      if (!loc) return <Card title="Карта локации">(нет выбранной локации)</Card>;
-                      return (
-                        <LocationMapView
-                          location={loc}
-                          characters={cur?.snapshot?.characters || []}
-                          highlightId={mapCharId}
-                          onPickCharacter={(id) => setMapCharId(id)}
-                        />
-                      );
-                    })()}
-                  </div>
-                </div>
-              ) : null}
-
-              {/* JSON */}
-              {tab === 'json' ? (
-                <Card title="JSON текущей записи">
-                  <div className="flex gap-2 flex-wrap mb-3">
-                    <Button onClick={doExportRecord}>Export record.json</Button>
-                    {orchestratorSnapshot ? (
-                      <Button onClick={() => jsonDownload(`goal-lab-snapshot-${cur!.snapshot.tickIndex}.json`, orchestratorSnapshot)}>
-                        Export GoalLab snapshot.json
-                      </Button>
-                    ) : null}
-                    <Button onClick={doExportPipeline} disabled={!pipelineOut}>
-                      Export pipeline.json
-                    </Button>
-                  </div>
-                  <pre className="font-mono text-xs opacity-90 whitespace-pre-wrap m-0">{JSON.stringify(cur, null, 2)}</pre>
-                </Card>
-              ) : null}
-            </div>
-          )}
-        </div>
+          </div>
+        </aside>
       </div>
+
+      <footer className="h-6 bg-slate-900 border border-slate-800 flex items-center justify-between px-4 text-[9px] text-slate-500 font-bold tracking-widest uppercase shrink-0">
+        <div className="flex gap-6">
+          <span className="flex items-center gap-1">
+            <Icon label="🛡" /> Integrity_Verified
+          </span>
+          <span>Local_Host: 127.0.0.1</span>
+        </div>
+        <div className="flex items-center gap-4 text-cyan-900">
+          <span className="animate-pulse">{isRunning ? '● SIM_RUNNING' : '● SIM_IDLE'}</span>
+        </div>
+      </footer>
     </div>
   );
-}
+};

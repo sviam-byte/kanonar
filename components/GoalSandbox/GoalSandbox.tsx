@@ -212,6 +212,8 @@ export const GoalSandbox: React.FC = () => {
   const [manualAtoms, setManualAtoms] = useState<ContextAtom[]>([]);
   const [pipelineStageId, setPipelineStageId] = useState<string>('S5');
   const [activeBottomTab, setActiveBottomTab] = useState<'debug' | 'tom' | 'pipeline' | 'compare'>('pipeline');
+  const [lockedMapViewport, setLockedMapViewport] = useState<{ w: number; h: number } | null>(null);
+  const lockedMapIdRef = useRef<string | null>(null);
 
   // UI mode: a compact “front” view for normal use, and a “debug” view for pipeline/atoms.
   const [uiMode, setUiMode] = useState<'front' | 'debug'>(() => {
@@ -385,6 +387,56 @@ export const GoalSandbox: React.FC = () => {
     }
     return ensureMapCells(map);
   }, [locationMode, map, selectedLocationId]);
+
+  /**
+   * Lock the map viewport after the first map selection to avoid resize jitter.
+   * We normalize map dimensions to pixels so grids don't collapse into tiny boxes.
+   */
+  useEffect(() => {
+    if (!activeMap) {
+      setLockedMapViewport(null);
+      lockedMapIdRef.current = null;
+      return;
+    }
+
+    const nextMapId = String((activeMap as any)?.id ?? '');
+    if (lockedMapIdRef.current && lockedMapIdRef.current !== nextMapId) {
+      setLockedMapViewport(null);
+      lockedMapIdRef.current = null;
+    }
+
+    if (lockedMapViewport) return;
+
+    const mw =
+      (activeMap as any)?.width ??
+      (activeMap as any)?.w ??
+      (activeMap as any)?.meta?.width ??
+      (activeMap as any)?.grid?.width ??
+      null;
+
+    const mh =
+      (activeMap as any)?.height ??
+      (activeMap as any)?.h ??
+      (activeMap as any)?.meta?.height ??
+      (activeMap as any)?.grid?.height ??
+      null;
+
+    let baseW = Number.isFinite(Number(mw)) ? Number(mw) : 960;
+    let baseH = Number.isFinite(Number(mh)) ? Number(mh) : 540;
+
+    // If we only have grid sizes, convert them into pixel units.
+    if (baseW <= 128 && baseH <= 128) {
+      baseW *= 32;
+      baseH *= 32;
+    }
+
+    const MAX_W = 1100;
+    const MAX_H = 700;
+    const k = Math.min(MAX_W / baseW, MAX_H / baseH, 1);
+
+    setLockedMapViewport({ w: Math.round(baseW * k), h: Math.round(baseH * k) });
+    lockedMapIdRef.current = nextMapId || 'map';
+  }, [activeMap, lockedMapViewport]);
 
   const getSelectedLocationEntity = useCallback((): LocationEntity => {
     if (locationMode === 'preset' && selectedLocationId) {
@@ -1677,14 +1729,22 @@ export const GoalSandbox: React.FC = () => {
 
       {/* CENTER: map + debug/tom/pipeline/compare tabs */}
       <main className="flex-1 flex flex-col relative min-w-0 bg-black">
-        <div className="flex-1 relative min-h-0">
-          <MapViewer
-            map={activeMap}
-            isEditor={locationMode === 'custom' && !placingActorId}
-            onMapChange={setMap}
-            onCellClick={handleActorClick}
-            highlights={mapHighlights as any}
-          />
+        <div className="flex-1 relative min-h-0 flex items-center justify-center bg-black">
+          <div
+            className="relative border border-slate-800 bg-slate-950/20 overflow-hidden"
+            style={{
+              width: lockedMapViewport?.w ?? 960,
+              height: lockedMapViewport?.h ?? 540,
+            }}
+          >
+            <MapViewer
+              map={activeMap}
+              isEditor={locationMode === 'custom' && !placingActorId}
+              onMapChange={setMap}
+              onCellClick={handleActorClick}
+              highlights={mapHighlights as any}
+            />
+          </div>
           <div className="absolute top-4 left-4 p-3 bg-slate-900/80 border border-slate-800 rounded-sm">
             <div className="text-[9px] text-slate-500 uppercase">Self_Perspective</div>
             <div className="text-sm text-cyan-400 font-bold">{perspectiveId || '—'}</div>
