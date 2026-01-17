@@ -1299,6 +1299,65 @@ export const GoalSandbox: React.FC = () => {
     devValidateAtoms,
   ]);
 
+  /**
+   * Ensure the compare/dyad panels have at least two entries when possible.
+   * Falls back to world agents when the cast is underspecified.
+   */
+  const castRowsSafe = useMemo(() => {
+    if (Array.isArray(castRows) && castRows.length >= 2) return castRows;
+    const agents = Array.isArray((worldState as any)?.agents) ? (worldState as any).agents : [];
+    if (!agents.length) return castRows || [];
+
+    const activeEvents = eventRegistry.getAll().filter((e) => selectedEventIds.has(e.id));
+    const loc = getSelectedLocationEntity();
+
+    return agents.map((a: any) => {
+      const id = String(a?.entityId || '');
+      const char = allCharacters.find((c) => c.entityId === id);
+      let snap: any = null;
+      try {
+        const res = buildGoalLabContext(worldState as any, id, {
+          snapshotOptions: {
+            activeEvents,
+            participantIds,
+            overrideLocation: loc,
+            manualAtoms,
+            gridMap: activeMap,
+            atomOverridesLayer,
+            overrideEvents: injectedEvents,
+            sceneControl,
+            affectOverrides,
+          },
+          timeOverride: (worldState as any)?.tick,
+          devValidateAtoms,
+        });
+        snap = res?.snapshot ?? null;
+      } catch {
+        snap = null;
+      }
+      return { id, label: char?.title || id, snapshot: snap };
+    });
+  }, [
+    castRows,
+    worldState,
+    allCharacters,
+    selectedEventIds,
+    getSelectedLocationEntity,
+    participantIds,
+    manualAtoms,
+    activeMap,
+    atomOverridesLayer,
+    injectedEvents,
+    sceneControl,
+    affectOverrides,
+    devValidateAtoms,
+  ]);
+
+  const focusId =
+    perspectiveId ||
+    selectedAgentId ||
+    (castRowsSafe?.[0]?.id ? String(castRowsSafe[0].id) : '');
+
   const sceneDumpV2 = useMemo(() => {
     return buildGoalLabSceneDumpV2({
       world: worldState,
@@ -1626,6 +1685,11 @@ export const GoalSandbox: React.FC = () => {
     });
   }, [pipelineV1]);
 
+  // Fixed map frame size (locked on first map selection).
+  const frameW = lockedMapViewport?.w ?? 960;
+  const frameH = lockedMapViewport?.h ?? 540;
+  const tomRows = tomMatrixForPerspective ?? [];
+
   return (
     <div className="flex h-full bg-[#020617] text-slate-300 overflow-hidden font-mono">
       {/* LEFT: controls + quick ctx input */}
@@ -1730,24 +1794,30 @@ export const GoalSandbox: React.FC = () => {
       {/* CENTER: map + debug/tom/pipeline/compare tabs */}
       <main className="flex-1 flex flex-col relative min-w-0 bg-black">
         <div className="flex-1 relative min-h-0 flex items-center justify-center bg-black">
+          {/* Background grid to keep the canvas feeling alive when empty. */}
+          <div className="absolute inset-0 opacity-[0.08] pointer-events-none bg-[linear-gradient(to_right,#1e293b_1px,transparent_1px),linear-gradient(to_bottom,#1e293b_1px,transparent_1px)] bg-[size:40px_40px]" />
           <div
-            className="relative border border-slate-800 bg-slate-950/20 overflow-hidden"
+            className="relative border border-slate-800 bg-slate-950/40 overflow-hidden shadow-[0_0_0_1px_rgba(148,163,184,0.15)]"
             style={{
-              width: lockedMapViewport?.w ?? 960,
-              height: lockedMapViewport?.h ?? 540,
+              width: frameW,
+              height: frameH,
+              borderRadius: 6,
             }}
           >
-            <MapViewer
-              map={activeMap}
-              isEditor={locationMode === 'custom' && !placingActorId}
-              onMapChange={setMap}
-              onCellClick={handleActorClick}
-              highlights={mapHighlights as any}
-            />
+            <div className="absolute inset-0 pointer-events-none bg-gradient-to-b from-white/5 to-transparent" />
+            <div className="absolute inset-0">
+              <MapViewer
+                map={activeMap}
+                isEditor={locationMode === 'custom' && !placingActorId}
+                onMapChange={setMap}
+                onCellClick={handleActorClick}
+                highlights={mapHighlights as any}
+              />
+            </div>
           </div>
           <div className="absolute top-4 left-4 p-3 bg-slate-900/80 border border-slate-800 rounded-sm">
             <div className="text-[9px] text-slate-500 uppercase">Self_Perspective</div>
-            <div className="text-sm text-cyan-400 font-bold">{perspectiveId || '—'}</div>
+            <div className="text-sm text-cyan-400 font-bold">{focusId || '—'}</div>
           </div>
 
           {/* Inline error/warning surface to avoid silent failures in the new layout. */}
@@ -1794,34 +1864,48 @@ export const GoalSandbox: React.FC = () => {
               <ToMPanel atoms={asArray<any>((snapshotV1?.atoms ?? (snapshot as any)?.atoms) as any)} />
             ) : null}
             {activeBottomTab === 'compare' ? (
-              <CastComparePanel castRows={castRows as any} focusId={perspectiveId || selectedAgentId || ''} />
+              <CastComparePanel castRows={castRowsSafe as any} focusId={focusId} />
             ) : null}
             {activeBottomTab === 'debug' ? (
-              <DebugShell
-                snapshotV1={snapshotV1 as any}
-                pipelineV1={pipelineV1 as any}
-                pipelineFrame={pipelineFrame as any}
-                pipelineStageId={currentPipelineStageId}
-                onChangePipelineStageId={setPipelineStageId}
-                castRows={castRows}
-                perspectiveId={perspectiveId}
-                onSetPerspectiveId={setPerspectiveAgentId}
-                passportAtoms={passportAtoms}
-                passportMeta={canonicalAtoms as any}
-                contextualMind={contextualMind as any}
-                locationScores={locationScores as any}
-                tomScores={tomScores as any}
-                tom={(worldState as any)?.tom?.[perspectiveId as any]}
-                atomDiff={atomDiff as any}
-                sceneDump={sceneDumpV2 as any}
-                onDownloadScene={onDownloadScene}
-                onImportScene={handleImportSceneClick}
-                manualAtoms={manualAtoms}
-                onChangeManualAtoms={setManualAtoms}
-                onExportPipelineStage={handleExportPipelineStage}
-                onExportPipelineAll={handleExportPipelineAll}
-                onExportFullDebug={handleExportFullDebug}
-              />
+              <div className="space-y-4">
+                <pre className="text-[10px] text-slate-400 bg-black/30 border border-slate-800 rounded p-3 overflow-auto">
+                  {JSON.stringify(
+                    {
+                      focusId,
+                      castLen: (castRowsSafe || []).length,
+                      tomRowsLen: (tomRows || []).length,
+                      tomSample: (tomRows || [])[0] || null,
+                    },
+                    null,
+                    2
+                  )}
+                </pre>
+                <DebugShell
+                  snapshotV1={snapshotV1 as any}
+                  pipelineV1={pipelineV1 as any}
+                  pipelineFrame={pipelineFrame as any}
+                  pipelineStageId={currentPipelineStageId}
+                  onChangePipelineStageId={setPipelineStageId}
+                  castRows={castRowsSafe}
+                  perspectiveId={focusId}
+                  onSetPerspectiveId={setPerspectiveAgentId}
+                  passportAtoms={passportAtoms}
+                  passportMeta={canonicalAtoms as any}
+                  contextualMind={contextualMind as any}
+                  locationScores={locationScores as any}
+                  tomScores={tomScores as any}
+                  tom={(worldState as any)?.tom?.[focusId as any]}
+                  atomDiff={atomDiff as any}
+                  sceneDump={sceneDumpV2 as any}
+                  onDownloadScene={onDownloadScene}
+                  onImportScene={handleImportSceneClick}
+                  manualAtoms={manualAtoms}
+                  onChangeManualAtoms={setManualAtoms}
+                  onExportPipelineStage={handleExportPipelineStage}
+                  onExportPipelineAll={handleExportPipelineAll}
+                  onExportFullDebug={handleExportFullDebug}
+                />
+              </div>
             ) : null}
           </div>
         </div>
@@ -1846,7 +1930,7 @@ export const GoalSandbox: React.FC = () => {
             atomDiff={atomDiff as any}
             snapshotV1={snapshotV1 as any}
             pipelineV1={pipelineV1 as any}
-            perspectiveAgentId={perspectiveId as any}
+            perspectiveAgentId={focusId as any}
             sceneDump={sceneDumpV2 as any}
             onDownloadScene={onDownloadScene}
             onImportScene={handleImportSceneClick}
