@@ -99,6 +99,100 @@ function bumpRelation(world: SimWorld, fromId: string, toId: string, key: 'trust
   rel[fromId][toId][key] = clamp01(base + delta);
 }
 
+// -----------------------------------------------------------------------------
+// Social -> Intent decomposition helpers (Goal/Action fractalization)
+// We implement "talk" / "question_about" as complex transactions:
+//   Approach -> Attach -> Execute -> Detach
+// Actual social act (speech + relation effects) is executed as originalAction at intent completion.
+// This keeps intent runtime JSON-safe and avoids emitting speech from the intent engine.
+// -----------------------------------------------------------------------------
+
+function getCharPosXY(world: SimWorld, charId: string): { x: number; y: number } | null {
+  try {
+    const xy = getCharXY(world, charId);
+    if (!Number.isFinite(xy.x) || !Number.isFinite(xy.y)) return null;
+    return { x: xy.x, y: xy.y };
+  } catch {
+    return null;
+  }
+}
+
+function buildApproachToCharScriptV1(
+  world: SimWorld,
+  actorId: string,
+  targetId: string,
+  scriptId: string,
+  explain?: string[]
+) {
+  const dest = getCharPosXY(world, targetId) ?? { x: 0, y: 0 };
+  return {
+    id: scriptId,
+    explain: explain ?? [],
+    stages: [
+      {
+        kind: 'approach',
+        ticksRequired: 'until_condition',
+        perTick: [
+          // Set destination for until_condition heuristic + step toward it.
+          { target: 'agent', key: 'dest', op: 'set', value: dest },
+          { target: 'agent', key: 'move_toward', op: 'set', value: dest },
+        ],
+      },
+      { kind: 'attach', ticksRequired: 1 },
+      { kind: 'execute', ticksRequired: 1 },
+      { kind: 'detach', ticksRequired: 1 },
+    ],
+  };
+}
+
+function mkSocialStartIntentOfferV1(args: {
+  world: SimWorld;
+  actorId: string;
+  targetId: string;
+  baseScore: number;
+  social: string;
+  volume: 'whisper' | 'normal' | 'shout';
+  kind: 'talk' | 'question_about';
+  topic?: string;
+  tags?: string[];
+}) {
+  const { world, actorId, targetId, baseScore, social, volume, kind, topic, tags } = args;
+  const scriptId = kind === 'question_about' ? `dialog:${social}:${topic ?? 'topic'}` : `dialog:${social}`;
+  const intentScript = buildApproachToCharScriptV1(
+    world,
+    actorId,
+    targetId,
+    scriptId,
+    [
+      `Decompose ${kind.toUpperCase()} -> transaction`,
+      `FindTarget(${targetId})`,
+      `Plan: Approach -> Attach -> Execute(${social}) -> Detach`,
+    ],
+  );
+
+  const originalAction: any = {
+    kind,
+    actorId,
+    targetId,
+    meta: { volume, social, ...(topic ? { topic } : {}), tags: tags ?? [] },
+    payload: null,
+  };
+
+  return {
+    kind: 'start_intent',
+    actorId,
+    targetId,
+    score: baseScore,
+    meta: { scriptId, tags: tags ?? [] },
+    payload: {
+      intentId: `intent:${actorId}:${kind}:${social}:${world.tickIndex}`,
+      remainingTicks: 9999,
+      intentScript,
+      intent: { originalAction },
+    },
+  } as any;
+}
+
 function featuresAtNode(world: SimWorld, locId: string, nodeId: string | undefined) {
   const loc = getLoc(world, locId);
   const xs = Array.isArray((loc as any)?.features) ? (loc as any).features : [];
@@ -441,52 +535,76 @@ const TalkSpec: ActionSpec = {
       if (other.locId !== c.locId) continue;
       const volume = autoVolume(world, c.id, other.id);
       const trust = getDyadTrust(world, c.id, other.id);
-      // Baseline: neutral inform.
-      out.push({
-        kind: 'talk',
-        actorId,
-        targetId: other.id,
-        meta: { volume, social: 'inform', tags: ['Social'] },
-        score: 0.15 + 0.03 * (trust - 0.5),
-      });
+      // NOTE: talk is now a complex transaction (intent), not a single atomic action.
+      // We emit start_intent offers that will approach+attach+execute+detach, then run originalAction(kind='talk') on completion.
 
-      // Request access: low-cost query with a goal-ish flavor.
-      out.push({
-        kind: 'talk',
-        actorId,
-        targetId: other.id,
-        meta: { volume, social: 'request_access', tags: ['Social', 'Diplomatic'] },
-        score: 0.14 + 0.02 * (trust - 0.5),
-      });
-
-      // Offer resource: more likely if trust is ok.
-      if (trust >= 0.55) {
-        out.push({
-          kind: 'talk',
+      out.push(
+        mkSocialStartIntentOfferV1({
+          world,
           actorId,
           targetId: other.id,
-          meta: { volume, social: 'offer_resource', tags: ['Social', 'Diplomatic'] },
-          score: 0.13 + 0.04 * (trust - 0.55),
-        });
+          kind: 'talk',
+          social: 'inform',
+          volume,
+          tags: ['Social'],
+          baseScore: 0.15 + 0.03 * (trust - 0.5),
+        }),
+      );
+
+      out.push(
+        mkSocialStartIntentOfferV1({
+          world,
+          actorId,
+          targetId: other.id,
+          kind: 'talk',
+          social: 'request_access',
+          volume,
+          tags: ['Social', 'Diplomatic'],
+          baseScore: 0.14 + 0.02 * (trust - 0.5),
+        }),
+      );
+
+      if (trust >= 0.55) {
+        out.push(
+          mkSocialStartIntentOfferV1({
+            world,
+            actorId,
+            targetId: other.id,
+            kind: 'talk',
+            social: 'offer_resource',
+            volume,
+            tags: ['Social', 'Diplomatic'],
+            baseScore: 0.13 + 0.04 * (trust - 0.55),
+          }),
+        );
       }
 
-      // Intimidate/insult: appear under stress + low trust as narrative aggression.
       const stress = clamp01(Number(c.stress ?? 0));
       if (stress >= 0.55 && trust <= 0.55) {
-        out.push({
-          kind: 'talk',
-          actorId,
-          targetId: other.id,
-          meta: { volume, social: 'intimidate', tags: ['Social', 'Aggressive'] },
-          score: 0.1 + 0.06 * (stress - 0.55),
-        });
-        out.push({
-          kind: 'talk',
-          actorId,
-          targetId: other.id,
-          meta: { volume, social: 'insult', tags: ['Social', 'Aggressive'] },
-          score: 0.09 + 0.07 * (stress - 0.55),
-        });
+        out.push(
+          mkSocialStartIntentOfferV1({
+            world,
+            actorId,
+            targetId: other.id,
+            kind: 'talk',
+            social: 'intimidate',
+            volume,
+            tags: ['Social', 'Aggressive'],
+            baseScore: 0.1 + 0.06 * (stress - 0.55),
+          }),
+        );
+        out.push(
+          mkSocialStartIntentOfferV1({
+            world,
+            actorId,
+            targetId: other.id,
+            kind: 'talk',
+            social: 'insult',
+            volume,
+            tags: ['Social', 'Aggressive'],
+            baseScore: 0.09 + 0.07 * (stress - 0.55),
+          }),
+        );
       }
     }
     return out;
@@ -716,13 +834,21 @@ const QuestionAboutSpec: ActionSpec = {
       for (const topic of topics) {
         const stress = clamp01(Number(c.stress ?? 0));
         const safetyBoost = topic === 'safety' ? 0.03 * stress : 0;
-        out.push({
-          kind: 'question_about',
-          actorId,
-          targetId: other.id,
-          meta: { topic, volume },
-          score: 0.16 + 0.04 * (trust - 0.5) + safetyBoost,
-        });
+        // question_about is also a transaction intent now (approach+attach+execute+detach),
+        // originalAction(kind='question_about') runs at completion.
+        out.push(
+          mkSocialStartIntentOfferV1({
+            world,
+            actorId,
+            targetId: other.id,
+            kind: 'question_about',
+            social: 'ask',
+            topic,
+            volume,
+            tags: ['Social', 'Observe'],
+            baseScore: 0.16 + 0.04 * (trust - 0.5) + safetyBoost,
+          }),
+        );
       }
     }
     return out;
