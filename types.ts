@@ -4,6 +4,7 @@ export type { AffectState } from './lib/emotions/types';
 
 import type { ContextualMindState } from './lib/tom/contextual/types';
 export type { ContextualMindState };
+import type { AgentMemory } from './lib/core/mindTypes';
 
 // --- Enums ---
 export enum EntityType {
@@ -1161,6 +1162,10 @@ export interface AgentState extends CharacterEntity {
     relationships: Record<string, Relationship>;
     acquaintances?: Record<string, AcquaintanceEdge>;
     perceivedStates: Map<string, any>;
+    /**
+     * Long-term memory of observed facts (optional for legacy compatibility).
+     */
+    memory?: AgentMemory;
     pendingProposals: any[];
     actionHistory: { id: SocialActionId, targetId?: string }[];
     v42metrics?: V42Metrics;

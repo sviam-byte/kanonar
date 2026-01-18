@@ -3,7 +3,7 @@
 
 import type { SimPlugin } from '../core/simulator';
 import type { SimEvent } from '../core/types';
-import { buildBeliefAtomsForTick, persistBeliefAtomsToFacts } from '../post/perceiveActions';
+import { buildBeliefAtomsForTick, persistBeliefAtomsToFacts, persistDecayingMemoryToFacts } from '../post/perceiveActions';
 
 function arr<T>(x: any): T[] {
   return Array.isArray(x) ? x : [];
@@ -17,6 +17,11 @@ export function makePerceptionMemoryPlugin(): SimPlugin {
         const eventsApplied = arr<SimEvent>((record as any)?.trace?.eventsApplied);
         const beliefAtomsByAgentId = buildBeliefAtomsForTick(world, eventsApplied);
         persistBeliefAtomsToFacts(world, beliefAtomsByAgentId);
+        persistDecayingMemoryToFacts(world, beliefAtomsByAgentId, {
+          decayPerTick: 0.97,
+          forgetBelow: 0.12,
+          maxFacts: 600,
+        });
 
         record.plugins ||= {};
         record.plugins.perceptionMemory = {

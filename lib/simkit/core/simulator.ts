@@ -9,6 +9,7 @@ import { validateActionStrict } from '../actions/validate';
 import { normalizeAtom } from '../../context/v2/infer';
 import type { ContextAtom } from '../../context/v2/types';
 import { decideAcceptance } from './trust';
+import { rememberLastAction, scoreOfferSubjective } from './subjective';
 
 function clamp01(x: number) {
   return Number.isFinite(x) ? Math.max(0, Math.min(1, x)) : 0;
@@ -65,10 +66,23 @@ export type SimulatorConfig = {
   maxRecords?: number;
 };
 
-function pickTopOffer(offers: ActionOffer[], actorId: string): ActionOffer | null {
+function pickTopOffer(world: SimWorld, offers: ActionOffer[], actorId: string): ActionOffer | null {
   const forActor = offers.filter(o => o.actorId === actorId && !o.blocked);
   if (!forActor.length) return null;
-  return forActor[0];
+
+  // NOTE: offers are already roughly sorted by base heuristic score, but we apply
+  // subjective modifiers (emotion, inertia, contagion, cognitive effort) here.
+  // Deterministic tie-breakers are important for stable replays.
+  const scored = forActor.map((o, idx) => ({ o, idx, s: scoreOfferSubjective(world, o) }));
+  scored.sort((a, b) => {
+    if (b.s !== a.s) return b.s - a.s;
+    if (b.o.score !== a.o.score) return b.o.score - a.o.score;
+    const ka = String(a.o.kind);
+    const kb = String(b.o.kind);
+    if (ka !== kb) return ka.localeCompare(kb);
+    return a.idx - b.idx;
+  });
+  return scored[0].o;
 }
 
 export class SimKitSimulator {
@@ -201,6 +215,7 @@ export class SimKitSimulator {
         const r = applyAction(this.world, actionToApply);
         this.world = r.world;
         actionsApplied.push(actionToApply);
+        rememberLastAction(this.world, actionToApply);
         notes.push(...r.notes);
         // события от действий идут в очередь событий этого тика
         this.world.events.push(...r.events);
@@ -208,7 +223,7 @@ export class SimKitSimulator {
     } else {
       // fallback: эвристика как раньше
       for (const cId of Object.keys(this.world.characters).sort()) {
-        const best = pickTopOffer(offers, cId);
+        const best = pickTopOffer(this.world, offers, cId);
         if (!best) continue;
         const a: SimAction = {
           id: `act:${best.kind}:${this.world.tickIndex}:${cId}`,
@@ -240,6 +255,7 @@ export class SimKitSimulator {
         const r = applyAction(this.world, actionToApply);
         this.world = r.world;
         actionsApplied.push(actionToApply);
+        rememberLastAction(this.world, actionToApply);
         notes.push(...r.notes);
         this.world.events.push(...r.events);
       }

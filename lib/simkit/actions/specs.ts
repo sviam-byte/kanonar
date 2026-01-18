@@ -10,6 +10,7 @@
 import type { ActionKind, ActionOffer, SimAction, SimEvent, SimWorld, SpeechEventV1 } from '../core/types';
 import { getChar, getLoc } from '../core/world';
 import { distSameLocation, getCharXY, getSpatialConfig } from '../core/spatial';
+import { getDyadTrust } from '../core/trust';
 
 const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
 const clamp = (x: number, a: number, b: number) => Math.max(a, Math.min(b, x));
@@ -82,6 +83,116 @@ function validateCommon(_world: SimWorld, o: ActionOffer): ActionOffer {
   };
 }
 
+// Relation helpers: store dyadic values in a JSON-friendly matrix.
+function ensureRelations(world: SimWorld) {
+  const facts: any = world.facts as any;
+  if (!facts.relations || typeof facts.relations !== 'object') facts.relations = {};
+  return facts.relations as any;
+}
+
+function bumpRelation(world: SimWorld, fromId: string, toId: string, key: 'trust' | 'respect', delta: number) {
+  const rel = ensureRelations(world);
+  if (!rel[fromId] || typeof rel[fromId] !== 'object') rel[fromId] = {};
+  if (!rel[fromId][toId] || typeof rel[fromId][toId] !== 'object') rel[fromId][toId] = {};
+  const cur = Number(rel[fromId][toId][key]);
+  const base = Number.isFinite(cur) ? cur : getDyadTrust(world, fromId, toId);
+  rel[fromId][toId][key] = clamp01(base + delta);
+}
+
+// -----------------------------------------------------------------------------
+// Social -> Intent decomposition helpers (Goal/Action fractalization)
+// We implement "talk" / "question_about" as complex transactions:
+//   Approach -> Attach -> Execute -> Detach
+// Actual social act (speech + relation effects) is executed as originalAction at intent completion.
+// This keeps intent runtime JSON-safe and avoids emitting speech from the intent engine.
+// -----------------------------------------------------------------------------
+
+function getCharPosXY(world: SimWorld, charId: string): { x: number; y: number } | null {
+  try {
+    const xy = getCharXY(world, charId);
+    if (!Number.isFinite(xy.x) || !Number.isFinite(xy.y)) return null;
+    return { x: xy.x, y: xy.y };
+  } catch {
+    return null;
+  }
+}
+
+function buildApproachToCharScriptV1(
+  world: SimWorld,
+  actorId: string,
+  targetId: string,
+  scriptId: string,
+  explain?: string[]
+) {
+  const dest = getCharPosXY(world, targetId) ?? { x: 0, y: 0 };
+  return {
+    id: scriptId,
+    explain: explain ?? [],
+    stages: [
+      {
+        kind: 'approach',
+        ticksRequired: 'until_condition',
+        perTick: [
+          // Set destination for until_condition heuristic + step toward it.
+          { target: 'agent', key: 'dest', op: 'set', value: dest },
+          { target: 'agent', key: 'move_toward', op: 'set', value: dest },
+        ],
+      },
+      { kind: 'attach', ticksRequired: 1 },
+      { kind: 'execute', ticksRequired: 1 },
+      { kind: 'detach', ticksRequired: 1 },
+    ],
+  };
+}
+
+function mkSocialStartIntentOfferV1(args: {
+  world: SimWorld;
+  actorId: string;
+  targetId: string;
+  baseScore: number;
+  social: string;
+  volume: 'whisper' | 'normal' | 'shout';
+  kind: 'talk' | 'question_about';
+  topic?: string;
+  tags?: string[];
+}) {
+  const { world, actorId, targetId, baseScore, social, volume, kind, topic, tags } = args;
+  const scriptId = kind === 'question_about' ? `dialog:${social}:${topic ?? 'topic'}` : `dialog:${social}`;
+  const intentScript = buildApproachToCharScriptV1(
+    world,
+    actorId,
+    targetId,
+    scriptId,
+    [
+      `Decompose ${kind.toUpperCase()} -> transaction`,
+      `FindTarget(${targetId})`,
+      `Plan: Approach -> Attach -> Execute(${social}) -> Detach`,
+    ],
+  );
+
+  const originalAction: any = {
+    kind,
+    actorId,
+    targetId,
+    meta: { volume, social, ...(topic ? { topic } : {}), tags: tags ?? [] },
+    payload: null,
+  };
+
+  return {
+    kind: 'start_intent',
+    actorId,
+    targetId,
+    score: baseScore,
+    meta: { scriptId, tags: tags ?? [] },
+    payload: {
+      intentId: `intent:${actorId}:${kind}:${social}:${world.tickIndex}`,
+      remainingTicks: 9999,
+      intentScript,
+      intent: { originalAction },
+    },
+  } as any;
+}
+
 function featuresAtNode(world: SimWorld, locId: string, nodeId: string | undefined) {
   const loc = getLoc(world, locId);
   const xs = Array.isArray((loc as any)?.features) ? (loc as any).features : [];
@@ -97,6 +208,14 @@ function autoVolume(world: SimWorld, aId: string, bId: string): 'whisper' | 'nor
   if (d <= cfg.whisperRange * 0.9) return 'whisper';
   if (d <= cfg.talkRange) return 'normal';
   return 'shout';
+}
+
+// NOTE: Stage2 rule:
+// talk/question_about are NOT executable as direct ActionSpecs anymore.
+// They exist only as originalAction executed on intent_complete (meta.internal=true).
+
+function isInternalCall(action: any) {
+  return Boolean(action?.meta && typeof action.meta === 'object' && (action.meta as any).internal === true);
 }
 
 // Standardize speech atoms for talk/question/negotiate.
@@ -129,10 +248,7 @@ const WaitSpec: ActionSpec = {
 
 const RestSpec: ActionSpec = {
   kind: 'rest',
-  enumerate: ({ world, actorId }) => {
-    const c = getChar(world, actorId);
-    return [{ kind: 'rest', actorId, score: clamp01((0.6 - c.energy) * 2) }];
-  },
+  enumerate: () => [],
   validateV1: ({ world, offer }) => validateCommon(world, offer),
   validateV2: ({ world, offer }) => {
     const base = validateCommon(world, offer);
@@ -416,17 +532,7 @@ const ScavengeFeatureSpec: ActionSpec = {
 
 const TalkSpec: ActionSpec = {
   kind: 'talk',
-  enumerate: ({ world, actorId }) => {
-    const c = getChar(world, actorId);
-    const out: ActionOffer[] = [];
-    for (const other of Object.values(world.characters)) {
-      if (other.id === c.id) continue;
-      if (other.locId !== c.locId) continue;
-      const volume = autoVolume(world, c.id, other.id);
-      out.push({ kind: 'talk', actorId, targetId: other.id, meta: { volume }, score: 0.15 });
-    }
-    return out;
-  },
+  enumerate: () => [],
   validateV1: ({ world, offer }) => {
     const base = validateCommon(world, offer);
     try {
@@ -461,27 +567,74 @@ const TalkSpec: ActionSpec = {
   apply: ({ world, action }) => {
     const notes: string[] = [];
     const events: SimEvent[] = [];
+    if (!isInternalCall(action)) {
+      return {
+        world,
+        events: [mkActionEvent(world, 'action:blocked', { kind: 'talk', actorId: action.actorId, reason: 'use_intent' })],
+        notes: [`${action.actorId} talk blocked (use start_intent->intent_complete)`],
+      };
+    }
     const c = getChar(world, action.actorId);
     const otherId = String(action.targetId ?? '');
     const volume = String(action.meta?.volume ?? 'normal') as 'whisper' | 'normal' | 'shout';
-    c.stress = clamp01(c.stress - 0.02);
-    world.facts[`talk:${c.id}:${otherId}`] = (world.facts[`talk:${c.id}:${otherId}`] ?? 0) + 1;
-    notes.push(`${c.id} talks to ${otherId}`);
+    const social = String(action.meta?.social ?? 'inform');
+    const trust = getDyadTrust(world, c.id, otherId);
+
+    // Default effect: reduces stress slightly.
+    c.stress = clamp01(c.stress - 0.015);
+    world.facts[`talk:${social}:${c.id}:${otherId}`] = (world.facts[`talk:${social}:${c.id}:${otherId}`] ?? 0) + 1;
+
+    // Social effects: minimal but visible in facts.relations.
+    if (social === 'offer_resource') {
+      bumpRelation(world, otherId, c.id, 'trust', +0.04);
+      bumpRelation(world, c.id, otherId, 'trust', +0.01);
+      c.energy = clamp01(c.energy - 0.01);
+    } else if (social === 'request_access') {
+      c.stress = clamp01(c.stress + 0.005);
+    } else if (social === 'intimidate') {
+      bumpRelation(world, otherId, c.id, 'trust', -0.08);
+      c.stress = clamp01(c.stress + 0.01);
+      const t = world.characters[otherId];
+      if (t) (t as any).stress = clamp01(Number((t as any).stress ?? 0) + 0.04);
+    } else if (social === 'insult') {
+      bumpRelation(world, otherId, c.id, 'trust', -0.1);
+      bumpRelation(world, otherId, c.id, 'respect', -0.06);
+      c.stress = clamp01(c.stress + 0.015);
+      const t = world.characters[otherId];
+      if (t) (t as any).stress = clamp01(Number((t as any).stress ?? 0) + 0.06);
+    }
+
+    notes.push(`${c.id} ${social} -> ${otherId}`);
     events.push(mkActionEvent(world, 'action:talk', {
       actorId: c.id,
       targetId: otherId,
       locationId: c.locId,
+      social,
     }));
     // Прототип: "разговор" как сигнал, который можно превратить в atoms в GoalLab.
     const speech: SpeechEventV1 = {
       schema: 'SpeechEventV1',
       actorId: c.id,
       targetId: otherId,
-      act: 'inform',
+      act: social === 'request_access'
+        ? 'ask'
+        : social === 'offer_resource'
+          ? 'promise'
+          : social === 'intimidate' || social === 'insult'
+            ? 'threaten'
+            : 'inform',
       volume,
-      topic: 'talk',
-      text: 'shares an update',
-      atoms: mkSpeechAtoms('talk', c.id, otherId, { tone: 'neutral' }),
+      topic: social,
+      text: social === 'request_access'
+        ? 'requests access'
+        : social === 'offer_resource'
+          ? 'offers help'
+          : social === 'intimidate'
+            ? 'tries to intimidate'
+            : social === 'insult'
+              ? 'insults'
+              : 'shares an update',
+      atoms: mkSpeechAtoms('talk', c.id, otherId, { social, trust }),
     };
     events.push(mkActionEvent(world, 'speech:v1', speech));
     return { world, events, notes };
@@ -598,19 +751,7 @@ const ObserveSpec: ActionSpec = {
 
 const QuestionAboutSpec: ActionSpec = {
   kind: 'question_about',
-  enumerate: ({ world, actorId }) => {
-    const c = getChar(world, actorId);
-    const out: ActionOffer[] = [];
-    const feats = featuresAtNode(world, c.locId, c.pos?.nodeId);
-    const topic = feats[0]?.id || 'situation';
-    for (const other of Object.values(world.characters)) {
-      if (other.id === c.id) continue;
-      if (other.locId !== c.locId) continue;
-      const volume = autoVolume(world, c.id, other.id);
-      out.push({ kind: 'question_about', actorId, targetId: other.id, meta: { topic, volume }, score: 0.18 });
-    }
-    return out;
-  },
+  enumerate: () => [],
   validateV1: ({ world, offer }) => {
     const base = validateCommon(world, offer);
     try {
@@ -645,6 +786,19 @@ const QuestionAboutSpec: ActionSpec = {
   apply: ({ world, action }) => {
     const notes: string[] = [];
     const events: SimEvent[] = [];
+    if (!isInternalCall(action)) {
+      return {
+        world,
+        events: [
+          mkActionEvent(world, 'action:blocked', {
+            kind: 'question_about',
+            actorId: action.actorId,
+            reason: 'use_intent',
+          }),
+        ],
+        notes: [`${action.actorId} question_about blocked (use start_intent->intent_complete)`],
+      };
+    }
     const c = getChar(world, action.actorId);
     const otherId = String(action.targetId ?? '');
     const topic = String(action.meta?.topic || 'situation');
@@ -717,6 +871,140 @@ const NegotiateSpec: ActionSpec = {
   },
 };
 
+// -----------------------------------------------------------------------------
+// Intent scripts (v1): fractal actions as staged transactions.
+// Stored in world.facts['intent:<actorId>'] in a JSON-friendly shape.
+// -----------------------------------------------------------------------------
+
+type IntentStageKindV1 = 'approach' | 'attach' | 'execute' | 'detach';
+
+type IntentAtomicDeltaV1 = {
+  target: 'agent' | 'world' | 'target';
+  key: string;
+  op: 'add' | 'set';
+  value: any;
+};
+
+type IntentStageV1 = {
+  kind: IntentStageKindV1;
+  ticksRequired: number | 'until_condition';
+  perTick?: IntentAtomicDeltaV1[];
+  onEnter?: IntentAtomicDeltaV1[];
+  onExit?: IntentAtomicDeltaV1[];
+};
+
+type IntentScriptV1 = {
+  id: string;
+  stages: IntentStageV1[];
+  explain?: string[];
+};
+
+function jsonSafeClone(x: any): any {
+  // Ensure pipeline snapshot won't explode on functions/Map/cycles/etc.
+  try {
+    return JSON.parse(JSON.stringify(x));
+  } catch {
+    return null;
+  }
+}
+
+function sanitizeIntentDelta(x: any): IntentAtomicDeltaV1 | null {
+  if (!x || typeof x !== 'object') return null;
+  const target = x.target;
+  const op = x.op;
+  const key = String(x.key ?? '');
+  if (target !== 'agent' && target !== 'world' && target !== 'target') return null;
+  if (op !== 'add' && op !== 'set') return null;
+  if (!key) return null;
+  const value = jsonSafeClone(x.value);
+  return { target, op, key, value };
+}
+
+function sanitizeIntentStage(x: any): IntentStageV1 | null {
+  if (!x || typeof x !== 'object') return null;
+  const kind = x.kind;
+  if (kind !== 'approach' && kind !== 'attach' && kind !== 'execute' && kind !== 'detach') return null;
+  const tr = x.ticksRequired;
+  const ticksRequired = tr === 'until_condition' ? 'until_condition' : Math.max(0, Number(tr ?? 0));
+  const perTick = Array.isArray(x.perTick) ? (x.perTick.map(sanitizeIntentDelta).filter(Boolean) as IntentAtomicDeltaV1[]) : undefined;
+  const onEnter = Array.isArray(x.onEnter) ? (x.onEnter.map(sanitizeIntentDelta).filter(Boolean) as IntentAtomicDeltaV1[]) : undefined;
+  const onExit = Array.isArray(x.onExit) ? (x.onExit.map(sanitizeIntentDelta).filter(Boolean) as IntentAtomicDeltaV1[]) : undefined;
+  return { kind, ticksRequired, perTick, onEnter, onExit };
+}
+
+function sanitizeIntentScript(x: any): IntentScriptV1 | null {
+  if (!x || typeof x !== 'object') return null;
+  if (!Array.isArray(x.stages) || x.stages.length === 0) return null;
+  const stages = x.stages.map(sanitizeIntentStage).filter(Boolean) as IntentStageV1[];
+  if (!stages.length) return null;
+  const id = String(x.id ?? 'intent_script');
+  const explain = Array.isArray(x.explain) ? x.explain.map((s: any) => String(s)).slice(0, 32) : undefined;
+  return { id, stages, explain };
+}
+
+function applyIntentDeltaV1(world: SimWorld, actorId: string, targetId: string | null, d: IntentAtomicDeltaV1) {
+  const key = String(d.key ?? '');
+  const op = d.op;
+  const val = d.value;
+
+  const applyToChar = (charId: string) => {
+    const c = getChar(world, charId);
+    if (key === 'energy') {
+      if (op === 'add') c.energy = clamp01(c.energy + Number(val || 0));
+      else c.energy = clamp01(Number(val ?? c.energy));
+      return;
+    }
+    if (key === 'stress') {
+      if (op === 'add') c.stress = clamp01(c.stress + Number(val || 0));
+      else c.stress = clamp01(Number(val ?? c.stress));
+      return;
+    }
+    if (key === 'pos') {
+      const x = Number((val as any)?.x);
+      const y = Number((val as any)?.y);
+      if (Number.isFinite(x) && Number.isFinite(y)) c.pos = { nodeId: null, x, y };
+      return;
+    }
+    if (key === 'move_toward') {
+      const tx = Number((val as any)?.x);
+      const ty = Number((val as any)?.y);
+      if (!Number.isFinite(tx) || !Number.isFinite(ty)) return;
+      const cfg = getSpatialConfig(world);
+      const cur = getCharXY(world, charId);
+      const dx = tx - cur.x;
+      const dy = ty - cur.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (!Number.isFinite(dist) || dist <= 1e-6) {
+        c.pos = { nodeId: null, x: tx, y: ty };
+        return;
+      }
+      const step = Math.min(cfg.moveMaxStep, dist);
+      const nx = cur.x + (dx / dist) * step;
+      const ny = cur.y + (dy / dist) * step;
+      c.pos = { nodeId: null, x: nx, y: ny };
+      // Tiny travel cost (optional, cheap).
+      c.energy = clamp01(c.energy - 0.0025);
+      return;
+    }
+
+    // Generic sink: keep JSON-friendly.
+    const meta = (c as any).meta && typeof (c as any).meta === 'object' ? (c as any).meta : ((c as any).meta = {});
+    if (op === 'set') meta[key] = jsonSafeClone(val);
+    else meta[key] = Number(meta[key] ?? 0) + Number(val ?? 0);
+  };
+
+  if (d.target === 'agent') return applyToChar(actorId);
+  if (d.target === 'target') {
+    if (targetId) applyToChar(targetId);
+    return;
+  }
+  if (d.target === 'world') {
+    const wf: any = world.facts as any;
+    if (op === 'set') wf[key] = jsonSafeClone(val);
+    else wf[key] = Number(wf[key] ?? 0) + Number(val ?? 0);
+  }
+}
+
 const StartIntentSpec: ActionSpec = {
   kind: 'start_intent',
   enumerate: () => [],
@@ -733,21 +1021,51 @@ const StartIntentSpec: ActionSpec = {
     const intentId = String(payload.intentId || `intent:${c.id}:${world.tickIndex}`);
     const remainingTicks = Math.max(1, Number(payload.remainingTicks ?? 2));
 
+    // CRITICAL: sanitize at the boundary (facts must be JSON-friendly).
+    const rawScript = (payload as any).intentScript;
+    const safeIntentScript = sanitizeIntentScript(rawScript);
+
     // Minimal intent storage: one active intent per actor (v0).
+    // Derive scriptId for debug/pipeline UI even if script is missing.
+    const scriptId =
+      safeIntentScript?.id ??
+      String((action.meta as any)?.scriptId ?? (payload as any)?.scriptId ?? null);
+
     world.facts[`intent:${c.id}`] = {
       id: intentId,
       startedAtTick: world.tickIndex,
       remainingTicks,
       intent,
+      // Staged script runtime (optional).
+      intentScript: safeIntentScript,
+      stageIndex: safeIntentScript ? 0 : null,
+      stageTicksLeft: safeIntentScript
+        ? safeIntentScript.stages[0].ticksRequired === 'until_condition'
+          ? 'until_condition'
+          : safeIntentScript.stages[0].ticksRequired
+        : null,
+      stageEnteredIndex: safeIntentScript ? -1 : null,
+      scriptId,
+      // Approach helper (JSON-friendly).
+      dest: null,
     };
 
-    notes.push(`${c.id} starts intent ${intentId} (remainingTicks=${remainingTicks})`);
+    if (safeIntentScript) {
+      notes.push(`${c.id} starts intent ${intentId} (script=${safeIntentScript.id})`);
+      if (safeIntentScript.explain?.length) {
+        notes.push(...safeIntentScript.explain.map((x) => `intent.decompose: ${x}`));
+      }
+    } else {
+      // This is the exact failure mode you currently see in your session.
+      notes.push(`${c.id} starts intent ${intentId} (NO_SCRIPT, remainingTicks=${remainingTicks})`);
+    }
     events.push(mkActionEvent(world, 'action:start_intent', {
       actorId: c.id,
       locationId: c.locId,
       intentId,
       remainingTicks,
       intent,
+      scriptId: safeIntentScript?.id ?? scriptId ?? null,
     }));
     return { world, events, notes };
   },
@@ -777,6 +1095,137 @@ const ContinueIntentSpec: ActionSpec = {
       return { world, events, notes };
     }
 
+    // -----------------------------------------------------------------------
+    // v1 staged scripts.
+    // -----------------------------------------------------------------------
+    const script: IntentScriptV1 | null =
+      (cur as any).intentScript && typeof (cur as any).intentScript === 'object' ? ((cur as any).intentScript as any) : null;
+    if (script && Array.isArray(script.stages) && script.stages.length > 0) {
+      const stageIndex = Math.max(0, Number((cur as any).stageIndex ?? 0));
+      const stage = script.stages[stageIndex];
+      if (!stage) {
+        // No stage => complete below.
+      } else {
+        // On-enter once per stage.
+        const entered = Number((cur as any).stageEnteredIndex ?? -1);
+        if (entered !== stageIndex) {
+          (cur as any).stageEnteredIndex = stageIndex;
+          if (Array.isArray(stage.onEnter)) {
+            for (const d of stage.onEnter) applyIntentDeltaV1(world, c.id, action.targetId ?? null, d);
+          }
+        }
+
+        // Per-tick effects.
+        if (Array.isArray(stage.perTick)) {
+          for (const d of stage.perTick) {
+            // Helper: allow scripts to set a destination.
+            if (
+              d &&
+              typeof d === 'object' &&
+              d.target === 'agent' &&
+              d.op === 'set' &&
+              (d.key === 'destination' || d.key === 'dest')
+            ) {
+              (cur as any).dest = d.value;
+            }
+            applyIntentDeltaV1(world, c.id, action.targetId ?? null, d);
+          }
+        }
+
+        // Stage completion.
+        let stageDone = false;
+        if (stage.ticksRequired === 'until_condition') {
+          // v1 heuristic: if dest exists and we are near it => done.
+          const dest = (cur as any).dest;
+          const dx = Number((dest as any)?.x);
+          const dy = Number((dest as any)?.y);
+          if (Number.isFinite(dx) && Number.isFinite(dy)) {
+            const curXY = getCharXY(world, c.id);
+            const dist = Math.sqrt((curXY.x - dx) ** 2 + (curXY.y - dy) ** 2);
+            stageDone = dist <= Math.max(2, getSpatialConfig(world).moveMaxStep * 0.5);
+          } else {
+            // If no dest, do not auto-complete.
+            stageDone = false;
+          }
+        } else {
+          const before = Number((cur as any).stageTicksLeft ?? stage.ticksRequired);
+          const after = Math.max(0, before - 1);
+          (cur as any).stageTicksLeft = after;
+          stageDone = after <= 0;
+        }
+
+        notes.push(`${c.id} continues intent ${(cur as any).id} stage=${stage.kind}@${stageIndex}${stageDone ? ' (done)' : ''}`);
+        events.push(
+          mkActionEvent(world, 'action:continue_intent', {
+            actorId: c.id,
+            locationId: c.locId,
+            intentId: (cur as any).id,
+            ok: true,
+            scriptId: script.id,
+            stageIndex,
+            stageKind: stage.kind,
+            stageDone,
+          })
+        );
+
+        if (!stageDone) {
+          world.facts[key] = cur;
+          return { world, events, notes };
+        }
+
+        // Stage exit + advance.
+        if (Array.isArray(stage.onExit)) {
+          for (const d of stage.onExit) applyIntentDeltaV1(world, c.id, action.targetId ?? null, d);
+        }
+        const nextStageIndex = stageIndex + 1;
+        (cur as any).stageIndex = nextStageIndex;
+        (cur as any).stageEnteredIndex = -1;
+        const next = script.stages[nextStageIndex];
+        if (next) {
+          (cur as any).stageTicksLeft =
+            next.ticksRequired === 'until_condition' ? 'until_condition' : next.ticksRequired;
+          world.facts[key] = cur;
+          return { world, events, notes };
+        }
+        // Fallthrough => complete intent.
+      }
+
+      // Complete intent (script finished).
+      const original = (cur as any)?.intent?.originalAction;
+      if (original && typeof original === 'object' && original.kind && ACTION_SPECS[original.kind as ActionKind]) {
+        const oa: SimAction = {
+          id: `act:intent_complete:${world.tickIndex}:${c.id}:${String(original.kind)}`,
+          kind: original.kind as ActionKind,
+          actorId: c.id,
+          targetId: original.targetId ?? null,
+          payload: original.payload ?? null,
+          meta: { ...(original.meta ?? {}), internal: true },
+        };
+        const spec = ACTION_SPECS[oa.kind];
+        const r = spec.apply({ world, action: oa });
+        world = r.world;
+        events.push(...r.events);
+        notes.push(...r.notes.map((x) => `intent.complete: ${x}`));
+      } else {
+        notes.push(`${c.id} intent complete: no originalAction`);
+      }
+
+      delete world.facts[key];
+      events.push(
+        mkActionEvent(world, 'action:intent_complete', {
+          actorId: c.id,
+          locationId: c.locId,
+          intentId: (cur as any).id,
+          scriptId: script.id,
+        })
+      );
+      notes.push(`${c.id} intent complete (script=${script.id})`);
+      return { world, events, notes };
+    }
+
+    // -----------------------------------------------------------------------
+    // v0 fallback: timer-based intent.
+    // -----------------------------------------------------------------------
     const remainingBefore = Math.max(0, Number((cur as any).remainingTicks ?? 0));
     const remainingAfter = Math.max(0, remainingBefore - 1);
     (cur as any).remainingTicks = remainingAfter;
@@ -801,7 +1250,7 @@ const ContinueIntentSpec: ActionSpec = {
           actorId: c.id,
           targetId: original.targetId ?? null,
           payload: original.payload ?? null,
-          meta: original.meta ?? null,
+          meta: { ...(original.meta ?? {}), internal: true },
         };
         const spec = ACTION_SPECS[oa.kind];
         const r = spec.apply({ world, action: oa });

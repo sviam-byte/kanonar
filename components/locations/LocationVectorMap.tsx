@@ -10,6 +10,9 @@ interface Props {
     showGrid?: boolean;
     scale?: number;
     highlightCells?: Array<{x: number, y: number, color: string, size?: number}>; // size is a multiplier of scale
+    // Optional labeled markers (e.g., actors) rendered on top of the grid.
+    // Coordinates are in CELL space (same as grid).
+    markers?: Array<{ x: number; y: number; label: string; color: string; size?: number; title?: string }>;
     onCellClick?: (x: number, y: number) => void;
     // Suppress <text> visuals (and any textual content) from the vector layer.
     // Useful for placement maps where labels can look like "random letters".
@@ -48,6 +51,7 @@ export const LocationVectorMap: React.FC<Props> = ({
     showGrid = true,
     scale = 30,
     highlightCells = [],
+    markers = [],
     onCellClick,
     hideTextVisuals = false,
 }) => {
@@ -184,6 +188,38 @@ export const LocationVectorMap: React.FC<Props> = ({
         });
     }, [highlightCells, scale]);
 
+    const markerOverlay = useMemo(() => {
+        return arr(markers)
+            .filter(Boolean)
+            .map((m: any, i: number) => {
+                const sizeMultiplier = m.size || 0.72;
+                const pixelSize = scale * sizeMultiplier;
+                const offset = (scale - pixelSize) / 2;
+                const label = String(m.label ?? '').slice(0, 3);
+                return (
+                    <div
+                        key={`mk-${i}`}
+                        className="absolute rounded-full flex items-center justify-center font-mono font-bold select-none"
+                        style={{
+                            left: m.x * scale + offset,
+                            top: m.y * scale + offset,
+                            width: pixelSize,
+                            height: pixelSize,
+                            backgroundColor: m.color,
+                            zIndex: 70,
+                            border: '1px solid rgba(0,0,0,0.55)',
+                            boxShadow: `0 0 ${Math.max(3, pixelSize / 2.5)}px rgba(0,0,0,0.35)`,
+                            color: 'rgba(0,0,0,0.85)',
+                            fontSize: Math.max(10, Math.floor(pixelSize * 0.42)),
+                        }}
+                        title={m.title ? String(m.title) : undefined}
+                    >
+                        {label}
+                    </div>
+                );
+            });
+    }, [markers, scale]);
+
     return (
         <div 
             className="relative bg-black overflow-hidden border border-canon-border rounded shadow-inner"
@@ -215,6 +251,7 @@ export const LocationVectorMap: React.FC<Props> = ({
             
             {gridOverlay}
             {highlightOverlay}
+            {markerOverlay}
         </div>
     );
 };
