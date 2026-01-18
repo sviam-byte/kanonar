@@ -101,6 +101,21 @@ export function scoreOfferSubjective(world: SimWorld, offer: ActionOffer): numbe
 
   const tags = actionTags(offer.kind, offer);
 
+  // -------------------------------------------------------------------------
+  // Hard rule: if an intent is active, keep executing it.
+  // This prevents "start new intent every tick" and makes staged scripts visible.
+  // -------------------------------------------------------------------------
+  const curIntent: any = (world.facts as any)?.[`intent:${c.id}`];
+  if (curIntent && typeof curIntent === 'object') {
+    if (offer.kind === 'continue_intent') {
+      s += 1.25; // dominate
+    } else if (offer.kind === 'start_intent') {
+      s -= 0.9; // strongly discourage stacking
+    } else {
+      s -= 0.5; // discourage interrupts
+    }
+  }
+
   // Emotional lens.
   if (danger > 0.55) {
     const risky = tags.includes('Risky') || tags.includes('Navigate');
@@ -140,14 +155,6 @@ export function scoreOfferSubjective(world: SimWorld, offer: ActionOffer): numbe
   if (last && Number.isFinite(last.tick)) {
     if (last.kind === offer.kind) s += 0.03;
     else s -= 0.02;
-  }
-
-  // Sunk cost / coherence for intents.
-  const curIntent: any = (world.facts as any)?.[`intent:${c.id}`];
-  if (curIntent && typeof curIntent === 'object') {
-    if (offer.kind === 'continue_intent') s += 0.25;
-    else if (offer.kind === 'start_intent') s -= 0.1;
-    else s -= 0.06;
   }
 
   // Social contagion.

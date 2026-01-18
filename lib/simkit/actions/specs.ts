@@ -1109,32 +1109,43 @@ const StartIntentSpec: ActionSpec = {
     const intentId = String(payload.intentId || `intent:${c.id}:${world.tickIndex}`);
     const remainingTicks = Math.max(1, Number(payload.remainingTicks ?? 2));
 
-    const intentScript = sanitizeIntentScript((payload as any).intentScript);
+    // CRITICAL: sanitize at the boundary (facts must be JSON-friendly).
+    const rawScript = (payload as any).intentScript;
+    const safeIntentScript = sanitizeIntentScript(rawScript);
 
     // Minimal intent storage: one active intent per actor (v0).
+    // Derive scriptId for debug/pipeline UI even if script is missing.
+    const scriptId =
+      safeIntentScript?.id ??
+      String((action.meta as any)?.scriptId ?? (payload as any)?.scriptId ?? null);
+
     world.facts[`intent:${c.id}`] = {
       id: intentId,
       startedAtTick: world.tickIndex,
       remainingTicks,
       intent,
       // Staged script runtime (optional).
-      intentScript,
-      stageIndex: intentScript ? 0 : null,
-      stageTicksLeft: intentScript
-        ? intentScript.stages[0].ticksRequired === 'until_condition'
+      intentScript: safeIntentScript,
+      stageIndex: safeIntentScript ? 0 : null,
+      stageTicksLeft: safeIntentScript
+        ? safeIntentScript.stages[0].ticksRequired === 'until_condition'
           ? 'until_condition'
-          : intentScript.stages[0].ticksRequired
+          : safeIntentScript.stages[0].ticksRequired
         : null,
-      stageEnteredIndex: intentScript ? -1 : null,
+      stageEnteredIndex: safeIntentScript ? -1 : null,
+      scriptId,
       // Approach helper (JSON-friendly).
       dest: null,
     };
 
-    if (intentScript) {
-      notes.push(`${c.id} starts intent ${intentId} (script=${intentScript.id})`);
-      if (intentScript.explain?.length) notes.push(...intentScript.explain.map((x) => `intent.decompose: ${x}`));
+    if (safeIntentScript) {
+      notes.push(`${c.id} starts intent ${intentId} (script=${safeIntentScript.id})`);
+      if (safeIntentScript.explain?.length) {
+        notes.push(...safeIntentScript.explain.map((x) => `intent.decompose: ${x}`));
+      }
     } else {
-      notes.push(`${c.id} starts intent ${intentId} (remainingTicks=${remainingTicks})`);
+      // This is the exact failure mode you currently see in your session.
+      notes.push(`${c.id} starts intent ${intentId} (NO_SCRIPT, remainingTicks=${remainingTicks})`);
     }
     events.push(mkActionEvent(world, 'action:start_intent', {
       actorId: c.id,
@@ -1142,7 +1153,7 @@ const StartIntentSpec: ActionSpec = {
       intentId,
       remainingTicks,
       intent,
-      scriptId: intentScript?.id ?? null,
+      scriptId: safeIntentScript?.id ?? scriptId ?? null,
     }));
     return { world, events, notes };
   },

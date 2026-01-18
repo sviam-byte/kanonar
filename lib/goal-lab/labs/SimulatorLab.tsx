@@ -63,6 +63,28 @@ function pad4(n: number) {
   return String(n).padStart(4, '0');
 }
 
+function listActiveIntentsFromFacts(facts: any) {
+  if (!facts || typeof facts !== 'object') return [];
+  const out: any[] = [];
+  for (const k of Object.keys(facts)) {
+    if (!k.startsWith('intent:')) continue;
+    const v = (facts as any)[k];
+    if (!v || typeof v !== 'object') continue;
+    out.push({ key: k, ...v });
+  }
+  return out;
+}
+
+function prettyJson(x: any, max = 1400) {
+  try {
+    const s = JSON.stringify(x, null, 2);
+    if (s.length <= max) return s;
+    return `${s.slice(0, max)}\n…`;
+  } catch {
+    return String(x);
+  }
+}
+
 export const SimulatorLab: React.FC<Props> = ({ orchestratorRegistry, onPushToGoalLab }) => {
   const { sandboxState } = useSandbox();
   // --------- Entities (источник правды) ----------
@@ -628,6 +650,62 @@ export const SimulatorLab: React.FC<Props> = ({ orchestratorRegistry, onPushToGo
 
                 {activeTab === 'pipeline' && (
                   <div className="h-full overflow-y-auto custom-scrollbar text-[11px]">
+                    {/* Active intents inspector (critical for staged actions debugging). */}
+                    <div className="mb-3 rounded border border-slate-800 bg-black/30 p-2">
+                      <div className="flex items-center justify-between">
+                        <div className="text-xs font-semibold text-slate-200">Active Intents</div>
+                        <div className="text-[10px] text-slate-500">tick={snapshot?.tickIndex ?? '—'}</div>
+                      </div>
+                      {(() => {
+                        const intents = listActiveIntentsFromFacts((snapshot as any)?.facts ?? (snapshot as any)?.world?.facts);
+                        if (!intents.length) {
+                          return <div className="text-[11px] text-slate-500 mt-1">none</div>;
+                        }
+                        return (
+                          <div className="mt-2 space-y-2">
+                            {intents.slice(0, 12).map((it) => {
+                              const script = it.intentScript;
+                              const stageIndex = it.stageIndex;
+                              const stageKind =
+                                script && Array.isArray(script.stages) && Number.isFinite(stageIndex)
+                                  ? script.stages?.[stageIndex]?.kind
+                                  : null;
+                              return (
+                                <div key={it.key} className="rounded border border-slate-800 bg-black/40 p-2">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <span className="text-[11px] font-semibold text-slate-100">{it.key}</span>
+                                    <span className="text-[10px] text-slate-500">id={String(it.id ?? '')}</span>
+                                    <span className="text-[10px] text-slate-500">
+                                      scriptId={String(it.scriptId ?? script?.id ?? '—')}
+                                    </span>
+                                  </div>
+                                  <div className="mt-1 text-[10px] text-slate-400 flex flex-wrap gap-3">
+                                    <span>
+                                      stage={String(stageKind ?? '—')}@{String(stageIndex ?? '—')}
+                                    </span>
+                                    <span>ticksLeft={String(it.stageTicksLeft ?? '—')}</span>
+                                    <span>startedAt={String(it.startedAtTick ?? '—')}</span>
+                                    <span>remainingTicks(v0)={String(it.remainingTicks ?? '—')}</span>
+                                  </div>
+                                  {it.dest ? (
+                                    <div className="mt-1 text-[10px] text-slate-400">
+                                      dest: {prettyJson(it.dest, 220)}
+                                    </div>
+                                  ) : null}
+                                  {/* Keep raw view small but available. */}
+                                  <details className="mt-2">
+                                    <summary className="text-[10px] text-slate-500 cursor-pointer">raw</summary>
+                                    <pre className="mt-1 text-[10px] text-slate-300 whitespace-pre-wrap">
+{prettyJson(it, 1600)}
+                                    </pre>
+                                  </details>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        );
+                      })()}
+                    </div>
                     <div className="text-[10px] text-slate-500 uppercase font-bold mb-2">GoalLab pipeline snapshot</div>
                     <pre className="bg-black/40 border border-slate-800 rounded p-3 overflow-auto">
 {JSON.stringify((currentRecord as any)?.plugins?.goalLabPipeline?.snapshot ?? null, null, 2)}
