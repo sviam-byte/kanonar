@@ -94,7 +94,7 @@ export type IntentStageKind = 'approach' | 'attach' | 'execute' | 'detach';
 export type IntentAtomicDelta = {
   target: 'agent' | 'world' | 'target'; // which entity to mutate
   key: string; // e.g. "energy", "pos", "is_open"
-  op: 'add' | 'set';
+  op: 'add' | 'set' | 'set_path_to_node' | 'follow_path_step';
   value: number | string | boolean | Record<string, any>;
 };
 
