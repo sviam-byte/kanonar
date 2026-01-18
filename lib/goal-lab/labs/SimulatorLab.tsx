@@ -14,6 +14,7 @@ import { basicScenarioId, makeBasicWorld } from '../../simkit/scenarios/basicSce
 import { SimMapView } from '../../../components/SimMapView';
 import { LocationMapView } from '../../../components/LocationMapView';
 import { PlacementMapEditor } from '../../../components/ScenarioSetup/PlacementMapEditor';
+import { PlacementMiniMap } from '../../../components/ScenarioSetup/PlacementMiniMap';
 import { LocationVectorMap } from '../../../components/locations/LocationVectorMap';
 
 import { EntityType } from '../../../enums';
@@ -38,7 +39,6 @@ type Props = {
 type Mode = 'setup' | 'run';
 type SetupStage = 'loc' | 'entities' | 'env';
 type TabId = 'map' | 'summary' | 'narrative' | 'pipeline' | 'orchestrator' | 'json';
-type MoveMode = 'xy' | 'node';
 
 type SetupDraft = {
   selectedLocIds: string[];
@@ -65,146 +65,61 @@ function pad4(n: number) {
   return String(n).padStart(4, '0');
 }
 
-function nearestNavNode(loc: any, x: number, y: number) {
-  const nodes = Array.isArray(loc?.nav?.nodes) ? loc.nav.nodes : [];
-  let best: any = null;
-  let bestD = Infinity;
-  for (const n of nodes) {
-    const dx = Number(n.x) - x;
-    const dy = Number(n.y) - y;
-    const d = dx * dx + dy * dy;
-    if (Number.isFinite(d) && d < bestD) {
-      bestD = d;
-      best = n;
+function stableHue(seed: string) {
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
+  return h % 360;
+}
+
+function colorForId(id: string) {
+  const hue = stableHue(String(id));
+  return `hsl(${hue} 80% 60%)`;
+}
+
+function initialsForTitle(title: string) {
+  const t = String(title || '').trim();
+  if (!t) return '??';
+  const parts = t.split(/\s+/g).filter(Boolean);
+  const a = parts[0]?.[0] ?? t[0] ?? '?';
+  const b = parts.length > 1 ? (parts[1]?.[0] ?? '') : (t[1] ?? '');
+  return (a + b).toUpperCase().slice(0, 2);
+}
+
+function compactJson(value: any, opts?: { maxDepth?: number; maxKeys?: number; maxArray?: number; maxStr?: number }) {
+  const maxDepth = opts?.maxDepth ?? 4;
+  const maxKeys = opts?.maxKeys ?? 60;
+  const maxArray = opts?.maxArray ?? 50;
+  const maxStr = opts?.maxStr ?? 500;
+  const seen = new WeakSet();
+
+  const recur = (v: any, depth: number): any => {
+    if (v === null || v === undefined) return v;
+    if (typeof v === 'string') {
+      if (v.length <= maxStr) return v;
+      return v.slice(0, maxStr) + `…(+${v.length - maxStr} chars)`;
     }
-  }
-  return best;
-}
-
-function listActiveIntentsFromFacts(facts: any) {
-  if (!facts || typeof facts !== 'object') return [];
-  const out: any[] = [];
-  for (const k of Object.keys(facts)) {
-    if (!k.startsWith('intent:')) continue;
-    const v = (facts as any)[k];
-    if (!v || typeof v !== 'object') continue;
-    out.push({ key: k, ...v });
-  }
-  return out;
-}
-
-function trunc(s: string, max = 1200) {
-  if (s.length <= max) return s;
-  return `${s.slice(0, max)}\n… (${s.length - max} chars more)`;
-}
-
-function safeStringify(x: any) {
-  try {
-    return JSON.stringify(x, null, 2);
-  } catch {
-    return String(x);
-  }
-}
-
-function pick(obj: any, keys: string[]) {
-  const out: any = {};
-  for (const k of keys) out[k] = obj?.[k];
-  return out;
-}
-
-function summarizeFacts(facts: any) {
-  const keys = facts && typeof facts === 'object' ? Object.keys(facts) : [];
-  const wantPrefixes = ['intent:', 'occupied:', 'dialog:', 'observeBoost:', 'ctx:'];
-  const important: Record<string, any> = {};
-  const otherKeys: string[] = [];
-
-  for (const k of keys) {
-    if (wantPrefixes.some((p) => k.startsWith(p))) important[k] = facts[k];
-    else otherKeys.push(k);
-  }
-
-  return {
-    factsCount: keys.length,
-    important,
-    otherKeysCount: otherKeys.length,
-    otherKeysSample: otherKeys.slice(0, 40),
+    if (typeof v === 'number' || typeof v === 'boolean') return v;
+    if (typeof v === 'function') return '[Function]';
+    if (typeof v !== 'object') return String(v);
+    if (seen.has(v)) return '[Circular]';
+    seen.add(v);
+    if (depth >= maxDepth) {
+      if (Array.isArray(v)) return `[Array(${v.length})]`;
+      return `[Object ${Object.keys(v).length}]`;
+    }
+    if (Array.isArray(v)) {
+      const out = v.slice(0, maxArray).map((x) => recur(x, depth + 1));
+      if (v.length > maxArray) out.push(`…(+${v.length - maxArray} items)`);
+      return out;
+    }
+    const keys = Object.keys(v);
+    const out: any = {};
+    for (const k of keys.slice(0, maxKeys)) out[k] = recur((v as any)[k], depth + 1);
+    if (keys.length > maxKeys) out.__more_keys__ = keys.length - maxKeys;
+    return out;
   };
-}
 
-function summarizeChars(world: any) {
-  const chars =
-    world?.characters && typeof world.characters === 'object'
-      ? Object.values(world.characters)
-      : [];
-
-  const facts = world?.facts ?? {};
-  const intents = listActiveIntentsFromFacts(facts);
-
-  const intentByActor: Record<string, any> = {};
-  for (const it of intents) {
-    const actorId = String(it.key).replace(/^intent:/, '').split(':')[0];
-    intentByActor[actorId] = it;
-  }
-
-  return chars.map((c: any) => {
-    const it = intentByActor[c.id];
-    const script = it?.intentScript;
-    const stageIndex = it?.stageIndex;
-    const stageKind =
-      script && Array.isArray(script.stages) && Number.isFinite(stageIndex)
-        ? script.stages?.[stageIndex]?.kind
-        : null;
-
-    return {
-      id: c.id,
-      locId: c.locId,
-      pos: c.pos ? pick(c.pos, ['x', 'y', 'nodeId']) : null,
-      energy: c.energy ?? null,
-      stress: c.stress ?? null,
-      health: c.health ?? null,
-      intent: it
-        ? {
-            scriptId: it.scriptId ?? script?.id ?? null,
-            stageIndex: it.stageIndex ?? null,
-            stageKind,
-            ticksLeft: it.stageTicksLeft ?? it.remainingTicks ?? null,
-            dest: it.dest ?? null,
-          }
-        : null,
-    };
-  });
-}
-
-function diffKeys(prevFacts: any, curFacts: any) {
-  const a = prevFacts && typeof prevFacts === 'object' ? prevFacts : {};
-  const b = curFacts && typeof curFacts === 'object' ? curFacts : {};
-  const ak = new Set(Object.keys(a));
-  const bk = new Set(Object.keys(b));
-
-  const added: string[] = [];
-  const removed: string[] = [];
-  const changed: string[] = [];
-
-  for (const k of bk) if (!ak.has(k)) added.push(k);
-  for (const k of ak) if (!bk.has(k)) removed.push(k);
-  for (const k of bk) {
-    if (!ak.has(k)) continue;
-    const va = a[k];
-    const vb = b[k];
-    // cheap compare: stringify small primitives, else reference/JSON
-    const sa = typeof va === 'object' ? safeStringify(va) : String(va);
-    const sb = typeof vb === 'object' ? safeStringify(vb) : String(vb);
-    if (sa !== sb) changed.push(k);
-  }
-
-  return {
-    addedCount: added.length,
-    removedCount: removed.length,
-    changedCount: changed.length,
-    addedSample: added.slice(0, 30),
-    removedSample: removed.slice(0, 30),
-    changedSample: changed.slice(0, 30),
-  };
+  return recur(value, 0);
 }
 
 export const SimulatorLab: React.FC<Props> = ({ orchestratorRegistry, onPushToGoalLab }) => {
@@ -246,9 +161,8 @@ export const SimulatorLab: React.FC<Props> = ({ orchestratorRegistry, onPushToGo
 
   const [isRunning, setIsRunning] = useState(false);
   const [tickMs, setTickMs] = useState<number>(250);
-  const stepRef = useRef<() => void>(() => {});
-  const [moveMode, setMoveMode] = useState<MoveMode>('xy');
-  const [selectedActorId, setSelectedActorId] = useState<string | null>(null);
+  const [viewLocId, setViewLocId] = useState<string>(() => String(locations?.[0]?.entityId ?? ''));
+  const [viewActorId, setViewActorId] = useState<string>(() => String(charactersAll?.[0]?.entityId ?? ''));
 
   // --------- Derived: selected place/entities ----------
   const selectedPlaces = useMemo(() => {
@@ -301,6 +215,31 @@ export const SimulatorLab: React.FC<Props> = ({ orchestratorRegistry, onPushToGo
       : snapshot;
   }, [mode, currentRecord, snapshot]);
 
+  const placesIndex = useMemo(() => {
+    const m = new Map<string, any>();
+    for (const p of draft.places || []) {
+      const id = String(p?.entityId ?? p?.id ?? '');
+      if (id) m.set(id, p);
+    }
+    return m;
+  }, [draft.places]);
+
+  useEffect(() => {
+    const sel = draft.selectedLocIds.map(String);
+    if (!sel.length) return;
+    if (!sel.includes(String(viewLocId))) {
+      setViewLocId(String(sel[0]));
+    }
+  }, [draft.selectedLocIds, viewLocId]);
+
+  useEffect(() => {
+    const sel = draft.selectedCharIds.map(String);
+    if (!sel.length) return;
+    if (!sel.includes(String(viewActorId))) {
+      setViewActorId(String(sel[0]));
+    }
+  }, [draft.selectedCharIds, viewActorId]);
+
   const selectedPlaceForEditor = useMemo(() => {
     // PlacementMapEditor рисует одну place за раз — берём первую выбранную
     const p = placesForDraft?.[0];
@@ -313,33 +252,6 @@ export const SimulatorLab: React.FC<Props> = ({ orchestratorRegistry, onPushToGo
       nav: (p as any).nav ?? null,
     };
   }, [placesForDraft]);
-
-  const mapLocation = useMemo(() => {
-    if (mode === 'run') {
-      const snap = currentSnapshot as any;
-      const chars = Array.isArray(snap?.characters) ? snap.characters : [];
-      const locs = Array.isArray(snap?.locations) ? snap.locations : [];
-      const anchorLocId = chars?.[0]?.locId;
-      if (anchorLocId) {
-        const loc = locs.find((l: any) => String(l.id) === String(anchorLocId));
-        if (loc) return loc;
-      }
-      return locs[0] ?? null;
-    }
-    return selectedPlaceForEditor ?? selectedPlaces[0] ?? null;
-  }, [currentSnapshot, mode, selectedPlaceForEditor, selectedPlaces]);
-
-  const runActorIds = useMemo(() => {
-    const snap = currentSnapshot as any;
-    const chars = Array.isArray(snap?.characters) ? snap.characters : [];
-    return chars.map((c: any) => String(c.id)).sort();
-  }, [currentSnapshot]);
-
-  useEffect(() => {
-    if (!selectedActorId && runActorIds.length) {
-      setSelectedActorId(runActorIds[0]);
-    }
-  }, [runActorIds, selectedActorId]);
 
   // --------- Helpers: validate setup ----------
   const setupProblems = useMemo(() => {
@@ -425,16 +337,11 @@ export const SimulatorLab: React.FC<Props> = ({ orchestratorRegistry, onPushToGo
     });
   }, []);
 
-  // избегаем замыканий в setInterval
-  useEffect(() => {
-    stepRef.current = stepOnce;
-  }, [stepOnce]);
-
   useEffect(() => {
     if (!isRunning) return;
-    const id = window.setInterval(() => stepRef.current(), Math.max(16, tickMs));
+    const id = window.setInterval(() => stepOnce(), Math.max(20, tickMs));
     return () => window.clearInterval(id);
-  }, [isRunning, tickMs]);
+  }, [isRunning, tickMs, stepOnce]);
 
   function startRun() {
     if (setupProblems.length) return;
@@ -459,6 +366,18 @@ export const SimulatorLab: React.FC<Props> = ({ orchestratorRegistry, onPushToGo
       targetId: targetLocId,
     } as any);
     // следующий тик применит
+    stepOnce();
+  }
+
+  function onManualMoveXY(actorId: string, locId: string, x: number, y: number) {
+    const sim = simRef.current;
+    if (!sim) return;
+    sim.enqueueAction({
+      id: `forced:move_xy:${Date.now()}:${actorId}`,
+      kind: 'move_xy',
+      actorId,
+      payload: { locationId: locId, x, y },
+    } as any);
     stepOnce();
   }
 
@@ -617,86 +536,97 @@ export const SimulatorLab: React.FC<Props> = ({ orchestratorRegistry, onPushToGo
         </div>
       </header>
 
-      <div className="flex-1 grid grid-cols-[420px_minmax(0,1fr)] gap-3 overflow-hidden">
-        {/* LEFT: MAP PANE (ALWAYS VISIBLE) */}
-        <div className="h-full sticky top-0 self-start">
-          <div className="rounded border border-slate-800 bg-black/30 overflow-hidden">
-            <div className="px-2 py-1 flex items-center justify-between border-b border-slate-800">
-              <div className="text-[10px] text-slate-400">Map (always-on)</div>
-              <div className="flex items-center gap-2">
-                <select
-                  className="px-2 py-1 text-[10px] rounded border border-slate-800 bg-black/40 text-slate-300"
-                  value={moveMode}
-                  onChange={(e) => setMoveMode(e.target.value as MoveMode)}
-                  title="How clicks move the selected actor"
-                >
-                  <option value="xy">Move: XY</option>
-                  <option value="node">Move: Nav node</option>
-                </select>
-                <select
-                  className="px-2 py-1 text-[10px] rounded border border-slate-800 bg-black/40 text-slate-300"
-                  value={selectedActorId ?? ''}
-                  onChange={(e) => setSelectedActorId(e.target.value || null)}
-                  title="Actor to move"
-                >
-                  {runActorIds.length ? (
-                    runActorIds.map((id) => (
-                      <option key={id} value={id}>
-                        {id}
-                      </option>
-                    ))
-                  ) : (
-                    <option value="" disabled>
-                      No actors
-                    </option>
-                  )}
-                </select>
-              </div>
-            </div>
-
-            <div className="p-2 overflow-auto">
-              {mapLocation?.map ? (
-                <LocationVectorMap
-                  map={mapLocation.map}
-                  showGrid={true}
-                  scale={24}
-                  hideTextVisuals={true}
-                  onCellClick={(x, y) => {
-                    const sim = simRef.current;
-                    if (!sim) return;
-                    const actorId = selectedActorId ?? runActorIds[0] ?? null;
-                    if (!actorId) return;
-                    if (moveMode === 'node' && mapLocation?.nav?.nodes?.length) {
-                      const nn = nearestNavNode(mapLocation, x, y);
-                      if (!nn) return;
-                      sim.enqueueAction({
-                        id: `forced:move-node:${Date.now()}:${actorId}`,
-                        kind: 'move',
-                        actorId,
-                        targetNodeId: String(nn.id),
-                      } as any);
-                    } else {
-                      sim.enqueueAction({
-                        id: `forced:move-xy:${Date.now()}:${actorId}`,
-                        kind: 'move_xy',
-                        actorId,
-                        payload: { locationId: mapLocation.id, x, y },
-                      } as any);
-                    }
-                    stepOnce();
-                  }}
-                />
-              ) : (
-                <div className="text-xs text-slate-500">No map available.</div>
-              )}
-            </div>
+      <div className="flex-1 grid grid-cols-12 gap-1 overflow-hidden">
+        {/* LEFT: always-on map + placement */}
+        <aside className="col-span-3 bg-[#020617] border border-slate-800 overflow-hidden flex flex-col">
+          <div className="p-2 border-b border-slate-800 bg-slate-900/30 flex items-center gap-2">
+            <div className="text-[10px] uppercase font-bold text-slate-500">Map</div>
+            <select
+              className="canon-input text-[11px] py-1 ml-auto"
+              value={viewLocId}
+              onChange={(e) => setViewLocId(e.target.value)}
+            >
+              {draft.selectedLocIds.map((id) => (
+                <option key={String(id)} value={String(id)}>
+                  {placesIndex.get(String(id))?.title ?? String(id)}
+                </option>
+              ))}
+            </select>
           </div>
-        </div>
 
-        {/* RIGHT: MAIN CONTENT + SIDEBAR */}
-        <div className="grid grid-cols-12 gap-1 overflow-hidden">
-          {/* LEFT MAIN */}
-          <section className="col-span-8 bg-[#020617] border border-slate-800 overflow-hidden">
+          <div className="flex-1 overflow-hidden p-2">
+            {mode === 'setup' ? (
+              <PlacementMiniMap
+                draft={draft}
+                setDraft={setDraft}
+                place={placesIndex.get(String(viewLocId)) ?? (draft.places?.[0] ?? null)}
+                actorIds={draft.selectedCharIds.map(String)}
+                title="Placement"
+              />
+            ) : (
+              <div className="h-full canon-card p-2 flex flex-col">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="text-[10px] uppercase font-bold text-slate-500">Actors</div>
+                  <select
+                    className="canon-input text-[11px] py-1 ml-auto"
+                    value={viewActorId}
+                    onChange={(e) => setViewActorId(e.target.value)}
+                  >
+                    {draft.selectedCharIds.map((id) => {
+                      const ch = draft.characters.find((c: any) => String(c.id) === String(id));
+                      const title = ch?.title ?? ch?.name ?? String(id);
+                      return (
+                        <option key={String(id)} value={String(id)}>
+                          {title}
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
+
+                {(() => {
+                  const place = placesIndex.get(String(viewLocId)) ?? null;
+                  const map = (place as any)?.map ?? null;
+                  const chars = (currentSnapshot as any)?.characters ?? [];
+                  const inLoc = chars.filter((c: any) => String(c.locId) === String(viewLocId));
+                  const markers = inLoc
+                    .filter((c: any) => Number.isFinite(c?.pos?.x) && Number.isFinite(c?.pos?.y))
+                    .map((c: any) => {
+                      const id = String(c.id);
+                      const ch = draft.characters.find((x: any) => String(x.id) === id);
+                      const title = ch?.title ?? ch?.name ?? id;
+                      return {
+                        x: Math.round(Number(c.pos.x)),
+                        y: Math.round(Number(c.pos.y)),
+                        label: initialsForTitle(title),
+                        title,
+                        color: colorForId(id),
+                        size: id === String(viewActorId) ? 0.86 : 0.72,
+                      };
+                    });
+
+                  if (!map) {
+                    return <div className="text-[11px] text-slate-400">No place.map for this location.</div>;
+                  }
+
+                  return (
+                    <LocationVectorMap
+                      map={map}
+                      showGrid
+                      scale={28}
+                      hideTextVisuals
+                      markers={markers}
+                      onCellClick={(x, y) => onManualMoveXY(String(viewActorId), String(viewLocId), x, y)}
+                    />
+                  );
+                })()}
+              </div>
+            )}
+          </div>
+        </aside>
+
+        {/* MAIN */}
+        <section className="col-span-5 bg-[#020617] border border-slate-800 overflow-hidden">
             {mode === 'setup' ? (
               <div className="h-full flex flex-col overflow-hidden">
                 <div className="h-10 border-b border-slate-800 bg-slate-900/30 flex items-center px-4 gap-3">
@@ -884,135 +814,174 @@ export const SimulatorLab: React.FC<Props> = ({ orchestratorRegistry, onPushToGo
 
                   {activeTab === 'pipeline' && (
                     <div className="h-full overflow-y-auto custom-scrollbar text-[11px]">
-                      <div className="text-[10px] text-slate-500 uppercase font-bold mb-2">Active Intents</div>
-                      <pre className="bg-black/40 border border-slate-800 rounded p-3 overflow-auto mb-3">
-{JSON.stringify(
-  {
-    tick: (currentSnapshot as any)?.tickIndex ?? null,
-    intents: listActiveIntentsFromFacts((simRef.current as any)?.world?.facts ?? {}),
-  },
-  null,
-  2
-)}
-                      </pre>
-
-                      <div className="text-[10px] text-slate-500 uppercase font-bold mb-2">Pipeline short debug</div>
-                      <pre className="bg-black/40 border border-slate-800 rounded p-3 overflow-auto">
-{(() => {
-  const world = (simRef.current as any)?.world;
-  const curFacts = world?.facts ?? {};
-  const prevFacts = (history?.[history.length - 2] as any)?.snapshot?.facts ?? null;
-  const shortDebug = {
-    tick: world?.tickIndex ?? (currentSnapshot as any)?.tickIndex ?? null,
-    characters: summarizeChars(world),
-    facts: summarizeFacts(curFacts),
-    factsDiff: diffKeys(prevFacts, curFacts),
-    eventsCount: Array.isArray((currentRecord as any)?.events)
-      ? (currentRecord as any).events.length
-      : null,
-  };
-  return trunc(safeStringify(shortDebug), 9000);
-})()}
-                      </pre>
-                      <details className="mt-2">
-                        <summary className="text-[10px] text-slate-500 cursor-pointer">raw pipeline (truncated)</summary>
-                        <pre className="bg-black/40 border border-slate-800 rounded p-3 overflow-auto mt-2">
-{trunc(
-  safeStringify((currentRecord as any)?.plugins?.goalLabPipeline?.pipeline ?? null),
-  12000
-)}
-                        </pre>
-                      </details>
+                      <div className="text-[10px] text-slate-500 uppercase font-bold mb-2">GoalLab pipeline snapshot</div>
+                      {(() => {
+                        const raw = (currentRecord as any)?.plugins?.goalLabPipeline?.snapshot ?? null;
+                        const short = compactJson(raw, { maxDepth: 5, maxKeys: 60, maxArray: 40, maxStr: 600 });
+                        return (
+                          <details open className="bg-black/40 border border-slate-800 rounded">
+                            <summary className="px-3 py-2 cursor-pointer text-[10px] uppercase font-bold text-slate-400">
+                              Short view
+                            </summary>
+                            <pre className="p-3 overflow-auto">{JSON.stringify(short, null, 2)}</pre>
+                            <details className="border-t border-slate-800">
+                              <summary className="px-3 py-2 cursor-pointer text-[10px] uppercase font-bold text-slate-400">
+                                Raw (full)
+                              </summary>
+                              <div className="px-3 pb-3">
+                                <div className="flex items-center gap-2 mb-2">
+                                  <button
+                                    className="px-2 py-1 text-[10px] rounded border border-slate-700 bg-slate-900/40 hover:bg-slate-900/60"
+                                    onClick={() => jsonDownload(`pipeline_tick_${pad4(currentTickIndex)}.json`, raw)}
+                                  >
+                                    Download
+                                  </button>
+                                </div>
+                                <pre className="max-h-[420px] overflow-auto">{JSON.stringify(raw, null, 2)}</pre>
+                              </div>
+                            </details>
+                          </details>
+                        );
+                      })()}
                     </div>
                   )}
 
                   {activeTab === 'orchestrator' && (
                     <div className="h-full overflow-y-auto custom-scrollbar text-[11px]">
                       <div className="text-[10px] text-slate-500 uppercase font-bold mb-2">Orchestrator snapshot</div>
-                      <pre className="bg-black/40 border border-slate-800 rounded p-3 overflow-auto">
-{JSON.stringify((currentRecord as any)?.plugins?.orchestrator?.snapshot ?? null, null, 2)}
-                      </pre>
+                      {(() => {
+                        const raw = (currentRecord as any)?.plugins?.orchestrator?.snapshot ?? null;
+                        const short = compactJson(raw, { maxDepth: 5, maxKeys: 60, maxArray: 40, maxStr: 600 });
+                        return (
+                          <details open className="bg-black/40 border border-slate-800 rounded">
+                            <summary className="px-3 py-2 cursor-pointer text-[10px] uppercase font-bold text-slate-400">
+                              Short view
+                            </summary>
+                            <pre className="p-3 overflow-auto">{JSON.stringify(short, null, 2)}</pre>
+                            <details className="border-t border-slate-800">
+                              <summary className="px-3 py-2 cursor-pointer text-[10px] uppercase font-bold text-slate-400">
+                                Raw (full)
+                              </summary>
+                              <div className="px-3 pb-3">
+                                <div className="flex items-center gap-2 mb-2">
+                                  <button
+                                    className="px-2 py-1 text-[10px] rounded border border-slate-700 bg-slate-900/40 hover:bg-slate-900/60"
+                                    onClick={() => jsonDownload(`orchestrator_tick_${pad4(currentTickIndex)}.json`, raw)}
+                                  >
+                                    Download
+                                  </button>
+                                </div>
+                                <pre className="max-h-[420px] overflow-auto">{JSON.stringify(raw, null, 2)}</pre>
+                              </div>
+                            </details>
+                          </details>
+                        );
+                      })()}
                     </div>
                   )}
 
                   {activeTab === 'json' && (
                     <div className="h-full overflow-y-auto custom-scrollbar text-[11px]">
                       <div className="text-[10px] text-slate-500 uppercase font-bold mb-2">Full tick record</div>
-                      <pre className="bg-black/40 border border-slate-800 rounded p-3 overflow-auto">
-{JSON.stringify(currentRecord ?? null, null, 2)}
-                      </pre>
+                      {(() => {
+                        const raw = currentRecord ?? null;
+                        const short = compactJson(raw, { maxDepth: 5, maxKeys: 80, maxArray: 50, maxStr: 600 });
+                        return (
+                          <details open className="bg-black/40 border border-slate-800 rounded">
+                            <summary className="px-3 py-2 cursor-pointer text-[10px] uppercase font-bold text-slate-400">
+                              Short view
+                            </summary>
+                            <pre className="p-3 overflow-auto">{JSON.stringify(short, null, 2)}</pre>
+                            <details className="border-t border-slate-800">
+                              <summary className="px-3 py-2 cursor-pointer text-[10px] uppercase font-bold text-slate-400">
+                                Raw (full)
+                              </summary>
+                              <div className="px-3 pb-3">
+                                <div className="flex items-center gap-2 mb-2">
+                                  <button
+                                    className="px-2 py-1 text-[10px] rounded border border-slate-700 bg-slate-900/40 hover:bg-slate-900/60"
+                                    onClick={() => jsonDownload(`record_tick_${pad4(currentTickIndex)}.json`, raw)}
+                                  >
+                                    Download
+                                  </button>
+                                </div>
+                                <pre className="max-h-[420px] overflow-auto">{JSON.stringify(raw, null, 2)}</pre>
+                              </div>
+                            </details>
+                          </details>
+                        );
+                      })()}
                     </div>
                   )}
                 </div>
               </div>
             )}
-          </section>
+        </section>
 
-          {/* RIGHT: Characters + History */}
-          <aside className="col-span-4 flex flex-col gap-1 overflow-hidden">
-            {/* Characters selection */}
-            <div className="flex-1 bg-slate-900/20 border border-slate-800 flex flex-col overflow-hidden">
-              <div className="p-3 bg-slate-900/40 border-b border-slate-800 flex items-center gap-2 text-[10px] font-bold text-slate-400 uppercase">
-                Characters (select for scene)
-              </div>
-              <div className="flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar">
-                {charactersAll.map((c: any) => {
-                  const id = String(c.entityId);
-                  const sel = draft.selectedCharIds.map(String).includes(id);
-                  return (
-                    <button
-                      key={id}
-                      onClick={() => toggleChar(id)}
-                      className={cx(
-                        'w-full text-left p-2 border rounded transition flex items-center justify-between gap-2',
-                        sel
-                          ? 'border-cyan-500/70 bg-cyan-500/10'
-                          : 'border-slate-800 bg-black/30 hover:border-cyan-500/30'
-                      )}
-                    >
-                      <div className="min-w-0">
-                        <div className="text-[11px] text-white font-bold truncate">{c.title ?? c.name ?? id}</div>
-                        <div className="text-[9px] text-slate-500 truncate">{id}</div>
-                      </div>
-                      <div className={cx('text-[10px] font-bold uppercase', sel ? 'text-cyan-300' : 'text-slate-500')}>
-                        {sel ? 'IN' : 'ADD'}
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
+        {/* RIGHT: Characters + History */}
+        <aside className="col-span-4 flex flex-col gap-1 overflow-hidden">
+          {/* Characters selection */}
+          <div className="flex-1 bg-slate-900/20 border border-slate-800 flex flex-col overflow-hidden">
+            <div className="p-3 bg-slate-900/40 border-b border-slate-800 flex items-center gap-2 text-[10px] font-bold text-slate-400 uppercase">
+              Characters (select for scene)
             </div>
+            <div className="flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar">
+              {charactersAll.map((c: any) => {
+                const id = String(c.entityId);
+                const sel = draft.selectedCharIds.map(String).includes(id);
+                return (
+                  <button
+                    key={id}
+                    onClick={() => toggleChar(id)}
+                    className={cx(
+                      'w-full text-left p-2 border rounded transition flex items-center justify-between gap-2',
+                      sel
+                        ? 'border-cyan-500/70 bg-cyan-500/10'
+                        : 'border-slate-800 bg-black/30 hover:border-cyan-500/30'
+                    )}
+                  >
+                    <div className="min-w-0">
+                      <div className="text-[11px] text-white font-bold truncate">{c.title ?? c.name ?? id}</div>
+                      <div className="text-[9px] text-slate-500 truncate">{id}</div>
+                    </div>
+                    <div className={cx('text-[10px] font-bold uppercase', sel ? 'text-cyan-300' : 'text-slate-500')}>
+                      {sel ? 'IN' : 'ADD'}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
 
-            {/* History rail */}
-            <div className="h-64 bg-slate-950 border border-slate-800 flex flex-col overflow-hidden">
-              <div className="p-3 border-b border-slate-800 text-[10px] font-bold text-slate-500 uppercase">
-                History_Log
-              </div>
-              <div className="flex-1 overflow-y-auto custom-scrollbar">
-                {history.length === 0 ? (
-                  <div className="p-4 text-[10px] text-slate-600 italic leading-relaxed">
-                    Пока пусто. Нажми NEXT_TICK.
-                  </div>
-                ) : (
-                  history.map((_, i) => (
-                    <button
-                      key={i}
-                      onClick={() => setCurrentTickIndex(i)}
-                      className={cx(
-                        'w-full text-left px-4 py-2 border-b border-slate-900 text-[11px] transition',
-                        currentTickIndex === i
-                          ? 'bg-cyan-500/10 text-cyan-300 border-l-2 border-l-cyan-500'
-                          : 'hover:bg-slate-900 text-slate-500'
-                      )}
-                    >
-                      TICK_{pad4(i)}
-                    </button>
-                  ))
-                )}
-              </div>
+          {/* History rail */}
+          <div className="h-64 bg-slate-950 border border-slate-800 flex flex-col overflow-hidden">
+            <div className="p-3 border-b border-slate-800 text-[10px] font-bold text-slate-500 uppercase">
+              History_Log
             </div>
-          </aside>
-        </div>
+            <div className="flex-1 overflow-y-auto custom-scrollbar">
+              {history.length === 0 ? (
+                <div className="p-4 text-[10px] text-slate-600 italic leading-relaxed">
+                  Пока пусто. Нажми NEXT_TICK.
+                </div>
+              ) : (
+                history.map((_, i) => (
+                  <button
+                    key={i}
+                    onClick={() => setCurrentTickIndex(i)}
+                    className={cx(
+                      'w-full text-left px-4 py-2 border-b border-slate-900 text-[11px] transition',
+                      currentTickIndex === i
+                        ? 'bg-cyan-500/10 text-cyan-300 border-l-2 border-l-cyan-500'
+                        : 'hover:bg-slate-900 text-slate-500'
+                    )}
+                  >
+                    TICK_{pad4(i)}
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+        </aside>
       </div>
 
       <footer className="h-6 bg-slate-900 border border-slate-800 flex items-center justify-between px-4 text-[9px] text-slate-500 font-bold tracking-widest uppercase shrink-0">
