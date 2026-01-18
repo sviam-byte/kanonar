@@ -75,6 +75,120 @@ function listActiveIntentsFromFacts(facts: any) {
   return out;
 }
 
+function trunc(s: string, max = 1200) {
+  if (s.length <= max) return s;
+  return `${s.slice(0, max)}\n… (${s.length - max} chars more)`;
+}
+
+function safeStringify(x: any) {
+  try {
+    return JSON.stringify(x, null, 2);
+  } catch {
+    return String(x);
+  }
+}
+
+function pick(obj: any, keys: string[]) {
+  const out: any = {};
+  for (const k of keys) out[k] = obj?.[k];
+  return out;
+}
+
+function summarizeFacts(facts: any) {
+  const keys = facts && typeof facts === 'object' ? Object.keys(facts) : [];
+  const wantPrefixes = ['intent:', 'occupied:', 'dialog:', 'observeBoost:', 'ctx:'];
+  const important: Record<string, any> = {};
+  const otherKeys: string[] = [];
+
+  for (const k of keys) {
+    if (wantPrefixes.some((p) => k.startsWith(p))) important[k] = facts[k];
+    else otherKeys.push(k);
+  }
+
+  return {
+    factsCount: keys.length,
+    important,
+    otherKeysCount: otherKeys.length,
+    otherKeysSample: otherKeys.slice(0, 40),
+  };
+}
+
+function summarizeChars(world: any) {
+  const chars =
+    world?.characters && typeof world.characters === 'object'
+      ? Object.values(world.characters)
+      : [];
+
+  const facts = world?.facts ?? {};
+  const intents = listActiveIntentsFromFacts(facts);
+
+  const intentByActor: Record<string, any> = {};
+  for (const it of intents) {
+    const actorId = String(it.key).replace(/^intent:/, '').split(':')[0];
+    intentByActor[actorId] = it;
+  }
+
+  return chars.map((c: any) => {
+    const it = intentByActor[c.id];
+    const script = it?.intentScript;
+    const stageIndex = it?.stageIndex;
+    const stageKind =
+      script && Array.isArray(script.stages) && Number.isFinite(stageIndex)
+        ? script.stages?.[stageIndex]?.kind
+        : null;
+
+    return {
+      id: c.id,
+      locId: c.locId,
+      pos: c.pos ? pick(c.pos, ['x', 'y', 'nodeId']) : null,
+      energy: c.energy ?? null,
+      stress: c.stress ?? null,
+      health: c.health ?? null,
+      intent: it
+        ? {
+            scriptId: it.scriptId ?? script?.id ?? null,
+            stageIndex: it.stageIndex ?? null,
+            stageKind,
+            ticksLeft: it.stageTicksLeft ?? it.remainingTicks ?? null,
+            dest: it.dest ?? null,
+          }
+        : null,
+    };
+  });
+}
+
+function diffKeys(prevFacts: any, curFacts: any) {
+  const a = prevFacts && typeof prevFacts === 'object' ? prevFacts : {};
+  const b = curFacts && typeof curFacts === 'object' ? curFacts : {};
+  const ak = new Set(Object.keys(a));
+  const bk = new Set(Object.keys(b));
+
+  const added: string[] = [];
+  const removed: string[] = [];
+  const changed: string[] = [];
+
+  for (const k of bk) if (!ak.has(k)) added.push(k);
+  for (const k of ak) if (!bk.has(k)) removed.push(k);
+  for (const k of bk) {
+    if (!ak.has(k)) continue;
+    const va = a[k];
+    const vb = b[k];
+    // cheap compare: stringify small primitives, else reference/JSON
+    const sa = typeof va === 'object' ? safeStringify(va) : String(va);
+    const sb = typeof vb === 'object' ? safeStringify(vb) : String(vb);
+    if (sa !== sb) changed.push(k);
+  }
+
+  return {
+    addedCount: added.length,
+    removedCount: removed.length,
+    changedCount: changed.length,
+    addedSample: added.slice(0, 30),
+    removedSample: removed.slice(0, 30),
+    changedSample: changed.slice(0, 30),
+  };
+}
+
 export const SimulatorLab: React.FC<Props> = ({ orchestratorRegistry, onPushToGoalLab }) => {
   const { sandboxState } = useSandbox();
   // --------- Entities (источник правды) ----------
@@ -658,17 +772,33 @@ export const SimulatorLab: React.FC<Props> = ({ orchestratorRegistry, onPushToGo
 )}
                     </pre>
 
-                    <div className="text-[10px] text-slate-500 uppercase font-bold mb-2">GoalLab pipeline snapshot</div>
+                    <div className="text-[10px] text-slate-500 uppercase font-bold mb-2">Pipeline short debug</div>
                     <pre className="bg-black/40 border border-slate-800 rounded p-3 overflow-auto">
-{JSON.stringify(
-  // plugin кладёт в .pipeline (см. lib/simkit/plugins/goalLabPipelinePlugin.ts)
-  (currentRecord as any)?.plugins?.goalLabPipeline?.pipeline
-    ?? (currentRecord as any)?.plugins?.goalLabPipeline
-    ?? null,
-  null,
-  2
-)}
+{(() => {
+  const world = (simRef.current as any)?.world;
+  const curFacts = world?.facts ?? {};
+  const prevFacts = (history?.[history.length - 2] as any)?.snapshot?.facts ?? null;
+  const shortDebug = {
+    tick: world?.tickIndex ?? (currentSnapshot as any)?.tickIndex ?? null,
+    characters: summarizeChars(world),
+    facts: summarizeFacts(curFacts),
+    factsDiff: diffKeys(prevFacts, curFacts),
+    eventsCount: Array.isArray((currentRecord as any)?.events)
+      ? (currentRecord as any).events.length
+      : null,
+  };
+  return trunc(safeStringify(shortDebug), 9000);
+})()}
                     </pre>
+                    <details className="mt-2">
+                      <summary className="text-[10px] text-slate-500 cursor-pointer">raw pipeline (truncated)</summary>
+                      <pre className="bg-black/40 border border-slate-800 rounded p-3 overflow-auto mt-2">
+{trunc(
+  safeStringify((currentRecord as any)?.plugins?.goalLabPipeline?.pipeline ?? null),
+  12000
+)}
+                      </pre>
+                    </details>
                   </div>
                 )}
 
