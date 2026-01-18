@@ -75,16 +75,6 @@ function listActiveIntentsFromFacts(facts: any) {
   return out;
 }
 
-function prettyJson(x: any, max = 1400) {
-  try {
-    const s = JSON.stringify(x, null, 2);
-    if (s.length <= max) return s;
-    return `${s.slice(0, max)}\n…`;
-  } catch {
-    return String(x);
-  }
-}
-
 export const SimulatorLab: React.FC<Props> = ({ orchestratorRegistry, onPushToGoalLab }) => {
   const { sandboxState } = useSandbox();
   // --------- Entities (источник правды) ----------
@@ -124,6 +114,7 @@ export const SimulatorLab: React.FC<Props> = ({ orchestratorRegistry, onPushToGo
 
   const [isRunning, setIsRunning] = useState(false);
   const [tickMs, setTickMs] = useState<number>(250);
+  const stepRef = useRef<() => void>(() => {});
 
   // --------- Derived: selected place/entities ----------
   const selectedPlaces = useMemo(() => {
@@ -254,17 +245,22 @@ export const SimulatorLab: React.FC<Props> = ({ orchestratorRegistry, onPushToGo
     setSnapshot(snap);
     setHistory((prev) => {
       const next = [...prev, rec];
-      // Если пользователь не скроллит историю вручную, держим его на "сейчас".
+      // всегда держим UI на "сейчас" (если тебе надо иначе — добавим lock-scroll флаг)
       setCurrentTickIndex(next.length - 1);
       return next;
     });
   }, []);
 
+  // избегаем замыканий в setInterval
+  useEffect(() => {
+    stepRef.current = stepOnce;
+  }, [stepOnce]);
+
   useEffect(() => {
     if (!isRunning) return;
-    const id = window.setInterval(() => stepOnce(), Math.max(10, tickMs));
+    const id = window.setInterval(() => stepRef.current(), Math.max(16, tickMs));
     return () => window.clearInterval(id);
-  }, [isRunning, tickMs, stepOnce]);
+  }, [isRunning, tickMs]);
 
   function startRun() {
     if (setupProblems.length) return;
@@ -650,65 +646,28 @@ export const SimulatorLab: React.FC<Props> = ({ orchestratorRegistry, onPushToGo
 
                 {activeTab === 'pipeline' && (
                   <div className="h-full overflow-y-auto custom-scrollbar text-[11px]">
-                    {/* Active intents inspector (critical for staged actions debugging). */}
-                    <div className="mb-3 rounded border border-slate-800 bg-black/30 p-2">
-                      <div className="flex items-center justify-between">
-                        <div className="text-xs font-semibold text-slate-200">Active Intents</div>
-                        <div className="text-[10px] text-slate-500">tick={snapshot?.tickIndex ?? '—'}</div>
-                      </div>
-                      {(() => {
-                        const intents = listActiveIntentsFromFacts((snapshot as any)?.facts ?? (snapshot as any)?.world?.facts);
-                        if (!intents.length) {
-                          return <div className="text-[11px] text-slate-500 mt-1">none</div>;
-                        }
-                        return (
-                          <div className="mt-2 space-y-2">
-                            {intents.slice(0, 12).map((it) => {
-                              const script = it.intentScript;
-                              const stageIndex = it.stageIndex;
-                              const stageKind =
-                                script && Array.isArray(script.stages) && Number.isFinite(stageIndex)
-                                  ? script.stages?.[stageIndex]?.kind
-                                  : null;
-                              return (
-                                <div key={it.key} className="rounded border border-slate-800 bg-black/40 p-2">
-                                  <div className="flex flex-wrap items-center gap-2">
-                                    <span className="text-[11px] font-semibold text-slate-100">{it.key}</span>
-                                    <span className="text-[10px] text-slate-500">id={String(it.id ?? '')}</span>
-                                    <span className="text-[10px] text-slate-500">
-                                      scriptId={String(it.scriptId ?? script?.id ?? '—')}
-                                    </span>
-                                  </div>
-                                  <div className="mt-1 text-[10px] text-slate-400 flex flex-wrap gap-3">
-                                    <span>
-                                      stage={String(stageKind ?? '—')}@{String(stageIndex ?? '—')}
-                                    </span>
-                                    <span>ticksLeft={String(it.stageTicksLeft ?? '—')}</span>
-                                    <span>startedAt={String(it.startedAtTick ?? '—')}</span>
-                                    <span>remainingTicks(v0)={String(it.remainingTicks ?? '—')}</span>
-                                  </div>
-                                  {it.dest ? (
-                                    <div className="mt-1 text-[10px] text-slate-400">
-                                      dest: {prettyJson(it.dest, 220)}
-                                    </div>
-                                  ) : null}
-                                  {/* Keep raw view small but available. */}
-                                  <details className="mt-2">
-                                    <summary className="text-[10px] text-slate-500 cursor-pointer">raw</summary>
-                                    <pre className="mt-1 text-[10px] text-slate-300 whitespace-pre-wrap">
-{prettyJson(it, 1600)}
-                                    </pre>
-                                  </details>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        );
-                      })()}
-                    </div>
+                    <div className="text-[10px] text-slate-500 uppercase font-bold mb-2">Active Intents</div>
+                    <pre className="bg-black/40 border border-slate-800 rounded p-3 overflow-auto mb-3">
+{JSON.stringify(
+  {
+    tick: (currentSnapshot as any)?.tickIndex ?? null,
+    intents: listActiveIntentsFromFacts((simRef.current as any)?.world?.facts ?? {}),
+  },
+  null,
+  2
+)}
+                    </pre>
+
                     <div className="text-[10px] text-slate-500 uppercase font-bold mb-2">GoalLab pipeline snapshot</div>
                     <pre className="bg-black/40 border border-slate-800 rounded p-3 overflow-auto">
-{JSON.stringify((currentRecord as any)?.plugins?.goalLabPipeline?.snapshot ?? null, null, 2)}
+{JSON.stringify(
+  // plugin кладёт в .pipeline (см. lib/simkit/plugins/goalLabPipelinePlugin.ts)
+  (currentRecord as any)?.plugins?.goalLabPipeline?.pipeline
+    ?? (currentRecord as any)?.plugins?.goalLabPipeline
+    ?? null,
+  null,
+  2
+)}
                     </pre>
                   </div>
                 )}

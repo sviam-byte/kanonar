@@ -103,6 +103,7 @@ function keyFromPossibilityId(id: string): string {
 function isExecutableKey(k: string) {
   return (
     k === 'wait' ||
+    // NOTE: rest/talk/question_about are now INTENTS (start_intent), not direct actions
     k === 'rest' ||
     k === 'talk' ||
     k === 'move' ||
@@ -147,13 +148,43 @@ function toSimActionFromPossibility(p: Possibility, tickIndex: number, actorId: 
   const targetNodeId = (p as any)?.targetNodeId ?? null;
   const meta = (p as any)?.meta ?? null;
 
+  // Stage3 mapping: REST/TALK/INVESTIGATE are not Actions; they are intents.
+  // We keep originalAction inside intent; execution happens at intent_complete.
+  if (k === 'rest' || k === 'talk' || k === 'question_about' || k === 'observe' || k === 'investigate' || k === 'ask_info') {
+    const originalKind =
+      k === 'investigate'
+        ? 'question_about'
+        : k === 'observe' || k === 'ask_info'
+          ? 'question_about'
+          : k;
+
+    return {
+      id: `act:start_intent:${tickIndex}:${actorId}:poss:${k}`,
+      kind: 'start_intent',
+      actorId,
+      targetId: targetId || null,
+      meta,
+      payload: {
+        intentId: `intent:${actorId}:${tickIndex}:${k}`,
+        // v0 duration пока оставляем, даже если staged-скрипты ещё не подключены
+        remainingTicks: k === 'rest' ? 8 : 2,
+        intent: {
+          kind: k,
+          originalAction: {
+            kind: originalKind,
+            targetId: targetId || null,
+            payload: null,
+            meta: meta ?? null,
+          },
+        },
+      },
+    } as any;
+  }
+
   // NOTE: keep mapping conservative; extend as you add more executable keys.
   const kindMap: Record<string, string> = {
     wait: 'wait',
-    rest: 'rest',
-    talk: 'talk',
-    observe: 'observe',
-    question_about: 'question_about',
+    // rest/talk/question_about are not mapped here anymore
     negotiate: 'negotiate',
     inspect_feature: 'inspect_feature',
     repair_feature: 'repair_feature',

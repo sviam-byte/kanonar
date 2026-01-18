@@ -210,6 +210,14 @@ function autoVolume(world: SimWorld, aId: string, bId: string): 'whisper' | 'nor
   return 'shout';
 }
 
+// NOTE: Stage2 rule:
+// talk/question_about are NOT executable as direct ActionSpecs anymore.
+// They exist only as originalAction executed on intent_complete (meta.internal=true).
+
+function isInternalCall(action: any) {
+  return Boolean(action?.meta && typeof action.meta === 'object' && (action.meta as any).internal === true);
+}
+
 // Standardize speech atoms for talk/question/negotiate.
 function mkSpeechAtoms(kind: string, fromId: string, toId: string, extra?: any) {
   const base = {
@@ -240,10 +248,7 @@ const WaitSpec: ActionSpec = {
 
 const RestSpec: ActionSpec = {
   kind: 'rest',
-  enumerate: ({ world, actorId }) => {
-    const c = getChar(world, actorId);
-    return [{ kind: 'rest', actorId, score: clamp01((0.6 - c.energy) * 2) }];
-  },
+  enumerate: () => [],
   validateV1: ({ world, offer }) => validateCommon(world, offer),
   validateV2: ({ world, offer }) => {
     const base = validateCommon(world, offer);
@@ -527,88 +532,7 @@ const ScavengeFeatureSpec: ActionSpec = {
 
 const TalkSpec: ActionSpec = {
   kind: 'talk',
-  enumerate: ({ world, actorId }) => {
-    const c = getChar(world, actorId);
-    const out: ActionOffer[] = [];
-    for (const other of Object.values(world.characters)) {
-      if (other.id === c.id) continue;
-      if (other.locId !== c.locId) continue;
-      const volume = autoVolume(world, c.id, other.id);
-      const trust = getDyadTrust(world, c.id, other.id);
-      // NOTE: talk is now a complex transaction (intent), not a single atomic action.
-      // We emit start_intent offers that will approach+attach+execute+detach, then run originalAction(kind='talk') on completion.
-
-      out.push(
-        mkSocialStartIntentOfferV1({
-          world,
-          actorId,
-          targetId: other.id,
-          kind: 'talk',
-          social: 'inform',
-          volume,
-          tags: ['Social'],
-          baseScore: 0.15 + 0.03 * (trust - 0.5),
-        }),
-      );
-
-      out.push(
-        mkSocialStartIntentOfferV1({
-          world,
-          actorId,
-          targetId: other.id,
-          kind: 'talk',
-          social: 'request_access',
-          volume,
-          tags: ['Social', 'Diplomatic'],
-          baseScore: 0.14 + 0.02 * (trust - 0.5),
-        }),
-      );
-
-      if (trust >= 0.55) {
-        out.push(
-          mkSocialStartIntentOfferV1({
-            world,
-            actorId,
-            targetId: other.id,
-            kind: 'talk',
-            social: 'offer_resource',
-            volume,
-            tags: ['Social', 'Diplomatic'],
-            baseScore: 0.13 + 0.04 * (trust - 0.55),
-          }),
-        );
-      }
-
-      const stress = clamp01(Number(c.stress ?? 0));
-      if (stress >= 0.55 && trust <= 0.55) {
-        out.push(
-          mkSocialStartIntentOfferV1({
-            world,
-            actorId,
-            targetId: other.id,
-            kind: 'talk',
-            social: 'intimidate',
-            volume,
-            tags: ['Social', 'Aggressive'],
-            baseScore: 0.1 + 0.06 * (stress - 0.55),
-          }),
-        );
-        out.push(
-          mkSocialStartIntentOfferV1({
-            world,
-            actorId,
-            targetId: other.id,
-            kind: 'talk',
-            social: 'insult',
-            volume,
-            tags: ['Social', 'Aggressive'],
-            baseScore: 0.09 + 0.07 * (stress - 0.55),
-          }),
-        );
-      }
-    }
-    return out;
-  },
+  enumerate: () => [],
   validateV1: ({ world, offer }) => {
     const base = validateCommon(world, offer);
     try {
@@ -643,6 +567,13 @@ const TalkSpec: ActionSpec = {
   apply: ({ world, action }) => {
     const notes: string[] = [];
     const events: SimEvent[] = [];
+    if (!isInternalCall(action)) {
+      return {
+        world,
+        events: [mkActionEvent(world, 'action:blocked', { kind: 'talk', actorId: action.actorId, reason: 'use_intent' })],
+        notes: [`${action.actorId} talk blocked (use start_intent->intent_complete)`],
+      };
+    }
     const c = getChar(world, action.actorId);
     const otherId = String(action.targetId ?? '');
     const volume = String(action.meta?.volume ?? 'normal') as 'whisper' | 'normal' | 'shout';
@@ -820,39 +751,7 @@ const ObserveSpec: ActionSpec = {
 
 const QuestionAboutSpec: ActionSpec = {
   kind: 'question_about',
-  enumerate: ({ world, actorId }) => {
-    const c = getChar(world, actorId);
-    const out: ActionOffer[] = [];
-    const feats = featuresAtNode(world, c.locId, c.pos?.nodeId);
-    const topic0 = feats[0]?.id || 'situation';
-    const topics = [topic0, 'safety', 'plan', 'rumor'];
-    for (const other of Object.values(world.characters)) {
-      if (other.id === c.id) continue;
-      if (other.locId !== c.locId) continue;
-      const volume = autoVolume(world, c.id, other.id);
-      const trust = getDyadTrust(world, c.id, other.id);
-      for (const topic of topics) {
-        const stress = clamp01(Number(c.stress ?? 0));
-        const safetyBoost = topic === 'safety' ? 0.03 * stress : 0;
-        // question_about is also a transaction intent now (approach+attach+execute+detach),
-        // originalAction(kind='question_about') runs at completion.
-        out.push(
-          mkSocialStartIntentOfferV1({
-            world,
-            actorId,
-            targetId: other.id,
-            kind: 'question_about',
-            social: 'ask',
-            topic,
-            volume,
-            tags: ['Social', 'Observe'],
-            baseScore: 0.16 + 0.04 * (trust - 0.5) + safetyBoost,
-          }),
-        );
-      }
-    }
-    return out;
-  },
+  enumerate: () => [],
   validateV1: ({ world, offer }) => {
     const base = validateCommon(world, offer);
     try {
@@ -887,6 +786,19 @@ const QuestionAboutSpec: ActionSpec = {
   apply: ({ world, action }) => {
     const notes: string[] = [];
     const events: SimEvent[] = [];
+    if (!isInternalCall(action)) {
+      return {
+        world,
+        events: [
+          mkActionEvent(world, 'action:blocked', {
+            kind: 'question_about',
+            actorId: action.actorId,
+            reason: 'use_intent',
+          }),
+        ],
+        notes: [`${action.actorId} question_about blocked (use start_intent->intent_complete)`],
+      };
+    }
     const c = getChar(world, action.actorId);
     const otherId = String(action.targetId ?? '');
     const topic = String(action.meta?.topic || 'situation');
@@ -1287,7 +1199,7 @@ const ContinueIntentSpec: ActionSpec = {
           actorId: c.id,
           targetId: original.targetId ?? null,
           payload: original.payload ?? null,
-          meta: original.meta ?? null,
+          meta: { ...(original.meta ?? {}), internal: true },
         };
         const spec = ACTION_SPECS[oa.kind];
         const r = spec.apply({ world, action: oa });
@@ -1338,7 +1250,7 @@ const ContinueIntentSpec: ActionSpec = {
           actorId: c.id,
           targetId: original.targetId ?? null,
           payload: original.payload ?? null,
-          meta: original.meta ?? null,
+          meta: { ...(original.meta ?? {}), internal: true },
         };
         const spec = ACTION_SPECS[oa.kind];
         const r = spec.apply({ world, action: oa });
