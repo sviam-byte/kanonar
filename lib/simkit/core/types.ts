@@ -88,6 +88,31 @@ export type ActionKind =
   | 'continue_intent'
   | 'abort_intent';
 
+// Intent scripts (fractal actions): staged transactions with per-tick and enter/exit effects.
+export type IntentStageKind = 'approach' | 'attach' | 'execute' | 'detach';
+
+export type IntentAtomicDelta = {
+  target: 'agent' | 'world' | 'target'; // which entity to mutate
+  key: string; // e.g. "energy", "pos", "is_open"
+  op: 'add' | 'set';
+  value: number | string | boolean | Record<string, any>;
+};
+
+export type IntentStage = {
+  kind: IntentStageKind;
+  ticksRequired: number | 'until_condition';
+  completionCondition?: (agent: any, ctx: any) => boolean;
+  perTick?: IntentAtomicDelta[];
+  onEnter?: IntentAtomicDelta[];
+  onExit?: IntentAtomicDelta[];
+};
+
+export type IntentScript = {
+  id: string;
+  stages: IntentStage[];
+  explain?: string[];
+};
+
 export type SimAction = {
   id: Id;                 // unique action instance id
   kind: ActionKind;

@@ -7,7 +7,17 @@
 // - classify V3 (single tick vs intent) — v1: all are single
 // - apply (effects + events)
 
-import type { ActionKind, ActionOffer, SimAction, SimEvent, SimWorld, SpeechEventV1 } from '../core/types';
+import type {
+  ActionKind,
+  ActionOffer,
+  IntentAtomicDelta,
+  IntentScript,
+  IntentStage,
+  SimAction,
+  SimEvent,
+  SimWorld,
+  SpeechEventV1,
+} from '../core/types';
 import { getChar, getLoc } from '../core/world';
 import { distSameLocation, getCharXY, getSpatialConfig } from '../core/spatial';
 
@@ -108,6 +118,76 @@ function mkSpeechAtoms(kind: string, fromId: string, toId: string, extra?: any) 
     meta: { kind, ...extra },
   };
   return [base];
+}
+
+// ---------------------------------------------------------------------------
+// Intent runtime (v1): staged scripts with per-tick deltas.
+// ---------------------------------------------------------------------------
+
+function applyIntentDelta(world: SimWorld, actorId: string, targetId: string | null, d: IntentAtomicDelta) {
+  const op = d.op;
+  const key = String(d.key || '');
+  const val = d.value;
+
+  const applyToChar = (charId: string) => {
+    const c = getChar(world, charId);
+    if (key === 'energy') {
+      if (op === 'add') c.energy = clamp01(c.energy + Number(val || 0));
+      else if (op === 'set') c.energy = clamp01(Number(val ?? c.energy));
+      return;
+    }
+    if (key === 'stress') {
+      if (op === 'add') c.stress = clamp01(c.stress + Number(val || 0));
+      else if (op === 'set') c.stress = clamp01(Number(val ?? c.stress));
+      return;
+    }
+    // Position updates (rare; used for simple approach scripts).
+    if (key === 'pos') {
+      const x = Number((val as any)?.x);
+      const y = Number((val as any)?.y);
+      if (Number.isFinite(x) && Number.isFinite(y)) {
+        c.pos = { x, y } as any;
+      }
+      return;
+    }
+    if (key === 'move_toward') {
+      const tx = Number((val as any)?.x);
+      const ty = Number((val as any)?.y);
+      if (!Number.isFinite(tx) || !Number.isFinite(ty)) return;
+      const cfg = getSpatialConfig(world);
+      const cur = getCharXY(world, charId);
+      const dx = tx - cur.x;
+      const dy = ty - cur.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (!Number.isFinite(dist) || dist <= 0.0001) {
+        c.pos = { x: tx, y: ty } as any;
+        return;
+      }
+      const step = Math.min(cfg.moveMaxStep, dist);
+      const nx = cur.x + (dx / dist) * step;
+      const ny = cur.y + (dy / dist) * step;
+      c.pos = { x: nx, y: ny } as any;
+      return;
+    }
+
+    // Generic: stash on character meta (debug-friendly, avoids new schema requirements).
+    const meta = (c as any).meta && typeof (c as any).meta === 'object' ? (c as any).meta : ((c as any).meta = {});
+    if (op === 'set') meta[key] = val;
+    if (op === 'add') meta[key] = Number(meta[key] ?? 0) + Number(val ?? 0);
+  };
+
+  if (d.target === 'agent') {
+    applyToChar(actorId);
+    return;
+  }
+  if (d.target === 'target') {
+    if (targetId) applyToChar(targetId);
+    return;
+  }
+  if (d.target === 'world') {
+    if (op === 'set') (world.facts as any)[key] = val;
+    else if (op === 'add') (world.facts as any)[key] = Number((world.facts as any)[key] ?? 0) + Number(val ?? 0);
+  }
 }
 
 const WaitSpec: ActionSpec = {
@@ -730,8 +810,26 @@ const StartIntentSpec: ActionSpec = {
 
     const payload = action.payload && typeof action.payload === 'object' ? action.payload : {};
     const intent = payload.intent || null;
+    const intentScript = payload.intentScript && typeof payload.intentScript === 'object' ? (payload.intentScript as any) : null;
     const intentId = String(payload.intentId || `intent:${c.id}:${world.tickIndex}`);
     const remainingTicks = Math.max(1, Number(payload.remainingTicks ?? 2));
+
+    // v1: staged scripts (fractal actions).
+    const scriptV1: IntentScript | null =
+      intentScript && Array.isArray((intentScript as IntentScript).stages)
+        ? ({
+            id: String((intentScript as IntentScript).id || intentId),
+            stages: (intentScript as IntentScript).stages as IntentStage[],
+            explain: Array.isArray((intentScript as IntentScript).explain) ? (intentScript as IntentScript).explain : undefined,
+          } as IntentScript)
+        : null;
+
+    const firstStage = scriptV1?.stages?.[0] ?? null;
+    const stageTicksLeft = firstStage
+      ? firstStage.ticksRequired === 'until_condition'
+        ? 'until_condition'
+        : Math.max(0, Number(firstStage.ticksRequired ?? 0))
+      : null;
 
     // Minimal intent storage: one active intent per actor (v0).
     world.facts[`intent:${c.id}`] = {
@@ -739,15 +837,28 @@ const StartIntentSpec: ActionSpec = {
       startedAtTick: world.tickIndex,
       remainingTicks,
       intent,
+      // Staged script runtime fields (optional).
+      intentScript: scriptV1,
+      stageIndex: scriptV1 ? 0 : null,
+      stageTicksLeft: scriptV1 ? stageTicksLeft : null,
+      stageEnteredIndex: scriptV1 ? -1 : null,
+      // Optional target/destination used by approach stages.
+      dest: null,
     };
 
-    notes.push(`${c.id} starts intent ${intentId} (remainingTicks=${remainingTicks})`);
+    if (scriptV1) {
+      notes.push(`${c.id} starts intent ${intentId} (script=${scriptV1.id})`);
+      if (scriptV1.explain?.length) notes.push(...scriptV1.explain.map((x) => `intent.decompose: ${x}`));
+    } else {
+      notes.push(`${c.id} starts intent ${intentId} (remainingTicks=${remainingTicks})`);
+    }
     events.push(mkActionEvent(world, 'action:start_intent', {
       actorId: c.id,
       locationId: c.locId,
       intentId,
       remainingTicks,
       intent,
+      scriptId: scriptV1?.id ?? null,
     }));
     return { world, events, notes };
   },
@@ -774,6 +885,142 @@ const ContinueIntentSpec: ActionSpec = {
     if (!cur || typeof cur !== 'object') {
       notes.push(`${c.id} continue_intent: none`);
       events.push(mkActionEvent(world, 'action:continue_intent', { actorId: c.id, ok: false, reason: 'none' }));
+      return { world, events, notes };
+    }
+
+    // -----------------------------------------------------------------------
+    // v1: staged script runtime.
+    // -----------------------------------------------------------------------
+    const script: IntentScript | null =
+      (cur as any).intentScript && typeof (cur as any).intentScript === 'object' ? ((cur as any).intentScript as any) : null;
+    if (script && Array.isArray(script.stages) && script.stages.length > 0) {
+      const stageIndex = Math.max(0, Number((cur as any).stageIndex ?? 0));
+      const stage = script.stages[stageIndex] as IntentStage | undefined;
+
+      if (!stage) {
+        notes.push(`${c.id} continues intent ${(cur as any).id}: no stage @${stageIndex} (complete)`);
+        // complete below
+      } else {
+        // On-enter (once per stage).
+        const entered = Number((cur as any).stageEnteredIndex ?? -1);
+        if (entered !== stageIndex) {
+          (cur as any).stageEnteredIndex = stageIndex;
+          if (Array.isArray(stage.onEnter)) {
+            for (const d of stage.onEnter) applyIntentDelta(world, c.id, action.targetId ?? null, d);
+          }
+        }
+
+        // Apply per-tick effects.
+        if (Array.isArray(stage.perTick)) {
+          for (const d of stage.perTick) {
+            // Special: allow approach to carry a destination.
+            if (
+              d &&
+              typeof d === 'object' &&
+              d.target === 'agent' &&
+              d.op === 'set' &&
+              (d.key === 'destination' || d.key === 'move_toward')
+            ) {
+              (cur as any).dest = d.value;
+            }
+            applyIntentDelta(world, c.id, action.targetId ?? null, d);
+          }
+        }
+
+        // Stage completion.
+        let stageDone = false;
+        if (typeof stage.completionCondition === 'function') {
+          stageDone = Boolean(stage.completionCondition(c, { world, action, stage, intent: cur }));
+        }
+
+        if (!stageDone) {
+          const ticksReq = stage.ticksRequired;
+          if (ticksReq === 'until_condition') {
+            const dest = (cur as any).dest;
+            // Heuristic: if dest is {x,y} and we're close enough, complete.
+            if (dest && typeof dest === 'object') {
+              const dx = Number((dest as any).x);
+              const dy = Number((dest as any).y);
+              if (Number.isFinite(dx) && Number.isFinite(dy)) {
+                const curXY = getCharXY(world, c.id);
+                const dist = Math.sqrt((curXY.x - dx) ** 2 + (curXY.y - dy) ** 2);
+                stageDone = dist <= Math.max(2, getSpatialConfig(world).moveMaxStep * 0.5);
+              }
+            }
+          } else {
+            const before = (cur as any).stageTicksLeft;
+            const beforeN = Number.isFinite(Number(before)) ? Math.max(0, Number(before)) : Math.max(0, Number(ticksReq ?? 0));
+            const afterN = Math.max(0, beforeN - 1);
+            (cur as any).stageTicksLeft = afterN;
+            stageDone = afterN <= 0;
+          }
+        }
+
+        notes.push(`${c.id} continues intent ${(cur as any).id} stage=${stage.kind}@${stageIndex}${stageDone ? ' (done)' : ''}`);
+        events.push(
+          mkActionEvent(world, 'action:continue_intent', {
+            actorId: c.id,
+            locationId: c.locId,
+            intentId: (cur as any).id,
+            ok: true,
+            scriptId: script.id,
+            stageIndex,
+            stageKind: stage.kind,
+            stageDone,
+          })
+        );
+
+        if (stageDone) {
+          if (Array.isArray(stage.onExit)) {
+            for (const d of stage.onExit) applyIntentDelta(world, c.id, action.targetId ?? null, d);
+          }
+          const nextStageIndex = stageIndex + 1;
+          (cur as any).stageIndex = nextStageIndex;
+          (cur as any).stageEnteredIndex = -1;
+          const nextStage = script.stages[nextStageIndex] as IntentStage | undefined;
+          if (nextStage) {
+            (cur as any).stageTicksLeft =
+              nextStage.ticksRequired === 'until_condition'
+                ? 'until_condition'
+                : Math.max(0, Number(nextStage.ticksRequired ?? 0));
+            world.facts[key] = cur;
+            return { world, events, notes };
+          }
+          // no more stages => complete intent
+        } else {
+          world.facts[key] = cur;
+          return { world, events, notes };
+        }
+      }
+
+      // Complete intent (script finished).
+      const original = (cur as any)?.intent?.originalAction;
+      if (original && typeof original === 'object' && original.kind && ACTION_SPECS[original.kind as ActionKind]) {
+        const oa: SimAction = {
+          id: `act:intent_complete:${world.tickIndex}:${c.id}:${String(original.kind)}`,
+          kind: original.kind as ActionKind,
+          actorId: c.id,
+          targetId: original.targetId ?? null,
+          payload: original.payload ?? null,
+          meta: original.meta ?? null,
+        };
+        const spec = ACTION_SPECS[oa.kind];
+        const r = spec.apply({ world, action: oa });
+        world = r.world;
+        events.push(...r.events);
+        notes.push(...r.notes.map((x) => `intent.complete: ${x}`));
+      }
+
+      delete world.facts[key];
+      events.push(
+        mkActionEvent(world, 'action:intent_complete', {
+          actorId: c.id,
+          locationId: c.locId,
+          intentId: (cur as any).id,
+          scriptId: script.id ?? null,
+        })
+      );
+      notes.push(`${c.id} intent complete (script=${script.id})`);
       return { world, events, notes };
     }
 

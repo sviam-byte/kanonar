@@ -1,7 +1,7 @@
 // lib/goal-lab/labs/SimulatorLab.tsx
 // SimKit Lab: Setup (locations/chars/placements/env) + Run (map/history/json/pipeline/orchestrator)
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ProducerSpec } from '../../orchestrator/types';
 import { SimKitSimulator } from '../../simkit/core/simulator';
 import type { SimSnapshot, SimTickRecord } from '../../simkit/core/types';
@@ -101,6 +101,7 @@ export const SimulatorLab: React.FC<Props> = ({ orchestratorRegistry, onPushToGo
   const [activeTab, setActiveTab] = useState<TabId>('map');
 
   const [isRunning, setIsRunning] = useState(false);
+  const [tickMs, setTickMs] = useState<number>(250);
 
   // --------- Derived: selected place/entities ----------
   const selectedPlaces = useMemo(() => {
@@ -223,18 +224,25 @@ export const SimulatorLab: React.FC<Props> = ({ orchestratorRegistry, onPushToGo
   }, []);
 
   // --------- Run controls ----------
-  function stepOnce() {
+  const stepOnce = useCallback(() => {
     const sim = simRef.current;
     if (!sim) return;
     const rec = sim.step();
     const snap = rec.snapshot as any;
     setSnapshot(snap);
-    setHistory((h) => {
-      const next = [...h, rec];
+    setHistory((prev) => {
+      const next = [...prev, rec];
+      // Если пользователь не скроллит историю вручную, держим его на "сейчас".
+      setCurrentTickIndex(next.length - 1);
       return next;
     });
-    setCurrentTickIndex((i) => (history.length ? i : 0));
-  }
+  }, []);
+
+  useEffect(() => {
+    if (!isRunning) return;
+    const id = window.setInterval(() => stepOnce(), Math.max(10, tickMs));
+    return () => window.clearInterval(id);
+  }, [isRunning, tickMs, stepOnce]);
 
   function startRun() {
     if (setupProblems.length) return;
@@ -396,6 +404,21 @@ export const SimulatorLab: React.FC<Props> = ({ orchestratorRegistry, onPushToGo
         </div>
 
         <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 px-2 py-1 rounded border border-slate-800 bg-black/30">
+            <span className="text-[10px] text-slate-500">Speed</span>
+            <select
+              className="bg-black/40 border border-slate-800 text-[10px] px-2 py-1 rounded outline-none focus:border-cyan-500"
+              value={tickMs}
+              onChange={(e) => setTickMs(Number(e.target.value))}
+              title="Tick interval"
+            >
+              <option value={1000}>Slow (1s)</option>
+              <option value={500}>0.5s</option>
+              <option value={250}>Normal (250ms)</option>
+              <option value={120}>Fast (120ms)</option>
+              <option value={60}>Very fast (60ms)</option>
+            </select>
+          </div>
           <button
             className="px-3 py-1 text-[10px] rounded bg-cyan-500/10 text-cyan-300 hover:bg-cyan-500/15 transition"
             onClick={() => stepOnce()}
