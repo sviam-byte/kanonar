@@ -2,6 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import type { ContextSnapshot, ContextualGoalScore, ContextAtom, TemporalContextConfig, ContextualGoalContribution } from '../../lib/context/v2/types';
 import { GOAL_DEFS } from '../../lib/goals/space'; 
+import { describeGoal } from '../../lib/goals/goalCatalog';
 import { AffectState } from '../../types';
 import { AgentContextFrame, TomRelationView, TomPhysicalOther } from '../../lib/context/frame/types';
 import { Tabs } from '../Tabs';
@@ -240,6 +241,8 @@ const GoalRow: React.FC<{
     isSelected: boolean;
 }> = ({ score, onSelect, isSelected }) => {
     const label = getGoalLabel(score.goalId);
+    const entry = describeGoal(score.goalId);
+    const description = entry?.description ?? '';
     
     return (
         <div 
@@ -256,11 +259,18 @@ const GoalRow: React.FC<{
              <div className="absolute bottom-0 left-0 h-1 bg-canon-accent/20 transition-all duration-500" style={{ width: `${score.probability * 100}%` }}></div>
              
              <div className="flex justify-between items-center relative z-10">
-                <span className={`text-xs font-bold truncate ${isSelected ? 'text-canon-text' : 'text-canon-text/80'}`}>{label}</span>
+                <div className="flex items-center gap-1 min-w-0">
+                  <span className={`text-xs font-bold truncate ${isSelected ? 'text-canon-text' : 'text-canon-text/80'}`}>{label}</span>
+                  <GoalHelp entry={entry} />
+                </div>
                 <span className={`font-mono text-xs font-bold ${isSelected ? 'text-canon-accent' : 'text-canon-text-light'}`}>
                     {(score.probability * 100).toFixed(0)}%
                 </span>
              </div>
+
+             {description ? (
+               <div className="text-[10px] text-canon-text-light/70 mt-1 leading-snug">{description}</div>
+             ) : null}
              
              {/* Key Contributors Dots */}
              <div className="flex gap-1 mt-1.5 h-1.5">
@@ -271,6 +281,70 @@ const GoalRow: React.FC<{
              </div>
         </div>
     );
+}
+
+function GoalHelp({ entry }: { entry: ReturnType<typeof describeGoal> }) {
+  const [open, setOpen] = useState(false);
+  const h = entry?.help;
+  if (!h) return null;
+  return (
+    <span className="relative inline-block">
+      <button
+        className="ml-1 inline-flex items-center justify-center w-5 h-5 rounded border border-canon-border/60 bg-black/30 text-canon-text-light hover:text-white hover:bg-black/40"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setOpen((v) => !v);
+        }}
+        title="Что это значит?"
+      >
+        ?
+      </button>
+      {open && (
+        <div
+          className="absolute z-[200] right-0 mt-2 w-[420px] max-w-[80vw] rounded border border-canon-border/60 bg-[#050b18] shadow-lg p-3"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+          }}
+        >
+          <div className="text-[11px] font-bold text-canon-text mb-2">{entry?.label ?? 'Goal help'}</div>
+          <div className="text-[11px] text-canon-text-light">
+            <div className="text-[10px] uppercase font-bold text-canon-text-light/70 mb-1">что</div>
+            <div className="mb-2">{h.what}</div>
+            <div className="text-[10px] uppercase font-bold text-canon-text-light/70 mb-1">зачем</div>
+            <div className="mb-2">{h.why}</div>
+            <div className="text-[10px] uppercase font-bold text-canon-text-light/70 mb-1">стационарная точка</div>
+            <div className="mb-2 font-mono text-[10px] text-canon-accent whitespace-pre-wrap">{h.stationaryPoint}</div>
+            <div className="text-[10px] uppercase font-bold text-canon-text-light/70 mb-1">фрактальная декомпозиция</div>
+            <ul className="list-disc pl-5 text-[11px] text-canon-text mb-2">
+              {(h.decomposesTo || []).map((s: string, i: number) => (
+                <li key={i} className="mb-1 font-mono text-[10px]">{s}</li>
+              ))}
+            </ul>
+            {Array.isArray(h.notes) && h.notes.length > 0 && (
+              <>
+                <div className="text-[10px] uppercase font-bold text-canon-text-light/70 mb-1">заметки</div>
+                <ul className="list-disc pl-5 text-[11px] text-canon-text-light">
+                  {h.notes.map((s: string, i: number) => (
+                    <li key={i} className="mb-1">{s}</li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </div>
+          <div className="mt-3 flex justify-end">
+            <button
+              className="px-2 py-1 text-[10px] rounded border border-canon-border/60 bg-black/30 text-canon-text-light hover:text-white hover:bg-black/40"
+              onClick={() => setOpen(false)}
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+    </span>
+  );
 }
 
 export const EcologyView: React.FC<{ goals: ContextualGoalScore[], onSelect: (id: string) => void, selectedId: string | null }> = ({ goals, onSelect, selectedId }) => {

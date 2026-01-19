@@ -94,14 +94,24 @@ export type IntentStageKind = 'approach' | 'attach' | 'execute' | 'detach';
 export type IntentAtomicDelta = {
   target: 'agent' | 'world' | 'target'; // which entity to mutate
   key: string; // e.g. "energy", "pos", "is_open"
-  op: 'add' | 'set' | 'set_path_to_node' | 'follow_path_step';
+  op: 'add' | 'set' | 'toward' | 'decay' | 'set_path_to_node' | 'follow_path_step';
   value: number | string | boolean | Record<string, any>;
+  // Used by toward/decay. Rate is a 0..1 convergence factor.
+  rate?: number;
 };
 
 export type IntentStage = {
   kind: IntentStageKind;
   ticksRequired: number | 'until_condition';
-  completionCondition?: (agent: any, ctx: any) => boolean;
+  completionCondition?: ((agent: any, ctx: any) => boolean) | {
+    mode?: 'all' | 'any';
+    checks: Array<{
+      target: 'agent' | 'world' | 'target';
+      key: string;
+      op: '>=' | '<=' | '>' | '<' | '==';
+      value: number;
+    }>;
+  };
   perTick?: IntentAtomicDelta[];
   onEnter?: IntentAtomicDelta[];
   onExit?: IntentAtomicDelta[];

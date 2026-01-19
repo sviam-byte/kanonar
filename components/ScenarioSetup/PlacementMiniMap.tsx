@@ -45,12 +45,14 @@ export function PlacementMiniMap({
   place,
   actorIds,
   title,
+  scale,
 }: {
   draft: any;
   setDraft: (d: any) => void;
   place: any;
   actorIds: string[];
   title?: string;
+  scale?: number;
 }) {
   const locId = String(place?.entityId ?? place?.id ?? '');
   const map: LocationMap | null =
@@ -92,7 +94,11 @@ export function PlacementMiniMap({
       ),
     ];
     next.push({ characterId: actorId, locationId: locId, x, y, nodeId: null });
-    setDraft({ ...draft, placements: next });
+    setDraft({
+      ...draft,
+      placements: next,
+      locPlacements: { ...(draft.locPlacements || {}), [String(actorId)]: String(locId) },
+    });
   }
 
   function addHazard(kind: 'danger' | 'safe', x: number, y: number) {
@@ -237,14 +243,14 @@ export function PlacementMiniMap({
         </button>
       </div>
 
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 overflow-auto">
         {!map ? (
           <div className="h-full canon-card p-3 text-[11px] text-slate-400">No place.map for this location.</div>
         ) : (
           <LocationVectorMap
             map={map}
             showGrid
-            scale={28}
+            scale={Number.isFinite(Number(scale)) ? Number(scale) : 28}
             hideTextVisuals
             highlightCells={highlightCells}
             markers={markers}

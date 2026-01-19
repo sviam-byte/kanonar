@@ -31,9 +31,12 @@ export function atomizeEventsForAgent(args: {
   events: WorldEvent[];
   maxLookbackTicks?: number;
   nowTick: number;
+  selfLocationId?: string;
+  includeWitnessed?: boolean;
 }): ContextAtom[] {
-  const { selfId, events, nowTick } = args;
+  const { selfId, events, nowTick, selfLocationId } = args;
   const lookback = args.maxLookbackTicks ?? 60;
+  const includeWitnessed = args.includeWitnessed ?? false;
 
   const out: ContextAtom[] = [];
   // Aggregate: actor->self by kind, with decay.
@@ -45,14 +48,15 @@ export function atomizeEventsForAgent(args: {
   for (const ev of events || []) {
     if (nowTick - ev.tick > lookback) continue;
 
-    // relevance: actor==self or target==self (MVP). Позже: seen-by, witnesses, etc.
-    const relevant = ev.actorId === selfId || ev.targetId === selfId;
-    if (!relevant) continue;
+    const isDirect = ev.actorId === selfId || ev.targetId === selfId;
+    const eventLocId = ev.context?.locationId ? String(ev.context.locationId) : '';
+    const isWitnessed = !isDirect && includeWitnessed && !!selfLocationId && eventLocId === String(selfLocationId);
+    if (!isDirect && !isWitnessed) continue;
 
     const age = Math.max(0, nowTick - (ev.tick ?? nowTick));
     const baseMag = clamp01(ev.magnitude ?? 0.7);
     const mag = clamp01(baseMag * expDecay(age, 12)); // half-life ~12 ticks (tunable).
-    const conf = 1; // event log = world fact; если надо, можно сделать obs-event отдельно
+    const conf = isDirect ? 1 : 0.75;
 
     const id = `event:${ev.kind}:${ev.id}`;
     out.push(normalizeAtom({
@@ -65,14 +69,14 @@ export function atomizeEventsForAgent(args: {
       confidence: conf,
       subject: ev.actorId,
       target: ev.targetId,
-      tags: ['event', ev.kind],
+      tags: ['event', ev.kind, isDirect ? 'direct' : 'witnessed'],
       label: `${ev.kind} (${Math.round(mag * 100)}%)`,
-      trace: { usedAtomIds: [], notes: ['from world event log'], parts: { tick: ev.tick } },
-      meta: { event: ev }
+      trace: { usedAtomIds: [], notes: [isDirect ? 'direct event' : 'witnessed event'], parts: { tick: ev.tick } },
+      meta: { event: ev, witnessed: isWitnessed }
     } as any));
 
-    // Build "didTo" only for events where target is self (он сделал МНЕ).
-    if (ev.targetId === selfId && ev.actorId && ev.actorId !== selfId) {
+    // Build "didTo" only for direct events where target is self (он сделал МНЕ).
+    if (isDirect && ev.targetId === selfId && ev.actorId && ev.actorId !== selfId) {
       const kind = String(ev.kind || 'unknown');
       const key = `${ev.actorId}|${kind}`;
       byActorKind.set(key, clamp01((byActorKind.get(key) || 0) + mag));

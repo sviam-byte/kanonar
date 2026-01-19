@@ -881,13 +881,27 @@ type IntentStageKindV1 = 'approach' | 'attach' | 'execute' | 'detach';
 type IntentAtomicDeltaV1 = {
   target: 'agent' | 'world' | 'target';
   key: string;
-  op: 'add' | 'set';
+  op: 'add' | 'set' | 'toward' | 'decay';
   value: any;
+  rate?: number;
+};
+
+type IntentCompletionCheckV1 = {
+  target: 'agent' | 'world' | 'target';
+  key: string;
+  op: '>=' | '<=' | '>' | '<' | '==';
+  value: number;
+};
+
+type IntentCompletionConditionV1 = {
+  mode?: 'all' | 'any';
+  checks: IntentCompletionCheckV1[];
 };
 
 type IntentStageV1 = {
   kind: IntentStageKindV1;
   ticksRequired: number | 'until_condition';
+  completionCondition?: IntentCompletionConditionV1;
   perTick?: IntentAtomicDeltaV1[];
   onEnter?: IntentAtomicDeltaV1[];
   onExit?: IntentAtomicDeltaV1[];
@@ -914,10 +928,33 @@ function sanitizeIntentDelta(x: any): IntentAtomicDeltaV1 | null {
   const op = x.op;
   const key = String(x.key ?? '');
   if (target !== 'agent' && target !== 'world' && target !== 'target') return null;
-  if (op !== 'add' && op !== 'set') return null;
+  if (op !== 'add' && op !== 'set' && op !== 'toward' && op !== 'decay') return null;
   if (!key) return null;
   const value = jsonSafeClone(x.value);
-  return { target, op, key, value };
+  const rate = Number.isFinite(Number(x.rate)) ? Number(x.rate) : undefined;
+  return { target, op, key, value, rate };
+}
+
+function sanitizeCompletionCondition(x: any): IntentCompletionConditionV1 | null {
+  if (!x || typeof x !== 'object') return null;
+  const mode = x.mode === 'any' ? 'any' : 'all';
+  const rawChecks = Array.isArray(x.checks) ? x.checks : [];
+  const checks = rawChecks
+    .map((c) => {
+      if (!c || typeof c !== 'object') return null;
+      const target = c.target;
+      const key = String(c.key ?? '');
+      const op = c.op;
+      const value = Number(c.value);
+      if (target !== 'agent' && target !== 'world' && target !== 'target') return null;
+      if (!key) return null;
+      if (op !== '>=' && op !== '<=' && op !== '>' && op !== '<' && op !== '==') return null;
+      if (!Number.isFinite(value)) return null;
+      return { target, key, op, value };
+    })
+    .filter(Boolean) as IntentCompletionCheckV1[];
+  if (!checks.length) return null;
+  return { mode, checks };
 }
 
 function sanitizeIntentStage(x: any): IntentStageV1 | null {
@@ -926,10 +963,11 @@ function sanitizeIntentStage(x: any): IntentStageV1 | null {
   if (kind !== 'approach' && kind !== 'attach' && kind !== 'execute' && kind !== 'detach') return null;
   const tr = x.ticksRequired;
   const ticksRequired = tr === 'until_condition' ? 'until_condition' : Math.max(0, Number(tr ?? 0));
+  const completionCondition = sanitizeCompletionCondition(x.completionCondition);
   const perTick = Array.isArray(x.perTick) ? (x.perTick.map(sanitizeIntentDelta).filter(Boolean) as IntentAtomicDeltaV1[]) : undefined;
   const onEnter = Array.isArray(x.onEnter) ? (x.onEnter.map(sanitizeIntentDelta).filter(Boolean) as IntentAtomicDeltaV1[]) : undefined;
   const onExit = Array.isArray(x.onExit) ? (x.onExit.map(sanitizeIntentDelta).filter(Boolean) as IntentAtomicDeltaV1[]) : undefined;
-  return { kind, ticksRequired, perTick, onEnter, onExit };
+  return { kind, ticksRequired, completionCondition, perTick, onEnter, onExit };
 }
 
 function sanitizeIntentScript(x: any): IntentScriptV1 | null {
@@ -946,17 +984,32 @@ function applyIntentDeltaV1(world: SimWorld, actorId: string, targetId: string |
   const key = String(d.key ?? '');
   const op = d.op;
   const val = d.value;
+  const rate = Number.isFinite(Number(d.rate)) ? Number(d.rate) : undefined;
+
+  const applyNumericOp = (cur: number, nextVal: number, clamp?: (x: number) => number) => {
+    if (op === 'add') return clamp ? clamp(cur + nextVal) : cur + nextVal;
+    if (op === 'set') return clamp ? clamp(nextVal) : nextVal;
+    if (op === 'toward') {
+      const r = typeof rate === 'number' ? clamp01(rate) : 0.15;
+      const out = cur + r * (nextVal - cur);
+      return clamp ? clamp(out) : out;
+    }
+    if (op === 'decay') {
+      const r = typeof rate === 'number' ? clamp01(rate) : 0.08;
+      const out = cur * (1 - r);
+      return clamp ? clamp(out) : out;
+    }
+    return cur;
+  };
 
   const applyToChar = (charId: string) => {
     const c = getChar(world, charId);
     if (key === 'energy') {
-      if (op === 'add') c.energy = clamp01(c.energy + Number(val || 0));
-      else c.energy = clamp01(Number(val ?? c.energy));
+      c.energy = applyNumericOp(c.energy, Number(val ?? c.energy), clamp01);
       return;
     }
     if (key === 'stress') {
-      if (op === 'add') c.stress = clamp01(c.stress + Number(val || 0));
-      else c.stress = clamp01(Number(val ?? c.stress));
+      c.stress = applyNumericOp(c.stress, Number(val ?? c.stress), clamp01);
       return;
     }
     if (key === 'pos') {
@@ -989,8 +1042,15 @@ function applyIntentDeltaV1(world: SimWorld, actorId: string, targetId: string |
 
     // Generic sink: keep JSON-friendly.
     const meta = (c as any).meta && typeof (c as any).meta === 'object' ? (c as any).meta : ((c as any).meta = {});
-    if (op === 'set') meta[key] = jsonSafeClone(val);
-    else meta[key] = Number(meta[key] ?? 0) + Number(val ?? 0);
+    if (op === 'set') {
+      meta[key] = jsonSafeClone(val);
+      return;
+    }
+    if (typeof meta[key] === 'number' && typeof val === 'number' && (op === 'add' || op === 'toward' || op === 'decay')) {
+      meta[key] = applyNumericOp(Number(meta[key] ?? 0), Number(val ?? 0));
+      return;
+    }
+    meta[key] = Number(meta[key] ?? 0) + Number(val ?? 0);
   };
 
   if (d.target === 'agent') return applyToChar(actorId);
@@ -1000,9 +1060,37 @@ function applyIntentDeltaV1(world: SimWorld, actorId: string, targetId: string |
   }
   if (d.target === 'world') {
     const wf: any = world.facts as any;
-    if (op === 'set') wf[key] = jsonSafeClone(val);
-    else wf[key] = Number(wf[key] ?? 0) + Number(val ?? 0);
+    if (op === 'set') {
+      wf[key] = jsonSafeClone(val);
+      return;
+    }
+    if (typeof wf[key] === 'number' && typeof val === 'number' && (op === 'add' || op === 'toward' || op === 'decay')) {
+      wf[key] = applyNumericOp(Number(wf[key] ?? 0), Number(val ?? 0));
+      return;
+    }
+    wf[key] = Number(wf[key] ?? 0) + Number(val ?? 0);
   }
+}
+
+function evalCompletionCondition(world: SimWorld, actorId: string, targetId: string | null, cond?: IntentCompletionConditionV1 | null) {
+  if (!cond?.checks?.length) return false;
+  const mode = cond.mode === 'any' ? 'any' : 'all';
+  const evalCheck = (check: IntentCompletionCheckV1) => {
+    let obj: any = null;
+    if (check.target === 'agent') obj = getChar(world, actorId);
+    if (check.target === 'target' && targetId) obj = getChar(world, targetId);
+    if (check.target === 'world') obj = world.facts;
+    if (!obj) return false;
+    const cur = Number((obj as any)[check.key]);
+    if (!Number.isFinite(cur)) return false;
+    if (check.op === '>=') return cur >= check.value;
+    if (check.op === '<=') return cur <= check.value;
+    if (check.op === '>') return cur > check.value;
+    if (check.op === '<') return cur < check.value;
+    return cur === check.value;
+  };
+  const results = cond.checks.map(evalCheck);
+  return mode === 'any' ? results.some(Boolean) : results.every(Boolean);
 }
 
 const StartIntentSpec: ActionSpec = {
@@ -1135,17 +1223,21 @@ const ContinueIntentSpec: ActionSpec = {
         // Stage completion.
         let stageDone = false;
         if (stage.ticksRequired === 'until_condition') {
-          // v1 heuristic: if dest exists and we are near it => done.
-          const dest = (cur as any).dest;
-          const dx = Number((dest as any)?.x);
-          const dy = Number((dest as any)?.y);
-          if (Number.isFinite(dx) && Number.isFinite(dy)) {
-            const curXY = getCharXY(world, c.id);
-            const dist = Math.sqrt((curXY.x - dx) ** 2 + (curXY.y - dy) ** 2);
-            stageDone = dist <= Math.max(2, getSpatialConfig(world).moveMaxStep * 0.5);
+          // v1 heuristic: if completionCondition exists, check it; otherwise use dest proximity.
+          if (stage.completionCondition) {
+            stageDone = evalCompletionCondition(world, c.id, action.targetId ?? null, stage.completionCondition);
           } else {
-            // If no dest, do not auto-complete.
-            stageDone = false;
+            const dest = (cur as any).dest;
+            const dx = Number((dest as any)?.x);
+            const dy = Number((dest as any)?.y);
+            if (Number.isFinite(dx) && Number.isFinite(dy)) {
+              const curXY = getCharXY(world, c.id);
+              const dist = Math.sqrt((curXY.x - dx) ** 2 + (curXY.y - dy) ** 2);
+              stageDone = dist <= Math.max(2, getSpatialConfig(world).moveMaxStep * 0.5);
+            } else {
+              // If no dest, do not auto-complete.
+              stageDone = false;
+            }
           }
         } else {
           const before = Number((cur as any).stageTicksLeft ?? stage.ticksRequired);

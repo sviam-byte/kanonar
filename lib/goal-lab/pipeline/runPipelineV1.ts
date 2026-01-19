@@ -31,6 +31,7 @@ import { deriveAccess } from '../../access/deriveAccess';
 import { deriveActionPriors } from '../../decision/actionPriors';
 import { decideAction } from '../../decision/decide';
 import { arr } from '../../utils/arr';
+import { buildIntentPreview } from './intentPreview';
 
 export type GoalLabStageId = 'S0'|'S1'|'S2'|'S3'|'S4'|'S5'|'S6'|'S7'|'S8';
 
@@ -482,6 +483,12 @@ export function runGoalLabPipelineV1(input: {
         accessDecisions: (accessPack as any)?.decisions || [],
         ranked: (decision as any)?.ranked?.slice?.(0, 10) || [],
         best: (decision as any)?.best || null,
+        intentPreview: buildIntentPreview({
+          selfId,
+          atoms: atomsS8,
+          s8Artifacts: { best: (decision as any)?.best || null, ranked: (decision as any)?.ranked || [] },
+          horizonSteps: 5,
+        }),
         overriddenIds: s8Overridden,
         priorsAtomIds: (priorsAtoms || []).map(a => String((a as any)?.id || '')),
         decisionAtomIds: decisionAtoms.map(a => String((a as any)?.id || '')),
