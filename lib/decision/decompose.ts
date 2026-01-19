@@ -68,8 +68,19 @@ export function decomposeGoal(agent: AgentState, goal: Goal): IntentScript | nul
           },
           {
             kind: 'execute',
-            ticksRequired: 60,
-            perTick: [{ target: 'agent', key: 'energy', op: 'add', value: 0.5 }],
+            ticksRequired: 'until_condition',
+            completionCondition: {
+              mode: 'all',
+              checks: [
+                { target: 'agent', key: 'energy', op: '>=', value: 0.75 },
+                { target: 'agent', key: 'stress', op: '<=', value: 0.35 },
+              ],
+            },
+            // Gradual convergence to an attractor (instead of a single huge delta).
+            perTick: [
+              { target: 'agent', key: 'energy', op: 'toward', value: 0.82, rate: 0.12 },
+              { target: 'agent', key: 'stress', op: 'toward', value: 0.2, rate: 0.1 },
+            ],
           },
           {
             kind: 'detach',

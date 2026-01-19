@@ -14,8 +14,16 @@ export interface GoalCatalogEntry {
   id: GoalId;
   label: string;
   domain: GoalDomain;
-  description: string;
+  description?: string; // коротко для списков
   defaultBaseWeight?: number; // базовый приоритет, если нигде не задан
+  // Extended help shown under "?" in Goal Lab.
+  help?: {
+    what: string; // что это за цель (человечески)
+    why: string; // зачем (в нарративе/психике/тактике)
+    stationaryPoint: string; // критерий "мы пришли" (аттрактор / стац точка)
+    decomposesTo: string[]; // пример фрактальной декомпозиции
+    notes?: string[]; // важные условия/ограничения
+  };
 }
 
 export const GOAL_CATALOG: GoalCatalogEntry[] = [
@@ -173,10 +181,78 @@ export const GOAL_CATALOG: GoalCatalogEntry[] = [
     defaultBaseWeight: 0.5,
   },
   {
+    id: "recover_energy",
+    label: "Восстановить энергию",
+    domain: "comfort",
+    description: "Через транзакцию с объектом довести энергию до нормы.",
+    defaultBaseWeight: 0.5,
+    help: {
+      what: "Агент не 'рестит', а инициирует транзакцию с объектом: выбрать место, подойти, занять, восстанавливаться, отпустить.",
+      why: "Энергия — компонент устойчивости. Цель снижает 'внутренний шум' и уменьшает вероятность рефлекс-ошибок.",
+      stationaryPoint: "energy >= targetEnergy (например 0.75) И stress <= targetStress (например 0.35) И (нет немедленной угрозы).",
+      decomposesTo: [
+        "FindObject(tag:sleepable OR tag:restable)",
+        "Approach(within=1 cell, prefer low-visibility)",
+        "Attach(reserve/occupy объект)",
+        "Execute(per-tick: energy += k*(1-energy); stress -= m*stress)",
+        "Detach(release объект)"
+      ],
+      notes: [
+        "Precondition: объект достижим (есть путь).",
+        "Если threat high — цель уступает 'seek_cover/avoid_detection'."
+      ],
+    },
+  },
+  {
     id: "reduce_panic",
     label: "Снизить панику в группе",
     domain: "comfort",
     description: "Стабилизировать эмоциональное состояние окружения.",
     defaultBaseWeight: 0.4,
+  },
+  {
+    id: "initiate_dialogue",
+    label: "Инициировать диалог",
+    domain: "social",
+    description: "Запустить разговор как транзакцию (подойти → приватность → реплика).",
+    defaultBaseWeight: 0.45,
+    help: {
+      what: "Это не 'Talk'. Это сценарий: подойти к цели, выбрать позицию (не у всех на ушах), только затем говорить.",
+      why: "Социальные действия должны менять ToM/контекст оппонента, но требуют физики (слышимость/дистанция/свидетели).",
+      stationaryPoint: "Состояние диалога активировано И (privacy_ok || accept_witnesses) И получен 'dialogue_response' (успех/отказ).",
+      decomposesTo: [
+        "SelectPartner(target=agent)",
+        "If want_privacy: FindSpot(tag:occluder OR low_audibility)",
+        "Approach(target or spot, within=talkRange)",
+        "Attach(open_dialogue_channel)",
+        "Execute(dialogue ticks: apply ToM deltas, produce offer/request/intimidate)",
+        "Detach(close_channel)"
+      ],
+      notes: [
+        "Precondition: canHear || canSee within talkRange.",
+        "Если свидетели нежелательны: вставить SeekPrivacy перед Attach."
+      ],
+    },
+  },
+  {
+    id: "scout_area",
+    label: "Разведать сектор",
+    domain: "knowledge",
+    description: "Собрать информацию и обновить внутреннюю карту.",
+    defaultBaseWeight: 0.4,
+    help: {
+      what: "Серия микрошагов: пройти точки обзора → собрать наблюдения → обновить память/уверенность.",
+      why: "Уменьшает неопределённость и снижает 'галлюцинации' памяти (confidence decay).",
+      stationaryPoint: "KnowledgeAge(sector) <= T И обновлены ключевые факты (threat/paths/resources).",
+      decomposesTo: [
+        "PickWaypoints(frontier nodes / vantage points)",
+        "Approach(waypoint)",
+        "Execute(observe: write memory facts; boost confidence)",
+        "Repeat until coverage >= target"
+      ],
+      notes: [
+        "Если threat high — разведка становится stealth-версией (avoid_detection)."
+      ],
+    },
   },
 ];
