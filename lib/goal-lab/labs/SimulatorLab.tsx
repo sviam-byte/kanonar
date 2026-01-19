@@ -13,7 +13,6 @@ import { basicScenarioId, makeBasicWorld } from '../../simkit/scenarios/basicSce
 
 import { SimMapView } from '../../../components/SimMapView';
 import { LocationMapView } from '../../../components/LocationMapView';
-import { PlacementMapEditor } from '../../../components/ScenarioSetup/PlacementMapEditor';
 import { PlacementMiniMap } from '../../../components/ScenarioSetup/PlacementMiniMap';
 import { LocationVectorMap } from '../../../components/locations/LocationVectorMap';
 
@@ -37,7 +36,7 @@ type Props = {
 };
 
 type Mode = 'setup' | 'run';
-type SetupStage = 'loc' | 'entities' | 'env';
+type SetupStage = 'loc' | 'env';
 type TabId = 'map' | 'summary' | 'narrative' | 'pipeline' | 'orchestrator' | 'json';
 
 type SetupDraft = {
@@ -216,16 +215,17 @@ export const SimulatorLab: React.FC<Props> = ({ orchestratorRegistry, onPushToGo
     }));
   }, [charsForDraft, placesForDraft]);
 
+  // UI в режиме run читается строго из history[currentTickIndex].
   const currentRecord = useMemo(() => {
-    if (!history.length) return null;
-    const i = Math.max(0, Math.min(history.length - 1, currentTickIndex));
-    return history[i];
-  }, [history, currentTickIndex]);
+    if (mode !== 'run' || !history.length) return null;
+    const clamped = Math.max(0, Math.min(currentTickIndex, history.length - 1));
+    return history[clamped] ?? null;
+  }, [mode, history, currentTickIndex]);
 
+  // Снапшот всегда соответствует выбранному тику (без автоподмены на последний).
   const currentSnapshot = useMemo(() => {
-    return mode === 'run'
-      ? (currentRecord?.snapshot as any) ?? snapshot
-      : snapshot;
+    if (mode !== 'run') return snapshot;
+    return (currentRecord?.snapshot as any) ?? null;
   }, [mode, currentRecord, snapshot]);
 
   const placesIndex = useMemo(() => {
@@ -255,12 +255,17 @@ export const SimulatorLab: React.FC<Props> = ({ orchestratorRegistry, onPushToGo
 
   useEffect(() => {
     if (!followActor) return;
+    // При follow сначала пробуем снапшот выбранного тика, иначе — текущий мир симулятора.
+    const chars = Array.isArray((currentSnapshot as any)?.characters)
+      ? (currentSnapshot as any).characters
+      : null;
+    const fromSnapshot = chars?.find((c: any) => String(c.id) === String(viewActorId));
     const sim = simRef.current as any;
-    const w = sim?.world;
-    const a = w?.characters?.[String(viewActorId)];
-    const locId = a?.locId ? String(a.locId) : '';
-    if (locId && locId !== String(viewLocId)) setViewLocId(locId);
-  }, [followActor, viewActorId, viewLocId, snapshot, currentTickIndex]);
+    const fromWorld = sim?.world?.characters?.[String(viewActorId)] ?? null;
+    const locId = fromSnapshot?.locId ?? fromWorld?.locId;
+    const nextLocId = locId ? String(locId) : '';
+    if (nextLocId && nextLocId !== String(viewLocId)) setViewLocId(nextLocId);
+  }, [followActor, viewActorId, viewLocId, currentSnapshot]);
 
   const fitMapScale = useCallback(() => {
     const el = mapViewportRef.current;
@@ -277,19 +282,6 @@ export const SimulatorLab: React.FC<Props> = ({ orchestratorRegistry, onPushToGo
     const s = clamp(Math.min(sx, sy), 10, 60);
     setMapScale(s);
   }, [placesIndex, viewLocId]);
-
-  const selectedPlaceForEditor = useMemo(() => {
-    // PlacementMapEditor рисует одну place за раз — берём первую выбранную
-    const p = placesForDraft?.[0];
-    if (!p) return null;
-    return {
-      id: String(p.entityId),
-      entityId: String(p.entityId),
-      title: p.title ?? p.name ?? p.entityId,
-      map: (p as any).map ?? (p as any).place?.map ?? null,
-      nav: (p as any).nav ?? null,
-    };
-  }, [placesForDraft]);
 
   // --------- Helpers: validate setup ----------
   const setupProblems = useMemo(() => {
@@ -391,6 +383,12 @@ export const SimulatorLab: React.FC<Props> = ({ orchestratorRegistry, onPushToGo
 
   function stopRun() {
     setIsRunning(false);
+  }
+
+  function selectTick(idx: number) {
+    const clamped = Math.max(0, Math.min(idx, history.length - 1));
+    setCurrentTickIndex(clamped);
+    // UI берёт snapshot из history[currentTickIndex].
   }
 
   // --------- Manual move: важно — через sim.enqueueAction ----------
@@ -495,8 +493,10 @@ export const SimulatorLab: React.FC<Props> = ({ orchestratorRegistry, onPushToGo
           <div className="flex bg-black/40 p-0.5 rounded border border-slate-800">
             <button
               className={cx(
-                'px-4 py-1 text-[10px] rounded transition font-bold uppercase',
-                mode === 'setup' ? 'bg-slate-700 text-white' : 'text-slate-400 hover:text-white'
+                'px-4 py-1 text-[10px] rounded border transition font-bold uppercase',
+                mode === 'setup'
+                  ? 'border-amber-300/60 bg-amber-500/20 text-amber-100 shadow-[0_0_0_1px_rgba(252,211,77,0.25)]'
+                  : 'border-amber-300/40 bg-amber-500/10 text-amber-200 hover:bg-amber-500/15'
               )}
               onClick={() => {
                 setMode('setup');
@@ -606,7 +606,7 @@ export const SimulatorLab: React.FC<Props> = ({ orchestratorRegistry, onPushToGo
               +
             </button>
             <button
-              className="px-2 py-1 text-[10px] rounded border border-slate-800 bg-black/40 text-slate-400 hover:text-white"
+              className="px-2 py-1 text-[10px] rounded border border-cyan-300/50 bg-cyan-500/15 text-cyan-100 font-bold hover:bg-cyan-500/20"
               onClick={() => fitMapScale()}
               title="Fit to viewport"
             >
@@ -715,7 +715,7 @@ export const SimulatorLab: React.FC<Props> = ({ orchestratorRegistry, onPushToGo
             {mode === 'setup' ? (
               <div className="h-full flex flex-col overflow-hidden">
                 <div className="h-10 border-b border-slate-800 bg-slate-900/30 flex items-center px-4 gap-3">
-                  {(['loc', 'entities', 'env'] as SetupStage[]).map((s) => (
+                  {(['loc', 'env'] as SetupStage[]).map((s) => (
                     <button
                       key={s}
                       className={cx(
@@ -724,7 +724,7 @@ export const SimulatorLab: React.FC<Props> = ({ orchestratorRegistry, onPushToGo
                       )}
                       onClick={() => setSetupStage(s)}
                     >
-                      {s === 'loc' ? 'Setup_Location' : s === 'entities' ? 'Populate_World' : 'Environment_Facts'}
+                      {s === 'loc' ? 'Setup_Location' : 'Environment_Facts'}
                     </button>
                   ))}
 
@@ -786,21 +786,6 @@ export const SimulatorLab: React.FC<Props> = ({ orchestratorRegistry, onPushToGo
                           <div className="text-xs opacity-70">Выбери локацию.</div>
                         )}
                       </div>
-                    </div>
-                  )}
-
-                  {setupStage === 'entities' && (
-                    <div className="h-full p-4 overflow-y-auto custom-scrollbar">
-                      {!selectedPlaceForEditor ? (
-                        <div className="text-xs opacity-70">Нет выбранной локации (Setup_Location).</div>
-                      ) : (
-                        <PlacementMapEditor
-                          draft={draft}
-                          setDraft={setDraft}
-                          place={selectedPlaceForEditor}
-                          actorIds={draft.selectedCharIds.map(String)}
-                        />
-                      )}
                     </div>
                   )}
 
@@ -1060,12 +1045,12 @@ export const SimulatorLab: React.FC<Props> = ({ orchestratorRegistry, onPushToGo
                 history.map((_, i) => (
                   <button
                     key={i}
-                    onClick={() => setCurrentTickIndex(i)}
+                    onClick={() => selectTick(i)}
                     className={cx(
                       'w-full text-left px-4 py-2 border-b border-slate-900 text-[11px] transition',
                       currentTickIndex === i
-                        ? 'bg-cyan-500/10 text-cyan-300 border-l-2 border-l-cyan-500'
-                        : 'hover:bg-slate-900 text-slate-500'
+                        ? 'bg-cyan-500/10 text-cyan-200 border-l-2 border-l-cyan-500'
+                        : 'text-slate-300 hover:bg-white/5'
                     )}
                   >
                     TICK_{pad4(i)}
