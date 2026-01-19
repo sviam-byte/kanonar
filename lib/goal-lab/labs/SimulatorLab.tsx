@@ -85,6 +85,16 @@ function initialsForTitle(title: string) {
   return (a + b).toUpperCase().slice(0, 2);
 }
 
+function clamp(n: number, a: number, b: number) {
+  return Math.max(a, Math.min(b, n));
+}
+
+function arr<T>(value: T | T[] | null | undefined): T[] {
+  if (Array.isArray(value)) return value;
+  if (value === null || value === undefined) return [];
+  return [value];
+}
+
 function compactJson(value: any, opts?: { maxDepth?: number; maxKeys?: number; maxArray?: number; maxStr?: number }) {
   const maxDepth = opts?.maxDepth ?? 4;
   const maxKeys = opts?.maxKeys ?? 60;
@@ -163,6 +173,9 @@ export const SimulatorLab: React.FC<Props> = ({ orchestratorRegistry, onPushToGo
   const [tickMs, setTickMs] = useState<number>(250);
   const [viewLocId, setViewLocId] = useState<string>(() => String(locations?.[0]?.entityId ?? ''));
   const [viewActorId, setViewActorId] = useState<string>(() => String(charactersAll?.[0]?.entityId ?? ''));
+  const [mapScale, setMapScale] = useState<number>(28);
+  const [followActor, setFollowActor] = useState<boolean>(true);
+  const mapViewportRef = useRef<HTMLDivElement | null>(null);
 
   // --------- Derived: selected place/entities ----------
   const selectedPlaces = useMemo(() => {
@@ -239,6 +252,31 @@ export const SimulatorLab: React.FC<Props> = ({ orchestratorRegistry, onPushToGo
       setViewActorId(String(sel[0]));
     }
   }, [draft.selectedCharIds, viewActorId]);
+
+  useEffect(() => {
+    if (!followActor) return;
+    const sim = simRef.current as any;
+    const w = sim?.world;
+    const a = w?.characters?.[String(viewActorId)];
+    const locId = a?.locId ? String(a.locId) : '';
+    if (locId && locId !== String(viewLocId)) setViewLocId(locId);
+  }, [followActor, viewActorId, viewLocId, snapshot, currentTickIndex]);
+
+  const fitMapScale = useCallback(() => {
+    const el = mapViewportRef.current;
+    if (!el) return;
+    const place = placesIndex.get(String(viewLocId));
+    const map = (place as any)?.map as any;
+    const w = Number(map?.width);
+    const h = Number(map?.height);
+    if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return;
+    const rect = el.getBoundingClientRect();
+    const pad = 12;
+    const sx = Math.floor((rect.width - pad) / w);
+    const sy = Math.floor((rect.height - pad) / h);
+    const s = clamp(Math.min(sx, sy), 10, 60);
+    setMapScale(s);
+  }, [placesIndex, viewLocId]);
 
   const selectedPlaceForEditor = useMemo(() => {
     // PlacementMapEditor рисует одну place за раз — берём первую выбранную
@@ -537,10 +575,43 @@ export const SimulatorLab: React.FC<Props> = ({ orchestratorRegistry, onPushToGo
       </header>
 
       <div className="flex-1 grid grid-cols-12 gap-1 overflow-hidden">
-        {/* LEFT: always-on map + placement */}
+        {/* LEFT: always-on map */}
         <aside className="col-span-3 bg-[#020617] border border-slate-800 overflow-hidden flex flex-col">
           <div className="p-2 border-b border-slate-800 bg-slate-900/30 flex items-center gap-2">
             <div className="text-[10px] uppercase font-bold text-slate-500">Map</div>
+            <button
+              className={cx(
+                'px-2 py-1 text-[10px] rounded border transition',
+                followActor
+                  ? 'border-emerald-400/40 bg-emerald-500/10 text-emerald-200'
+                  : 'border-slate-800 bg-black/40 text-slate-400 hover:text-white'
+              )}
+              onClick={() => setFollowActor((v) => !v)}
+              title="Follow selected actor"
+            >
+              Follow
+            </button>
+            <button
+              className="px-2 py-1 text-[10px] rounded border border-slate-800 bg-black/40 text-slate-400 hover:text-white"
+              onClick={() => setMapScale((s) => clamp(s - 4, 10, 80))}
+              title="Zoom out"
+            >
+              −
+            </button>
+            <button
+              className="px-2 py-1 text-[10px] rounded border border-slate-800 bg-black/40 text-slate-400 hover:text-white"
+              onClick={() => setMapScale((s) => clamp(s + 4, 10, 80))}
+              title="Zoom in"
+            >
+              +
+            </button>
+            <button
+              className="px-2 py-1 text-[10px] rounded border border-slate-800 bg-black/40 text-slate-400 hover:text-white"
+              onClick={() => fitMapScale()}
+              title="Fit to viewport"
+            >
+              Fit
+            </button>
             <select
               className="canon-input text-[11px] py-1 ml-auto"
               value={viewLocId}
@@ -554,7 +625,7 @@ export const SimulatorLab: React.FC<Props> = ({ orchestratorRegistry, onPushToGo
             </select>
           </div>
 
-          <div className="flex-1 overflow-hidden p-2">
+          <div ref={mapViewportRef} className="flex-1 overflow-auto p-2">
             {mode === 'setup' ? (
               <PlacementMiniMap
                 draft={draft}
@@ -562,6 +633,7 @@ export const SimulatorLab: React.FC<Props> = ({ orchestratorRegistry, onPushToGo
                 place={placesIndex.get(String(viewLocId)) ?? (draft.places?.[0] ?? null)}
                 actorIds={draft.selectedCharIds.map(String)}
                 title="Placement"
+                scale={mapScale}
               />
             ) : (
               <div className="h-full canon-card p-2 flex flex-col">
@@ -596,8 +668,8 @@ export const SimulatorLab: React.FC<Props> = ({ orchestratorRegistry, onPushToGo
                       const ch = draft.characters.find((x: any) => String(x.id) === id);
                       const title = ch?.title ?? ch?.name ?? id;
                       return {
-                        x: Math.round(Number(c.pos.x)),
-                        y: Math.round(Number(c.pos.y)),
+                        x: Number(c.pos.x),
+                        y: Number(c.pos.y),
                         label: initialsForTitle(title),
                         title,
                         color: colorForId(id),
@@ -613,10 +685,23 @@ export const SimulatorLab: React.FC<Props> = ({ orchestratorRegistry, onPushToGo
                     <LocationVectorMap
                       map={map}
                       showGrid
-                      scale={28}
+                      scale={mapScale}
                       hideTextVisuals
                       markers={markers}
-                      onCellClick={(x, y) => onManualMoveXY(String(viewActorId), String(viewLocId), x, y)}
+                      onCellClick={(x, y) => {
+                        const exits = (map as any)?.exits as any[] | undefined;
+                        const exit = Array.isArray(exits)
+                          ? exits.find(
+                              (e: any) =>
+                                Number(e?.x) === Number(x) && Number(e?.y) === Number(y) && e?.targetId
+                            )
+                          : null;
+                        if (exit?.targetId) {
+                          onManualMove(String(viewActorId), String(exit.targetId));
+                          return;
+                        }
+                        onManualMoveXY(String(viewActorId), String(viewLocId), x, y);
+                      }}
                     />
                   );
                 })()}
@@ -816,13 +901,21 @@ export const SimulatorLab: React.FC<Props> = ({ orchestratorRegistry, onPushToGo
                     <div className="h-full overflow-y-auto custom-scrollbar text-[11px]">
                       <div className="text-[10px] text-slate-500 uppercase font-bold mb-2">GoalLab pipeline snapshot</div>
                       {(() => {
-                        const raw = (currentRecord as any)?.plugins?.goalLabPipeline?.snapshot ?? null;
+                        const plugin = (currentRecord as any)?.plugins?.goalLabPipeline ?? null;
+                        const raw = plugin?.pipeline ?? null;
                         const short = compactJson(raw, { maxDepth: 5, maxKeys: 60, maxArray: 40, maxStr: 600 });
                         return (
                           <details open className="bg-black/40 border border-slate-800 rounded">
                             <summary className="px-3 py-2 cursor-pointer text-[10px] uppercase font-bold text-slate-400">
                               Short view
                             </summary>
+                            {plugin?.human ? (
+                              <pre className="px-3 pt-3 text-[10px] text-slate-300">
+                                {String(arr(plugin.human).join('\n'))}
+                              </pre>
+                            ) : plugin?.error ? (
+                              <pre className="px-3 pt-3 text-[10px] text-red-300">{String(plugin.error)}</pre>
+                            ) : null}
                             <pre className="p-3 overflow-auto">{JSON.stringify(short, null, 2)}</pre>
                             <details className="border-t border-slate-800">
                               <summary className="px-3 py-2 cursor-pointer text-[10px] uppercase font-bold text-slate-400">
