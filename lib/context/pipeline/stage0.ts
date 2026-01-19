@@ -293,7 +293,9 @@ export function buildStage0Atoms(input: Stage0Input): Stage0Output {
     selfId: input.selfId,
     events: worldEvents,
     nowTick: tick,
-    maxLookbackTicks: 60
+    maxLookbackTicks: 60,
+    selfLocationId: String(loc?.entityId ?? (input.agent as any)?.locationId ?? ''),
+    includeWitnessed: true
   });
 
   // 4. Capabilities Layer

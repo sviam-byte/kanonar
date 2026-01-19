@@ -22,8 +22,10 @@ function pickAgentId(world: SimWorld): string | null {
 
 function toDomainEvents(snapshot: SimSnapshot): any[] {
   // Map SimEvent -> DomainEvent (minimal, tolerant)
+  const nowTick = Number((snapshot as any)?.tickIndex ?? 0);
   return arr<any>((snapshot as any)?.events).map((e: any) => {
     const p = (e && typeof e === 'object') ? (e.payload || {}) : {};
+    const tick = Number(p.tick ?? p.tickIndex ?? nowTick);
     const actorId = String(p.actorId ?? p.actor ?? 'system');
     const targetId = p.targetId != null ? String(p.targetId) : undefined;
     // tolerate both locationId and legacy locId
@@ -33,6 +35,7 @@ function toDomainEvents(snapshot: SimSnapshot): any[] {
     const magnitude = clamp01(Number(p.magnitude ?? p.severity ?? 0.5));
     return {
       kind: String(e?.type ?? 'event'),
+      tick,
       actorId,
       targetId,
       magnitude,
