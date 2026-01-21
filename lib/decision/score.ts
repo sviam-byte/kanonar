@@ -211,6 +211,54 @@ export function scorePossibility(args: {
   const recentHarmByTarget = targetId ? clamp01(get(atoms, `soc:recentHarmBy:${targetId}:${selfId}`, 0)) : 0;
   const recentHelpByTarget = targetId ? clamp01(get(atoms, `soc:recentHelpBy:${targetId}:${selfId}`, 0)) : 0;
 
+  // ---- persona hard gates (to increase divergence between characters) ----
+  const ctxVec = readCtxVec(atoms, selfId);
+  const extraBlockedBy: string[] = [];
+  const extraGateUsed: string[] = [];
+  const pushUsed = (id: string) => {
+    if (atoms.some((a) => a?.id === id)) extraGateUsed.push(id);
+  };
+
+  // Social exposure gate: paranoid/fearful agents avoid social actions in exposed contexts.
+  if (actionKey === 'talk' || actionKey === 'negotiate' || actionKey === 'question_about' || actionKey === 'ask_info') {
+    const exposed = ctxVec.privacy < 0.35 || ctxVec.surveillance > 0.60 || ctxVec.crowd > 0.65;
+    const anxious = trParanoia > 0.70 || fear > 0.65;
+    const infoOverride = (actionKey === 'ask_info' || actionKey === 'question_about')
+      && trTruthNeed > 0.60
+      && ctxVec.uncertainty > 0.70;
+    if (exposed && anxious && !infoOverride) {
+      extraBlockedBy.push('gate:persona:social_exposure');
+      pushUsed(`ctx:privacy:${selfId}`);
+      pushUsed(`ctx:surveillance:${selfId}`);
+      pushUsed(`ctx:crowd:${selfId}`);
+      pushUsed(`feat:char:${selfId}:trait.paranoia`);
+      pushUsed(`emo:fear:${selfId}`);
+    }
+  }
+
+  // Norm gate: norm-sensitive agents will not attack unless threat/anger is high.
+  if (actionKey === 'attack') {
+    const tooEarly = trNormSens > 0.75 && threatFinal < 0.55 && anger < 0.60;
+    if (tooEarly) {
+      extraBlockedBy.push('gate:persona:norm_inhibition');
+      pushUsed(`feat:char:${selfId}:trait.normSensitivity`);
+      pushUsed(`threat:final:${selfId}`);
+      pushUsed(`emo:anger:${selfId}`);
+    }
+  }
+
+  // Ambiguity gate: low ambiguity tolerance avoids high-commitment conflict under uncertainty.
+  const trAmb = clamp01(get(atoms, `feat:char:${selfId}:trait.ambiguityTolerance`, 0.5));
+  if (trAmb < 0.25 && ctxVec.uncertainty > 0.65) {
+    if (actionKey === 'attack' || actionKey === 'negotiate') {
+      extraBlockedBy.push('gate:persona:avoid_conflict_under_uncertainty');
+      pushUsed(`feat:char:${selfId}:trait.ambiguityTolerance`);
+      pushUsed(`ctx:uncertainty:${selfId}`);
+    }
+  }
+
+  const hardAllowed = extraBlockedBy.length === 0;
+
   let pref = 0;
   const prefParts: Record<string, number> = {};
 
@@ -313,16 +361,19 @@ export function scorePossibility(args: {
   const mixedUtility = clamp01(0.80 * raw + 0.20 * goalUtility);
 
   // Контекстный key-mod (после базовых весов, чтобы реально влиять на итог).
-  const ctxVec = readCtxVec(atoms, selfId);
+  // NOTE: ctxVec already computed above for hard-gates.
   const ctxKey = keyFromPossibilityId(p.id);
   const ctxMod = contextKeyMod(ctxKey, ctxVec);
   const adjustedUtility = clamp01(mixedUtility * ctxMod);
 
-  const allowedScore = gate.allowed ? adjustedUtility : 0;
+  const allowed = gate.allowed && hardAllowed;
+  const blockedBy = [...(gate.blockedBy || []), ...(extraBlockedBy || [])];
+  const allowedScore = allowed ? adjustedUtility : 0;
 
   const usedAtomIds = [
     ...(p.trace?.usedAtomIds || []),
     ...costUsedAtomIds,
+    ...extraGateUsed,
     ...goalDomainUsed,
     ...arr(plan.usedAtomIds),
     `feat:char:${selfId}:trait.paranoia`,
@@ -380,7 +431,8 @@ export function scorePossibility(args: {
           ctxMod,
           ctxVec,
           adjustedUtility,
-          allowed: gate.allowed,
+          hardGate: extraBlockedBy,
+          allowed,
         }
       }
     } as any)
@@ -390,7 +442,7 @@ export function scorePossibility(args: {
     id: `act:${p.id}`,
     label: p.label,
     score: allowedScore,
-    allowed: gate.allowed,
+    allowed,
     cost,
     why: {
       usedAtomIds,
@@ -411,7 +463,7 @@ export function scorePossibility(args: {
         ctxVec,
         adjustedUtility,
       },
-      blockedBy: gate.blockedBy
+      blockedBy
     },
     atoms: actionAtoms,
     p
