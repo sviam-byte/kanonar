@@ -78,14 +78,29 @@ function buildLifeGoalAtoms(self: AgentState): ContextAtom[] {
   const selfId = self?.entityId;
   if (!selfId) return [];
 
-  // LifeGoalEntry[] -> LifeGoalVector
+  // IMPORTANT:
+  // In the rest of the codebase (types.ts + metrics), `lifeGoals` is a Record<string, number>.
+  // Earlier versions used LifeGoalEntry[]. Stage0 must support both shapes.
   const vec: Record<string, number> = {};
-  for (const e of (self.lifeGoals || [])) {
-    const gid = String((e as any).id ?? '');
-    if (!gid) continue;
-    const w = Number((e as any).weight ?? 0);
-    if (!Number.isFinite(w)) continue;
-    vec[gid] = Math.max(0, Math.min(1, w));
+  const rawLife: any = (self as any).lifeGoals;
+  if (Array.isArray(rawLife)) {
+    // Legacy: [{id, weight}, ...]
+    for (const e of rawLife) {
+      const gid = String((e as any).id ?? '');
+      if (!gid) continue;
+      const w = Number((e as any).weight ?? 0);
+      if (!Number.isFinite(w)) continue;
+      vec[gid] = Math.max(0, Math.min(1, w));
+    }
+  } else if (rawLife && typeof rawLife === 'object') {
+    // Current: { goalId: weight, ... }
+    for (const [gidRaw, wRaw] of Object.entries(rawLife)) {
+      const gid = String(gidRaw ?? '').trim();
+      if (!gid) continue;
+      const w = Number(wRaw ?? 0);
+      if (!Number.isFinite(w)) continue;
+      vec[gid] = Math.max(0, Math.min(1, w));
+    }
   }
 
   const lifeGoalAtoms: ContextAtom[] = Object.entries(vec).map(([gid, w]) => normalizeAtom({

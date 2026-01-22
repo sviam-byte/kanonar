@@ -1,4 +1,4 @@
-import { WorldState, AgentState, ContextV2 } from '../../types';
+import { WorldState, AgentState, ContextTuning, ContextV2 } from '../../types';
 import { ContextSnapshot, ContextAtom } from '../context/v2/types';
 import { ContextBuildOptions, buildContextSnapshot } from '../context/v2/builder';
 import { AgentContextFrame } from '../context/frame/types';
@@ -83,6 +83,114 @@ export interface GoalLabContextResult {
 function clamp01(x: number) {
   if (!Number.isFinite(x)) return 0;
   return Math.max(0, Math.min(1, x));
+}
+
+function clamp(x: number, min: number, max: number) {
+  if (!Number.isFinite(x)) return min;
+  return Math.max(min, Math.min(max, x));
+}
+
+function getMag(atoms: ContextAtom[], id: string, fb = 0): number {
+  const a = atoms.find((x) => String((x as any)?.id) === id) as any;
+  const m = Number(a?.magnitude);
+  return Number.isFinite(m) ? m : fb;
+}
+
+function mergeContextTuning(base?: ContextTuning | null, next?: ContextTuning | null): ContextTuning | null {
+  if (!base && !next) return null;
+  if (!base) return next ? { ...next } : null;
+  if (!next) return base ? { ...base } : null;
+
+  const perTarget: ContextTuning['perTarget'] = { ...(base.perTarget || {}) };
+  if (next.perTarget) {
+    for (const [targetId, tuning] of Object.entries(next.perTarget)) {
+      perTarget[targetId] = mergeContextTuning(perTarget[targetId], tuning) || tuning;
+    }
+  }
+
+  return {
+    gain: typeof next.gain === 'number' ? next.gain : base.gain,
+    add: { ...(base.add || {}), ...(next.add || {}) },
+    mul: { ...(base.mul || {}), ...(next.mul || {}) },
+    lock: { ...(base.lock || {}), ...(next.lock || {}) },
+    perTarget: Object.keys(perTarget).length ? perTarget : undefined,
+  };
+}
+
+function buildAutoContextTuning(selfId: string, atoms: ContextAtom[]): ContextTuning {
+  // Auto-tuning: adjust context sensitivity by life domains + stable traits.
+  const paranoia = clamp01(getMag(atoms, `feat:char:${selfId}:trait.paranoia`, 0.5));
+  const sensitivity = clamp01(getMag(atoms, `feat:char:${selfId}:trait.sensitivity`, 0.5));
+  const normSens = clamp01(getMag(atoms, `feat:char:${selfId}:trait.normSensitivity`, sensitivity));
+  const ambiguityTol = clamp01(getMag(atoms, `feat:char:${selfId}:trait.ambiguityTolerance`, 0.5));
+  const powerDrive = clamp01(getMag(atoms, `feat:char:${selfId}:trait.powerDrive`, 0.4));
+  const autonomy = clamp01(getMag(atoms, `feat:char:${selfId}:trait.autonomy`, 0.5));
+  const stress = clamp01(getMag(atoms, `feat:char:${selfId}:body.stress`, 0.3));
+  const fatigue = clamp01(getMag(atoms, `feat:char:${selfId}:body.fatigue`, 0.3));
+
+  const lifeSurvival = clamp01(getMag(atoms, `goal:lifeDomain:survival:${selfId}`, 0));
+  const lifeControl = clamp01(getMag(atoms, `goal:lifeDomain:control:${selfId}`, 0));
+  const lifeOrder = clamp01(getMag(atoms, `goal:lifeDomain:order:${selfId}`, 0));
+  const lifeStatus = clamp01(getMag(atoms, `goal:lifeDomain:status:${selfId}`, 0));
+  const lifeReputation = clamp01(getMag(atoms, `goal:lifeDomain:reputation:${selfId}`, 0));
+  const lifeLegit = clamp01(getMag(atoms, `goal:lifeDomain:leader_legitimacy:${selfId}`, 0));
+  const lifeObed = clamp01(getMag(atoms, `goal:lifeDomain:obedience:${selfId}`, 0));
+  const lifeAttach = clamp01(getMag(atoms, `goal:lifeDomain:attachment_care:${selfId}`, 0));
+  const lifeBond = clamp01(getMag(atoms, `goal:lifeDomain:personal_bond:${selfId}`, 0));
+  const lifeCohesion = clamp01(getMag(atoms, `goal:lifeDomain:group_cohesion:${selfId}`, 0));
+  const lifeInfo = clamp01(getMag(atoms, `goal:lifeDomain:information:${selfId}`, 0));
+  const lifeExplore = clamp01(getMag(atoms, `goal:lifeDomain:exploration:${selfId}`, 0));
+  const lifeAutonomy = clamp01(getMag(atoms, `goal:lifeDomain:autonomy:${selfId}`, 0));
+
+  const weightToMul = (w: number) => clamp(0.6 + 0.8 * clamp01(w), 0.4, 1.6);
+
+  const dangerW = clamp01(0.45 + 0.45 * lifeSurvival + 0.25 * paranoia + 0.10 * stress);
+  const normW = clamp01(0.35 + 0.40 * lifeOrder + 0.30 * normSens + 0.20 * lifeObed);
+  const hierarchyW = clamp01(0.35 + 0.35 * lifeStatus + 0.25 * powerDrive + 0.20 * lifeLegit);
+  const intimacyW = clamp01(0.30 + 0.40 * lifeBond + 0.30 * lifeAttach + 0.20 * sensitivity + 0.15 * lifeCohesion);
+  const publicW = clamp01(0.30 + 0.45 * lifeStatus + 0.25 * lifeReputation + 0.20 * sensitivity);
+  const controlW = clamp01(0.35 + 0.45 * lifeControl + 0.25 * powerDrive + 0.15 * (autonomy + lifeAutonomy) / 2);
+  const uncW = clamp01(0.35 + 0.35 * lifeInfo + 0.25 * lifeExplore + 0.25 * (1 - ambiguityTol));
+  const timeW = clamp01(0.30 + 0.35 * lifeSurvival + 0.20 * stress + 0.15 * (1 - fatigue));
+  const secrecyW = clamp01(0.30 + 0.40 * paranoia + 0.20 * lifeReputation + 0.15 * lifeStatus);
+  const legitimacyW = clamp01(0.30 + 0.45 * lifeLegit + 0.25 * lifeObed + 0.20 * normSens);
+
+  return {
+    mul: {
+      danger: weightToMul(dangerW),
+      normPressure: weightToMul(normW),
+      hierarchy: weightToMul(hierarchyW),
+      intimacy: weightToMul(intimacyW),
+      publicness: weightToMul(publicW),
+      control: weightToMul(controlW),
+      uncertainty: weightToMul(uncW),
+      timePressure: weightToMul(timeW),
+      secrecy: weightToMul(secrecyW),
+      legitimacy: weightToMul(legitimacyW),
+    },
+  };
+}
+
+function atomizeContextTuningDebug(selfId: string, tuning: ContextTuning | null): ContextAtom[] {
+  const mul = tuning?.mul || {};
+  return Object.entries(mul).map(([axis, value]) => normalizeAtom({
+    id: `ctxprio:mul:${axis}:${selfId}`,
+    ns: 'ctx' as any,
+    kind: 'ctx_priority' as any,
+    origin: 'derived',
+    source: 'context_tuning_auto',
+    subject: selfId,
+    target: selfId,
+    magnitude: clamp01(Number(value ?? 0) / 2),
+    confidence: 1,
+    tags: ['ctx', 'prio', 'mul', axis],
+    label: `ctxprio.${axis}:${Number(value ?? 0).toFixed(2)}x`,
+    trace: {
+      usedAtomIds: [],
+      notes: ['auto context tuning (mul)'],
+      parts: { axis, mul: value },
+    },
+  } as any));
 }
 
 /** Stable non-crypto hash -> 32-bit positive int. */
@@ -533,8 +641,21 @@ export function buildGoalLabContext(
     atomsPreAxes = mergeKeepingOverrides(atomsPreAxes, hazGeo.atoms).merged;
     pushStage('S0a', 'S0a • stage0 + aliases + socProx + hazardGeometry (pre-axes)', atomsPreAxes);
 
-    // Axes (strict staging): derive base ctx axes from canonical atoms, then apply optional tuning overlays.
-    const tuning = (frame?.what as any)?.contextTuning || (world as any).scene?.contextTuning;
+    // Axes (strict staging): derive base ctx axes from canonical atoms, then apply tuning overlays.
+    // Tuning merge order (earlier -> later): scene/frame -> auto (from life domains/traits) -> agent explicit.
+    const sceneTuning = (frame?.what as any)?.contextTuning || (world as any).scene?.contextTuning;
+    const autoTuning = buildAutoContextTuning(selfId, atomsPreAxes);
+    const agentTuning = (agentForPipeline as any)?.contextTuning;
+    const tuning = mergeContextTuning(mergeContextTuning(sceneTuning, autoTuning), agentTuning);
+
+    // Make tuning visible in the atom stream (helps debug “why characters feel identical”).
+    const tuningAtoms = atomizeContextTuningDebug(selfId, tuning);
+    if (tuningAtoms.length) {
+      atomsPreAxes = mergeKeepingOverrides(atomsPreAxes, tuningAtoms).merged;
+      pushStage('S0t', 'S0t • context tuning (debug atoms)', atomsPreAxes, {
+        meta: { tuning },
+      });
+    }
 
     const axesBase = deriveAxes({ selfId, atoms: atomsPreAxes, tuning });
     const atomsWithAxesBase = mergeKeepingOverrides(atomsPreAxes, axesBase.atoms).merged;
