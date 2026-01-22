@@ -17,7 +17,7 @@ import { getAllCharactersWithRuntime } from '../../data';
 import { createInitialWorld } from '../../lib/world/initializer';
 import { normalizeWorldShape } from '../../lib/world/normalizeWorldShape';
 import { scoreContextualGoals } from '../../lib/context/v2/scoring';
-import type { ContextAtom } from '../../lib/context/v2/types';
+import type { ContextAtom, ContextualGoalScore as V2GoalScore } from '../../lib/context/v2/types';
 import { DebugShell } from './DebugShell';
 import { allLocations } from '../../data/locations';
 import { computeLocationGoalsForAgent } from '../../lib/context/v2/locationGoals';
@@ -57,6 +57,163 @@ import { normalizeAtom } from '../../lib/context/v2/infer';
 import { lintActionsAndLocations } from '../../lib/linter/actionsAndLocations';
 import { arr } from '../../lib/utils/arr';
 import { getCanonicalAtomsFromSnapshot } from '../../lib/goal-lab/atoms/canonical';
+
+function clamp01(x: number) {
+  if (!Number.isFinite(x)) return 0;
+  return Math.max(0, Math.min(1, x));
+}
+
+function getAtomMag(atoms: any[] | undefined, id: string, fb = 0): number {
+  const arr = Array.isArray(atoms) ? atoms : [];
+  const a: any = arr.find(x => String(x?.id) === id);
+  const m = a?.magnitude ?? a?.m ?? 0;
+  return typeof m === 'number' && Number.isFinite(m) ? m : fb;
+}
+
+function deriveTraitIdsForUi(agent: any): string[] {
+  const vb = agent?.vector_base || {};
+  const traits: string[] = [];
+
+  const sens = clamp01(Number(vb['C_reputation_sensitivity'] ?? 0.5));
+  const formal = clamp01(Number(vb['A_Procedure_Formalism'] ?? 0.5));
+  const order = clamp01(Number(vb['A_Tradition_Order'] ?? 0.5));
+  const disc = clamp01(Number(vb['B_discount_rate'] ?? 0.5));
+  const betrayal = clamp01(Number(vb['C_betrayal_cost'] ?? 0.5));
+
+  if (sens <= 0.35) traits.push('Introvert');
+  if (sens >= 0.65) traits.push('Extrovert');
+  if (formal >= 0.70 || order >= 0.70) traits.push('NeatFreak');
+  if (disc >= 0.70 && formal <= 0.45) traits.push('Lazy');
+  if (betrayal >= 0.65) traits.push('Paranoid');
+
+  return traits;
+}
+
+function deriveRoomTagsForUi(snapshot: any, selfId: string): string[] {
+  const atoms = snapshot?.atoms || [];
+  const tags: string[] = [];
+
+  const priv = clamp01(getAtomMag(atoms, `ctx:privacy:${selfId}`, 0));
+  const pub = clamp01(getAtomMag(atoms, `ctx:publicness:${selfId}`, 0));
+  const crowd = clamp01(getAtomMag(atoms, `ctx:crowd:${selfId}`, 0));
+
+  if (priv >= 0.65) tags.push('Private');
+  if (pub >= 0.65) tags.push('Public');
+  if (crowd >= 0.55) tags.push('Crowded');
+  if (crowd <= 0.15) tags.push('Quiet');
+
+  const safe = clamp01(getAtomMag(atoms, `world:loc:safe_zone_hint:${selfId}`, 0));
+  if (safe >= 0.6) tags.push('SafeZone');
+
+  return tags;
+}
+
+function applyUiPersonalization(
+  goals: V2GoalScore[],
+  agent: AgentState,
+  snapshot: any
+): (V2GoalScore & {
+  rawProbability?: number;
+  uiMultiplier?: number;
+  uiNotes?: string[];
+  uiTraits?: string[];
+  uiRoomTags?: string[];
+})[] {
+  const selfId = String(agent?.entityId || '');
+  const traits = deriveTraitIdsForUi(agent);
+  const roomTags = deriveRoomTagsForUi(snapshot, selfId);
+
+  // lightweight room “stats”
+  const atoms = snapshot?.atoms || [];
+  const danger = clamp01(getAtomMag(atoms, `ctx:danger:${selfId}`, 0));
+  const hygiene = clamp01(1 - getAtomMag(atoms, `world:env:hazard:${selfId}`, 0)); // proxy
+
+  return (goals || []).map(goal => {
+    const goalId = String(goal.goalId || '');
+    const rawP = Number(goal.probability ?? 0);
+
+    let mul = 1.0;
+    const notes: string[] = [];
+
+    // Introvert: меньше социального/коалиций, больше “anchor/relief”
+    if (traits.includes('Introvert')) {
+      if (roomTags.includes('Public') || roomTags.includes('Crowded')) {
+        if (goalId.includes('cohesion') || goalId.includes('unity') || goalId.includes('alliance')) {
+          mul *= 0.55;
+          notes.push('Introvert×Public/Crowd → social↓');
+        }
+        if (goalId.includes('safe_anchor') || goalId.includes('relief_from_stress')) {
+          mul *= 1.25;
+          notes.push('Introvert×Public/Crowd → anchor/relief↑');
+        }
+      }
+      if (roomTags.includes('Private') || roomTags.includes('SafeZone')) {
+        if (goalId.includes('relief_from_stress') || goalId.includes('regain_sense_of_control')) {
+          mul *= 1.20;
+          notes.push('Introvert×Private/Safe → relief/control↑');
+        }
+      }
+    }
+
+    // Extrovert: наоборот
+    if (traits.includes('Extrovert')) {
+      if (goalId.includes('cohesion') || goalId.includes('unity') || goalId.includes('alliance')) {
+        mul *= 1.20;
+        notes.push('Extrovert → social↑');
+      }
+    }
+
+    // NeatFreak: если “грязно/опасно”, бустит порядок/контроль
+    if (traits.includes('NeatFreak')) {
+      if (hygiene < 0.45 || danger > 0.45) {
+        if (
+          goalId.includes('restore_control') ||
+          goalId.includes('defend_order') ||
+          goalId.includes('regain_sense_of_control')
+        ) {
+          mul *= 1.45;
+          notes.push('NeatFreak×low hygiene/high danger → order/control↑');
+        }
+      }
+    }
+
+    // Lazy: режет “долгие/тяжелые” и бустит “relief”
+    if (traits.includes('Lazy')) {
+      if (goalId.includes('pursue_long_term') || goalId.includes('secure_resources') || goalId.includes('defend_status')) {
+        mul *= 0.70;
+        notes.push('Lazy → long/effort↓');
+      }
+      if (goalId.includes('relief_from_stress')) {
+        mul *= 1.15;
+        notes.push('Lazy → relief↑');
+      }
+    }
+
+    // Paranoid: при опасности усиливает “safety/defense”
+    if (traits.includes('Paranoid') && danger > 0.25) {
+      if (
+        goalId.includes('safe') ||
+        goalId.includes('defend') ||
+        goalId.includes('cover') ||
+        goalId.includes('protect')
+      ) {
+        mul *= 1.25;
+        notes.push('Paranoid×danger → safety/defense↑');
+      }
+    }
+
+    const finalP = clamp01(rawP * mul);
+    return {
+      ...goal,
+      rawProbability: rawP,
+      probability: finalP,
+      uiMultiplier: mul !== 1 ? Number(mul.toFixed(3)) : undefined,
+      uiNotes: notes.length ? notes : undefined,
+      uiTraits: traits.length ? traits : undefined,
+      uiRoomTags: roomTags.length ? roomTags : undefined,
+    };
+  }).sort((a, b) => (b.probability ?? 0) - (a.probability ?? 0));
+}
 
 function createCustomLocationEntity(map: LocationMap): LocationEntity {
   const cells = map.cells || [];
@@ -1056,7 +1213,9 @@ export const GoalSandbox: React.FC = () => {
       const { agent, frame, snapshot, situation, goalPreview } = glCtx as any;
       snapshot.atoms = dedupeAtomsById(snapshot.atoms);
 
-      const goals = scoreContextualGoals(agent, worldState, snapshot, undefined, frame || undefined);
+      const rawGoals = scoreContextualGoals(agent, worldState, snapshot, undefined, frame || undefined);
+      // UI-only personalization layer (explicitly to show character differences immediately)
+      const goals = applyUiPersonalization(rawGoals, agent, snapshot);
       const locScores = computeLocationGoalsForAgent(
         worldState,
         agent.entityId,

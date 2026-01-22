@@ -288,6 +288,25 @@ const GoalRow: React.FC<{
              {description ? (
                <div className="text-[10px] text-canon-text-light/70 mt-1 leading-snug">{description}</div>
              ) : null}
+
+             {typeof (score as any)?.uiMultiplier === 'number' && (
+               <div className="mt-1 text-xs">
+                 <span className="inline-flex items-center rounded-md bg-neutral-800 px-2 py-0.5 text-neutral-100">
+                   ui×{Number((score as any).uiMultiplier).toFixed(3)}
+                 </span>
+                 {typeof (score as any)?.rawProbability === 'number' && (
+                   <span className="ml-2 text-neutral-500">
+                     raw={Number((score as any).rawProbability).toFixed(3)}
+                   </span>
+                 )}
+               </div>
+             )}
+
+             {Array.isArray((score as any)?.uiNotes) && (score as any).uiNotes.length > 0 && (
+               <div className="mt-1 text-[11px] text-neutral-500">
+                 {(score as any).uiNotes.join(' · ')}
+               </div>
+             )}
              
              {/* Key Contributors Dots */}
              <div className="flex gap-1 mt-1.5 h-1.5">

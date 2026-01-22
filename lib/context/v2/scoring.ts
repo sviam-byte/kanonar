@@ -30,8 +30,21 @@ function clamp01(x: number) {
 function getAtomMag(atoms: any[] | undefined, id: string, fb = 0): number {
   const arr = Array.isArray(atoms) ? atoms : [];
   const a: any = arr.find(x => String(x?.id) === id);
-  const m = a?.magnitude;
+  const m = a?.magnitude ?? a?.m ?? 0;
   return typeof m === 'number' && Number.isFinite(m) ? m : fb;
+}
+
+function getCtxPrio(ctx: ContextSnapshot, axisId: string, selfId: string, fb = 0.5): number {
+  // ctx:prio:* are expected to be 0..1. Default 0.5 = neutral.
+  const v = clamp01(getAtomMag(ctx.atoms as any, `ctx:prio:${axisId}:${selfId}`, fb));
+  return v;
+}
+
+function prioToMultiplier(prio01: number): number {
+  // 0   -> 0.60  (de-emphasize)
+  // 0.5 -> 1.00  (neutral)
+  // 1   -> 1.40  (emphasize)
+  return 0.60 + 0.80 * clamp01(prio01);
 }
 
 function computeContextWeight(ctx: ContextSnapshot, selfId: string): number {
@@ -86,10 +99,14 @@ export function scoreContextualGoals(
   const combinedLogits = makeZeroGoalLogits();
   const ctxW = computeContextWeight(ctx, agent.entityId);
   for (const axis of GOAL_AXES) {
+    // Priority-aware context weight per axis:
+    const prio = getCtxPrio(ctx, String(axis), agent.entityId, 0.5);
+    const prioMul = prioToMultiplier(prio);
+
     combinedLogits[axis] =
       (traitLogits[axis] || 0) +
       (bioLogits[axis] || 0) +
-      (contextLogits[axis] || 0) * ctxW;
+      (contextLogits[axis] || 0) * ctxW * prioMul;
   }
 
   // 2. Run V4 Engine

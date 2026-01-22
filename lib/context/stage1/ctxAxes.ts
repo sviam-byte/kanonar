@@ -10,6 +10,7 @@ export function deriveCtxAxes(agentId: string, resolved: Map<string, Atom>): Ato
   const id_envHaz = `world:env:hazard:${agentId}`;
   const id_escape = `world:map:escape:${agentId}`;
   const id_cover = `world:map:cover:${agentId}`;
+  const id_safe = `world:loc:safe_zone_hint:${agentId}`;
   const id_infoAdeq = `obs:infoAdequacy:${agentId}`;
 
   const privacy = clamp01(getM(resolved, id_priv, 0));
@@ -27,6 +28,7 @@ export function deriveCtxAxes(agentId: string, resolved: Map<string, Atom>): Ato
   );
   const escape = clamp01(getM(resolved, id_escape, 0.5));
   const cover = clamp01(getM(resolved, id_cover, 0));
+  const safeHint = clamp01(getM(resolved, id_safe, 0));
 
   const survMix = linMix([
     { name: 'control', value: control, weight: 0.75 },
@@ -39,7 +41,9 @@ export function deriveCtxAxes(agentId: string, resolved: Map<string, Atom>): Ato
     { name: 'noEscape', value: (1 - escape), weight: 0.20 },
     { name: 'noCover', value: (1 - cover), weight: 0.15 },
   ]);
-  const danger = dangerMix.value;
+  // Safe zone prior suppresses perceived danger strongly.
+  // 0 -> no change; 1 -> multiply danger by 0.15
+  const danger = clamp01(dangerMix.value * (1 - 0.85 * safeHint));
 
   return [
     {
@@ -117,9 +121,12 @@ export function deriveCtxAxes(agentId: string, resolved: Map<string, Atom>): Ato
       o: 'derived',
       meta: {
         trace: {
-          usedAtomIds: used(id_mapDanger, id_envHaz, id_escape, id_cover),
-          parts: dangerMix.parts.map(p => ({ name: p.name ?? 'part', value: p.value, weight: p.weight })),
-          formulaId: 'ctx:danger@v1',
+          usedAtomIds: used(id_mapDanger, id_envHaz, id_escape, id_cover, id_safe),
+          parts: dangerMix.parts.map(p => ({ name: p.name ?? 'part', value: p.value, weight: p.weight })).concat([
+            { name: 'safe_zone_hint', value: safeHint, weight: 0.85 },
+            { name: 'post_safe_multiplier', value: (1 - 0.85 * safeHint) },
+          ]),
+          formulaId: 'ctx:danger@v1+safe_zone_hint',
         },
       },
     },

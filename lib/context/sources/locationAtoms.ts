@@ -145,6 +145,7 @@ export function extractLocationAtoms(args: {
   const tags = safeArr<string>(location.tags).map(String);
   const kind = String(location.kind || location.type || 'location');
   const owner = location.ownership?.ownerFaction ? String(location.ownership.ownerFaction) : null;
+  const tagsLc = tags.map(t => String(t).toLowerCase());
 
   const out: ContextAtom[] = [];
 
@@ -153,6 +154,34 @@ export function extractLocationAtoms(args: {
   out.push(atom(`world:loc:kind:${selfId}:${kind}`, 1, { locId }));
   if (owner) out.push(atom(`world:loc:owner:${selfId}:${owner}`, 1, { locId }));
   for (const t of tags) out.push(atom(`world:loc:tag:${selfId}:${t}`, 1, { locId }));
+
+  // --- SAFE ZONE HINT (explicit override for ctx:danger) ---
+  // Rationale: "danger" is a composite of hazard + (1-escape) + (1-cover).
+  // For sanctuary/safe rooms we want a strong prior that overrides geometry-derived paranoia.
+  const isExplicitSafe =
+    kind === 'safe_room' ||
+    tagsLc.includes('safe_hub') ||
+    tagsLc.includes('safe_room') ||
+    tagsLc.includes('sanctuary') ||
+    tagsLc.includes('safe') ||
+    tagsLc.includes('shelter');
+
+  // Soft heuristic safe if it's private + low hazard + low crowd (even if not explicitly tagged)
+  const heuristicSafe =
+    (privacy >= 0.75 ? 0.4 : 0) +
+    (envHazard <= 0.10 ? 0.4 : 0) +
+    (crowd <= 0.10 ? 0.2 : 0);
+
+  const safeHint = clamp01((isExplicitSafe ? 1 : 0) * 1.0 + heuristicSafe * 0.75);
+  out.push(
+    atom(`world:loc:safe_zone_hint:${selfId}`, safeHint, {
+      locId,
+      kind,
+      tags,
+      parts: { isExplicitSafe, heuristicSafe, privacy, envHazard, crowd },
+      notes: ['explicit safe-zone prior for ctx:danger']
+    })
+  );
 
   // --- Social Env (Core for ctxAxes) ---
   out.push(atom(`world:loc:privacy:${selfId}`, privacy, { locId, raw: props.privacy }));
