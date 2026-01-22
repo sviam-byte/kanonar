@@ -224,7 +224,8 @@ export function atomizeFrame(frame: AgentContextFrame, t: number, world?: WorldS
   }
   
   // Deduped safe zone check
-  if (tagsList.includes('safe_hub') || tagsList.includes('private')) {
+  const isSafeCell = !!(where?.map as any)?.isSafeCell;
+  if (tagsList.includes('safe_hub') || tagsList.includes('private') || isSafeCell) {
       add('safe_zone_hint', 1, 'Safe Zone', 'where');
   }
   
@@ -232,7 +233,10 @@ export function atomizeFrame(frame: AgentContextFrame, t: number, world?: WorldS
       if (typeof where.map.hazard === "number") {
           add('map_hazard', where.map.hazard, 'Hazard Level', 'where');
            if (where.map.hazard > 0) {
-             add('hazard_local', where.map.hazard, 'Hazard Here', 'map');
+             // If we're explicitly in a safe cell, suppress local hazard.
+             if (!isSafeCell) {
+               add('hazard_local', where.map.hazard, 'Hazard Here', 'map');
+             }
           }
       }
       if (typeof where.map.cover === "number") {

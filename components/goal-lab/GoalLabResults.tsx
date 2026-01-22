@@ -289,24 +289,18 @@ const GoalRow: React.FC<{
                <div className="text-[10px] text-canon-text-light/70 mt-1 leading-snug">{description}</div>
              ) : null}
 
-             {typeof (score as any)?.uiMultiplier === 'number' && (
-               <div className="mt-1 text-xs">
-                 <span className="inline-flex items-center rounded-md bg-neutral-800 px-2 py-0.5 text-neutral-100">
-                   ui×{Number((score as any).uiMultiplier).toFixed(3)}
-                 </span>
-                 {typeof (score as any)?.rawProbability === 'number' && (
-                   <span className="ml-2 text-neutral-500">
-                     raw={Number((score as any).rawProbability).toFixed(3)}
+             {/* UI personalization multiplier (debug) */}
+             {Number.isFinite((score as any).uiMultiplier) &&
+             Math.abs(((score as any).uiMultiplier ?? 1) - 1) > 1e-3 ? (
+               <div className="text-[10px] text-canon-text-light/70 mt-1">
+                 ui×{Number((score as any).uiMultiplier).toFixed(2)}
+                 {Array.isArray((score as any).uiReasons) && (score as any).uiReasons.length ? (
+                   <span className="ml-2 font-mono text-[10px] text-canon-text-light/60">
+                     {(score as any).uiReasons.join(', ')}
                    </span>
-                 )}
+                 ) : null}
                </div>
-             )}
-
-             {Array.isArray((score as any)?.uiNotes) && (score as any).uiNotes.length > 0 && (
-               <div className="mt-1 text-[11px] text-neutral-500">
-                 {(score as any).uiNotes.join(' · ')}
-               </div>
-             )}
+             ) : null}
              
              {/* Key Contributors Dots */}
              <div className="flex gap-1 mt-1.5 h-1.5">

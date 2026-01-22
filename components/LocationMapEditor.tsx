@@ -13,7 +13,9 @@ type Brush =
   | "hazard"
   | "clear_hazard"
   | "safe"
+  | "safe_tag"
   | "cover"
+  | "exit"
   | "elevation_up"
   | "elevation_down";
 
@@ -68,6 +70,21 @@ export const LocationMapEditor: React.FC<Props> = ({ map, onChange, cellSize = 1
       updated.walkable = true;
       updated.danger = 0;
       updated.cover = Math.min(1, (updated.cover ?? 0.3) + 0.3);
+    } else if (brush === "safe_tag") {
+      // Force this cell to be considered a safe zone by the context atomizer.
+      updated.walkable = true;
+      updated.danger = 0;
+      const tags = new Set<string>(Array.isArray(updated.tags) ? updated.tags : []);
+      if (tags.has("safe")) tags.delete("safe");
+      else tags.add("safe");
+      updated.tags = Array.from(tags);
+    } else if (brush === "exit") {
+      // Mark a cell as an explicit exit for affordances (ctx/exits).
+      updated.walkable = true;
+      const tags = new Set<string>(Array.isArray(updated.tags) ? updated.tags : []);
+      if (tags.has("exit")) tags.delete("exit");
+      else tags.add("exit");
+      updated.tags = Array.from(tags);
     } else if (brush === "cover") {
       updated.walkable = true;
       updated.cover = Math.min(1, (updated.cover ?? 0) + 0.5);
@@ -90,7 +107,18 @@ export const LocationMapEditor: React.FC<Props> = ({ map, onChange, cellSize = 1
       <div className="flex gap-2 items-center justify-between">
         <div className="flex flex-col gap-1">
             <div className="flex flex-wrap gap-1 text-[10px]">
-            {(["walkable", "wall", "obstacle", "cover", "danger", "hazard", "clear_hazard", "safe"] as Brush[]).map(b => (
+            {([
+              "walkable",
+              "wall",
+              "obstacle",
+              "cover",
+              "danger",
+              "hazard",
+              "clear_hazard",
+              "safe",
+              "safe_tag",
+              "exit",
+            ] as Brush[]).map(b => (
                 <button
                 key={b}
                 onClick={() => setBrush(b)}
