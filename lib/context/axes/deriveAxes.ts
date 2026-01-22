@@ -153,7 +153,8 @@ export function deriveAxes(args: { selfId: string; atoms: ContextAtom[]; tuning?
   const crowd = clamp01(0.6 * locCrowd + 0.4 * scCrowd);
   const normPressure = clamp01(0.55 * locNormPressure + 0.45 * normNormPressure);
   const hierarchy = clamp01(0.55 * control + 0.25 * normPressure + 0.20 * normProceduralStrict);
-  const dangerBase = clamp01(0.65 * danger + 0.20 * (1 - escape) + 0.15 * (1 - cover));
+  const vulnFactor = clamp01(0.85 + 0.10 * (1 - escape) + 0.05 * (1 - cover));
+  const dangerBase = clamp01(danger * vulnFactor);
   const dangerSocial = clamp01(0.55 * scHostility + 0.45 * scThreat);
   const ctxDanger = clamp01(0.75 * dangerBase + 0.25 * dangerSocial);
   const ctxCrowd = crowd;
@@ -280,14 +281,15 @@ export function deriveAxes(args: { selfId: string; atoms: ContextAtom[]; tuning?
       buildParts([
         { name: 'dangerBase', val: dangerBase, w: 0.75 },
         { name: 'dangerSocial', val: dangerSocial, w: 0.25 },
-        { name: 'map+hazardDanger', val: danger, w: 0.65 },
+        { name: 'map+hazardDanger', val: danger },
         { name: 'hazardProximity', val: hazardProximity },
         { name: 'hazardSource', val: hazardSource },
-        { name: 'escape', val: escape, w: -0.20, contrib: -0.20 * escape },
-        { name: 'cover', val: cover, w: -0.15, contrib: -0.15 * cover },
+        { name: 'vulnFactor', val: vulnFactor },
+        { name: 'escape', val: escape },
+        { name: 'cover', val: cover },
         { name: 'sceneHostility', val: scHostility, w: 0.55 },
         { name: 'sceneThreat', val: scThreat, w: 0.45 },
-      ], 'danger = 0.75*(0.65*danger + 0.20*(1-escape)+0.15*(1-cover)) + 0.25*(0.55*hostility + 0.45*sceneThreat)')
+      ], 'danger = 0.75*(danger * vulnFactor) + 0.25*(0.55*hostility + 0.45*sceneThreat)')
     ),
     atom(
       `ctx:intimacy:${selfId}`,

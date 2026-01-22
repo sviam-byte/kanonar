@@ -446,7 +446,8 @@ export function makeOrchestratorPlugin(opts: { registry?: any; onPushToGoalLab?:
       lastAtoms = (preOut.nextSnapshot?.atoms || []).slice();
 
       // 2) Decide per-actor using GoalLab possibilities (preferred), fallback to SimKit offers if none executable.
-      const T = Number(world.facts?.['sim:T'] ?? 0.2);
+      const baseTRaw = Number(world.facts?.['sim:T']);
+      const baseT = Number.isFinite(baseTRaw) ? baseTRaw : 0.2;
       const atomsAll = (preOut.nextSnapshot?.atoms || []) as ContextAtom[];
       const atomsBySubject = countAtomsBySubject(atomsAll as any);
 
@@ -477,6 +478,12 @@ export function makeOrchestratorPlugin(opts: { registry?: any; onPushToGoalLab?:
         });
 
         const actorOffers = offersByActor[actorId] || [];
+
+        // Per-actor temperature: makes characters diverge even under same world settings.
+        // Uses trait.decisionTemperature (0..1) as variability knob.
+        const tAtom = atoms.find((a: any) => a?.id === `feat:char:${actorId}:trait.decisionTemperature`);
+        const traitT = clamp01(Number((tAtom as any)?.magnitude ?? 0.35));
+        const T = Math.max(0.02, Math.min(1.5, Math.max(0, baseT) * (0.55 + 0.90 * traitT)));
 
         // Possibility route.
         const possAll = derivePossibilitiesRegistry({ selfId: actorId, atoms });

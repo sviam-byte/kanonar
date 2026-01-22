@@ -4,7 +4,7 @@ import { clamp01, linMix } from '../../math/normalize';
 
 export function deriveCtxAxes(agentId: string, resolved: Map<string, Atom>): Atom[] {
   const id_priv = `world:loc:privacy:${agentId}`;
-  const id_ctrl = `world:loc:control:${agentId}`;
+  const id_ctrl = `world:loc:control_level:${agentId}`;
   const id_crowd = `world:loc:crowd:${agentId}`;
   const id_mapDanger = `world:map:danger:${agentId}`;
   const id_envHaz = `world:env:hazard:${agentId}`;
