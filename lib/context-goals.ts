@@ -345,11 +345,32 @@ export function buildSituationContext(agent: AgentState, world: WorldState): Sit
   else if (sId.includes('rescue') || sId.includes('evac')) kind = 'fight_escape';
   else if (sId.includes('training')) kind = 'patrol';
   
-  const threat = scene ? scene.threat / 100 : 0;
+  const threatBase = scene ? scene.threat / 100 : 0;
   const timer = scene?.timer ?? 100;
-  const timePressure = Math.max(0, 1 - timer / 200);
-  
+  const timePressureBase = Math.max(0, 1 - timer / 200);
+
+  const vectorBase = (agent as any)?.vector_base || {};
+  const getVB = (key: string, def = 0.5) => {
+    const raw = Number(vectorBase?.[key] ?? def);
+    return Number.isFinite(raw) ? clamp01(raw) : def;
+  };
+
+  // Character-sensitive salience modifiers (keep scene topology, adjust personal intensity).
+  const hpaReactivity = getVB('D_HPA_reactivity', 0.5);
+  const ambiguityTol = getVB('B_tolerance_ambiguity', 0.5);
+  const discountRate = getVB('B_discount_rate', 0.5);
+  const discipline = getVB('B_cooldown_discipline', 0.5);
+  const fear = clamp01(Number((agent as any)?.affect?.e?.fear ?? (agent as any)?.affect?.fear ?? 0));
+
+  const threatGain = clamp01(0.85 + 0.45 * hpaReactivity + 0.20 * (1 - ambiguityTol) + 0.20 * fear);
+  const timeGain = clamp01(0.85 + 0.45 * discountRate + 0.25 * (1 - discipline) + 0.15 * fear);
+  const woundedGain = clamp01(0.85 + 0.35 * hpaReactivity + 0.25 * fear);
+
+  const threat = clamp01(threatBase * threatGain);
+  const timePressure = clamp01(timePressureBase * timeGain);
+
   const wounded = (scene?.wounded_total ?? 0) > (scene?.wounded_evacuated ?? 0) + (scene?.wounded_dead ?? 0) ? 1.0 : 0.0;
+  const woundedPresent = clamp01(wounded * woundedGain);
   const leaderPresent = !!world.leadership.currentLeaderId;
 
   return {
@@ -357,7 +378,7 @@ export function buildSituationContext(agent: AgentState, world: WorldState): Sit
     stage: world.scene?.currentPhaseId || 'default',
     threatLevel: threat,
     timePressure,
-    woundedPresent: wounded,
+    woundedPresent,
     leaderPresent,
     isFormal: kind === 'strategic_council',
     isPrivate: false, // Needs richer world state to determine

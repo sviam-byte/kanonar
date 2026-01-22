@@ -953,7 +953,7 @@ export function buildGoalLabContext(
     const cover = coverId ? getMagThreat(coverId, 0.5) : 0.5;
 
     const crowd = getMagThreat(`ctx:crowd:${selfId}`, 0) || getMagThreat(`world:loc:crowd:${selfId}`, 0);
-    const hierarchy = getMagThreat(`ctx:hierarchy:${selfId}`, 0) || getMagThreat(`world:loc:control:${selfId}`, 0);
+    const hierarchy = getMagThreat(`ctx:hierarchy:${selfId}`, 0) || getMagThreat(`world:loc:control_level:${selfId}`, 0);
     const surveillance = getMagThreat(`ctx:surveillance:${selfId}`, 0);
     const timePressure = getMagThreat(`ctx:timePressure:${selfId}`, 0);
     const scarcity = getMagThreat(`ctx:scarcity:${selfId}`, 0);
