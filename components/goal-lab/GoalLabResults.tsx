@@ -93,6 +93,7 @@ const ATOM_CONFIG: Record<string, AtomStyle> = {
     'self_pain': { label: 'Боль', bg: 'bg-red-900/30', border: 'border-red-500/40', text: 'text-red-300', icon: '⚡' },
     'time_pressure': { label: 'Цейтнот', bg: 'bg-amber-900/40', border: 'border-amber-500/50', text: 'text-amber-300', icon: '⏳' },
     'social_visibility': { label: 'На виду', bg: 'bg-cyan-900/40', border: 'border-cyan-500/50', text: 'text-cyan-300', icon: '👀' },
+    'ctx_priority': { label: 'Приоритет', bg: 'bg-slate-900/40', border: 'border-slate-500/40', text: 'text-slate-200', icon: '🎛️' },
     'default': { label: 'Атом', bg: 'bg-canon-bg', border: 'border-canon-border', text: 'text-canon-text-light', icon: '🔹' }
 };
 
@@ -139,6 +140,22 @@ export const ContextRibbon: React.FC<{ atoms: ContextAtom[] }> = ({ atoms }) => 
     return (
         <div className="w-full bg-black/20 border-y border-canon-border/30 p-2 overflow-x-auto custom-scrollbar">
             <div className="flex gap-2">
+                {arr(sorted).map((atom) => (
+                    <AtomBadge key={atom.id} atom={atom} />
+                ))}
+            </div>
+        </div>
+    );
+};
+
+export const ContextPrioritiesRibbon: React.FC<{ atoms: ContextAtom[] }> = ({ atoms }) => {
+    const prios = atoms.filter((a) => String((a as any).id || '').startsWith('ctx:prio:'));
+    if (!prios.length) return null;
+    const sorted = [...prios].sort((a, b) => (b.magnitude ?? 0) - (a.magnitude ?? 0));
+    return (
+        <div className="w-full bg-black/10 border-y border-canon-border/20 p-2 overflow-x-auto custom-scrollbar">
+            <div className="flex items-center gap-2">
+                <div className="text-[10px] uppercase tracking-wider text-canon-text-light/80 px-1 whitespace-nowrap">Приоритеты</div>
                 {arr(sorted).map((atom) => (
                     <AtomBadge key={atom.id} atom={atom} />
                 ))}
@@ -1084,6 +1101,7 @@ export const GoalLabResults: React.FC<Props> = ({
 
                 <div className="bg-black/30 border-b border-canon-border/50 shrink-0">
                   <ContextRibbon atoms={currentAtoms} />
+                  <ContextPrioritiesRibbon atoms={currentAtoms} />
                 </div>
 
                 {tomRows && tomRows.length > 0 && (

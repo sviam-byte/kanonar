@@ -44,6 +44,7 @@ import { applyCharacterLens } from '../context/lens/characterLens';
 import { deriveAppraisalAtoms } from '../emotion/appraisals';
 import { deriveEmotionAtoms } from '../emotion/emotions';
 import { deriveDyadicEmotionAtoms } from '../emotion/dyadic';
+import { deriveContextPriorities } from '../context/priorities/deriveContextPriorities';
 import { deriveDriversAtoms } from '../drivers/deriveDrivers';
 import { deriveGoalAtoms } from './goalAtoms';
 import { derivePlanningGoalAtoms } from './planningGoalAtoms';
@@ -1023,9 +1024,16 @@ export function buildGoalLabContext(
 
     pushStage('S3', 'S3 • appraisal + emotions + dyadic emotions', atomsAfterDyadEmo);
 
+    // Context priorities (personal attentional weights)
+    const prioRes = deriveContextPriorities({ selfId, atoms: atomsAfterDyadEmo });
+    const atomsAfterPrio = mergeKeepingOverrides(atomsAfterDyadEmo, prioRes.atoms).merged;
+    pushStage('S3p', 'S3p • context priorities (ctx:prio:*) derived', atomsAfterPrio, {
+      meta: { prioAtoms: prioRes.atoms.length },
+    });
+
     // Drivers -> goal ecology -> planning goals (goal layer)
-    const drvRes = deriveDriversAtoms({ selfId, atoms: atomsAfterDyadEmo, agent: agentForPipeline });
-    const atomsAfterDrv = mergeKeepingOverrides(atomsAfterDyadEmo, drvRes.atoms).merged;
+    const drvRes = deriveDriversAtoms({ selfId, atoms: atomsAfterPrio, agent: agentForPipeline });
+    const atomsAfterDrv = mergeKeepingOverrides(atomsAfterPrio, drvRes.atoms).merged;
     pushStage('S3d', 'S3d • drivers derived (drv:*)', atomsAfterDrv, {
       meta: { drivers: drvRes.atoms.length },
     });

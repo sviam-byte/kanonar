@@ -129,6 +129,13 @@ export function applyCharacterLens(args: {
   const surv0 = getMag(atoms, `ctx:surveillance:${selfId}`, getMag(atoms, `world:loc:control_level:${selfId}`, 0));
   const intim0 = getMag(atoms, `ctx:intimacy:${selfId}`, 0);
   const crowd0 = getMag(atoms, `ctx:crowd:${selfId}`, 0);
+  // дополнительные оси контекста (важно: теперь линза влияет и на них)
+  const control0 = getMag(atoms, `ctx:control:${selfId}`, 0);
+  const time0 = getMag(atoms, `ctx:timePressure:${selfId}`, 0);
+  const secrecy0 = getMag(atoms, `ctx:secrecy:${selfId}`, 0);
+  const legitimacy0 = getMag(atoms, `ctx:legitimacy:${selfId}`, 0);
+  const hierarchy0 = getMag(atoms, `ctx:hierarchy:${selfId}`, 0);
+  const privacy0 = getMag(atoms, `ctx:privacy:${selfId}`, 0);
 
   // “сжатый” параметр подозрительности: растёт от паранойи/стресса/наблюдения/опасности
   const suspicion = clamp01(
@@ -149,6 +156,13 @@ export function applyCharacterLens(args: {
   const kSurv = 1.0 + 1.1 * (paranoia - 0.5);                                  // паранойя ↑ => surveillance субъективно выше
   const kCrowd = 1.0 + 0.7 * (stress - 0.5) + 0.7 * (paranoia - 0.5);            // стресс/паранойя ↑ => crowd “давит” сильнее
   const kIntim = 1.0 - 0.9 * (paranoia - 0.5) - 0.4 * (danger0 - 0.5);           // паранойя/опасность ↑ => интимность ощущается ниже
+  // Новые коэффициенты усиления (контроль/цейтнот/секретность/легитимность/иерархия/приватность)
+  const kControl = 1.0 + 0.9 * (0.5 - experience) + 0.6 * (stress - 0.5) + 0.5 * (paranoia - 0.5);
+  const kTime = 1.0 + 1.0 * (0.5 - ambiguityTol) + 0.7 * (fatigue - 0.5) + 0.3 * (danger0 - 0.5);
+  const kSecrecy = 1.0 + 1.1 * (paranoia - 0.5) + 0.5 * (surv0 - 0.5) + 0.4 * (pub0 - 0.5);
+  const kLegit = 1.0 - 0.9 * (paranoia - 0.5) + 0.6 * (experience - 0.5) + 0.4 * (normSens - 0.5);
+  const kHier = 1.0 + 0.8 * (normSens - 0.5) + 0.5 * (paranoia - 0.5);
+  const kPriv = 1.0 - 0.8 * (sensitivity - 0.5) - 0.5 * (paranoia - 0.5);
 
   const danger = amplify(danger0, kDanger);
   const unc = amplify(unc0, kUnc);
@@ -157,6 +171,12 @@ export function applyCharacterLens(args: {
   const surv = amplify(surv0, kSurv);
   const crowd = amplify(crowd0, kCrowd);
   const intim = amplify(intim0, kIntim);
+  const control = amplify(control0, kControl);
+  const timeP = amplify(time0, kTime);
+  const secrecy = amplify(secrecy0, kSecrecy);
+  const legitimacy = amplify(legitimacy0, kLegit);
+  const hierarchy = amplify(hierarchy0, kHier);
+  const privacy = amplify(privacy0, kPriv);
 
   const usedCtx = [
     `feat:char:${selfId}:trait.paranoia`,
@@ -175,6 +195,12 @@ export function applyCharacterLens(args: {
     `world:loc:control_level:${selfId}`,
     `ctx:intimacy:${selfId}`,
     `ctx:crowd:${selfId}`,
+    `ctx:control:${selfId}`,
+    `ctx:timePressure:${selfId}`,
+    `ctx:secrecy:${selfId}`,
+    `ctx:legitimacy:${selfId}`,
+    `ctx:hierarchy:${selfId}`,
+    `ctx:privacy:${selfId}`,
   ].filter(Boolean);
 
   const out: ContextAtom[] = [];
@@ -261,6 +287,72 @@ export function applyCharacterLens(args: {
       ),
       { intim0, kIntim, paranoia, danger0 },
       ['ctx', 'lens', 'intimacy']
+    ),
+    mkDerived(
+      `ctx:final:control:${selfId}`,
+      selfId,
+      control,
+      usedCtxBase(
+        `ctx:final:control:${selfId}`,
+        ensureBaseCopy(atoms, out, `ctx:control:${selfId}`, 'characterLens.ctx')
+      ),
+      { control0, kControl, paranoia, stress, experience },
+      ['ctx', 'lens', 'control']
+    ),
+    mkDerived(
+      `ctx:final:timePressure:${selfId}`,
+      selfId,
+      timeP,
+      usedCtxBase(
+        `ctx:final:timePressure:${selfId}`,
+        ensureBaseCopy(atoms, out, `ctx:timePressure:${selfId}`, 'characterLens.ctx')
+      ),
+      { time0, kTime, ambiguityTol, fatigue, danger0 },
+      ['ctx', 'lens', 'timePressure']
+    ),
+    mkDerived(
+      `ctx:final:secrecy:${selfId}`,
+      selfId,
+      secrecy,
+      usedCtxBase(
+        `ctx:final:secrecy:${selfId}`,
+        ensureBaseCopy(atoms, out, `ctx:secrecy:${selfId}`, 'characterLens.ctx')
+      ),
+      { secrecy0, kSecrecy, paranoia, surv0, pub0 },
+      ['ctx', 'lens', 'secrecy']
+    ),
+    mkDerived(
+      `ctx:final:legitimacy:${selfId}`,
+      selfId,
+      legitimacy,
+      usedCtxBase(
+        `ctx:final:legitimacy:${selfId}`,
+        ensureBaseCopy(atoms, out, `ctx:legitimacy:${selfId}`, 'characterLens.ctx')
+      ),
+      { legitimacy0, kLegit, experience, paranoia, normSens },
+      ['ctx', 'lens', 'legitimacy']
+    ),
+    mkDerived(
+      `ctx:final:hierarchy:${selfId}`,
+      selfId,
+      hierarchy,
+      usedCtxBase(
+        `ctx:final:hierarchy:${selfId}`,
+        ensureBaseCopy(atoms, out, `ctx:hierarchy:${selfId}`, 'characterLens.ctx')
+      ),
+      { hierarchy0, kHier, normSens, paranoia },
+      ['ctx', 'lens', 'hierarchy']
+    ),
+    mkDerived(
+      `ctx:final:privacy:${selfId}`,
+      selfId,
+      privacy,
+      usedCtxBase(
+        `ctx:final:privacy:${selfId}`,
+        ensureBaseCopy(atoms, out, `ctx:privacy:${selfId}`, 'characterLens.ctx')
+      ),
+      { privacy0, kPriv, sensitivity, paranoia },
+      ['ctx', 'lens', 'privacy']
     ),
 
     // отдельный агрегат — удобно дебажить “почему ToM/эмоции сдвинулись”
@@ -358,6 +450,26 @@ export function applyCharacterLens(args: {
 
   return {
     atoms: out,
-    lens: { paranoia, sensitivity, experience, stress, fatigue, suspicion, danger, unc, norm, pub, surv, crowd, intim }
+    lens: {
+      paranoia,
+      sensitivity,
+      experience,
+      stress,
+      fatigue,
+      suspicion,
+      danger,
+      unc,
+      norm,
+      pub,
+      surv,
+      crowd,
+      intim,
+      control,
+      timeP,
+      secrecy,
+      legitimacy,
+      hierarchy,
+      privacy
+    }
   };
 }

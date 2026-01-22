@@ -28,6 +28,18 @@ function getAny(atoms: ContextAtom[], ids: string[], def: number): number {
   return def;
 }
 
+function getPrio(atoms: ContextAtom[], selfId: string, axis: string, def = 0.5): number {
+  // ctx:prio:* are personal weights (0..1). def=0.5 means neutral.
+  return get(atoms, `ctx:prio:${axis}:${selfId}`, def);
+}
+
+function amplifyByPrio(x: number, prio: number): number {
+  // prio in [0..1]. 0.5 -> k=1 (no change). Higher prio amplifies deviation from 0.5.
+  const p = clamp01(prio);
+  const k = 0.6 + 0.8 * p; // 0.6..1.4
+  return clamp01(0.5 + (x - 0.5) * k);
+}
+
 function mkGoalAtom(selfId: string, domain: GoalDomain, v: number, usedAtomIds: string[], parts: any, tags: string[] = []) {
   const id = `goal:domain:${domain}:${selfId}`;
   return normalizeAtom({
@@ -91,6 +103,13 @@ export function deriveGoalAtoms(selfId: string, atoms: ContextAtom[], opts?: { t
   const publicness = getCtx(atoms, selfId, 'publicness', 0);
   const normP = getCtx(atoms, selfId, 'normPressure', 0);
   const unc = getCtx(atoms, selfId, 'uncertainty', 0);
+
+  // Context priorities (personal weights)
+  const prioDanger = getPrio(atoms, selfId, 'danger', 0.5);
+  const prioControl = getPrio(atoms, selfId, 'control', 0.5);
+  const prioPublic = getPrio(atoms, selfId, 'publicness', 0.5);
+  const prioNorm = getPrio(atoms, selfId, 'normPressure', 0.5);
+  const prioUnc = getPrio(atoms, selfId, 'uncertainty', 0.5);
   const fatigue = getAny(atoms, [`cap:fatigue:${selfId}`, `world:body:fatigue:${selfId}`], 0);
 
   // Very light “life weights” (optional). If absent -> 0.5 neutral.
@@ -105,33 +124,62 @@ export function deriveGoalAtoms(selfId: string, atoms: ContextAtom[], opts?: { t
     controlCtx.id || '',
     unc.id || '',
     normP.id || '',
+    `ctx:prio:danger:${selfId}`,
+    `ctx:prio:control:${selfId}`,
+    `ctx:prio:publicness:${selfId}`,
+    `ctx:prio:normPressure:${selfId}`,
+    `ctx:prio:uncertainty:${selfId}`,
     `cap:fatigue:${selfId}`
   ].filter(Boolean);
+
+  // Apply personal priorities as a lens on ctx magnitudes (does not change world, only weighting).
+  const dangerW = amplifyByPrio(danger.magnitude, prioDanger);
+  const controlW = amplifyByPrio(controlCtx.magnitude, prioControl);
+  const publicW = amplifyByPrio(publicness.magnitude, prioPublic);
+  const normW = amplifyByPrio(normP.magnitude, prioNorm);
+  const uncW = amplifyByPrio(unc.magnitude, prioUnc);
 
   const ecology: { domain: GoalDomain; v: number; used: string[]; parts: any }[] = [];
 
   // Safety: threat + drvSafety (if exists) blended with lifeSafety.
   {
-    const base = clamp01(0.60 * danger.magnitude + 0.40 * (Number.isFinite(drvSafety) ? drvSafety : 0));
+    const base = clamp01(0.60 * dangerW + 0.40 * (Number.isFinite(drvSafety) ? drvSafety : 0));
     const v = clamp01(0.55 * base + 0.45 * lifeSafety);
     ecology.push({
       domain: 'safety',
       v,
       used: [...usedCommon, `drv:safetyNeed:${selfId}`, `goal:lifeDomain:safety:${selfId}`],
-      parts: { danger: danger.magnitude, dangerLayer: danger.layer, drvSafety: Number.isFinite(drvSafety) ? drvSafety : null, lifeSafety, base }
+      parts: {
+        danger: danger.magnitude,
+        dangerW,
+        prioDanger,
+        dangerLayer: danger.layer,
+        drvSafety: Number.isFinite(drvSafety) ? drvSafety : null,
+        lifeSafety,
+        base
+      }
     });
   }
 
   // Control: (1-control) + drvControl
   {
-    const lack = clamp01(1 - controlCtx.magnitude);
+    const lack = clamp01(1 - controlW);
     const base = clamp01(0.60 * lack + 0.40 * (Number.isFinite(drvControl) ? drvControl : 0));
     const v = clamp01(0.55 * base + 0.45 * lifeOrder);
     ecology.push({
       domain: 'control',
       v,
       used: [...usedCommon, `drv:controlNeed:${selfId}`, `goal:lifeDomain:order:${selfId}`],
-      parts: { lackControl: lack, controlLayer: controlCtx.layer, drvControl: Number.isFinite(drvControl) ? drvControl : null, lifeOrder, base }
+      parts: {
+        lackControl: lack,
+        control: controlCtx.magnitude,
+        controlW,
+        prioControl,
+        controlLayer: controlCtx.layer,
+        drvControl: Number.isFinite(drvControl) ? drvControl : null,
+        lifeOrder,
+        base
+      }
     });
   }
 
@@ -149,37 +197,57 @@ export function deriveGoalAtoms(selfId: string, atoms: ContextAtom[], opts?: { t
 
   // Status: norm/public + drvStatus
   {
-    const base = clamp01(0.55 * clamp01(publicness.magnitude + normP.magnitude) + 0.45 * (Number.isFinite(drvStatus) ? drvStatus : 0));
+    const base = clamp01(0.55 * clamp01(publicW + normW) + 0.45 * (Number.isFinite(drvStatus) ? drvStatus : 0));
     const v = clamp01(0.55 * base + 0.45 * lifeStatus);
     ecology.push({
       domain: 'status',
       v,
       used: [...usedCommon, `drv:statusNeed:${selfId}`, `goal:lifeDomain:status:${selfId}`],
-      parts: { publicness: publicness.magnitude, publicnessLayer: publicness.layer, normPressure: normP.magnitude, normPressureLayer: normP.layer, drvStatus: Number.isFinite(drvStatus) ? drvStatus : null, lifeStatus, base }
+      parts: {
+        publicness: publicness.magnitude,
+        publicW,
+        prioPublic,
+        publicnessLayer: publicness.layer,
+        normPressure: normP.magnitude,
+        normW,
+        prioNorm,
+        normPressureLayer: normP.layer,
+        drvStatus: Number.isFinite(drvStatus) ? drvStatus : null,
+        lifeStatus,
+        base
+      }
     });
   }
 
   // Exploration: uncertainty + drvCur + lifeExplore
   {
-    const base = clamp01(0.55 * unc.magnitude + 0.45 * (Number.isFinite(drvCur) ? drvCur : 0));
+    const base = clamp01(0.55 * uncW + 0.45 * (Number.isFinite(drvCur) ? drvCur : 0));
     const v = clamp01(0.55 * base + 0.45 * lifeExplore);
     ecology.push({
       domain: 'exploration',
       v,
       used: [...usedCommon, `drv:curiosityNeed:${selfId}`, `goal:lifeDomain:exploration:${selfId}`],
-      parts: { uncertainty: unc.magnitude, uncertaintyLayer: unc.layer, drvCur: Number.isFinite(drvCur) ? drvCur : null, lifeExplore, base }
+      parts: {
+        uncertainty: unc.magnitude,
+        uncW,
+        prioUnc,
+        uncertaintyLayer: unc.layer,
+        drvCur: Number.isFinite(drvCur) ? drvCur : null,
+        lifeExplore,
+        base
+      }
     });
   }
 
   // Order: (1-chaos proxy) + lifeOrder (we reuse ctxControl as a proxy for order)
   {
-    const base = clamp01(0.60 * controlCtx.magnitude + 0.40 * lifeOrder);
+    const base = clamp01(0.60 * controlW + 0.40 * lifeOrder);
     const v = clamp01(base);
     ecology.push({
       domain: 'order',
       v,
       used: [...usedCommon, `goal:lifeDomain:order:${selfId}`],
-      parts: { control: controlCtx.magnitude, controlLayer: controlCtx.layer, lifeOrder, base }
+      parts: { control: controlCtx.magnitude, controlW, prioControl, controlLayer: controlCtx.layer, lifeOrder, base }
     });
   }
 
