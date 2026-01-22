@@ -24,9 +24,22 @@ function norm01(x: any, fb = 0) {
   return clamp01(v);
 }
 
+function isSafeByTagOrKind(tags: string[], kind: string) {
+  const k = String(kind || '').toLowerCase();
+  const ts = tags.map(t => String(t).toLowerCase());
+  if (ts.includes('safe') || ts.includes('safe_room') || ts.includes('safe-room') || ts.includes('safe_hub')) return true;
+  if (k.includes('safe')) return true;
+  return false;
+}
+
 function hazardFromCellLoose(c: any): number {
-  const tags: string[] = Array.isArray(c?.tags) ? c.tags : [];
-  if (tags.includes('hazard')) return 1;
+  const tags: string[] = Array.isArray(c?.tags) ? c.tags.map(String) : [];
+  const tl = tags.map(t => t.toLowerCase());
+
+  // NEW: safe cell hard-zeros hazard
+  if (tl.includes('safe') || tl.includes('safe_cell') || tl.includes('safe-cell')) return 0;
+
+  if (tl.includes('hazard')) return 1;
   let hz = 0;
   const arr: any[] = Array.isArray(c?.hazards) ? c.hazards : [];
   for (const h of arr) hz = Math.max(hz, norm01(h?.intensity, 0));
@@ -80,8 +93,12 @@ function computeMapAggregates(map: LocationMap | undefined) {
   let coverSum = 0, dangerSum = 0, walkable = 0, exits = 0;
   let hazardMax = 0;
   for (const c of cells) {
+    const tags = Array.isArray(c?.tags) ? c.tags.map(String) : [];
+    const tl = tags.map(t => t.toLowerCase());
+    const isSafeCell = tl.includes('safe') || tl.includes('safe_cell') || tl.includes('safe-cell');
+
     coverSum += norm01(c.cover, 0);
-    dangerSum += norm01(c.danger, 0);
+    dangerSum += isSafeCell ? 0 : norm01(c.danger, 0);
     hazardMax = Math.max(hazardMax, hazardFromCellLoose(c));
     walkable += (c.walkable === false) ? 0 : 1;
     // Heuristic: check if cell is an exit? 
@@ -140,10 +157,18 @@ export function extractLocationAtoms(args: {
   }
 
   const map = location.map;
-  const agg = computeMapAggregates(map);
-  envHazard = Math.max(envHazard, agg.hazardMax);
+  let agg = computeMapAggregates(map);
   const tags = safeArr<string>(location.tags).map(String);
   const kind = String(location.kind || location.type || 'location');
+  const safeLoc = isSafeByTagOrKind(tags, kind);
+  if (safeLoc) {
+    // NEW: safe location hard-zeros hazard/danger aggregates
+    envHazard = 0;
+    agg = { ...agg, hazardMax: 0, dangerMean: 0 };
+  } else {
+    // existing behavior
+    envHazard = Math.max(envHazard, agg.hazardMax);
+  }
   const owner = location.ownership?.ownerFaction ? String(location.ownership.ownerFaction) : null;
   const tagsLc = tags.map(t => String(t).toLowerCase());
 
@@ -193,15 +218,15 @@ export function extractLocationAtoms(args: {
   out.push(atom(`world:loc:crowd:${selfId}`, crowd, { locId, raw: state.crowd_level }));
 
   // --- Hazards ---
-  out.push(atom(`world:env:hazard:${selfId}`, envHazard, { locId, hazardsCount: hazards.length }));
+  out.push(atom(`world:env:hazard:${selfId}`, envHazard, { locId, hazardsCount: hazards.length, safeLoc }));
 
   // --- Map Aggregates (Must exist for possibilities/threat) ---
-  out.push(atom(`world:map:hasMap:${selfId}`, agg.hasMap, { locId }));
-  out.push(atom(`world:map:cover:${selfId}`, agg.coverMean, { locId }));
-  out.push(atom(`world:map:danger:${selfId}`, agg.dangerMean, { locId }));
-  out.push(atom(`world:map:hazardMax:${selfId}`, agg.hazardMax, { locId }));
-  out.push(atom(`world:map:walkableFrac:${selfId}`, agg.walkableFrac, { locId }));
-  out.push(atom(`world:map:exits:${selfId}`, agg.exitsCountNorm, { locId }));
+  out.push(atom(`world:map:hasMap:${selfId}`, agg.hasMap, { locId, safeLoc }));
+  out.push(atom(`world:map:cover:${selfId}`, agg.coverMean, { locId, safeLoc }));
+  out.push(atom(`world:map:danger:${selfId}`, agg.dangerMean, { locId, safeLoc }));
+  out.push(atom(`world:map:hazardMax:${selfId}`, agg.hazardMax, { locId, safeLoc }));
+  out.push(atom(`world:map:walkableFrac:${selfId}`, agg.walkableFrac, { locId, safeLoc }));
+  out.push(atom(`world:map:exits:${selfId}`, agg.exitsCountNorm, { locId, safeLoc }));
 
   // --- Derived "Escape" Proxy (Cheap, but stable) ---
   // Escape depends on exits + walkable + (1-danger)

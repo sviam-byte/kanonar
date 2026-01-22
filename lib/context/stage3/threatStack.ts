@@ -19,7 +19,7 @@ const DEFAULT_W: ThreatWeights = {
 };
 
 const DEFAULT_P: ThreatParams = {
-  socialBaselineHostility: 0.40,
+  socialBaselineHostility: 0.06,
   socialShieldStrength: 0.85,
   wLos: 0.6,
   wAud: 0.4,
@@ -80,15 +80,38 @@ export function deriveThreatStack(
     const close = getM(resolved, `obs:nearby:${agentId}:${b}`, 0);
     const los = getM(resolved, `obs:los:${agentId}:${b}`, 0);
     const aud = getM(resolved, `obs:audio:${agentId}:${b}`, 0);
+    // Prefer dyad-level threat/support from ToM if available.
+    const dyadThreat = getM(resolved, `tom:dyad:${agentId}:${b}:threat`, NaN);
+    const dyadSupport = getM(resolved, `tom:dyad:${agentId}:${b}:support`, NaN);
+    // Fallback trust if dyad atoms are missing.
     const trust = getM(resolved, `tom:trustEff:${agentId}:${b}`, 0.45);
 
-    const hostility = clamp01(P.socialBaselineHostility + (1 - trust) * P.socialShieldStrength);
     const percept = clamp01(P.wLos * los + P.wAud * aud);
-    const t = clamp01(close * hostility * percept);
+    // If we have dyad threat: use it; otherwise derive from trust with small baseline.
+    const baseThreat = Number.isFinite(dyadThreat)
+      ? clamp01(dyadThreat)
+      : clamp01(P.socialBaselineHostility + (1 - trust) * 0.75);
+    // Support acts as shield: high support suppresses perceived threat.
+    const shield = Number.isFinite(dyadSupport) ? clamp01(dyadSupport) : clamp01(trust);
+    const effectiveThreat = clamp01(baseThreat * (1 - P.socialShieldStrength * shield));
+    const t = clamp01(close * effectiveThreat * percept);
 
     t_ab_list.push({
       b, t,
-      usedAtomIds: used(`obs:nearby:${agentId}:${b}`, `obs:los:${agentId}:${b}`, `tom:trustEff:${agentId}:${b}`)
+      usedAtomIds: Number.isFinite(dyadThreat) || Number.isFinite(dyadSupport)
+        ? used(
+          `obs:nearby:${agentId}:${b}`,
+          `obs:los:${agentId}:${b}`,
+          `obs:audio:${agentId}:${b}`,
+          `tom:dyad:${agentId}:${b}:threat`,
+          `tom:dyad:${agentId}:${b}:support`
+        )
+        : used(
+          `obs:nearby:${agentId}:${b}`,
+          `obs:los:${agentId}:${b}`,
+          `obs:audio:${agentId}:${b}`,
+          `tom:trustEff:${agentId}:${b}`
+        )
     });
   }
   const T_soc = noisyOr(t_ab_list.map(x => x.t));
