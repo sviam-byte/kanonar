@@ -25,6 +25,10 @@ const DEFAULT_P: ThreatParams = {
   wAud: 0.4,
 };
 
+function hasTag(resolved: Map<string, Atom>, agentId: string, tag: string) {
+  return getM(resolved, `world:loc:tag:${agentId}:${tag}`, 0) > 0.5;
+}
+
 export function deriveThreatStack(
   agentId: string,
   resolved: Map<string, Atom>,
@@ -32,8 +36,25 @@ export function deriveThreatStack(
   weights: Partial<ThreatWeights> = {},
   params: Partial<ThreatParams> = {},
 ): Atom[] {
+  const isSafeTag =
+    hasTag(resolved, agentId, 'safe') ||
+    hasTag(resolved, agentId, 'safe_room') ||
+    hasTag(resolved, agentId, 'safe-room') ||
+    hasTag(resolved, agentId, 'safe_hub') ||
+    hasTag(resolved, agentId, 'safroom');
+  const locPrivacy = getM(resolved, `world:loc:privacy:${agentId}`, 0.5);
+  const envDanger = getM(resolved, `world:env:hazard:${agentId}`, 0.0);
+  const contextualBaseline =
+    isSafeTag ? 0.03 :
+    (locPrivacy >= 0.75 && envDanger <= 0.15) ? 0.06 :
+    0.20;
+
   const W: ThreatWeights = { ...DEFAULT_W, ...weights };
-  const P: ThreatParams = { ...DEFAULT_P, ...params };
+  const P: ThreatParams = {
+    ...DEFAULT_P,
+    ...params,
+    socialBaselineHostility: params.socialBaselineHostility ?? contextualBaseline,
+  };
   // Prefer subjective ctx:final:* axes when present.
   const ctxKey = (axis: string) => {
     const candidates = pickCtxId(axis, agentId);
@@ -83,8 +104,11 @@ export function deriveThreatStack(
     // Prefer dyad-level threat/support from ToM if available.
     const dyadThreat = getM(resolved, `tom:dyad:${agentId}:${b}:threat`, NaN);
     const dyadSupport = getM(resolved, `tom:dyad:${agentId}:${b}:support`, NaN);
+    const dyadTrust = getM(resolved, `tom:dyad:${agentId}:${b}:trust`, NaN);
     // Fallback trust if dyad atoms are missing.
-    const trust = getM(resolved, `tom:trustEff:${agentId}:${b}`, 0.45);
+    const trust = Number.isFinite(dyadTrust)
+      ? clamp01(dyadTrust)
+      : getM(resolved, `tom:trustEff:${agentId}:${b}`, 0.45);
 
     const percept = clamp01(P.wLos * los + P.wAud * aud);
     // If we have dyad threat: use it; otherwise derive from trust with small baseline.
@@ -115,6 +139,8 @@ export function deriveThreatStack(
     });
   }
   const T_soc = noisyOr(t_ab_list.map(x => x.t));
+  const attackBiasList = otherAgentIds.map(b => getM(resolved, `mind:attack_bias:${agentId}:${b}`, 0));
+  const attackTotal = noisyOr(attackBiasList);
 
   // Final
   const finalMix = linMix([
@@ -250,6 +276,19 @@ export function deriveThreatStack(
       }
     },
     { id: `mind:threat:${agentId}`, m: T_final, c: 1, o: 'derived', meta: { trace: { usedAtomIds: [`threat:final:${agentId}`], notes: 'mind.threat mirrors threat:final' } } },
+    {
+      id: `mind:attack:${agentId}`,
+      m: attackTotal,
+      c: 1,
+      o: 'derived',
+      meta: {
+        trace: {
+          usedAtomIds: otherAgentIds.map(b => `mind:attack_bias:${agentId}:${b}`),
+          parts: otherAgentIds.map((b, idx) => ({ name: `attack_bias:${b}`, value: attackBiasList[idx], weight: 1 })),
+          notes: 'attack = noisyOr(mind:attack_bias:dyads)'
+        }
+      }
+    },
     {
       id: `mind:pressure:${agentId}`,
       m: pressureMix.value,

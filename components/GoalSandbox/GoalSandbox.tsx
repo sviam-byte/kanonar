@@ -1891,7 +1891,7 @@ export const GoalSandbox: React.FC = () => {
       {/* CENTER: map + debug/tom/pipeline/compare tabs */}
       <main className="flex-1 flex flex-col relative min-w-0 bg-black">
         {/* Map area: fixed to map size (no giant empty black center). */}
-        <div className="flex-none relative p-3 overflow-hidden">
+        <div className="flex-none relative bg-black overflow-visible p-3">
           <div
             className="relative flex-none border border-slate-800 bg-slate-950/40 overflow-hidden shadow-[0_0_0_1px_rgba(148,163,184,0.15)]"
             style={{
