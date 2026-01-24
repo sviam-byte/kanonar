@@ -90,6 +90,16 @@ function computeExits(
 ): { x: number; y: number }[] {
   if (!pos || pos.x == null || pos.y == null) return [];
   const { x, y } = pos;
+
+  // If the map has explicit exit markers, prefer them.
+  // This is how custom maps can "force" exits for goal/context affordances.
+  const explicit: { x: number; y: number }[] = [];
+  for (const cell of cells.values()) {
+    const tags = Array.isArray((cell as any)?.tags) ? (cell as any).tags : [];
+    if (tags.includes('exit')) explicit.push({ x: cell.x, y: cell.y });
+  }
+  if (explicit.length) return explicit;
+
   const exits: { x: number; y: number }[] = [];
   const deltas = [{ dx: 1, dy: 0 }, { dx: -1, dy: 0 }, { dx: 0, dy: 1 }, { dx: 0, dy: -1 }];
   for (const { dx, dy } of deltas) {
@@ -240,6 +250,8 @@ export function buildFullAgentContextFrame(
                 cell: pos,
                 hazard: myCell?.danger || 0,
                 cover: myCell?.cover || 0,
+                cellTags: Array.isArray((myCell as any)?.tags) ? (myCell as any).tags : [],
+                isSafeCell: Array.isArray((myCell as any)?.tags) ? (myCell as any).tags.includes('safe') : false,
                 nearestHazardDist: computeNearestHazardDist(pos, locCells),
                 exits: computeExits(pos, locCells)
             }

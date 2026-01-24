@@ -288,6 +288,19 @@ const GoalRow: React.FC<{
              {description ? (
                <div className="text-[10px] text-canon-text-light/70 mt-1 leading-snug">{description}</div>
              ) : null}
+
+             {/* UI personalization multiplier (debug) */}
+             {Number.isFinite((score as any).uiMultiplier) &&
+             Math.abs(((score as any).uiMultiplier ?? 1) - 1) > 1e-3 ? (
+               <div className="text-[10px] text-canon-text-light/70 mt-1">
+                 ui×{Number((score as any).uiMultiplier).toFixed(2)}
+                 {Array.isArray((score as any).uiReasons) && (score as any).uiReasons.length ? (
+                   <span className="ml-2 font-mono text-[10px] text-canon-text-light/60">
+                     {(score as any).uiReasons.join(', ')}
+                   </span>
+                 ) : null}
+               </div>
+             ) : null}
              
              {/* Key Contributors Dots */}
              <div className="flex gap-1 mt-1.5 h-1.5">

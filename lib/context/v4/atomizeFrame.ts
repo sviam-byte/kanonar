@@ -8,6 +8,7 @@ import { normalizeAtom } from '../v2/infer';
 import { computeRelationshipLabels } from '../../relations/relationshipLabels';
 import { deriveRelationshipLabel } from '../../social/relationshipLabels';
 import { extractLocationAtoms } from '../sources/locationAtoms';
+import { computeCombatPower01, advantageSigmoid } from '../../combat/power';
 import { safeNum } from '../../util/safe';
 
 function clamp01(x: number): number {
@@ -224,7 +225,8 @@ export function atomizeFrame(frame: AgentContextFrame, t: number, world?: WorldS
   }
   
   // Deduped safe zone check
-  if (tagsList.includes('safe_hub') || tagsList.includes('private')) {
+  const isSafeCell = !!(where?.map as any)?.isSafeCell;
+  if (tagsList.includes('safe_hub') || tagsList.includes('private') || isSafeCell) {
       add('safe_zone_hint', 1, 'Safe Zone', 'where');
   }
   
@@ -232,7 +234,10 @@ export function atomizeFrame(frame: AgentContextFrame, t: number, world?: WorldS
       if (typeof where.map.hazard === "number") {
           add('map_hazard', where.map.hazard, 'Hazard Level', 'where');
            if (where.map.hazard > 0) {
-             add('hazard_local', where.map.hazard, 'Hazard Here', 'map');
+             // If we're explicitly in a safe cell, suppress local hazard.
+             if (!isSafeCell) {
+               add('hazard_local', where.map.hazard, 'Hazard Here', 'map');
+             }
           }
       }
       if (typeof where.map.cover === "number") {
@@ -493,6 +498,25 @@ export function atomizeFrame(frame: AgentContextFrame, t: number, world?: WorldS
             const otherId = r.targetId;
             const label = r.label || r.name || otherId;
             const suf = mkId([otherId]);
+            const otherChar = getCharacterById(world, otherId);
+
+            const pushDyad = (metric: string, mag: number, dyadLabel: string, meta?: any) => {
+              const id = `tom:dyad:${selfId}:${otherId}:${metric}`;
+              if (seenIds.has(id)) return;
+              seenIds.add(id);
+              atoms.push(normalizeAtom({
+                id,
+                kind: 'tom_belief',
+                source: 'tom',
+                magnitude: clamp01(mag),
+                label: dyadLabel,
+                timestamp: t,
+                ns: 'tom',
+                subject: selfId,
+                targetId: otherId,
+                meta: meta ?? {}
+              } as any));
+            };
 
             // --- ACQUAINTANCE / RECOGNITION ATOMS ---
             const e: any = acqMap?.[otherId];
@@ -575,9 +599,48 @@ export function atomizeFrame(frame: AgentContextFrame, t: number, world?: WorldS
             if (r.threat > 0.1) add('tom_threat', clamp01(r.threat ?? 0), `ToM threat: ${label}`, 'tom', `threat_${suf}`);
             if (r.support > 0.1) add('tom_support', clamp01(r.support ?? 0), `ToM support: ${label}`, 'tom', `support_${suf}`);
             if (r.closeness > 0.1 || r.attachment > 0.1) add('tom_closeness', clamp01(r.closeness ?? r.attachment ?? 0), `ToM closeness: ${label}`, 'tom', `close_${suf}`);
+
+            if (r.trust != null) pushDyad('trust', clamp01(r.trust), `Dyad trust: ${label}`);
+            if (r.threat != null) pushDyad('threat', clamp01(r.threat), `Dyad threat: ${label}`);
+            if (r.support != null) pushDyad('support', clamp01(r.support), `Dyad support: ${label}`);
+            const intimacy = r.closeness ?? r.attachment ?? 0;
+            if (intimacy != null) pushDyad('intimacy', clamp01(intimacy), `Dyad intimacy: ${label}`);
+
+            if (selfChar && otherChar) {
+              const selfPower = computeCombatPower01(selfChar);
+              const otherPower = computeCombatPower01(otherChar);
+              const adv = advantageSigmoid(selfPower, otherPower, 2.2);
+              const dist = distMap.get(otherId) ?? 1;
+              const close = clamp01(1 - dist);
+              const trust = clamp01(r.trust ?? 0.45);
+              const attackBias = clamp01(close * (1 - trust) * Math.pow(adv, 1.8));
+
+              pushDyad('power_adv', adv, `Dyad power advantage: ${label}`, {
+                parts: { selfPower, otherPower, adv }
+              });
+
+              const attackId = `mind:attack_bias:${selfId}:${otherId}`;
+              if (!seenIds.has(attackId)) {
+                seenIds.add(attackId);
+                atoms.push(normalizeAtom({
+                  id: attackId,
+                  kind: 'mind_state',
+                  source: 'tom',
+                  magnitude: attackBias,
+                  label: `Attack bias: ${label}`,
+                  timestamp: t,
+                  ns: 'mind',
+                  subject: selfId,
+                  targetId: otherId,
+                  meta: {
+                    parts: { close, trust, adv, selfPower, otherPower },
+                    notes: ['attackBias ~ close*(1-trust)*adv^1.8']
+                  }
+                } as any));
+              }
+            }
         
             // --- RELATIONSHIP LABELS (High Level) ---
-            const otherChar = getCharacterById(world, otherId);
             if (selfChar && otherChar && otherChar.type === 'character') {
               const rel = deriveRelationshipLabel(world as any, selfChar, otherChar);
 

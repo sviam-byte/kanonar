@@ -1,5 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import { MapViewer } from '../locations/MapViewer';
+import type { LocationMap } from '../../types';
+
+type EditBrush = 'none' | 'safe' | 'danger' | 'hazard' | 'walkable' | 'wall' | 'exit' | 'clear_exit';
 
 export function LivePlacementMiniMap({
   snapshot,
@@ -11,6 +14,8 @@ export function LivePlacementMiniMap({
   widthPx = 360,
   variant = 'floating',
   chrome = true,
+  // NEW: allow parent to persist edits
+  onEditLocationMap,
 }: {
   snapshot: any | null;
   worldFacts: any;
@@ -19,12 +24,18 @@ export function LivePlacementMiniMap({
   onMoveXY: (actorId: string, x: number, y: number, locationId: string) => void;
   activeActorId?: string | null;
   widthPx?: number;
-  /** Render as a fixed overlay or embedded into a parent layout. */
   variant?: 'floating' | 'embedded';
-  /** Hide the panel chrome when the parent provides its own card. */
   chrome?: boolean;
+
+  /** Called when user edits the map. Parent must persist into scene draft. */
+  onEditLocationMap?: (locationId: string, nextMap: LocationMap) => void;
 }) {
   const [collapsed, setCollapsed] = useState(false);
+
+  // NEW
+  const [editMode, setEditMode] = useState(false);
+  const [brush, setBrush] = useState<EditBrush>('none');
+  const [exitTargetId, setExitTargetId] = useState<string>('outside');
 
   const locs = useMemo(
     () => (snapshot?.locations || []).slice().sort((a: any, b: any) => String(a.id).localeCompare(String(b.id))),
@@ -66,77 +77,109 @@ export function LivePlacementMiniMap({
   }, [localChars, hazards]);
 
   if (!snapshot) return null;
+  if (!place) return null;
+  if (collapsed) return null;
 
-  const outerClass = variant === 'floating' ? 'fixed top-24 left-4 z-40' : 'w-full';
-  const outerStyle = variant === 'floating' ? { width: widthPx } : undefined;
+  const placeMap = (place as any)?.map as LocationMap | undefined;
+  if (!placeMap) return null;
 
-  const mapBody = (
-    <>
-      {!collapsed ? (
-        <div className={chrome ? 'px-3 pb-3 space-y-2' : 'space-y-2'}>
+  const onCellClick = (x: number, y: number) => {
+    if (editMode) return; // в editMode клики уходит в editor
+    if (!activeActorId) return;
+    onMoveXY(activeActorId, x, y, selectedLocId);
+  };
+
+  const onMapChange = (next: LocationMap) => {
+    onEditLocationMap?.(selectedLocId, next);
+  };
+
+  // NOTE: чтобы не было гигантской заливки — sizeMode="map"
+  return (
+    <div
+      className={
+        variant === 'floating'
+          ? 'fixed left-3 top-16 z-40'
+          : 'relative'
+      }
+      style={{ width: widthPx }}
+    >
+      {chrome && (
+        <div className="mb-2 flex items-center justify-between">
+          <div className="text-xs text-canon-text-light">Location</div>
           <div className="flex items-center gap-2">
-            <div className="text-xs opacity-70">Location</div>
-            <select
-              className="canon-input bg-black/40 text-white border border-canon-border w-full"
-              value={selectedLocId}
-              onChange={(e) => onSelectLocId(e.target.value)}
+            <label className="text-[11px] text-canon-text-light flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={editMode}
+                onChange={(e) => setEditMode(e.target.checked)}
+              />
+              Edit cells
+            </label>
+            <button
+              onClick={() => setCollapsed(true)}
+              className="text-[11px] px-2 py-1 rounded border border-canon-border text-canon-text-light hover:border-canon-text"
             >
+              Hide
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Controls for editor */}
+      {editMode && (
+        <div className="mb-2 p-2 rounded border border-canon-border bg-canon-bg/60">
+          <div className="flex flex-wrap gap-1 mb-2">
+            {(['safe', 'walkable', 'wall', 'danger', 'hazard', 'exit', 'clear_exit'] as EditBrush[]).map((b) => (
+              <button
+                key={b}
+                onClick={() => setBrush(b)}
+                className={
+                  'px-2 py-1 rounded border text-[10px] uppercase ' +
+                  (brush === b ? 'border-canon-accent text-canon-accent bg-canon-accent/10' : 'border-canon-border text-canon-text-light hover:border-canon-text')
+                }
+              >
+                {b}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex items-center gap-2">
+            <div className="text-[10px] text-canon-text-light">Exit target:</div>
+            <select
+              value={exitTargetId}
+              onChange={(e) => setExitTargetId(e.target.value)}
+              className="text-[11px] bg-canon-bg border border-canon-border rounded px-2 py-1 text-canon-text-light"
+            >
+              <option value="outside">outside</option>
               {locs.map((l: any) => (
-                <option key={l.id} value={l.id}>
-                  {l.title ?? l.id}
+                <option key={String(l.id)} value={String(l.id)}>
+                  {String(l.id)}
                 </option>
               ))}
             </select>
+            <div className="text-[10px] text-canon-text-light opacity-70">
+              (use brush: exit / clear_exit)
+            </div>
           </div>
 
-          {place?.map ? (
-            <div className="h-[320px]">
-              <MapViewer
-                map={place.map}
-                highlights={highlights}
-                hideTextVisuals={true}
-                onCellClick={(x, y) => {
-                  if (!activeActorId) return;
-                  onMoveXY(activeActorId, x, y, selectedLocId);
-                }}
-              />
-            </div>
-          ) : (
-            <div className="h-[320px] rounded-xl border border-canon-border bg-black/15 flex items-center justify-center text-xs opacity-70">
-              No place.map for this location
-            </div>
-          )}
-
-          <div className="text-[11px] opacity-60">
-            {activeActorId
-              ? `Click a cell to place: ${activeActorId} (move_xy)`
-              : 'Select an actor (left panel) then click a cell to place it (move_xy).'}
-          </div>
+          {/* передаём brush/target вниз через map.meta (см PATCH 3) */}
         </div>
-      ) : null}
-    </>
-  );
+      )}
 
-  if (!chrome) {
-    return (
-      <div className={outerClass} style={outerStyle}>
-        {mapBody}
-      </div>
-    );
-  }
-
-  return (
-    <div className={outerClass} style={outerStyle}>
-      <div className="rounded-2xl border border-canon-border bg-canon-panel/80 backdrop-blur-md shadow-canon-2 overflow-hidden">
-        <div className="px-3 py-2 flex items-center gap-2">
-          <div className="text-sm font-semibold">Map</div>
-          <div className="grow" />
-          <button className="canon-button" onClick={() => setCollapsed((v) => !v)}>
-            {collapsed ? 'Expand' : 'Collapse'}
-          </button>
-        </div>
-        {mapBody}
-      </div>
+      <MapViewer
+        map={{
+          ...(placeMap as any),
+          // хак-прокидка editor-params в map для LocationMapEditor (см PATCH 3)
+          __editor: { brush, exitTargetId },
+        } as any}
+        onCellClick={onCellClick}
+        highlights={highlights}
+        isEditor={editMode}
+        onMapChange={onMapChange}
+        sizeMode="map"
+        cellPx={24}
+        hideTextVisuals={true}
+      />
     </div>
   );
 }

@@ -17,7 +17,7 @@ import { getAllCharactersWithRuntime } from '../../data';
 import { createInitialWorld } from '../../lib/world/initializer';
 import { normalizeWorldShape } from '../../lib/world/normalizeWorldShape';
 import { scoreContextualGoals } from '../../lib/context/v2/scoring';
-import type { ContextAtom } from '../../lib/context/v2/types';
+import type { ContextAtom, ContextualGoalScore as V2GoalScore } from '../../lib/context/v2/types';
 import { DebugShell } from './DebugShell';
 import { allLocations } from '../../data/locations';
 import { computeLocationGoalsForAgent } from '../../lib/context/v2/locationGoals';
@@ -57,6 +57,122 @@ import { normalizeAtom } from '../../lib/context/v2/infer';
 import { lintActionsAndLocations } from '../../lib/linter/actionsAndLocations';
 import { arr } from '../../lib/utils/arr';
 import { getCanonicalAtomsFromSnapshot } from '../../lib/goal-lab/atoms/canonical';
+
+function clamp01(x: number) {
+  if (!Number.isFinite(x)) return 0;
+  return Math.max(0, Math.min(1, x));
+}
+
+function applyUiPersonalization(
+  goals: V2GoalScore[],
+  agent: AgentState,
+  frame: any
+): (V2GoalScore & {
+  uiMultiplier?: number;
+  uiReasons?: string[];
+})[] {
+  // UI-only personalization layer to make character differences visible immediately.
+  const traitIds = new Set<string>();
+  const identity: any = (agent as any)?.identity || {};
+
+  // Common places where traits can live across data shapes.
+  const pushTrait = (t: any) => {
+    if (!t) return;
+    if (typeof t === 'string') traitIds.add(t);
+    else if (typeof t?.id === 'string') traitIds.add(t.id);
+    else if (typeof t?.key === 'string') traitIds.add(t.key);
+  };
+
+  (Array.isArray(identity?.traits) ? identity.traits : []).forEach(pushTrait);
+  (Array.isArray((agent as any)?.traits) ? (agent as any).traits : []).forEach(pushTrait);
+  (Array.isArray((agent as any)?.tags) ? (agent as any).tags : []).forEach(pushTrait);
+  if (typeof identity?.arch_true_dominant_id === 'string') {
+    traitIds.add(identity.arch_true_dominant_id);
+  }
+
+  const locTags = new Set<string>(
+    Array.isArray((frame as any)?.where?.locationTags) ? (frame as any).where.locationTags : []
+  );
+  const isSafeCell = !!(frame as any)?.where?.map?.isSafeCell;
+
+  return (goals || []).map(goal => {
+    let m = 1.0;
+    const reasons: string[] = [];
+
+    const goalId = String((goal as any).goalId || (goal as any).id || '');
+    const label = String((goal as any).label || '');
+    const isSocial = /social|talk|chat|party|bond|cooperate/i.test(goalId) || /social/i.test(label);
+    const isRelax = /rest|relax|sleep/i.test(goalId) || /relax|rest|sleep/i.test(label);
+    const isClean = /clean|hygiene/i.test(goalId) || /clean/i.test(label);
+    const isWork = /work|operate|maintain|admin/i.test(goalId) || /work/i.test(label);
+
+    // Introvert / Extrovert example.
+    if (traitIds.has('Introvert')) {
+      if (locTags.has('public') || locTags.has('Public')) {
+        if (isSocial) {
+          m *= 0.3;
+          reasons.push('Introvert×public');
+        }
+        if (isRelax) {
+          m *= 0.6;
+          reasons.push('Relax↓public');
+        }
+      }
+      if (locTags.has('private') || locTags.has('Private') || isSafeCell) {
+        if (isRelax) {
+          m *= 1.4;
+          reasons.push('Relax↑private');
+        }
+      }
+    }
+    if (traitIds.has('Extrovert')) {
+      if (isSocial) {
+        m *= 1.4;
+        reasons.push('Extrovert');
+      }
+    }
+
+    // NeatFreak / Lazy example.
+    if (traitIds.has('NeatFreak') && isClean) {
+      m *= 1.6;
+      reasons.push('NeatFreak');
+    }
+    if (traitIds.has('Lazy')) {
+      if (isWork || isClean) {
+        m *= 0.6;
+        reasons.push('Lazy↓work/clean');
+      }
+      if (isRelax) {
+        m *= 1.2;
+        reasons.push('Lazy↑rest');
+      }
+    }
+
+    // Safety bias: if safe cell/private room, reduce panic goals and increase recovery.
+    if (isSafeCell || locTags.has('safe_hub') || locTags.has('private')) {
+      if (/escape|flee|panic|hide/i.test(goalId)) {
+        m *= 0.7;
+        reasons.push('Safe↓panic');
+      }
+      if (isRelax) {
+        m *= 1.1;
+        reasons.push('Safe↑rest');
+      }
+    }
+
+    const rawProb = Number((goal as any).probability ?? 0);
+    const newProb = clamp01(rawProb * m);
+    const newTotal = Number((goal as any).totalLogit ?? 0) * m;
+
+    return {
+      ...goal,
+      totalLogit: newTotal,
+      probability: newProb,
+      uiMultiplier: Math.abs(m - 1) > 1e-3 ? Number(m.toFixed(3)) : undefined,
+      uiReasons: reasons.length ? reasons : undefined,
+    };
+  }).sort((a, b) => (b.probability ?? 0) - (a.probability ?? 0));
+}
 
 function createCustomLocationEntity(map: LocationMap): LocationEntity {
   const cells = map.cells || [];
@@ -390,7 +506,7 @@ export const GoalSandbox: React.FC = () => {
 
   /**
    * Lock the map viewport after the first map selection to avoid resize jitter.
-   * Fixed px size keeps the frame stable across different map metadata shapes.
+   * Fit the viewport to the map so the center area doesn't become a huge black canvas.
    */
   useEffect(() => {
     if (!activeMap) {
@@ -406,7 +522,13 @@ export const GoalSandbox: React.FC = () => {
     }
 
     if (lockedMapViewport) return;
-    setLockedMapViewport({ w: 980, h: 620 });
+
+    // MapViewer uses cellSize=32 and adds padding (p-4) + border; include chrome margin.
+    const cellSize = 32;
+    const chrome = 64;
+    const w = Math.max(320, activeMap.width * cellSize + chrome);
+    const h = Math.max(240, activeMap.height * cellSize + chrome);
+    setLockedMapViewport({ w, h });
     lockedMapIdRef.current = nextMapId || 'map';
   }, [activeMap, lockedMapViewport]);
 
@@ -1056,7 +1178,10 @@ export const GoalSandbox: React.FC = () => {
       const { agent, frame, snapshot, situation, goalPreview } = glCtx as any;
       snapshot.atoms = dedupeAtomsById(snapshot.atoms);
 
-      const goals = scoreContextualGoals(agent, worldState, snapshot, undefined, frame || undefined);
+      // Raw goal scores from the engine.
+      const rawGoals = scoreContextualGoals(agent, worldState, snapshot, undefined, frame || undefined);
+      // UI-only personalization layer (explicitly to show character differences immediately).
+      const goals = applyUiPersonalization(rawGoals, agent, frame);
       const locScores = computeLocationGoalsForAgent(
         worldState,
         agent.entityId,
@@ -1765,9 +1890,8 @@ export const GoalSandbox: React.FC = () => {
 
       {/* CENTER: map + debug/tom/pipeline/compare tabs */}
       <main className="flex-1 flex flex-col relative min-w-0 bg-black">
-        <div className="flex-1 relative min-h-0 flex items-center justify-center bg-black overflow-hidden">
-          {/* Background grid to keep the canvas feeling alive when empty. */}
-          <div className="absolute inset-0 opacity-[0.08] pointer-events-none bg-[linear-gradient(to_right,#1e293b_1px,transparent_1px),linear-gradient(to_bottom,#1e293b_1px,transparent_1px)] bg-[size:40px_40px]" />
+        {/* Map area: fixed to map size (no giant empty black center). */}
+        <div className="flex-none relative bg-black overflow-visible p-3">
           <div
             className="relative flex-none border border-slate-800 bg-slate-950/40 overflow-hidden shadow-[0_0_0_1px_rgba(148,163,184,0.15)]"
             style={{
@@ -1805,7 +1929,7 @@ export const GoalSandbox: React.FC = () => {
           ) : null}
         </div>
 
-        <div className="h-[40%] border-t border-slate-800 bg-slate-950 flex flex-col min-h-0">
+        <div className="flex-1 min-h-[220px] border-t border-slate-800 bg-slate-950 flex flex-col min-h-0">
           <nav className="flex border-b border-slate-800 bg-slate-900/20">
             {(['debug', 'tom', 'pipeline', 'compare'] as const).map((t) => (
               <button
@@ -1832,7 +1956,9 @@ export const GoalSandbox: React.FC = () => {
               />
             ) : null}
             {activeBottomTab === 'tom' ? (
-              <ToMPanel atoms={asArray<any>((snapshotV1?.atoms ?? (snapshot as any)?.atoms) as any)} />
+              // IMPORTANT: ToM atoms are produced by GoalLab pipeline stages, not by the raw SimSnapshot.
+              // Using passportAtoms makes the Dyad/ToM layer non-empty.
+              <ToMPanel atoms={passportAtoms as any} />
             ) : null}
             {activeBottomTab === 'compare' ? (
               <CastComparePanel castRows={castRowsSafe as any} focusId={focusId} />
