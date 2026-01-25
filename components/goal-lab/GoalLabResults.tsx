@@ -74,7 +74,7 @@ function domainToCategory(domain?: string, layer?: string): GoalCategoryId {
   if (l === 'social') return 'social';
   if (l === 'mission') return 'mission';
   if (l === 'security') return 'control';
-  if (d === 'REST' || d === 'BODY') return 'survival';
+  if (d === 'REST' || d === 'BODY') return 'rest';
   if (d === 'SOCIAL' || d === 'CARE' || d === 'STATUS') return 'social';
   if (d === 'ORDER' || d === 'OBEDIENCE') return 'control';
   if (d === 'WORK' || d === 'INFO' || d === 'JUSTICE' || d === 'CHAOS') return 'mission';
@@ -100,6 +100,25 @@ function applyGoalTuningToScores(
     const cat = domainToCategory((gs as any).domain, (gs as any).layer);
     let logit = gs.totalLogit ?? 0;
     const contributions: ContextualGoalContribution[] = [...arr(gs.contributions || [])];
+
+    // Global knobs apply first so category/goal knobs can override the baseline.
+    const globalKnob = tuning?.global;
+    if (globalKnob?.slope != null && Number.isFinite(globalKnob.slope) && globalKnob.slope !== 1) {
+      logit *= globalKnob.slope;
+      contributions.push({
+        source: 'derived',
+        value: 0,
+        explanation: `Tuning: global.slope=${globalKnob.slope}`,
+      });
+    }
+    if (globalKnob?.bias != null && Number.isFinite(globalKnob.bias) && globalKnob.bias !== 0) {
+      logit += globalKnob.bias;
+      contributions.push({
+        source: 'derived',
+        value: 0,
+        explanation: `Tuning: global.bias=${globalKnob.bias}`,
+      });
+    }
 
     if (tuning?.veto?.[defId]) {
       logit = -99;
@@ -1184,6 +1203,7 @@ export const GoalLabResults: React.FC<Props> = ({
 
         const goalKnob = (goalTuning?.goals?.[defId] || {}) as any;
         const catKnob = (goalTuning?.categories?.[category] || {}) as any;
+        const globalKnob = (goalTuning?.global || {}) as any;
         const isVeto = Boolean(goalTuning?.veto?.[defId]);
 
         const setGoalKnob = (patch: { slope?: number; bias?: number }) => {
@@ -1199,6 +1219,13 @@ export const GoalLabResults: React.FC<Props> = ({
                 const next = { ...(prev || {}) } as GoalTuningConfig;
                 next.categories = { ...(next.categories || {}) } as any;
                 (next.categories as any)[category] = { ...((next.categories as any)[category] || {}), ...patch };
+                return next;
+            });
+        };
+        const setGlobalKnob = (patch: { slope?: number; bias?: number }) => {
+            setGoalTuning(prev => {
+                const next = { ...(prev || {}) } as GoalTuningConfig;
+                next.global = { ...(next.global || {}), ...patch };
                 return next;
             });
         };
@@ -1265,6 +1292,15 @@ export const GoalLabResults: React.FC<Props> = ({
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="border border-canon-border/40 rounded bg-black/20 p-3 space-y-3">
+                        <div className="text-xs font-bold text-canon-text-light uppercase">Global Knobs</div>
+                        {slider('Global Slope', Number(globalKnob.slope ?? 1), 0.1, 5, 0.1, v => setGlobalKnob({ slope: v }))}
+                        {slider('Global Bias', Number(globalKnob.bias ?? 0), -3, 3, 0.05, v => setGlobalKnob({ bias: v }))}
+                        <div className="text-[11px] text-canon-text-light/70">
+                            Global knobs apply to all goals (macro-handle #0).
+                        </div>
+                    </div>
+
                     <div className="border border-canon-border/40 rounded bg-black/20 p-3 space-y-3">
                         <div className="text-xs font-bold text-canon-text-light uppercase">Goal Knobs</div>
                         {slider('Slope (Sensitivity)', Number(goalKnob.slope ?? 1), 0.1, 5, 0.1, v => setGoalKnob({ slope: v }))}
