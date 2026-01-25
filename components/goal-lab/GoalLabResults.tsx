@@ -1,9 +1,9 @@
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import type { ContextSnapshot, ContextualGoalScore, ContextAtom, TemporalContextConfig, ContextualGoalContribution } from '../../lib/context/v2/types';
 import { GOAL_DEFS } from '../../lib/goals/space'; 
 import { describeGoal } from '../../lib/goals/goalCatalog';
-import { AffectState } from '../../types';
+import { AffectState, GoalTuningConfig, GoalCategoryId } from '../../types';
 import { AgentContextFrame, TomRelationView, TomPhysicalOther } from '../../lib/context/frame/types';
 import { Tabs } from '../Tabs';
 import { ContextInspector } from '../ContextInspector';
@@ -62,6 +62,80 @@ interface Props {
   onChangePipelineStageId?: (id: string) => void;
   onExportPipelineStage?: (stageId: string) => void;
   onExportPipelineAll?: () => void;
+}
+
+function domainToCategory(domain?: string, layer?: string): GoalCategoryId {
+  const d = String(domain || '').toUpperCase();
+  const l = String(layer || '').toLowerCase();
+  if (l === 'body') return 'rest';
+  if (l === 'learn') return 'learn';
+  if (l === 'identity') return 'identity';
+  if (l === 'social') return 'social';
+  if (l === 'mission') return 'mission';
+  if (l === 'security') return 'control';
+  if (d === 'REST' || d === 'BODY') return 'survival';
+  if (d === 'SOCIAL' || d === 'CARE' || d === 'STATUS') return 'social';
+  if (d === 'ORDER' || d === 'OBEDIENCE') return 'control';
+  if (d === 'WORK' || d === 'INFO' || d === 'JUSTICE' || d === 'CHAOS') return 'mission';
+  if (d === 'IDENTITY' || d === 'AUTONOMY' || d === 'RITUAL') return 'identity';
+  return 'other';
+}
+
+function softmax(logits: number[]): number[] {
+  if (!logits.length) return [];
+  const safe = logits.map(x => (Number.isFinite(x) ? x : -99));
+  const max = Math.max(...safe);
+  const exps = safe.map(x => Math.exp(x - max));
+  const sum = exps.reduce((a, b) => a + b, 0) || 1;
+  return exps.map(e => e / sum);
+}
+
+function applyGoalTuningToScores(
+  goalScores: ContextualGoalScore[],
+  tuning: GoalTuningConfig
+): ContextualGoalScore[] {
+  const tuned: ContextualGoalScore[] = goalScores.map(gs => {
+    const defId = (gs as any).defId || gs.goalId;
+    const cat = domainToCategory((gs as any).domain, (gs as any).layer);
+    let logit = gs.totalLogit ?? 0;
+    const contributions: ContextualGoalContribution[] = [...arr(gs.contributions || [])];
+
+    if (tuning?.veto?.[defId]) {
+      logit = -99;
+      contributions.push({
+        source: 'derived',
+        value: 0,
+        explanation: `Tuning: veto ${defId}`
+      });
+      return { ...gs, totalLogit: logit, contributions };
+    }
+
+    const catKnob = tuning?.categories?.[cat];
+    if (catKnob?.slope != null && Number.isFinite(catKnob.slope) && catKnob.slope !== 1) {
+      logit *= catKnob.slope;
+      contributions.push({ source: 'derived', value: 0, explanation: `Tuning: ${cat}.slope=${catKnob.slope}` });
+    }
+    if (catKnob?.bias != null && Number.isFinite(catKnob.bias) && catKnob.bias !== 0) {
+      logit += catKnob.bias;
+      contributions.push({ source: 'derived', value: 0, explanation: `Tuning: ${cat}.bias=${catKnob.bias}` });
+    }
+
+    const g = tuning?.goals?.[defId];
+    if (g?.slope != null && Number.isFinite(g.slope) && g.slope !== 1) {
+      logit *= g.slope;
+      contributions.push({ source: 'derived', value: 0, explanation: `Tuning: ${defId}.slope=${g.slope}` });
+    }
+    if (g?.bias != null && Number.isFinite(g.bias) && g.bias !== 0) {
+      logit += g.bias;
+      contributions.push({ source: 'derived', value: 0, explanation: `Tuning: ${defId}.bias=${g.bias}` });
+    }
+
+    return { ...gs, totalLogit: logit, contributions };
+  });
+
+  const probs = softmax(tuned.map(t => t.totalLogit ?? 0));
+  for (let i = 0; i < tuned.length; i++) tuned[i] = { ...tuned[i], probability: probs[i] ?? 0 };
+  return tuned;
 }
 
 interface AtomStyle {
@@ -260,6 +334,12 @@ const GoalRow: React.FC<{
     const label = getGoalLabel(score.goalId);
     const entry = describeGoal(score.goalId);
     const description = entry?.description ?? '';
+    const debug = (score as any)?.debug as
+      | { inputValues?: Record<string, number>; traits?: string[]; roomTags?: string[] }
+      | undefined;
+    const debugModifiers = arr((score as any)?._debugModifiers);
+    const traitList = arr(debug?.traits);
+    const roomTags = arr(debug?.roomTags);
     
     return (
         <div 
@@ -288,6 +368,45 @@ const GoalRow: React.FC<{
              {description ? (
                <div className="text-[10px] text-canon-text-light/70 mt-1 leading-snug">{description}</div>
              ) : null}
+
+             {/* Debug: why this goal moved (GoalLab-only) */}
+             {(debug || debugModifiers.length > 0) && (
+               <div className="mt-2 text-[10px] text-canon-text-light/70 space-y-1">
+                 {debug?.inputValues ? (
+                   <div>
+                     <span className="font-semibold text-canon-text-light">Stats:</span>{' '}
+                     {JSON.stringify(debug.inputValues)}
+                   </div>
+                 ) : null}
+                 {traitList.length > 0 ? (
+                   <div className="flex flex-wrap gap-1">
+                     {traitList.map(trait => (
+                       <span key={trait} className="text-blue-400">
+                         Trait: {trait}
+                       </span>
+                     ))}
+                   </div>
+                 ) : null}
+                 {roomTags.length > 0 ? (
+                   <div className="flex flex-wrap gap-1">
+                     {roomTags.map(tag => (
+                       <span key={tag} className="text-green-400">
+                         Room: {tag}
+                       </span>
+                     ))}
+                   </div>
+                 ) : null}
+                 {debugModifiers.length > 0 ? (
+                   <div className="flex flex-wrap gap-1">
+                     {debugModifiers.map(mod => (
+                       <span key={mod} className="text-canon-accent">
+                         Modifier: {mod}
+                       </span>
+                     ))}
+                   </div>
+                 ) : null}
+               </div>
+             )}
 
              {/* UI personalization multiplier (debug) */}
              {Number.isFinite((score as any).uiMultiplier) &&
@@ -480,6 +599,23 @@ export const GoalLabResults: React.FC<Props> = ({
   });
   const safeGoalScores = arr(goalScores);
 
+  const [goalTuning, setGoalTuning] = useState<GoalTuningConfig>(() => {
+    try {
+      const raw = localStorage.getItem('goalLab.goalTuning.v1');
+      return raw ? (JSON.parse(raw) as GoalTuningConfig) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('goalLab.goalTuning.v1', JSON.stringify(goalTuning || {}));
+    } catch {}
+  }, [goalTuning]);
+
+  const tunedGoalScores = applyGoalTuningToScores(safeGoalScores, goalTuning || {});
+
   // Persist header collapse for consistent compare workflows.
   useEffect(() => {
     try {
@@ -522,8 +658,8 @@ export const GoalLabResults: React.FC<Props> = ({
         }
     };
 
-    const effectiveSelectedId = selectedGoalId || (safeGoalScores.length > 0 ? safeGoalScores[0].goalId : null);
-    const selectedScore = safeGoalScores.find(g => g.goalId === effectiveSelectedId);
+    const effectiveSelectedId = selectedGoalId || (tunedGoalScores.length > 0 ? tunedGoalScores[0].goalId : null);
+    const selectedScore = tunedGoalScores.find(g => g.goalId === effectiveSelectedId);
 
     // Aggregates from snapshot or legacy context
     const stats = {
@@ -962,7 +1098,7 @@ export const GoalLabResults: React.FC<Props> = ({
     
     const DebugTab = () => (
          <div className="p-4 space-y-4 h-full overflow-y-auto custom-scrollbar pb-20 absolute inset-0">
-            <ContextInspector snapshot={context} goals={safeGoalScores} title="Global Inspector (Legacy)"/>
+            <ContextInspector snapshot={context} goals={tunedGoalScores} title="Global Inspector (Legacy)"/>
             {locationScores && <LocationGoalsDebugPanel scores={locationScores} />}
             {tomScores && <TomGoalsDebugPanel scores={tomScores} />}
          </div>
@@ -1032,6 +1168,130 @@ export const GoalLabResults: React.FC<Props> = ({
         </div>
     );
 
+    const TuningTab = () => {
+        const defId = ((selectedScore as any)?.defId || effectiveSelectedId || '') as string;
+        const domain = (selectedScore as any)?.domain;
+        const layer = (selectedScore as any)?.layer;
+        const category = domainToCategory(domain, layer);
+
+        const goalKnob = (goalTuning?.goals?.[defId] || {}) as any;
+        const catKnob = (goalTuning?.categories?.[category] || {}) as any;
+        const isVeto = Boolean(goalTuning?.veto?.[defId]);
+
+        const setGoalKnob = (patch: { slope?: number; bias?: number }) => {
+            setGoalTuning(prev => {
+                const next = { ...(prev || {}) } as GoalTuningConfig;
+                next.goals = { ...(next.goals || {}) };
+                next.goals[defId] = { ...(next.goals[defId] || {}), ...patch };
+                return next;
+            });
+        };
+        const setCatKnob = (patch: { slope?: number; bias?: number }) => {
+            setGoalTuning(prev => {
+                const next = { ...(prev || {}) } as GoalTuningConfig;
+                next.categories = { ...(next.categories || {}) } as any;
+                (next.categories as any)[category] = { ...((next.categories as any)[category] || {}), ...patch };
+                return next;
+            });
+        };
+        const toggleVeto = () => {
+            setGoalTuning(prev => {
+                const next = { ...(prev || {}) } as GoalTuningConfig;
+                next.veto = { ...(next.veto || {}) };
+                next.veto[defId] = !Boolean(next.veto[defId]);
+                return next;
+            });
+        };
+
+        const copyJson = async () => {
+            const json = JSON.stringify(goalTuning || {}, null, 2);
+            try {
+                await navigator.clipboard.writeText(json);
+            } catch {
+                // fallback: no-op
+            }
+        };
+
+        const slider = (
+            label: string,
+            value: number,
+            min: number,
+            max: number,
+            step: number,
+            onChange: (v: number) => void
+        ) => (
+            <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                    <div className="text-xs text-canon-text-light">{label}</div>
+                    <div className="text-[11px] font-mono text-canon-text">{Number(value).toFixed(2)}</div>
+                </div>
+                <input
+                    type="range"
+                    min={min}
+                    max={max}
+                    step={step}
+                    value={value}
+                    onChange={e => onChange(parseFloat(e.target.value))}
+                    className="w-full"
+                />
+            </div>
+        );
+
+        return (
+            <div className="absolute inset-0 overflow-y-auto custom-scrollbar p-4 space-y-4 pb-20">
+                <div className="flex items-start justify-between gap-3">
+                    <div>
+                        <div className="text-sm font-bold text-canon-text">Mixer / Live Curve Tuning</div>
+                        <div className="text-[11px] text-canon-text-light mt-1">
+                            Selected: <span className="font-mono">{defId || '—'}</span>
+                            {domain ? <span className="ml-2 text-canon-text-light/70">domain={domain}</span> : null}
+                            {category ? <span className="ml-2 text-canon-text-light/70">cat={category}</span> : null}
+                        </div>
+                    </div>
+                    <button
+                        onClick={copyJson}
+                        className="px-2 py-1 text-xs bg-canon-accent/20 text-canon-accent border border-canon-accent/40 rounded hover:bg-canon-accent/30"
+                    >
+                        Copy JSON
+                    </button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="border border-canon-border/40 rounded bg-black/20 p-3 space-y-3">
+                        <div className="text-xs font-bold text-canon-text-light uppercase">Goal Knobs</div>
+                        {slider('Slope (Sensitivity)', Number(goalKnob.slope ?? 1), 0.1, 5, 0.1, v => setGoalKnob({ slope: v }))}
+                        {slider('Bias (Base Preference)', Number(goalKnob.bias ?? 0), -3, 3, 0.05, v => setGoalKnob({ bias: v }))}
+                        <div className="flex items-center gap-2 pt-1">
+                            <input id="veto" type="checkbox" checked={isVeto} onChange={toggleVeto} />
+                            <label htmlFor="veto" className="text-xs text-canon-text-light">Veto (disable this goal)</label>
+                        </div>
+                    </div>
+
+                    <div className="border border-canon-border/40 rounded bg-black/20 p-3 space-y-3">
+                        <div className="text-xs font-bold text-canon-text-light uppercase">Category Knobs</div>
+                        {slider('Category Slope', Number(catKnob.slope ?? 1), 0.1, 5, 0.1, v => setCatKnob({ slope: v }))}
+                        {slider('Category Bias', Number(catKnob.bias ?? 0), -3, 3, 0.05, v => setCatKnob({ bias: v }))}
+                        <div className="text-[11px] text-canon-text-light/70">
+                            Category knobs apply to all goals in the category (macro-handles).
+                        </div>
+                    </div>
+                </div>
+
+                <div className="border border-canon-border/40 rounded bg-black/20 p-3">
+                    <div className="text-xs font-bold text-canon-text-light uppercase mb-2">Export / Paste into JSON</div>
+                    <textarea
+                        value={JSON.stringify(goalTuning || {}, null, 2)}
+                        readOnly
+                        className="w-full h-56 text-[11px] font-mono bg-black/40 border border-canon-border/40 rounded p-2 text-canon-text-light"
+                    />
+                    <div className="text-[11px] text-canon-text-light/70 mt-2">
+                        Tip: copy these values into your scenario/agent config after tuning.
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
     const renderContent = () => {
         switch(activeTabIndex) {
             case 0: return <ExplainTab />;
@@ -1052,11 +1312,12 @@ export const GoalLabResults: React.FC<Props> = ({
             case 15: return <DebugTab />;
             case 16: return <OrchestratorTab />;
             case 17: return <SimulatorTab />;
+            case 18: return <TuningTab />;
             default: return <ExplainTab />;
         }
     };
 
-  const tabsList = ['Explain', 'Analysis', 'Atoms', 'Pipeline', 'Cast', 'Threat', 'ToM', 'CtxMind', 'Emotions', 'Coverage', 'Possibilities', 'Decision', 'Access', 'Diff', 'EmotionExplain', 'Debug', 'Orchestrator', 'Simulation'];
+  const tabsList = ['Explain', 'Analysis', 'Atoms', 'Pipeline', 'Cast', 'Threat', 'ToM', 'CtxMind', 'Emotions', 'Coverage', 'Possibilities', 'Decision', 'Access', 'Diff', 'EmotionExplain', 'Debug', 'Orchestrator', 'Simulation', 'Tuning'];
 
   const focusId = (context as any)?.agentId;
   const focusLabel = (focusId && actorLabels?.[focusId]) ? actorLabels[focusId] : focusId;
@@ -1170,10 +1431,10 @@ export const GoalLabResults: React.FC<Props> = ({
                 <div className="w-5/12 min-w-[220px] border-r border-canon-border bg-canon-bg/30 flex flex-col overflow-hidden">
                     <div className="p-3 border-b border-canon-border/20 bg-canon-bg/50 shrink-0 flex justify-between items-center">
                         <h4 className="text-[10px] font-bold text-canon-text-light uppercase px-1">Goal Ecology</h4>
-                        <span className="text-[9px] font-mono text-canon-text-light">{safeGoalScores.length} Goals</span>
+                        <span className="text-[9px] font-mono text-canon-text-light">{tunedGoalScores.length} Goals</span>
                     </div>
                     <div className="flex-1 overflow-y-auto custom-scrollbar p-2 pb-12">
-                         <EcologyView goals={safeGoalScores} onSelect={setSelectedGoalId} selectedId={effectiveSelectedId} />
+                         <EcologyView goals={tunedGoalScores} onSelect={setSelectedGoalId} selectedId={effectiveSelectedId} />
                     </div>
                 </div>
 

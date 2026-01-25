@@ -42,6 +42,63 @@ function applyHazardPoints(world: SimWorld) {
   }
 }
 
+function applyInputAxesSensors(world: SimWorld) {
+  // Sensors: standardized 0..1 axes per actor, derived from location properties + local crowd.
+  // Stored as world.facts['ctx:<axis>:<actorId>'] for easy reuse by subjective + GoalLab pipeline.
+  if (!world.facts) world.facts = {} as any;
+  const chars = Object.values(world.characters || {});
+  const byLoc: Record<string, number> = {};
+  for (const c of chars) {
+    const locId = (c as any).locId || (c as any).locationId;
+    if (!locId) continue;
+    byLoc[locId] = (byLoc[locId] || 0) + 1;
+  }
+
+  for (const c of chars) {
+    const actorId = (c as any).id;
+    const locId = (c as any).locId || (c as any).locationId;
+    if (!actorId || !locId) continue;
+
+    const loc = world.locations[locId];
+    const props: any = (loc as any)?.entity?.properties || {};
+
+    const privacyBase = props.privacy === 'private' ? 1 : props.privacy === 'semi' ? 0.5 : 0;
+    const controlLevel = clamp01(Number(props.control_level ?? props.controlLevel ?? 0));
+
+    const temperature = clamp01(Number(props.temperature ?? 0.5));
+    const comfort = clamp01(Number(props.comfort ?? 0.5));
+    const hygiene = clamp01(Number(props.hygiene ?? 0.5));
+    const aesthetics = clamp01(Number(props.aesthetics ?? 0.5));
+
+    const baseNoise = clamp01(Number(props.noise ?? props.noiseLevel ?? 0.2));
+
+    const peopleHere = byLoc[locId] || 0;
+    const crowdDensity = clamp01((peopleHere - 1) / 4); // heuristic
+
+    const noiseLevel = clamp01(baseNoise + crowdDensity * 0.25);
+    const privacyComputed = clamp01(privacyBase - crowdDensity * 0.5);
+
+    const authorityPresence = clamp01(Number(props.authorityPresence ?? props.authority_presence ?? controlLevel));
+
+    // Combine with existing privacy sensor if present, to avoid breaking current behavior.
+    const existingPrivacyRaw = (world.facts as any)[`ctx:privacy:${actorId}`];
+    const existingPrivacy = typeof existingPrivacyRaw === 'number' ? existingPrivacyRaw : Number(existingPrivacyRaw);
+    const privacy = Number.isFinite(existingPrivacy)
+      ? clamp01(existingPrivacy * 0.6 + privacyComputed * 0.4)
+      : privacyComputed;
+
+    (world.facts as any)[`ctx:temperature:${actorId}`] = temperature;
+    (world.facts as any)[`ctx:comfort:${actorId}`] = comfort;
+    (world.facts as any)[`ctx:hygiene:${actorId}`] = hygiene;
+    (world.facts as any)[`ctx:aesthetics:${actorId}`] = aesthetics;
+    (world.facts as any)[`ctx:crowdDensity:${actorId}`] = crowdDensity;
+    (world.facts as any)[`ctx:noise:${actorId}`] = noiseLevel;
+    (world.facts as any)[`ctx:noiseLevel:${actorId}`] = noiseLevel;
+    (world.facts as any)[`ctx:authorityPresence:${actorId}`] = authorityPresence;
+    (world.facts as any)[`ctx:privacy:${actorId}`] = privacy;
+  }
+}
+
 export type SimPlugin = {
   id: string;
   // Optional pre-step decision hook: can return actions to apply before default heuristic.
@@ -155,6 +212,7 @@ export class SimKitSimulator {
 
     // Apply hazard/safe map points into world facts before scoring/actions.
     applyHazardPoints(this.world);
+    applyInputAxesSensors(this.world);
 
     const offers = proposeActions(this.world);
 
