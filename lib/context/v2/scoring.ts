@@ -111,13 +111,15 @@ export function scoreContextualGoals(
 
   // 2. Run V4 Engine
   // We pass the atoms directly so V4 can do fine-grained targeting
+  const tuning = (agent as any).goalTuning || (world as any)?.scene?.goalTuning || (world as any)?.goalTuning;
   const concreteGoals = computeConcreteGoals(
       agent,
       combinedLogits,
       world,
       [], // nearbyActors (handled via world or atoms)
       frame,
-      ctx.atoms
+      ctx.atoms,
+      tuning
   );
 
   // 3. Map V4 Results back to V2 ContextualGoalScore for UI compatibility
