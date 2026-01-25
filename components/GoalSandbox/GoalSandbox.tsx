@@ -2139,7 +2139,7 @@ export const GoalSandbox: React.FC = () => {
               <ToMPanel atoms={passportAtoms as any} />
             ) : null}
             {activeBottomTab === 'compare' ? (
-              <CastComparePanel castRows={castRowsSafe as any} focusId={focusId} />
+              <CastComparePanel rows={castRowsSafe as any} focusId={focusId} />
             ) : null}
             {activeBottomTab === 'debug' ? (
               <div className="space-y-4">

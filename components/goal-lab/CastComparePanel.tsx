@@ -22,7 +22,12 @@ function getName(r?: CastRow | null) {
   return s || '—';
 }
 
-export function CastComparePanel({ rows, focusId }: { rows: CastRow[]; focusId?: string | null }) {
+export function CastComparePanel(
+  props: { rows?: CastRow[]; castRows?: CastRow[]; focusId?: string | null }
+) {
+  // Back-compat: older callers used `castRows`, newer ones use `rows`.
+  const rows = (props.rows ?? props.castRows ?? []) as CastRow[];
+  const focusId = props.focusId;
   // --- ВСЕ хуки СРАЗУ ---
   const usable = useMemo(() => {
     return rows.filter(r => {
