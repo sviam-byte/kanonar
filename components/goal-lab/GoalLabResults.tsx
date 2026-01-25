@@ -260,6 +260,12 @@ const GoalRow: React.FC<{
     const label = getGoalLabel(score.goalId);
     const entry = describeGoal(score.goalId);
     const description = entry?.description ?? '';
+    const debug = (score as any)?.debug as
+      | { inputValues?: Record<string, number>; traits?: string[]; roomTags?: string[] }
+      | undefined;
+    const debugModifiers = arr((score as any)?._debugModifiers);
+    const traitList = arr(debug?.traits);
+    const roomTags = arr(debug?.roomTags);
     
     return (
         <div 
@@ -288,6 +294,45 @@ const GoalRow: React.FC<{
              {description ? (
                <div className="text-[10px] text-canon-text-light/70 mt-1 leading-snug">{description}</div>
              ) : null}
+
+             {/* Debug: why this goal moved (GoalLab-only) */}
+             {(debug || debugModifiers.length > 0) && (
+               <div className="mt-2 text-[10px] text-canon-text-light/70 space-y-1">
+                 {debug?.inputValues ? (
+                   <div>
+                     <span className="font-semibold text-canon-text-light">Stats:</span>{' '}
+                     {JSON.stringify(debug.inputValues)}
+                   </div>
+                 ) : null}
+                 {traitList.length > 0 ? (
+                   <div className="flex flex-wrap gap-1">
+                     {traitList.map(trait => (
+                       <span key={trait} className="text-blue-400">
+                         Trait: {trait}
+                       </span>
+                     ))}
+                   </div>
+                 ) : null}
+                 {roomTags.length > 0 ? (
+                   <div className="flex flex-wrap gap-1">
+                     {roomTags.map(tag => (
+                       <span key={tag} className="text-green-400">
+                         Room: {tag}
+                       </span>
+                     ))}
+                   </div>
+                 ) : null}
+                 {debugModifiers.length > 0 ? (
+                   <div className="flex flex-wrap gap-1">
+                     {debugModifiers.map(mod => (
+                       <span key={mod} className="text-canon-accent">
+                         Modifier: {mod}
+                       </span>
+                     ))}
+                   </div>
+                 ) : null}
+               </div>
+             )}
 
              {/* UI personalization multiplier (debug) */}
              {Number.isFinite((score as any).uiMultiplier) &&

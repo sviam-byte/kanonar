@@ -63,19 +63,14 @@ function clamp01(x: number) {
   return Math.max(0, Math.min(1, x));
 }
 
-function applyUiPersonalization(
-  goals: V2GoalScore[],
-  agent: AgentState,
-  frame: any
-): (V2GoalScore & {
-  uiMultiplier?: number;
-  uiReasons?: string[];
-})[] {
-  // UI-only personalization layer to make character differences visible immediately.
+/**
+ * Collect trait identifiers from the agent across known data shapes.
+ * This keeps GoalLab resilient to evolving character schemas.
+ */
+function collectTraitIds(agent: AgentState): Set<string> {
   const traitIds = new Set<string>();
   const identity: any = (agent as any)?.identity || {};
 
-  // Common places where traits can live across data shapes.
   const pushTrait = (t: any) => {
     if (!t) return;
     if (typeof t === 'string') traitIds.add(t);
@@ -89,6 +84,164 @@ function applyUiPersonalization(
   if (typeof identity?.arch_true_dominant_id === 'string') {
     traitIds.add(identity.arch_true_dominant_id);
   }
+
+  return traitIds;
+}
+
+/**
+ * Normalize location tags from known location shapes.
+ * We keep the original casing for display, but lowercase is used for matching.
+ */
+function collectLocationTags(location: LocationEntity | null | undefined): string[] {
+  if (!location) return [];
+  const direct = Array.isArray((location as any).tags) ? (location as any).tags : [];
+  const propTags = Array.isArray(location.properties?.tags) ? location.properties?.tags : [];
+  const mapTags = Array.isArray((location as any)?.map?.tags) ? (location as any).map.tags : [];
+  return Array.from(new Set([...direct, ...propTags, ...mapTags].map(String)));
+}
+
+type ManualContextAxes = {
+  privacy: number;
+  social: number;
+  duty: number;
+  danger: number;
+  comfort: number;
+};
+
+/**
+ * Heuristic: translate room tags into basic context axes for GoalLab.
+ * This is a lab-only bridge when server-side context ticks are absent.
+ */
+function deriveManualContextAxes(location: LocationEntity | null | undefined): ManualContextAxes {
+  const tags = collectLocationTags(location);
+  const tagSet = new Set(tags.map(t => t.toLowerCase()));
+
+  const privacy = tagSet.has('private') || tagSet.has('bedroom') ? 1.0 : 0.1;
+  const social = tagSet.has('public') || tagSet.has('bar') ? 1.0 : 0.0;
+  const duty = tagSet.has('work') || tagSet.has('office') ? 1.0 : 0.0;
+  const danger = tagSet.has('dangerous') || tagSet.has('danger') || tagSet.has('hazard') ? 0.8 : 0.0;
+
+  // Comfort is not a first-class axis in the context engine, but it's useful for debug.
+  const envStress = Number((location as any)?.physics?.environmentalStress);
+  const comfort = Number.isFinite(envStress) ? clamp01(1 - envStress) : 0.5;
+
+  return { privacy, social, duty, danger, comfort };
+}
+
+/**
+ * Build manual context axis atoms so the pipeline can "see" a room in GoalLab.
+ * We keep ids stable per agent to avoid duplicate atoms in the snapshot.
+ */
+function buildManualContextAxisAtoms(selfId: string, axes: ManualContextAxes): ContextAtom[] {
+  const atoms = [
+    { id: `world:loc:privacy:${selfId}`, magnitude: axes.privacy, label: 'Manual privacy (GoalLab)' },
+    { id: `ctx:privacy:${selfId}`, magnitude: axes.privacy, label: 'Manual ctx:privacy (GoalLab)' },
+    { id: `ctx:publicness:${selfId}`, magnitude: axes.social, label: 'Manual ctx:publicness (GoalLab)' },
+    { id: `world:loc:normative_pressure:${selfId}`, magnitude: axes.duty, label: 'Manual duty (GoalLab)' },
+    { id: `ctx:normPressure:${selfId}`, magnitude: axes.duty, label: 'Manual ctx:normPressure (GoalLab)' },
+    { id: `world:map:danger:${selfId}`, magnitude: axes.danger, label: 'Manual map danger (GoalLab)' },
+    { id: `ctx:danger:${selfId}`, magnitude: axes.danger, label: 'Manual ctx:danger (GoalLab)' },
+  ];
+
+  return atoms.map(atom =>
+    normalizeAtom({
+      ...atom,
+      source: 'manual',
+      kind: 'ctx',
+      confidence: 0.8,
+      tags: ['goal-lab', 'manual-context'],
+      trace: {
+        usedAtomIds: [],
+        notes: ['GoalLab manual context axes'],
+        parts: { axisId: atom.id, magnitude: atom.magnitude },
+      },
+    })
+  );
+}
+
+/**
+ * Merge extra manual atoms without duplicating by id.
+ */
+function mergeManualAtoms(base: ContextAtom[], extras: ContextAtom[]): ContextAtom[] {
+  const out = new Map<string, ContextAtom>();
+  base.forEach(atom => out.set(String(atom.id), atom));
+  extras.forEach(atom => {
+    const id = String(atom.id);
+    if (!out.has(id)) out.set(id, atom);
+  });
+  return Array.from(out.values());
+}
+
+/**
+ * GoalLab-only variability shim: apply quick trait-driven modifiers and record debug hints.
+ */
+function applyLabVariability(
+  goals: (V2GoalScore & { uiMultiplier?: number; uiReasons?: string[] })[],
+  traitIds: Set<string>,
+  axes: ManualContextAxes,
+  locationTags: string[]
+): (V2GoalScore & {
+  uiMultiplier?: number;
+  uiReasons?: string[];
+  _debugModifiers?: string[];
+  debug?: { inputValues: ManualContextAxes; traits: string[]; roomTags: string[] };
+})[] {
+  const traitList = Array.from(traitIds);
+  const roomTags = locationTags.map(String);
+
+  return (goals || [])
+    .map(goal => {
+      let finalProb = Number((goal as any).probability ?? 0);
+      let finalLogit = Number((goal as any).totalLogit ?? 0);
+      const modifiers: string[] = [];
+
+      const goalId = String((goal as any).goalId || '');
+
+      // === HARDCODED VARIABILITY (temporary GoalLab test) ===
+      if (traitIds.has('Coward') && axes.danger > 0.1) {
+        finalProb *= 0.1;
+        finalLogit *= 0.1;
+        modifiers.push('Coward (Fear)');
+      }
+
+      if (traitIds.has('Introvert') && axes.social > 0.5) {
+        if (goalId === 'Socialize') {
+          finalProb *= 0.5;
+          finalLogit *= 0.5;
+          modifiers.push('Introvert (Social drain)');
+        }
+        if (goalId === 'GoHome') {
+          finalProb *= 1.5;
+          finalLogit *= 1.5;
+          modifiers.push('Introvert (Escape)');
+        }
+      }
+
+      return {
+        ...goal,
+        totalLogit: finalLogit,
+        probability: clamp01(finalProb),
+        _debugModifiers: modifiers.length ? modifiers : undefined,
+        debug: {
+          inputValues: axes,
+          traits: traitList,
+          roomTags,
+        },
+      };
+    })
+    .sort((a, b) => (b.probability ?? 0) - (a.probability ?? 0));
+}
+
+function applyUiPersonalization(
+  goals: V2GoalScore[],
+  agent: AgentState,
+  frame: any
+): (V2GoalScore & {
+  uiMultiplier?: number;
+  uiReasons?: string[];
+})[] {
+  // UI-only personalization layer to make character differences visible immediately.
+  const traitIds = collectTraitIds(agent);
 
   const locTags = new Set<string>(
     Array.isArray((frame as any)?.where?.locationTags) ? (frame as any).where.locationTags : []
@@ -539,6 +692,17 @@ export const GoalSandbox: React.FC = () => {
     }
     return createCustomLocationEntity(activeMap) as any;
   }, [locationMode, selectedLocationId, activeMap]);
+
+  /**
+   * GoalLab context metadata for the selected location.
+   * Used for manual context axes + UI debug output.
+   */
+  const labLocationContext = useMemo(() => {
+    const location = getSelectedLocationEntity();
+    const tags = collectLocationTags(location);
+    const manualContextAxes = deriveManualContextAxes(location);
+    return { location, tags, manualContextAxes };
+  }, [getSelectedLocationEntity]);
 
   const ensureCompleteInitialRelations = useCallback((agentIds: string[], base: any) => {
     const out: any = { ...(base || {}) };
@@ -1099,14 +1263,22 @@ export const GoalSandbox: React.FC = () => {
     const pid = perspectiveAgentId || selectedAgentId;
     if (!pid) return { ctx: null as any, err: null as string | null };
 
-    const worldForCtx = worldState;
+    const { location, manualContextAxes } = labLocationContext;
+    const autoAxisAtoms = buildManualContextAxisAtoms(pid, manualContextAxes);
+    const manualAtomsForContext = mergeManualAtoms(arr(manualAtoms), autoAxisAtoms);
+
+    // NOTE: We keep this local to GoalLab; worldState must remain immutable.
+    const worldForCtx = {
+      ...(worldState as any),
+      contextAxes: manualContextAxes,
+    } as WorldState;
 
     const agent = worldForCtx.agents.find(a => a.entityId === pid);
     if (!agent) return { ctx: null as any, err: `Perspective agent not found in world: ${pid}` };
 
     try {
       const activeEvents = eventRegistry.getAll().filter(e => selectedEventIds.has(e.id));
-      const loc = getSelectedLocationEntity();
+      const loc = location;
 
       const ctx = buildGoalLabContext(worldForCtx, pid, {
         snapshotOptions: {
@@ -1115,7 +1287,8 @@ export const GoalSandbox: React.FC = () => {
           // so every agent has ToM-on-every-agent for the current scene.
           participantIds,
           overrideLocation: loc,
-          manualAtoms,
+          // Inject manual context axes derived from room tags.
+          manualAtoms: manualAtomsForContext,
           gridMap: activeMap,
           atomOverridesLayer,
           overrideEvents: injectedEvents,
@@ -1144,6 +1317,7 @@ export const GoalSandbox: React.FC = () => {
     getSelectedLocationEntity,
     affectOverrides,
     devValidateAtoms,
+    labLocationContext,
   ]);
 
   const glCtx = glCtxResult.ctx;
@@ -1177,11 +1351,15 @@ export const GoalSandbox: React.FC = () => {
     try {
       const { agent, frame, snapshot, situation, goalPreview } = glCtx as any;
       snapshot.atoms = dedupeAtomsById(snapshot.atoms);
+      const traitIds = collectTraitIds(agent);
+      const { manualContextAxes, tags: locationTags } = labLocationContext;
 
       // Raw goal scores from the engine.
       const rawGoals = scoreContextualGoals(agent, worldState, snapshot, undefined, frame || undefined);
       // UI-only personalization layer (explicitly to show character differences immediately).
-      const goals = applyUiPersonalization(rawGoals, agent, frame);
+      const uiGoals = applyUiPersonalization(rawGoals, agent, frame);
+      // Post-process: temporary GoalLab variability injection + debug payloads.
+      const goals = applyLabVariability(uiGoals, traitIds, manualContextAxes, locationTags);
       const locScores = computeLocationGoalsForAgent(
         worldState,
         agent.entityId,
