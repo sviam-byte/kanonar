@@ -96,12 +96,22 @@ export function buildWorldFactsAtoms(input: WorldFactsInput): ContextAtom[] {
     return m;
   };
 
-  addProp01(`world:loc:privacy:${selfId}`, props.privacy === 'private' ? 1 : 0, `privacy=${props.privacy}`, ['world','loc','privacy']);
+  const privacyLevel = (props.privacy === 'private') ? 1 : (props.privacy === 'semi') ? 0.5 : 0;
+  addProp01(`world:loc:privacy:${selfId}`, privacyLevel, `privacy=${props.privacy}`, ['world','loc','privacy']);
   addProp01(`world:loc:visibility:${selfId}`, props.visibility, `visibility=${Math.round(clamp01(num(props.visibility))*100)}%`, ['world','loc','visibility']);
-  addProp01(`world:loc:noise:${selfId}`, props.noise, `noise=${Math.round(clamp01(num(props.noise))*100)}%`, ['world','loc','noise']);
+  const noiseVal = addProp01(`world:loc:noise:${selfId}`, props.noise, `noise=${Math.round(clamp01(num(props.noise))*100)}%`, ['world','loc','noise']);
   addProp01(`world:loc:social_visibility:${selfId}`, props.social_visibility, `social_visibility=${Math.round(clamp01(num(props.social_visibility))*100)}%`, ['world','loc','social_visibility']);
   const normPressureVal = addProp01(`world:loc:normative_pressure:${selfId}`, props.normative_pressure, `normative_pressure=${Math.round(clamp01(num(props.normative_pressure))*100)}%`, ['world','loc','normative_pressure']);
   const controlLevelVal = addProp01(`world:loc:control_level:${selfId}`, props.control_level, `control_level=${Math.round(clamp01(num(props.control_level))*100)}%`, ['world','loc','control_level']);
+
+  // Standardized InputAxis seeds
+  addProp01(`world:loc:temperature:${selfId}`, (props as any).temperature, `temperature=${Math.round(clamp01(num((props as any).temperature, 0.5))*100)}%`, ['world','loc','temperature']);
+  addProp01(`world:loc:comfort:${selfId}`, (props as any).comfort, `comfort=${Math.round(clamp01(num((props as any).comfort, 0.5))*100)}%`, ['world','loc','comfort']);
+  addProp01(`world:loc:hygiene:${selfId}`, (props as any).hygiene, `hygiene=${Math.round(clamp01(num((props as any).hygiene, 0.5))*100)}%`, ['world','loc','hygiene']);
+  addProp01(`world:loc:aesthetics:${selfId}`, (props as any).aesthetics, `aesthetics=${Math.round(clamp01(num((props as any).aesthetics, 0.5))*100)}%`, ['world','loc','aesthetics']);
+
+  const authorityPresenceSeed = num((props as any).authorityPresence ?? (props as any).authority_presence, controlLevelVal);
+  const authorityPresenceVal = addProp01(`world:loc:authorityPresence:${selfId}`, authorityPresenceSeed, `authorityPresence=${Math.round(clamp01(authorityPresenceSeed)*100)}%`, ['world','loc','authorityPresence']);
 
   // Legacy aliases for downstream compatibility
   const addAlias = (id: string, ref: string, magnitude: number, tags: string[], label: string) => {
@@ -123,9 +133,12 @@ export function buildWorldFactsAtoms(input: WorldFactsInput): ContextAtom[] {
 
   addAlias(`world:loc:normPressure:${selfId}`, `world:loc:normative_pressure:${selfId}`, normPressureVal, ['world','loc','normPressure'], `normPressure=${Math.round(clamp01(normPressureVal)*100)}%`);
   addAlias(`world:loc:control:${selfId}`, `world:loc:control_level:${selfId}`, controlLevelVal, ['world','loc','control'], `control=${Math.round(clamp01(controlLevelVal)*100)}%`);
-  
+  addAlias(`world:loc:authority:${selfId}`, `world:loc:authorityPresence:${selfId}`, authorityPresenceVal, ['world','loc','authority'], `authority=${Math.round(clamp01(authorityPresenceVal)*100)}%`);
+  addAlias(`world:loc:noiseLevel:${selfId}`, `world:loc:noise:${selfId}`, noiseVal, ['world','loc','noiseLevel'], `noiseLevel=${Math.round(clamp01(noiseVal)*100)}%`);
+
   // crowd level as a world fact
-  addProp01(`world:loc:crowd:${selfId}`, state.crowd_level, `crowd_level=${Math.round(clamp01(num(state.crowd_level))*100)}%`, ['world','loc','crowd']);
+  const crowdVal = addProp01(`world:loc:crowd:${selfId}`, state.crowd_level, `crowd_level=${Math.round(clamp01(num(state.crowd_level))*100)}%`, ['world','loc','crowd']);
+  addAlias(`world:loc:crowdDensity:${selfId}`, `world:loc:crowd:${selfId}`, crowdVal, ['world','loc','crowdDensity'], `crowdDensity=${Math.round(clamp01(crowdVal)*100)}%`);
 
   // ---------- Map local metrics (world facts) ----------
   const mm = input.mapMetrics || {};

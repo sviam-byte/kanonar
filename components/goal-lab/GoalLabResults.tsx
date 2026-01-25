@@ -1,5 +1,5 @@
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import type { ContextSnapshot, ContextualGoalScore, ContextAtom, TemporalContextConfig, ContextualGoalContribution } from '../../lib/context/v2/types';
 import { GOAL_DEFS } from '../../lib/goals/space'; 
 import { describeGoal } from '../../lib/goals/goalCatalog';
@@ -523,7 +523,37 @@ export const GoalLabResults: React.FC<Props> = ({
       return false;
     }
   });
-  const safeGoalScores = arr(goalScores);
+  const rawGoalScores = arr(goalScores);
+
+  type CurveOverride = { slope?: number; bias?: number };
+  type CurveOverrides = Record<string, CurveOverride>;
+
+  /**
+   * Live curve tuning: per-goal logit transform in UI only (GoalLab mixer).
+   * logit' = (logit + bias) * slope
+   */
+  const [curveOverrides, setCurveOverrides] = useState<CurveOverrides>({});
+
+  const tunedGoalScores = useMemo(() => {
+    const base = rawGoalScores.map(s => {
+      const ov = curveOverrides[String(s.goalId)] || {};
+      const slope = Number.isFinite(ov.slope as any) ? Number(ov.slope) : 1;
+      const bias = Number.isFinite(ov.bias as any) ? Number(ov.bias) : 0;
+      const tunedLogit = (Number(s.totalLogit ?? 0) + bias) * slope;
+      return { ...s, totalLogit: tunedLogit };
+    });
+
+    if (!base.length) return base;
+    const logits = base.map(s => Number(s.totalLogit ?? 0));
+    const maxLogit = Math.max(...logits);
+    const exps = logits.map(l => Math.exp(l - maxLogit));
+    const sum = exps.reduce((a, b) => a + b, 0) || 1;
+    const withProb = base.map((s, i) => ({ ...s, probability: exps[i] / sum }));
+    withProb.sort((a, b) => (b.probability ?? 0) - (a.probability ?? 0));
+    return withProb;
+  }, [rawGoalScores, curveOverrides]);
+
+  const safeGoalScores = tunedGoalScores;
 
   // Persist header collapse for consistent compare workflows.
   useEffect(() => {
@@ -1077,31 +1107,163 @@ export const GoalLabResults: React.FC<Props> = ({
         </div>
     );
 
+    const effectiveOverride = (goalId: string | null | undefined): { slope: number; bias: number } => {
+      const ov = (goalId ? curveOverrides?.[goalId] : null) || {};
+      const slope = Number(ov.slope ?? 1);
+      const bias = Number(ov.bias ?? 0);
+      return {
+        slope: Number.isFinite(slope) ? slope : 1,
+        bias: Number.isFinite(bias) ? bias : 0,
+      };
+    };
+
+    const TuningTab = () => {
+      if (!effectiveSelectedId) {
+        return (
+          <div className="absolute inset-0 overflow-y-auto custom-scrollbar p-4 text-[12px] text-canon-text-light/70">
+            Выбери Goal в списке слева, чтобы открыть слайдеры.
+          </div>
+        );
+      }
+
+      const ov = effectiveOverride(effectiveSelectedId);
+      const slope = ov.slope;
+      const bias = ov.bias;
+
+      const selectedRaw = rawGoalScores.find(g => g.goalId === effectiveSelectedId);
+      const selectedTuned = safeGoalScores.find(g => g.goalId === effectiveSelectedId);
+
+      const setOv = (patch: Partial<{ slope: number; bias: number }>) => {
+        setCurveOverrides(prev => ({
+          ...prev,
+          [effectiveSelectedId]: {
+            slope: Number.isFinite(patch.slope as any)
+              ? Number(patch.slope)
+              : (prev?.[effectiveSelectedId]?.slope ?? 1),
+            bias: Number.isFinite(patch.bias as any)
+              ? Number(patch.bias)
+              : (prev?.[effectiveSelectedId]?.bias ?? 0),
+          },
+        }));
+      };
+
+      const jsonSnippet = JSON.stringify({ [effectiveSelectedId]: { slope, bias } }, null, 2);
+
+      const copy = async () => {
+        try {
+          await navigator.clipboard.writeText(jsonSnippet);
+        } catch {
+          // Intentionally ignore clipboard failures to avoid breaking UI in restricted contexts.
+        }
+      };
+
+      return (
+        <div className="absolute inset-0 overflow-y-auto custom-scrollbar p-4 space-y-4 pb-20">
+          <div className="border border-canon-border/50 rounded-lg bg-black/20 p-3">
+            <div className="text-xs font-bold text-canon-text uppercase tracking-wider">Fine-Tune</div>
+            <div className="text-sm font-semibold text-canon-text mt-1">{effectiveSelectedId}</div>
+            <div className="text-[11px] text-canon-text-light/70 mt-1">
+              Live tuning меняет приоритеты только в UI. После подбора — скопируй значения в конфиг/JSON.
+            </div>
+          </div>
+
+          <div className="border border-canon-border/50 rounded-lg bg-black/20 p-3 space-y-3">
+            <div>
+              <div className="text-[11px] font-semibold text-canon-text">
+                Slope (Sensitivity): <span className="font-mono">{slope.toFixed(2)}</span>
+              </div>
+              <input
+                className="w-full"
+                type="range"
+                min="0.1"
+                max="5"
+                step="0.1"
+                value={slope}
+                onChange={e => setOv({ slope: parseFloat(e.target.value) })}
+              />
+            </div>
+
+            <div>
+              <div className="text-[11px] font-semibold text-canon-text">
+                Base Preference (Bias): <span className="font-mono">{bias.toFixed(2)}</span>
+              </div>
+              <input
+                className="w-full"
+                type="range"
+                min="-1"
+                max="1"
+                step="0.05"
+                value={bias}
+                onChange={e => setOv({ bias: parseFloat(e.target.value) })}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 text-[11px]">
+              <div className="border border-canon-border/40 rounded bg-black/30 p-2">
+                <div className="text-canon-text-light/70">Raw</div>
+                <div className="font-mono text-canon-text">
+                  logit={Number(selectedRaw?.totalLogit ?? 0).toFixed(3)}
+                </div>
+                <div className="font-mono text-canon-text">
+                  p={Number(selectedRaw?.probability ?? 0).toFixed(3)}
+                </div>
+              </div>
+              <div className="border border-canon-border/40 rounded bg-black/30 p-2">
+                <div className="text-canon-text-light/70">Tuned</div>
+                <div className="font-mono text-canon-text">
+                  logit={Number(selectedTuned?.totalLogit ?? 0).toFixed(3)}
+                </div>
+                <div className="font-mono text-canon-text">
+                  p={Number(selectedTuned?.probability ?? 0).toFixed(3)}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="border border-canon-border/50 rounded-lg bg-black/20 p-3">
+            <div className="flex items-center justify-between">
+              <div className="text-xs font-bold text-canon-text uppercase tracking-wider">JSON snippet</div>
+              <button
+                onClick={copy}
+                className="px-2 py-1 text-[11px] font-semibold border border-canon-border/60 rounded bg-canon-bg-light hover:bg-canon-bg-light/70 transition-colors"
+                title="Copy to clipboard"
+              >
+                Copy
+              </button>
+            </div>
+            <pre className="mt-2 text-[10px] font-mono text-canon-text-light/80 whitespace-pre-wrap">{jsonSnippet}</pre>
+            <p className="text-[10px] text-red-400 mt-2">*Copy these values to your JSON after tuning!</p>
+          </div>
+        </div>
+      );
+    };
+
     const renderContent = () => {
         switch(activeTabIndex) {
             case 0: return <ExplainTab />;
-            case 1: return <AnalysisTab />;
-            case 2: return <AtomsTab />;
-            case 3: return <PipelineTab />;
-            case 4: return <CastTab />;
-            case 5: return <ThreatTab />;
-            case 6: return <ToMTab />;
-            case 7: return <MindTab />;
-            case 8: return <EmotionsTab />;
-            case 9: return <CoverageTab />;
-            case 10: return <PossibilitiesTab />;
-            case 11: return <DecisionTab />;
-            case 12: return <AccessTab />;
-            case 13: return <DiffTab />;
-            case 14: return <EmotionExplainTab />;
-            case 15: return <DebugTab />;
-            case 16: return <OrchestratorTab />;
-            case 17: return <SimulatorTab />;
+            case 1: return <TuningTab />;
+            case 2: return <AnalysisTab />;
+            case 3: return <AtomsTab />;
+            case 4: return <PipelineTab />;
+            case 5: return <CastTab />;
+            case 6: return <ThreatTab />;
+            case 7: return <ToMTab />;
+            case 8: return <MindTab />;
+            case 9: return <EmotionsTab />;
+            case 10: return <CoverageTab />;
+            case 11: return <PossibilitiesTab />;
+            case 12: return <DecisionTab />;
+            case 13: return <AccessTab />;
+            case 14: return <DiffTab />;
+            case 15: return <EmotionExplainTab />;
+            case 16: return <DebugTab />;
+            case 17: return <OrchestratorTab />;
+            case 18: return <SimulatorTab />;
             default: return <ExplainTab />;
         }
     };
 
-  const tabsList = ['Explain', 'Analysis', 'Atoms', 'Pipeline', 'Cast', 'Threat', 'ToM', 'CtxMind', 'Emotions', 'Coverage', 'Possibilities', 'Decision', 'Access', 'Diff', 'EmotionExplain', 'Debug', 'Orchestrator', 'Simulation'];
+  const tabsList = ['Explain', 'Tuning', 'Analysis', 'Atoms', 'Pipeline', 'Cast', 'Threat', 'ToM', 'CtxMind', 'Emotions', 'Coverage', 'Possibilities', 'Decision', 'Access', 'Diff', 'EmotionExplain', 'Debug', 'Orchestrator', 'Simulation'];
 
   const focusId = (context as any)?.agentId;
   const focusLabel = (focusId && actorLabels?.[focusId]) ? actorLabels[focusId] : focusId;

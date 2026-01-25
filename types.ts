@@ -71,6 +71,23 @@ export type ContextAxisId =
 
 export type ContextAxesVector = Record<ContextAxisId, number>; // all 0..1
 
+// --- Standardized Input Axes (GoalLab / Sensors) ---
+// 0..1, where 0 = none/low, 1 = max/high.
+export enum InputAxis {
+  Temperature = 'temperature',
+  Comfort = 'comfort',
+  Hygiene = 'hygiene',
+  CrowdDensity = 'crowdDensity',
+  Privacy = 'privacy',
+  AuthorityPresence = 'authorityPresence',
+  Aesthetics = 'aesthetics',
+  NoiseLevel = 'noiseLevel',
+  Visibility = 'visibility',
+  ControlLevel = 'controlLevel',
+}
+
+export type InputAxisVector = Record<InputAxis, number>;
+
 export type ContextTuning = {
   // Global scalar (0..1): how strongly context should bias dyads/emotions vs base ToM
   gain?: number;
@@ -252,7 +269,28 @@ export interface LocationEntity extends BaseEntity {
     map?: LocationMap;
     physics?: PhysicsProfile;
     affordances?: { allowedActions?: string[]; forbiddenActions?: string[] };
-    properties?: { privacy?: string; control_level?: number; visibility?: number; noise?: number; tags?: string[] };
+    properties?: {
+        // existing
+        privacy?: 'public' | 'semi' | 'private' | string;
+        control_level?: number; // 0..1
+        visibility?: number;    // 0..1
+        noise?: number;         // 0..1
+        tags?: string[];
+
+        // standardized InputAxis seeds (all 0..1 unless specified otherwise)
+        temperature?: number;
+        comfort?: number;
+        hygiene?: number;
+        aesthetics?: number;
+
+        // aliases / alternative keys (kept for convenience / migrations)
+        crowd_level?: number;
+        crowdDensity?: number;
+        authority_presence?: number;
+        authorityPresence?: number;
+        noise_level?: number;
+        noiseLevel?: number;
+    };
     state?: { locked?: boolean; damaged?: boolean; crowd_level?: number; alert_level?: number; [key: string]: any };
     connections?: Record<string, LocationConnection>;
     contextModes?: any[];

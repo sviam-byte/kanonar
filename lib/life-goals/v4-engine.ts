@@ -9,6 +9,7 @@ import { socialActions } from '../../data/actions-social';
 import { actionGoalMap } from '../goals/space';
 import { AgentContextFrame } from '../context/frame/types';
 import { ContextAtom } from '../context/v2/types';
+import { applyTraitMatrixToGoalLogit } from '../traits/traitMatrix';
 import { extractTargetCandidates } from '../goals/targeting';
 import { getRelationshipFromTom } from '../tom/rel';
 import { ensureAcquaintance, gateMetricsByAcquaintance } from '../social/acquaintance';
@@ -175,6 +176,27 @@ function computeUniversalTargetedGoal(
     }
 
     logit += c_pre + c_met + c_bio;
+
+    // Trait Matrix adjustments (data-driven modifiers).
+    const agentTraits = (agent as any)?.traits?.g_traits || {};
+    const traitAdj = applyTraitMatrixToGoalLogit({
+        goalDefId: def.id,
+        goalName: def.labelTemplate,
+        baseLogit: logit,
+        agentTraits,
+    });
+    if (traitAdj.breakdown.length > 0) {
+        // Reflect additive components in breakdown; multipliers are noted but not turned into fake additive contributions.
+        for (const b of traitAdj.breakdown) {
+            if (typeof b.bonusApplied === 'number') {
+                details.push({ category: 'Trait Matrix', key: `${b.traitId}·${b.key}·bonus`, agentValue: 1, weight: b.bonusApplied, contribution: b.bonusApplied });
+            }
+            if (typeof b.multiplierApplied === 'number') {
+                details.push({ category: 'Trait Matrix', key: `${b.traitId}·${b.key}·mult`, agentValue: 1, weight: b.multiplierApplied, contribution: 0 });
+            }
+        }
+    }
+    logit = traitAdj.logit;
 
     // Threshold for inclusion
     if (logit <= -2.0) return null;

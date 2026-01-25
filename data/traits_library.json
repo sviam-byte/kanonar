@@ -1,0 +1,14 @@
+{
+  "Introvert": {
+    "modifiers": {
+      "Input:CrowdDensity": { "multiplier": 2.0 },
+      "Goal:Socialize": { "multiplier": 0.5 },
+      "Goal:Recharge": { "bonus": 0.2 }
+    }
+  },
+  "NeatFreak": {
+    "modifiers": {
+      "Input:Hygiene": { "curve_exponent": 3.0 }
+    }
+  }
+}
