@@ -1,5 +1,5 @@
 
-import { AgentState, WorldState, CharacterGoalId, DistortionProfile, AgentPsychState, GoalAxisId, V42Metrics, MoralDissonance, AcuteState, CopingProfile, LocalActorRef } from '../../types';
+import { AgentState, WorldState, CharacterGoalId, DistortionProfile, AgentPsychState, GoalAxisId, V42Metrics, MoralDissonance, AcuteState, CopingProfile, LocalActorRef, GoalTuningConfig, GoalCategoryId } from '../../types';
 import { ConcreteGoalId, ConcreteGoalDef, ConcreteGoalInstance, BioFeatureId, TargetedGoalDef, RelationalBioFeatureId, TargetKind, GoalContribDetail, GoalSandboxSnapshot } from './v4-types';
 import { V4_GOAL_DEFINITIONS, V4_TARGETED_GOAL_DEFINITIONS } from './v4-params';
 import { extractBioFeatures, extractRelationalBioFeatures } from '../biography/features';
@@ -123,6 +123,73 @@ function clamp01(x: number) {
     return Math.max(0, Math.min(1, x));
 }
 
+function domainToCategory(domain?: string, layer?: string): GoalCategoryId {
+    const d = String(domain || '').toUpperCase();
+    const l = String(layer || '').toLowerCase();
+    if (l === 'body') return 'rest';
+    if (l === 'learn') return 'learn';
+    if (l === 'identity') return 'identity';
+    if (l === 'social') return 'social';
+    if (l === 'mission') return 'mission';
+    if (l === 'security') return 'control';
+    // Fallbacks by domain
+    if (d === 'REST' || d === 'BODY') return 'survival';
+    if (d === 'SOCIAL' || d === 'CARE' || d === 'STATUS') return 'social';
+    if (d === 'ORDER' || d === 'OBEDIENCE') return 'control';
+    if (d === 'WORK' || d === 'INFO' || d === 'JUSTICE' || d === 'CHAOS') return 'mission';
+    if (d === 'IDENTITY' || d === 'AUTONOMY' || d === 'RITUAL') return 'identity';
+    return 'other';
+}
+
+function applyGoalTuning(
+    baseLogit: number,
+    goalDefId: string,
+    category: GoalCategoryId,
+    tuning?: GoalTuningConfig
+): { logit: number; notes: { kind: 'category' | 'goal' | 'veto'; key: string; value: number }[] } {
+    let logit = baseLogit;
+    const notes: { kind: 'category' | 'goal' | 'veto'; key: string; value: number }[] = [];
+    if (!tuning) return { logit, notes };
+
+    const vetoed = tuning.veto?.[goalDefId];
+    if (vetoed) {
+        // Use a large negative number rather than -Infinity to keep math stable.
+        logit = -99;
+        notes.push({ kind: 'veto', key: 'veto', value: -99 });
+        return { logit, notes };
+    }
+
+    const cat = tuning.categories?.[category];
+    if (cat?.slope != null && Number.isFinite(cat.slope) && cat.slope !== 1) {
+        logit *= cat.slope;
+        notes.push({ kind: 'category', key: `${category}.slope`, value: cat.slope });
+    }
+    if (cat?.bias != null && Number.isFinite(cat.bias) && cat.bias !== 0) {
+        logit += cat.bias;
+        notes.push({ kind: 'category', key: `${category}.bias`, value: cat.bias });
+    }
+
+    const g = tuning.goals?.[goalDefId];
+    if (g?.slope != null && Number.isFinite(g.slope) && g.slope !== 1) {
+        logit *= g.slope;
+        notes.push({ kind: 'goal', key: `${goalDefId}.slope`, value: g.slope });
+    }
+    if (g?.bias != null && Number.isFinite(g.bias) && g.bias !== 0) {
+        logit += g.bias;
+        notes.push({ kind: 'goal', key: `${goalDefId}.bias`, value: g.bias });
+    }
+
+    return { logit, notes };
+}
+
+function softmaxFromLogits(logits: number[]): number[] {
+    if (!logits.length) return [];
+    const max = Math.max(...logits.map(x => (Number.isFinite(x) ? x : -99)));
+    const exps = logits.map(x => Math.exp((Number.isFinite(x) ? x : -99) - max));
+    const sum = exps.reduce((a, b) => a + b, 0) || 1;
+    return exps.map(e => e / sum);
+}
+
 // Universal Targeted Goal Computer
 function computeUniversalTargetedGoal(
     def: TargetedGoalDef,
@@ -228,7 +295,8 @@ export function computeConcreteGoals(
     world?: WorldState,
     nearbyActors: LocalActorRef[] = [], // Allow passing sandbox actors
     frame?: AgentContextFrame,
-    contextAtoms?: ContextAtom[] // Add ContextAtoms for improved targeting
+    contextAtoms?: ContextAtom[], // Add ContextAtoms for improved targeting
+    tuning?: GoalTuningConfig
 ): ConcreteGoalInstance[] {
     
     const bioFeatures = extractBioFeatures(agent.historicalEvents || []);
@@ -287,6 +355,17 @@ export function computeConcreteGoals(
                  formulaParts.push(" - 3.0 (Low threat)");
             }
         }
+
+        // Optional live tuning (macro/category knobs + per-goal knobs + veto)
+        const category = domainToCategory(def.domain, def.layer);
+        const tuned = applyGoalTuning(logit, def.id, category, tuning);
+        if (tuned.notes.length) {
+            for (const n of tuned.notes) {
+                details.push({ category: 'Tuning', key: n.key, agentValue: 1, weight: n.value, contribution: 0 });
+                formulaParts.push(` [${n.kind}:${n.key}=${n.value.toFixed(2)}]`);
+            }
+        }
+        logit = tuned.logit;
 
         goals.push({
             id: def.id,
@@ -423,25 +502,28 @@ export function computeConcreteGoals(
                          inst.formula += " + 1.5(Leader)";
                      }
                  }
+
+                 // Optional live tuning (macro/category knobs + per-goal knobs + veto)
+                 const category = domainToCategory((def as any).domain, (def as any).layer);
+                 const tuned = applyGoalTuning(inst.logit, def.id, category, tuning);
+                 if (tuned.notes.length) {
+                     for (const n of tuned.notes) {
+                         inst.breakdown.push({ category: 'Tuning', key: n.key, agentValue: 1, weight: n.value, contribution: 0 });
+                         inst.formula += ` [${n.kind}:${n.key}=${n.value.toFixed(2)}]`;
+                     }
+                 }
+                 inst.logit = tuned.logit;
+
                  goals.push(inst);
              }
          }
     }
 
     // 3. Softmax & Sorting
-    const maxLogit = Math.max(...goals.map(g => g.logit));
-    let sumExp = 0;
-    const T = 1.0; 
+    if (!goals.length) return [];
 
-    for(const g of goals) {
-        const ex = Math.exp((g.logit - maxLogit) / T);
-        g.score = ex;
-        sumExp += ex;
-    }
-    
-    for(const g of goals) {
-        g.score = g.score / sumExp;
-    }
+    const probs = softmaxFromLogits(goals.map(g => g.logit));
+    for (let i = 0; i < goals.length; i++) goals[i].score = probs[i] ?? 0;
 
-    return goals.sort((a, b) => b.score - a.score);
+    return goals.sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
 }

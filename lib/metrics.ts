@@ -236,7 +236,8 @@ export function calculateAllCharacterMetrics(
     }
 
     // Cast effectiveCharacter to AgentState for the goal engine, which may require state properties
-    const concreteGoals = computeConcreteGoals(effectiveCharacter as AgentState, z_total, undefined); 
+    const tuning = (effectiveCharacter as any).goalTuning;
+    const concreteGoals = computeConcreteGoals(effectiveCharacter as AgentState, z_total, undefined, [], undefined, undefined, tuning);
     
     if (lifeGoalDebug) {
         (lifeGoalDebug as any).concreteGoals = concreteGoals;

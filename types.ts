@@ -38,6 +38,33 @@ export type LocationId = string;
 export type ObjectId = string;
 export type GoalId = string;
 export type CharacterGoalId = string;
+
+// --- Goal Tuning (GoalLab / SimKit) ---
+export type GoalCategoryId =
+  | 'survival'
+  | 'rest'
+  | 'social'
+  | 'control'
+  | 'identity'
+  | 'mission'
+  | 'learn'
+  | 'other';
+
+export interface GoalCurveTuning {
+  /** Multiplies the goal logit (default 1). */
+  slope?: number;
+  /** Adds to the goal logit (default 0). */
+  bias?: number;
+}
+
+export interface GoalTuningConfig {
+  /** Category-level knobs (coarse). */
+  categories?: Partial<Record<GoalCategoryId, GoalCurveTuning>>;
+  /** Goal-level knobs (fine). Key is goal def id (e.g. c_restore_sleep). */
+  goals?: Record<string, GoalCurveTuning>;
+  /** Hard veto switches. Key is goal def id. */
+  veto?: Record<string, boolean>;
+}
 export type ActionId = string;
 export type SocialActionId = string;
 export type ScenarioId = string;
@@ -1219,6 +1246,13 @@ export interface AgentState extends CharacterEntity {
     currentAction?: Action;
     goalEcology?: GoalEcology;
     goalWeights?: Partial<Record<CharacterGoalId, number>>;
+    /**
+     * Optional live-tuning overrides for goal scoring (GoalLab / SimKit).
+     * Contract:
+     *  - logit' = logit * slope + bias (goal-level and category-level)
+     *  - veto disables a goal by forcing its logit to a large negative value
+     */
+    goalTuning?: GoalTuningConfig;
     contextGoals?: any[]; // AgentGoalState[] | ContextGoal[]
     actionProfile?: AgentActionProfile;
     psych?: AgentPsychState;

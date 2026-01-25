@@ -115,7 +115,8 @@ export function updateGoalEcology(agent: AgentState, world: WorldState): void {
               weights.wP * ((g_psych[axis] || 0) + (g_distortion?.[axis] || 0));
       }
       
-      const concreteGoals = computeConcreteGoals(agent, z_total, world);
+      const tuning = (agent as any).goalTuning || (world as any)?.scene?.goalTuning || (world as any)?.goalTuning;
+      const concreteGoals = computeConcreteGoals(agent, z_total, world, [], undefined, undefined, tuning);
       
       newGoalStates = concreteGoals.map(cg => ({
           id: cg.id as CharacterGoalId,
