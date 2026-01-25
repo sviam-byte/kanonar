@@ -133,7 +133,7 @@ function domainToCategory(domain?: string, layer?: string): GoalCategoryId {
     if (l === 'mission') return 'mission';
     if (l === 'security') return 'control';
     // Fallbacks by domain
-    if (d === 'REST' || d === 'BODY') return 'survival';
+    if (d === 'REST' || d === 'BODY') return 'rest';
     if (d === 'SOCIAL' || d === 'CARE' || d === 'STATUS') return 'social';
     if (d === 'ORDER' || d === 'OBEDIENCE') return 'control';
     if (d === 'WORK' || d === 'INFO' || d === 'JUSTICE' || d === 'CHAOS') return 'mission';
@@ -146,9 +146,9 @@ function applyGoalTuning(
     goalDefId: string,
     category: GoalCategoryId,
     tuning?: GoalTuningConfig
-): { logit: number; notes: { kind: 'category' | 'goal' | 'veto'; key: string; value: number }[] } {
+): { logit: number; notes: { kind: 'global' | 'category' | 'goal' | 'veto'; key: string; value: number }[] } {
     let logit = baseLogit;
-    const notes: { kind: 'category' | 'goal' | 'veto'; key: string; value: number }[] = [];
+    const notes: { kind: 'global' | 'category' | 'goal' | 'veto'; key: string; value: number }[] = [];
     if (!tuning) return { logit, notes };
 
     const vetoed = tuning.veto?.[goalDefId];
@@ -157,6 +157,17 @@ function applyGoalTuning(
         logit = -99;
         notes.push({ kind: 'veto', key: 'veto', value: -99 });
         return { logit, notes };
+    }
+
+    // Apply global knobs before category/goal-specific tuning.
+    const globalKnob = tuning.global;
+    if (globalKnob?.slope != null && Number.isFinite(globalKnob.slope) && globalKnob.slope !== 1) {
+        logit *= globalKnob.slope;
+        notes.push({ kind: 'global', key: 'global.slope', value: globalKnob.slope });
+    }
+    if (globalKnob?.bias != null && Number.isFinite(globalKnob.bias) && globalKnob.bias !== 0) {
+        logit += globalKnob.bias;
+        notes.push({ kind: 'global', key: 'global.bias', value: globalKnob.bias });
     }
 
     const cat = tuning.categories?.[category];

@@ -58,6 +58,8 @@ export interface GoalCurveTuning {
 }
 
 export interface GoalTuningConfig {
+  /** Global knobs (applies to all goals). */
+  global?: GoalCurveTuning;
   /** Category-level knobs (coarse). */
   categories?: Partial<Record<GoalCategoryId, GoalCurveTuning>>;
   /** Goal-level knobs (fine). Key is goal def id (e.g. c_restore_sleep). */
