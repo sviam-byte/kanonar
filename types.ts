@@ -2540,6 +2540,8 @@ export interface ContextV2 {
     enemiesCount: number;
     leaderPresent: boolean;
     kingPresent: boolean;
+    /** Normalized 0..1 authority presence (lab/engine hook). */
+    authorityPresence: number;
     authorityConflict: number;
     timePressure: number;
     scenarioKind: string;

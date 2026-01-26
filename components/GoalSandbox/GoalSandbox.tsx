@@ -108,26 +108,49 @@ type ManualContextAxes = {
   duty: number;
   danger: number;
   comfort: number;
+  hygiene: number;
+  authorityPresence: number;
+  crowding: number;
+  noise: number;
 };
 
 /**
- * Heuristic: translate room tags into basic context axes for GoalLab.
+ * Heuristic: translate room tags + location.properties into basic context axes for GoalLab.
  * This is a lab-only bridge when server-side context ticks are absent.
+ *
+ * CRITICAL: never return undefined — all axes must be 0..1 so math never collapses.
  */
 function deriveManualContextAxes(location: LocationEntity | null | undefined): ManualContextAxes {
   const tags = collectLocationTags(location);
   const tagSet = new Set(tags.map(t => t.toLowerCase()));
+  const props: Record<string, unknown> = (location as any)?.properties ?? {};
 
-  const privacy = tagSet.has('private') || tagSet.has('bedroom') ? 1.0 : 0.1;
-  const social = tagSet.has('public') || tagSet.has('bar') ? 1.0 : 0.0;
-  const duty = tagSet.has('work') || tagSet.has('office') ? 1.0 : 0.0;
-  const danger = tagSet.has('dangerous') || tagSet.has('danger') || tagSet.has('hazard') ? 0.8 : 0.0;
+  const privacyTag = tagSet.has('private') || tagSet.has('bedroom') ? 1.0 : 0.1;
+  const socialTag = tagSet.has('public') || tagSet.has('bar') || tagSet.has('crowd') ? 1.0 : 0.0;
+  const dutyTag = tagSet.has('work') || tagSet.has('office') || tagSet.has('throne') ? 1.0 : 0.0;
+  const dangerTag = tagSet.has('dangerous') || tagSet.has('danger') || tagSet.has('hazard') ? 0.8 : 0.0;
 
-  // Comfort is not a first-class axis in the context engine, but it's useful for debug.
   const envStress = Number((location as any)?.physics?.environmentalStress);
-  const comfort = Number.isFinite(envStress) ? clamp01(1 - envStress) : 0.5;
+  const comfortFallback = Number.isFinite(envStress) ? clamp01(1 - envStress) : 0.5;
 
-  return { privacy, social, duty, danger, comfort };
+  const privacy = clamp01(Number((props as any).privacy ?? privacyTag));
+  const social = clamp01(Number((props as any).social ?? socialTag));
+  const duty = clamp01(Number((props as any).duty ?? dutyTag));
+  const danger = clamp01(Number((props as any).danger ?? dangerTag));
+  const comfort = clamp01(Number((props as any).comfort ?? comfortFallback));
+  const hygiene = clamp01(Number((props as any).hygiene ?? 0.5));
+
+  // Authority presence is situational, but in GoalLab we approximate it.
+  // You can override it in the location JSON via properties.authorityPresence.
+  const authorityPresence = clamp01(
+    Number((props as any).authorityPresence ?? (tagSet.has('throne') ? 1.0 : 0.0))
+  );
+
+  // Noise / crowding help interpret why some social / safety goals spike.
+  const noise = clamp01(Number((props as any).noise ?? 0.2));
+  const crowding = clamp01(Number((props as any).crowding ?? social));
+
+  return { privacy, social, duty, danger, comfort, hygiene, authorityPresence, crowding, noise };
 }
 
 /**
@@ -139,10 +162,21 @@ function buildManualContextAxisAtoms(selfId: string, axes: ManualContextAxes): C
     { id: `world:loc:privacy:${selfId}`, magnitude: axes.privacy, label: 'Manual privacy (GoalLab)' },
     { id: `ctx:privacy:${selfId}`, magnitude: axes.privacy, label: 'Manual ctx:privacy (GoalLab)' },
     { id: `ctx:publicness:${selfId}`, magnitude: axes.social, label: 'Manual ctx:publicness (GoalLab)' },
+    { id: `ctx:crowding:${selfId}`, magnitude: axes.crowding, label: 'Manual ctx:crowding (GoalLab)' },
     { id: `world:loc:normative_pressure:${selfId}`, magnitude: axes.duty, label: 'Manual duty (GoalLab)' },
     { id: `ctx:normPressure:${selfId}`, magnitude: axes.duty, label: 'Manual ctx:normPressure (GoalLab)' },
     { id: `world:map:danger:${selfId}`, magnitude: axes.danger, label: 'Manual map danger (GoalLab)' },
     { id: `ctx:danger:${selfId}`, magnitude: axes.danger, label: 'Manual ctx:danger (GoalLab)' },
+    // "Quality" axes (not yet first-class in all engines, but useful for graphs/debug)
+    { id: `ctx:comfort:${selfId}`, magnitude: axes.comfort, label: 'Manual ctx:comfort (GoalLab)' },
+    { id: `ctx:hygiene:${selfId}`, magnitude: axes.hygiene, label: 'Manual ctx:hygiene (GoalLab)' },
+    { id: `ctx:noise:${selfId}`, magnitude: axes.noise, label: 'Manual ctx:noise (GoalLab)' },
+    // Authority pressure (replaces hardcoded kingPresent bonuses).
+    {
+      id: `ctx:authorityPresence:${selfId}`,
+      magnitude: axes.authorityPresence,
+      label: 'Manual ctx:authorityPresence (GoalLab)',
+    },
   ];
 
   return atoms.map(atom =>
@@ -2104,10 +2138,10 @@ export const GoalSandbox: React.FC = () => {
       <main className="flex-1 flex flex-col relative min-w-0 bg-black">
         {/* Map area: fixed to map size (no giant empty black center). */}
         <div className="flex-none relative bg-black overflow-visible p-3">
-          <div className="flex items-center justify-between gap-2 mb-2">
-            <div className="flex items-center gap-3 text-[10px] text-slate-300/80">
-              <div className="uppercase text-slate-500">Self_Perspective</div>
-              <div className="text-cyan-300 font-semibold">{focusId || '—'}</div>
+          <div className="flex items-center justify-between gap-2 mb-2 px-2 py-1 bg-slate-950/70 border border-slate-800 rounded-md backdrop-blur-sm">
+            <div className="flex items-baseline gap-2 min-w-0">
+              <div className="text-[9px] text-slate-500 uppercase tracking-widest shrink-0">Perspective</div>
+              <div className="text-[11px] text-cyan-300 font-bold truncate">{focusId || '—'}</div>
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
@@ -2116,10 +2150,10 @@ export const GoalSandbox: React.FC = () => {
                   <button
                     key={view}
                     onClick={() => setCenterView(view)}
-                    className={`px-2 py-0.5 text-[9px] rounded uppercase border ${
+                    className={`px-2 py-0.5 text-[9px] rounded uppercase border transition ${
                       centerView === view
-                        ? 'bg-cyan-600/30 text-cyan-200 border-cyan-500/40'
-                        : 'bg-black/20 text-slate-300 border-slate-700/60 hover:border-slate-500/70'
+                        ? 'bg-cyan-600/25 text-cyan-200 border-cyan-500/40'
+                        : 'bg-black/10 text-slate-300 border-slate-700/60 hover:border-slate-500/70'
                     }`}
                     title={
                       view === 'map'

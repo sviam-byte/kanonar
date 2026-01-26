@@ -6,6 +6,7 @@ import type { DecisionGraph as DecisionGraphSpec, DGNode } from '../decision-gra
 import { describeGoal } from '../goals/goalCatalog';
 import { GOAL_DEFS, actionGoalMap } from '../goals/space';
 import { arr } from '../utils/arr';
+import { layoutWithDagre } from './layout';
 
 type DecisionGraphParams = {
   frame?: AgentContextFrame | null;
@@ -22,12 +23,14 @@ type GraphResult = {
   edges: Edge[];
 };
 
-const GOAL_NODE_WIDTH = 220;
-const INPUT_NODE_WIDTH = 240;
+const GOAL_NODE_WIDTH = 240;
+const INPUT_NODE_WIDTH = 260;
 const NODE_HEIGHT = 56;
-const COLUMN_GAP = 280;
-const GOAL_GAP = 110;
-const INPUT_GAP = 72;
+
+function clamp01(x: number) {
+  if (!Number.isFinite(x)) return 0;
+  return Math.max(0, Math.min(1, x));
+}
 
 function formatGoalLabel(score: ContextualGoalScore): string {
   const entry = describeGoal(score.goalId);
@@ -47,6 +50,23 @@ function formatContributionLabel(contribution: ContextualGoalContribution): stri
 function formatContributionValue(value: number): string {
   const rounded = Math.round(value * 100) / 100;
   return `${rounded >= 0 ? '+' : ''}${rounded.toFixed(2)}`;
+}
+
+function edgeStyleFromWeight(weight: number) {
+  const w = Number.isFinite(weight) ? weight : 0;
+  const isPositive = w >= 0;
+  const strength = clamp01(Math.abs(w)); // assume roughly -1..1
+  const opacity = Math.max(0.2, strength);
+  const strokeWidth = Math.max(1, 1 + strength * 5);
+  const stroke = isPositive ? '#22c55e' : '#ef4444';
+
+  return {
+    isPositive,
+    strength,
+    style: { stroke, strokeWidth, opacity },
+    labelStyle: { fill: stroke, fontSize: 10, opacity: Math.max(0.35, opacity) },
+    animated: strength > 0.35,
+  };
 }
 
 type DecisionGraphSpecParams = {
@@ -88,13 +108,12 @@ function buildDecisionGraphFromSpec({
   const nodes: Node[] = [];
   const edges: Edge[] = [];
 
-  goalNodes.forEach((goalNode, goalIndex) => {
+  goalNodes.forEach((goalNode) => {
     const isSelected = selectedGoalId && goalNode.meta?.goalId === selectedGoalId;
-    const goalY = goalIndex * GOAL_GAP;
 
     nodes.push({
       id: goalNode.id,
-      position: { x: COLUMN_GAP, y: goalY },
+      position: { x: 0, y: 0 },
       data: { label: goalNode.label },
       style: {
         width: GOAL_NODE_WIDTH,
@@ -114,21 +133,16 @@ function buildDecisionGraphFromSpec({
       .sort((a, b) => Math.abs(clampFinite(b.weight)) - Math.abs(clampFinite(a.weight)))
       .slice(0, Math.max(1, maxInputsPerGoal));
 
-    if (!incoming.length) {
-      return;
-    }
-
-    const totalHeight = (incoming.length - 1) * INPUT_GAP;
     incoming.forEach((edge, index) => {
       const sourceNode = nodesById.get(edge.from);
       const inputId = `input:${edge.from}:${goalNode.id}:${index}`;
-      const inputY = goalY - totalHeight / 2 + index * INPUT_GAP;
-      const isPositive = clampFinite(edge.weight) >= 0;
+      const w = clampFinite(edge.weight);
+      const { isPositive, style, labelStyle, animated } = edgeStyleFromWeight(w);
       const isLens = isLensNode(sourceNode);
 
       nodes.push({
         id: inputId,
-        position: { x: 0, y: inputY },
+        position: { x: 0, y: 0 },
         data: {
           label: sourceNode?.label ?? edge.label ?? edge.from,
         },
@@ -137,8 +151,8 @@ function buildDecisionGraphFromSpec({
           height: NODE_HEIGHT,
           borderRadius: 10,
           padding: '8px 10px',
-          border: `1px solid ${isPositive ? 'rgba(16, 185, 129, 0.5)' : 'rgba(248, 113, 113, 0.5)'}`,
-          background: isPositive ? 'rgba(16, 185, 129, 0.12)' : 'rgba(248, 113, 113, 0.12)',
+          border: `1px solid ${isPositive ? 'rgba(34, 197, 94, 0.55)' : 'rgba(239, 68, 68, 0.55)'}`,
+          background: isPositive ? 'rgba(34, 197, 94, 0.10)' : 'rgba(239, 68, 68, 0.10)',
           color: '#e2e8f0',
           fontSize: '11px',
         },
@@ -148,21 +162,26 @@ function buildDecisionGraphFromSpec({
         id: edge.id,
         source: inputId,
         target: goalNode.id,
-        label: edge.label ?? formatContributionValue(clampFinite(edge.weight)),
+        type: 'smoothstep',
+        label: edge.label ?? formatContributionValue(w),
+        animated,
         style: {
-          stroke: isPositive ? '#34d399' : '#f87171',
-          strokeWidth: isLens ? 3 : 2,
+          ...style,
+          strokeWidth: isLens ? Math.max(style.strokeWidth ?? 2, 3) : style.strokeWidth,
           strokeDasharray: isLens ? '6 4' : undefined,
         },
-        labelStyle: {
-          fill: isPositive ? '#34d399' : '#f87171',
-          fontSize: 10,
-        },
+        labelStyle,
       });
     });
   });
 
-  return { nodes, edges };
+  return layoutWithDagre(nodes, edges, {
+    direction: 'LR',
+    nodeWidth: 260,
+    nodeHeight: NODE_HEIGHT,
+    rankSep: 160,
+    nodeSep: 40,
+  });
 }
 
 export function buildDecisionGraph({
@@ -190,58 +209,58 @@ export function buildDecisionGraph({
   const nodes: Node[] = [];
   const edges: Edge[] = [];
 
-  trimmedScores.forEach((score, goalIndex) => {
+  trimmedScores.forEach((score) => {
     const goalId = `goal:${score.goalId}`;
     const isSelected = selectedGoalId && score.goalId === selectedGoalId;
-    const goalY = goalIndex * GOAL_GAP;
 
     nodes.push({
       id: goalId,
-      position: { x: COLUMN_GAP, y: goalY },
+      position: { x: 0, y: 0 },
       data: {
+        kind: 'goal',
         label: formatGoalLabel(score),
+        domain: score.domain,
+        probability: score.probability,
       },
       style: {
         width: GOAL_NODE_WIDTH,
         height: NODE_HEIGHT,
-        borderRadius: 12,
+        borderRadius: 14,
         padding: '8px 12px',
-        border: `1px solid ${isSelected ? '#38bdf8' : 'rgba(148, 163, 184, 0.4)'}`,
-        background: isSelected ? 'rgba(14, 116, 144, 0.25)' : 'rgba(15, 23, 42, 0.85)',
+        border: `1px solid ${isSelected ? '#38bdf8' : 'rgba(148, 163, 184, 0.35)'}`,
+        background: isSelected ? 'rgba(14, 116, 144, 0.28)' : 'rgba(15, 23, 42, 0.88)',
         color: '#e2e8f0',
         fontSize: '12px',
-        fontWeight: 600,
+        fontWeight: 700,
+        boxShadow: isSelected ? '0 0 0 1px rgba(56,189,248,0.35)' : 'none',
       },
     });
 
     const inputs = arr(score.contributions)
       .filter(input => Number.isFinite(input.value))
-      .sort((a, b) => Math.abs(b.value) - Math.abs(a.value))
+      .sort((a, b) => Math.abs((b.value ?? 0) as number) - Math.abs((a.value ?? 0) as number))
       .slice(0, Math.max(1, maxInputsPerGoal));
 
-    if (!inputs.length) {
-      return;
-    }
-
-    const totalHeight = (inputs.length - 1) * INPUT_GAP;
     inputs.forEach((input, index) => {
       const inputId = `input:${score.goalId}:${index}`;
-      const inputY = goalY - totalHeight / 2 + index * INPUT_GAP;
-      const isPositive = input.value >= 0;
+      const w = Number(input.value ?? 0);
+      const { isPositive, style, labelStyle, animated } = edgeStyleFromWeight(w);
 
       nodes.push({
         id: inputId,
-        position: { x: 0, y: inputY },
+        position: { x: 0, y: 0 },
         data: {
+          kind: 'input',
           label: formatContributionLabel(input),
+          value: w,
         },
         style: {
           width: INPUT_NODE_WIDTH,
           height: NODE_HEIGHT,
-          borderRadius: 10,
+          borderRadius: 12,
           padding: '8px 10px',
-          border: `1px solid ${isPositive ? 'rgba(16, 185, 129, 0.5)' : 'rgba(248, 113, 113, 0.5)'}`,
-          background: isPositive ? 'rgba(16, 185, 129, 0.12)' : 'rgba(248, 113, 113, 0.12)',
+          border: `1px solid ${isPositive ? 'rgba(34, 197, 94, 0.55)' : 'rgba(239, 68, 68, 0.55)'}`,
+          background: isPositive ? 'rgba(34, 197, 94, 0.10)' : 'rgba(239, 68, 68, 0.10)',
           color: '#e2e8f0',
           fontSize: '11px',
         },
@@ -251,24 +270,29 @@ export function buildDecisionGraph({
         id: `edge:${inputId}:${goalId}`,
         source: inputId,
         target: goalId,
-        label: formatContributionValue(input.value),
-        style: {
-          stroke: isPositive ? '#34d399' : '#f87171',
-          strokeWidth: 2,
-        },
-        labelStyle: {
-          fill: isPositive ? '#34d399' : '#f87171',
-          fontSize: 10,
-        },
+        type: 'smoothstep',
+        label: formatContributionValue(w),
+        animated,
+        style,
+        labelStyle,
       });
     });
   });
 
-  return { nodes, edges };
+  // Auto-layout for readability: left → right.
+  const layouted = layoutWithDagre(nodes, edges, {
+    direction: 'LR',
+    nodeWidth: 260,
+    nodeHeight: NODE_HEIGHT,
+    rankSep: 160,
+    nodeSep: 40,
+  });
+
+  return layouted;
 }
 
 /**
- * Build a static Action → Goal graph from definition links.
+ * Static Action → Goal graph from definition links.
  */
 export function buildGoalActionGraph(maxGoals = 18): GraphResult {
   const goalIds = Object.keys(GOAL_DEFS).slice(0, Math.max(1, maxGoals));
@@ -279,39 +303,65 @@ export function buildGoalActionGraph(maxGoals = 18): GraphResult {
   const nodes: Node[] = [];
   const edges: Edge[] = [];
 
-  const X_ACT = 0;
-  const X_GOAL = 560;
-
-  goalIds.forEach((goalId, index) => {
+  goalIds.forEach((goalId) => {
     nodes.push({
       id: `goal:${goalId}`,
-      position: { x: X_GOAL, y: index * 110 },
-      data: { label: GOAL_DEFS[goalId as keyof typeof GOAL_DEFS]?.label_ru ?? goalId },
-      style: { width: 280, height: 56, borderRadius: 12 },
+      position: { x: 0, y: 0 },
+      data: { kind: 'goal', label: GOAL_DEFS[goalId as keyof typeof GOAL_DEFS]?.label_ru ?? goalId },
+      style: {
+        width: 300,
+        height: NODE_HEIGHT,
+        borderRadius: 12,
+        padding: '8px 12px',
+        border: '1px solid rgba(148, 163, 184, 0.35)',
+        background: 'rgba(15, 23, 42, 0.88)',
+        color: '#e2e8f0',
+        fontSize: '12px',
+        fontWeight: 700,
+      },
     });
   });
 
-  actionIds.forEach((actionId, index) => {
+  actionIds.forEach((actionId) => {
     nodes.push({
       id: `act:${actionId}`,
-      position: { x: X_ACT, y: index * 72 },
-      data: { label: actionId },
-      style: { width: 260, height: 56, borderRadius: 12 },
+      position: { x: 0, y: 0 },
+      data: { kind: 'action', label: actionId },
+      style: {
+        width: 280,
+        height: NODE_HEIGHT,
+        borderRadius: 12,
+        padding: '8px 12px',
+        border: '1px solid rgba(148, 163, 184, 0.25)',
+        background: 'rgba(2, 6, 23, 0.55)',
+        color: '#e2e8f0',
+        fontSize: '11px',
+      },
     });
 
     for (const link of arr((actionGoalMap as Record<string, Array<{ goalId?: string; match?: number }>>)[actionId])) {
       const goalId = String(link?.goalId ?? '');
       if (!goalSet.has(goalId)) continue;
       const weight = Number(link?.match ?? 0);
+      const { style, labelStyle, animated } = edgeStyleFromWeight(weight);
       edges.push({
         id: `e:${actionId}__${goalId}`,
         source: `act:${actionId}`,
         target: `goal:${goalId}`,
         type: 'smoothstep',
         label: Number.isFinite(weight) ? weight.toFixed(2) : undefined,
+        animated,
+        style,
+        labelStyle,
       });
     }
   });
 
-  return { nodes, edges };
+  return layoutWithDagre(nodes, edges, {
+    direction: 'LR',
+    nodeWidth: 300,
+    nodeHeight: NODE_HEIGHT,
+    rankSep: 170,
+    nodeSep: 40,
+  });
 }
