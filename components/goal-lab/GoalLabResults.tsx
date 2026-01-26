@@ -23,6 +23,7 @@ import { ThreatPanel } from './ThreatPanel';
 import { ToMPanel } from './ToMPanel';
 import { CoveragePanel } from './CoveragePanel';
 import { DecisionGraphView } from './DecisionGraphView';
+import { GoalActionGraphView } from './GoalActionGraphView';
 import { GoalLabSnapshotV1 } from '../../lib/goal-lab/snapshotTypes';
 import { AtomInspector } from './AtomInspector';
 import { EmotionExplainPanel } from './EmotionExplainPanel';
@@ -1143,6 +1144,13 @@ export const GoalLabResults: React.FC<Props> = ({
             selectedGoalId={effectiveSelectedId}
         />
     );
+    const GoalGraphTab = () => (
+        <GoalActionGraphView
+            goalScores={tunedGoalScores}
+            maxGoals={18}
+            includeAllActions={false}
+        />
+    );
     const OrchestratorTab = () => <OrchestratorLab snapshot={snapshotV1 ?? null} />;
     // Simulator uses SimKit; pass real producers to wire up orchestrator output.
     const SimulatorTab = () => <SimulatorLab orchestratorRegistry={defaultProducers} />;
@@ -1351,18 +1359,19 @@ export const GoalLabResults: React.FC<Props> = ({
             case 10: return <PossibilitiesTab />;
             case 11: return <DecisionTab />;
             case 12: return <DecisionGraphTab />;
-            case 13: return <AccessTab />;
-            case 14: return <DiffTab />;
-            case 15: return <EmotionExplainTab />;
-            case 16: return <DebugTab />;
-            case 17: return <OrchestratorTab />;
-            case 18: return <SimulatorTab />;
-            case 19: return <TuningTab />;
+            case 13: return <GoalGraphTab />;
+            case 14: return <AccessTab />;
+            case 15: return <DiffTab />;
+            case 16: return <EmotionExplainTab />;
+            case 17: return <DebugTab />;
+            case 18: return <OrchestratorTab />;
+            case 19: return <SimulatorTab />;
+            case 20: return <TuningTab />;
             default: return <ExplainTab />;
         }
     };
 
-  const tabsList = ['Explain', 'Analysis', 'Atoms', 'Pipeline', 'Cast', 'Threat', 'ToM', 'CtxMind', 'Emotions', 'Coverage', 'Possibilities', 'Decision', 'Decision Graph', 'Access', 'Diff', 'EmotionExplain', 'Debug', 'Orchestrator', 'Simulation', 'Tuning'];
+  const tabsList = ['Explain', 'Analysis', 'Atoms', 'Pipeline', 'Cast', 'Threat', 'ToM', 'CtxMind', 'Emotions', 'Coverage', 'Possibilities', 'Decision', 'Decision Graph', 'Goal Graph', 'Access', 'Diff', 'EmotionExplain', 'Debug', 'Orchestrator', 'Simulation', 'Tuning'];
 
   const focusId = (context as any)?.agentId;
   const focusLabel = (focusId && actorLabels?.[focusId]) ? actorLabels[focusId] : focusId;

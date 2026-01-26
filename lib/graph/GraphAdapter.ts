@@ -3,6 +3,8 @@ import type { Edge, Node } from 'reactflow';
 import type { AgentContextFrame } from '../context/frame/types';
 import type { ContextualGoalContribution, ContextualGoalScore } from '../context/v2/types';
 import { describeGoal } from '../goals/goalCatalog';
+import { GOAL_DEFS, actionGoalMap } from '../goals/space';
+import type { CharacterGoalId, SocialActionId } from '../../types';
 import { arr } from '../utils/arr';
 
 type DecisionGraphParams = {
@@ -16,6 +18,12 @@ type DecisionGraphParams = {
 type GraphResult = {
   nodes: Node[];
   edges: Edge[];
+};
+
+type GoalActionGraphParams = {
+  goalScores?: ContextualGoalScore[] | null;
+  maxGoals?: number;
+  includeAllActions?: boolean;
 };
 
 const GOAL_NODE_WIDTH = 220;
@@ -131,6 +139,106 @@ export function buildDecisionGraph({
         },
       });
     });
+  });
+
+  return { nodes, edges };
+}
+
+/**
+ * Resolve a display label for goal definitions that exist in the goal space.
+ */
+function goalLabelFromDefs(goalId: string): string {
+  const def = (GOAL_DEFS as Record<CharacterGoalId, { label_ru?: string }>)[goalId as CharacterGoalId];
+  return def?.label_ru || describeGoal(goalId)?.label || goalId;
+}
+
+/**
+ * Build a static Action → Goal graph from `actionGoalMap`.
+ * This visualizes definition links (not contextual contributions).
+ */
+export function buildGoalActionGraph(params: GoalActionGraphParams = {}): GraphResult {
+  const maxGoals = Math.max(1, params.maxGoals ?? 18);
+  const scores = arr(params.goalScores ?? []);
+
+  // Choose goal nodes from top scores or fall back to definitions.
+  let chosenGoalIds: string[];
+  if (scores.length) {
+    chosenGoalIds = [...scores]
+      .sort((a, b) => (b.probability ?? 0) - (a.probability ?? 0))
+      .slice(0, maxGoals)
+      .map(s => String(s.goalId))
+      .filter(Boolean);
+  } else {
+    chosenGoalIds = Object.keys(GOAL_DEFS).slice(0, maxGoals);
+  }
+  const chosenGoalSet = new Set(chosenGoalIds);
+
+  const allActionIds = Object.keys(actionGoalMap) as SocialActionId[];
+  const actionIds: SocialActionId[] = [];
+  for (const actionId of allActionIds) {
+    const links = arr(actionGoalMap[actionId as keyof typeof actionGoalMap]);
+    const hits = links.some(link => chosenGoalSet.has(String((link as { goalId?: string })?.goalId)));
+    if (params.includeAllActions || hits) actionIds.push(actionId);
+  }
+
+  // Layout: actions on the left, goals on the right.
+  const ACTION_NODE_WIDTH = 240;
+  const GOAL_NODE_WIDTH_LOCAL = 260;
+  const X_ACTION = 0;
+  const X_GOAL = ACTION_NODE_WIDTH + 320;
+
+  const nodes: Node[] = [];
+  const edges: Edge[] = [];
+
+  // Goal nodes.
+  chosenGoalIds.forEach((goalId, i) => {
+    nodes.push({
+      id: `goal:${goalId}`,
+      type: 'default',
+      position: { x: X_GOAL, y: i * 110 },
+      data: { label: goalLabelFromDefs(goalId), subtitle: goalId },
+      style: {
+        width: GOAL_NODE_WIDTH_LOCAL,
+        height: 56,
+        borderRadius: 12,
+        border: '1px solid rgba(255,255,255,0.15)',
+        background: 'rgba(0,0,0,0.35)',
+        color: 'white',
+      },
+    });
+  });
+
+  // Action nodes + edges.
+  actionIds.forEach((actionId, i) => {
+    nodes.push({
+      id: `act:${actionId}`,
+      type: 'default',
+      position: { x: X_ACTION, y: i * 72 },
+      data: { label: String(actionId), subtitle: 'action' },
+      style: {
+        width: ACTION_NODE_WIDTH,
+        height: 56,
+        borderRadius: 12,
+        border: '1px solid rgba(255,255,255,0.10)',
+        background: 'rgba(0,0,0,0.20)',
+        color: 'white',
+      },
+    });
+
+    const links = arr(actionGoalMap[actionId as keyof typeof actionGoalMap]);
+    for (const link of links) {
+      const goalId = String((link as { goalId?: string })?.goalId || '');
+      if (!chosenGoalSet.has(goalId)) continue;
+      const match = Number((link as { match?: number })?.match ?? 0);
+      edges.push({
+        id: `e:${actionId}__${goalId}`,
+        source: `act:${actionId}`,
+        target: `goal:${goalId}`,
+        type: 'smoothstep',
+        label: Number.isFinite(match) ? match.toFixed(2) : undefined,
+        style: { strokeWidth: 1.5, opacity: 0.75 },
+      });
+    }
   });
 
   return { nodes, edges };
