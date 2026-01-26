@@ -1,11 +1,14 @@
 import React, { useMemo, useState } from 'react';
-import ReactFlow, { Background, Controls } from 'reactflow';
+import ReactFlow, { Background, Controls, type EdgeTypes, type NodeTypes } from 'reactflow';
 import 'reactflow/dist/style.css';
 
 import type { AgentContextFrame } from '../../lib/context/frame/types';
 import type { ContextualGoalContribution, ContextualGoalScore } from '../../lib/context/v2/types';
-import { buildDecisionGraph } from '../../lib/graph/GraphAdapter';
+import { buildDecisionTripletGraph } from '../../lib/graph/GraphAdapter';
 import { arr } from '../../lib/utils/arr';
+
+import { EnergyEdge } from './EnergyEdge';
+import { GoalNode, LensNode, SourceNode } from './DecisionGraphNodes';
 
 export type DecisionGraphRenderMode = 'graph' | 'meta' | '3d';
 
@@ -21,6 +24,9 @@ type Props = {
   compact?: boolean;
 };
 
+/**
+ * Format a signed decimal with two fractional digits.
+ */
 function formatValue(v: number): string {
   const x = Number(v);
   if (!Number.isFinite(x)) return '0.00';
@@ -148,7 +154,7 @@ function buildMetaGraph(goalScores: ContextualGoalScore[], maxGoals: number) {
 }
 
 export const DecisionGraphView: React.FC<Props> = ({
-  frame,
+  frame: _frame,
   goalScores,
   selectedGoalId,
   mode = 'graph',
@@ -156,6 +162,7 @@ export const DecisionGraphView: React.FC<Props> = ({
 }) => {
   const [maxGoals, setMaxGoals] = useState(14);
   const [maxInputs, setMaxInputs] = useState(10);
+  const [edgeThreshold, setEdgeThreshold] = useState(0.1);
 
   const safeScores = arr(goalScores);
 
@@ -166,14 +173,32 @@ export const DecisionGraphView: React.FC<Props> = ({
       return buildMetaGraph(safeScores, maxGoals);
     }
 
-    return buildDecisionGraph({
-      frame,
+    // "graph" = strict clean-flow triplet (Sources → Lenses → Goals)
+    // Uses fixed x-columns and edge filtering to avoid spaghetti.
+    return buildDecisionTripletGraph({
       goalScores: safeScores,
       selectedGoalId: selectedGoalId ?? null,
       maxGoals,
       maxInputsPerGoal: maxInputs,
+      edgeThreshold,
     });
-  }, [frame, safeScores, selectedGoalId, maxGoals, maxInputs, mode]);
+  }, [safeScores, selectedGoalId, maxGoals, maxInputs, edgeThreshold, mode]);
+
+  const nodeTypes: NodeTypes = useMemo(
+    () => ({
+      source: SourceNode,
+      lens: LensNode,
+      goal: GoalNode,
+    }),
+    []
+  );
+
+  const edgeTypes: EdgeTypes = useMemo(
+    () => ({
+      energy: EnergyEdge,
+    }),
+    []
+  );
 
   if (mode === '3d') {
     return (
@@ -194,7 +219,7 @@ export const DecisionGraphView: React.FC<Props> = ({
         }`}
       >
         <div className="text-[10px] text-slate-300/80">
-          {mode === 'meta' ? 'Meta graph: Context/Lens buckets → Goals' : 'Decision graph: Inputs → Goals'}
+          {mode === 'meta' ? 'Meta graph: Context/Lens buckets → Goals' : 'Decision graph: Sources → Lenses → Goals'}
         </div>
 
         <div className="flex items-center gap-2">
@@ -223,11 +248,37 @@ export const DecisionGraphView: React.FC<Props> = ({
               />
             </label>
           ) : null}
+
+          {mode === 'graph' ? (
+            <label className="flex items-center gap-2 text-[10px] text-slate-300/80">
+              <span className="opacity-70">Threshold</span>
+              <input
+                type="number"
+                min={0}
+                max={1}
+                step={0.05}
+                value={edgeThreshold}
+                onChange={e => setEdgeThreshold(Math.max(0, Math.min(1, Number(e.target.value) || 0)))}
+                className="w-16 bg-black/25 border border-slate-700/60 rounded px-2 py-0.5 text-[10px] font-mono"
+              />
+            </label>
+          ) : null}
         </div>
       </div>
 
       <div className="flex-1 min-h-0">
-        <ReactFlow nodes={graph.nodes} edges={graph.edges} fitView className="bg-black">
+        <ReactFlow
+          nodes={graph.nodes}
+          edges={graph.edges}
+          nodeTypes={nodeTypes}
+          edgeTypes={edgeTypes}
+          fitView
+          nodesDraggable={false}
+          nodesConnectable={false}
+          elementsSelectable={true}
+          panOnDrag
+          className="bg-black"
+        >
           <Background />
           <Controls />
         </ReactFlow>
