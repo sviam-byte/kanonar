@@ -3,6 +3,7 @@
 import { AgentState, WorldState, GoalState, GoalEcology, CharacterGoalId, SocialActionId } from '../../types';
 import { GOAL_DEFS, actionGoalMap } from './space';
 import { computeGoalPriorities } from '../goal-planning';
+import { sampleGumbel } from '../core/noise';
 import { getPlanningGoals } from './adapter';
 import { computeConcreteGoals } from '../life-goals/v4-engine';
 import { makeZeroGoalLogits } from '../life-goals/psych-to-goals';
@@ -205,11 +206,29 @@ export function updateGoalEcology(agent: AgentState, world: WorldState): void {
       }
   }
 
-  // 4. Sort and Distribute by Priority (Probability)
-  newGoalStates.sort((a, b) => b.priority - a.priority);
-  
-  const execute = newGoalStates.slice(0, 5).map(g => ({ ...g, is_active: true }));
-  const latent = newGoalStates.slice(5).map(g => ({ ...g, is_active: false }));
+  // 4. Select active goals using Gumbel-Max (stochastic but reproducible)
+  //    baseScore: activation_score (logit) + stickiness
+  //    noise: Gumbel(scale = gumbelScale * temperature)
+  const K = 5;
+  const stickinessBonus = (agent as any)?.goalStickinessBonus ?? 0.2;
+  const globalTemp = (world as any)?.decisionTemperature;
+  const temperature = (typeof globalTemp === 'number' ? globalTemp : agent.temperature) ?? 1.0;
+  const gumbelScale = (agent.gumbelScale ?? 1.0) * Math.max(0, temperature);
+
+  const ranked = newGoalStates.map(g => {
+      const base = Number.isFinite(g.activation_score) ? g.activation_score : g.priority;
+      const sticky = agent.drivingGoalId === g.id ? stickinessBonus : 0;
+      const noise = gumbelScale > 0 ? sampleGumbel(gumbelScale, agent.rngChannels.decide) : 0;
+      const finalScore = base + sticky + noise;
+      (g as any).noisyPriority = finalScore;
+      (g as any).noisyParts = { base, sticky, noise, temperature, gumbelScale };
+      return { g, finalScore };
+  });
+
+  ranked.sort((a, b) => b.finalScore - a.finalScore);
+
+  const execute = ranked.slice(0, K).map(({ g }) => ({ ...g, is_active: true }));
+  const latent = ranked.slice(K).map(({ g }) => ({ ...g, is_active: false }));
 
   agent.goalEcology = {
       execute: execute as any,

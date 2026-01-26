@@ -78,6 +78,13 @@ interface Props {
   // Perspective (who is the observer)
   perspectiveAgentId?: string | null;
   onSelectPerspective?: (id: string) => void;
+
+  // Determinism controls
+  runSeed?: number | string;
+  onRunSeedChange?: (value: string) => void;
+  decisionTemperature?: number;
+  onDecisionTemperatureChange?: (value: number) => void;
+  onApplySeedAndReset?: () => void;
 }
 
 export const GoalLabControls: React.FC<Props> = ({
@@ -101,7 +108,12 @@ export const GoalLabControls: React.FC<Props> = ({
   onAddParticipant,
   onRemoveParticipant,
   sceneControl, onSceneControlChange, scenePresets,
-  perspectiveAgentId, onSelectPerspective
+  perspectiveAgentId, onSelectPerspective,
+  runSeed,
+  onRunSeedChange,
+  decisionTemperature,
+  onDecisionTemperatureChange,
+  onApplySeedAndReset
 }) => {
   
   const [selectedActorToAdd, setSelectedActorToAdd] = React.useState<string>('');
@@ -116,6 +128,8 @@ export const GoalLabControls: React.FC<Props> = ({
   const nearby = listify(nearbyActors);
   const manual = listify(manualAtoms);
   const computed = listify(computedAtoms);
+  const hasSeedControls = Boolean(onRunSeedChange && onApplySeedAndReset);
+  const hasTemperatureControl = typeof onDecisionTemperatureChange === 'function';
   
   // Custom atom form state
   const [customAtomKind, setCustomAtomKind] = React.useState<ContextAtomKind>('threat');
@@ -639,6 +653,51 @@ export const GoalLabControls: React.FC<Props> = ({
                   >
                     Reset to scene baseline
                   </button>
+                )}
+                {hasSeedControls && (
+                  <div className="mt-4 space-y-2 border border-canon-border/40 rounded p-3 bg-black/20">
+                    <div className="text-[10px] font-bold uppercase tracking-widest text-canon-accent">
+                      Determinism
+                    </div>
+                    <label className="text-[10px] text-canon-text-light uppercase tracking-widest">
+                      Run seed
+                    </label>
+                    <input
+                      type="text"
+                      value={runSeed ?? ''}
+                      onChange={(e) => onRunSeedChange?.(e.target.value)}
+                      className="w-full bg-black/40 border border-slate-800 p-2 text-[11px] rounded outline-none focus:border-cyan-500/50"
+                      placeholder="e.g. 12345 or replay-01"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => onApplySeedAndReset?.()}
+                      className="w-full px-3 py-2 bg-canon-bg border border-canon-accent text-canon-accent text-[10px] font-bold rounded hover:bg-canon-accent/10 transition-colors"
+                    >
+                      Apply &amp; Reset
+                    </button>
+                    <div className="text-[10px] text-canon-text-light italic">
+                      Rebuilds RNG channels for reproducible decisions and events.
+                    </div>
+                  </div>
+                )}
+                {hasTemperatureControl && (
+                  <div className="mt-4 space-y-2 border border-canon-border/40 rounded p-3 bg-black/20">
+                    <div className="text-[10px] font-bold uppercase tracking-widest text-canon-accent">
+                      Decision temperature
+                    </div>
+                    <Slider
+                      label="Temperature (0..5)"
+                      value={decisionTemperature ?? 1}
+                      setValue={(v) => onDecisionTemperatureChange?.(v)}
+                      min={0}
+                      max={5}
+                      step={0.1}
+                    />
+                    <div className="text-[10px] text-canon-text-light italic">
+                      Higher values add more Gumbel noise to goal selection.
+                    </div>
+                  </div>
                 )}
                 <div className="text-[10px] text-canon-text-light italic">
                     Running ticks updates internal state (affect, stress traces) and advances world time.

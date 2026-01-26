@@ -1,100 +1,107 @@
 // --- /lib/core/noise.ts ---
 
-// Предположим, где-то в конфиге симуляции у нас есть глобальный seed
-const globalRunSeed = 12345; // Пример
+import { SeededRandom } from '../../src/utils/SeededRandom';
 
-// 1. Создаём простой, но детерминированный генератор случайных чисел.
-// "Детерминированный" значит, что если дать ему один и тот же seed, он всегда будет выдавать одну и ту же последовательность "случайных" чисел. Это важно для воспроизводимости тестов.
-export class RNG {
-    private seed: number;
+/**
+ * Global run seed used to derive per-agent RNG channels.
+ *
+ * IMPORTANT:
+ * - Must be set once per simulation run (before creating agents).
+ * - If not set, we default to 1 (deterministic, but not very useful).
+ */
+let globalRunSeed: number | string = 1;
 
-    constructor(seed: number) {
-        this.seed = seed >>> 0; // Убеждаемся, что это беззнаковое 32-битное целое
-    }
-
-    // Метод, который генерирует следующее псевдослучайное число (алгоритм xorshift32)
-    next(): number {
-        let x = this.seed;
-        x ^= x << 13;
-        x ^= x >>> 17;
-        x ^= x << 5;
-        this.seed = x >>> 0;
-        return this.seed;
-    }
-
-    // Метод для получения случайного числа с плавающей точкой от 0 до 1
-    nextFloat(): number {
-        return this.next() / 0xFFFFFFFF;
-    }
-    
-    // Метод для получения случайного числа из нормального распределения (для реалистичного шума)
-    nextGaussian(): number {
-        // Box-Muller transform
-        const u1 = this.nextFloat() || 1e-10;
-        const u2 = this.nextFloat() || 1e-10;
-        return Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
-    }
+export function setGlobalRunSeed(seed: number | string): void {
+  globalRunSeed = seed ?? 1;
 }
 
-// 2. Вот ключевая функция! Она создаёт уникальный RNG для каждого агента.
-// Это и есть "минимальный фикс" из вашего документа.
-export function makeAgentRNG(identityId: string, channel: number): RNG {
-    // Сначала превращаем строковый ID агента (например, "kristar-01") в число (хэш)
-    let hash = 2166136261 >>> 0;
-    for (let i = 0; i < identityId.length; i++) {
-        hash ^= identityId.charCodeAt(i);
-        hash *= 16777619;
-        hash >>>= 0;
-    }
-
-    // А теперь магия: мы создаём уникальный seed, смешивая три компонента операцией XOR:
-    // 1. globalRunSeed - общий seed для всей симуляции (чтобы всю сессию можно было повторить)
-    // 2. hash - уникальный номер нашего агента
-    // 3. channel - номер "канала" случайности (например, 1 для физиологии, 2 для решений)
-    const baseSeed = (globalRunSeed ^ hash ^ channel) >>> 0;
-    
-    return new RNG(baseSeed);
-}
-
-export function sampleGumbel(scale: number, rng: RNG): number {
-    // Gumbel distribution is sampled by -log(-log(U)) where U is uniform(0,1)
-    // Avoid u=0 or u=1 for log.
-    const u = Math.max(1e-9, Math.min(1 - 1e-9, rng.nextFloat()));
-    return scale * -Math.log(-Math.log(u));
+export function getGlobalRunSeed(): number | string {
+  return globalRunSeed;
 }
 
 /**
- * Обновляет одно внутреннее состояние (например, stress, energy) на один шаг по процессу Орнштейна-Уленбека.
- * @param currentValue - Текущее значение состояния (например, agent.body.stress)
- * @param setpoint - "Нормальное" значение, к которому стремится состояние (например, 0 для стресса)
- * @param tau - Скорость возврата к норме (из параметров P_i)
- * @param sigma - Масштаб случайного шума на этом шаге
- * @param dt - Шаг времени (обычно 1)
- * @param rng - Персональный генератор случайных чисел агента
- * @returns Новое значение состояния
+ * Deterministic RNG wrapper used by simulation systems.
+ * Keeps the old API (next/nextFloat/nextGaussian).
  */
-export function stepOU(
-    currentValue: number, 
-    setpoint: number, 
-    tau: number, 
-    sigma: number, 
-    dt: number, 
-    rng: RNG
-): number {
-    // 1. Дрейф к норме: tau * (setpoint - currentValue) * dt
-    // Чем дальше мы от нормы, тем сильнее "тяга" обратно.
-    const drift = tau * (setpoint - currentValue) * dt;
+export class RNG {
+  private r: SeededRandom;
 
-    // 2. Случайный "толчок" (шум)
-    // Используем персональный RNG агента для генерации гауссовского шума.
-    const diffusion = sigma * Math.sqrt(dt) * rng.nextGaussian();
+  constructor(seed: number | string) {
+    this.r = new SeededRandom(seed);
+  }
 
-    // 3. Новое значение
-    return currentValue + drift + diffusion;
+  /** Returns uint32 (0..2^32-1). */
+  next(): number {
+    return this.r.nextUint32();
+  }
+
+  /** Returns float in [0, 1). */
+  nextFloat(): number {
+    return this.r.next();
+  }
+
+  /** Standard normal N(0, 1). */
+  nextGaussian(): number {
+    // Box–Muller
+    const u1 = this.nextFloat() || 1e-10;
+    const u2 = this.nextFloat() || 1e-10;
+    return Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+  }
+
+  /** Gumbel(0, scale) noise. */
+  nextGumbel(scale: number): number {
+    return this.r.nextGumbel(scale);
+  }
 }
 
-export function samplePoisson(lambda:number, rng: RNG): number {
-  // Knuth's algorithm for sampling from a Poisson distribution
+/**
+ * Stable 32-bit hash for ids.
+ */
+function fnv1a32(s: string): number {
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0) || 1;
+}
+
+/**
+ * Create a unique deterministic RNG channel for a given agent.
+ *
+ * Seed mixing = hash(agentId) XOR hash(globalRunSeed) XOR channel
+ */
+export function makeAgentRNG(identityId: string, channel: number): RNG {
+  const idHash = fnv1a32(String(identityId || ''));
+  const runHash = fnv1a32(String(globalRunSeed));
+  const baseSeed = (idHash ^ runHash ^ (channel >>> 0)) >>> 0;
+  return new RNG(baseSeed || 1);
+}
+
+export function sampleGumbel(scale: number, rng: RNG): number {
+  // Gumbel distribution is sampled by -log(-log(U)), where U ~ Uniform(0,1)
+  const u = Math.max(1e-9, Math.min(1 - 1e-9, rng.nextFloat()));
+  return scale * -Math.log(-Math.log(u));
+}
+
+/**
+ * Ornstein–Uhlenbeck step.
+ */
+export function stepOU(
+  currentValue: number,
+  setpoint: number,
+  tau: number,
+  sigma: number,
+  dt: number,
+  rng: RNG
+): number {
+  const drift = tau * (setpoint - currentValue) * dt;
+  const diffusion = sigma * Math.sqrt(dt) * rng.nextGaussian();
+  return currentValue + drift + diffusion;
+}
+
+export function samplePoisson(lambda: number, rng: RNG): number {
+  // Knuth's algorithm
   const L = Math.exp(-lambda);
   let k = 0;
   let p = 1;

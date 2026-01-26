@@ -39,9 +39,14 @@ import { applyAcquaintanceFromEvents } from '../social/acquaintanceFromEvents';
 
 // Helper to map SimulationEvent to DomainEvent for logs
 function mapSimEventToDomain(ev: SimulationEvent, world: WorldState): DomainEvent {
+    const seededRng = (world as any)?.rng;
+    // Prefer seeded RNG when available; fallback to Math.random for compatibility.
+    const rand = typeof seededRng?.next === 'function' ? seededRng.next() : Math.random();
+    const suffix = rand.toString(36).slice(2, 7) || Math.floor(rand * 1e9).toString(36);
+
     // Basic mapping, can be refined based on event type
     const base: any = {
-        id: `evt-${ev.tick}-${Math.random().toString(36).substr(2, 5)}`,
+        id: `evt-${ev.tick}-${suffix}`,
         t: ev.tick,
         intensity: 0.5,
         polarity: 0,
