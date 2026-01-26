@@ -6,6 +6,7 @@ import { LifeGoalVector, LifeGoalId } from '../life-goals/types-life';
 import { getLocationForAgent, getAgentMapCell, getLocalMapMetrics } from "../world/locations";
 import { hydrateLocation } from '../adapters/rich-location'; 
 import { AgentContextFrame } from '../context/frame/types';
+import { REFLECTIVE_AXIS_WEIGHTS } from './tuning/reflectiveAxisWeights';
 
 // --- 1.1. Compute Domain Vector from Nearby Actors ---
 function initZeroDomains(): Record<GoalAxisId, number> {
@@ -89,9 +90,14 @@ export function computeDesireReflective(
     domain: GoalAxisId
 ): number {
     let score = baseScore;
-    
-    if (ctx.kingPresent && domain === 'care') score += 0.8;
-    if (ctx.leaderPresent && domain === 'preserve_order') score += 0.6;
+
+    // Authority presence is an axis, not a hardcoded if/else.
+    const authority = Math.max(0, Math.min(1, Number((ctx as any).authorityPresence ?? (ctx.kingPresent ? 1 : 0))));
+    const authorityBonus = REFLECTIVE_AXIS_WEIGHTS.authorityPresenceByDomain[domain] ?? 0;
+    const leaderBonus = REFLECTIVE_AXIS_WEIGHTS.leaderPresenceByDomain[domain] ?? 0;
+
+    score += authority * authorityBonus;
+    if (ctx.leaderPresent && !ctx.kingPresent) score += leaderBonus;
 
     if (ctx.authorityConflict > 0.5 && domain === 'preserve_order') score -= 0.3;
     
@@ -138,6 +144,7 @@ export function buildContextV2FromFrame(
         enemiesCount,
         leaderPresent: kingPresent,
         kingPresent,
+        authorityPresence: kingPresent ? 1 : 0,
         authorityConflict: (frame.derived?.threatIndex ?? 0) * 0.5, // Rough mapping
         timePressure: 0, // Not explicitly in frame usually, default 0
         scenarioKind: 'routine', // Could be inferred from meta.scenarioId
@@ -282,6 +289,7 @@ export function buildContextV2FromWorld(
         enemiesCount,
         leaderPresent: kingPresent,
         kingPresent,
+        authorityPresence: kingPresent ? 1 : 0,
         authorityConflict,
         timePressure,
         scenarioKind,

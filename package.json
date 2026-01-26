@@ -16,7 +16,8 @@
     "react": "^19.2.0",
     "recharts": "^2.12.7",
     "reactflow": "^11.11.4",
-    "seedrandom": "^3.0.5"
+    "seedrandom": "^3.0.5",
+    "dagre": "^0.8.5"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
