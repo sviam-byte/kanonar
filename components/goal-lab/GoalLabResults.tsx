@@ -1144,13 +1144,6 @@ export const GoalLabResults: React.FC<Props> = ({
             selectedGoalId={effectiveSelectedId}
         />
     );
-    const GoalGraphTab = () => (
-        <GoalActionGraphView
-            goalScores={tunedGoalScores}
-            maxGoals={18}
-            includeAllActions={false}
-        />
-    );
     const OrchestratorTab = () => <OrchestratorLab snapshot={snapshotV1 ?? null} />;
     // Simulator uses SimKit; pass real producers to wire up orchestrator output.
     const SimulatorTab = () => <SimulatorLab orchestratorRegistry={defaultProducers} />;
@@ -1359,7 +1352,7 @@ export const GoalLabResults: React.FC<Props> = ({
             case 10: return <PossibilitiesTab />;
             case 11: return <DecisionTab />;
             case 12: return <DecisionGraphTab />;
-            case 13: return <GoalGraphTab />;
+            case 13: return <GoalActionGraphView />;
             case 14: return <AccessTab />;
             case 15: return <DiffTab />;
             case 16: return <EmotionExplainTab />;
