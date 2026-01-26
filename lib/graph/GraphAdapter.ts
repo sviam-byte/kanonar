@@ -23,20 +23,36 @@ type GraphResult = {
   edges: Edge[];
 };
 
+type TripletLayoutParams = {
+  xSources?: number;
+  xLenses?: number;
+  xGoals?: number;
+  yGap?: number;
+};
+
 const GOAL_NODE_WIDTH = 240;
 const INPUT_NODE_WIDTH = 260;
 const NODE_HEIGHT = 56;
 
+/**
+ * Clamp any number to [0..1].
+ */
 function clamp01(x: number) {
   if (!Number.isFinite(x)) return 0;
   return Math.max(0, Math.min(1, x));
 }
 
+/**
+ * Human-readable goal label fallback.
+ */
 function formatGoalLabel(score: ContextualGoalScore): string {
   const entry = describeGoal(score.goalId);
   return entry?.label || score.goalId;
 }
 
+/**
+ * Find a readable label for a goal contribution.
+ */
 function formatContributionLabel(contribution: ContextualGoalContribution): string {
   return (
     contribution.atomLabel ||
@@ -47,11 +63,17 @@ function formatContributionLabel(contribution: ContextualGoalContribution): stri
   );
 }
 
+/**
+ * Format weight values for edge labels.
+ */
 function formatContributionValue(value: number): string {
   const rounded = Math.round(value * 100) / 100;
   return `${rounded >= 0 ? '+' : ''}${rounded.toFixed(2)}`;
 }
 
+/**
+ * Translate weight value into edge styling metadata.
+ */
 function edgeStyleFromWeight(weight: number) {
   const w = Number.isFinite(weight) ? weight : 0;
   const isPositive = w >= 0;
@@ -69,6 +91,195 @@ function edgeStyleFromWeight(weight: number) {
   };
 }
 
+/**
+ * Make deterministic IDs from labels, to keep layout stable across renders.
+ */
+function stableNodeId(prefix: string, label: string): string {
+  const safe = String(label)
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '_')
+    .replace(/[^a-z0-9_\-:]/g, '');
+  return `${prefix}:${safe || 'x'}`;
+}
+
+/**
+ * Heuristic to infer whether a contribution should be treated as a "Lens".
+ */
+function isLensContribution(c: ContextualGoalContribution): boolean {
+  const label = String(c.atomLabel || c.explanation || '').toLowerCase();
+  const kind = String(c.atomKind || '').toLowerCase();
+  // Heuristics: anything explicitly marked as trait/lens is treated as a Lens.
+  if (kind.includes('trait') || kind.includes('lens')) return true;
+  if (label.startsWith('trait:') || label.startsWith('lens:')) return true;
+  if (label.includes('trait') || label.includes('introvert') || label.includes('extrovert')) return true;
+  return false;
+}
+
+/**
+ * Prefer formula-style labels when provided by the engine.
+ */
+function formatEdgeLabel(c: ContextualGoalContribution): string {
+  // If the engine gave us a formula string that looks like a multiplier, prefer that.
+  const f = String(c.formula || '').trim();
+  if (f && /\b(x|\*)\s*[-+]?\d/i.test(f)) return f.replace(/\s+/g, ' ');
+  return formatContributionValue(Number(c.value ?? 0));
+}
+
+/**
+ * Assign fixed x-columns to Sources / Lenses / Goals while keeping vertical order.
+ */
+function layoutTriplet(nodes: Node[], layout: TripletLayoutParams = {}): Node[] {
+  const xSources = layout.xSources ?? 0;
+  const xLenses = layout.xLenses ?? 400;
+  const xGoals = layout.xGoals ?? 800;
+  const yGap = layout.yGap ?? 92;
+
+  const sources = nodes.filter(n => n.type === 'source');
+  const lenses = nodes.filter(n => n.type === 'lens');
+  const goals = nodes.filter(n => n.type === 'goal');
+
+  const byY = (a: Node, b: Node) => (a.position.y ?? 0) - (b.position.y ?? 0);
+  sources.sort(byY);
+  lenses.sort(byY);
+  goals.sort(byY);
+
+  sources.forEach((n, i) => {
+    n.position = { x: xSources, y: i * yGap };
+  });
+  lenses.forEach((n, i) => {
+    n.position = { x: xLenses, y: i * yGap };
+  });
+  goals.forEach((n, i) => {
+    n.position = { x: xGoals, y: i * yGap };
+  });
+
+  return nodes;
+}
+
+/**
+ * Strict 3-column graph (Sources → Lenses → Goals).
+ * This is the "clean flow" visualization: no free dragging, fixed x-columns,
+ * edges filtered by threshold, and labels on edges.
+ */
+export function buildDecisionTripletGraph({
+  goalScores,
+  selectedGoalId,
+  maxGoals,
+  maxInputsPerGoal,
+  edgeThreshold = 0.1,
+}: Pick<DecisionGraphParams, 'goalScores' | 'selectedGoalId' | 'maxGoals' | 'maxInputsPerGoal'> & {
+  edgeThreshold?: number;
+}): GraphResult {
+  const thr = Number(edgeThreshold);
+  const threshold = Number.isFinite(thr) ? Math.max(0, Math.min(1, thr)) : 0.1;
+
+  const safeScores = arr(goalScores);
+  const rankedScores = [...safeScores].sort((a, b) => (b.totalLogit ?? 0) - (a.totalLogit ?? 0));
+  const trimmedScores = rankedScores.slice(0, Math.max(1, maxGoals));
+
+  const nodesById = new Map<string, Node>();
+  const edges: Edge[] = [];
+
+  // Accumulators to order nodes by importance (we'll write order into position.y
+  // and then convert it into fixed columns).
+  const sourceStrength = new Map<string, number>();
+  const lensStrength = new Map<string, number>();
+
+  // 1) Goals
+  trimmedScores.forEach((score, i) => {
+    const goalId = `goal:${score.goalId}`;
+    const isSelected = selectedGoalId && score.goalId === selectedGoalId;
+
+    const goalNode: Node = {
+      id: goalId,
+      type: 'goal',
+      position: { x: 0, y: i },
+      data: {
+        label: formatGoalLabel(score),
+        subtitle: score.domain ? String(score.domain) : undefined,
+        value: score.totalLogit,
+      },
+      selectable: true,
+      style: {
+        width: 280,
+        height: NODE_HEIGHT,
+        border: `1px solid ${isSelected ? 'rgba(56, 189, 248, 0.75)' : 'rgba(148, 163, 184, 0.35)'}`,
+      },
+    };
+
+    nodesById.set(goalId, goalNode);
+
+    const inputs = arr(score.contributions)
+      .filter(input => Number.isFinite(input.value))
+      .filter(input => Math.abs(Number(input.value)) >= threshold)
+      .sort((a, b) => Math.abs((b.value ?? 0) as number) - Math.abs((a.value ?? 0) as number))
+      .slice(0, Math.max(1, maxInputsPerGoal));
+
+    inputs.forEach((c) => {
+      const w = Number(c.value ?? 0);
+      const strength = clamp01(Math.abs(w));
+      const label = formatContributionLabel(c);
+      const isLens = isLensContribution(c);
+
+      const nodeId = stableNodeId(isLens ? 'lens' : 'src', label);
+      const map = isLens ? lensStrength : sourceStrength;
+      map.set(nodeId, (map.get(nodeId) ?? 0) + Math.abs(w));
+
+      if (!nodesById.has(nodeId)) {
+        nodesById.set(nodeId, {
+          id: nodeId,
+          type: isLens ? 'lens' : 'source',
+          position: { x: 0, y: 0 },
+          data: {
+            label,
+            value: w,
+          },
+          selectable: false,
+          style: isLens
+            ? { width: 180, height: NODE_HEIGHT }
+            : { width: 86, height: 86 },
+        });
+      }
+
+      edges.push({
+        id: `e:${nodeId}->${goalId}:${String(c.atomId ?? c.atomLabel ?? c.explanation ?? '').slice(0, 12)}`,
+        source: nodeId,
+        target: goalId,
+        type: 'energy',
+        data: {
+          weight: w,
+          strength,
+          label: formatEdgeLabel(c),
+        },
+        animated: false,
+      });
+    });
+  });
+
+  // 2) Order sources/lenses by total absolute influence so the most important are on top.
+  const orderedSources = [...sourceStrength.entries()].sort((a, b) => b[1] - a[1]);
+  const orderedLenses = [...lensStrength.entries()].sort((a, b) => b[1] - a[1]);
+
+  orderedSources.forEach(([id], idx) => {
+    const n = nodesById.get(id);
+    if (n) n.position.y = idx;
+  });
+  orderedLenses.forEach(([id], idx) => {
+    const n = nodesById.get(id);
+    if (n) n.position.y = idx;
+  });
+
+  const nodes = layoutTriplet([...nodesById.values()], {
+    xSources: 0,
+    xLenses: 400,
+    xGoals: 800,
+    yGap: 92,
+  });
+
+  return { nodes, edges };
+}
+
 type DecisionGraphSpecParams = {
   spec: DecisionGraphSpec;
   selectedGoalId: string | null;
@@ -76,6 +287,9 @@ type DecisionGraphSpecParams = {
   maxInputsPerGoal: number;
 };
 
+/**
+ * Ensure numeric values are finite, otherwise fallback.
+ */
 function clampFinite(value: any, fallback = 0): number {
   const num = Number(value);
   return Number.isFinite(num) ? num : fallback;
@@ -237,6 +451,7 @@ export function buildDecisionGraph({
     });
 
     const inputs = arr(score.contributions)
+      .filter(input => Number.isFinite(input.value))
       .filter(input => Number.isFinite(input.value))
       .sort((a, b) => Math.abs((b.value ?? 0) as number) - Math.abs((a.value ?? 0) as number))
       .slice(0, Math.max(1, maxInputsPerGoal));
