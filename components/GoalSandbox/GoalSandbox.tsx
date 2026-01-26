@@ -25,8 +25,11 @@ import { computeTomGoalsForAgent } from '../../lib/context/v2/tomGoals';
 import { GoalLabControls } from '../goal-lab/GoalLabControls';
 import { GoalLabResults } from '../goal-lab/GoalLabResults';
 import { PipelinePanel } from '../goal-lab/PipelinePanel';
+import { DecisionGraphView } from '../goal-lab/DecisionGraphView';
+import { GoalActionGraphView } from '../goal-lab/GoalActionGraphView';
 import { ToMPanel } from '../goal-lab/ToMPanel';
 import { CastComparePanel } from '../goal-lab/CastComparePanel';
+import { buildDecisionGraphFromGoalScores } from '../../lib/decision-graph/fromGoalScores';
 import { eventRegistry } from '../../data/events-registry';
 import { buildGoalLabContext } from '../../lib/goals/goalLabContext';
 import { computeContextualMind } from '../../lib/tom/contextual/engine';
@@ -498,6 +501,21 @@ export const GoalSandbox: React.FC = () => {
       localStorage.setItem('goalsandbox.uiMode.v1', uiMode);
     } catch {}
   }, [uiMode]);
+
+  // Center view (map vs. goal graphs) is persisted so the UI reopens where the user left it.
+  const [centerView, setCenterView] = useState<'map' | 'energy' | 'actions'>(() => {
+    try {
+      const stored = localStorage.getItem('goalsandbox.centerView.v1');
+      if (stored === 'map' || stored === 'energy' || stored === 'actions') return stored;
+    } catch {}
+    return 'energy';
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('goalsandbox.centerView.v1', centerView);
+    } catch {}
+  }, [centerView]);
 
   // Keep the bottom panel aligned with the chosen mode (debug vs. front).
   useEffect(() => {
@@ -1400,6 +1418,15 @@ export const GoalSandbox: React.FC = () => {
 
   const { snapshot, goals, locationScores, tomScores, situation, goalPreview, contextualMind, error: computeError } = computed;
 
+  // Canonical graph representation for DecisionGraphView (kept separate from UI goal scores).
+  const decisionGraphSpec = useMemo(() => {
+    try {
+      return buildDecisionGraphFromGoalScores(arr(goals) as any);
+    } catch {
+      return null;
+    }
+  }, [goals]);
+
   useEffect(() => {
     if (computeError) {
       setFatalError(String((computeError as any)?.message || computeError));
@@ -2079,18 +2106,59 @@ export const GoalSandbox: React.FC = () => {
           >
             <div className="absolute inset-0 pointer-events-none bg-gradient-to-b from-white/5 to-transparent" />
             <div className="absolute inset-0">
-              <MapViewer
-                map={activeMap}
-                isEditor={locationMode === 'custom' && !placingActorId}
-                onMapChange={setMap}
-                onCellClick={handleActorClick}
-                highlights={mapHighlights as any}
-              />
+              {centerView === 'map' ? (
+                <MapViewer
+                  map={activeMap}
+                  isEditor={locationMode === 'custom' && !placingActorId}
+                  onMapChange={setMap}
+                  onCellClick={handleActorClick}
+                  highlights={mapHighlights as any}
+                />
+              ) : centerView === 'actions' ? (
+                <div className="h-full w-full">
+                  <GoalActionGraphView />
+                </div>
+              ) : (
+                <div className="h-full w-full">
+                  <DecisionGraphView
+                    frame={computed.frame as any}
+                    goalScores={arr(computed.goals) as any}
+                    selectedGoalId={null}
+                    contextAtoms={passportAtoms as any}
+                    decisionGraph={decisionGraphSpec as any}
+                  />
+                </div>
+              )}
             </div>
           </div>
-          <div className="absolute top-4 left-4 p-3 bg-slate-900/80 border border-slate-800 rounded-sm">
-            <div className="text-[9px] text-slate-500 uppercase">Self_Perspective</div>
-            <div className="text-sm text-cyan-400 font-bold">{focusId || '—'}</div>
+          <div className="absolute top-4 left-4 p-3 bg-slate-900/80 border border-slate-800 rounded-sm flex flex-col gap-2">
+            <div>
+              <div className="text-[9px] text-slate-500 uppercase">Self_Perspective</div>
+              <div className="text-sm text-cyan-400 font-bold">{focusId || '—'}</div>
+            </div>
+
+            <div className="flex items-center gap-1">
+              {(['map', 'energy', 'actions'] as const).map((view) => (
+                <button
+                  key={view}
+                  onClick={() => setCenterView(view)}
+                  className={`px-2 py-0.5 text-[9px] rounded uppercase border ${
+                    centerView === view
+                      ? 'bg-cyan-600/30 text-cyan-200 border-cyan-500/40'
+                      : 'bg-black/20 text-slate-300 border-slate-700/60 hover:border-slate-500/70'
+                  }`}
+                  title={
+                    view === 'map'
+                      ? 'Map (placement)'
+                      : view === 'energy'
+                        ? 'Energy (inputs → goals)'
+                        : 'Actions (action → goal)'
+                  }
+                >
+                  {view}
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* Inline error/warning surface to avoid silent failures in the new layout. */}

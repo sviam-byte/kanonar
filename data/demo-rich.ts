@@ -16,6 +16,18 @@ export const DEMO_LOCATION: LocationEntity & Location = {
     description: "Величественный зал, где решаются судьбы. Демонстрационная локация с полным набором сценарных слоев: физикой, социологией и нарративным напряжением.",
     versionTags: [Branch.Current],
     tags: ["demo", "council", "high_stakes"],
+    // Standardized axis seeds for GoalLab (0..1).
+    properties: {
+        privacy: 'public',
+        control_level: 0.85,
+        visibility: 0.9,
+        noise: 0.45,
+        comfort: 0.55,
+        hygiene: 0.75,
+        aesthetics: 0.80,
+        temperature: 0.55,
+        tags: ['formal', 'authority', 'public']
+    },
     
     // Visual Map
     map: {

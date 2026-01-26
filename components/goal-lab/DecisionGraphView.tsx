@@ -5,15 +5,24 @@ import 'reactflow/dist/style.css';
 import type { AgentContextFrame } from '../../lib/context/frame/types';
 import type { ContextualGoalScore } from '../../lib/context/v2/types';
 import { buildDecisionGraph } from '../../lib/graph/GraphAdapter';
+import type { DecisionGraph as DecisionGraphSpec } from '../../lib/decision-graph/types';
 import { arr } from '../../lib/utils/arr';
 
 type Props = {
   frame?: AgentContextFrame | null;
   goalScores: ContextualGoalScore[];
   selectedGoalId?: string | null;
+  contextAtoms?: any[];
+  decisionGraph?: DecisionGraphSpec | null;
 };
 
-export const DecisionGraphView: React.FC<Props> = ({ frame, goalScores, selectedGoalId }) => {
+export const DecisionGraphView: React.FC<Props> = ({
+  frame,
+  goalScores,
+  selectedGoalId,
+  contextAtoms,
+  decisionGraph,
+}) => {
   const [maxGoals, setMaxGoals] = useState(14);
   const [maxInputs, setMaxInputs] = useState(10);
 
@@ -24,10 +33,12 @@ export const DecisionGraphView: React.FC<Props> = ({ frame, goalScores, selected
       frame,
       goalScores: safeScores,
       selectedGoalId: selectedGoalId ?? null,
+      contextAtoms: arr(contextAtoms),
+      decisionGraph: decisionGraph ?? null,
       maxGoals,
       maxInputsPerGoal: maxInputs,
     });
-  }, [frame, safeScores, selectedGoalId, maxGoals, maxInputs]);
+  }, [frame, safeScores, selectedGoalId, contextAtoms, decisionGraph, maxGoals, maxInputs]);
 
   return (
     <div className="h-full min-h-0 flex flex-col">
