@@ -3,6 +3,7 @@ import type { Edge, Node } from 'reactflow';
 import type { AgentContextFrame } from '../context/frame/types';
 import type { ContextualGoalContribution, ContextualGoalScore } from '../context/v2/types';
 import { describeGoal } from '../goals/goalCatalog';
+import { GOAL_DEFS, actionGoalMap } from '../goals/space';
 import { arr } from '../utils/arr';
 
 type DecisionGraphParams = {
@@ -131,6 +132,55 @@ export function buildDecisionGraph({
         },
       });
     });
+  });
+
+  return { nodes, edges };
+}
+
+/**
+ * Build a static Action → Goal graph from definition links.
+ */
+export function buildGoalActionGraph(maxGoals = 18): GraphResult {
+  const goalIds = Object.keys(GOAL_DEFS).slice(0, Math.max(1, maxGoals));
+  const goalSet = new Set(goalIds);
+
+  const actionIds = Object.keys(actionGoalMap);
+
+  const nodes: Node[] = [];
+  const edges: Edge[] = [];
+
+  const X_ACT = 0;
+  const X_GOAL = 560;
+
+  goalIds.forEach((goalId, index) => {
+    nodes.push({
+      id: `goal:${goalId}`,
+      position: { x: X_GOAL, y: index * 110 },
+      data: { label: GOAL_DEFS[goalId as keyof typeof GOAL_DEFS]?.label_ru ?? goalId },
+      style: { width: 280, height: 56, borderRadius: 12 },
+    });
+  });
+
+  actionIds.forEach((actionId, index) => {
+    nodes.push({
+      id: `act:${actionId}`,
+      position: { x: X_ACT, y: index * 72 },
+      data: { label: actionId },
+      style: { width: 260, height: 56, borderRadius: 12 },
+    });
+
+    for (const link of arr((actionGoalMap as Record<string, Array<{ goalId?: string; match?: number }>>)[actionId])) {
+      const goalId = String(link?.goalId ?? '');
+      if (!goalSet.has(goalId)) continue;
+      const weight = Number(link?.match ?? 0);
+      edges.push({
+        id: `e:${actionId}__${goalId}`,
+        source: `act:${actionId}`,
+        target: `goal:${goalId}`,
+        type: 'smoothstep',
+        label: Number.isFinite(weight) ? weight.toFixed(2) : undefined,
+      });
+    }
   });
 
   return { nodes, edges };
