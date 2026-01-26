@@ -29,7 +29,6 @@ import { DecisionGraphView } from '../goal-lab/DecisionGraphView';
 import { GoalActionGraphView } from '../goal-lab/GoalActionGraphView';
 import { ToMPanel } from '../goal-lab/ToMPanel';
 import { CastComparePanel } from '../goal-lab/CastComparePanel';
-import { buildDecisionGraphFromGoalScores } from '../../lib/decision-graph/fromGoalScores';
 import { eventRegistry } from '../../data/events-registry';
 import { buildGoalLabContext } from '../../lib/goals/goalLabContext';
 import { computeContextualMind } from '../../lib/tom/contextual/engine';
@@ -511,11 +510,28 @@ export const GoalSandbox: React.FC = () => {
     return 'energy';
   });
 
+  const [energyViewMode, setEnergyViewMode] = useState<'graph' | 'meta' | '3d'>(() => {
+    try {
+      const stored = localStorage.getItem('goalsandbox.energyViewMode.v1');
+      if (stored === 'graph' || stored === 'meta' || stored === '3d') return stored;
+    } catch {}
+    return 'graph';
+  });
+
+  const [centerOverlayOpen, setCenterOverlayOpen] = useState(false);
+  const [centerOverlaySize, setCenterOverlaySize] = useState<'wide' | 'max'>('wide');
+
   useEffect(() => {
     try {
       localStorage.setItem('goalsandbox.centerView.v1', centerView);
     } catch {}
   }, [centerView]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('goalsandbox.energyViewMode.v1', energyViewMode);
+    } catch {}
+  }, [energyViewMode]);
 
   // Keep the bottom panel aligned with the chosen mode (debug vs. front).
   useEffect(() => {
@@ -1418,15 +1434,6 @@ export const GoalSandbox: React.FC = () => {
 
   const { snapshot, goals, locationScores, tomScores, situation, goalPreview, contextualMind, error: computeError } = computed;
 
-  // Canonical graph representation for DecisionGraphView (kept separate from UI goal scores).
-  const decisionGraphSpec = useMemo(() => {
-    try {
-      return buildDecisionGraphFromGoalScores(arr(goals) as any);
-    } catch {
-      return null;
-    }
-  }, [goals]);
-
   useEffect(() => {
     if (computeError) {
       setFatalError(String((computeError as any)?.message || computeError));
@@ -2097,6 +2104,67 @@ export const GoalSandbox: React.FC = () => {
       <main className="flex-1 flex flex-col relative min-w-0 bg-black">
         {/* Map area: fixed to map size (no giant empty black center). */}
         <div className="flex-none relative bg-black overflow-visible p-3">
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <div className="flex items-center gap-3 text-[10px] text-slate-300/80">
+              <div className="uppercase text-slate-500">Self_Perspective</div>
+              <div className="text-cyan-300 font-semibold">{focusId || '—'}</div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center gap-1">
+                {(['map', 'energy', 'actions'] as const).map((view) => (
+                  <button
+                    key={view}
+                    onClick={() => setCenterView(view)}
+                    className={`px-2 py-0.5 text-[9px] rounded uppercase border ${
+                      centerView === view
+                        ? 'bg-cyan-600/30 text-cyan-200 border-cyan-500/40'
+                        : 'bg-black/20 text-slate-300 border-slate-700/60 hover:border-slate-500/70'
+                    }`}
+                    title={
+                      view === 'map'
+                        ? 'Map (placement)'
+                        : view === 'energy'
+                          ? 'Energy (inputs → goals)'
+                          : 'Actions (action → goal)'
+                    }
+                  >
+                    {view}
+                  </button>
+                ))}
+              </div>
+
+              {centerView === 'energy' ? (
+                <>
+                  <div className="flex items-center gap-1">
+                    {(['graph', 'meta', '3d'] as const).map((mode) => (
+                      <button
+                        key={mode}
+                        onClick={() => setEnergyViewMode(mode)}
+                        className={`px-2 py-0.5 text-[9px] rounded uppercase border ${
+                          energyViewMode === mode
+                            ? 'bg-emerald-600/30 text-emerald-200 border-emerald-500/40'
+                            : 'bg-black/20 text-slate-300 border-slate-700/60 hover:border-slate-500/70'
+                        }`}
+                        title={mode === 'graph' ? 'Graph (inputs → goals)' : mode === 'meta' ? 'Meta buckets' : '3D scaffold'}
+                      >
+                        {mode}
+                      </button>
+                    ))}
+                  </div>
+
+                  <button
+                    onClick={() => setCenterOverlayOpen(true)}
+                    className="px-2 py-0.5 text-[9px] rounded uppercase border bg-black/20 text-slate-300 border-slate-700/60 hover:border-slate-500/70"
+                    title="Open widened view"
+                  >
+                    widen
+                  </button>
+                </>
+              ) : null}
+            </div>
+          </div>
+
           <div
             className="relative flex-none border border-slate-800 bg-slate-950/40 overflow-hidden shadow-[0_0_0_1px_rgba(148,163,184,0.15)]"
             style={{
@@ -2124,40 +2192,11 @@ export const GoalSandbox: React.FC = () => {
                     frame={computed.frame as any}
                     goalScores={arr(computed.goals) as any}
                     selectedGoalId={null}
-                    contextAtoms={passportAtoms as any}
-                    decisionGraph={decisionGraphSpec as any}
+                    mode={energyViewMode}
+                    compact
                   />
                 </div>
               )}
-            </div>
-          </div>
-          <div className="absolute top-4 left-4 p-3 bg-slate-900/80 border border-slate-800 rounded-sm flex flex-col gap-2">
-            <div>
-              <div className="text-[9px] text-slate-500 uppercase">Self_Perspective</div>
-              <div className="text-sm text-cyan-400 font-bold">{focusId || '—'}</div>
-            </div>
-
-            <div className="flex items-center gap-1">
-              {(['map', 'energy', 'actions'] as const).map((view) => (
-                <button
-                  key={view}
-                  onClick={() => setCenterView(view)}
-                  className={`px-2 py-0.5 text-[9px] rounded uppercase border ${
-                    centerView === view
-                      ? 'bg-cyan-600/30 text-cyan-200 border-cyan-500/40'
-                      : 'bg-black/20 text-slate-300 border-slate-700/60 hover:border-slate-500/70'
-                  }`}
-                  title={
-                    view === 'map'
-                      ? 'Map (placement)'
-                      : view === 'energy'
-                        ? 'Energy (inputs → goals)'
-                        : 'Actions (action → goal)'
-                  }
-                >
-                  {view}
-                </button>
-              ))}
             </div>
           </div>
 
@@ -2171,6 +2210,53 @@ export const GoalSandbox: React.FC = () => {
             <div className="absolute top-4 right-4 max-w-[360px] bg-amber-900/60 border border-amber-500/60 text-amber-100 p-3 rounded text-xs">
               <div className="font-bold text-[11px] mb-1">Goal Lab warning</div>
               <div className="whitespace-pre-wrap opacity-80">{runtimeError}</div>
+            </div>
+          ) : null}
+
+          {centerOverlayOpen && centerView === 'energy' ? (
+            <div className="absolute inset-0 z-50">
+              <div
+                className="absolute inset-0 bg-black/70"
+                onClick={() => setCenterOverlayOpen(false)}
+              />
+              <div
+                className={`absolute ${
+                  centerOverlaySize === 'max' ? 'inset-2' : 'inset-8'
+                } bg-slate-950 border border-slate-800 rounded-lg shadow-xl flex flex-col`}
+              >
+                <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-slate-800">
+                  <div className="text-[10px] text-slate-300/70 uppercase">Energy view</div>
+                  <div className="flex items-center gap-2">
+                    {(['wide', 'max'] as const).map((size) => (
+                      <button
+                        key={size}
+                        onClick={() => setCenterOverlaySize(size)}
+                        className={`px-2 py-0.5 text-[9px] rounded uppercase border ${
+                          centerOverlaySize === size
+                            ? 'bg-cyan-600/30 text-cyan-200 border-cyan-500/40'
+                            : 'bg-black/20 text-slate-300 border-slate-700/60 hover:border-slate-500/70'
+                        }`}
+                      >
+                        {size}
+                      </button>
+                    ))}
+                    <button
+                      onClick={() => setCenterOverlayOpen(false)}
+                      className="px-2 py-0.5 text-[9px] rounded uppercase border bg-black/20 text-slate-300 border-slate-700/60 hover:border-slate-500/70"
+                    >
+                      close
+                    </button>
+                  </div>
+                </div>
+                <div className="flex-1 min-h-0">
+                  <DecisionGraphView
+                    frame={computed.frame as any}
+                    goalScores={arr(computed.goals) as any}
+                    selectedGoalId={null}
+                    mode={energyViewMode}
+                  />
+                </div>
+              </div>
             </div>
           ) : null}
         </div>
