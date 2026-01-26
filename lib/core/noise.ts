@@ -1,64 +1,23 @@
 // --- /lib/core/noise.ts ---
 
-import { SeededRandom } from '../../src/utils/SeededRandom';
-
 /**
- * Global run seed used to derive per-agent RNG channels.
- *
- * IMPORTANT:
- * - Must be set once per simulation run (before creating agents).
- * - If not set, we default to 1 (deterministic, but not very useful).
+ * Global run seed for the whole simulation session.
+ * IMPORTANT: do not keep it as a const - it must be overrideable from UI/tests.
  */
-let globalRunSeed: number | string = 1;
+let globalRunSeed: number = 12345;
 
-export function setGlobalRunSeed(seed: number | string): void {
-  globalRunSeed = seed ?? 1;
+export function getGlobalRunSeed(): number {
+  return globalRunSeed >>> 0;
 }
 
-export function getGlobalRunSeed(): number | string {
+export function setGlobalRunSeed(seed: number | string): number {
+  globalRunSeed = (typeof seed === 'string' ? hashString32(seed) : (seed >>> 0)) || 1;
   return globalRunSeed;
 }
 
-/**
- * Deterministic RNG wrapper used by simulation systems.
- * Keeps the old API (next/nextFloat/nextGaussian).
- */
-export class RNG {
-  private r: SeededRandom;
-
-  constructor(seed: number | string) {
-    this.r = new SeededRandom(seed);
-  }
-
-  /** Returns uint32 (0..2^32-1). */
-  next(): number {
-    return this.r.nextUint32();
-  }
-
-  /** Returns float in [0, 1). */
-  nextFloat(): number {
-    return this.r.next();
-  }
-
-  /** Standard normal N(0, 1). */
-  nextGaussian(): number {
-    // Box–Muller
-    const u1 = this.nextFloat() || 1e-10;
-    const u2 = this.nextFloat() || 1e-10;
-    return Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
-  }
-
-  /** Gumbel(0, scale) noise. */
-  nextGumbel(scale: number): number {
-    return this.r.nextGumbel(scale);
-  }
-}
-
-/**
- * Stable 32-bit hash for ids.
- */
-function fnv1a32(s: string): number {
-  let h = 2166136261 >>> 0;
+function hashString32(s: string): number {
+  // FNV-1a 32-bit
+  let h = 2166136261;
   for (let i = 0; i < s.length; i++) {
     h ^= s.charCodeAt(i);
     h = Math.imul(h, 16777619);
@@ -66,20 +25,48 @@ function fnv1a32(s: string): number {
   return (h >>> 0) || 1;
 }
 
-/**
- * Create a unique deterministic RNG channel for a given agent.
- *
- * Seed mixing = hash(agentId) XOR hash(globalRunSeed) XOR channel
- */
+// 1. Simple deterministic PRNG (xorshift32)
+export class RNG {
+  private seed: number;
+
+  constructor(seed: number) {
+    this.seed = (seed >>> 0) || 1;
+  }
+
+  // xorshift32
+  next(): number {
+    let x = this.seed;
+    x ^= x << 13;
+    x ^= x >>> 17;
+    x ^= x << 5;
+    this.seed = x >>> 0;
+    return this.seed;
+  }
+
+  // float in [0, 1)
+  nextFloat(): number {
+    // 2^32
+    return this.next() / 4294967296;
+  }
+
+  // Normal(0,1) via Box-Muller
+  nextGaussian(): number {
+    const u1 = Math.max(1e-12, this.nextFloat());
+    const u2 = Math.max(1e-12, this.nextFloat());
+    return Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+  }
+}
+
+// 2. Per-agent RNG channel factory (globalSeed ^ agentHash ^ channel)
 export function makeAgentRNG(identityId: string, channel: number): RNG {
-  const idHash = fnv1a32(String(identityId || ''));
-  const runHash = fnv1a32(String(globalRunSeed));
-  const baseSeed = (idHash ^ runHash ^ (channel >>> 0)) >>> 0;
-  return new RNG(baseSeed || 1);
+  const hash = hashString32(identityId);
+  const baseSeed = (globalRunSeed ^ hash ^ (channel >>> 0)) >>> 0;
+  return new RNG(baseSeed);
 }
 
 export function sampleGumbel(scale: number, rng: RNG): number {
-  // Gumbel distribution is sampled by -log(-log(U)), where U ~ Uniform(0,1)
+  // Gumbel distribution is sampled by -log(-log(U)) where U is uniform(0,1)
+  // Avoid u=0 or u=1 for log.
   const u = Math.max(1e-9, Math.min(1 - 1e-9, rng.nextFloat()));
   return scale * -Math.log(-Math.log(u));
 }

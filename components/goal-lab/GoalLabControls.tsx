@@ -57,8 +57,6 @@ interface Props {
   onLoadScene?: (preset: ScenePreset) => void;
   onRunTicks?: (steps: number) => void;
   onResetSim?: () => void;
-  onDownloadScene?: () => void;
-  onImportSceneDumpV2?: (dump: any) => void;
 
   // Optional: World Access for Mods
   world?: any;
@@ -79,12 +77,13 @@ interface Props {
   perspectiveAgentId?: string | null;
   onSelectPerspective?: (id: string) => void;
 
-  // Determinism controls
-  runSeed?: number | string;
-  onRunSeedChange?: (value: string) => void;
+  // RNG controls
+  runSeed?: number;
+  onRunSeedChange?: (seed: number) => void;
   decisionTemperature?: number;
-  onDecisionTemperatureChange?: (value: number) => void;
-  onApplySeedAndReset?: () => void;
+  onDecisionTemperatureChange?: (t: number) => void;
+  onDownloadScene?: () => void;
+  onImportSceneDumpV2?: (dump: any) => void;
 }
 
 export const GoalLabControls: React.FC<Props> = ({
@@ -112,8 +111,7 @@ export const GoalLabControls: React.FC<Props> = ({
   runSeed,
   onRunSeedChange,
   decisionTemperature,
-  onDecisionTemperatureChange,
-  onApplySeedAndReset
+  onDecisionTemperatureChange
 }) => {
   
   const [selectedActorToAdd, setSelectedActorToAdd] = React.useState<string>('');
@@ -128,8 +126,6 @@ export const GoalLabControls: React.FC<Props> = ({
   const nearby = listify(nearbyActors);
   const manual = listify(manualAtoms);
   const computed = listify(computedAtoms);
-  const hasSeedControls = Boolean(onRunSeedChange && onApplySeedAndReset);
-  const hasTemperatureControl = typeof onDecisionTemperatureChange === 'function';
   
   // Custom atom form state
   const [customAtomKind, setCustomAtomKind] = React.useState<ContextAtomKind>('threat');
@@ -654,51 +650,33 @@ export const GoalLabControls: React.FC<Props> = ({
                     Reset to scene baseline
                   </button>
                 )}
-                {hasSeedControls && (
-                  <div className="mt-4 space-y-2 border border-canon-border/40 rounded p-3 bg-black/20">
-                    <div className="text-[10px] font-bold uppercase tracking-widest text-canon-accent">
-                      Determinism
-                    </div>
-                    <label className="text-[10px] text-canon-text-light uppercase tracking-widest">
-                      Run seed
-                    </label>
+                <div className="border border-canon-border/40 rounded p-2 bg-black/20 space-y-2">
+                  <div className="text-[10px] font-bold uppercase tracking-widest text-canon-accent">
+                    RNG / Decision Temperature
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <div className="text-[10px] text-canon-text-light w-[48px]">seed</div>
                     <input
-                      type="text"
-                      value={runSeed ?? ''}
-                      onChange={(e) => onRunSeedChange?.(e.target.value)}
-                      className="w-full bg-black/40 border border-slate-800 p-2 text-[11px] rounded outline-none focus:border-cyan-500/50"
-                      placeholder="e.g. 12345 or replay-01"
+                      type="number"
+                      value={typeof runSeed === 'number' ? runSeed : 0}
+                      onChange={(e) => {
+                        const v = Number(e.target.value);
+                        if (Number.isFinite(v)) onRunSeedChange?.(v);
+                      }}
+                      className="flex-1 bg-black/40 border border-canon-border/50 px-2 py-1 text-[11px] rounded outline-none focus:border-canon-accent/70"
                     />
-                    <button
-                      type="button"
-                      onClick={() => onApplySeedAndReset?.()}
-                      className="w-full px-3 py-2 bg-canon-bg border border-canon-accent text-canon-accent text-[10px] font-bold rounded hover:bg-canon-accent/10 transition-colors"
-                    >
-                      Apply &amp; Reset
-                    </button>
-                    <div className="text-[10px] text-canon-text-light italic">
-                      Rebuilds RNG channels for reproducible decisions and events.
-                    </div>
                   </div>
-                )}
-                {hasTemperatureControl && (
-                  <div className="mt-4 space-y-2 border border-canon-border/40 rounded p-3 bg-black/20">
-                    <div className="text-[10px] font-bold uppercase tracking-widest text-canon-accent">
-                      Decision temperature
-                    </div>
-                    <Slider
-                      label="Temperature (0..5)"
-                      value={decisionTemperature ?? 1}
-                      setValue={(v) => onDecisionTemperatureChange?.(v)}
-                      min={0}
-                      max={5}
-                      step={0.1}
-                    />
-                    <div className="text-[10px] text-canon-text-light italic">
-                      Higher values add more Gumbel noise to goal selection.
-                    </div>
-                  </div>
-                )}
+
+                  <Slider
+                    label="temperature (0.05..5.0)"
+                    value={typeof decisionTemperature === 'number' ? decisionTemperature : 1.0}
+                    setValue={(v) => onDecisionTemperatureChange?.(v)}
+                    min={0.05}
+                    max={5.0}
+                    step={0.05}
+                  />
+                </div>
                 <div className="text-[10px] text-canon-text-light italic">
                     Running ticks updates internal state (affect, stress traces) and advances world time.
                 </div>

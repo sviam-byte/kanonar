@@ -206,29 +206,22 @@ export function updateGoalEcology(agent: AgentState, world: WorldState): void {
       }
   }
 
-  // 4. Select active goals using Gumbel-Max (stochastic but reproducible)
-  //    baseScore: activation_score (logit) + stickiness
-  //    noise: Gumbel(scale = gumbelScale * temperature)
-  const K = 5;
-  const stickinessBonus = (agent as any)?.goalStickinessBonus ?? 0.2;
-  const globalTemp = (world as any)?.decisionTemperature;
-  const temperature = (typeof globalTemp === 'number' ? globalTemp : agent.temperature) ?? 1.0;
-  const gumbelScale = (agent.gumbelScale ?? 1.0) * Math.max(0, temperature);
+  // 4. Sort and Distribute by Priority using Gumbel-Max (stochastic, but deterministic per seed)
+  // Temperature comes from world; lower = more robotic, higher = more chaotic.
+  const T = typeof (world as any).decisionTemperature === 'number' ? (world as any).decisionTemperature : 1.0;
+  const STICKINESS_BONUS = 0.2;
 
-  const ranked = newGoalStates.map(g => {
-      const base = Number.isFinite(g.activation_score) ? g.activation_score : g.priority;
-      const sticky = agent.drivingGoalId === g.id ? stickinessBonus : 0;
-      const noise = gumbelScale > 0 ? sampleGumbel(gumbelScale, agent.rngChannels.decide) : 0;
-      const finalScore = base + sticky + noise;
-      (g as any).noisyPriority = finalScore;
-      (g as any).noisyParts = { base, sticky, noise, temperature, gumbelScale };
-      return { g, finalScore };
-  });
+  for (const st of newGoalStates) {
+      const sticky = agent.drivingGoalId === st.id ? STICKINESS_BONUS : 0;
+      const rng = (agent as any).rngChannels?.decide;
+      const noise = rng ? sampleGumbel(T, rng) : 0;
+      st.stochasticPriority = st.priority + sticky + noise;
+  }
 
-  ranked.sort((a, b) => b.finalScore - a.finalScore);
-
-  const execute = ranked.slice(0, K).map(({ g }) => ({ ...g, is_active: true }));
-  const latent = ranked.slice(K).map(({ g }) => ({ ...g, is_active: false }));
+  newGoalStates.sort((a, b) => (b.stochasticPriority ?? b.priority) - (a.stochasticPriority ?? a.priority));
+  
+  const execute = newGoalStates.slice(0, 5).map(g => ({ ...g, is_active: true }));
+  const latent = newGoalStates.slice(5).map(g => ({ ...g, is_active: false }));
 
   agent.goalEcology = {
       execute: execute as any,
@@ -244,7 +237,7 @@ export function updateGoalEcology(agent: AgentState, world: WorldState): void {
   
   // Sync legacy fields for other systems
   agent.goalIds = execute.map(g => g.id);
-  agent.w_eff = execute.map(g => g.priority);
+  agent.w_eff = execute.map(g => g.stochasticPriority ?? g.priority);
 }
 
 export function computeGoalContribution(

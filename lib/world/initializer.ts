@@ -9,7 +9,6 @@ import { buildDefaultMassNetwork } from '../mass/build';
 import { calculateAllCharacterMetrics } from '../metrics';
 import { mapCharacterToBehaviorParams } from '../core/character_mapper';
 import { getGlobalRunSeed, makeAgentRNG, setGlobalRunSeed } from '../core/noise';
-import { SeededRandom } from '../../src/utils/SeededRandom';
 import { mapCharacterToCapabilities } from '../capabilities';
 import { GOAL_DEFS } from '../goals/space';
 import { computeCharacterGoalWeights } from '../goals/weights';
@@ -54,15 +53,15 @@ export function createInitialWorld(
     scenarioId: ScenarioId,
     customGoalWeights: Record<string, number> = {},
     customRelations: Record<string, any> = {},
-    runSeed?: number | string
+    runSeed?: number | string,
+    decisionTemperature?: number
 ): WorldState | null {
     const scenarioDef = allScenarioDefs[scenarioId];
     if (!scenarioDef) return null;
 
-    // Ensure global run seed is set before agent RNG channels are derived.
-    const effectiveSeed = runSeed ?? getGlobalRunSeed() ?? 1;
-    setGlobalRunSeed(effectiveSeed);
-    const worldRng = new SeededRandom(effectiveSeed);
+    // Deterministic run seed for the whole world/session
+    setGlobalRunSeed(runSeed ?? Date.now());
+    const effectiveSeed = getGlobalRunSeed();
 
     const agents = characters.map(c => {
         const cNorm = normalizeCharacterForWorld(c);
@@ -171,7 +170,7 @@ export function createInitialWorld(
         locations: normalizedLocations, // Populate from registry
         eventLog: { schemaVersion: 1, events: [] }, // Initialize Event Log
         rngSeed: effectiveSeed,
-        rng: worldRng,
+        decisionTemperature: typeof decisionTemperature === 'number' ? decisionTemperature : 1.0
     };
 
     // Validation

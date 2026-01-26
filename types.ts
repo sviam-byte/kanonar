@@ -875,6 +875,8 @@ export interface GoalState {
     sacred: boolean;
     blocked: boolean;
     priority: number;
+    /** Stochastic priority score (e.g. Gumbel-Max), if computed. */
+    stochasticPriority?: number;
     weight: number;
     activation_score: number;
     deonticFit: number;
@@ -1713,11 +1715,9 @@ export interface WorldState {
     contextV2?: Record<string, any>;
     /** Context-conditioned ToM/emotion memory (smoothing across ticks). */
     contextualMind?: ContextualMindState;
-    /** Deterministic RNG seed for this run (debug/replay). */
-    rngSeed?: number | string;
-    /** World-level seeded RNG instance (non-agent randomness, debug ids). */
-    rng?: any;
-    /** Global decision temperature override for goal selection (UI slider). */
+    // RNG / stochastic decision controls
+    rngSeed?: number;
+    /** Gumbel temperature for stochastic goal selection. */
     decisionTemperature?: number;
     orders?: Order[];
     leadershipOffers?: { from: string, to: string, tick: number }[];

@@ -59,30 +59,10 @@ import { normalizeAtom } from '../../lib/context/v2/infer';
 import { lintActionsAndLocations } from '../../lib/linter/actionsAndLocations';
 import { arr } from '../../lib/utils/arr';
 import { getCanonicalAtomsFromSnapshot } from '../../lib/goal-lab/atoms/canonical';
-import { makeAgentRNG, setGlobalRunSeed } from '../../lib/core/noise';
-import { SeededRandom } from '../../src/utils/SeededRandom';
 
 function clamp01(x: number) {
   if (!Number.isFinite(x)) return 0;
   return Math.max(0, Math.min(1, x));
-}
-
-/**
- * Normalize seed input so numeric strings behave like numbers,
- * while still allowing rich string seeds for replay/debug sessions.
- */
-function normalizeSeedInput(raw: string | number | null | undefined): number | string {
-  if (raw == null) return 1;
-  const text = String(raw).trim();
-  if (!text) return 1;
-
-  const numericPattern = /^-?\d+(\.\d+)?$/;
-  if (numericPattern.test(text)) {
-    const asNumber = Number(text);
-    return Number.isFinite(asNumber) ? asNumber : 1;
-  }
-
-  return text;
 }
 
 /**
@@ -498,25 +478,9 @@ export const GoalSandbox: React.FC = () => {
 
   const [selectedAgentId, setSelectedAgentId] = useState<string>(allCharacters[0]?.entityId || '');
   const [activeScenarioId, setActiveScenarioId] = useState<string>('cave_rescue');
+  const [runSeed, setRunSeed] = useState<number>(() => Date.now());
+  const [decisionTemperature, setDecisionTemperature] = useState<number>(1.0);
   const [perspectiveAgentId, setPerspectiveAgentId] = useState<string | null>(null);
-  const initialRunSeed = (() => {
-    try {
-      return localStorage.getItem('goalsandbox.runSeed.v1') ?? '1';
-    } catch {
-      return '1';
-    }
-  })();
-  const [runSeedInput, setRunSeedInput] = useState<string>(initialRunSeed);
-  const [runSeedValue, setRunSeedValue] = useState<number | string>(() => normalizeSeedInput(initialRunSeed));
-  const [decisionTemperature, setDecisionTemperature] = useState<number>(() => {
-    try {
-      const raw = localStorage.getItem('goalsandbox.decisionTemperature.v1');
-      const parsed = Number(raw);
-      return Number.isFinite(parsed) ? parsed : 1;
-    } catch {
-      return 1;
-    }
-  });
 
   // Core World State
   const [worldState, setWorldState] = useState<WorldState | null>(null);
@@ -573,18 +537,6 @@ export const GoalSandbox: React.FC = () => {
     } catch {}
   }, [uiMode]);
 
-  useEffect(() => {
-    try {
-      localStorage.setItem('goalsandbox.runSeed.v1', runSeedInput);
-    } catch {}
-  }, [runSeedInput]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('goalsandbox.decisionTemperature.v1', String(decisionTemperature));
-    } catch {}
-  }, [decisionTemperature]);
-
   // Center view (map vs. goal graphs) is persisted so the UI reopens where the user left it.
   const [centerView, setCenterView] = useState<'map' | 'energy' | 'actions'>(() => {
     try {
@@ -640,33 +592,6 @@ export const GoalSandbox: React.FC = () => {
   const baselineWorldRef = useRef<WorldState | null>(null);
   const lastSnapshotAtomsRef = useRef<ContextAtom[] | null>(null);
   const lastBaselineKeyRef = useRef<string>('');
-
-  /**
-   * Apply a deterministic seed to a world snapshot, recreating RNG channels.
-   * This keeps agent decisions and world-level ids reproducible.
-   */
-  const applySeedToWorld = useCallback(
-    (source: WorldState, seed: number | string, temperature?: number) => {
-      const next = cloneWorld(source);
-      setGlobalRunSeed(seed);
-      (next as any).rngSeed = seed;
-      (next as any).rng = new SeededRandom(seed);
-      if (typeof temperature === 'number') (next as any).decisionTemperature = temperature;
-
-      next.agents = arr((next as any).agents).map((agent: any) => ({
-        ...agent,
-        rngChannels: {
-          ...(agent as any).rngChannels,
-          decide: makeAgentRNG(agent.entityId, 1),
-          physio: makeAgentRNG(agent.entityId, 2),
-          perceive: makeAgentRNG(agent.entityId, 3),
-        },
-      })) as any;
-
-      return next;
-    },
-    []
-  );
 
   const resetTransientForNewScene = useCallback((reason: string) => {
     // Anything “interactive” must not carry between preset scenes.
@@ -914,7 +839,7 @@ export const GoalSandbox: React.FC = () => {
 
       if (participants.length === 0) return;
 
-      const w = createInitialWorld(Date.now(), participants, activeScenarioId, {}, {}, runSeedValue);
+      const w = createInitialWorld(Date.now(), participants, activeScenarioId, {}, {}, runSeed, decisionTemperature);
       if (!w) return;
 
       (w as any).decisionTemperature = decisionTemperature;
@@ -968,7 +893,7 @@ export const GoalSandbox: React.FC = () => {
       getActiveLocationId,
       ensureCompleteInitialRelations,
       runtimeDyadConfigs,
-      runSeedValue,
+      runSeed,
       decisionTemperature,
     ]
   );
@@ -1074,7 +999,7 @@ export const GoalSandbox: React.FC = () => {
     if (participants.length === 0) return;
 
     try {
-      const w = createInitialWorld(Date.now(), participants, activeScenarioId, {}, {}, runSeedValue);
+      const w = createInitialWorld(Date.now(), participants, activeScenarioId, {}, {}, runSeed, decisionTemperature);
       if (!w) {
         setFatalError(`createInitialWorld() returned null. Unknown scenarioId: ${String(activeScenarioId)}`);
         return;
@@ -1140,6 +1065,8 @@ export const GoalSandbox: React.FC = () => {
     getActiveLocationId,
     ensureCompleteInitialRelations,
     worldSource,
+    runSeed,
+    decisionTemperature,
   ]);
 
   useEffect(() => {
@@ -2058,27 +1985,6 @@ export const GoalSandbox: React.FC = () => {
     [handleImportSceneDumpV2]
   );
 
-  const handleApplySeedAndReset = useCallback(() => {
-    const seedValue = normalizeSeedInput(runSeedInput);
-    setRunSeedValue(seedValue);
-
-    if (baselineWorldRef.current) {
-      const nextBase = applySeedToWorld(baselineWorldRef.current, seedValue, decisionTemperature);
-      baselineWorldRef.current = nextBase;
-      setWorldState(cloneWorld(nextBase));
-      return;
-    }
-
-    if (worldState) {
-      const nextWorld = applySeedToWorld(worldState, seedValue, decisionTemperature);
-      baselineWorldRef.current = cloneWorld(nextWorld);
-      setWorldState(nextWorld);
-    } else {
-      // If we have no world yet, at least prime the global seed for upcoming builds.
-      setGlobalRunSeed(seedValue);
-    }
-  }, [applySeedToWorld, decisionTemperature, runSeedInput, worldState]);
-
   const handleResetSim = useCallback(() => {
     const base = baselineWorldRef.current;
     if (!base) return;
@@ -2222,11 +2128,16 @@ export const GoalSandbox: React.FC = () => {
             sceneControl={sceneControl}
             onSceneControlChange={setSceneControl}
             scenePresets={Object.values(SCENE_PRESETS) as any}
-            runSeed={runSeedInput}
-            onRunSeedChange={setRunSeedInput}
+            runSeed={runSeed}
+            onRunSeedChange={(seed: number) => {
+              setWorldSource('derived');
+              setRunSeed(seed);
+            }}
             decisionTemperature={decisionTemperature}
-            onDecisionTemperatureChange={setDecisionTemperature}
-            onApplySeedAndReset={handleApplySeedAndReset}
+            onDecisionTemperatureChange={(t: number) => {
+              setDecisionTemperature(t);
+              setWorldState(prev => (prev ? ({ ...(prev as any), decisionTemperature: t } as any) : prev));
+            }}
           />
 
           <div className="mt-8 pt-4 border-t border-slate-800">
