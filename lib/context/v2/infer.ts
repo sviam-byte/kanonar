@@ -5,6 +5,8 @@ import { AtomNamespace, AtomOrigin, ContextAtom, ContextSource } from './types';
 import { matchAtomSpec } from '../catalog/atomCatalog';
 import { resolveAtomSpec } from '../catalog/atomSpecs';
 
+let __inferAtomCounter = 0;
+
 function codeFromResolvedSpec(specId: string, params: Record<string, string>): string {
   // “кварк” = стабильный код смысла (не уникальный), удобный для законов/молекул позже
   switch (specId) {
@@ -168,7 +170,7 @@ export function normalizeAtom<T extends ContextAtom>(atom: T): T;
 export function normalizeAtom(atom: Partial<ContextAtom>): ContextAtom;
 export function normalizeAtom(atom: Partial<ContextAtom>): ContextAtom {
   // Normalize minimal shape for callers that pass partial atoms.
-  const seedId = atom.id ?? `atom:${Math.random().toString(36).slice(2)}`;
+  const seedId = atom.id ?? `atom:${(__inferAtomCounter++).toString(36)}`;
   const seedSource = atom.source ?? 'event';
   const seedKind = atom.kind ?? 'ctx';
   const seedMag = typeof atom.magnitude === 'number' ? atom.magnitude : 1;

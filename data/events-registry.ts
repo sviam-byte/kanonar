@@ -1,3 +1,5 @@
+let __sysEvtCounter = 0;
+
 
 import { Event } from '../lib/events/types';
 import { createEventFactory } from '../lib/events/factory';
@@ -5,7 +7,7 @@ import { listify } from '../lib/utils/listify';
 
 // Инициализируем фабрику с простым генератором ID
 const factory = createEventFactory({
-    makeId: () => `sys-evt-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+    makeId: () => `sys-evt-${Date.now()}-${(__sysEvtCounter++).toString(36)}`,
     now: () => Date.now(),
     schemaVersion: 1,
     defaultChannel: 'world'

@@ -18,6 +18,7 @@ import { makeKanonarReport } from '../kanonar/reports';
 import { planLeaderStep } from '../social/orders';
 import { maybeUpdateDetachment } from '../social/group';
 import { updateGoalEcology } from '../goals/scoring';
+let __evtIdCounter = 0;
 import { updateMassLayerEI } from '../mass/system_ei'; 
 import { buildDefaultMassNetworkEI } from '../mass/build_ei'; 
 import { Branch } from '../../types'; 
@@ -41,7 +42,7 @@ import { applyAcquaintanceFromEvents } from '../social/acquaintanceFromEvents';
 function mapSimEventToDomain(ev: SimulationEvent, world: WorldState): DomainEvent {
     // Basic mapping, can be refined based on event type
     const base: any = {
-        id: `evt-${ev.tick}-${Math.random().toString(36).substr(2, 5)}`,
+        id: `evt-${ev.tick}-${(__evtIdCounter++).toString(36)}`,
         t: ev.tick,
         intensity: 0.5,
         polarity: 0,

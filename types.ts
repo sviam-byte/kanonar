@@ -875,6 +875,8 @@ export interface GoalState {
     sacred: boolean;
     blocked: boolean;
     priority: number;
+    /** Stochastic priority score (e.g. Gumbel-Max), if computed. */
+    stochasticPriority?: number;
     weight: number;
     activation_score: number;
     deonticFit: number;
@@ -1217,7 +1219,7 @@ export interface AgentState extends CharacterEntity {
     v: number;
     mode?: string;
     behavioralParams: CharacterParams;
-    rngChannels: { decide: any, physio: any, perceive: any };
+    rngChannels: { decide: any, physio: any, perceive: any, goals?: any };
     goalIds: string[];
     w_eff: number[];
     wSelfBase?: number[];
@@ -1713,6 +1715,18 @@ export interface WorldState {
     contextV2?: Record<string, any>;
     /** Context-conditioned ToM/emotion memory (smoothing across ticks). */
     contextualMind?: ContextualMindState;
+    /** Global run seed for deterministic RNG (affects per-agent rngChannels). */
+    rngSeed?: number | string;
+    /** Decision temperature (higher => noisier Gumbel-max sampling). */
+    decisionTemperature?: number;
+    /** Non-linear curve preset used by some context/priority transforms. */
+    decisionCurvePreset?:
+        | 'linear'
+        | 'smoothstep'
+        | 'sqrt'
+        | 'sigmoid'
+        | 'pow2'
+        | 'pow4';
     orders?: Order[];
     leadershipOffers?: { from: string, to: string, tick: number }[];
     actionsThisTick?: string[];

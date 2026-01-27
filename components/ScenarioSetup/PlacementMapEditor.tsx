@@ -28,8 +28,9 @@ function clamp01(x: number) {
   return Number.isFinite(x) ? Math.max(0, Math.min(1, x)) : 0;
 }
 
+let __idCounter = 0;
 function makeId(prefix: string) {
-  return `${prefix}:${Math.random().toString(16).slice(2)}:${Date.now()}`;
+  return `${prefix}:${(__idCounter++).toString(36)}:${Date.now()}`;
 }
 
 function keyXY(x: number, y: number) {

@@ -57,8 +57,15 @@ interface Props {
   onLoadScene?: (preset: ScenePreset) => void;
   onRunTicks?: (steps: number) => void;
   onResetSim?: () => void;
-  onDownloadScene?: () => void;
-  onImportSceneDumpV2?: (dump: any) => void;
+
+  // Simulation tuning (deterministic stochasticity)
+  runSeed?: string;
+  onRunSeedChange?: (s: string) => void;
+  decisionTemperature?: number;
+  onDecisionTemperatureChange?: (t: number) => void;
+  decisionCurvePreset?: string;
+  onDecisionCurvePresetChange?: (p: string) => void;
+  onApplySimSettings?: () => void;
 
   // Optional: World Access for Mods
   world?: any;
@@ -78,6 +85,9 @@ interface Props {
   // Perspective (who is the observer)
   perspectiveAgentId?: string | null;
   onSelectPerspective?: (id: string) => void;
+
+  onDownloadScene?: () => void;
+  onImportSceneDumpV2?: (dump: any) => void;
 }
 
 export const GoalLabControls: React.FC<Props> = ({
@@ -94,6 +104,10 @@ export const GoalLabControls: React.FC<Props> = ({
   onLoadScene,
   onRunTicks,
   onResetSim,
+  runSeed, onRunSeedChange,
+  decisionTemperature, onDecisionTemperatureChange,
+  decisionCurvePreset, onDecisionCurvePresetChange,
+  onApplySimSettings,
   onDownloadScene,
   onImportSceneDumpV2,
   world, onWorldChange,
@@ -640,6 +654,65 @@ export const GoalLabControls: React.FC<Props> = ({
                     Reset to scene baseline
                   </button>
                 )}
+                <div className="border border-canon-border rounded p-3 space-y-3 bg-canon-bg">
+                  <div className="text-xs font-bold text-canon-text uppercase tracking-wider flex items-center gap-2">
+                    <span>🎲</span> Determinism &amp; Variation
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-[10px] text-canon-text-light">Seed</label>
+                    <input
+                      type="text"
+                      value={runSeed ?? ''}
+                      onChange={(e) => onRunSeedChange && onRunSeedChange(e.target.value)}
+                      placeholder="e.g. 12345"
+                      className="w-full px-2 py-1 rounded bg-canon-bg border border-canon-border text-canon-text text-xs font-mono"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="col-span-2">
+                      <Slider
+                        label="Temperature (Gumbel)"
+                        value={decisionTemperature ?? 1.0}
+                        setValue={(v) => onDecisionTemperatureChange && onDecisionTemperatureChange(v)}
+                        min={0.05}
+                        max={5.0}
+                        step={0.05}
+                      />
+                    </div>
+
+                    <div className="col-span-2">
+                      <label className="text-[10px] text-canon-text-light">Curve preset</label>
+                      <select
+                        value={decisionCurvePreset ?? 'smoothstep'}
+                        onChange={(e) => onDecisionCurvePresetChange && onDecisionCurvePresetChange(e.target.value)}
+                        className="w-full px-2 py-1 rounded bg-canon-bg border border-canon-border text-canon-text text-xs"
+                      >
+                        <option value="linear">linear</option>
+                        <option value="smoothstep">smoothstep</option>
+                        <option value="sqrt">sqrt</option>
+                        <option value="sigmoid">sigmoid</option>
+                        <option value="pow2">pow2</option>
+                        <option value="pow4">pow4</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => onApplySimSettings && onApplySimSettings()}
+                    disabled={!onApplySimSettings}
+                    className="w-full px-4 py-2 bg-canon-accent text-black text-xs font-bold rounded disabled:opacity-40 hover:bg-opacity-80 transition-colors"
+                  >
+                    Apply &amp; Reset (rebuild RNG)
+                  </button>
+
+                  <div className="text-[10px] text-canon-text-light italic">
+                    Seed changes require a rebuild; temperature/curves affect sampling and axis shaping.
+                  </div>
+                </div>
+
                 <div className="text-[10px] text-canon-text-light italic">
                     Running ticks updates internal state (affect, stress traces) and advances world time.
                 </div>

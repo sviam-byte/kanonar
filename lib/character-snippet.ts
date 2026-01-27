@@ -7,6 +7,8 @@ import {
 } from '../types';
 import { defaultFemaleBody } from './body.presets';
 
+let __tempIdCounter = 0;
+
 export interface EncodedCharacterPayloadV1 {
   v: 'kanonar4-char-v1';
   meta: {
@@ -200,7 +202,7 @@ export function decodeSnippetToCharacter(snippet: string): CharacterEntity {
     throw new Error(`Неверная версия внутри payload: ${payload.v}`);
   }
 
-  const id = payload.meta.id || `temp-${Date.now()}-${Math.floor(Math.random()*1000)}`;
+  const id = payload.meta.id || `temp-${Date.now()}-${(__tempIdCounter++).toString(36)}`;
   const title = payload.meta.title || 'Временный персонаж';
 
   const identityRaw = payload.identity.raw_identity ?? defaultIdentity;

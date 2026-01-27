@@ -3,6 +3,7 @@
 import { AgentState, WorldState, GoalState, GoalEcology, CharacterGoalId, SocialActionId } from '../../types';
 import { GOAL_DEFS, actionGoalMap } from './space';
 import { computeGoalPriorities } from '../goal-planning';
+import { sampleGumbel, RNG } from '../core/noise';
 import { getPlanningGoals } from './adapter';
 import { computeConcreteGoals } from '../life-goals/v4-engine';
 import { makeZeroGoalLogits } from '../life-goals/psych-to-goals';
@@ -205,11 +206,31 @@ export function updateGoalEcology(agent: AgentState, world: WorldState): void {
       }
   }
 
-  // 4. Sort and Distribute by Priority (Probability)
+  // 4. Sort and Distribute by Priority (Probabilistic, deterministic via seeded RNG)
   newGoalStates.sort((a, b) => b.priority - a.priority);
-  
-  const execute = newGoalStates.slice(0, 5).map(g => ({ ...g, is_active: true }));
-  const latent = newGoalStates.slice(5).map(g => ({ ...g, is_active: false }));
+
+  const STICKINESS_BONUS = 0.20;
+  const T = Math.max(0.05, Number((world as any)?.decisionTemperature ?? (agent as any)?.temperature ?? 1.0));
+  const rng: RNG | null = (((agent as any)?.rngChannels?.goals || (agent as any)?.rngChannels?.decide) as any) || null;
+
+  // If RNG exists, use Gumbel-Max over (base/T + gumbel(T)) plus goal stickiness.
+  // This yields human-like "moment" variation while remaining reproducible per seed.
+  const rankedForSelection = rng
+    ? newGoalStates
+        .map((g) => {
+          const base = Number((g as any).activation_score ?? g.priority ?? 0);
+          const sticky = agent.drivingGoalId === g.id ? STICKINESS_BONUS : 0;
+          const noise = sampleGumbel(T, rng);
+          const finalScore = base / T + noise + sticky;
+          (g as any).selection = { base, T, noise, sticky, finalScore };
+          return { g, finalScore };
+        })
+        .sort((a, b) => b.finalScore - a.finalScore)
+        .map((x) => x.g)
+    : newGoalStates;
+
+  const execute = rankedForSelection.slice(0, 5).map(g => ({ ...g, is_active: true }));
+  const latent = rankedForSelection.slice(5).map(g => ({ ...g, is_active: false }));
 
   agent.goalEcology = {
       execute: execute as any,
@@ -225,7 +246,7 @@ export function updateGoalEcology(agent: AgentState, world: WorldState): void {
   
   // Sync legacy fields for other systems
   agent.goalIds = execute.map(g => g.id);
-  agent.w_eff = execute.map(g => g.priority);
+  agent.w_eff = execute.map(g => g.stochasticPriority ?? g.priority);
 }
 
 export function computeGoalContribution(

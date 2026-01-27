@@ -26,6 +26,7 @@ import { getScenarioDefinition } from "./registry";
 import { buildContextSnapshot } from '../context/v2/builder';
 import { scoreContextualGoals } from '../context/v2/scoring';
 import { ContextSnapshot, ContextualGoalScore } from '../context/v2/types';
+let __scriptedIdCounter = 0;
 
 // Re-export alias for consistency
 const listSceneAgents = getScenarioParticipantIds;
@@ -114,7 +115,7 @@ export function runScenarioTick(
   // 1) Внешние scripted-события фазы (если есть)
   const scriptedSimulationEvents = generateScriptedEventsForPhase(nextWorld, scenarioId);
   const scriptedDomainEvents = scriptedSimulationEvents.map(e => mapSimulationEventToDomain(e, {
-      getId: (ev: any) => `scripted-${nextWorld.tick}-${Math.random()}`,
+      getId: (ev: any) => `scripted-${nextWorld.tick}-${(__scriptedIdCounter++).toString(36)}`,
       getTick: (ev: any) => nextWorld.tick,
       getActorId: (ev: any) => 'SYSTEM',
       getActionId: (ev: any) => ev.kind || 'scripted_event',

@@ -8,7 +8,7 @@ import { FACTIONS } from '../../data/factions';
 import { buildDefaultMassNetwork } from '../mass/build';
 import { calculateAllCharacterMetrics } from '../metrics';
 import { mapCharacterToBehaviorParams } from '../core/character_mapper';
-import { makeAgentRNG } from '../core/noise';
+import { getGlobalRunSeed, makeAgentRNG, setGlobalRunSeed } from '../core/noise';
 import { mapCharacterToCapabilities } from '../capabilities';
 import { GOAL_DEFS } from '../goals/space';
 import { computeCharacterGoalWeights } from '../goals/weights';
@@ -52,10 +52,20 @@ export function createInitialWorld(
     characters: CharacterEntity[],
     scenarioId: ScenarioId,
     customGoalWeights: Record<string, number> = {},
-    customRelations: Record<string, any> = {}
+    customRelations: Record<string, any> = {},
+    options: {
+        runSeed?: number | string;
+        decisionTemperature?: number;
+        decisionCurvePreset?: 'linear' | 'smoothstep' | 'sqrt' | 'sigmoid' | 'pow2' | 'pow4';
+    } = {}
 ): WorldState | null {
     const scenarioDef = allScenarioDefs[scenarioId];
     if (!scenarioDef) return null;
+
+    if (options?.runSeed !== undefined && options?.runSeed !== null) {
+        setGlobalRunSeed(options.runSeed);
+    }
+    const effectiveSeed = getGlobalRunSeed();
 
     const agents = characters.map(c => {
         const cNorm = normalizeCharacterForWorld(c);
@@ -98,7 +108,12 @@ export function createInitialWorld(
             baseTemperature: bp.T0,
             kappa_T: bp.kappa_T_sensitivity,
             baseSigmaProc: bp.sigma0,
-            rngChannels: { decide: makeAgentRNG(cNorm.entityId, 1), physio: makeAgentRNG(cNorm.entityId, 2), perceive: makeAgentRNG(cNorm.entityId, 3) },
+            rngChannels: {
+                decide: makeAgentRNG(cNorm.entityId, 1),
+                physio: makeAgentRNG(cNorm.entityId, 2),
+                perceive: makeAgentRNG(cNorm.entityId, 3),
+                goals: makeAgentRNG(cNorm.entityId, 4),
+            },
             behavioralParams: bp,
             capabilities: mapCharacterToCapabilities(cNorm),
             w_eff: [], relationships: {}, perceivedStates: new Map(),
@@ -162,7 +177,10 @@ export function createInitialWorld(
         scenario: scenarioDef,
         massNetwork: buildDefaultMassNetwork(Branch.Current),
         locations: normalizedLocations, // Populate from registry
-        eventLog: { schemaVersion: 1, events: [] } // Initialize Event Log
+        eventLog: { schemaVersion: 1, events: [] }, // Initialize Event Log
+        rngSeed: options.runSeed ?? getGlobalRunSeed(),
+        decisionTemperature: options.decisionTemperature ?? 1.0,
+        decisionCurvePreset: options.decisionCurvePreset ?? 'smoothstep'
     };
 
     // Validation

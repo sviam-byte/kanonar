@@ -6,6 +6,7 @@ import { calculateInteractionMetrics, calculateOutcomeProbabilities } from '../m
 import { getArchetypeMetricValues } from '../archetypes/system';
 import { getNestedValue } from '../param-utils';
 import { ARCHETYPE_STEREOTYPES } from '../archetypes/stereotypes';
+import { getGlobalRunSeed, hashString32 } from "../core/noise";
 
 type Negotiator = CharacterEntity | EssenceEntity;
 const clamp01 = (x: number): number => Math.max(0, Math.min(1, x));
@@ -88,7 +89,8 @@ export function createPerceivedCharacter(observer: CharacterEntity, observerMetr
         if (perceivedTarget.vector_base) {
             for (const key in perceivedTarget.vector_base) {
                 const originalValue = perceivedTarget.vector_base[key];
-                const noise = (Math.random() - 0.5) * noiseLevel;
+                const u = (hashString32(`${getGlobalRunSeed()}:${p1.entityId}:${p2_perceived.entityId}:${key}`) >>> 0) / 4294967296;
+                const noise = (u - 0.5) * noiseLevel;
                 perceivedTarget.vector_base[key] = clamp01(originalValue + noise);
             }
         }

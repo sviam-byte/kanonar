@@ -110,7 +110,8 @@ export function checkArchetypeDrift(agent: AgentState) {
     // Base drift probability increased by trauma, moral dissonance and self-gap
     const driftProbability = sigmoid(10 * (tension + stress * 0.4 + avgTrauma * 1.5 + selfGap * 0.5 + (moral.guilt + moral.shame)*0.3 - 1.2));
     
-    if (Math.random() < driftProbability * 0.1) { 
+    const r = agent.rngChannels?.decide?.nextFloat?.() ?? 0;
+    if (r < driftProbability * 0.1) { 
         // Determine target based on Trauma Rules
         const candidates = allArchetypes.filter(a => a.id !== agent.archetype!.actualId);
         let bestCandidate = agent.archetype!.shadowId; // Default to shadow

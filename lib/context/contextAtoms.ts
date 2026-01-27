@@ -11,8 +11,9 @@ import {
   GoalId,
 } from '../../types';
 
+let __atomIdCounter = 0;
 function genAtomId(prefix: string, t: StoryTime): AtomId {
-  return `${prefix}:${t}:${Math.random().toString(36).slice(2, 8)}`;
+  return `${prefix}:${t}:${(__atomIdCounter++).toString(36)}`;
 }
 
 export function emptyContextAtoms(): ContextAtomsState {

@@ -21,6 +21,7 @@ import { computeTraitLogits } from '../../life-goals/life-from-traits';
 import { computeConcreteGoals } from '../../life-goals/v4-engine';
 import { makeZeroGoalLogits } from '../../life-goals/psych-to-goals';
 import { computeBioLogitsV3 } from '../../life-goals/life-from-biography';
+import { curve01, CurvePreset } from '../../utils/curves';
 
 function clamp01(x: number) {
   if (!Number.isFinite(x)) return 0;
@@ -47,14 +48,14 @@ function prioToMultiplier(prio01: number): number {
   return 0.60 + 0.80 * clamp01(prio01);
 }
 
-function computeContextWeight(ctx: ContextSnapshot, selfId: string): number {
+function computeContextWeight(ctx: ContextSnapshot, selfId: string, preset: CurvePreset = 'smoothstep'): number {
   // Stronger context imprint when the situation is dangerous/urgent/uncertain or norm-heavy.
   const danger = clamp01(getAtomMag(ctx.atoms as any, `ctx:danger:${selfId}`, 0));
   const unc = clamp01(getAtomMag(ctx.atoms as any, `ctx:uncertainty:${selfId}`, 0));
   const time = clamp01(getAtomMag(ctx.atoms as any, `ctx:timePressure:${selfId}`, 0));
   const norm = clamp01(getAtomMag(ctx.atoms as any, `ctx:normPressure:${selfId}`, 0));
 
-  const m = Math.max(danger, unc, time, norm);
+  const m = curve01(Math.max(danger, unc, time, norm), preset);
   // 0.35..1.00
   return 0.35 + 0.65 * m;
 }
@@ -97,7 +98,8 @@ export function scoreContextualGoals(
 
   // Combine Logits: Traits + Bio + Context
   const combinedLogits = makeZeroGoalLogits();
-  const ctxW = computeContextWeight(ctx, agent.entityId);
+  const curvePreset = ((world as any)?.decisionCurvePreset || 'smoothstep') as CurvePreset;
+  const ctxW = computeContextWeight(ctx, agent.entityId, curvePreset);
   for (const axis of GOAL_AXES) {
     // Priority-aware context weight per axis:
     const prio = getCtxPrio(ctx, String(axis), agent.entityId, 0.5);
