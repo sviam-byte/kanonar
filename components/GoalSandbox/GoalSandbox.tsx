@@ -27,6 +27,7 @@ import { GoalLabResults } from '../goal-lab/GoalLabResults';
 import { PipelinePanel } from '../goal-lab/PipelinePanel';
 import { DecisionGraphView } from '../goal-lab/DecisionGraphView';
 import { GoalActionGraphView } from '../goal-lab/GoalActionGraphView';
+import { CurveStudio } from '../goal-lab/CurveStudio';
 import { ToMPanel } from '../goal-lab/ToMPanel';
 import { CastComparePanel } from '../goal-lab/CastComparePanel';
 import { eventRegistry } from '../../data/events-registry';
@@ -59,6 +60,7 @@ import { normalizeAtom } from '../../lib/context/v2/infer';
 import { lintActionsAndLocations } from '../../lib/linter/actionsAndLocations';
 import { arr } from '../../lib/utils/arr';
 import { getCanonicalAtomsFromSnapshot } from '../../lib/goal-lab/atoms/canonical';
+import type { CurvePreset } from '../../lib/utils/curves';
 
 function clamp01(x: number) {
   if (!Number.isFinite(x)) return 0;
@@ -482,6 +484,7 @@ export const GoalSandbox: React.FC = () => {
   const [runSeed, setRunSeed] = useState<string>(() => String(Date.now()));
   const [decisionTemperature, setDecisionTemperature] = useState<number>(1.0);
   const [decisionCurvePreset, setDecisionCurvePreset] = useState<string>('smoothstep');
+  const [decisionNonce, setDecisionNonce] = useState<number>(0);
 
   const simSettingsRef = useRef({
     runSeed: String(Date.now()),
@@ -546,7 +549,7 @@ export const GoalSandbox: React.FC = () => {
   const [selectedEventIds, setSelectedEventIds] = useState<Set<string>>(new Set());
   const [manualAtoms, setManualAtoms] = useState<ContextAtom[]>([]);
   const [pipelineStageId, setPipelineStageId] = useState<string>('S5');
-  const [activeBottomTab, setActiveBottomTab] = useState<'debug' | 'tom' | 'pipeline' | 'compare'>('pipeline');
+  const [activeBottomTab, setActiveBottomTab] = useState<'debug' | 'tom' | 'pipeline' | 'compare' | 'curves'>('pipeline');
   const [lockedMapViewport, setLockedMapViewport] = useState<{ w: number; h: number } | null>(null);
   const lockedMapIdRef = useRef<string | null>(null);
 
@@ -673,9 +676,13 @@ export const GoalSandbox: React.FC = () => {
 
   const onApplySimSettings = useCallback(() => {
     // Rebuild world to re-seed per-agent RNG channels and apply curve/temperature consistently.
+    setDecisionNonce(0);
     setWorldSource('derived');
     forceRebuildWorld();
   }, [forceRebuildWorld]);
+  const onRerollDecisionNoise = useCallback(() => {
+    setDecisionNonce((n) => (Number.isFinite(n) ? n + 1 : 1));
+  }, []);
   const persistActorPositions = useCallback(() => {
     if (!worldState) return;
     setActorPositions(prev => {
@@ -1433,6 +1440,7 @@ export const GoalSandbox: React.FC = () => {
           overrideEvents: injectedEvents,
           sceneControl,
           affectOverrides,
+          decisionNonce,
         },
         timeOverride: (worldForCtx as any).tick,
         devValidateAtoms,
@@ -1457,6 +1465,7 @@ export const GoalSandbox: React.FC = () => {
     affectOverrides,
     devValidateAtoms,
     labLocationContext,
+    decisionNonce,
   ]);
 
   const glCtx = glCtxResult.ctx;
@@ -1683,6 +1692,7 @@ export const GoalSandbox: React.FC = () => {
             overrideEvents: injectedEvents,
             sceneControl,
             affectOverrides,
+            decisionNonce,
           },
           timeOverride: (worldState as any).tick,
           devValidateAtoms,
@@ -1711,6 +1721,7 @@ export const GoalSandbox: React.FC = () => {
     sceneControl,
     affectOverrides,
     devValidateAtoms,
+    decisionNonce,
   ]);
 
   /**
@@ -1741,6 +1752,7 @@ export const GoalSandbox: React.FC = () => {
             overrideEvents: injectedEvents,
             sceneControl,
             affectOverrides,
+            decisionNonce,
           },
           timeOverride: (worldState as any)?.tick,
           devValidateAtoms,
@@ -1765,6 +1777,7 @@ export const GoalSandbox: React.FC = () => {
     sceneControl,
     affectOverrides,
     devValidateAtoms,
+    decisionNonce,
   ]);
 
   const focusId =
@@ -2223,6 +2236,62 @@ export const GoalSandbox: React.FC = () => {
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center gap-2 mr-2">
+                <div className="flex items-center gap-1">
+                  <div className="text-[9px] text-slate-500 uppercase tracking-widest">seed</div>
+                  <input
+                    className="w-24 bg-black/20 border border-slate-700/60 rounded px-2 py-0.5 text-[10px] text-slate-200 outline-none focus:border-cyan-500/50"
+                    value={runSeed}
+                    onChange={(e) => setRunSeed(e.target.value)}
+                    title="Global run seed"
+                  />
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="text-[9px] text-slate-500 uppercase tracking-widest">temp</div>
+                  <input
+                    type="range"
+                    min={0.10}
+                    max={5.0}
+                    step={0.05}
+                    value={decisionTemperature}
+                    onChange={(e) => setDecisionTemperature(Number(e.target.value))}
+                  />
+                  <div className="text-[10px] text-slate-200 tabular-nums w-10 text-right">
+                    {decisionTemperature.toFixed(2)}
+                  </div>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="text-[9px] text-slate-500 uppercase tracking-widest">curve</div>
+                  <select
+                    className="bg-black/20 border border-slate-700/60 rounded px-2 py-0.5 text-[10px] text-slate-200 outline-none focus:border-cyan-500/50"
+                    value={decisionCurvePreset}
+                    onChange={(e) => setDecisionCurvePreset(e.target.value)}
+                  >
+                    {(['linear', 'smoothstep', 'sqrt', 'sigmoid', 'pow2', 'pow4'] as const).map((p) => (
+                      <option key={p} value={p}>
+                        {p}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <button
+                  onClick={onApplySimSettings}
+                  className="px-2 py-0.5 text-[9px] rounded uppercase border bg-cyan-600/20 text-cyan-200 border-cyan-500/40 hover:border-cyan-400/60"
+                  title="Apply: rebuild world (reseed agents + pipelines)"
+                >
+                  apply
+                </button>
+                <button
+                  onClick={onRerollDecisionNoise}
+                  className="px-2 py-0.5 text-[9px] rounded uppercase border bg-emerald-600/20 text-emerald-200 border-emerald-500/40 hover:border-emerald-400/60"
+                  title="Reroll: same seed & context, new decision noise (nonce)"
+                >
+                  reroll
+                </button>
+                <div className="text-[9px] text-slate-500" title="Decision reroll nonce">
+                  n:{decisionNonce}
+                </div>
+              </div>
               <div className="flex items-center gap-1">
                 {(['map', 'energy', 'actions'] as const).map((view) => (
                   <button
@@ -2375,7 +2444,7 @@ export const GoalSandbox: React.FC = () => {
 
         <div className="flex-1 min-h-[220px] border-t border-slate-800 bg-slate-950 flex flex-col min-h-0">
           <nav className="flex border-b border-slate-800 bg-slate-900/20">
-            {(['debug', 'tom', 'pipeline', 'compare'] as const).map((t) => (
+            {(['debug', 'tom', 'pipeline', 'compare', 'curves'] as const).map((t) => (
               <button
                 key={t}
                 onClick={() => setActiveBottomTab(t)}
@@ -2406,6 +2475,13 @@ export const GoalSandbox: React.FC = () => {
             ) : null}
             {activeBottomTab === 'compare' ? (
               <CastComparePanel rows={castRowsSafe as any} focusId={focusId} />
+            ) : null}
+            {activeBottomTab === 'curves' ? (
+              <CurveStudio
+                selfId={focusId || ''}
+                atoms={arr((computed as any)?.snapshot?.atoms) as any}
+                preset={((decisionCurvePreset || 'smoothstep') as any) as CurvePreset}
+              />
             ) : null}
             {activeBottomTab === 'debug' ? (
               <div className="space-y-4">
