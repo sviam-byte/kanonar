@@ -53,14 +53,18 @@ export function createInitialWorld(
     scenarioId: ScenarioId,
     customGoalWeights: Record<string, number> = {},
     customRelations: Record<string, any> = {},
-    runSeed?: number | string,
-    decisionTemperature?: number
+    options: {
+        runSeed?: number | string;
+        decisionTemperature?: number;
+        decisionCurvePreset?: 'linear' | 'smoothstep' | 'sqrt' | 'sigmoid' | 'pow2' | 'pow4';
+    } = {}
 ): WorldState | null {
     const scenarioDef = allScenarioDefs[scenarioId];
     if (!scenarioDef) return null;
 
-    // Deterministic run seed for the whole world/session
-    setGlobalRunSeed(runSeed ?? Date.now());
+    if (options?.runSeed !== undefined && options?.runSeed !== null) {
+        setGlobalRunSeed(options.runSeed);
+    }
     const effectiveSeed = getGlobalRunSeed();
 
     const agents = characters.map(c => {
@@ -169,8 +173,9 @@ export function createInitialWorld(
         massNetwork: buildDefaultMassNetwork(Branch.Current),
         locations: normalizedLocations, // Populate from registry
         eventLog: { schemaVersion: 1, events: [] }, // Initialize Event Log
-        rngSeed: effectiveSeed,
-        decisionTemperature: typeof decisionTemperature === 'number' ? decisionTemperature : 1.0
+        rngSeed: options.runSeed ?? getGlobalRunSeed(),
+        decisionTemperature: options.decisionTemperature ?? 1.0,
+        decisionCurvePreset: options.decisionCurvePreset ?? 'smoothstep'
     };
 
     // Validation

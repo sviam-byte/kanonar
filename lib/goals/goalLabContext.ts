@@ -1394,6 +1394,12 @@ export function buildGoalLabContext(
     atoms: atomsWithMind,
     possibilities: (result as any).possibilities,
     topK: 12,
+    rng: (agentForPipeline as any)?.rngChannels?.decide,
+    temperature:
+      (world as any)?.decisionTemperature ??
+      (agentForPipeline as any)?.behavioralParams?.T0 ??
+      (agentForPipeline as any)?.temperature ??
+      1.0,
   });
 
   const decisionAtoms = arr((decision as any)?.atoms).map(normalizeAtom);

@@ -462,6 +462,12 @@ export function runGoalLabPipelineV1(input: {
       atoms: mS8c.atoms,
       possibilities: possList,
       topK: 10,
+      rng: (agent as any)?.rngChannels?.decide,
+      temperature:
+        (world as any)?.decisionTemperature ??
+        (agent as any)?.behavioralParams?.T0 ??
+        (agent as any)?.temperature ??
+        1.0,
     });
 
     const decisionAtoms = arr((decision as any)?.atoms).map(normalizeAtom);

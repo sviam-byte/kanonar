@@ -839,7 +839,10 @@ export const GoalSandbox: React.FC = () => {
 
       if (participants.length === 0) return;
 
-      const w = createInitialWorld(Date.now(), participants, activeScenarioId, {}, {}, runSeed, decisionTemperature);
+      const w = createInitialWorld(Date.now(), participants, activeScenarioId, {}, {}, {
+        runSeed,
+        decisionTemperature,
+      });
       if (!w) return;
 
       (w as any).decisionTemperature = decisionTemperature;
@@ -999,7 +1002,10 @@ export const GoalSandbox: React.FC = () => {
     if (participants.length === 0) return;
 
     try {
-      const w = createInitialWorld(Date.now(), participants, activeScenarioId, {}, {}, runSeed, decisionTemperature);
+      const w = createInitialWorld(Date.now(), participants, activeScenarioId, {}, {}, {
+        runSeed,
+        decisionTemperature,
+      });
       if (!w) {
         setFatalError(`createInitialWorld() returned null. Unknown scenarioId: ${String(activeScenarioId)}`);
         return;

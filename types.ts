@@ -1715,10 +1715,18 @@ export interface WorldState {
     contextV2?: Record<string, any>;
     /** Context-conditioned ToM/emotion memory (smoothing across ticks). */
     contextualMind?: ContextualMindState;
-    // RNG / stochastic decision controls
-    rngSeed?: number;
-    /** Gumbel temperature for stochastic goal selection. */
+    /** Global run seed for deterministic RNG (affects per-agent rngChannels). */
+    rngSeed?: number | string;
+    /** Decision temperature (higher => noisier Gumbel-max sampling). */
     decisionTemperature?: number;
+    /** Non-linear curve preset used by some context/priority transforms. */
+    decisionCurvePreset?:
+        | 'linear'
+        | 'smoothstep'
+        | 'sqrt'
+        | 'sigmoid'
+        | 'pow2'
+        | 'pow4';
     orders?: Order[];
     leadershipOffers?: { from: string, to: string, tick: number }[];
     actionsThisTick?: string[];

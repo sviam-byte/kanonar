@@ -1,29 +1,34 @@
-// --- /lib/core/noise.ts ---
+// lib/core/noise.ts
+// Seedable deterministic RNG utilities used across the sim.
 
-// Глобальный seed запуска. Его можно задать один раз при старте симуляции,
-// чтобы получать полностью воспроизводимые результаты.
-let globalRunSeed: number = 12345;
-
-export function hashString32(s: string): number {
-  // FNV-1a 32-bit
+/** Stable non-crypto hash -> 32-bit unsigned int (FNV-1a). */
+function hash32(input: string): number {
   let h = 2166136261 >>> 0;
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
+  for (let i = 0; i < input.length; i++) {
+    h ^= input.charCodeAt(i);
     h = Math.imul(h, 16777619);
   }
-  return h >>> 0;
+  return (h >>> 0) || 1;
 }
 
-export function setGlobalRunSeed(seed: number | string): void {
-  if (typeof seed === 'string') {
-    globalRunSeed = hashString32(seed);
-  } else {
-    globalRunSeed = seed >>> 0;
-  }
+export const hashString32 = hash32;
+
+let globalRunSeed: number = 12345;
+
+/**
+ * Set global seed for the run.
+ * - number: used as is (uint32)
+ * - string: hashed to uint32
+ * Returns the normalized uint32 seed.
+ */
+export function setGlobalRunSeed(seed: number | string): number {
+  const s = typeof seed === 'string' ? hash32(seed) : (Number(seed) >>> 0);
+  globalRunSeed = (s >>> 0) || 1;
+  return globalRunSeed;
 }
 
 export function getGlobalRunSeed(): number {
-  return globalRunSeed >>> 0;
+  return globalRunSeed;
 }
 
 // 1. Simple deterministic PRNG (xorshift32)
@@ -46,7 +51,7 @@ export class RNG {
 
   // float in [0, 1)
   nextFloat(): number {
-    // 2^32
+    // Divide by 2^32 to avoid returning 1.0
     return this.next() / 4294967296;
   }
 
@@ -56,13 +61,20 @@ export class RNG {
     const u2 = Math.max(1e-12, this.nextFloat());
     return Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
   }
+
+  choice<T>(arr: T[]): T {
+    if (!Array.isArray(arr) || arr.length === 0) throw new Error('Empty array');
+    const idx = Math.floor(this.nextFloat() * arr.length);
+    return arr[idx];
+  }
 }
 
 // 2. Per-agent RNG channel factory (globalSeed ^ agentHash ^ channel)
 export function makeAgentRNG(identityId: string, channel: number): RNG {
-  const hash = hashString32(identityId);
-  const baseSeed = (getGlobalRunSeed() ^ hash ^ (channel >>> 0)) >>> 0;
-  return new RNG(baseSeed);
+  const hash = hash32(String(identityId));
+  const ch = (Number(channel) >>> 0) || 0;
+  const baseSeed = (globalRunSeed ^ hash ^ ch) >>> 0;
+  return new RNG(baseSeed || 1);
 }
 
 export function sampleGumbel(scale: number, rng: RNG): number {

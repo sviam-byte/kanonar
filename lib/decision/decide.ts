@@ -4,6 +4,7 @@ import { normalizeAtom } from '../context/v2/infer';
 import { Possibility } from '../possibilities/catalog';
 import { scorePossibility, ScoredAction } from './score';
 import { arr } from '../utils/arr';
+import { RNG, sampleGumbel } from '../core/noise';
 
 export type DecisionResult = {
   best: ScoredAction | null;
@@ -59,6 +60,10 @@ export function decideAction(args: {
   // Defensive: during iterative refactors a non-array may appear here.
   possibilities: Possibility[] | any;
   topK?: number;
+  /** Optional deterministic RNG (recommended: agent.rngChannels.decide). */
+  rng?: RNG;
+  /** Gumbel-max temperature. T≈0.1 => almost deterministic, T≈1 => human-ish, T≈5 => chaotic. */
+  temperature?: number;
 }): DecisionResult {
   const poss = arr<Possibility>(args.possibilities);
   const ranked = poss
@@ -94,9 +99,48 @@ export function decideAction(args: {
     );
   }
 
-  // Choose first allowed action; if none allowed, fall back to topRanked[0] and mark noAllowed=true.
-  const chosen = topRanked.find(x => x?.allowed) || topRanked[0] || null;
-  const noAllowed = Boolean(chosen && !chosen.allowed);
+  // Stochastic but deterministic selection: Gumbel-max over (score / T + gumbel(T)).
+  // If no rng is provided, fall back to deterministic (first allowed).
+  const T = Math.max(0.05, Number(args.temperature ?? 1.0));
+  const pool = topRanked.filter(x => x?.allowed);
+  const candidates = (pool.length ? pool : topRanked).filter(Boolean);
+
+  let chosen: ScoredAction | null = null;
+  let noAllowed = false;
+
+  if (candidates.length === 0) {
+    chosen = null;
+  } else if (!args.rng) {
+    chosen = candidates[0] || null;
+    noAllowed = Boolean(chosen && !chosen.allowed);
+  } else {
+    let best = candidates[0];
+    let bestFinal = -Infinity;
+    for (const item of candidates) {
+      const base = (item.score ?? 0) / T;
+      const noise = sampleGumbel(T, args.rng);
+      const finalScore = base + noise;
+
+      decisionAtoms.push(
+        mkDecisionAtom(
+          `action:stoch:${args.selfId}:${item.p.id}`,
+          args.selfId,
+          clamp01(finalScore / 10),
+          item.why?.usedAtomIds || [],
+          `stoch:${item.p.id}=base(${(item.score ?? 0).toFixed(3)})/T(${T.toFixed(2)})+g(${noise.toFixed(3)})`,
+          { baseScore: item.score ?? 0, T, noise, finalScore },
+          ['action', 'stochastic', item.p.id]
+        )
+      );
+
+      if (finalScore > bestFinal) {
+        bestFinal = finalScore;
+        best = item;
+      }
+    }
+    chosen = best || null;
+    noAllowed = Boolean(chosen && !chosen.allowed);
+  }
 
   if (chosen) {
     const targetId = (chosen.p as any)?.targetId ?? null;
