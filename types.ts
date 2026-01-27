@@ -1219,7 +1219,7 @@ export interface AgentState extends CharacterEntity {
     v: number;
     mode?: string;
     behavioralParams: CharacterParams;
-    rngChannels: { decide: any, physio: any, perceive: any };
+    rngChannels: { decide: any, physio: any, perceive: any, goals?: any };
     goalIds: string[];
     w_eff: number[];
     wSelfBase?: number[];

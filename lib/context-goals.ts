@@ -2,6 +2,7 @@
 import { SituationContext, GoalDomainId, PlanningGoalDef } from './types-goals';
 import { AgentState, WorldState } from '../types';
 import { AffectState } from './emotions/types';
+import { curve01, CurvePreset } from './utils/curves';
 
 export interface ContextGoalProfile {
   id: string;
@@ -366,8 +367,10 @@ export function buildSituationContext(agent: AgentState, world: WorldState): Sit
   const timeGain = clamp01(0.85 + 0.45 * discountRate + 0.25 * (1 - discipline) + 0.15 * fear);
   const woundedGain = clamp01(0.85 + 0.35 * hpaReactivity + 0.25 * fear);
 
-  const threat = clamp01(threatBase * threatGain);
-  const timePressure = clamp01(timePressureBase * timeGain);
+  const preset: CurvePreset = (world as any)?.decisionCurvePreset || 'smoothstep';
+
+  const threat = curve01(clamp01(threatBase * threatGain), preset);
+  const timePressure = curve01(clamp01(timePressureBase * timeGain), preset);
 
   const wounded = (scene?.wounded_total ?? 0) > (scene?.wounded_evacuated ?? 0) + (scene?.wounded_dead ?? 0) ? 1.0 : 0.0;
   const woundedPresent = clamp01(wounded * woundedGain);

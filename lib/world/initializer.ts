@@ -108,7 +108,12 @@ export function createInitialWorld(
             baseTemperature: bp.T0,
             kappa_T: bp.kappa_T_sensitivity,
             baseSigmaProc: bp.sigma0,
-            rngChannels: { decide: makeAgentRNG(cNorm.entityId, 1), physio: makeAgentRNG(cNorm.entityId, 2), perceive: makeAgentRNG(cNorm.entityId, 3) },
+            rngChannels: {
+                decide: makeAgentRNG(cNorm.entityId, 1),
+                physio: makeAgentRNG(cNorm.entityId, 2),
+                perceive: makeAgentRNG(cNorm.entityId, 3),
+                goals: makeAgentRNG(cNorm.entityId, 4),
+            },
             behavioralParams: bp,
             capabilities: mapCharacterToCapabilities(cNorm),
             w_eff: [], relationships: {}, perceivedStates: new Map(),

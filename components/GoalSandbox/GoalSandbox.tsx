@@ -478,8 +478,36 @@ export const GoalSandbox: React.FC = () => {
 
   const [selectedAgentId, setSelectedAgentId] = useState<string>(allCharacters[0]?.entityId || '');
   const [activeScenarioId, setActiveScenarioId] = useState<string>('cave_rescue');
-  const [runSeed, setRunSeed] = useState<number>(() => Date.now());
+  // --- Deterministic stochasticity controls ---
+  const [runSeed, setRunSeed] = useState<string>(() => String(Date.now()));
   const [decisionTemperature, setDecisionTemperature] = useState<number>(1.0);
+  const [decisionCurvePreset, setDecisionCurvePreset] = useState<string>('smoothstep');
+
+  const simSettingsRef = useRef({
+    runSeed: String(Date.now()),
+    decisionTemperature: 1.0,
+    decisionCurvePreset: 'smoothstep',
+  });
+
+  useEffect(() => {
+    simSettingsRef.current.runSeed = runSeed;
+  }, [runSeed]);
+  useEffect(() => {
+    simSettingsRef.current.decisionTemperature = decisionTemperature;
+  }, [decisionTemperature]);
+  useEffect(() => {
+    simSettingsRef.current.decisionCurvePreset = decisionCurvePreset;
+  }, [decisionCurvePreset]);
+
+  const normalizeSeedValue = useCallback((raw: string): number | string => {
+    const s = (raw ?? '').trim();
+    if (!s) return Date.now();
+    if (/^-?\d+$/.test(s)) {
+      const n = Number.parseInt(s, 10);
+      return Number.isFinite(n) ? n : Date.now();
+    }
+    return s;
+  }, []);
   const [perspectiveAgentId, setPerspectiveAgentId] = useState<string | null>(null);
 
   // Core World State
@@ -643,6 +671,11 @@ export const GoalSandbox: React.FC = () => {
     setRebuildNonce(n => n + 1);
   }, []);
 
+  const onApplySimSettings = useCallback(() => {
+    // Rebuild world to re-seed per-agent RNG channels and apply curve/temperature consistently.
+    setWorldSource('derived');
+    forceRebuildWorld();
+  }, [forceRebuildWorld]);
   const persistActorPositions = useCallback(() => {
     if (!worldState) return;
     setActorPositions(prev => {
@@ -839,9 +872,10 @@ export const GoalSandbox: React.FC = () => {
 
       if (participants.length === 0) return;
 
-      const w = createInitialWorld(Date.now(), participants, activeScenarioId, {}, {}, {
-        runSeed,
-        decisionTemperature,
+      const w = createInitialWorld(Date.now(), participants, activeScenarioId, undefined, undefined, {
+        runSeed: normalizeSeedValue(simSettingsRef.current.runSeed),
+        decisionTemperature: simSettingsRef.current.decisionTemperature,
+        decisionCurvePreset: simSettingsRef.current.decisionCurvePreset,
       });
       if (!w) return;
 
@@ -1002,9 +1036,10 @@ export const GoalSandbox: React.FC = () => {
     if (participants.length === 0) return;
 
     try {
-      const w = createInitialWorld(Date.now(), participants, activeScenarioId, {}, {}, {
-        runSeed,
-        decisionTemperature,
+      const w = createInitialWorld(Date.now(), participants, activeScenarioId, undefined, undefined, {
+        runSeed: normalizeSeedValue(simSettingsRef.current.runSeed),
+        decisionTemperature: simSettingsRef.current.decisionTemperature,
+        decisionCurvePreset: simSettingsRef.current.decisionCurvePreset,
       });
       if (!w) {
         setFatalError(`createInitialWorld() returned null. Unknown scenarioId: ${String(activeScenarioId)}`);
@@ -1271,6 +1306,11 @@ export const GoalSandbox: React.FC = () => {
         resetTransientForNewScene('importSceneDumpV2');
 
         const w = normalizeWorldShape(cloneWorld(dump.world));
+
+        // Import sim tuning if present
+        if ((w as any)?.rngSeed != null) setRunSeed(String((w as any).rngSeed));
+        if (typeof (w as any)?.decisionTemperature === "number") setDecisionTemperature((w as any).decisionTemperature);
+        if (typeof (w as any)?.decisionCurvePreset === "string") setDecisionCurvePreset((w as any).decisionCurvePreset);
 
         // Focus
         const focus = dump.focus || {};
@@ -2135,15 +2175,12 @@ export const GoalSandbox: React.FC = () => {
             onSceneControlChange={setSceneControl}
             scenePresets={Object.values(SCENE_PRESETS) as any}
             runSeed={runSeed}
-            onRunSeedChange={(seed: number) => {
-              setWorldSource('derived');
-              setRunSeed(seed);
-            }}
+            onRunSeedChange={setRunSeed}
             decisionTemperature={decisionTemperature}
-            onDecisionTemperatureChange={(t: number) => {
-              setDecisionTemperature(t);
-              setWorldState(prev => (prev ? ({ ...(prev as any), decisionTemperature: t } as any) : prev));
-            }}
+            onDecisionTemperatureChange={setDecisionTemperature}
+            decisionCurvePreset={decisionCurvePreset}
+            onDecisionCurvePresetChange={setDecisionCurvePreset}
+            onApplySimSettings={onApplySimSettings}
           />
 
           <div className="mt-8 pt-4 border-t border-slate-800">

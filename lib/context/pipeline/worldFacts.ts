@@ -1,5 +1,6 @@
 
 import { normalizeAtom } from '../v2/infer';
+import { curve01, CurvePreset } from '../../utils/curves';
 import type { ContextAtom } from '../v2/types';
 
 function clamp01(x: number) {
@@ -28,6 +29,7 @@ export type WorldFactsInput = {
 export function buildWorldFactsAtoms(input: WorldFactsInput): ContextAtom[] {
   const out: ContextAtom[] = [];
   const { tick, selfId } = input;
+  const preset: CurvePreset = (input.world?.decisionCurvePreset as any) || 'smoothstep';
 
   // ---------- Tick ----------
   out.push(normalizeAtom({
@@ -69,7 +71,8 @@ export function buildWorldFactsAtoms(input: WorldFactsInput): ContextAtom[] {
   const state = input.location?.state || {};
 
   const addProp01 = (id: string, v: any, label: string, tags: string[]) => {
-    const m = clamp01(num(v, 0));
+    const linear = clamp01(num(v, 0));
+    const m = curve01(linear, preset);
     out.push(normalizeAtom({
       id,
       ns: 'world',
@@ -87,6 +90,7 @@ export function buildWorldFactsAtoms(input: WorldFactsInput): ContextAtom[] {
         parts: {
           key: id.split(':')[2],
           raw: v,
+          normLinear: linear,
           norm: m,
           locationId: locId ? String(locId) : undefined,
         }
@@ -143,7 +147,8 @@ export function buildWorldFactsAtoms(input: WorldFactsInput): ContextAtom[] {
   // ---------- Map local metrics (world facts) ----------
   const mm = input.mapMetrics || {};
   const addMM = (k: string, v: any) => {
-    const m = clamp01(num(v, 0));
+    const linear = clamp01(num(v, 0));
+    const m = curve01(linear, preset);
     const locId2 = input.locationId || input.location?.entityId || input.location?.id;
     out.push(normalizeAtom({
       id: `world:map:${k}:${selfId}`,
@@ -162,6 +167,7 @@ export function buildWorldFactsAtoms(input: WorldFactsInput): ContextAtom[] {
         parts: {
           key: k,
           raw: v,
+          normLinear: linear,
           norm: m,
           locationId: locId2 ? String(locId2) : undefined
         }
