@@ -18,6 +18,7 @@ import { makeKanonarReport } from '../kanonar/reports';
 import { planLeaderStep } from '../social/orders';
 import { maybeUpdateDetachment } from '../social/group';
 import { updateGoalEcology } from '../goals/scoring';
+let __evtIdCounter = 0;
 import { updateMassLayerEI } from '../mass/system_ei'; 
 import { buildDefaultMassNetworkEI } from '../mass/build_ei'; 
 import { Branch } from '../../types'; 
@@ -39,14 +40,9 @@ import { applyAcquaintanceFromEvents } from '../social/acquaintanceFromEvents';
 
 // Helper to map SimulationEvent to DomainEvent for logs
 function mapSimEventToDomain(ev: SimulationEvent, world: WorldState): DomainEvent {
-    const seededRng = (world as any)?.rng;
-    // Prefer seeded RNG when available; fallback to Math.random for compatibility.
-    const rand = typeof seededRng?.next === 'function' ? seededRng.next() : Math.random();
-    const suffix = rand.toString(36).slice(2, 7) || Math.floor(rand * 1e9).toString(36);
-
     // Basic mapping, can be refined based on event type
     const base: any = {
-        id: `evt-${ev.tick}-${suffix}`,
+        id: `evt-${ev.tick}-${(__evtIdCounter++).toString(36)}`,
         t: ev.tick,
         intensity: 0.5,
         polarity: 0,

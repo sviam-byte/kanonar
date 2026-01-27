@@ -3,7 +3,8 @@ import { EntityType, LocationEntity, HazardVolume, ZoneVolume, Vec3, Euler, Volu
 import { getEntitiesByType } from '../data';
 
 const clamp01 = (x: number) => (Number.isFinite(x) ? Math.max(0, Math.min(1, x)) : 0);
-const uid = (p = 'id') => `${p}-${Math.random().toString(16).slice(2, 10)}`;
+let __uidCounter = 0;
+const uid = (p = "id") => `${p}-${Date.now().toString(16)}-${(__uidCounter++).toString(16)}`;
 
 function cx(...xs: Array<string | false | null | undefined>) {
   return xs.filter(Boolean).join(' ');

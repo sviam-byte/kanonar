@@ -5,6 +5,11 @@ import { EntityParams, CharacterState } from '../types';
 const sigmoid = (x: number): number => 1 / (1 + Math.exp(-x));
 const normalize = (val: number | undefined): number => (val || 0) / 100;
 const clip = (val: number, min: number, max: number): number => Math.max(min, Math.min(val, max));
+// Deterministic pseudo-random in [0,1) from inputs (no state, no Math.random)
+const pseudo01 = (a: number, b: number): number => {
+  const x = Math.sin(a * 12.9898 + b * 78.233 + 0.1) * 43758.5453;
+  return x - Math.floor(x);
+};
 
 // --- OBJECT-SPECIFIC FORMULAS (DETERMINISTIC) ---
 
@@ -38,7 +43,8 @@ export const calculateObjectDrift = (dose: number, prevDrift: number = 0): numbe
   const D_bar = 15;
   const sigma_D = 0.5;
   const eta = 0.25;
-  const noise = (Math.random() - 0.5) * 2 * sigma_D;
+  const u = pseudo01(dose, prevDrift);
+  const noise = (u - 0.5) * 2 * sigma_D;
   const pullToCenter = theta * (D_bar - prevDrift);
   const doseEffect = eta * Math.abs(dose - 1) * 100;
   let newDrift = prevDrift + pullToCenter + noise + doseEffect;

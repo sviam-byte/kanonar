@@ -10,6 +10,7 @@ import { allArchetypes } from '../../data/archetypes';
 import { METRIC_NAMES } from '../archetypes/metrics';
 import { computeSecondOrderSelf, TomSecondOrderSelf } from './second_order';
 import { LIFE_TO_PREGOAL } from '../life-goals/life-to-pregoal';
+import { getGlobalRunSeed, hashString32 } from "../core/noise";
 
 // --- Type Definitions ---
 
@@ -651,7 +652,9 @@ function calculateProjectedLatents(
     const bias_idealize = (biases.idealization ?? 0) * 0.3;
     
     for(const key of [...LATENT_KEYS, ...ACTION_TYPE_KEYS]) {
-        const noise = (Math.random() - 0.5) * 0.1;
+        const seedKey = `${getGlobalRunSeed()}:${key}:${Math.round(trust * 1e3)}:${Math.round(uncertainty * 1e3)}:${Math.round(normConflict * 1e3)}:${Math.round(dyad.bond * 1e3)}:${Math.round(dyad.conflict * 1e3)}`;
+        const u = (hashString32(seedKey) >>> 0) / 4294967296;
+        const noise = (u - 0.5) * 0.1;
         const tVal = (trueLatents[key] ?? 0.5) + noise; 
         const sVal = self[key] ?? 0.5;
         const stVal = stereotypeLatents[key] ?? 0.5;

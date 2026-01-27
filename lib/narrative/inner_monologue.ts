@@ -1,6 +1,7 @@
 
 import { AgentState, NarrativeSlot, CharacterGoalId } from '../../types';
 import { GOAL_DEFS } from '../goals/space';
+import { getGlobalRunSeed, hashString32 } from '../core/noise';
 
 const PSYCH_TEMPLATES: Record<string, string[]> = {
     'hero': [
@@ -46,27 +47,32 @@ const GOAL_THOUGHTS: Record<string, string[]> = {
     'default': ["What should I do next?"]
 };
 
+function hash01(key: string): number {
+    return (hashString32(key) >>> 0) / 4294967296;
+}
+
 export function generateInnerMonologue(agent: AgentState, tick: number): NarrativeSlot | null {
-    // Only generate thoughts occasionally to avoid spam, or if state changed significantly
-    // For now, stochastic check based on "processing speed" (e.g. high stress = more racing thoughts)
-    
     const stress = (agent.body?.acute?.stress ?? 0) / 100;
-    const threshold = 0.1 + 0.8 * (1 - stress); // High stress -> Low threshold -> More thoughts
-    
-    // Deterministic RNG based on tick + ID would be better, but Math.random is fine for "chatter"
-    if (Math.random() > 0.2) return null; // 20% chance per tick roughly
+
+    // Персональный детерминированный RNG на тик: сначала пробуем канал агента, иначе — хэш.
+    const baseKey = `${getGlobalRunSeed()}:${agent.entityId}:${tick}`;
+    let ctr = 0;
+    const next01 = () => agent.rngChannels?.decide?.nextFloat?.() ?? hash01(`${baseKey}:${ctr++}`);
+
+    // 20% chance per tick roughly (без Math.random)
+    if (next01() > 0.2) return null;
 
     const role = agent.psych?.narrative.role || 'observer';
     const goalId = agent.drivingGoalId;
     
     // 1. Pick a template based on Goal + Role
-    let templates = GOAL_THOUGHTS[goalId] || GOAL_THOUGHTS['default'];
-    let baseThought = templates[Math.floor(Math.random() * templates.length)];
+    const templates = GOAL_THOUGHTS[goalId] || GOAL_THOUGHTS['default'];
+    let baseThought = templates[Math.floor(next01() * templates.length)];
     
     // 2. Flavor with Role
-    if (Math.random() < 0.4) {
+    if (next01() < 0.4) {
          const roleTemplates = PSYCH_TEMPLATES[role] || PSYCH_TEMPLATES['observer'];
-         baseThought = roleTemplates[Math.floor(Math.random() * roleTemplates.length)];
+         baseThought = roleTemplates[Math.floor(next01() * roleTemplates.length)];
     }
     
     // 3. Modify by Stress

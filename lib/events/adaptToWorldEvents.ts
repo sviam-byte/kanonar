@@ -1,3 +1,5 @@
+let __worldEventCounter = 0;
+
 // lib/events/adaptToWorldEvents.ts
 // GoalLab currently has multiple event shapes in-flight.
 // This helper normalizes any of them into a conservative WorldEvent[].
@@ -45,7 +47,7 @@ function asWorldEventFromCanonicalEvent(ev: any, fallbackTick: number): WorldEve
   const targetId = targets[0] ? String(targets[0]) : undefined;
 
   return {
-    id: String(ev.id ?? `ev_${fallbackTick}_${Math.random().toString(16).slice(2)}`),
+    id: String(ev.id ?? `ev_${fallbackTick}_${(__worldEventCounter++).toString(36)}`),
     tick: Number(ev.tick ?? ev.t ?? fallbackTick),
     kind: String(ev.kind ?? ev.domain ?? 'event'),
     actorId,

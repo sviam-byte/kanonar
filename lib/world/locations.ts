@@ -12,6 +12,8 @@ import { hydrateLocation } from '../adapters/rich-location';
 import { validateLocation } from '../location/validate';
 import { Location } from '../location/types';
 
+let __grantIdCounter = 0;
+
 /**
  * Найти локацию по id в произвольном списке локаций.
  */
@@ -242,7 +244,7 @@ export function grantAccess(
     }
 
     const newGrant = {
-        id: `grant-${Date.now()}-${Math.random()}`,
+        id: `grant-${Date.now()}-${(__grantIdCounter++).toString(36)}`,
         granteeId,
         granterId,
         expiresAt: Date.now() + durationTicks, // Mock tick using timestamp for now if world tick not passed

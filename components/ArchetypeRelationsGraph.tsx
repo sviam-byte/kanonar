@@ -41,6 +41,16 @@ const NODE_COLORS: Record<NodeData['type'], string> = {
     other: '#9370DB',
 };
 
+function hash01(key: string): number {
+    // FNV-1a -> [0,1)
+    let h = 2166136261 >>> 0;
+    for (let i = 0; i < key.length; i++) {
+        h ^= key.charCodeAt(i);
+        h = Math.imul(h, 16777619);
+    }
+    return (h >>> 0) / 4294967296;
+}
+
 export const ArchetypeRelationsGraph: React.FC<{ onNodeSelect: (node: NodeData | null) => void; filters: Record<string, boolean> }> = ({ onNodeSelect, filters }) => {
     const [nodes, setNodes] = useState<NodeData[]>([]);
     const [edges, setEdges] = useState<EdgeData[]>([]);
@@ -68,8 +78,8 @@ export const ArchetypeRelationsGraph: React.FC<{ onNodeSelect: (node: NodeData |
 
         const newNodes = filteredNodesData.map(d => ({
             ...d,
-            x: width / 2 + (Math.random() - 0.5) * width * 0.5,
-            y: height / 2 + (Math.random() - 0.5) * height * 0.5,
+            x: width / 2 + (hash01(`${d.id}:x`) - 0.5) * width * 0.5,
+            y: height / 2 + (hash01(`${d.id}:y`) - 0.5) * height * 0.5,
             vx: 0, vy: 0, fx: null, fy: null,
         }));
         setNodes(newNodes);

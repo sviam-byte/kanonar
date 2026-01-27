@@ -1,6 +1,7 @@
 
 
 // lib/social/group.ts
+import { getGlobalRunSeed, hashString32 } from "../core/noise";
 import { AgentState, WorldState, CharacterGoalId, SocialActionId, ScenarioDef, GoalState } from '../../types';
 
 /**
@@ -102,7 +103,8 @@ export function maybeUpdateDetachment(
     // Performing explicitly pro-social/leader-supporting actions can re-attach
     if (flags.detachedFromGroup && (chosenActionId === 'support_leader' || chosenActionId === 'aid_ally')) {
         // Stochastic re-attachment
-        if (Math.random() < 0.5) {
+        const u = (hashString32(`${getGlobalRunSeed()}:${world.tick ?? 0}:${agent.entityId}:detach`) >>> 0) / 4294967296;
+        if (u < 0.5) {
             flags.detachedFromGroup = false;
         }
     }

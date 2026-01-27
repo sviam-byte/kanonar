@@ -1,6 +1,7 @@
 
 // lib/meeting/formulas.ts
 import { FullCharacterMetrics, InteractionMetrics, GoalAlignmentMetrics, MeetingOutcome } from '../../types';
+import { getGlobalRunSeed, hashString32 } from "../core/noise";
 
 const sigmoid = (x: number): number => 1 / (1 + Math.exp(-x));
 const clamp01 = (x: number): number => Math.max(0, Math.min(1, x));
@@ -82,7 +83,8 @@ export function calculateOutcomeProbabilities(
     }));
 
     // Sample final outcome
-    let random = Math.random();
+    const seedKey = `${getGlobalRunSeed()}:${p1.modifiableCharacter.entityId}:${p2_perceived.modifiableCharacter.entityId}:${Math.round(sum_exp_logits * 1e6)}`;
+    let random = (hashString32(seedKey) >>> 0) / 4294967296;
     let final: MeetingOutcome = 'delay';
     // Sort probabilities to make sampling deterministic for testing if needed
     const sortedProbs = [...probabilities].sort((a,b) => b.score - a.score);

@@ -1,28 +1,29 @@
 // --- /lib/core/noise.ts ---
 
-/**
- * Global run seed for the whole simulation session.
- * IMPORTANT: do not keep it as a const - it must be overrideable from UI/tests.
- */
+// Глобальный seed запуска. Его можно задать один раз при старте симуляции,
+// чтобы получать полностью воспроизводимые результаты.
 let globalRunSeed: number = 12345;
 
-export function getGlobalRunSeed(): number {
-  return globalRunSeed >>> 0;
-}
-
-export function setGlobalRunSeed(seed: number | string): number {
-  globalRunSeed = (typeof seed === 'string' ? hashString32(seed) : (seed >>> 0)) || 1;
-  return globalRunSeed;
-}
-
-function hashString32(s: string): number {
+export function hashString32(s: string): number {
   // FNV-1a 32-bit
-  let h = 2166136261;
+  let h = 2166136261 >>> 0;
   for (let i = 0; i < s.length; i++) {
     h ^= s.charCodeAt(i);
     h = Math.imul(h, 16777619);
   }
-  return (h >>> 0) || 1;
+  return h >>> 0;
+}
+
+export function setGlobalRunSeed(seed: number | string): void {
+  if (typeof seed === 'string') {
+    globalRunSeed = hashString32(seed);
+  } else {
+    globalRunSeed = seed >>> 0;
+  }
+}
+
+export function getGlobalRunSeed(): number {
+  return globalRunSeed >>> 0;
 }
 
 // 1. Simple deterministic PRNG (xorshift32)
@@ -60,13 +61,12 @@ export class RNG {
 // 2. Per-agent RNG channel factory (globalSeed ^ agentHash ^ channel)
 export function makeAgentRNG(identityId: string, channel: number): RNG {
   const hash = hashString32(identityId);
-  const baseSeed = (globalRunSeed ^ hash ^ (channel >>> 0)) >>> 0;
+  const baseSeed = (getGlobalRunSeed() ^ hash ^ (channel >>> 0)) >>> 0;
   return new RNG(baseSeed);
 }
 
 export function sampleGumbel(scale: number, rng: RNG): number {
-  // Gumbel distribution is sampled by -log(-log(U)) where U is uniform(0,1)
-  // Avoid u=0 or u=1 for log.
+  // Gumbel: -log(-log(U)), U~Uniform(0,1)
   const u = Math.max(1e-9, Math.min(1 - 1e-9, rng.nextFloat()));
   return scale * -Math.log(-Math.log(u));
 }
@@ -88,7 +88,7 @@ export function stepOU(
 }
 
 export function samplePoisson(lambda: number, rng: RNG): number {
-  // Knuth's algorithm
+  // Knuth
   const L = Math.exp(-lambda);
   let k = 0;
   let p = 1;
