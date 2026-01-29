@@ -88,6 +88,13 @@ interface Props {
 
   onDownloadScene?: () => void;
   onImportSceneDumpV2?: (dump: any) => void;
+
+  /**
+   * UI mode hint.
+   * - debug: show everything (including tick runner)
+   * - front: Goal Lab as "what I do now" (hide time controls)
+   */
+  mode?: 'debug' | 'front';
 }
 
 export const GoalLabControls: React.FC<Props> = ({
@@ -115,11 +122,14 @@ export const GoalLabControls: React.FC<Props> = ({
   onAddParticipant,
   onRemoveParticipant,
   sceneControl, onSceneControlChange, scenePresets,
-  perspectiveAgentId, onSelectPerspective
+  perspectiveAgentId, onSelectPerspective,
+  mode = 'debug',
 }) => {
   
   const [selectedActorToAdd, setSelectedActorToAdd] = React.useState<string>('');
-  const [activeTab, setActiveTab] = React.useState<'events' | 'affect' | 'manual' | 'emotions' | 'scenes' | 'sim' | 'mods' | 'scene'>('scenes');
+  const [activeTab, setActiveTab] = React.useState<
+    'events' | 'affect' | 'manual' | 'emotions' | 'scenes' | 'sim' | 'mods' | 'scene'
+  >('scenes');
   const characters = listify(allCharacters);
   const locations = listify(allLocations);
   const events = asArr<Event>(rawEvents);
@@ -130,6 +140,17 @@ export const GoalLabControls: React.FC<Props> = ({
   const nearby = listify(nearbyActors);
   const manual = listify(manualAtoms);
   const computed = listify(computedAtoms);
+
+  const visibleTabs = React.useMemo(() => {
+    const base = ['scenes', 'scene', 'events', 'affect', 'emotions', 'manual', 'mods'] as const;
+    return mode === 'front'
+      ? base
+      : (['scenes', 'scene', 'events', 'sim', 'affect', 'emotions', 'manual', 'mods'] as const);
+  }, [mode]);
+
+  React.useEffect(() => {
+    if (mode === 'front' && activeTab === 'sim') setActiveTab('manual');
+  }, [mode, activeTab]);
   
   // Custom atom form state
   const [customAtomKind, setCustomAtomKind] = React.useState<ContextAtomKind>('threat');
@@ -520,7 +541,7 @@ export const GoalLabControls: React.FC<Props> = ({
 
       {/* Tabs */}
       <div className="flex border-b border-canon-border/50 overflow-x-auto no-scrollbar">
-          {['scenes', 'scene', 'events', 'sim', 'affect', 'emotions', 'manual', 'mods'].map(tab => (
+          {visibleTabs.map(tab => (
             <button
                key={tab}
                className={`flex-1 py-1 px-2 text-[10px] font-bold uppercase whitespace-nowrap ${activeTab === tab ? 'text-canon-accent border-b-2 border-canon-accent' : 'text-canon-text-light'}`}
