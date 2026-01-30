@@ -2,10 +2,13 @@ import React, { useMemo } from 'react';
 import { curve01, CurvePreset } from '../../lib/utils/curves';
 
 type Props = {
+  seed: string;
+  onSeed: (next: string) => void;
   temperature: number;
   onTemperature: (next: number) => void;
   preset: CurvePreset;
   onPreset: (preset: CurvePreset) => void;
+  onApply: () => void;
 };
 
 function clamp01(x: number) {
@@ -33,7 +36,7 @@ function buildPath(points: Array<{ x: number; y: number }>, w: number, h: number
  * Compact curve inspector for the front Goal Lab view.
  * Designed to keep non-debug UX lightweight while still explainable.
  */
-export const CurvesPanel: React.FC<Props> = ({ temperature, onTemperature, preset, onPreset }) => {
+export const CurvesPanel: React.FC<Props> = ({ seed, onSeed, temperature, onTemperature, preset, onPreset, onApply }) => {
   const curvePoints = useMemo(() => {
     const pts: Array<{ x: number; y: number }> = [];
     for (let i = 0; i <= 50; i++) {
@@ -51,8 +54,24 @@ export const CurvesPanel: React.FC<Props> = ({ temperature, onTemperature, prese
   return (
     <div className="space-y-4">
       <div className="rounded border border-slate-800 bg-slate-950/40 p-3">
-        <div className="text-[10px] text-slate-500 uppercase tracking-widest mb-2">Decision curve</div>
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="text-[10px] text-slate-500 uppercase tracking-widest mb-2">Global knobs</div>
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="flex items-center gap-2">
+            <div className="text-[10px] text-slate-500 uppercase tracking-widest">Seed</div>
+            <input
+              className="w-44 bg-black/30 border border-slate-800 rounded px-2 py-1 text-[10px] text-slate-200 outline-none focus:border-cyan-500/50"
+              value={seed}
+              onChange={(e) => onSeed(e.target.value)}
+              placeholder="run seed"
+            />
+            <button
+              onClick={onApply}
+              className="px-3 py-1 text-[10px] rounded uppercase border bg-cyan-600/20 text-cyan-200 border-cyan-500/40 hover:border-cyan-400/60"
+              title="Apply: rebuild world with this seed / preset / temperature"
+            >
+              Apply
+            </button>
+          </div>
           <div className="flex items-center gap-2">
             <div className="text-[10px] text-slate-500 uppercase tracking-widest">preset</div>
             <select

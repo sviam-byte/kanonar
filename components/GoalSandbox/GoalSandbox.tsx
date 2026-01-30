@@ -2460,22 +2460,21 @@ export const GoalSandbox: React.FC = () => {
                 </div>
               </div>
               <div className="flex gap-2 shrink-0">
-                <button
-                  className={`px-2 py-0.5 text-[9px] rounded uppercase ${
-                    uiMode === 'debug' ? 'bg-cyan-600 text-white' : 'bg-slate-800 text-slate-400'
-                  }`}
-                  onClick={() => setUiMode('debug')}
-                >
-                  Debug
-                </button>
-                <button
-                  className={`px-2 py-0.5 text-[9px] rounded uppercase ${
-                    uiMode === 'front' ? 'bg-cyan-600 text-white' : 'bg-slate-800 text-slate-400'
-                  }`}
-                  onClick={() => setUiMode('front')}
-                >
-                  Front
-                </button>
+                {uiMode === 'front' ? (
+                  <button
+                    className="px-3 py-1 text-[10px] rounded uppercase bg-slate-800 text-slate-200 border border-slate-700/60 hover:border-slate-500/70"
+                    onClick={() => setUiMode('debug')}
+                  >
+                    Debug
+                  </button>
+                ) : (
+                  <button
+                    className="px-3 py-1 text-[10px] rounded uppercase bg-slate-800 text-slate-200 border border-slate-700/60 hover:border-slate-500/70"
+                    onClick={() => setUiMode('front')}
+                  >
+                    Front
+                  </button>
+                )}
               </div>
             </div>
             <div className="px-3 pb-2">
@@ -2490,10 +2489,10 @@ export const GoalSandbox: React.FC = () => {
                   <button
                     key={key}
                     onClick={() => setFrontTab(key)}
-                    className={`px-2 py-0.5 text-[9px] rounded uppercase border transition ${
+                    className={`px-3 py-1 text-[10px] rounded uppercase border transition ${
                       frontTab === key
                         ? 'bg-cyan-600/25 text-cyan-200 border-cyan-500/40'
-                        : 'bg-black/10 text-slate-300 border-slate-700/60 hover:border-slate-500/70'
+                        : 'bg-black/10 text-slate-200 border-slate-700/60 hover:border-slate-500/70'
                     }`}
                   >
                     {label}
@@ -2562,10 +2561,13 @@ export const GoalSandbox: React.FC = () => {
             ) : frontTab === 'curves' ? (
               <div className="h-full overflow-y-auto custom-scrollbar p-3">
                 <CurvesPanel
+                  seed={runSeed}
+                  onSeed={setRunSeed}
                   temperature={decisionTemperature}
                   onTemperature={setDecisionTemperature}
                   preset={decisionCurvePreset as CurvePreset}
                   onPreset={(p) => setDecisionCurvePreset(p)}
+                  onApply={onApplySimSettings}
                 />
               </div>
             ) : frontTab === 'metrics' ? (
