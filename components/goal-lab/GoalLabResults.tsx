@@ -27,6 +27,7 @@ import { GoalActionGraphView } from './GoalActionGraphView';
 import { GoalLabSnapshotV1 } from '../../lib/goal-lab/snapshotTypes';
 import { AtomInspector } from './AtomInspector';
 import { EmotionExplainPanel } from './EmotionExplainPanel';
+import { atomLabelRu } from '../../lib/i18n/atom_ru';
 import { PipelinePanel } from './PipelinePanel';
 import { CurvePreview } from './CurvePreview';
 import type { CurvePreset } from '../../lib/utils/curves';
@@ -219,7 +220,7 @@ const AtomBadge: React.FC<{ atom: ContextAtom }> = ({ atom }) => {
         <div className={`flex-shrink-0 flex items-center gap-2 px-2 py-1.5 rounded border ${style.bg} ${style.border} ${style.text} text-xs transition-transform hover:scale-105 select-none`} title={atom.id}>
             <span className="text-sm">{style.icon}</span>
             <div className="flex flex-col leading-none">
-                <span className="font-bold whitespace-nowrap">{atom.label || style.label}</span>
+                <span className="font-bold whitespace-nowrap">{atomLabelRu(atom) || style.label}</span>
                 <span className="text-[9px] opacity-70 font-mono mt-0.5">
                     {(atom.magnitude ?? 0).toFixed(2)} • {atom.source}
                 </span>

@@ -1,6 +1,7 @@
 import type { ContextAtom } from '../types';
+import type { WorldState } from '../../../../types';
 import { normalizeAtom } from '../infer';
-import { curve01, type CurvePreset } from '../../../utils/curves';
+import { curve01Param, type CurvePreset } from '../../../utils/curves';
 
 const clamp01 = (x: number) => Math.max(0, Math.min(1, Number.isFinite(x) ? x : 0));
 const clamp11 = (x: number) => Math.max(-1, Math.min(1, Number.isFinite(x) ? x : 0));
@@ -37,23 +38,28 @@ function mk(
   } as any);
 }
 
-/**
- * Pick a curve preset for a specific emotion key, with a safe fallback.
- */
-function pickPreset(world: any, selfId: string, key: string): CurvePreset {
-  const ok = new Set(['linear', 'smoothstep', 'sqrt', 'sigmoid', 'pow2', 'pow4']);
-  const perSelf = world?.emotionCurvePresets?.[selfId];
-  const v = (perSelf && typeof perSelf === 'object') ? perSelf[key] : undefined;
-  const g = world?.decisionCurvePreset;
-  const p =
-    (typeof v === 'string' && ok.has(v)) ? v : (typeof g === 'string' && ok.has(g) ? g : 'smoothstep');
-  return p as CurvePreset;
+type EmotionCurveCfg = { preset?: CurvePreset; bias?: number; gain?: number };
+
+function getCurveCfg(
+  world: WorldState | null | undefined,
+  selfId: string,
+  emoKey: string,
+  fallbackPreset: CurvePreset
+): EmotionCurveCfg {
+  const perSelf = (world as any)?.emotionCurves?.[selfId] as any;
+  const cfg = perSelf?.[emoKey] || null;
+  const preset = (cfg?.preset as CurvePreset) || ((world as any)?.decisionCurvePreset as CurvePreset) || fallbackPreset;
+  return {
+    preset,
+    bias: typeof cfg?.bias === 'number' ? cfg.bias : 0.5,
+    gain: typeof cfg?.gain === 'number' ? cfg.gain : 1,
+  };
 }
 
 export function deriveAppraisalAndEmotionAtomsV2(
   selfId: string,
   atoms: ContextAtom[],
-  world?: any,
+  world?: WorldState | null,
 ): ContextAtom[] {
   // --- Inputs expected to exist already ---
   const threat = get(atoms, `threat:final:${selfId}`, get(atoms, `mind:threat:${selfId}`, 0));
@@ -124,19 +130,27 @@ export function deriveAppraisalAndEmotionAtomsV2(
   const rawResolve = clamp01(0.55 * aControl + 0.30 * rawAnger + 0.15 * (1 - aUnc));
   const rawCare = clamp01(aAttach * (0.65 + 0.35 * (1 - aThreat)));
 
-  const fearPreset = pickPreset(world, selfId, 'fear');
-  const angerPreset = pickPreset(world, selfId, 'anger');
-  const shamePreset = pickPreset(world, selfId, 'shame');
-  const reliefPreset = pickPreset(world, selfId, 'relief');
-  const resolvePreset = pickPreset(world, selfId, 'resolve');
-  const carePreset = pickPreset(world, selfId, 'care');
+  const fallbackPreset: CurvePreset = 'smoothstep';
+  const fearCfg = getCurveCfg(world, selfId, 'fear', fallbackPreset);
+  const angerCfg = getCurveCfg(world, selfId, 'anger', fallbackPreset);
+  const shameCfg = getCurveCfg(world, selfId, 'shame', fallbackPreset);
+  const reliefCfg = getCurveCfg(world, selfId, 'relief', fallbackPreset);
+  const resolveCfg = getCurveCfg(world, selfId, 'resolve', fallbackPreset);
+  const careCfg = getCurveCfg(world, selfId, 'care', fallbackPreset);
 
-  const fear = clamp01(curve01(rawFear, fearPreset));
-  const anger = clamp01(curve01(rawAnger, angerPreset));
-  const shame = clamp01(curve01(rawShame, shamePreset));
-  const relief = clamp01(curve01(rawRelief, reliefPreset));
-  const resolve = clamp01(curve01(rawResolve, resolvePreset));
-  const care = clamp01(curve01(rawCare, carePreset));
+  const fearRes = curve01Param(rawFear, fearCfg.preset || fallbackPreset, { bias: fearCfg.bias, gain: fearCfg.gain });
+  const angerRes = curve01Param(rawAnger, angerCfg.preset || fallbackPreset, { bias: angerCfg.bias, gain: angerCfg.gain });
+  const shameRes = curve01Param(rawShame, shameCfg.preset || fallbackPreset, { bias: shameCfg.bias, gain: shameCfg.gain });
+  const reliefRes = curve01Param(rawRelief, reliefCfg.preset || fallbackPreset, { bias: reliefCfg.bias, gain: reliefCfg.gain });
+  const resolveRes = curve01Param(rawResolve, resolveCfg.preset || fallbackPreset, { bias: resolveCfg.bias, gain: resolveCfg.gain });
+  const careRes = curve01Param(rawCare, careCfg.preset || fallbackPreset, { bias: careCfg.bias, gain: careCfg.gain });
+
+  const fear = clamp01(fearRes.y);
+  const anger = clamp01(angerRes.y);
+  const shame = clamp01(shameRes.y);
+  const relief = clamp01(reliefRes.y);
+  const resolve = clamp01(resolveRes.y);
+  const care = clamp01(careRes.y);
 
   const arousal = clamp01(0.60 * aThreat + 0.20 * aUnc + 0.20 * aPressure);
   const valenceSigned = clamp11((+0.55 * relief + 0.35 * care) - (0.60 * fear + 0.35 * shame + 0.25 * anger));
@@ -151,40 +165,46 @@ export function deriveAppraisalAndEmotionAtomsV2(
   ];
 
   const emoAtoms: ContextAtom[] = [
-    mk(`emo:fear:${selfId}`, fear, usedEmo, { aThreat, aControl, aUnc, raw: rawFear, preset: fearPreset, fear }, 'emotion'),
+    mk(
+      `emo:fear:${selfId}`,
+      fear,
+      usedEmo,
+      { aThreat, aControl, aUnc, raw: rawFear, x1: fearRes.x1, preset: fearCfg.preset, bias: fearCfg.bias, gain: fearCfg.gain, fear },
+      'emotion',
+    ),
     mk(
       `emo:anger:${selfId}`,
       anger,
       usedEmo,
-      { aThreat, aControl, aUnc, aPressure, raw: rawAnger, preset: angerPreset, anger },
+      { aThreat, aControl, aUnc, aPressure, raw: rawAnger, x1: angerRes.x1, preset: angerCfg.preset, bias: angerCfg.bias, gain: angerCfg.gain, anger },
       'emotion',
     ),
     mk(
       `emo:shame:${selfId}`,
       shame,
       usedEmo,
-      { aPressure, aThreat, aAttach, raw: rawShame, preset: shamePreset, shame },
+      { aPressure, aThreat, aAttach, raw: rawShame, x1: shameRes.x1, preset: shameCfg.preset, bias: shameCfg.bias, gain: shameCfg.gain, shame },
       'emotion',
     ),
     mk(
       `emo:relief:${selfId}`,
       relief,
       usedEmo,
-      { aThreat, aControl, raw: rawRelief, preset: reliefPreset, relief },
+      { aThreat, aControl, raw: rawRelief, x1: reliefRes.x1, preset: reliefCfg.preset, bias: reliefCfg.bias, gain: reliefCfg.gain, relief },
       'emotion',
     ),
     mk(
       `emo:resolve:${selfId}`,
       resolve,
       usedEmo,
-      { aControl, aUnc, raw: rawResolve, preset: resolvePreset, resolve },
+      { aControl, rawAnger, aUnc, raw: rawResolve, x1: resolveRes.x1, preset: resolveCfg.preset, bias: resolveCfg.bias, gain: resolveCfg.gain, resolve },
       'emotion',
     ),
     mk(
       `emo:care:${selfId}`,
       care,
       usedEmo,
-      { aAttach, aThreat, raw: rawCare, preset: carePreset, care },
+      { aAttach, aThreat, raw: rawCare, x1: careRes.x1, preset: careCfg.preset, bias: careCfg.bias, gain: careCfg.gain, care },
       'emotion',
     ),
     mk(`emo:arousal:${selfId}`, arousal, usedEmo, { arousal }, 'emotion'),
