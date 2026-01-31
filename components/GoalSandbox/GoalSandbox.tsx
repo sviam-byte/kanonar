@@ -2272,6 +2272,8 @@ export const GoalSandbox: React.FC = () => {
                 selectedGoalId={null}
                 mode={energyViewMode}
                 compact
+                temperature={decisionTemperature}
+                curvePreset={decisionCurvePreset as any}
               />
             </div>
           )}
@@ -2329,6 +2331,8 @@ export const GoalSandbox: React.FC = () => {
                 goalScores={arr(computed.goals) as any}
                 selectedGoalId={null}
                 mode={energyViewMode}
+                temperature={decisionTemperature}
+                curvePreset={decisionCurvePreset as any}
               />
             </div>
           </div>

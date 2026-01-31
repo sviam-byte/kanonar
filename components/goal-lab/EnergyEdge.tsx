@@ -4,6 +4,8 @@ import { BaseEdge, EdgeLabelRenderer, getBezierPath, type EdgeProps } from 'reac
 type EnergyEdgeData = {
   /** raw weight (can be negative) */
   weight?: number;
+  /** optional raw weight when weight is re-used for derived values */
+  rawWeight?: number;
   /** precomputed 0..1 */
   strength?: number;
   /** label text shown above the edge */
@@ -37,8 +39,10 @@ export const EnergyEdge: React.FC<EdgeProps<EnergyEdgeData>> = (props) => {
     data,
   } = props;
 
-  const weight = Number(data?.weight ?? 0);
-  const isPositive = weight >= 0;
+  // Prefer rawWeight for coloring when the edge also carries derived flow values.
+  const rawWeight = Number(data?.rawWeight ?? data?.weight ?? 0);
+  const weight = Number(data?.weight ?? rawWeight);
+  const isPositive = rawWeight >= 0;
   const strength = clamp01(Number(data?.strength ?? Math.abs(weight)));
 
   // Slightly faster dots for stronger edges.
