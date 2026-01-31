@@ -570,6 +570,74 @@ export const GoalSandbox: React.FC = () => {
     } catch {}
   }, [uiMode]);
 
+  const loadNum = (key: string, fb: number) => {
+    try {
+      const v = Number(localStorage.getItem(key));
+      return Number.isFinite(v) ? v : fb;
+    } catch {
+      return fb;
+    }
+  };
+
+  const [leftPanelW, setLeftPanelW] = useState<number>(() => loadNum('goalsandbox.panels.leftW.v1', 350));
+  const [rightPanelW, setRightPanelW] = useState<number>(() => loadNum('goalsandbox.panels.rightW.v1', 420));
+  const [bottomPanelH, setBottomPanelH] = useState<number>(() => loadNum('goalsandbox.panels.bottomH.v1', 520));
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('goalsandbox.panels.leftW.v1', String(Math.round(leftPanelW)));
+    } catch {}
+  }, [leftPanelW]);
+  useEffect(() => {
+    try {
+      localStorage.setItem('goalsandbox.panels.rightW.v1', String(Math.round(rightPanelW)));
+    } catch {}
+  }, [rightPanelW]);
+  useEffect(() => {
+    try {
+      localStorage.setItem('goalsandbox.panels.bottomH.v1', String(Math.round(bottomPanelH)));
+    } catch {}
+  }, [bottomPanelH]);
+
+  const startDragPanelX = (e: React.PointerEvent, which: 'left' | 'right') => {
+    e.preventDefault();
+    (e.target as any)?.setPointerCapture?.(e.pointerId);
+    const startX = e.clientX;
+    const startW = which === 'left' ? leftPanelW : rightPanelW;
+    const onMove = (ev: PointerEvent) => {
+      const dx = ev.clientX - startX;
+      const next = which === 'left' ? (startW + dx) : (startW - dx);
+      const clamped = Math.max(240, Math.min(720, next));
+      if (which === 'left') setLeftPanelW(clamped);
+      else setRightPanelW(clamped);
+    };
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  };
+
+  const startDragPanelY = (e: React.PointerEvent) => {
+    e.preventDefault();
+    (e.target as any)?.setPointerCapture?.(e.pointerId);
+    const startY = e.clientY;
+    const startH = bottomPanelH;
+    const onMove = (ev: PointerEvent) => {
+      const dy = ev.clientY - startY;
+      const next = startH - dy;
+      const clamped = Math.max(240, Math.min(900, next));
+      setBottomPanelH(clamped);
+    };
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  };
+
   // Center view (map vs. goal graphs) is persisted so the UI reopens where the user left it.
   const [centerView, setCenterView] = useState<'map' | 'energy' | 'actions'>(() => {
     try {
@@ -2345,7 +2413,7 @@ export const GoalSandbox: React.FC = () => {
     <div className="flex h-full bg-[#020617] text-slate-300 overflow-hidden font-mono">
       {/* LEFT (debug only): controls + quick ctx input */}
       {uiMode === 'debug' ? (
-        <aside className="w-[350px] border-r border-slate-800 flex flex-col bg-slate-950/50 shrink-0">
+        <aside style={{ width: leftPanelW }} className="border-r border-slate-800 flex flex-col bg-slate-950/50 shrink-0">
         <div className="p-3 border-b border-slate-800 bg-slate-900/40 flex justify-between items-center">
           <span className="text-[10px] font-bold text-cyan-500 uppercase tracking-widest">Perspective_Drive</span>
           <div className="flex gap-2">
@@ -2450,6 +2518,13 @@ export const GoalSandbox: React.FC = () => {
           </div>
         </div>
       </aside>
+      ) : null}
+      {uiMode === 'debug' ? (
+        <div
+          className="panel-resizer-x"
+          onPointerDown={(e) => startDragPanelX(e, 'left')}
+          title="drag to resize"
+        />
       ) : null}
 
       {/* CENTER */}
@@ -2629,7 +2704,12 @@ export const GoalSandbox: React.FC = () => {
         ) : (
           <>
             {mapArea}
-            <div className="flex-1 min-h-[220px] border-t border-slate-800 bg-slate-950 flex flex-col min-h-0">
+            <div
+              className="panel-resizer-y"
+              onPointerDown={startDragPanelY}
+              title="Изменить высоту панели"
+            />
+            <div style={{ height: bottomPanelH }} className="border-t border-slate-800 bg-slate-950 flex flex-col min-h-0">
               <nav className="flex border-b border-slate-800 bg-slate-900/20">
                 {(['debug', 'tom', 'pipeline', 'compare', 'curves'] as const).map((t) => (
                   <button
@@ -2718,7 +2798,12 @@ export const GoalSandbox: React.FC = () => {
       </main>
 
       {/* RIGHT: GoalLab results, pipeline export/import, etc. */}
-      <aside className="w-[420px] border-l border-slate-800 bg-slate-950/50 flex flex-col shrink-0">
+      <div
+        className="panel-resizer-x"
+        onPointerDown={(e) => startDragPanelX(e, 'right')}
+        title="Изменить ширину панели"
+      />
+      <aside style={{ width: rightPanelW }} className="border-l border-slate-800 bg-slate-950/50 flex flex-col shrink-0">
         <div className="p-3 border-b border-slate-800 text-[10px] font-bold text-slate-500 uppercase">
           Passport + Atoms
         </div>

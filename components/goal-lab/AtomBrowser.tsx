@@ -4,7 +4,7 @@ import React, { useMemo, useState } from 'react';
 import { ContextAtom, AtomNamespace, AtomOrigin } from '../../lib/context/v2/types';
 import { inferAtomNamespace, inferAtomOrigin, normalizeAtom } from '../../lib/context/v2/infer';
 import { arr } from '../../lib/utils/arr';
-import { atomLabelRu, atomNamespaceRu } from '../../lib/i18n/atom_ru';
+import { atomLabelRu } from '../../lib/i18n/atomRu';
 
 type Props = {
   atoms: ContextAtom[];
@@ -85,7 +85,12 @@ export const AtomBrowser: React.FC<Props> = ({ atoms, className, selectedAtomId,
             ? JSON.stringify((a as any).params)
             : '';
         const hay = [
-          a.id, a.kind, a.source, a.label,
+          a.id,
+          a.kind,
+          a.source,
+          a.label,
+          atomLabelRu(a.id).title,
+          atomLabelRu(a.id).subtitle,
           (a as any).code, (a as any).specId,
           paramsStr,
           ...arr(a.tags)
@@ -196,14 +201,16 @@ export const AtomBrowser: React.FC<Props> = ({ atoms, className, selectedAtomId,
             >
               <div className="flex items-center justify-between gap-2 mb-1">
                 <div className="text-[10px] text-canon-text-light uppercase tracking-wider flex gap-2">
-                    <span className="bg-white/5 px-1 rounded" title={a.ns ?? 'misc'}>
-                      {atomNamespaceRu(a.ns ?? 'misc')}
-                    </span>
+                    <span className="bg-white/5 px-1 rounded">{a.ns ?? 'misc'}</span>
                     <span>{a.origin ?? 'world'}</span>
                 </div>
                 <div className="text-xs font-mono font-bold text-canon-accent">{Math.round((a.magnitude ?? 0) * 100)}%</div>
               </div>
-              <div className="text-xs font-bold truncate text-canon-text">{atomLabelRu(a)}</div>
+              {(() => {
+                const ru = atomLabelRu(a.id);
+                const title = a.label || ru.title || a.kind;
+                return <div className="text-xs font-bold truncate text-canon-text">{title}</div>;
+              })()}
               {(a as any).code && <div className="text-[9px] font-mono text-canon-text-light/70 truncate">{String((a as any).code)}</div>}
               <div className="text-[9px] font-mono text-canon-text-light/50 truncate" title={a.id}>{a.id}</div>
             </button>
@@ -221,8 +228,18 @@ export const AtomBrowser: React.FC<Props> = ({ atoms, className, selectedAtomId,
             ) : (
               <div className="p-4 space-y-4">
                 <div className="border-b border-canon-border/50 pb-2">
-                    <h3 className="text-sm font-bold text-canon-text mb-1">{atomLabelRu(selected)}</h3>
+                    {(() => {
+                      const ru = atomLabelRu(selected.id);
+                      const title = selected.label || ru.title || selected.kind;
+                      return <h3 className="text-sm font-bold text-canon-text mb-1">{title}</h3>;
+                    })()}
                     <div className="text-[10px] font-mono text-canon-text-light select-all">{selected.id}</div>
+                    {(() => {
+                      const ru = atomLabelRu(selected.id);
+                      return ru.subtitle ? (
+                        <div className="text-[11px] text-canon-text-light/70 mt-1">{ru.subtitle}</div>
+                      ) : null;
+                    })()}
                 </div>
 
                 <div className="flex flex-wrap gap-2 text-[10px]">
