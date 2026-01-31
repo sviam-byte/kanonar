@@ -35,6 +35,7 @@ import { deriveAccess } from '../access/deriveAccess';
 import { getLocationForAgent } from '../world/locations';
 import { computeLocalMapMetrics } from '../world/mapMetrics';
 import { decideAction } from '../decision/decide';
+import { getGlobalRunSeed, makeDerivedRNG } from '../core/noise';
 import { deriveActionPriors } from '../decision/actionPriors';
 import { computeContextMindScoreboard } from '../contextMind/scoreboard';
 import { atomizeContextMindMetrics } from '../contextMind/atomizeMind';
@@ -307,6 +308,8 @@ export function buildGoalLabContext(
       overrideEvents?: any[];
       sceneControl?: any;
       affectOverrides?: any;
+      /** UI-only: reroll decision noise without changing the world seed */
+      decisionNonce?: number;
     };
     timeOverride?: number;
     devValidateAtoms?: boolean;
@@ -1388,13 +1391,20 @@ export function buildGoalLabContext(
   );
   pipelineAll.push(s4_5Stage);
 
-  // Decide AFTER mind metrics exist in the atom stream
+  // Decide AFTER mind metrics exist in the atom stream.
+  // UI may request a deterministic reroll without mutating the agent RNG channel.
+  const decisionNonce = Number((opts as any)?.snapshotOptions?.decisionNonce);
+  const baseDecideRng = (agentForPipeline as any)?.rngChannels?.decide;
+  const decideRng = Number.isFinite(decisionNonce)
+    ? makeDerivedRNG(`goalLab:decide:${selfId}:${decisionNonce}`, getGlobalRunSeed())
+    : baseDecideRng;
+
   const decision = decideAction({
     selfId,
     atoms: atomsWithMind,
     possibilities: (result as any).possibilities,
     topK: 12,
-    rng: (agentForPipeline as any)?.rngChannels?.decide,
+    rng: decideRng,
     temperature:
       (world as any)?.decisionTemperature ??
       (agentForPipeline as any)?.behavioralParams?.T0 ??

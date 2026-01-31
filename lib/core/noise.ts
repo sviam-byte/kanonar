@@ -84,6 +84,17 @@ export function sampleGumbel(scale: number, rng: RNG): number {
 }
 
 /**
+ * Derived RNG helper (deterministic fork).
+ * Useful for UI rerolls / per-stage noise without mutating agent channels.
+ */
+export function makeDerivedRNG(salt: string, baseSeed?: number | string): RNG {
+  const base = typeof baseSeed === 'string' ? hash32(baseSeed) : (Number(baseSeed ?? globalRunSeed) >>> 0);
+  const mixed = hash32(`${base}:${String(salt)}`);
+  const seed = ((base ^ mixed) >>> 0) || 1;
+  return new RNG(seed);
+}
+
+/**
  * Ornstein–Uhlenbeck step.
  */
 export function stepOU(

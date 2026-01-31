@@ -8,6 +8,7 @@ import { getPlanningGoals } from './adapter';
 import { computeConcreteGoals } from '../life-goals/v4-engine';
 import { makeZeroGoalLogits } from '../life-goals/psych-to-goals';
 import { GOAL_AXES } from '../life-goals/v3-params';
+import { calculateGraphInfluence } from './goalEcology';
 
 // Helper to estimate effect profile based on domain
 function estimateGoalEffectProfile(domain: string): { stress?: number, fatigue?: number } {
@@ -215,14 +216,21 @@ export function updateGoalEcology(agent: AgentState, world: WorldState): void {
 
   // If RNG exists, use Gumbel-Max over (base/T + gumbel(T)) plus goal stickiness.
   // This yields human-like "moment" variation while remaining reproducible per seed.
+  const activeGoalIds = agent.goalEcology?.execute?.map((goal) => goal.id) ?? agent.goalIds ?? [];
+
   const rankedForSelection = rng
     ? newGoalStates
         .map((g) => {
           const base = Number((g as any).activation_score ?? g.priority ?? 0);
+          const graphInfluence = calculateGraphInfluence(g.id, activeGoalIds);
           const sticky = agent.drivingGoalId === g.id ? STICKINESS_BONUS : 0;
           const noise = sampleGumbel(T, rng);
-          const finalScore = base / T + noise + sticky;
-          (g as any).selection = { base, T, noise, sticky, finalScore };
+          const finalScore = base / T + graphInfluence + noise + sticky;
+
+          // Сохраняем отладочную формулу, чтобы UI мог объяснять выбор.
+          (g as any).selection = { base, T, graphInfluence, noise, sticky, finalScore };
+          (g as any).graphInfluence = graphInfluence;
+
           return { g, finalScore };
         })
         .sort((a, b) => b.finalScore - a.finalScore)

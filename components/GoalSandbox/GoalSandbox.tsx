@@ -24,9 +24,12 @@ import { computeLocationGoalsForAgent } from '../../lib/context/v2/locationGoals
 import { computeTomGoalsForAgent } from '../../lib/context/v2/tomGoals';
 import { GoalLabControls } from '../goal-lab/GoalLabControls';
 import { GoalLabResults } from '../goal-lab/GoalLabResults';
+import { DoNowCard } from '../goal-lab/DoNowCard';
+import { CurvesPanel } from '../goal-lab/CurvesPanel';
 import { PipelinePanel } from '../goal-lab/PipelinePanel';
 import { DecisionGraphView } from '../goal-lab/DecisionGraphView';
 import { GoalActionGraphView } from '../goal-lab/GoalActionGraphView';
+import { CurveStudio } from '../goal-lab/CurveStudio';
 import { ToMPanel } from '../goal-lab/ToMPanel';
 import { CastComparePanel } from '../goal-lab/CastComparePanel';
 import { eventRegistry } from '../../data/events-registry';
@@ -59,6 +62,7 @@ import { normalizeAtom } from '../../lib/context/v2/infer';
 import { lintActionsAndLocations } from '../../lib/linter/actionsAndLocations';
 import { arr } from '../../lib/utils/arr';
 import { getCanonicalAtomsFromSnapshot } from '../../lib/goal-lab/atoms/canonical';
+import type { CurvePreset } from '../../lib/utils/curves';
 
 function clamp01(x: number) {
   if (!Number.isFinite(x)) return 0;
@@ -482,6 +486,7 @@ export const GoalSandbox: React.FC = () => {
   const [runSeed, setRunSeed] = useState<string>(() => String(Date.now()));
   const [decisionTemperature, setDecisionTemperature] = useState<number>(1.0);
   const [decisionCurvePreset, setDecisionCurvePreset] = useState<string>('smoothstep');
+  const [decisionNonce, setDecisionNonce] = useState<number>(0);
 
   const simSettingsRef = useRef({
     runSeed: String(Date.now()),
@@ -546,7 +551,7 @@ export const GoalSandbox: React.FC = () => {
   const [selectedEventIds, setSelectedEventIds] = useState<Set<string>>(new Set());
   const [manualAtoms, setManualAtoms] = useState<ContextAtom[]>([]);
   const [pipelineStageId, setPipelineStageId] = useState<string>('S5');
-  const [activeBottomTab, setActiveBottomTab] = useState<'debug' | 'tom' | 'pipeline' | 'compare'>('pipeline');
+  const [activeBottomTab, setActiveBottomTab] = useState<'debug' | 'tom' | 'pipeline' | 'compare' | 'curves'>('pipeline');
   const [lockedMapViewport, setLockedMapViewport] = useState<{ w: number; h: number } | null>(null);
   const lockedMapIdRef = useRef<string | null>(null);
 
@@ -584,6 +589,11 @@ export const GoalSandbox: React.FC = () => {
 
   const [centerOverlayOpen, setCenterOverlayOpen] = useState(false);
   const [centerOverlaySize, setCenterOverlaySize] = useState<'wide' | 'max'>('wide');
+
+  // Front (non-debug) UX: right panel is constant, left/main switches via tabs.
+  const [frontTab, setFrontTab] = useState<'graph' | 'situation' | 'metrics' | 'curves' | 'debug'>(() => {
+    return 'graph';
+  });
 
   useEffect(() => {
     try {
@@ -673,9 +683,13 @@ export const GoalSandbox: React.FC = () => {
 
   const onApplySimSettings = useCallback(() => {
     // Rebuild world to re-seed per-agent RNG channels and apply curve/temperature consistently.
+    setDecisionNonce(0);
     setWorldSource('derived');
     forceRebuildWorld();
   }, [forceRebuildWorld]);
+  const onRerollDecisionNoise = useCallback(() => {
+    setDecisionNonce((n) => (Number.isFinite(n) ? n + 1 : 1));
+  }, []);
   const persistActorPositions = useCallback(() => {
     if (!worldState) return;
     setActorPositions(prev => {
@@ -1433,6 +1447,7 @@ export const GoalSandbox: React.FC = () => {
           overrideEvents: injectedEvents,
           sceneControl,
           affectOverrides,
+          decisionNonce,
         },
         timeOverride: (worldForCtx as any).tick,
         devValidateAtoms,
@@ -1457,6 +1472,7 @@ export const GoalSandbox: React.FC = () => {
     affectOverrides,
     devValidateAtoms,
     labLocationContext,
+    decisionNonce,
   ]);
 
   const glCtx = glCtxResult.ctx;
@@ -1683,6 +1699,7 @@ export const GoalSandbox: React.FC = () => {
             overrideEvents: injectedEvents,
             sceneControl,
             affectOverrides,
+            decisionNonce,
           },
           timeOverride: (worldState as any).tick,
           devValidateAtoms,
@@ -1711,6 +1728,7 @@ export const GoalSandbox: React.FC = () => {
     sceneControl,
     affectOverrides,
     devValidateAtoms,
+    decisionNonce,
   ]);
 
   /**
@@ -1741,6 +1759,7 @@ export const GoalSandbox: React.FC = () => {
             overrideEvents: injectedEvents,
             sceneControl,
             affectOverrides,
+            decisionNonce,
           },
           timeOverride: (worldState as any)?.tick,
           devValidateAtoms,
@@ -1765,6 +1784,7 @@ export const GoalSandbox: React.FC = () => {
     sceneControl,
     affectOverrides,
     devValidateAtoms,
+    decisionNonce,
   ]);
 
   const focusId =
@@ -2104,10 +2124,224 @@ export const GoalSandbox: React.FC = () => {
   const frameH = lockedMapViewport?.h ?? 620;
   const tomRows = tomMatrixForPerspective ?? [];
 
+  const mapArea = (
+    <div className="flex-none relative bg-black overflow-visible p-3">
+      <div className="flex items-center justify-between gap-2 mb-2 px-2 py-1 bg-slate-950/70 border border-slate-800 rounded-md backdrop-blur-sm">
+        <div className="flex items-baseline gap-2 min-w-0">
+          <div className="text-[9px] text-slate-500 uppercase tracking-widest shrink-0">Perspective</div>
+          <div className="text-[11px] text-cyan-300 font-bold truncate">{focusId || '—'}</div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-2 mr-2">
+            <div className="flex items-center gap-1">
+              <div className="text-[9px] text-slate-500 uppercase tracking-widest">seed</div>
+              <input
+                className="w-24 bg-black/20 border border-slate-700/60 rounded px-2 py-0.5 text-[10px] text-slate-200 outline-none focus:border-cyan-500/50"
+                value={runSeed}
+                onChange={(e) => setRunSeed(e.target.value)}
+                title="Global run seed"
+              />
+            </div>
+            <div className="flex items-center gap-1">
+              <div className="text-[9px] text-slate-500 uppercase tracking-widest">temp</div>
+              <input
+                type="range"
+                min={0.10}
+                max={5.0}
+                step={0.05}
+                value={decisionTemperature}
+                onChange={(e) => setDecisionTemperature(Number(e.target.value))}
+              />
+              <div className="text-[10px] text-slate-200 tabular-nums w-10 text-right">
+                {decisionTemperature.toFixed(2)}
+              </div>
+            </div>
+            <div className="flex items-center gap-1">
+              <div className="text-[9px] text-slate-500 uppercase tracking-widest">curve</div>
+              <select
+                className="bg-black/20 border border-slate-700/60 rounded px-2 py-0.5 text-[10px] text-slate-200 outline-none focus:border-cyan-500/50"
+                value={decisionCurvePreset}
+                onChange={(e) => setDecisionCurvePreset(e.target.value)}
+              >
+                {(['linear', 'smoothstep', 'sqrt', 'sigmoid', 'pow2', 'pow4'] as const).map((p) => (
+                  <option key={p} value={p}>
+                    {p}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <button
+              onClick={onApplySimSettings}
+              className="px-2 py-0.5 text-[9px] rounded uppercase border bg-cyan-600/20 text-cyan-200 border-cyan-500/40 hover:border-cyan-400/60"
+              title="Apply: rebuild world (reseed agents + pipelines)"
+            >
+              apply
+            </button>
+            <button
+              onClick={onRerollDecisionNoise}
+              className="px-2 py-0.5 text-[9px] rounded uppercase border bg-emerald-600/20 text-emerald-200 border-emerald-500/40 hover:border-emerald-400/60"
+              title="Reroll: same seed & context, new decision noise (nonce)"
+            >
+              reroll
+            </button>
+            <div className="text-[9px] text-slate-500" title="Decision reroll nonce">
+              n:{decisionNonce}
+            </div>
+          </div>
+          <div className="flex items-center gap-1">
+            {(['map', 'energy', 'actions'] as const).map((view) => (
+              <button
+                key={view}
+                onClick={() => setCenterView(view)}
+                className={`px-2 py-0.5 text-[9px] rounded uppercase border transition ${
+                  centerView === view
+                    ? 'bg-cyan-600/25 text-cyan-200 border-cyan-500/40'
+                    : 'bg-black/10 text-slate-300 border-slate-700/60 hover:border-slate-500/70'
+                }`}
+                title={
+                  view === 'map'
+                    ? 'Map (placement)'
+                    : view === 'energy'
+                      ? 'Energy (inputs → goals)'
+                      : 'Actions (action → goal)'
+                }
+              >
+                {view}
+              </button>
+            ))}
+          </div>
+
+          {centerView === 'energy' ? (
+            <>
+              <div className="flex items-center gap-1">
+                {(['graph', 'meta', '3d'] as const).map((mode) => (
+                  <button
+                    key={mode}
+                    onClick={() => setEnergyViewMode(mode)}
+                    className={`px-2 py-0.5 text-[9px] rounded uppercase border ${
+                      energyViewMode === mode
+                        ? 'bg-emerald-600/30 text-emerald-200 border-emerald-500/40'
+                        : 'bg-black/20 text-slate-300 border-slate-700/60 hover:border-slate-500/70'
+                    }`}
+                    title={mode === 'graph' ? 'Graph (inputs → goals)' : mode === 'meta' ? 'Meta buckets' : '3D scaffold'}
+                  >
+                    {mode}
+                  </button>
+                ))}
+              </div>
+
+              <button
+                onClick={() => setCenterOverlayOpen(true)}
+                className="px-2 py-0.5 text-[9px] rounded uppercase border bg-black/20 text-slate-300 border-slate-700/60 hover:border-slate-500/70"
+                title="Open widened view"
+              >
+                widen
+              </button>
+            </>
+          ) : null}
+        </div>
+      </div>
+
+      <div
+        className="relative flex-none border border-slate-800 bg-slate-950/40 overflow-hidden shadow-[0_0_0_1px_rgba(148,163,184,0.15)]"
+        style={{
+          width: frameW,
+          height: frameH,
+        }}
+      >
+        <div className="absolute inset-0 pointer-events-none bg-gradient-to-b from-white/5 to-transparent" />
+        <div className="absolute inset-0">
+          {centerView === 'map' ? (
+            <MapViewer
+              map={activeMap}
+              isEditor={locationMode === 'custom' && !placingActorId}
+              onMapChange={setMap}
+              onCellClick={handleActorClick}
+              highlights={mapHighlights as any}
+            />
+          ) : centerView === 'actions' ? (
+            <div className="h-full w-full">
+              <GoalActionGraphView />
+            </div>
+          ) : (
+            <div className="h-full w-full">
+              <DecisionGraphView
+                frame={computed.frame as any}
+                goalScores={arr(computed.goals) as any}
+                selectedGoalId={null}
+                mode={energyViewMode}
+                compact
+              />
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Inline error/warning surface to avoid silent failures in the new layout. */}
+      {fatalError ? (
+        <div className="absolute top-4 right-4 max-w-[360px] bg-red-900/70 border border-red-500/60 text-red-200 p-3 rounded text-xs">
+          <div className="font-bold text-[11px] mb-1">Goal Lab error</div>
+          <div className="whitespace-pre-wrap opacity-80">{fatalError}</div>
+        </div>
+      ) : runtimeError ? (
+        <div className="absolute top-4 right-4 max-w-[360px] bg-amber-900/60 border border-amber-500/60 text-amber-100 p-3 rounded text-xs">
+          <div className="font-bold text-[11px] mb-1">Goal Lab warning</div>
+          <div className="whitespace-pre-wrap opacity-80">{runtimeError}</div>
+        </div>
+      ) : null}
+
+      {centerOverlayOpen && centerView === 'energy' ? (
+        <div className="absolute inset-0 z-50">
+          <div className="absolute inset-0 bg-black/70" onClick={() => setCenterOverlayOpen(false)} />
+          <div
+            className={`absolute ${
+              centerOverlaySize === 'max' ? 'inset-2' : 'inset-8'
+            } bg-slate-950 border border-slate-800 rounded-lg shadow-xl flex flex-col`}
+          >
+            <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-slate-800">
+              <div className="text-[10px] text-slate-300/70 uppercase">Energy view</div>
+              <div className="flex items-center gap-2">
+                {(['wide', 'max'] as const).map((size) => (
+                  <button
+                    key={size}
+                    onClick={() => setCenterOverlaySize(size)}
+                    className={`px-2 py-0.5 text-[9px] rounded uppercase border ${
+                      centerOverlaySize === size
+                        ? 'bg-cyan-600/30 text-cyan-200 border-cyan-500/40'
+                        : 'bg-black/20 text-slate-300 border-slate-700/60 hover:border-slate-500/70'
+                    }`}
+                  >
+                    {size}
+                  </button>
+                ))}
+                <button
+                  onClick={() => setCenterOverlayOpen(false)}
+                  className="px-2 py-0.5 text-[9px] rounded uppercase border bg-black/20 text-slate-300 border-slate-700/60 hover:border-slate-500/70"
+                >
+                  close
+                </button>
+              </div>
+            </div>
+            <div className="flex-1 min-h-0">
+              <DecisionGraphView
+                frame={computed.frame as any}
+                goalScores={arr(computed.goals) as any}
+                selectedGoalId={null}
+                mode={energyViewMode}
+              />
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+
   return (
     <div className="flex h-full bg-[#020617] text-slate-300 overflow-hidden font-mono">
-      {/* LEFT: controls + quick ctx input */}
-      <aside className="w-[350px] border-r border-slate-800 flex flex-col bg-slate-950/50 shrink-0">
+      {/* LEFT (debug only): controls + quick ctx input */}
+      {uiMode === 'debug' ? (
+        <aside className="w-[350px] border-r border-slate-800 flex flex-col bg-slate-950/50 shrink-0">
         <div className="p-3 border-b border-slate-800 bg-slate-900/40 flex justify-between items-center">
           <span className="text-[10px] font-bold text-cyan-500 uppercase tracking-widest">Perspective_Drive</span>
           <div className="flex gap-2">
@@ -2181,6 +2415,7 @@ export const GoalSandbox: React.FC = () => {
             decisionCurvePreset={decisionCurvePreset}
             onDecisionCurvePresetChange={setDecisionCurvePreset}
             onApplySimSettings={onApplySimSettings}
+            mode="debug"
           />
 
           <div className="mt-8 pt-4 border-t border-slate-800">
@@ -2211,216 +2446,152 @@ export const GoalSandbox: React.FC = () => {
           </div>
         </div>
       </aside>
+      ) : null}
 
-      {/* CENTER: map + debug/tom/pipeline/compare tabs */}
+      {/* CENTER */}
       <main className="flex-1 flex flex-col relative min-w-0 bg-black">
-        {/* Map area: fixed to map size (no giant empty black center). */}
-        <div className="flex-none relative bg-black overflow-visible p-3">
-          <div className="flex items-center justify-between gap-2 mb-2 px-2 py-1 bg-slate-950/70 border border-slate-800 rounded-md backdrop-blur-sm">
-            <div className="flex items-baseline gap-2 min-w-0">
-              <div className="text-[9px] text-slate-500 uppercase tracking-widest shrink-0">Perspective</div>
-              <div className="text-[11px] text-cyan-300 font-bold truncate">{focusId || '—'}</div>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="flex items-center gap-1">
-                {(['map', 'energy', 'actions'] as const).map((view) => (
+        {uiMode === 'front' ? (
+          <div className="flex-none border-b border-slate-800 bg-slate-900/40">
+            <div className="p-3 flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-[10px] font-bold text-cyan-500 uppercase tracking-widest">GoalLab</div>
+                <div className="text-[11px] text-slate-300 truncate">
+                  Perspective: <span className="text-cyan-300 font-bold">{focusId || '—'}</span>
+                </div>
+              </div>
+              <div className="flex gap-2 shrink-0">
+                {uiMode === 'front' ? (
                   <button
-                    key={view}
-                    onClick={() => setCenterView(view)}
-                    className={`px-2 py-0.5 text-[9px] rounded uppercase border transition ${
-                      centerView === view
-                        ? 'bg-cyan-600/25 text-cyan-200 border-cyan-500/40'
-                        : 'bg-black/10 text-slate-300 border-slate-700/60 hover:border-slate-500/70'
-                    }`}
-                    title={
-                      view === 'map'
-                        ? 'Map (placement)'
-                        : view === 'energy'
-                          ? 'Energy (inputs → goals)'
-                          : 'Actions (action → goal)'
-                    }
+                    className="px-3 py-1 text-[10px] rounded uppercase bg-slate-800 text-slate-200 border border-slate-700/60 hover:border-slate-500/70"
+                    onClick={() => setUiMode('debug')}
                   >
-                    {view}
+                    Debug
+                  </button>
+                ) : (
+                  <button
+                    className="px-3 py-1 text-[10px] rounded uppercase bg-slate-800 text-slate-200 border border-slate-700/60 hover:border-slate-500/70"
+                    onClick={() => setUiMode('front')}
+                  >
+                    Front
+                  </button>
+                )}
+              </div>
+            </div>
+            <div className="px-3 pb-2">
+              <div className="flex flex-wrap items-center gap-2">
+                {([
+                  ['graph', 'Graph'],
+                  ['situation', 'Situation'],
+                  ['metrics', 'Metrics'],
+                  ['curves', 'Curves'],
+                  ['debug', 'Debug'],
+                ] as const).map(([key, label]) => (
+                  <button
+                    key={key}
+                    onClick={() => setFrontTab(key)}
+                    className={`px-3 py-1 text-[10px] rounded uppercase border transition ${
+                      frontTab === key
+                        ? 'bg-cyan-600/25 text-cyan-200 border-cyan-500/40'
+                        : 'bg-black/10 text-slate-200 border-slate-700/60 hover:border-slate-500/70'
+                    }`}
+                  >
+                    {label}
                   </button>
                 ))}
               </div>
-
-              {centerView === 'energy' ? (
-                <>
-                  <div className="flex items-center gap-1">
-                    {(['graph', 'meta', '3d'] as const).map((mode) => (
-                      <button
-                        key={mode}
-                        onClick={() => setEnergyViewMode(mode)}
-                        className={`px-2 py-0.5 text-[9px] rounded uppercase border ${
-                          energyViewMode === mode
-                            ? 'bg-emerald-600/30 text-emerald-200 border-emerald-500/40'
-                            : 'bg-black/20 text-slate-300 border-slate-700/60 hover:border-slate-500/70'
-                        }`}
-                        title={mode === 'graph' ? 'Graph (inputs → goals)' : mode === 'meta' ? 'Meta buckets' : '3D scaffold'}
-                      >
-                        {mode}
-                      </button>
-                    ))}
-                  </div>
-
-                  <button
-                    onClick={() => setCenterOverlayOpen(true)}
-                    className="px-2 py-0.5 text-[9px] rounded uppercase border bg-black/20 text-slate-300 border-slate-700/60 hover:border-slate-500/70"
-                    title="Open widened view"
-                  >
-                    widen
-                  </button>
-                </>
-              ) : null}
             </div>
           </div>
+        ) : null}
 
-          <div
-            className="relative flex-none border border-slate-800 bg-slate-950/40 overflow-hidden shadow-[0_0_0_1px_rgba(148,163,184,0.15)]"
-            style={{
-              width: frameW,
-              height: frameH,
-            }}
-          >
-            <div className="absolute inset-0 pointer-events-none bg-gradient-to-b from-white/5 to-transparent" />
-            <div className="absolute inset-0">
-              {centerView === 'map' ? (
-                <MapViewer
-                  map={activeMap}
-                  isEditor={locationMode === 'custom' && !placingActorId}
-                  onMapChange={setMap}
-                  onCellClick={handleActorClick}
-                  highlights={mapHighlights as any}
+        {uiMode === 'front' ? (
+          <div className="flex-1 min-h-0 overflow-hidden">
+            {frontTab === 'situation' ? (
+              <div className="h-full overflow-y-auto custom-scrollbar p-3">
+                <GoalLabControls
+                  allCharacters={allCharacters}
+                  allLocations={allLocations as any}
+                  events={eventRegistry.getAll() as any}
+                  computedAtoms={arr((snapshotV1 as any)?.atoms ?? (snapshot as any)?.atoms)}
+                  selectedAgentId={selectedAgentId}
+                  onSelectAgent={handleSelectAgent}
+                  selectedLocationId={selectedLocationId}
+                  onSelectLocation={setSelectedLocationId}
+                  locationMode={locationMode}
+                  onLocationModeChange={setLocationMode}
+                  selectedEventIds={selectedEventIds}
+                  onToggleEvent={(id) =>
+                    setSelectedEventIds((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(id)) next.delete(id);
+                      else next.add(id);
+                      return next;
+                    })
+                  }
+                  manualAtoms={manualAtoms}
+                  onChangeManualAtoms={setManualAtoms}
+                  nearbyActors={nearbyActors}
+                  onNearbyActorsChange={handleNearbyActorsChange}
+                  placingActorId={placingActorId}
+                  onStartPlacement={setPlacingActorId}
+                  affectOverrides={affectOverrides}
+                  onAffectOverridesChange={setAffectOverrides}
+                  onDownloadScene={onDownloadScene}
+                  onImportSceneDumpV2={handleImportSceneDumpV2}
+                  world={worldState as any}
+                  onWorldChange={(w: any) => setWorldState(normalizeWorldShape(w)) as any}
+                  participantIds={participantIds}
+                  onAddParticipant={handleAddParticipant}
+                  onRemoveParticipant={handleRemoveParticipant}
+                  onLoadScene={handleLoadScene}
+                  perspectiveAgentId={perspectiveId}
+                  onSelectPerspective={setPerspectiveAgentId}
+                  sceneControl={sceneControl}
+                  onSceneControlChange={setSceneControl}
+                  scenePresets={Object.values(SCENE_PRESETS) as any}
+                  runSeed={runSeed}
+                  onRunSeedChange={setRunSeed}
+                  decisionTemperature={decisionTemperature}
+                  onDecisionTemperatureChange={setDecisionTemperature}
+                  decisionCurvePreset={decisionCurvePreset}
+                  onDecisionCurvePresetChange={setDecisionCurvePreset}
+                  onApplySimSettings={onApplySimSettings}
+                  mode="front"
                 />
-              ) : centerView === 'actions' ? (
-                <div className="h-full w-full">
-                  <GoalActionGraphView />
-                </div>
-              ) : (
-                <div className="h-full w-full">
-                  <DecisionGraphView
-                    frame={computed.frame as any}
-                    goalScores={arr(computed.goals) as any}
-                    selectedGoalId={null}
-                    mode={energyViewMode}
-                    compact
+              </div>
+            ) : frontTab === 'curves' ? (
+              <div className="h-full overflow-y-auto custom-scrollbar p-3">
+                <CurvesPanel
+                  seed={runSeed}
+                  onSeed={setRunSeed}
+                  temperature={decisionTemperature}
+                  onTemperature={setDecisionTemperature}
+                  preset={decisionCurvePreset as CurvePreset}
+                  onPreset={(p) => setDecisionCurvePreset(p)}
+                  onApply={onApplySimSettings}
+                />
+              </div>
+            ) : frontTab === 'metrics' ? (
+              <div className="h-full overflow-y-auto custom-scrollbar p-3 space-y-3">
+                <div className="rounded border border-slate-800 bg-slate-950/40 p-3">
+                  <div className="text-[10px] text-slate-500 uppercase tracking-widest mb-2">Pipeline</div>
+                  <PipelinePanel
+                    stages={pipelineStagesForPanel as any}
+                    selectedId={currentPipelineStageId}
+                    onSelect={setPipelineStageId as any}
+                    onExportStage={handleExportPipelineStage}
                   />
                 </div>
-              )}
-            </div>
-          </div>
-
-          {/* Inline error/warning surface to avoid silent failures in the new layout. */}
-          {fatalError ? (
-            <div className="absolute top-4 right-4 max-w-[360px] bg-red-900/70 border border-red-500/60 text-red-200 p-3 rounded text-xs">
-              <div className="font-bold text-[11px] mb-1">Goal Lab error</div>
-              <div className="whitespace-pre-wrap opacity-80">{fatalError}</div>
-            </div>
-          ) : runtimeError ? (
-            <div className="absolute top-4 right-4 max-w-[360px] bg-amber-900/60 border border-amber-500/60 text-amber-100 p-3 rounded text-xs">
-              <div className="font-bold text-[11px] mb-1">Goal Lab warning</div>
-              <div className="whitespace-pre-wrap opacity-80">{runtimeError}</div>
-            </div>
-          ) : null}
-
-          {centerOverlayOpen && centerView === 'energy' ? (
-            <div className="absolute inset-0 z-50">
-              <div
-                className="absolute inset-0 bg-black/70"
-                onClick={() => setCenterOverlayOpen(false)}
-              />
-              <div
-                className={`absolute ${
-                  centerOverlaySize === 'max' ? 'inset-2' : 'inset-8'
-                } bg-slate-950 border border-slate-800 rounded-lg shadow-xl flex flex-col`}
-              >
-                <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-slate-800">
-                  <div className="text-[10px] text-slate-300/70 uppercase">Energy view</div>
-                  <div className="flex items-center gap-2">
-                    {(['wide', 'max'] as const).map((size) => (
-                      <button
-                        key={size}
-                        onClick={() => setCenterOverlaySize(size)}
-                        className={`px-2 py-0.5 text-[9px] rounded uppercase border ${
-                          centerOverlaySize === size
-                            ? 'bg-cyan-600/30 text-cyan-200 border-cyan-500/40'
-                            : 'bg-black/20 text-slate-300 border-slate-700/60 hover:border-slate-500/70'
-                        }`}
-                      >
-                        {size}
-                      </button>
-                    ))}
-                    <button
-                      onClick={() => setCenterOverlayOpen(false)}
-                      className="px-2 py-0.5 text-[9px] rounded uppercase border bg-black/20 text-slate-300 border-slate-700/60 hover:border-slate-500/70"
-                    >
-                      close
-                    </button>
-                  </div>
+                <div className="rounded border border-slate-800 bg-slate-950/40 p-3">
+                  <div className="text-[10px] text-slate-500 uppercase tracking-widest mb-2">ToM</div>
+                  <ToMPanel atoms={passportAtoms as any} />
                 </div>
-                <div className="flex-1 min-h-0">
-                  <DecisionGraphView
-                    frame={computed.frame as any}
-                    goalScores={arr(computed.goals) as any}
-                    selectedGoalId={null}
-                    mode={energyViewMode}
-                  />
+                <div className="rounded border border-slate-800 bg-slate-950/40 p-3">
+                  <div className="text-[10px] text-slate-500 uppercase tracking-widest mb-2">Cast Compare</div>
+                  <CastComparePanel rows={castRowsSafe as any} focusId={focusId} />
                 </div>
               </div>
-            </div>
-          ) : null}
-        </div>
-
-        <div className="flex-1 min-h-[220px] border-t border-slate-800 bg-slate-950 flex flex-col min-h-0">
-          <nav className="flex border-b border-slate-800 bg-slate-900/20">
-            {(['debug', 'tom', 'pipeline', 'compare'] as const).map((t) => (
-              <button
-                key={t}
-                onClick={() => setActiveBottomTab(t)}
-                className={`px-6 py-2 text-[10px] font-bold uppercase tracking-widest border-r border-slate-800 transition ${
-                  activeBottomTab === t
-                    ? 'bg-cyan-500/10 text-cyan-400 shadow-[inset_0_-2px_0_#06b6d4]'
-                    : 'text-slate-500 hover:text-slate-300'
-                }`}
-              >
-                {t}
-              </button>
-            ))}
-          </nav>
-
-          <div className="flex-1 overflow-y-auto custom-scrollbar p-4 min-h-0">
-            {activeBottomTab === 'pipeline' ? (
-              <PipelinePanel
-                stages={pipelineStagesForPanel as any}
-                selectedId={currentPipelineStageId}
-                onSelect={setPipelineStageId as any}
-                onExportStage={handleExportPipelineStage}
-              />
-            ) : null}
-            {activeBottomTab === 'tom' ? (
-              // IMPORTANT: ToM atoms are produced by GoalLab pipeline stages, not by the raw SimSnapshot.
-              // Using passportAtoms makes the Dyad/ToM layer non-empty.
-              <ToMPanel atoms={passportAtoms as any} />
-            ) : null}
-            {activeBottomTab === 'compare' ? (
-              <CastComparePanel rows={castRowsSafe as any} focusId={focusId} />
-            ) : null}
-            {activeBottomTab === 'debug' ? (
-              <div className="space-y-4">
-                <pre className="text-[10px] text-slate-400 bg-black/30 border border-slate-800 rounded p-3 overflow-auto">
-                  {JSON.stringify(
-                    {
-                      focusId,
-                      castLen: (castRowsSafe || []).length,
-                      tomRowsLen: (tomRows || []).length,
-                      tomSample: (tomRows || [])[0] || null,
-                    },
-                    null,
-                    2
-                  )}
-                </pre>
+            ) : frontTab === 'debug' ? (
+              <div className="h-full overflow-y-auto custom-scrollbar p-3">
                 <DebugShell
                   snapshotV1={snapshotV1 as any}
                   pipelineV1={pipelineV1 as any}
@@ -2447,9 +2618,99 @@ export const GoalSandbox: React.FC = () => {
                   onExportFullDebug={handleExportFullDebug}
                 />
               </div>
-            ) : null}
+            ) : (
+              <div className="h-full overflow-auto">{mapArea}</div>
+            )}
           </div>
-        </div>
+        ) : (
+          <>
+            {mapArea}
+            <div className="flex-1 min-h-[220px] border-t border-slate-800 bg-slate-950 flex flex-col min-h-0">
+              <nav className="flex border-b border-slate-800 bg-slate-900/20">
+                {(['debug', 'tom', 'pipeline', 'compare', 'curves'] as const).map((t) => (
+                  <button
+                    key={t}
+                    onClick={() => setActiveBottomTab(t)}
+                    className={`px-6 py-2 text-[10px] font-bold uppercase tracking-widest border-r border-slate-800 transition ${
+                      activeBottomTab === t
+                        ? 'bg-cyan-500/10 text-cyan-400 shadow-[inset_0_-2px_0_#06b6d4]'
+                        : 'text-slate-500 hover:text-slate-300'
+                    }`}
+                  >
+                    {t}
+                  </button>
+                ))}
+              </nav>
+
+              <div className="flex-1 overflow-y-auto custom-scrollbar p-4 min-h-0">
+                {activeBottomTab === 'pipeline' ? (
+                  <PipelinePanel
+                    stages={pipelineStagesForPanel as any}
+                    selectedId={currentPipelineStageId}
+                    onSelect={setPipelineStageId as any}
+                    onExportStage={handleExportPipelineStage}
+                  />
+                ) : null}
+                {activeBottomTab === 'tom' ? (
+                  // IMPORTANT: ToM atoms are produced by GoalLab pipeline stages, not by the raw SimSnapshot.
+                  // Using passportAtoms makes the Dyad/ToM layer non-empty.
+                  <ToMPanel atoms={passportAtoms as any} />
+                ) : null}
+                {activeBottomTab === 'compare' ? (
+                  <CastComparePanel rows={castRowsSafe as any} focusId={focusId} />
+                ) : null}
+                {activeBottomTab === 'curves' ? (
+                  <CurveStudio
+                    selfId={focusId || ''}
+                    atoms={arr((computed as any)?.snapshot?.atoms) as any}
+                    preset={((decisionCurvePreset || 'smoothstep') as any) as CurvePreset}
+                  />
+                ) : null}
+                {activeBottomTab === 'debug' ? (
+                  <div className="space-y-4">
+                    <pre className="text-[10px] text-slate-400 bg-black/30 border border-slate-800 rounded p-3 overflow-auto">
+                      {JSON.stringify(
+                        {
+                          focusId,
+                          castLen: (castRowsSafe || []).length,
+                          tomRowsLen: (tomRows || []).length,
+                          tomSample: (tomRows || [])[0] || null,
+                        },
+                        null,
+                        2
+                      )}
+                    </pre>
+                    <DebugShell
+                      snapshotV1={snapshotV1 as any}
+                      pipelineV1={pipelineV1 as any}
+                      pipelineFrame={pipelineFrame as any}
+                      pipelineStageId={currentPipelineStageId}
+                      onChangePipelineStageId={setPipelineStageId}
+                      castRows={castRowsSafe}
+                      perspectiveId={focusId}
+                      onSetPerspectiveId={setPerspectiveAgentId}
+                      passportAtoms={passportAtoms}
+                      passportMeta={canonicalAtoms as any}
+                      contextualMind={contextualMind as any}
+                      locationScores={locationScores as any}
+                      tomScores={tomScores as any}
+                      tom={(worldState as any)?.tom?.[focusId as any]}
+                      atomDiff={atomDiff as any}
+                      sceneDump={sceneDumpV2 as any}
+                      onDownloadScene={onDownloadScene}
+                      onImportScene={handleImportSceneClick}
+                      manualAtoms={manualAtoms}
+                      onChangeManualAtoms={setManualAtoms}
+                      onExportPipelineStage={handleExportPipelineStage}
+                      onExportPipelineAll={handleExportPipelineAll}
+                      onExportFullDebug={handleExportFullDebug}
+                    />
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          </>
+        )}
       </main>
 
       {/* RIGHT: GoalLab results, pipeline export/import, etc. */}
@@ -2457,7 +2718,8 @@ export const GoalSandbox: React.FC = () => {
         <div className="p-3 border-b border-slate-800 text-[10px] font-bold text-slate-500 uppercase">
           Passport + Atoms
         </div>
-        <div className="flex-1 overflow-y-auto custom-scrollbar min-h-0">
+        <div className="flex-1 overflow-y-auto custom-scrollbar min-h-0 p-3 space-y-3">
+          <DoNowCard decision={(snapshotV1 as any)?.decision ?? null} />
           <GoalLabResults
             context={snapshot as any}
             frame={computed.frame as any}
