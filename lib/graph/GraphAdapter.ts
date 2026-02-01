@@ -249,6 +249,7 @@ export function buildDecisionTripletGraph({
         type: 'energy',
         data: {
           weight: w,
+          rawWeight: w,
           strength,
           label: formatEdgeLabel(c),
         },
