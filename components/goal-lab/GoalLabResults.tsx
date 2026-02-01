@@ -28,6 +28,8 @@ import { GoalLabSnapshotV1 } from '../../lib/goal-lab/snapshotTypes';
 import { AtomInspector } from './AtomInspector';
 import { EmotionExplainPanel } from './EmotionExplainPanel';
 import { PipelinePanel } from './PipelinePanel';
+import { CurvePreview } from './CurvePreview';
+import type { CurvePreset } from '../../lib/utils/curves';
 import { materializeStageAtoms } from './materializePipeline';
 import { arr } from '../../lib/utils/arr';
 import { OrchestratorLab } from '../../lib/goal-lab/labs/OrchestratorLab';
@@ -869,6 +871,22 @@ export const GoalLabResults: React.FC<Props> = ({
         const resolve = get(`emo:resolve:${selfId}`, 0);
         const care = get(`emo:care:${selfId}`, 0);
 
+        /**
+         * Parse curve metadata from the emotion trace, if available.
+         */
+        const curveParts = (key: string) => {
+          const a = atoms.find(x => x.id === `emo:${key}:${selfId}`) as any;
+          const tr = a?.meta?.trace || a?.trace;
+          const parts = tr?.parts || {};
+          const raw = typeof parts?.raw === 'number' ? parts.raw : null;
+          const presetStr = String(parts?.preset || '');
+          const ok: CurvePreset[] = ['linear', 'smoothstep', 'sqrt', 'sigmoid', 'pow2', 'pow4'];
+          const preset = ok.includes(presetStr as CurvePreset) ? (presetStr as CurvePreset) : null;
+          const curved = typeof a?.magnitude === 'number' ? a.magnitude : null;
+          if (raw === null || !preset || curved === null) return null;
+          return { raw, preset, curved };
+        };
+
         const Row = ({ a }: { a: any }) => {
           const val = metric(a);
           return (
@@ -880,9 +898,10 @@ export const GoalLabResults: React.FC<Props> = ({
               <div className="h-1.5 w-full bg-canon-bg-light rounded-full overflow-hidden mt-2">
                 <div className="h-full bg-canon-accent" style={{ width: `${Math.min(100, Math.max(0, Number(val ?? 0) * 100))}%` }} />
               </div>
-              {a.meta?.trace?.usedAtomIds?.length ? (
+              {(a.meta?.trace || (a as any).trace)?.usedAtomIds?.length ? (
                 <div className="text-[10px] text-canon-text-light/70 mt-2">
-                  used: {a.meta.trace.usedAtomIds.slice(0, 6).join(', ')}{a.meta.trace.usedAtomIds.length > 6 ? '…' : ''}
+                  used: {((a.meta?.trace || (a as any).trace) as any).usedAtomIds.slice(0, 6).join(', ')}
+                  {(((a.meta?.trace || (a as any).trace) as any).usedAtomIds.length > 6) ? '…' : ''}
                 </div>
               ) : null}
             </div>
@@ -907,15 +926,30 @@ export const GoalLabResults: React.FC<Props> = ({
 
             <div className="border border-canon-border/40 rounded bg-black/15 p-3">
               <div className="text-xs font-bold text-canon-text uppercase tracking-wider">Core affect (quick)</div>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2">
-                <div className="text-[12px] text-canon-text-light">valence: <span className="font-mono text-canon-text">{Number(valenceSigned).toFixed(2)}</span> <span className="text-[11px] text-canon-text-light">(0..1: {Number(valence01).toFixed(2)})</span></div>
-                <div className="text-[12px] text-canon-text-light">arousal: <span className="font-mono text-canon-text">{Number(arousal).toFixed(2)}</span></div>
-                <div className="text-[12px] text-canon-text-light">fear: <span className="font-mono text-canon-text">{Number(fear).toFixed(2)}</span></div>
-                <div className="text-[12px] text-canon-text-light">anger: <span className="font-mono text-canon-text">{Number(anger).toFixed(2)}</span></div>
-                <div className="text-[12px] text-canon-text-light">shame: <span className="font-mono text-canon-text">{Number(shame).toFixed(2)}</span></div>
-                <div className="text-[12px] text-canon-text-light">relief: <span className="font-mono text-canon-text">{Number(relief).toFixed(2)}</span></div>
-                <div className="text-[12px] text-canon-text-light">resolve: <span className="font-mono text-canon-text">{Number(resolve).toFixed(2)}</span></div>
-                <div className="text-[12px] text-canon-text-light">care: <span className="font-mono text-canon-text">{Number(care).toFixed(2)}</span></div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+                <div className="border border-canon-border/30 rounded bg-black/10 p-2">
+                  <div className="text-[12px] text-canon-text-light">valence: <span className="font-mono text-canon-text">{Number(valenceSigned).toFixed(2)}</span> <span className="text-[11px] text-canon-text-light">(0..1: {Number(valence01).toFixed(2)})</span></div>
+                  <div className="text-[12px] text-canon-text-light mt-1">arousal: <span className="font-mono text-canon-text">{Number(arousal).toFixed(2)}</span></div>
+                </div>
+
+                {(['fear', 'anger', 'shame', 'relief', 'resolve', 'care'] as const).map((k) => {
+                  const cp = curveParts(k);
+                  return (
+                    <div key={k} className="border border-canon-border/30 rounded bg-black/10 p-2">
+                      <div className="flex items-center justify-between">
+                        <div className="text-[12px] text-canon-text-light">{k}:</div>
+                        <div className="font-mono text-[12px] text-canon-text">{Number(get(`emo:${k}:${selfId}`, 0)).toFixed(2)}</div>
+                      </div>
+                      {cp ? (
+                        <div className="mt-2">
+                          <CurvePreview preset={cp.preset} x={cp.raw} y={cp.curved} />
+                        </div>
+                      ) : (
+                        <div className="mt-2 text-[10px] text-canon-text-light/70">нет trace.parts.raw/preset</div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
               <div className="text-[10px] text-canon-text-light/70 mt-2">
                 valence хранится как -1..1 (в UI для удобства показана и шкала 0..1 справа).
