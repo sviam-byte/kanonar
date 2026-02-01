@@ -95,7 +95,7 @@ export const DebugShell: React.FC<{
               title="How the agent sees the situation"
             />
 
-            <div className="h-[520px] min-h-0 rounded border border-white/10 bg-black/10 overflow-hidden">
+            <div className="h-[520px] resizable-panel min-h-0 rounded border border-white/10 bg-black/10 overflow-hidden">
               <AtomBrowser atoms={arr(p.passportAtoms)} className="h-full min-h-0 flex flex-col" />
             </div>
           </div>
@@ -167,7 +167,7 @@ export const DebugShell: React.FC<{
                 onSelectTargetId={id => p.onSetPerspectiveId?.(id)}
               />
             </div>
-            <div className="h-[520px] min-h-0 rounded border border-white/10 bg-black/10 overflow-hidden">
+            <div className="h-[520px] resizable-panel min-h-0 rounded border border-white/10 bg-black/10 overflow-hidden">
               <RelationsPanel
                 selfId={p.perspectiveId || ''}
                 graph={buildRelGraphFromAtoms(atoms)}

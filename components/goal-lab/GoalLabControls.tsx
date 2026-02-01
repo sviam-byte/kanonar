@@ -716,9 +716,106 @@ export const GoalLabControls: React.FC<Props> = ({
                         <option value="sigmoid">sigmoid</option>
                         <option value="pow2">pow2</option>
                         <option value="pow4">pow4</option>
+                        <option value="exp">exp</option>
+                        <option value="log">log</option>
+                        <option value="hinge">hinge</option>
                       </select>
                     </div>
                   </div>
+
+                  {world && onWorldChange && selectedAgentId && (
+                    <div className="mt-2 border border-canon-border rounded p-3 bg-canon-bg">
+                      <div className="text-[10px] font-bold text-canon-text uppercase tracking-wider mb-2">
+                        Response curves (per self)
+                      </div>
+                      <div className="text-[10px] text-canon-text-light mb-3">
+                        raw → curve(preset,bias,gain) → emotion. Это реально меняет реакцию персонажа.
+                      </div>
+                      {(['fear', 'anger', 'shame', 'relief', 'resolve', 'care'] as const).map((emoKey) => {
+                        const cur = ((world as any)?.emotionCurves?.[selectedAgentId]?.[emoKey]) || {};
+                        const preset = String(cur?.preset || 'smoothstep');
+                        const bias = typeof cur?.bias === 'number' ? cur.bias : 0.5;
+                        const gain = typeof cur?.gain === 'number' ? cur.gain : 1;
+
+                        const set = (patch: any) => {
+                          const w: any = structuredClone(world as any);
+                          if (!w.emotionCurves) w.emotionCurves = {};
+                          if (!w.emotionCurves[selectedAgentId]) w.emotionCurves[selectedAgentId] = {};
+                          w.emotionCurves[selectedAgentId][emoKey] = {
+                            preset,
+                            bias,
+                            gain,
+                            ...patch,
+                          };
+                          onWorldChange(w);
+                        };
+
+                        const titleRu: Record<string, string> = {
+                          fear: 'страх',
+                          anger: 'злость',
+                          shame: 'стыд',
+                          relief: 'облегчение',
+                          resolve: 'решимость',
+                          care: 'забота',
+                        };
+
+                        return (
+                          <div key={emoKey} className="mb-3 last:mb-0">
+                            <div className="flex items-center justify-between gap-2 mb-1">
+                              <div className="text-xs font-bold text-canon-text">{titleRu[emoKey]}</div>
+                              <div className="text-[10px] text-canon-text-light">
+                                bias={bias.toFixed(2)} gain={gain.toFixed(2)}
+                              </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-2">
+                              <select
+                                value={preset}
+                                onChange={(e) => set({ preset: e.target.value })}
+                                className="w-full px-2 py-1 rounded bg-canon-bg border border-canon-border text-canon-text text-xs"
+                              >
+                                <option value="linear">linear</option>
+                                <option value="smoothstep">smoothstep</option>
+                                <option value="sqrt">sqrt</option>
+                                <option value="sigmoid">sigmoid</option>
+                                <option value="pow2">pow2</option>
+                                <option value="pow4">pow4</option>
+                                <option value="exp">exp</option>
+                                <option value="log">log</option>
+                                <option value="hinge">hinge</option>
+                              </select>
+                              <button
+                                type="button"
+                                onClick={() => set({ bias: 0.5, gain: 1 })}
+                                className="px-2 py-1 rounded bg-canon-bg-light/30 border border-canon-border text-canon-text text-xs hover:bg-canon-bg-light/50"
+                              >
+                                reset
+                              </button>
+                              <div className="col-span-2">
+                                <Slider
+                                  label="bias (где центр)"
+                                  value={bias}
+                                  setValue={(v) => set({ bias: v })}
+                                  min={0}
+                                  max={1}
+                                  step={0.01}
+                                />
+                              </div>
+                              <div className="col-span-2">
+                                <Slider
+                                  label="gain (насколько резкая)"
+                                  value={gain}
+                                  setValue={(v) => set({ gain: v })}
+                                  min={0.25}
+                                  max={8}
+                                  step={0.05}
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
 
                   <button
                     type="button"

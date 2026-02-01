@@ -3,6 +3,7 @@ import type { ContextAtom } from '../../lib/context/v2/types';
 import { describeAtom } from '../../lib/context/v2/describeAtom';
 import { resolveAtomSpec } from '../../lib/context/catalog/atomSpecs';
 import { arr } from '../../lib/utils/arr';
+import { atomLabelRu } from '../../lib/i18n/atomRu';
 
 type Props = {
   atom: ContextAtom | null;
@@ -70,6 +71,7 @@ export function AtomInspector({ atom, allAtoms, onJumpToAtomId }: Props) {
   const typeLabel = isDerived ? 'MOLECULE (derived)' : (isQuark ? 'QUARK (primitive)' : 'ATOM');
 
   const tokens = String(atom.id || '').split(':').filter(Boolean);
+  const ru = atomLabelRu(atom.id);
   const mag = Number((atom as any).magnitude ?? 0);
   const conf = (atom as any).confidence;
 
@@ -78,8 +80,9 @@ export function AtomInspector({ atom, allAtoms, onJumpToAtomId }: Props) {
       {/* Header */}
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="text-sm font-bold text-canon-text">{d.title}</div>
+          <div className="text-sm font-bold text-canon-text">{d.title || ru.title}</div>
           <div className="text-[10px] font-mono text-canon-text-light/70 break-all mt-1 select-all">{atom.id}</div>
+          {ru.subtitle ? <div className="text-[11px] text-canon-text-light/70 mt-1">{ru.subtitle}</div> : null}
         </div>
         <Badge tone={isDerived ? 'purple' : 'blue'}>{typeLabel}</Badge>
       </div>

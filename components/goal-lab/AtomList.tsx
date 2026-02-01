@@ -2,6 +2,7 @@
 import React from 'react';
 import { ContextAtom, ContextAtomKind } from '../../lib/context/v2/types';
 import { arr } from '../../lib/utils/arr';
+import { atomLabelRu } from '../../lib/i18n/atomRu';
 
 interface Props {
     atoms: ContextAtom[];
@@ -53,8 +54,19 @@ export const AtomList: React.FC<Props> = ({ atoms }) => {
                                     </span>
                                 </td>
                                 <td className="p-2">
-                                    <div className="font-medium text-canon-text">{atom.label || atom.id}</div>
-                                    <div className="text-[9px] text-canon-text-light font-mono opacity-50 truncate max-w-[200px]" title={atom.id}>{atom.id}</div>
+                                    {(() => {
+                                      const ru = atomLabelRu(atom.id);
+                                      const title = atom.label || ru.title || atom.id;
+                                      return (
+                                        <>
+                                          <div className="font-medium text-canon-text">{title}</div>
+                                          {ru.subtitle ? (
+                                            <div className="text-[10px] text-canon-text-light/70">{ru.subtitle}</div>
+                                          ) : null}
+                                          <div className="text-[9px] text-canon-text-light font-mono opacity-50 truncate max-w-[220px]" title={atom.id}>{atom.id}</div>
+                                        </>
+                                      );
+                                    })()}
                                 </td>
                                 <td className="p-2 text-canon-text-light text-[10px]">
                                     {atom.source}

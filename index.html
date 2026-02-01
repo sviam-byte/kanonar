@@ -85,6 +85,13 @@
 
   /* focus ring consistency */
   :focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(102,217,255,0.25); border-radius: 10px; }
+
+  /* панельные ресайзеры */
+  .panel-resizer-x{width:8px;cursor:col-resize;flex:0 0 8px;background:rgba(255,255,255,0.02);} 
+  .panel-resizer-x:hover{background:rgba(102,217,255,0.10);} 
+  .panel-resizer-y{height:8px;cursor:row-resize;background:rgba(255,255,255,0.02);} 
+  .panel-resizer-y:hover{background:rgba(102,217,255,0.10);} 
+  .resizable-panel{resize:both;overflow:auto;}
 </style>
 <style>
   /* Custom styles for range slider thumb */

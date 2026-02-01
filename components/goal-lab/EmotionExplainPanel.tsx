@@ -28,6 +28,7 @@ type Row = {
   label: string;
   value: number;
   origin: string;
+  curve?: { raw?: number; x1?: number; preset?: string; bias?: number; gain?: number };
 };
 
 export const EmotionExplainPanel: React.FC<{
@@ -109,6 +110,20 @@ export const EmotionExplainPanel: React.FC<{
     const careAtom = getM(atoms, ids.care, careRef);
     const arousalAtom = getM(atoms, ids.arousal, arousalRef);
 
+    const curveOf = (atomId: string) => {
+      const a = findAtom(atoms, atomId) as any;
+      const p = a?.trace?.parts || a?.trace?.p || null;
+      if (!p || typeof p !== 'object') return undefined;
+      if (p.raw == null && p.x1 == null && p.preset == null) return undefined;
+      return {
+        raw: typeof p.raw === 'number' ? p.raw : undefined,
+        x1: typeof p.x1 === 'number' ? p.x1 : undefined,
+        preset: typeof p.preset === 'string' ? p.preset : undefined,
+        bias: typeof p.bias === 'number' ? p.bias : undefined,
+        gain: typeof p.gain === 'number' ? p.gain : undefined,
+      };
+    };
+
     const inputs: Row[] = [
       { id: ids.threat, label: 'threat.final', value: threat, origin: getOrigin(atoms, ids.threat) },
       { id: ids.unc, label: 'ctx.uncertainty', value: unc, origin: getOrigin(atoms, ids.unc) },
@@ -129,12 +144,12 @@ export const EmotionExplainPanel: React.FC<{
     ];
 
     const emo: Array<Row & { ref?: number }> = [
-      { id: ids.fear, label: 'emo.fear', value: fearAtom, origin: getOrigin(atoms, ids.fear), ref: fearRef },
-      { id: ids.anger, label: 'emo.anger', value: angerAtom, origin: getOrigin(atoms, ids.anger), ref: angerRef },
-      { id: ids.shame, label: 'emo.shame', value: shameAtom, origin: getOrigin(atoms, ids.shame), ref: shameRef },
-      { id: ids.relief, label: 'emo.relief', value: reliefAtom, origin: getOrigin(atoms, ids.relief), ref: reliefRef },
-      { id: ids.resolve, label: 'emo.resolve', value: resolveAtom, origin: getOrigin(atoms, ids.resolve), ref: resolveRef },
-      { id: ids.care, label: 'emo.care', value: careAtom, origin: getOrigin(atoms, ids.care), ref: careRef },
+      { id: ids.fear, label: 'emo.fear', value: fearAtom, origin: getOrigin(atoms, ids.fear), ref: fearRef, curve: curveOf(ids.fear) },
+      { id: ids.anger, label: 'emo.anger', value: angerAtom, origin: getOrigin(atoms, ids.anger), ref: angerRef, curve: curveOf(ids.anger) },
+      { id: ids.shame, label: 'emo.shame', value: shameAtom, origin: getOrigin(atoms, ids.shame), ref: shameRef, curve: curveOf(ids.shame) },
+      { id: ids.relief, label: 'emo.relief', value: reliefAtom, origin: getOrigin(atoms, ids.relief), ref: reliefRef, curve: curveOf(ids.relief) },
+      { id: ids.resolve, label: 'emo.resolve', value: resolveAtom, origin: getOrigin(atoms, ids.resolve), ref: resolveRef, curve: curveOf(ids.resolve) },
+      { id: ids.care, label: 'emo.care', value: careAtom, origin: getOrigin(atoms, ids.care), ref: careRef, curve: curveOf(ids.care) },
       { id: ids.arousal, label: 'emo.arousal', value: arousalAtom, origin: getOrigin(atoms, ids.arousal), ref: arousalRef },
       { id: ids.valence, label: 'emo.valence', value: valenceAtom, origin: getOrigin(atoms, ids.valence) },
     ];
@@ -168,6 +183,29 @@ export const EmotionExplainPanel: React.FC<{
         {showRef && typeof r.ref === 'number' ? (
           <div className="text-[10px] text-canon-text-light/70 mt-2">
             ref (computed): <span className="font-mono">{Number(r.ref).toFixed(3)}</span>
+          </div>
+        ) : null}
+
+        {r.curve && (typeof r.curve.raw === 'number' || typeof r.curve.x1 === 'number') ? (
+          <div className="text-[10px] text-canon-text-light/70 mt-1">
+            curve: raw <span className="font-mono">{Number(r.curve.raw ?? 0).toFixed(3)}</span>
+            {' '}→ x1 <span className="font-mono">{Number(r.curve.x1 ?? 0).toFixed(3)}</span>
+            {' '}→ y <span className="font-mono">{Number(r.value).toFixed(3)}</span>
+            {r.curve.preset ? (
+              <span className="ml-2">
+                preset=<span className="font-mono">{String(r.curve.preset)}</span>
+              </span>
+            ) : null}
+            {typeof r.curve.bias === 'number' ? (
+              <span className="ml-2">
+                bias=<span className="font-mono">{Number(r.curve.bias).toFixed(2)}</span>
+              </span>
+            ) : null}
+            {typeof r.curve.gain === 'number' ? (
+              <span className="ml-2">
+                gain=<span className="font-mono">{Number(r.curve.gain).toFixed(2)}</span>
+              </span>
+            ) : null}
           </div>
         ) : null}
       </div>

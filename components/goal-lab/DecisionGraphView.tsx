@@ -5,7 +5,9 @@ import 'reactflow/dist/style.css';
 import type { AgentContextFrame } from '../../lib/context/frame/types';
 import type { ContextualGoalContribution, ContextualGoalScore } from '../../lib/context/v2/types';
 import { buildDecisionTripletGraph } from '../../lib/graph/GraphAdapter';
+import { spreadEnergy } from '../../lib/graph/energySpread';
 import { arr } from '../../lib/utils/arr';
+import { curve01, type CurvePreset } from '../../lib/utils/curves';
 
 import { EnergyEdge } from './EnergyEdge';
 import { GoalNode, LensNode, SourceNode } from './DecisionGraphNodes';
@@ -22,6 +24,11 @@ type Props = {
 
   /** Smaller header for embedding inside the map frame */
   compact?: boolean;
+
+  /** Temperature for energy spreading */
+  temperature?: number;
+  /** Curve preset for energy spreading */
+  curvePreset?: CurvePreset;
 };
 
 /**
@@ -32,6 +39,39 @@ function formatValue(v: number): string {
   if (!Number.isFinite(x)) return '0.00';
   const rounded = Math.round(x * 100) / 100;
   return `${rounded >= 0 ? '+' : ''}${rounded.toFixed(2)}`;
+}
+
+/**
+ * Clamp any numeric input to [0..1].
+ */
+function clamp01(x: number): number {
+  if (!Number.isFinite(x)) return 0;
+  return Math.max(0, Math.min(1, x));
+}
+
+/**
+ * Normalize a record of weights into 0..1 per node.
+ */
+function normalizeTo01(nodeIds: string[], values: Record<string, number>): Record<string, number> {
+  let min = Infinity;
+  let max = -Infinity;
+  for (const id of nodeIds) {
+    const v = Number(values[id] ?? 0);
+    if (!Number.isFinite(v)) continue;
+    min = Math.min(min, v);
+    max = Math.max(max, v);
+  }
+
+  if (!Number.isFinite(min) || !Number.isFinite(max) || min === max) {
+    return Object.fromEntries(nodeIds.map(id => [id, 0]));
+  }
+
+  const span = max - min;
+  const out: Record<string, number> = {};
+  for (const id of nodeIds) {
+    out[id] = (Number(values[id] ?? 0) - min) / span;
+  }
+  return out;
 }
 
 function isLensLabel(label: string): boolean {
@@ -159,10 +199,18 @@ export const DecisionGraphView: React.FC<Props> = ({
   selectedGoalId,
   mode = 'graph',
   compact = false,
+  temperature = 1.0,
+  curvePreset = 'smoothstep',
 }) => {
   const [maxGoals, setMaxGoals] = useState(14);
   const [maxInputs, setMaxInputs] = useState(10);
   const [edgeThreshold, setEdgeThreshold] = useState(0.1);
+  const [spreadOn, setSpreadOn] = useState(true);
+  const [spreadStart, setSpreadStart] = useState<string | null>(null);
+
+  // Conservative defaults for the energy spread simulation.
+  const spreadSteps = 7;
+  const spreadDecay = 0.3;
 
   const safeScores = arr(goalScores);
 
@@ -199,6 +247,89 @@ export const DecisionGraphView: React.FC<Props> = ({
     }),
     []
   );
+
+  const enrichedGraph = useMemo(() => {
+    if (mode !== 'graph') {
+      return { nodes: graph.nodes, edges: graph.edges };
+    }
+
+    const nodeIds = graph.nodes.map(node => String(node.id));
+    const importanceRaw: Record<string, number> = Object.fromEntries(nodeIds.map(id => [id, 0]));
+
+    const edgeSpecs = graph.edges.map(edge => {
+      const rawWeight = Number((edge.data as any)?.rawWeight ?? (edge.data as any)?.weight ?? 0);
+      const source = String(edge.source);
+      const target = String(edge.target);
+
+      importanceRaw[source] = (importanceRaw[source] ?? 0) + Math.abs(rawWeight);
+      importanceRaw[target] = (importanceRaw[target] ?? 0) + Math.abs(rawWeight);
+
+      return { source, target, weight: rawWeight };
+    });
+
+    const normalizedImportance = normalizeTo01(nodeIds, importanceRaw);
+    const curvedImportance: Record<string, number> = {};
+    for (const id of nodeIds) {
+      curvedImportance[id] = clamp01(curve01(normalizedImportance[id] ?? 0, curvePreset));
+    }
+
+    const spread = spreadOn && spreadStart
+      ? spreadEnergy({
+          nodeIds,
+          edges: edgeSpecs,
+          startNodeIds: [spreadStart],
+          steps: spreadSteps,
+          decay: spreadDecay,
+          temperature,
+          curvePreset,
+          nodeBase: normalizedImportance,
+        })
+      : { nodeEnergy: Object.fromEntries(nodeIds.map(id => [id, 0])), edgeFlow: {} };
+
+    const nodes = graph.nodes.map(node => ({
+      ...node,
+      data: {
+        ...node.data,
+        energy: clamp01(Number(spread.nodeEnergy[String(node.id)] ?? 0)),
+        importance: curvedImportance[String(node.id)] ?? 0,
+      },
+    }));
+
+    const edges = graph.edges.map(edge => {
+      const data = (edge.data ?? {}) as any;
+      const rawWeight = Number(data.rawWeight ?? data.weight ?? 0);
+      const key = `${String(edge.source)}→${String(edge.target)}`;
+      const flow = Number(spread.edgeFlow[key] ?? 0);
+      const flowStrength = clamp01(Math.abs(flow));
+      const baseLabel = data.label ? String(data.label) : '';
+      const flowLabel =
+        spreadOn && spreadStart && Math.abs(flow) > 1e-4 ? `F:${formatValue(flow)}` : '';
+      const label = baseLabel && flowLabel ? `${baseLabel} · ${flowLabel}` : baseLabel || flowLabel || undefined;
+
+      return {
+        ...edge,
+        data: {
+          ...data,
+          rawWeight,
+          weight: rawWeight,
+          strength: spreadOn && spreadStart ? flowStrength : data.strength,
+          label,
+        },
+      };
+    });
+
+    return { nodes, edges };
+  }, [
+    graph.edges,
+    graph.nodes,
+    mode,
+    spreadOn,
+    spreadStart,
+    spreadSteps,
+    spreadDecay,
+    temperature,
+    curvePreset,
+  ]);
 
   if (mode === '3d') {
     return (
@@ -263,19 +394,34 @@ export const DecisionGraphView: React.FC<Props> = ({
               />
             </label>
           ) : null}
+
+          {mode === 'graph' ? (
+            <label className="flex items-center gap-2 text-[10px] text-slate-300/80">
+              <input
+                type="checkbox"
+                checked={spreadOn}
+                onChange={e => setSpreadOn(e.target.checked)}
+              />
+              <span className="opacity-70">Spread</span>
+            </label>
+          ) : null}
         </div>
       </div>
 
       <div className="flex-1 min-h-0">
         <ReactFlow
-          nodes={graph.nodes}
-          edges={graph.edges}
+          nodes={enrichedGraph.nodes}
+          edges={enrichedGraph.edges}
           nodeTypes={nodeTypes}
           edgeTypes={edgeTypes}
           fitView
           nodesDraggable={false}
           nodesConnectable={false}
           elementsSelectable={true}
+          onNodeClick={(_, n) => {
+            if (!spreadOn) return;
+            setSpreadStart(String(n.id));
+          }}
           panOnDrag
           className="bg-black"
         >

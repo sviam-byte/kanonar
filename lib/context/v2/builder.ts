@@ -96,7 +96,7 @@ export function buildContextSnapshot(
 
   // 1b. Derive appraisal/emotion layer from existing atoms (ctx/threat/world)
   // Skip if we already have explicit overrides for these ids
-  const emoLayerAtoms = deriveAppraisalAndEmotionAtomsV2(agent.entityId, atoms)
+  const emoLayerAtoms = deriveAppraisalAndEmotionAtomsV2(agent.entityId, atoms, world)
     .filter(a => !atoms.some(existing => existing.id === a.id));
   if (emoLayerAtoms.length) atoms = atoms.concat(emoLayerAtoms);
   
