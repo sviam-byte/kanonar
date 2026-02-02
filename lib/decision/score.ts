@@ -21,6 +21,16 @@ type CtxVec = {
   privacy: number;
 };
 
+type EnerVec = {
+  threat: number;
+  uncertainty: number;
+  norm: number;
+  attachment: number;
+  resource: number;
+  status: number;
+  curiosity: number;
+};
+
 function readCtxVec(atoms: ContextAtom[], selfId: string): CtxVec {
   const getCtxMag = (id: string, fb = 0) => {
     const a = atoms.find(x => x?.id === id);
@@ -33,6 +43,24 @@ function readCtxVec(atoms: ContextAtom[], selfId: string): CtxVec {
     surveillance: clamp01(getCtxMag(`ctx:surveillance:${selfId}`, 0)),
     crowd: clamp01(getCtxMag(`ctx:crowd:${selfId}`, 0)),
     privacy: clamp01(getCtxMag(`ctx:privacy:${selfId}`, 0)),
+  };
+}
+
+function readEnerVec(atoms: ContextAtom[], selfId: string): EnerVec {
+  const getEner = (ch: string, fb = 0) => {
+    const id = `ener:state:${ch}:${selfId}`;
+    const a = atoms.find(x => x?.id === id);
+    const m = (a as any)?.magnitude;
+    return (typeof m === 'number' && Number.isFinite(m)) ? clamp01(m) : fb;
+  };
+  return {
+    threat: getEner('threat', 0),
+    uncertainty: getEner('uncertainty', 0),
+    norm: getEner('norm', 0),
+    attachment: getEner('attachment', 0),
+    resource: getEner('resource', 0.5),
+    status: getEner('status', 0.5),
+    curiosity: getEner('curiosity', 0.5),
   };
 }
 
@@ -366,9 +394,40 @@ export function scorePossibility(args: {
   const ctxMod = contextKeyMod(ctxKey, ctxVec);
   const adjustedUtility = clamp01(mixedUtility * ctxMod);
 
+  // ---- ENERGY CHANNELS: additive bias layer (agent-specific curves + inertia are upstream) ----
+  // Energies are `ener:state:<ch>:<selfId>` produced in GoalLabContext.
+  // We keep it conservative: |delta| <= ~0.18.
+  const ener = readEnerVec(atoms, selfId);
+  const domain = actionDomainHint(p.id);
+  let energyDelta = 0;
+  const eParts: any = { domain, ener };
+
+  if (domain === 'safety') {
+    // Threat/uncertainty drive safety actions.
+    energyDelta += 0.16 * ener.threat + 0.08 * ener.uncertainty;
+    // High attachment slightly inhibits pure escape if no immediate threat.
+    energyDelta += -0.06 * ener.attachment * (1 - ener.threat);
+  } else if (domain === 'control' || domain === 'order') {
+    energyDelta += 0.10 * ener.norm + 0.06 * (1 - ener.uncertainty);
+  } else if (domain === 'affiliation') {
+    energyDelta += 0.12 * ener.attachment + 0.04 * (1 - ener.threat);
+  } else if (domain === 'status') {
+    energyDelta += 0.12 * ener.status - 0.06 * ener.threat;
+  } else if (domain === 'exploration') {
+    energyDelta += 0.14 * ener.curiosity - 0.08 * ener.threat - 0.06 * ener.uncertainty;
+  } else if (domain === 'rest') {
+    // Low resource (fatigue) makes rest attractive.
+    energyDelta += 0.16 * (1 - ener.resource) - 0.08 * ener.threat;
+  }
+
+  energyDelta = Math.max(-0.18, Math.min(0.18, energyDelta));
+  eParts.energyDelta = energyDelta;
+
+  const adjustedUtilityEner = clamp01(adjustedUtility + energyDelta);
+
   const allowed = gate.allowed && hardAllowed;
   const blockedBy = [...(gate.blockedBy || []), ...(extraBlockedBy || [])];
-  const allowedScore = allowed ? adjustedUtility : 0;
+  const allowedScore = allowed ? adjustedUtilityEner : 0;
 
   const usedAtomIds = [
     ...(p.trace?.usedAtomIds || []),
@@ -390,6 +449,13 @@ export function scorePossibility(args: {
     `ctx:surveillance:${selfId}`,
     `ctx:crowd:${selfId}`,
     `ctx:privacy:${selfId}`,
+    `ener:state:threat:${selfId}`,
+    `ener:state:uncertainty:${selfId}`,
+    `ener:state:norm:${selfId}`,
+    `ener:state:attachment:${selfId}`,
+    `ener:state:resource:${selfId}`,
+    `ener:state:status:${selfId}`,
+    `ener:state:curiosity:${selfId}`,
     ...(targetId ? [
       `world:map:hazardBetween:${selfId}:${targetId}`,
       `soc:allyHazardBetween:${selfId}:${targetId}`,
@@ -431,6 +497,8 @@ export function scorePossibility(args: {
           ctxMod,
           ctxVec,
           adjustedUtility,
+          adjustedUtilityEner,
+          energy: eParts,
           hardGate: extraBlockedBy,
           allowed,
         }
@@ -462,6 +530,8 @@ export function scorePossibility(args: {
         ctxMod,
         ctxVec,
         adjustedUtility,
+        adjustedUtilityEner,
+        energy: eParts,
       },
       blockedBy
     },

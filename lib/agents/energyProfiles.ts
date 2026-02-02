@@ -1,4 +1,4 @@
-import { CurveSpec, normalizeCurveSpec } from '../utils/curves';
+import { CurvePreset, CurveSpec, normalizeCurveSpec } from '../utils/curves';
 
 export type EnergyChannel =
   | 'threat'
@@ -11,10 +11,10 @@ export type EnergyChannel =
   | 'base';
 
 export type AgentEnergyProfile = {
-  // Per-channel response curves: raw -> felt
-  curves: Partial<Record<EnergyChannel, CurveSpec>>;
-  // Optional per-channel inertia (0..1): higher = faster update, lower = more inertia
-  inertia?: Partial<Record<EnergyChannel, number>>;
+  // Raw -> felt response curve per channel
+  curves: Partial<Record<EnergyChannel, CurvePreset | CurveSpec>>;
+  // Inertia per channel (0..1): higher = faster updates, lower = slower / more inert
+  inertia: Partial<Record<EnergyChannel, number>>;
 };
 
 const DEFAULT_PROFILE: AgentEnergyProfile = {
@@ -40,6 +40,11 @@ const DEFAULT_PROFILE: AgentEnergyProfile = {
   },
 };
 
+function clamp01(x: number) {
+  if (!Number.isFinite(x)) return 0;
+  return Math.max(0, Math.min(1, x));
+}
+
 /**
  * World/agent overrides support:
  * - world.energyProfiles?.[selfId]?.curves?.[channel]
@@ -57,18 +62,22 @@ export function getAgentEnergyProfile(selfId: string, world?: any): AgentEnergyP
     curves[k] = normalizeCurveSpec(curves[k]);
   }
 
+  // clamp inertia
+  for (const k of Object.keys(inertia)) {
+    inertia[k] = clamp01(Number(inertia[k]));
+  }
+
   return { curves, inertia };
 }
 
 export function getAgentChannelCurve(selfId: string, channel: EnergyChannel, world?: any): CurveSpec {
   const p = getAgentEnergyProfile(selfId, world);
-  const spec = (p.curves as any)?.[channel] || (p.curves as any)?.base;
+  const spec = (p.curves as any)?.[channel] ?? (p.curves as any)?.base;
   return normalizeCurveSpec(spec);
 }
 
 export function getAgentChannelInertia(selfId: string, channel: EnergyChannel, world?: any): number {
   const p = getAgentEnergyProfile(selfId, world);
-  const v = (p.inertia as any)?.[channel];
-  if (!Number.isFinite(v)) return 0.6;
-  return Math.max(0, Math.min(1, v));
+  const v = Number((p.inertia as any)?.[channel] ?? (p.inertia as any)?.base ?? 0.6);
+  return clamp01(v);
 }

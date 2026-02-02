@@ -69,6 +69,8 @@ import { createSceneInstance, stepSceneInstance } from '../scene/engine';
 import { applySceneAtoms } from '../scene/applyScene';
 // Atom-level dependency graph (real causality from trace.usedAtomIds)
 import { buildAtomGraph, summarizeAtomGraph } from '../graph/atomGraph';
+import { curve01Param } from '../utils/curves';
+import { getAgentChannelCurve, getAgentChannelInertia, type EnergyChannel } from '../agents/energyProfiles';
 
 export interface GoalLabContextResult {
   agent: AgentState;
@@ -81,6 +83,23 @@ export interface GoalLabContextResult {
     goals: Array<{ id: string; label: string; priority: number; activation: number; base_ctx: number }>;
     debug: Record<string, any>;
   };
+}
+
+// ---------------------------------
+// Energy channel state (inertia)
+// ---------------------------------
+// GoalLab is UI-driven and recomputes snapshots often; we keep a tiny in-memory cache
+// keyed by selfId to get "inertia" without перепахивание staged-атомов.
+const __ENERGY_STATE__: Map<string, Record<string, number>> = new Map();
+const __ENERGY_TICK__: Map<string, number> = new Map();
+
+function readEnergyState(selfId: string): Record<string, number> {
+  return __ENERGY_STATE__.get(selfId) || {};
+}
+
+function writeEnergyState(selfId: string, next: Record<string, number>, tick: number) {
+  __ENERGY_STATE__.set(selfId, next);
+  __ENERGY_TICK__.set(selfId, tick);
 }
 
 function clamp01(x: number) {
@@ -172,6 +191,146 @@ function buildAutoContextTuning(selfId: string, atoms: ContextAtom[]): ContextTu
       legitimacy: weightToMul(legitimacyW),
     },
   };
+}
+
+function uniq(xs: string[]): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const x of xs) {
+    if (!x) continue;
+    if (seen.has(x)) continue;
+    seen.add(x);
+    out.push(x);
+  }
+  return out;
+}
+
+function mkEnerAtom(
+  selfId: string,
+  id: string,
+  channel: EnergyChannel,
+  kind: string,
+  v: number,
+  usedAtomIds: string[],
+  parts: any
+) {
+  return normalizeAtom({
+    id,
+    ns: 'ener' as any,
+    kind: kind as any,
+    origin: 'derived',
+    source: 'energy_channels',
+    subject: selfId,
+    target: selfId,
+    magnitude: clamp01(v),
+    confidence: 1,
+    tags: ['ener', String(kind), String(channel)],
+    label: `${String(kind)}.${channel}:${Math.round(clamp01(v) * 100)}%`,
+    trace: {
+      usedAtomIds: uniq(usedAtomIds),
+      notes: ['energy channel (raw/felt/state)'],
+      parts,
+    },
+  } as any);
+}
+
+/**
+ * Derive a compact set of "energy channels" from existing staged atoms.
+ * Goal: add flexibility/variability without ломать staged-атомы.
+ */
+function deriveEnergyChannels(args: {
+  selfId: string;
+  atoms: ContextAtom[];
+  world?: any;
+  tick: number;
+}): { atoms: ContextAtom[]; state: Record<string, number> } {
+  const { selfId, atoms, world, tick } = args;
+
+  // raw signals (0..1)
+  const threat = clamp01(getMag(atoms, `threat:final:${selfId}`, getMag(atoms, `ctx:final:danger:${selfId}`, 0)));
+  const uncertainty = clamp01(getMag(atoms, `ctx:final:uncertainty:${selfId}`, getMag(atoms, `ctx:uncertainty:${selfId}`, 0)));
+  const norm = clamp01(getMag(atoms, `ctx:final:normPressure:${selfId}`, getMag(atoms, `ctx:normPressure:${selfId}`, 0)));
+
+  // attachment: mix of dyadic care + intimacy priority
+  const care = clamp01(getMag(atoms, `emo:care:${selfId}`, 0));
+  const intimacy = clamp01(getMag(atoms, `ctx:final:intimacy:${selfId}`, getMag(atoms, `ctx:intimacy:${selfId}`, 0)));
+  const attachment = clamp01(0.55 * care + 0.45 * intimacy);
+
+  // resource: inverse fatigue + energy reserve (if present)
+  const fatigue = clamp01(getMag(atoms, `feat:char:${selfId}:body.fatigue`, 0.3));
+  const reserve = clamp01(getMag(atoms, `feat:char:${selfId}:body.energy`, 1 - fatigue));
+  const resource = clamp01(0.55 * reserve + 0.45 * (1 - fatigue));
+
+  // status: goal life-domain + hierarchy
+  const lifeStatus = clamp01(getMag(atoms, `goal:lifeDomain:status:${selfId}`, 0.5));
+  const hierarchy = clamp01(getMag(atoms, `ctx:final:hierarchy:${selfId}`, getMag(atoms, `ctx:hierarchy:${selfId}`, 0)));
+  const status = clamp01(0.65 * lifeStatus + 0.35 * hierarchy);
+
+  // curiosity: exploration domain + (1 - threat)
+  const lifeExplore = clamp01(getMag(atoms, `goal:lifeDomain:exploration:${selfId}`, 0.5));
+  const curiosity = clamp01(0.75 * lifeExplore + 0.25 * (1 - threat));
+
+  const rawBy: Record<EnergyChannel, number> = {
+    threat,
+    uncertainty,
+    norm,
+    attachment,
+    resource,
+    status,
+    curiosity,
+    base: 0.5,
+  };
+
+  const usedBase = [
+    `threat:final:${selfId}`,
+    `ctx:final:danger:${selfId}`,
+    `ctx:final:uncertainty:${selfId}`,
+    `ctx:final:normPressure:${selfId}`,
+    `emo:care:${selfId}`,
+    `ctx:final:intimacy:${selfId}`,
+    `feat:char:${selfId}:body.fatigue`,
+    `feat:char:${selfId}:body.energy`,
+    `goal:lifeDomain:status:${selfId}`,
+    `ctx:final:hierarchy:${selfId}`,
+    `goal:lifeDomain:exploration:${selfId}`,
+  ];
+
+  const prev = readEnergyState(selfId);
+  const nextState: Record<string, number> = { ...prev };
+  const out: ContextAtom[] = [];
+
+  for (const ch of Object.keys(rawBy) as EnergyChannel[]) {
+    const raw = rawBy[ch];
+    const curve = getAgentChannelCurve(selfId, ch, world);
+    const felt = clamp01(curve01Param(raw, curve));
+    const inertia = getAgentChannelInertia(selfId, ch, world);
+
+    const key = String(ch);
+    const prevState = Number.isFinite(prev[key]) ? Number(prev[key]) : felt;
+    // inertia here means "update rate": 0 => frozen, 1 => instant
+    const state = clamp01(prevState + inertia * (felt - prevState));
+    nextState[key] = state;
+
+    const used = usedBase;
+    out.push(
+      mkEnerAtom(selfId, `ener:raw:${ch}:${selfId}`, ch, 'ener_raw', raw, used, { raw, ch }),
+      mkEnerAtom(selfId, `ener:felt:${ch}:${selfId}`, ch, 'ener_felt', felt, used, { raw, curve, felt, ch }),
+      mkEnerAtom(selfId, `ener:state:${ch}:${selfId}`, ch, 'ener_state', state, used, {
+        raw,
+        curve,
+        felt,
+        inertia,
+        prev: prevState,
+        state,
+        ch,
+        tick,
+      })
+    );
+  }
+
+  // Commit cache.
+  writeEnergyState(selfId, nextState, tick);
+  return { atoms: out, state: nextState };
 }
 
 function atomizeContextTuningDebug(selfId: string, tuning: ContextTuning | null): ContextAtom[] {
@@ -1197,9 +1356,16 @@ export function buildGoalLabContext(
       meta: { prioAtoms: prioRes.atoms.length },
     });
 
+    // Energy channels: compact, agent-specific non-linear + inertial filters over staged atoms.
+    const enerRes = deriveEnergyChannels({ selfId, atoms: atomsAfterPrio, world: worldForPipeline, tick });
+    const atomsAfterEner = mergeKeepingOverrides(atomsAfterPrio, enerRes.atoms).merged;
+    pushStage('S3en', 'S3en • energy channels (ener:raw/felt/state:*)', atomsAfterEner, {
+      meta: { energyAtoms: enerRes.atoms.length },
+    });
+
     // Drivers -> goal ecology -> planning goals (goal layer)
-    const drvRes = deriveDriversAtoms({ selfId, atoms: atomsAfterPrio, agent: agentForPipeline });
-    const atomsAfterDrv = mergeKeepingOverrides(atomsAfterPrio, drvRes.atoms).merged;
+    const drvRes = deriveDriversAtoms({ selfId, atoms: atomsAfterEner, agent: agentForPipeline });
+    const atomsAfterDrv = mergeKeepingOverrides(atomsAfterEner, drvRes.atoms).merged;
     pushStage('S3d', 'S3d • drivers derived (drv:*)', atomsAfterDrv, {
       meta: { drivers: drvRes.atoms.length },
     });
