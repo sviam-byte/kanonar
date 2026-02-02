@@ -67,6 +67,8 @@ import { updateRelationshipGraphFromEvents } from '../relations/updateFromEvents
 import { SCENE_PRESETS } from '../scene/presets';
 import { createSceneInstance, stepSceneInstance } from '../scene/engine';
 import { applySceneAtoms } from '../scene/applyScene';
+// Atom-level dependency graph (real causality from trace.usedAtomIds)
+import { buildAtomGraph, summarizeAtomGraph } from '../graph/atomGraph';
 
 export interface GoalLabContextResult {
   agent: AgentState;
@@ -509,7 +511,11 @@ export function buildGoalLabContext(
           stub.ns === 'app' ||
           stub.ns === 'goal' ||
           stub.ns === 'drv' ||
-          stub.ns === 'action';
+          stub.ns === 'action' ||
+          // Future-proof: keep rich parts for graph/energy/attention atoms too.
+          stub.ns === 'ener' ||
+          stub.ns === 'attn' ||
+          stub.ns === 'graph';
 
         stub.trace = {
           usedAtomIds: used,
@@ -522,7 +528,39 @@ export function buildGoalLabContext(
 
     const atomSig = (a: ContextAtom) => {
       const tr = (a as any).trace;
-      const used = Array.isArray(tr?.usedAtomIds) ? tr.usedAtomIds.length : 0;
+      const usedIdsRaw = Array.isArray(tr?.usedAtomIds) ? tr.usedAtomIds.map(String) : [];
+      const usedIds = Array.from(new Set(usedIdsRaw.filter(Boolean))).sort();
+      const usedLen = usedIds.length;
+      const usedHash = usedLen ? stableHashInt32(usedIds.join(',')) : 0;
+
+      // IMPORTANT: if trace.parts changes, we want the stage diff to show "~" (changed),
+      // otherwise GoalLab debugs become misleading.
+      const stableStringify = (v: any, depth = 0): string => {
+        if (v === null || v === undefined) return String(v);
+        const t = typeof v;
+        if (t === 'string') return JSON.stringify(v);
+        if (t === 'number' || t === 'boolean') return String(v);
+        if (t !== 'object') return JSON.stringify(String(v));
+        if (depth > 5) return '[max-depth]';
+
+        if (Array.isArray(v)) {
+          const inner = v.map(x => stableStringify(x, depth + 1)).join(',');
+          return '[' + inner + ']';
+        }
+
+        const keys = Object.keys(v).sort();
+        const inner = keys
+          .map(k => JSON.stringify(k) + ':' + stableStringify((v as any)[k], depth + 1))
+          .join(',');
+        return '{' + inner + '}';
+      };
+
+      let partsHash = 0;
+      if (tr && 'parts' in tr && tr.parts !== undefined) {
+        const s = stableStringify(tr.parts);
+        // Limit hash input to avoid pathological huge parts payloads.
+        partsHash = stableHashInt32(s.length > 4000 ? s.slice(0, 4000) : s);
+      }
       return [
         (a as any).id,
         (a as any).magnitude ?? 0,
@@ -531,7 +569,11 @@ export function buildGoalLabContext(
         (a as any).ns ?? '',
         (a as any).kind ?? '',
         (a as any).source ?? '',
-        used,
+        // usedAtomIds: include both len and hash of content (not just len)
+        usedLen,
+        usedHash,
+        // trace.parts: hash so semantic changes are visible in diffs
+        partsHash,
       ].join('|');
     };
 
@@ -1529,6 +1571,7 @@ export function buildGoalLabContext(
   // Goal preview: single source of truth = goal atoms in the final atom stream.
   const goalPreview = (() => {
     const atoms = (atomsWithSummaryMetrics as any) || [];
+    const atomGraphSummary = summarizeAtomGraph(buildAtomGraph(atoms, { includeIsolated: false }));
     const plans = atoms.filter((a: any) => String(a?.id || '').startsWith('goal:plan:'));
     const actives = atoms.filter((a: any) => String(a?.id || '').startsWith('goal:active:'));
 
@@ -1561,7 +1604,10 @@ export function buildGoalLabContext(
 
     return {
       goals: rows,
-      debug: { source: 'atoms' as const },
+      debug: {
+        source: 'atoms' as const,
+        atomGraph: atomGraphSummary,
+      },
     };
   })();
 
