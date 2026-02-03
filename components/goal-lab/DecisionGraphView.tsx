@@ -207,6 +207,7 @@ export const DecisionGraphView: React.FC<Props> = ({
   const [spreadSteps, setSpreadSteps] = useState(6);
   const [spreadDecay, setSpreadDecay] = useState(0.2);
   const [spreadStart, setSpreadStart] = useState<string | null>(null);
+  const [spreadDirection, setSpreadDirection] = useState<'backward' | 'forward' | 'undirected'>('backward');
 
   const safeScores = arr(goalScores);
 
@@ -266,6 +267,8 @@ export const DecisionGraphView: React.FC<Props> = ({
       temperature,
       curvePreset,
       nodeBase,
+      direction: spreadDirection,
+      signedFlow: true,
     });
 
     const nodes = graph.nodes.map((n) => {
@@ -291,7 +294,8 @@ export const DecisionGraphView: React.FC<Props> = ({
         data: {
           ...(e.data as any),
           rawWeight,
-          weight: flow,
+          // Keep sign-carrying weight for coloring; show flow separately.
+          weight: rawWeight,
           strength,
           label: formatValue(flow),
         },
@@ -307,6 +311,7 @@ export const DecisionGraphView: React.FC<Props> = ({
     spreadStart,
     spreadSteps,
     spreadDecay,
+    spreadDirection,
     temperature,
     curvePreset,
   ]);
@@ -403,6 +408,18 @@ export const DecisionGraphView: React.FC<Props> = ({
                 />
               </label>
               <label className="flex items-center gap-2 text-[10px] text-slate-300/80">
+                <span className="opacity-70">Dir</span>
+                <select
+                  value={spreadDirection}
+                  onChange={e => setSpreadDirection(e.target.value as any)}
+                  className="bg-black/25 border border-slate-700/60 rounded px-2 py-0.5 text-[10px]"
+                >
+                  <option value="backward">goal → inputs</option>
+                  <option value="forward">inputs → goal</option>
+                  <option value="undirected">both</option>
+                </select>
+              </label>
+              <label className="flex items-center gap-2 text-[10px] text-slate-300/80">
                 <span className="opacity-70">Steps</span>
                 <input
                   type="number"
@@ -424,6 +441,18 @@ export const DecisionGraphView: React.FC<Props> = ({
                   onChange={e => setSpreadDecay(Math.max(0, Math.min(1, Number(e.target.value) || 0)))}
                   className="w-12 bg-black/25 border border-slate-700/60 rounded px-2 py-0.5 text-[10px] font-mono"
                 />
+              </label>
+              <label className="flex items-center gap-2 text-[10px] text-slate-300/80">
+                <span className="opacity-70">Dir</span>
+                <select
+                  value={spreadDirection}
+                  onChange={e => setSpreadDirection(e.target.value as any)}
+                  className="bg-black/25 border border-slate-700/60 rounded px-2 py-0.5 text-[10px]"
+                >
+                  <option value="backward">goal→inputs</option>
+                  <option value="forward">inputs→goal</option>
+                  <option value="undirected">both</option>
+                </select>
               </label>
             </>
           ) : null}

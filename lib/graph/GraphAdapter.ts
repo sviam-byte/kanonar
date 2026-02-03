@@ -222,7 +222,11 @@ export function buildDecisionTripletGraph({
       const label = formatContributionLabel(c);
       const isLens = isLensContribution(c);
 
-      const nodeId = stableNodeId(isLens ? 'lens' : 'src', label);
+      // Prefer atomId as the stable graph key to make the graph truly "atomist".
+      // Fallbacks preserve older contribution shapes.
+      const atomKey = String(c.atomId ?? c.atomLabel ?? c.explanation ?? label);
+
+      const nodeId = stableNodeId(isLens ? 'lens' : 'src', atomKey);
       const map = isLens ? lensStrength : sourceStrength;
       map.set(nodeId, (map.get(nodeId) ?? 0) + Math.abs(w));
 
@@ -233,6 +237,7 @@ export function buildDecisionTripletGraph({
           position: { x: 0, y: 0 },
           data: {
             label,
+            atomId: c.atomId,
             value: w,
           },
           selectable: false,
