@@ -96,8 +96,31 @@ function normalizeBase(nodeIds: string[], base?: Record<string, number>): Record
  * Spread energy from start nodes across edges, returning node energy and edge flows.
  */
 export function spreadEnergy(params: SpreadEnergyInput): SpreadEnergyOutput {
-  const nodeIds = params.nodes.map(n => n.id);
-  const edges = params.edges.map(e => ({ source: e.from, target: e.to, weight: e.weight ?? 0 }));
+  // Defensive defaults: DecisionGraphView may briefly pass undefined while building graph.
+  const nodes = (params as any)?.nodes ?? [];
+  const edges = (params as any)?.edges ?? [];
+  const sources = (params as any)?.sources ?? {};
+
+  // If graph is empty or invalid, return stable empty output (never throw).
+  if (!Array.isArray(nodes) || !Array.isArray(edges) || nodes.length === 0) {
+    return {
+      nodeEnergy: {},
+      edgeFlow: {},
+    };
+  }
+
+  // Normalize sources to avoid NaNs.
+  const safeSources: Record<string, number> = {};
+  for (const [k, v] of Object.entries(sources)) {
+    const n = Number(v);
+    if (Number.isFinite(n)) safeSources[k] = clamp01(n);
+  }
+
+  const nodeIds = nodes.map((n: any) => n?.id).filter(Boolean);
+  if (nodeIds.length === 0) {
+    return { nodeEnergy: {}, edgeFlow: {} };
+  }
+
   const steps = Math.max(0, Math.min(50, Math.floor(Number(params.steps) || 0)));
   const decay = clamp01(Number(params.decay) || 0);
   const T = safeTemp(params.temperature);
@@ -107,9 +130,10 @@ export function spreadEnergy(params: SpreadEnergyInput): SpreadEnergyOutput {
 
   const outEdges = new Map<string, Array<{ target: string; w: number; key: string }>>();
   for (const e of edges) {
-    const s = String(e.source);
-    const t = String(e.target);
-    const w = Number(e.weight ?? 0);
+    const s = String((e as any)?.from);
+    const t = String((e as any)?.to);
+    if (!s || !t) continue;
+    const w = Number((e as any)?.weight ?? 0);
     const key = `${s}→${t}`;
     if (!outEdges.has(s)) outEdges.set(s, []);
     outEdges.get(s)!.push({ target: t, w, key });
@@ -118,9 +142,8 @@ export function spreadEnergy(params: SpreadEnergyInput): SpreadEnergyOutput {
   const nodeEnergy: Record<string, number> = Object.fromEntries(nodeIds.map(id => [id, 0]));
   const edgeFlow: Record<string, number> = {};
 
-  for (const s of Object.keys(params.sources || {})) {
-    const id = String(s);
-    if (id in nodeEnergy) nodeEnergy[id] = clamp01(Number(params.sources[id] ?? 0));
+  for (const [k, v] of Object.entries(safeSources)) {
+    if (k in nodeEnergy) nodeEnergy[k] = v;
   }
 
   for (let k = 0; k < steps; k++) {
@@ -146,10 +169,9 @@ export function spreadEnergy(params: SpreadEnergyInput): SpreadEnergyOutput {
       for (const o of scores) {
         const p = Math.exp(o.a / T) / denom;
         const flow = injected * p;
-        const signedFlow = flow * Math.sign(o.w || 0);
 
         next[o.target] += flow;
-        edgeFlow[o.key] = (edgeFlow[o.key] ?? 0) + signedFlow;
+        edgeFlow[o.key] = (edgeFlow[o.key] ?? 0) + flow;
       }
     }
 
