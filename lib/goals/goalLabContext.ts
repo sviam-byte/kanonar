@@ -89,17 +89,15 @@ export interface GoalLabContextResult {
 // Energy channel state (inertia)
 // ---------------------------------
 // GoalLab is UI-driven and recomputes snapshots often; we keep a tiny in-memory cache
-// keyed by selfId to get "inertia" without перепахивание staged-атомов.
+// keyed by selfId to model inertia without перепахивание staged-атомов.
 const __ENERGY_STATE__: Map<string, Record<string, number>> = new Map();
-const __ENERGY_TICK__: Map<string, number> = new Map();
 
 function readEnergyState(selfId: string): Record<string, number> {
   return __ENERGY_STATE__.get(selfId) || {};
 }
 
-function writeEnergyState(selfId: string, next: Record<string, number>, tick: number) {
+function writeEnergyState(selfId: string, next: Record<string, number>) {
   __ENERGY_STATE__.set(selfId, next);
-  __ENERGY_TICK__.set(selfId, tick);
 }
 
 function clamp01(x: number) {
@@ -213,7 +211,7 @@ function mkEnerAtom(
   v: number,
   usedAtomIds: string[],
   parts: any
-) {
+): ContextAtom {
   return normalizeAtom({
     id,
     ns: 'ener' as any,
@@ -242,9 +240,8 @@ function deriveEnergyChannels(args: {
   selfId: string;
   atoms: ContextAtom[];
   world?: any;
-  tick: number;
 }): { atoms: ContextAtom[]; state: Record<string, number> } {
-  const { selfId, atoms, world, tick } = args;
+  const { selfId, atoms, world } = args;
 
   // raw signals (0..1)
   const threat = clamp01(getMag(atoms, `threat:final:${selfId}`, getMag(atoms, `ctx:final:danger:${selfId}`, 0)));
@@ -313,9 +310,9 @@ function deriveEnergyChannels(args: {
 
     const used = usedBase;
     out.push(
-      mkEnerAtom(selfId, `ener:raw:${ch}:${selfId}`, ch, 'ener_raw', raw, used, { raw, ch }),
-      mkEnerAtom(selfId, `ener:felt:${ch}:${selfId}`, ch, 'ener_felt', felt, used, { raw, curve, felt, ch }),
-      mkEnerAtom(selfId, `ener:state:${ch}:${selfId}`, ch, 'ener_state', state, used, {
+      mkEnerAtom(selfId, `ener:raw:${ch}:${selfId}`, ch, 'raw', raw, used, { raw, ch }),
+      mkEnerAtom(selfId, `ener:felt:${ch}:${selfId}`, ch, 'felt', felt, used, { raw, curve, felt, ch }),
+      mkEnerAtom(selfId, `ener:state:${ch}:${selfId}`, ch, 'state', state, used, {
         raw,
         curve,
         felt,
@@ -323,13 +320,12 @@ function deriveEnergyChannels(args: {
         prev: prevState,
         state,
         ch,
-        tick,
       })
     );
   }
 
   // Commit cache.
-  writeEnergyState(selfId, nextState, tick);
+  writeEnergyState(selfId, nextState);
   return { atoms: out, state: nextState };
 }
 
@@ -1357,9 +1353,9 @@ export function buildGoalLabContext(
     });
 
     // Energy channels: compact, agent-specific non-linear + inertial filters over staged atoms.
-    const enerRes = deriveEnergyChannels({ selfId, atoms: atomsAfterPrio, world: worldForPipeline, tick });
+    const enerRes = deriveEnergyChannels({ selfId, atoms: atomsAfterPrio, world: worldForPipeline });
     const atomsAfterEner = mergeKeepingOverrides(atomsAfterPrio, enerRes.atoms).merged;
-    pushStage('S3en', 'S3en • energy channels (ener:raw/felt/state:*)', atomsAfterEner, {
+    pushStage('S3en', 'S3en • energy channels derived (ener:raw/felt/state)', atomsAfterEner, {
       meta: { energyAtoms: enerRes.atoms.length },
     });
 

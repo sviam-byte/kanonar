@@ -47,7 +47,7 @@ function readCtxVec(atoms: ContextAtom[], selfId: string): CtxVec {
 }
 
 function readEnerVec(atoms: ContextAtom[], selfId: string): EnerVec {
-  const getEner = (ch: string, fb = 0) => {
+  const getEner = (ch: string, fb = 0.5) => {
     const id = `ener:state:${ch}:${selfId}`;
     const a = atoms.find(x => x?.id === id);
     const m = (a as any)?.magnitude;
@@ -56,8 +56,8 @@ function readEnerVec(atoms: ContextAtom[], selfId: string): EnerVec {
   return {
     threat: getEner('threat', 0),
     uncertainty: getEner('uncertainty', 0),
-    norm: getEner('norm', 0),
-    attachment: getEner('attachment', 0),
+    norm: getEner('norm', 0.5),
+    attachment: getEner('attachment', 0.5),
     resource: getEner('resource', 0.5),
     status: getEner('status', 0.5),
     curiosity: getEner('curiosity', 0.5),
@@ -241,6 +241,7 @@ export function scorePossibility(args: {
 
   // ---- persona hard gates (to increase divergence between characters) ----
   const ctxVec = readCtxVec(atoms, selfId);
+  const enerVec = readEnerVec(atoms, selfId);
   const extraBlockedBy: string[] = [];
   const extraGateUsed: string[] = [];
   const pushUsed = (id: string) => {
@@ -385,8 +386,36 @@ export function scorePossibility(args: {
   const goalUtilityRaw = goalDomainBoost + planBoost;
   const goalUtility = clamp01(0.5 + 0.5 * Math.tanh(goalUtilityRaw)); // squashing to [0..1]
 
+  // ---- ENERGY: multi-signal modulation layer ----
+  // Minimal mapping: map action-domain hint -> which energy channels it tends to increase/decrease.
+  // Positive energyDelta means the action is expected to *reduce* current energetic tension (good).
+  const domain = actionDomainHint(p.id) || actionDomainHint(actionKey) || null;
+  let energyDelta = 0;
+  const energyParts: any = { domain, enerVec };
+
+  if (domain === 'safety') {
+    // safety actions should reduce threat/uncertainty; more urgent if those are high.
+    energyDelta = 0.60 * enerVec.threat + 0.30 * enerVec.uncertainty;
+  } else if (domain === 'affiliation') {
+    energyDelta = 0.55 * enerVec.attachment - 0.15 * enerVec.threat;
+  } else if (domain === 'status') {
+    energyDelta = 0.45 * enerVec.status - 0.10 * enerVec.norm;
+  } else if (domain === 'exploration') {
+    energyDelta = 0.55 * enerVec.curiosity - 0.25 * enerVec.threat - 0.15 * enerVec.uncertainty;
+  } else if (domain === 'order' || domain === 'control') {
+    energyDelta = 0.35 * (1 - enerVec.uncertainty) + 0.20 * enerVec.norm;
+  } else if (domain === 'rest') {
+    energyDelta = 0.65 * (1 - enerVec.resource) - 0.10 * enerVec.threat;
+  } else {
+    energyDelta = 0;
+  }
+  // squash to a bounded bonus [-0.25..0.25]
+  const energyBonus = 0.25 * Math.tanh(energyDelta);
+  energyParts.energyDelta = energyDelta;
+  energyParts.energyBonus = energyBonus;
+
   // Mix with base utility (keep conservative to avoid goal dominance).
-  const mixedUtility = clamp01(0.80 * raw + 0.20 * goalUtility);
+  const mixedUtility = clamp01(0.74 * raw + 0.20 * goalUtility + 0.06 * clamp01(0.5 + energyBonus));
 
   // Контекстный key-mod (после базовых весов, чтобы реально влиять на итог).
   // NOTE: ctxVec already computed above for hard-gates.
@@ -394,40 +423,9 @@ export function scorePossibility(args: {
   const ctxMod = contextKeyMod(ctxKey, ctxVec);
   const adjustedUtility = clamp01(mixedUtility * ctxMod);
 
-  // ---- ENERGY CHANNELS: additive bias layer (agent-specific curves + inertia are upstream) ----
-  // Energies are `ener:state:<ch>:<selfId>` produced in GoalLabContext.
-  // We keep it conservative: |delta| <= ~0.18.
-  const ener = readEnerVec(atoms, selfId);
-  const domain = actionDomainHint(p.id);
-  let energyDelta = 0;
-  const eParts: any = { domain, ener };
-
-  if (domain === 'safety') {
-    // Threat/uncertainty drive safety actions.
-    energyDelta += 0.16 * ener.threat + 0.08 * ener.uncertainty;
-    // High attachment slightly inhibits pure escape if no immediate threat.
-    energyDelta += -0.06 * ener.attachment * (1 - ener.threat);
-  } else if (domain === 'control' || domain === 'order') {
-    energyDelta += 0.10 * ener.norm + 0.06 * (1 - ener.uncertainty);
-  } else if (domain === 'affiliation') {
-    energyDelta += 0.12 * ener.attachment + 0.04 * (1 - ener.threat);
-  } else if (domain === 'status') {
-    energyDelta += 0.12 * ener.status - 0.06 * ener.threat;
-  } else if (domain === 'exploration') {
-    energyDelta += 0.14 * ener.curiosity - 0.08 * ener.threat - 0.06 * ener.uncertainty;
-  } else if (domain === 'rest') {
-    // Low resource (fatigue) makes rest attractive.
-    energyDelta += 0.16 * (1 - ener.resource) - 0.08 * ener.threat;
-  }
-
-  energyDelta = Math.max(-0.18, Math.min(0.18, energyDelta));
-  eParts.energyDelta = energyDelta;
-
-  const adjustedUtilityEner = clamp01(adjustedUtility + energyDelta);
-
   const allowed = gate.allowed && hardAllowed;
   const blockedBy = [...(gate.blockedBy || []), ...(extraBlockedBy || [])];
-  const allowedScore = allowed ? adjustedUtilityEner : 0;
+  const allowedScore = allowed ? adjustedUtility : 0;
 
   const usedAtomIds = [
     ...(p.trace?.usedAtomIds || []),
@@ -497,8 +495,10 @@ export function scorePossibility(args: {
           ctxMod,
           ctxVec,
           adjustedUtility,
-          adjustedUtilityEner,
-          energy: eParts,
+          enerVec,
+          energyParts,
+          energyDelta,
+          energyBonus,
           hardGate: extraBlockedBy,
           allowed,
         }
@@ -530,8 +530,10 @@ export function scorePossibility(args: {
         ctxMod,
         ctxVec,
         adjustedUtility,
-        adjustedUtilityEner,
-        energy: eParts,
+        enerVec,
+        energyParts,
+        energyDelta,
+        energyBonus,
       },
       blockedBy
     },
