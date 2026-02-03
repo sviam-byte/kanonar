@@ -36,15 +36,29 @@ export type EnergySpreadResultV2 = {
 // Existing API below (kept for backwards compatibility with current UI)
 // ---------------------------------------------------------------------
 
-export type SpreadEnergyInput = {
-  nodes: Array<{ id: string; label?: string; meta?: any }>;
-  edges: Array<{ from: string; to: string; weight?: number; meta?: any }>;
-  sources: Record<string, number>;
-  steps?: number;
-  decay?: number;
-  temperature?: number;
-  curve?: CurvePreset;
-};
+export type SpreadEnergyInput =
+  | {
+      // Canonical API (used by non-UI callers).
+      nodes: Array<{ id: string; label?: string; meta?: any }>;
+      edges: Array<{ from: string; to: string; weight?: number; meta?: any }>;
+      sources: Record<string, number>;
+      nodeBase?: Record<string, number>;
+      steps?: number;
+      decay?: number;
+      temperature?: number;
+      curve?: CurvePreset;
+    }
+  | {
+      // Legacy API (DecisionGraphView).
+      nodeIds: string[];
+      edges: Array<{ source?: string; target?: string; from?: string; to?: string; weight?: number; meta?: any }>;
+      startNodeIds?: string[];
+      steps?: number;
+      decay?: number;
+      temperature?: number;
+      curvePreset?: CurvePreset;
+      nodeBase?: Record<string, number>;
+    };
 
 export type SpreadEnergyOutput = {
   nodeEnergy: Record<string, number>;
@@ -96,37 +110,86 @@ function normalizeBase(nodeIds: string[], base?: Record<string, number>): Record
  * Spread energy from start nodes across edges, returning node energy and edge flows.
  */
 export function spreadEnergy(params: SpreadEnergyInput): SpreadEnergyOutput {
-  // Defensive defaults: DecisionGraphView may briefly pass undefined while building graph.
-  const nodes = (params as any)?.nodes ?? [];
-  const edges = (params as any)?.edges ?? [];
-  const sources = (params as any)?.sources ?? {};
+  // NOTE: There are two call sites / historical APIs:
+  //   A) "new": { nodes, edges, sources, steps, decay, temperature, curve }
+  //   B) "legacy": { nodeIds, edges, startNodeIds, steps, decay, temperature, curvePreset, nodeBase }
+  // DecisionGraphView currently uses the legacy shape. We support both.
 
-  // If graph is empty or invalid, return stable empty output (never throw).
-  if (!Array.isArray(nodes) || !Array.isArray(edges) || nodes.length === 0) {
-    return {
-      nodeEnergy: {},
-      edgeFlow: {},
-    };
+  const p: any = params as any;
+
+  // --- Normalize to canonical shape: nodes[], edges[], sources{} ---
+  let nodes: Array<{ id: string; label?: string; meta?: any }> = [];
+  let edges: Array<{ from: string; to: string; weight?: number; meta?: any }> = [];
+  let sources: Record<string, number> = {};
+  let steps = 2;
+  let decay = 0.75;
+  let temperature = 1;
+  let curve: CurvePreset = 'smoothstep';
+
+  // Optional per-node base importance (0..1) — legacy API.
+  let nodeBase: Record<string, number> | undefined;
+
+  if (Array.isArray(p?.nodes) || Array.isArray(p?.edges) || p?.sources) {
+    // Canonical API
+    nodes = Array.isArray(p?.nodes) ? p.nodes : [];
+    edges = Array.isArray(p?.edges) ? p.edges : [];
+    sources = (p?.sources && typeof p.sources === 'object') ? p.sources : {};
+    steps = p?.steps ?? steps;
+    decay = p?.decay ?? decay;
+    temperature = p?.temperature ?? temperature;
+    curve = (p?.curve ?? curve) as CurvePreset;
+    nodeBase = p?.nodeBase;
+  } else if (Array.isArray(p?.nodeIds)) {
+    // Legacy API (DecisionGraphView)
+    const nodeIds = p.nodeIds as string[];
+    nodes = nodeIds.map((id) => ({ id: String(id) }));
+    const eIn = Array.isArray(p?.edges) ? p.edges : [];
+    edges = eIn
+      .map((e: any) => ({
+        from: String(e?.from ?? e?.source ?? ''),
+        to: String(e?.to ?? e?.target ?? ''),
+        weight: (e?.weight ?? 1),
+        meta: e?.meta,
+      }))
+      .filter((e: any) => e.from && e.to);
+
+    const starts: string[] = Array.isArray(p?.startNodeIds) ? p.startNodeIds : [];
+    // Seed sources: if multiple start nodes, split mass equally.
+    const mass = starts.length ? (1 / starts.length) : 0;
+    for (const id of starts) sources[String(id)] = mass;
+
+    steps = p?.steps ?? steps;
+    decay = p?.decay ?? decay;
+    temperature = p?.temperature ?? temperature;
+    curve = (p?.curvePreset ?? curve) as CurvePreset;
+    nodeBase = p?.nodeBase;
+  } else {
+    // Unknown input shape — be safe.
+    return { nodeEnergy: {}, edgeFlow: {} };
   }
+
+  // Defensive defaults: UI can briefly pass empty graph while building.
+  if (!Array.isArray(nodes) || nodes.length === 0) return { nodeEnergy: {}, edgeFlow: {} };
+  if (!Array.isArray(edges)) edges = [];
 
   // Normalize sources to avoid NaNs.
   const safeSources: Record<string, number> = {};
-  for (const [k, v] of Object.entries(sources)) {
+  for (const [k, v] of Object.entries(sources || {})) {
     const n = Number(v);
-    if (Number.isFinite(n)) safeSources[k] = clamp01(n);
+    if (Number.isFinite(n)) safeSources[String(k)] = clamp01(n);
   }
 
-  const nodeIds = nodes.map((n: any) => n?.id).filter(Boolean);
+  const nodeIds = nodes.map((n: any) => n?.id).filter(Boolean).map(String);
   if (nodeIds.length === 0) {
     return { nodeEnergy: {}, edgeFlow: {} };
   }
 
-  const steps = Math.max(0, Math.min(50, Math.floor(Number(params.steps) || 0)));
-  const decay = clamp01(Number(params.decay) || 0);
-  const T = safeTemp(params.temperature);
-  const preset = params.curve ?? 'smoothstep';
+  const stepsCount = Math.max(0, Math.min(50, Math.floor(Number(steps) || 0)));
+  const decayRatio = clamp01(Number(decay) || 0);
+  const T = safeTemp(temperature);
+  const preset = curve ?? 'smoothstep';
 
-  const base01 = normalizeBase(nodeIds, undefined);
+  const base01 = normalizeBase(nodeIds, nodeBase);
 
   const outEdges = new Map<string, Array<{ target: string; w: number; key: string }>>();
   for (const e of edges) {
@@ -146,7 +209,7 @@ export function spreadEnergy(params: SpreadEnergyInput): SpreadEnergyOutput {
     if (k in nodeEnergy) nodeEnergy[k] = v;
   }
 
-  for (let k = 0; k < steps; k++) {
+  for (let k = 0; k < stepsCount; k++) {
     const next: Record<string, number> = Object.fromEntries(nodeIds.map(id => [id, 0]));
 
     for (const u of nodeIds) {
@@ -155,12 +218,15 @@ export function spreadEnergy(params: SpreadEnergyInput): SpreadEnergyOutput {
 
       const outs = outEdges.get(u) || [];
       if (!outs.length) {
-        next[u] += E * (1 - decay);
+        next[u] += E * (1 - decayRatio);
         continue;
       }
 
+      // baseImportance:
+      // - if nodeBase is provided, use it (normalized to 0..1)
+      // - otherwise, fall back to 0 so behavior stays stable.
       const baseImportance = clamp01(curve01(clamp01(Number(base01[u] ?? 0)), preset));
-      const injected = E * (1 - decay) * (0.35 + 0.65 * baseImportance);
+      const injected = E * (1 - decayRatio) * (0.35 + 0.65 * baseImportance);
 
       const scores = outs.map(o => ({ ...o, a: Math.abs(o.w) }));
       const Z = scores.reduce((acc, o) => acc + Math.exp(o.a / T), 0);
