@@ -21,6 +21,16 @@ type CtxVec = {
   privacy: number;
 };
 
+type EnerVec = {
+  threat: number;
+  uncertainty: number;
+  norm: number;
+  attachment: number;
+  resource: number;
+  status: number;
+  curiosity: number;
+};
+
 function readCtxVec(atoms: ContextAtom[], selfId: string): CtxVec {
   const getCtxMag = (id: string, fb = 0) => {
     const a = atoms.find(x => x?.id === id);
@@ -33,6 +43,24 @@ function readCtxVec(atoms: ContextAtom[], selfId: string): CtxVec {
     surveillance: clamp01(getCtxMag(`ctx:surveillance:${selfId}`, 0)),
     crowd: clamp01(getCtxMag(`ctx:crowd:${selfId}`, 0)),
     privacy: clamp01(getCtxMag(`ctx:privacy:${selfId}`, 0)),
+  };
+}
+
+function readEnerVec(atoms: ContextAtom[], selfId: string): EnerVec {
+  const getEner = (ch: string, fb = 0.5) => {
+    const id = `ener:state:${ch}:${selfId}`;
+    const a = atoms.find(x => x?.id === id);
+    const m = (a as any)?.magnitude;
+    return (typeof m === 'number' && Number.isFinite(m)) ? clamp01(m) : fb;
+  };
+  return {
+    threat: getEner('threat', 0),
+    uncertainty: getEner('uncertainty', 0),
+    norm: getEner('norm', 0.5),
+    attachment: getEner('attachment', 0.5),
+    resource: getEner('resource', 0.5),
+    status: getEner('status', 0.5),
+    curiosity: getEner('curiosity', 0.5),
   };
 }
 
@@ -213,6 +241,7 @@ export function scorePossibility(args: {
 
   // ---- persona hard gates (to increase divergence between characters) ----
   const ctxVec = readCtxVec(atoms, selfId);
+  const enerVec = readEnerVec(atoms, selfId);
   const extraBlockedBy: string[] = [];
   const extraGateUsed: string[] = [];
   const pushUsed = (id: string) => {
@@ -357,8 +386,36 @@ export function scorePossibility(args: {
   const goalUtilityRaw = goalDomainBoost + planBoost;
   const goalUtility = clamp01(0.5 + 0.5 * Math.tanh(goalUtilityRaw)); // squashing to [0..1]
 
+  // ---- ENERGY: multi-signal modulation layer ----
+  // Minimal mapping: map action-domain hint -> which energy channels it tends to increase/decrease.
+  // Positive energyDelta means the action is expected to *reduce* current energetic tension (good).
+  const domain = actionDomainHint(p.id) || actionDomainHint(actionKey) || null;
+  let energyDelta = 0;
+  const energyParts: any = { domain, enerVec };
+
+  if (domain === 'safety') {
+    // safety actions should reduce threat/uncertainty; more urgent if those are high.
+    energyDelta = 0.60 * enerVec.threat + 0.30 * enerVec.uncertainty;
+  } else if (domain === 'affiliation') {
+    energyDelta = 0.55 * enerVec.attachment - 0.15 * enerVec.threat;
+  } else if (domain === 'status') {
+    energyDelta = 0.45 * enerVec.status - 0.10 * enerVec.norm;
+  } else if (domain === 'exploration') {
+    energyDelta = 0.55 * enerVec.curiosity - 0.25 * enerVec.threat - 0.15 * enerVec.uncertainty;
+  } else if (domain === 'order' || domain === 'control') {
+    energyDelta = 0.35 * (1 - enerVec.uncertainty) + 0.20 * enerVec.norm;
+  } else if (domain === 'rest') {
+    energyDelta = 0.65 * (1 - enerVec.resource) - 0.10 * enerVec.threat;
+  } else {
+    energyDelta = 0;
+  }
+  // squash to a bounded bonus [-0.25..0.25]
+  const energyBonus = 0.25 * Math.tanh(energyDelta);
+  energyParts.energyDelta = energyDelta;
+  energyParts.energyBonus = energyBonus;
+
   // Mix with base utility (keep conservative to avoid goal dominance).
-  const mixedUtility = clamp01(0.80 * raw + 0.20 * goalUtility);
+  const mixedUtility = clamp01(0.74 * raw + 0.20 * goalUtility + 0.06 * clamp01(0.5 + energyBonus));
 
   // Контекстный key-mod (после базовых весов, чтобы реально влиять на итог).
   // NOTE: ctxVec already computed above for hard-gates.
@@ -390,6 +447,13 @@ export function scorePossibility(args: {
     `ctx:surveillance:${selfId}`,
     `ctx:crowd:${selfId}`,
     `ctx:privacy:${selfId}`,
+    `ener:state:threat:${selfId}`,
+    `ener:state:uncertainty:${selfId}`,
+    `ener:state:norm:${selfId}`,
+    `ener:state:attachment:${selfId}`,
+    `ener:state:resource:${selfId}`,
+    `ener:state:status:${selfId}`,
+    `ener:state:curiosity:${selfId}`,
     ...(targetId ? [
       `world:map:hazardBetween:${selfId}:${targetId}`,
       `soc:allyHazardBetween:${selfId}:${targetId}`,
@@ -431,6 +495,10 @@ export function scorePossibility(args: {
           ctxMod,
           ctxVec,
           adjustedUtility,
+          enerVec,
+          energyParts,
+          energyDelta,
+          energyBonus,
           hardGate: extraBlockedBy,
           allowed,
         }
@@ -462,6 +530,10 @@ export function scorePossibility(args: {
         ctxMod,
         ctxVec,
         adjustedUtility,
+        enerVec,
+        energyParts,
+        energyDelta,
+        energyBonus,
       },
       blockedBy
     },
