@@ -60,12 +60,23 @@ export function propagateAtomEnergy(
   graph: AtomGraph,
   atoms: ContextAtom[],
   field: SignalField,
-  opts?: { steps?: number; decay?: number; topK?: number }
+  opts?: {
+    steps?: number;
+    decay?: number;
+    topK?: number;
+    /**
+     * Optional per-channel atom weight function.
+     * If provided, it is used for seeding from SignalField.sources.
+     * Useful for applying agent-specific channel curves at the source level.
+     */
+    atomWeightFn?: (ch: EnergyChannel, a: ContextAtom) => number;
+  }
 ): AtomEnergyResult {
   const nodeIds = graph.nodes.map((n) => String(n.id)).filter(Boolean);
   const steps = Math.max(0, Math.min(64, Math.floor(Number(opts?.steps ?? 6))));
   const decay = clamp01(Number(opts?.decay ?? 0.25));
   const topK = Math.max(1, Math.min(24, Math.floor(Number(opts?.topK ?? 8))));
+  const atomWeightFn = opts?.atomWeightFn;
 
   const nodeEnergyByChannel: Record<string, Record<string, number>> = {};
   const edgeFlowByChannel: Record<string, Record<string, number>> = {};
@@ -92,7 +103,7 @@ export function propagateAtomEnergy(
       const sid = String((src0 as any)?.id ?? '');
       if (!sid || !(sid in energy)) continue;
       const a = byId.get(sid) || src0;
-      const w = atomWeight(a);
+      const w = atomWeightFn ? Number(atomWeightFn(ch, a)) : atomWeight(a);
       if (w <= 0) continue;
       energy[sid] += w;
       contrib[sid].set(sid, (contrib[sid].get(sid) ?? 0) + w);

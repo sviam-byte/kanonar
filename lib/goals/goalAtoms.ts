@@ -2,6 +2,11 @@ import type { ContextAtom } from '../context/v2/types';
 import { clamp01 } from '../util/math';
 import { normalizeAtom } from '../context/v2/infer';
 import { getCtx, sanitizeUsed } from '../context/layers';
+import { buildAtomGraph } from '../graph/atomGraph';
+import { buildSignalField } from './signalField';
+import { propagateAtomEnergy } from '../graph/atomEnergy';
+import { getAgentChannelCurve, type EnergyChannel } from '../agents/energyProfiles';
+import { curve01Param } from '../utils/curves';
 import { selectMode } from './modes';
 import { selectActiveGoalsWithHysteresis } from './selectActive';
 import { initGoalState, updateGoalState, type GoalState } from './goalState';
@@ -15,6 +20,27 @@ type GoalDomain =
   | 'order'
   | 'rest'
   | 'wealth';
+
+type DomainChannelWeights = Record<GoalDomain, Record<EnergyChannel, number>>;
+
+// Conservative default mapping: which energy channels should “feed” which goals.
+// Values are weights (not required to sum to 1).
+const DOMAIN_CHANNEL_WEIGHTS: DomainChannelWeights = {
+  safety: { threat: 1.25, uncertainty: 0.35, norm: 0.1, attachment: 0, resource: 0.1, status: 0, curiosity: 0, base: 0 },
+  control: { threat: 0.55, uncertainty: 0.65, norm: 0.15, attachment: 0, resource: 0.25, status: 0.1, curiosity: 0.05, base: 0 },
+  affiliation: { threat: 0, uncertainty: 0.1, norm: 0.25, attachment: 1.2, resource: 0.1, status: 0.15, curiosity: 0, base: 0 },
+  status: { threat: 0.05, uncertainty: 0.1, norm: 0.75, attachment: 0.1, resource: 0.1, status: 1.15, curiosity: 0, base: 0 },
+  // exploration is inhibited by threat/norm/resource pressure
+  exploration: { threat: -0.9, uncertainty: 0.45, norm: -0.35, attachment: 0, resource: -0.25, status: 0.05, curiosity: 1.25, base: 0.1 },
+  order: { threat: 0.25, uncertainty: 0.15, norm: 0.95, attachment: 0.05, resource: 0.15, status: 0.2, curiosity: 0, base: 0 },
+  rest: { threat: 0, uncertainty: 0, norm: 0.05, attachment: 0.05, resource: 1.35, status: 0, curiosity: 0, base: 0.1 },
+  wealth: { threat: 0.05, uncertainty: 0.1, norm: 0.25, attachment: 0, resource: 0.85, status: 0.35, curiosity: 0.05, base: 0 },
+};
+
+function clampPos(x: number): number {
+  if (!Number.isFinite(x)) return 0;
+  return Math.max(0, x);
+}
 
 function get(atoms: ContextAtom[], id: string, def: number): number {
   const a = atoms.find(x => (x as any)?.id === id) as any;
@@ -396,6 +422,66 @@ export function deriveGoalAtoms(selfId: string, atoms: ContextAtom[], opts?: { t
     (e.parts as any).boost = boost;
     (e.parts as any).antiFatigue = antiFatigue;
     (e.parts as any).prevState = st;
+  }
+
+  // ------------------------------------------------------------
+  // Energy-based refinement: E_goal[channel] via AtomGraph spread
+  // ------------------------------------------------------------
+  // This makes goal scoring match the target architecture:
+  // score(goal) ≈ Σ_channel w_domain[channel] * E_goal[channel]
+  // We keep it as a *refinement* over the existing base score to stay stable.
+  {
+    const provisionalGoals = ecology.map((e) => mkGoalAtom(selfId, e.domain, e.v, e.used, e.parts, ['provisional']));
+    const atomsForGraph = [...atoms, ...provisionalGoals];
+    const g = buildAtomGraph(atomsForGraph, { includeIsolated: false });
+    const field = buildSignalField(selfId, atomsForGraph);
+
+    const energy = propagateAtomEnergy(g, atomsForGraph, field, {
+      steps: 6,
+      decay: 0.25,
+      topK: 10,
+      atomWeightFn: (ch, a) => {
+        // Apply agent-specific channel curve at the *source* level.
+        const curve = getAgentChannelCurve(selfId, ch, undefined);
+        const m = clamp01(Number((a as any)?.magnitude ?? 0));
+        const c = clamp01(Number((a as any)?.confidence ?? 1));
+        return curve01Param(m * c, curve);
+      },
+    });
+
+    const channels = Object.keys(field.channels || {}) as EnergyChannel[];
+
+    for (const e of ecology) {
+      const goalId = `goal:domain:${e.domain}:${selfId}`;
+      const w = DOMAIN_CHANNEL_WEIGHTS[e.domain];
+
+      let raw = 0;
+      const byChannel: Record<string, number> = {};
+      for (const ch of channels) {
+        const Eg = Number((energy.nodeEnergyByChannel as any)?.[ch]?.[goalId] ?? 0);
+        const ww = Number((w as any)?.[ch] ?? 0);
+        const contrib = clampPos(Eg) * (Number.isFinite(ww) ? ww : 0);
+        byChannel[ch] = Eg;
+        raw += contrib;
+      }
+
+      // Squash signed raw score to 0..1 (0.5 = neutral).
+      // raw > 0 => supports domain; raw < 0 => suppresses domain.
+      const energyScore = 0.5 + 0.5 * Math.tanh(raw);
+      const blended = clamp01(0.60 * e.v + 0.40 * energyScore);
+      e.v = blended;
+      (e.parts as any).energy = {
+        score: energyScore,
+        raw,
+        byChannel,
+        weights: w,
+      };
+      // Keep attribution only for debug; it is potentially heavy.
+      (e.parts as any).energyAttribution = {
+        threat: (energy.attributionByChannel as any)?.threat?.[goalId] ?? [],
+        uncertainty: (energy.attributionByChannel as any)?.uncertainty?.[goalId] ?? [],
+      };
+    }
   }
 
   const modeAtom = mkModeAtom(selfId, modeSel.mode, W, usedCommon, { feltField, logits: modeSel.logits });
