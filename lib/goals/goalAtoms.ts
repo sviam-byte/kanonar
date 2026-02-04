@@ -2,6 +2,9 @@ import type { ContextAtom } from '../context/v2/types';
 import { clamp01 } from '../util/math';
 import { normalizeAtom } from '../context/v2/infer';
 import { getCtx, sanitizeUsed } from '../context/layers';
+import { selectMode } from './modes';
+import { selectActiveGoalsWithHysteresis } from './selectActive';
+import { initGoalState, updateGoalState, type GoalState } from './goalState';
 
 type GoalDomain =
   | 'safety'
@@ -40,6 +43,29 @@ function amplifyByPrio(x: number, prio: number): number {
   return clamp01(0.5 + (x - 0.5) * k);
 }
 
+// ---------------------------------
+// Goal memory (GoalLab / UI recompute)
+// ---------------------------------
+// This is a lightweight in-memory state used to stabilize goals between recomputations.
+// For simulation (server/runtime), you will likely want to persist these in world/agent state.
+const __PREV_ACTIVE__: Map<string, Set<string>> = new Map();
+const __GOAL_STATE__: Map<string, Record<string, GoalState>> = new Map();
+const __GOAL_TICK__: Map<string, number> = new Map();
+
+function nextTick(selfId: string): number {
+  const t = (__GOAL_TICK__.get(selfId) ?? 0) + 1;
+  __GOAL_TICK__.set(selfId, t);
+  return t;
+}
+
+function readGoalStateMap(selfId: string): Record<string, GoalState> {
+  return __GOAL_STATE__.get(selfId) || {};
+}
+
+function writeGoalStateMap(selfId: string, next: Record<string, GoalState>) {
+  __GOAL_STATE__.set(selfId, next);
+}
+
 function mkGoalAtom(selfId: string, domain: GoalDomain, v: number, usedAtomIds: string[], parts: any, tags: string[] = []) {
   const id = `goal:domain:${domain}:${selfId}`;
   return normalizeAtom({
@@ -48,6 +74,7 @@ function mkGoalAtom(selfId: string, domain: GoalDomain, v: number, usedAtomIds: 
     kind: 'goal_domain',
     origin: 'derived',
     source: 'deriveGoalEcology',
+    code: `goal.domain.${domain}`,
     subject: selfId,
     magnitude: clamp01(v),
     confidence: 1,
@@ -69,6 +96,7 @@ function mkActiveGoal(selfId: string, domain: GoalDomain, v: number, usedAtomIds
     kind: 'goal_active',
     origin: 'derived',
     source: 'selectActiveGoals',
+    code: `goal.domain.${domain}`,
     subject: selfId,
     magnitude: clamp01(v),
     confidence: 1,
@@ -77,6 +105,52 @@ function mkActiveGoal(selfId: string, domain: GoalDomain, v: number, usedAtomIds
     trace: {
       usedAtomIds: sanitizeUsed(id, usedAtomIds),
       notes: ['top goals selection'],
+      parts
+    }
+  } as any);
+}
+
+function mkModeAtom(selfId: string, mode: string, weights: any, usedAtomIds: string[], parts: any) {
+  const id = `goal:mode:${selfId}`;
+  return normalizeAtom({
+    id,
+    ns: 'goal' as any,
+    kind: 'goal_mode',
+    origin: 'derived',
+    source: 'selectMode',
+    subject: selfId,
+    magnitude: clamp01(Number(weights?.[mode] ?? 1)),
+    confidence: 1,
+    code: 'goal.mode',
+    tags: ['goal', 'mode', String(mode)],
+    label: `mode.${mode}`,
+    meta: { mode, weights },
+    trace: {
+      usedAtomIds: sanitizeUsed(id, usedAtomIds),
+      notes: ['mixture-of-experts mode selection'],
+      parts
+    }
+  } as any);
+}
+
+function mkGoalStateAtom(selfId: string, domain: GoalDomain, st: GoalState, usedAtomIds: string[], parts: any) {
+  const id = `goal:state:${domain}:${selfId}`;
+  return normalizeAtom({
+    id,
+    ns: 'goal' as any,
+    kind: 'goal_state',
+    origin: 'derived',
+    source: 'updateGoalState',
+    subject: selfId,
+    magnitude: clamp01(parts?.activation ?? 0),
+    confidence: 1,
+    code: `goal.state.${domain}`,
+    tags: ['goal', 'state', domain],
+    label: `state.${domain}`,
+    meta: { state: st },
+    trace: {
+      usedAtomIds: sanitizeUsed(id, usedAtomIds),
+      notes: ['goal state (tension/lockIn/fatigue/progress)'],
       parts
     }
   } as any);
@@ -274,13 +348,86 @@ export function deriveGoalAtoms(selfId: string, atoms: ContextAtom[], opts?: { t
     });
   }
 
-  const goalAtoms = ecology.map(e => mkGoalAtom(selfId, e.domain, e.v, e.used, e.parts));
+  // FeltField (raw-ish) from current context; used for mode gating.
+  const feltField = {
+    threat: dangerW,
+    uncertainty: uncW,
+    norm: normW,
+    attachment: clamp01(1 - dangerW) * 0.7 + clamp01(1 - uncW) * 0.3,
+    resource: clamp01(fatigue),
+    status: clamp01(0.5 * publicW + 0.5 * normW),
+    curiosity: clamp01(0.6 * uncW + 0.4 * (1 - dangerW)),
+    base: 0.5,
+  } as any;
 
-  // Active goals: top-N by v
-  const sorted = [...ecology].sort((a, b) => b.v - a.v);
-  const active = sorted.slice(0, topN).map(e =>
-    mkActiveGoal(selfId, e.domain, e.v, [`goal:domain:${e.domain}:${selfId}`], { fromDomain: e.domain, score: e.v })
-  );
+  const modeSel = selectMode(feltField as any);
 
-  return { atoms: [...goalAtoms, ...active] };
+  // Mode gating: bias domains based on mode mixture (Mixture-of-Experts).
+  const W = modeSel.weights;
+  const domainBias = (d: GoalDomain) => {
+    switch (d) {
+      case 'safety': return 1.0 * W.threat_mode + 0.25 * W.resource_mode;
+      case 'control': return 0.35 * W.threat_mode + 0.25 * W.resource_mode + 0.15 * W.social_mode;
+      case 'affiliation': return 0.25 * W.social_mode + 0.85 * W.care_mode;
+      case 'status': return 0.95 * W.social_mode;
+      case 'exploration': return 1.0 * W.explore_mode;
+      case 'order': return 0.25 * W.social_mode + 0.25 * W.resource_mode + 0.20 * W.threat_mode;
+      case 'rest': return 0.85 * W.resource_mode;
+      case 'wealth': return 0.55 * W.resource_mode + 0.15 * W.social_mode;
+      default: return 0.2;
+    }
+  };
+
+  // Read previous state (GoalLab memory).
+  const tick = nextTick(selfId);
+  const prevActive = __PREV_ACTIVE__.get(selfId) || new Set<string>();
+  const prevStates = readGoalStateMap(selfId);
+
+  // Apply bias + mild anti-fatigue to each domain.
+  for (const e of ecology) {
+    const bias = clamp01(domainBias(e.domain));
+    const st = prevStates[e.domain] || initGoalState();
+    const boost = clamp01(0.7 + 0.6 * bias);
+    const antiFatigue = clamp01(1 - 0.35 * st.fatigue);
+    e.v = clamp01(e.v * boost * antiFatigue);
+    (e.parts as any).mode = modeSel.mode;
+    (e.parts as any).modeWeights = W;
+    (e.parts as any).bias = bias;
+    (e.parts as any).boost = boost;
+    (e.parts as any).antiFatigue = antiFatigue;
+    (e.parts as any).prevState = st;
+  }
+
+  const modeAtom = mkModeAtom(selfId, modeSel.mode, W, usedCommon, { feltField, logits: modeSel.logits });
+
+  const goalAtoms = ecology.map(e => mkGoalAtom(selfId, e.domain, e.v, [...e.used, modeAtom.id], e.parts));
+
+  // Active goals: hysteretic top-N (prevents flicker).
+  const candidates = ecology.map((e) => ({ id: e.domain, score: e.v, lockIn: clamp01(prevStates[e.domain]?.lockIn ?? 0) }));
+  const pick = selectActiveGoalsWithHysteresis(candidates, prevActive, { topN, margin: 0.07 });
+  const activeDomains = pick.active as GoalDomain[];
+
+  const active = activeDomains.map((d) => {
+    const e = ecology.find((x) => x.domain === d)!;
+    return mkActiveGoal(selfId, d, e.v, [`goal:domain:${d}:${selfId}`, modeAtom.id], { fromDomain: d, score: e.v, mode: modeSel.mode, pick: pick.debug });
+  });
+
+  // Update & emit goal-state atoms (tension/lockIn/fatigue/progress).
+  const nextStates: Record<string, GoalState> = { ...prevStates };
+  const stateAtoms: ContextAtom[] = [];
+  for (const e of ecology) {
+    const isActive = activeDomains.includes(e.domain);
+    const prev = prevStates[e.domain] || null;
+    const st = updateGoalState(prev, { active: isActive, activation: isActive ? e.v : 0, tick });
+    nextStates[e.domain] = st;
+    stateAtoms.push(
+      mkGoalStateAtom(selfId, e.domain, st, [`goal:domain:${e.domain}:${selfId}`, modeAtom.id], { activation: e.v, active: isActive, tick, mode: modeSel.mode })
+    );
+  }
+
+  // Commit memory for next recomputation.
+  __PREV_ACTIVE__.set(selfId, new Set(activeDomains));
+  writeGoalStateMap(selfId, nextStates);
+
+  return { atoms: [...goalAtoms, ...active, modeAtom, ...stateAtoms] };
 }
