@@ -43,6 +43,19 @@ export type SpreadEnergyInput =
       edges: Array<{ from: string; to: string; weight?: number; meta?: any }>;
       sources: Record<string, number>;
       nodeBase?: Record<string, number>;
+      /**
+       * How energy traverses edges.
+       * - forward: from -> to (default)
+       * - backward: to -> from (useful when graph is inputs->goal but start is goal)
+       * - undirected: both directions
+       */
+      direction?: 'forward' | 'backward' | 'undirected';
+
+      /**
+       * If true, edgeFlow accumulates signed flow (by sign of edge weight).
+       * Node energy remains non-negative (magnitude).
+       */
+      signedFlow?: boolean;
       steps?: number;
       decay?: number;
       temperature?: number;
@@ -53,6 +66,8 @@ export type SpreadEnergyInput =
       nodeIds: string[];
       edges: Array<{ source?: string; target?: string; from?: string; to?: string; weight?: number; meta?: any }>;
       startNodeIds?: string[];
+      direction?: 'forward' | 'backward' | 'undirected';
+      signedFlow?: boolean;
       steps?: number;
       decay?: number;
       temperature?: number;
@@ -125,11 +140,15 @@ export function spreadEnergy(params: SpreadEnergyInput): SpreadEnergyOutput {
   let decay = 0.75;
   let temperature = 1;
   let curve: CurvePreset = 'smoothstep';
+  let direction: 'forward' | 'backward' | 'undirected' = 'forward';
+  let signedFlow = true;
 
   // Optional per-node base importance (0..1) — legacy API.
   let nodeBase: Record<string, number> | undefined;
 
-  if (Array.isArray(p?.nodes) || Array.isArray(p?.edges) || p?.sources) {
+  // Important: legacy callers also provide `edges`, so `edges` must NOT be used as a discriminator.
+  // Canonical callers always have `sources` (and usually `nodes`).
+  if ((p?.sources && typeof p.sources === 'object') || Array.isArray(p?.nodes)) {
     // Canonical API
     nodes = Array.isArray(p?.nodes) ? p.nodes : [];
     edges = Array.isArray(p?.edges) ? p.edges : [];
@@ -138,6 +157,8 @@ export function spreadEnergy(params: SpreadEnergyInput): SpreadEnergyOutput {
     decay = p?.decay ?? decay;
     temperature = p?.temperature ?? temperature;
     curve = (p?.curve ?? curve) as CurvePreset;
+    direction = (p?.direction ?? direction) as any;
+    signedFlow = Boolean(p?.signedFlow ?? signedFlow);
     nodeBase = p?.nodeBase;
   } else if (Array.isArray(p?.nodeIds)) {
     // Legacy API (DecisionGraphView)
@@ -162,6 +183,8 @@ export function spreadEnergy(params: SpreadEnergyInput): SpreadEnergyOutput {
     decay = p?.decay ?? decay;
     temperature = p?.temperature ?? temperature;
     curve = (p?.curvePreset ?? curve) as CurvePreset;
+    direction = (p?.direction ?? direction) as any;
+    signedFlow = Boolean(p?.signedFlow ?? signedFlow);
     nodeBase = p?.nodeBase;
   } else {
     // Unknown input shape — be safe.
@@ -198,8 +221,21 @@ export function spreadEnergy(params: SpreadEnergyInput): SpreadEnergyOutput {
     if (!s || !t) continue;
     const w = Number((e as any)?.weight ?? 0);
     const key = `${s}→${t}`;
-    if (!outEdges.has(s)) outEdges.set(s, []);
-    outEdges.get(s)!.push({ target: t, w, key });
+
+    // Build adjacency depending on direction, but keep edgeFlow key in original orientation.
+    if (direction === 'forward') {
+      if (!outEdges.has(s)) outEdges.set(s, []);
+      outEdges.get(s)!.push({ target: t, w, key });
+    } else if (direction === 'backward') {
+      if (!outEdges.has(t)) outEdges.set(t, []);
+      outEdges.get(t)!.push({ target: s, w, key });
+    } else {
+      // undirected
+      if (!outEdges.has(s)) outEdges.set(s, []);
+      outEdges.get(s)!.push({ target: t, w, key });
+      if (!outEdges.has(t)) outEdges.set(t, []);
+      outEdges.get(t)!.push({ target: s, w, key });
+    }
   }
 
   const nodeEnergy: Record<string, number> = Object.fromEntries(nodeIds.map(id => [id, 0]));
@@ -235,9 +271,12 @@ export function spreadEnergy(params: SpreadEnergyInput): SpreadEnergyOutput {
       for (const o of scores) {
         const p = Math.exp(o.a / T) / denom;
         const flow = injected * p;
+        const sign = signedFlow ? Math.sign(o.w || 0) || 1 : 1;
+        const signed = flow * sign;
 
-        next[o.target] += flow;
-        edgeFlow[o.key] = (edgeFlow[o.key] ?? 0) + flow;
+        // Node energy stays as magnitude.
+        next[o.target] += Math.abs(signed);
+        edgeFlow[o.key] = (edgeFlow[o.key] ?? 0) + signed;
       }
     }
 

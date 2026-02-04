@@ -71,6 +71,8 @@ import { applySceneAtoms } from '../scene/applyScene';
 import { buildAtomGraph, summarizeAtomGraph } from '../graph/atomGraph';
 import { curve01Param } from '../utils/curves';
 import { getAgentChannelCurve, getAgentChannelInertia, type EnergyChannel } from '../agents/energyProfiles';
+import { buildSignalField } from './signalField';
+import { propagateAtomEnergy } from '../graph/atomEnergy';
 
 export interface GoalLabContextResult {
   agent: AgentState;
@@ -1733,7 +1735,16 @@ export function buildGoalLabContext(
   // Goal preview: single source of truth = goal atoms in the final atom stream.
   const goalPreview = (() => {
     const atoms = (atomsWithSummaryMetrics as any) || [];
-    const atomGraphSummary = summarizeAtomGraph(buildAtomGraph(atoms, { includeIsolated: false }));
+    const atomGraph = buildAtomGraph(atoms, { includeIsolated: false });
+    const atomGraphSummary = summarizeAtomGraph(atomGraph);
+
+    // SignalField + multi-channel energy propagation (experimental; used for debugging/attribution)
+    const signalField = buildSignalField(selfId, atoms);
+    const energyRes = propagateAtomEnergy(atomGraph, atoms, signalField, {
+      steps: 7,
+      decay: 0.25,
+      topK: 8,
+    });
     const plans = atoms.filter((a: any) => String(a?.id || '').startsWith('goal:plan:'));
     const actives = atoms.filter((a: any) => String(a?.id || '').startsWith('goal:active:'));
 
@@ -1764,11 +1775,51 @@ export function buildGoalLabContext(
       .sort((a: any, b: any) => b.priority - a.priority)
       .slice(0, 12);
 
+    // Attach energy readouts for goal-ish atoms (top by base energy across channels)
+    const goalNodeIds = atoms
+      .map((a: any) => String(a?.id ?? ''))
+      .filter((id: string) => id.startsWith('goal:'));
+
+    const energyFor = (id: string) => {
+      const out: Record<string, number> = {};
+      for (const ch of Object.keys(energyRes.nodeEnergyByChannel || {})) {
+        out[ch] = Number((energyRes.nodeEnergyByChannel as any)?.[ch]?.[id] ?? 0);
+      }
+      return out;
+    };
+
+    const topGoalEnergy = goalNodeIds
+      .map((id: string) => {
+        const e = energyFor(id);
+        const total = Object.values(e).reduce((s, v) => s + (Number(v) || 0), 0);
+        return { id, total, byChannel: e };
+      })
+      .sort((a: any, b: any) => b.total - a.total)
+      .slice(0, 24);
+
     return {
       goals: rows,
       debug: {
         source: 'atoms' as const,
         atomGraph: atomGraphSummary,
+        signalField: {
+          channels: Object.fromEntries(
+            Object.entries(signalField.channels || {}).map(([ch, v]: any) => [
+              ch,
+              {
+                raw_value: v?.raw_value ?? 0,
+                sources: (v?.sources || []).map((a: any) => ({ id: a.id, magnitude: a.magnitude, confidence: a.confidence })),
+              },
+            ])
+          ),
+        },
+        energy: {
+          steps: 7,
+          decay: 0.25,
+          topGoalEnergy,
+          // For UI drilldown: attributionByChannel[channel][nodeId] -> top contributors
+          attributionByChannel: energyRes.attributionByChannel,
+        },
       },
     };
   })();
