@@ -1,7 +1,10 @@
 import React, { Suspense, useMemo, useRef, useState } from 'react';
 
 // Keep 3D deps out of the initial bundle.
-const ForceGraph3D = React.lazy(() => import('react-force-graph-3d'));
+const ForceGraph3D = React.lazy(async () => {
+  const mod = await import('react-force-graph');
+  return { default: (mod as any).ForceGraph3D };
+});
 
 type RFNode = {
   id: string;
