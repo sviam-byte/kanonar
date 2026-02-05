@@ -183,12 +183,30 @@ export const DecisionGraph3DView: React.FC<Props> = ({ nodes, edges, initialFocu
   const [showFlow, setShowFlow] = useState(true);
   const [capLinks, setCapLinks] = useState(600);
 
+  /**
+   * Preset to highlight the spread flow quickly.
+   * Keeps only flows, relaxes filters, and focuses the subgraph view.
+   */
+  const applyFlowPreset = () => {
+    setShowContrib(false);
+    setShowFlow(true);
+    setMinAbsWeight(0);
+    setMinAbsFlow(0.08);
+    setCapLinks(600);
+    setViewMode('focus');
+    setHops(2);
+  };
+
   const base = useMemo(() => build3DGraph(nodes, edges), [nodes, edges]);
   const selected = selectedId ? base.nodes.find((n) => n.id === selectedId) : null;
 
   useEffect(() => {
     const el = wrapRef.current;
     if (!el) return;
+    if (typeof ResizeObserver === 'undefined') {
+      // Fallback: keep the default size when ResizeObserver is not available.
+      return;
+    }
     const ro = new ResizeObserver(() => {
       const r = el.getBoundingClientRect();
       const w = Math.max(320, Math.floor(r.width));
@@ -236,16 +254,7 @@ export const DecisionGraph3DView: React.FC<Props> = ({ nodes, edges, initialFocu
     return { nodes: nodesOut, links: linksOut };
   }, [base, viewMode, selectedId, hops, minAbsWeight, minAbsFlow, showContrib, showFlow, capLinks]);
 
-  // On size/data change: refit camera to keep the view stable.
-  useEffect(() => {
-    const api = fgRef.current;
-    if (!api) return;
-    try {
-      api.zoomToFit?.(250, 60);
-    } catch {
-      // ignore
-    }
-  }, [size.w, size.h, filtered.nodes.length, filtered.links.length]);
+  // zoomToFit is triggered only manually or when the engine settles.
 
   // Visual encoding:
   // - node size: importance + |energy|
@@ -395,17 +404,9 @@ export const DecisionGraph3DView: React.FC<Props> = ({ nodes, edges, initialFocu
 
           <button
             className="ml-auto px-2 py-0.5 rounded border border-slate-700/60 hover:bg-white/10"
-            onClick={() => {
-              const api = fgRef.current;
-              if (!api) return;
-              try {
-                api.zoomToFit?.(350, 50);
-              } catch {
-                // ignore
-              }
-            }}
+            onClick={applyFlowPreset}
           >
-            fit
+            flow preset
           </button>
         </div>
       </div>
