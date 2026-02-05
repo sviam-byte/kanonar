@@ -66,8 +66,11 @@ export function decideAction(args: {
   temperature?: number;
 }): DecisionResult {
   const poss = arr<Possibility>(args.possibilities);
+  // Isolate goal atoms: scorePossibility receives goal atoms separately.
+  const goalAtoms = args.atoms.filter((a) => a.id.startsWith('goal:'));
+  const atoms = args.atoms.filter((a) => !a.id.startsWith('goal:'));
   const ranked = poss
-    .map(p => scorePossibility({ selfId: args.selfId, atoms: args.atoms, p }))
+    .map(p => scorePossibility({ selfId: args.selfId, atoms, goalAtoms, p }))
     .sort(tieBreak);
 
   const topK = args.topK ?? 10;

@@ -141,11 +141,11 @@ function actionDomainHintWeight(p: Possibility, domain: string): number {
   return hint === domain ? 1 : 0;
 }
 
-function getActiveGoalDomains(atoms: ContextAtom[], selfId: string) {
+function getActiveGoalDomains(goalAtoms: ContextAtom[], selfId: string) {
   // deriveGoalAtoms emits goal:active:<domain>:<selfId> with magnitude = activation.
   const prefix = 'goal:active:';
   const res: Array<{ id: string; domain: string; mag: number }> = [];
-  for (const a of atoms) {
+  for (const a of goalAtoms) {
     const id = String((a as any)?.id || '');
     if (!id.startsWith(prefix)) continue;
     const parts = id.split(':');
@@ -153,19 +153,19 @@ function getActiveGoalDomains(atoms: ContextAtom[], selfId: string) {
     const domain = parts[2] || '';
     const sid = parts[3] || '';
     if (!domain || sid !== selfId) continue;
-    res.push({ id, domain, mag: clamp01(get(atoms, id, 0)) });
+    res.push({ id, domain, mag: clamp01(get(goalAtoms, id, 0)) });
   }
   return res;
 }
 
-function getPlanGoalSupport(atoms: ContextAtom[], selfId: string, actionKey: string) {
+function getPlanGoalSupport(goalAtoms: ContextAtom[], selfId: string, actionKey: string) {
   // Plan goals:
   // - goal:activeGoal:<selfId>:<goalId> magnitude = activation
   // - goal:hint:allow:<goalId>:<actionKey> magnitude = 1
   const activePrefix = `goal:activeGoal:${selfId}:`;
   const allowPrefix = 'goal:hint:allow:';
   const allowIds = new Set<string>();
-  for (const a of atoms) {
+  for (const a of goalAtoms) {
     const id = String((a as any)?.id || '');
     if (!id.startsWith(allowPrefix)) continue;
     // goal:hint:allow:<goalId>:<actionKey>
@@ -177,12 +177,12 @@ function getPlanGoalSupport(atoms: ContextAtom[], selfId: string, actionKey: str
   let support = 0;
   const used: string[] = [];
   const partsOut: any[] = [];
-  for (const a of atoms) {
+  for (const a of goalAtoms) {
     const id = String((a as any)?.id || '');
     if (!id.startsWith(activePrefix)) continue;
     const goalId = id.slice(activePrefix.length);
     if (!allowIds.has(goalId)) continue;
-    const m = clamp01(get(atoms, id, 0));
+    const m = clamp01(get(goalAtoms, id, 0));
     support += m;
     used.push(id);
     used.push(`goal:hint:allow:${goalId}:${actionKey}`);
@@ -206,9 +206,10 @@ export type ScoredAction = {
 export function scorePossibility(args: {
   selfId: string;
   atoms: ContextAtom[];
+  goalAtoms: ContextAtom[];
   p: Possibility;
 }): ScoredAction {
-  const { selfId, atoms, p } = args;
+  const { selfId, atoms, goalAtoms, p } = args;
   const actionKey = getActionKey(p);
   const targetId = (p as any)?.targetId ?? null;
 
@@ -370,7 +371,7 @@ export function scorePossibility(args: {
   let goalDomainBoost = 0;
   const goalDomainParts: any[] = [];
   const goalDomainUsed: string[] = [];
-  const activeDomains = getActiveGoalDomains(atoms, selfId);
+  const activeDomains = getActiveGoalDomains(goalAtoms, selfId);
   for (const g of activeDomains) {
     const hint = actionDomainHintWeight(p, g.domain);
     if (!Number.isFinite(hint) || hint === 0) continue;
@@ -380,7 +381,7 @@ export function scorePossibility(args: {
     goalDomainParts.push({ domain: g.domain, active: g.mag, hint, contrib });
   }
   // 2) Plan-goal support: active plan goals that explicitly allow this action.
-  const plan = getPlanGoalSupport(atoms, selfId, actionKey);
+  const plan = getPlanGoalSupport(goalAtoms, selfId, actionKey);
   const planBoost = 0.65 * plan.support; // bounded; weight chosen to matter but not dominate.
 
   const goalUtilityRaw = goalDomainBoost + planBoost;
@@ -552,7 +553,10 @@ export function toActionOffer(args: {
   p: Possibility;
 }): ActionOffer {
   const { selfId, atoms, p } = args;
-  const scored = scorePossibility({ selfId, atoms, p });
+  // Isolate goal atoms so trace payloads stay focused on non-goal context.
+  const goalAtoms = atoms.filter((a) => a.id.startsWith('goal:'));
+  const baseAtoms = atoms.filter((a) => !a.id.startsWith('goal:'));
+  const scored = scorePossibility({ selfId, atoms: baseAtoms, goalAtoms, p });
   const targetId = (p as any)?.targetId ?? null;
   return {
     id: p.id,
