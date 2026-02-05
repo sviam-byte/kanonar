@@ -11,6 +11,7 @@ import { curve01, type CurvePreset } from '../../lib/utils/curves';
 
 import { EnergyEdge } from './EnergyEdge';
 import { GoalNode, LensNode, SourceNode } from './DecisionGraphNodes';
+import { DecisionGraph3DView } from './DecisionGraph3DView';
 
 export type DecisionGraphRenderMode = 'graph' | 'meta' | '3d';
 
@@ -212,13 +213,11 @@ export const DecisionGraphView: React.FC<Props> = ({
   const safeScores = arr(goalScores);
 
   const graph = useMemo(() => {
-    if (mode === '3d') return { nodes: [], edges: [] };
-
     if (mode === 'meta') {
       return buildMetaGraph(safeScores, maxGoals);
     }
 
-    // "graph" = strict clean-flow triplet (Sources → Lenses → Goals)
+    // "graph" / "3d" = strict clean-flow triplet (Sources → Lenses → Goals)
     // Uses fixed x-columns and edge filtering to avoid spaghetti.
     return buildDecisionTripletGraph({
       goalScores: safeScores,
@@ -231,7 +230,7 @@ export const DecisionGraphView: React.FC<Props> = ({
 
   // Keep a sensible default for the spread start node.
   React.useEffect(() => {
-    if (mode !== 'graph') return;
+    if (mode !== 'graph' && mode !== '3d') return;
     if (selectedGoalId && !spreadStart) {
       setSpreadStart(`goal:${selectedGoalId}`);
     }
@@ -241,7 +240,7 @@ export const DecisionGraphView: React.FC<Props> = ({
   }, [mode, selectedGoalId, spreadStart, graph.nodes]);
 
   const enrichedGraph = useMemo(() => {
-    if (mode !== 'graph' || !spreadOn) return graph;
+    if ((mode !== 'graph' && mode !== '3d') || !spreadOn) return graph;
 
     const nodeIds = graph.nodes.map(n => String(n.id));
     const nodeBase: Record<string, number> = {};
@@ -333,13 +332,17 @@ export const DecisionGraphView: React.FC<Props> = ({
   );
 
   if (mode === '3d') {
+    // 3D uses the same enriched graph (spread annotations live in node.data/edge.data).
+    // Clicking a node in 3D updates spreadStart to keep the mental model consistent.
     return (
-      <div className="h-full min-h-0 flex flex-col items-center justify-center text-slate-300">
-        <div className="text-sm font-semibold mb-2">3D graph mode (scaffold)</div>
-        <div className="text-xs opacity-70 max-w-[520px] text-center">
-          Здесь будет 3D визуал (force-graph/three.js). Сейчас режим добавлен как точка расширения.
-        </div>
-      </div>
+      <DecisionGraph3DView
+        nodes={enrichedGraph.nodes as any}
+        edges={enrichedGraph.edges as any}
+        onPickNode={(id) => {
+          if (!spreadOn) return;
+          setSpreadStart(String(id));
+        }}
+      />
     );
   }
 
