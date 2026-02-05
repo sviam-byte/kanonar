@@ -196,11 +196,14 @@ export const DecisionGraphView: React.FC<Props> = ({
   frame: _frame,
   goalScores,
   selectedGoalId,
-  mode = 'graph',
+  mode: externalMode = 'graph',
   compact = false,
   temperature = 1,
   curvePreset = 'smoothstep',
 }) => {
+  const [mode, setMode] = useState<DecisionGraphRenderMode>(externalMode);
+  React.useEffect(() => setMode(externalMode), [externalMode]);
+
   const [maxGoals, setMaxGoals] = useState(14);
   const [maxInputs, setMaxInputs] = useState(10);
   const [edgeThreshold, setEdgeThreshold] = useState(0.1);
@@ -331,21 +334,6 @@ export const DecisionGraphView: React.FC<Props> = ({
     []
   );
 
-  if (mode === '3d') {
-    // 3D uses the same enriched graph (spread annotations live in node.data/edge.data).
-    // Clicking a node in 3D updates spreadStart to keep the mental model consistent.
-    return (
-      <DecisionGraph3DView
-        nodes={enrichedGraph.nodes as any}
-        edges={enrichedGraph.edges as any}
-        onPickNode={(id) => {
-          if (!spreadOn) return;
-          setSpreadStart(String(id));
-        }}
-      />
-    );
-  }
-
   return (
     <div className="h-full min-h-0 flex flex-col">
       <div
@@ -354,10 +342,27 @@ export const DecisionGraphView: React.FC<Props> = ({
         }`}
       >
         <div className="text-[10px] text-slate-300/80">
-          {mode === 'meta' ? 'Meta graph: Context/Lens buckets → Goals' : 'Decision graph: Sources → Lenses → Goals'}
+          {mode === 'meta'
+            ? 'Meta graph: Context/Lens buckets → Goals'
+            : mode === '3d'
+              ? '3D graph: layered (atom/lens/goal/action), contrib + flow'
+              : 'Decision graph: Sources → Lenses → Goals'}
         </div>
 
         <div className="flex items-center gap-2">
+          <label className="flex items-center gap-2 text-[10px] text-slate-300/80">
+            <span className="opacity-70">Mode</span>
+            <select
+              value={mode}
+              onChange={(e) => setMode(e.target.value as any)}
+              className="bg-black/25 border border-slate-700/60 rounded px-2 py-0.5 text-[10px]"
+            >
+              <option value="graph">2D</option>
+              <option value="3d">3D</option>
+              <option value="meta">meta</option>
+            </select>
+          </label>
+
           <label className="flex items-center gap-2 text-[10px] text-slate-300/80">
             <span className="opacity-70">Goals</span>
             <input
@@ -370,7 +375,7 @@ export const DecisionGraphView: React.FC<Props> = ({
             />
           </label>
 
-          {mode === 'graph' ? (
+          {mode === 'graph' || mode === '3d' ? (
             <label className="flex items-center gap-2 text-[10px] text-slate-300/80">
               <span className="opacity-70">Inputs</span>
               <input
@@ -384,7 +389,7 @@ export const DecisionGraphView: React.FC<Props> = ({
             </label>
           ) : null}
 
-          {mode === 'graph' ? (
+          {mode === 'graph' || mode === '3d' ? (
             <label className="flex items-center gap-2 text-[10px] text-slate-300/80">
               <span className="opacity-70">Threshold</span>
               <input
@@ -399,7 +404,7 @@ export const DecisionGraphView: React.FC<Props> = ({
             </label>
           ) : null}
 
-          {mode === 'graph' ? (
+          {mode === 'graph' || mode === '3d' ? (
             <>
               <label className="flex items-center gap-2 text-[10px] text-slate-300/80">
                 <span className="opacity-70">Spread</span>
@@ -463,25 +468,37 @@ export const DecisionGraphView: React.FC<Props> = ({
       </div>
 
       <div className="flex-1 min-h-0">
-        <ReactFlow
-          nodes={enrichedGraph.nodes}
-          edges={enrichedGraph.edges}
-          nodeTypes={nodeTypes}
-          edgeTypes={edgeTypes}
-          fitView
-          nodesDraggable={false}
-          nodesConnectable={false}
-          elementsSelectable={true}
-          panOnDrag
-          className="bg-black"
-          onNodeClick={(_, n) => {
-            if (!spreadOn) return;
-            setSpreadStart(String(n.id));
-          }}
-        >
-          <Background />
-          <Controls />
-        </ReactFlow>
+        {mode === '3d' ? (
+          <DecisionGraph3DView
+            nodes={enrichedGraph.nodes as any}
+            edges={enrichedGraph.edges as any}
+            initialFocusId={spreadStart}
+            onPickNode={(id) => {
+              if (!spreadOn) return;
+              setSpreadStart(String(id));
+            }}
+          />
+        ) : (
+          <ReactFlow
+            nodes={enrichedGraph.nodes}
+            edges={enrichedGraph.edges}
+            nodeTypes={nodeTypes}
+            edgeTypes={edgeTypes}
+            fitView
+            nodesDraggable={false}
+            nodesConnectable={false}
+            elementsSelectable={true}
+            panOnDrag
+            className="bg-black"
+            onNodeClick={(_, n) => {
+              if (!spreadOn) return;
+              setSpreadStart(String(n.id));
+            }}
+          >
+            <Background />
+            <Controls />
+          </ReactFlow>
+        )}
       </div>
     </div>
   );

@@ -1,6 +1,6 @@
 import React, { Suspense, useMemo, useRef, useState } from 'react';
 
-// NOTE: Isolated component so non-3D modes keep dependency surface small.
+// Keep 3D deps out of the initial bundle.
 const ForceGraph3D = React.lazy(() => import('react-force-graph-3d'));
 
 type RFNode = {
@@ -62,18 +62,18 @@ function inferKindFromReactFlowType(t?: string): Decision3DNodeKind {
 }
 
 function zForKind(kind: Decision3DNodeKind): number {
-  // Layering axis.
+  // Layering axis: atom → lens → goal → action.
   switch (kind) {
     case 'atom':
       return 0;
     case 'lens':
-      return 120;
+      return 140;
     case 'goal':
-      return 240;
+      return 280;
     case 'action':
-      return 360;
+      return 420;
     default:
-      return 180;
+      return 210;
   }
 }
 
@@ -106,11 +106,10 @@ function build3DGraph(nodes: RFNode[], edges: RFEdge[]): GraphData {
   const outLinks: Decision3DLink[] = edges.map((e) => {
     const weight = Number(e.data?.rawWeight ?? e.data?.weight ?? 0);
 
-    // In DecisionGraphView we store spread flow in edge.data.label as signed decimal string.
-    // Example: "+0.12" or "-0.07".
+    // DecisionGraphView stores signed flow in edge.data.label (string), e.g. "+0.12".
     const label = String(e.data?.label ?? '0');
     const parsed = Number.parseFloat(label);
-    const f = Number.isFinite(parsed) ? parsed : 0;
+    const flow = Number.isFinite(parsed) ? parsed : 0;
 
     return {
       id: String(e.id),
@@ -118,27 +117,101 @@ function build3DGraph(nodes: RFNode[], edges: RFEdge[]): GraphData {
       target: String(e.target),
       kind: 'contrib',
       weight: Number.isFinite(weight) ? weight : 0,
-      flow: f,
+      flow,
     };
   });
 
   return { nodes: outNodes, links: outLinks };
 }
 
+function bfsSubgraph(nodeIds: Set<string>, links: Decision3DLink[], startId: string, hops: number): Set<string> {
+  if (!nodeIds.has(startId)) return new Set();
+  const visited = new Set<string>();
+  const q: Array<{ id: string; d: number }> = [{ id: startId, d: 0 }];
+  visited.add(startId);
+
+  const adj = new Map<string, string[]>();
+  for (const l of links) {
+    if (!adj.has(l.source)) adj.set(l.source, []);
+    if (!adj.has(l.target)) adj.set(l.target, []);
+    adj.get(l.source)!.push(l.target);
+    adj.get(l.target)!.push(l.source);
+  }
+
+  while (q.length) {
+    const cur = q.shift()!;
+    if (cur.d >= hops) continue;
+    for (const nxt of adj.get(cur.id) || []) {
+      if (!nodeIds.has(nxt)) continue;
+      if (visited.has(nxt)) continue;
+      visited.add(nxt);
+      q.push({ id: nxt, d: cur.d + 1 });
+    }
+  }
+  return visited;
+}
+
+type ViewMode = 'overview' | 'focus';
+
 type Props = {
   nodes: RFNode[];
   edges: RFEdge[];
+  initialFocusId?: string | null;
   onPickNode?: (id: string) => void;
 };
 
-export const DecisionGraph3DView: React.FC<Props> = ({ nodes, edges, onPickNode }) => {
+export const DecisionGraph3DView: React.FC<Props> = ({ nodes, edges, initialFocusId, onPickNode }) => {
   const fgRef = useRef<any>(null);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  const data = useMemo(() => build3DGraph(nodes, edges), [nodes, edges]);
-  const selected = selectedId ? data.nodes.find((n) => n.id === selectedId) : null;
+  const [selectedId, setSelectedId] = useState<string | null>(initialFocusId ?? null);
+  const [viewMode, setViewMode] = useState<ViewMode>('focus');
+  const [hops, setHops] = useState(2);
 
-  // Encoding:
+  const [minAbsWeight, setMinAbsWeight] = useState(0.1);
+  const [minAbsFlow, setMinAbsFlow] = useState(0.05);
+  const [showContrib, setShowContrib] = useState(true);
+  const [showFlow, setShowFlow] = useState(true);
+  const [capLinks, setCapLinks] = useState(800);
+
+  const base = useMemo(() => build3DGraph(nodes, edges), [nodes, edges]);
+  const selected = selectedId ? base.nodes.find((n) => n.id === selectedId) : null;
+
+  const filtered = useMemo(() => {
+    const nodeIdSet = new Set(base.nodes.map((n) => n.id));
+
+    const linkPass = (l: Decision3DLink) => {
+      const wOk = Math.abs(l.weight) >= minAbsWeight;
+      const fOk = Math.abs(l.flow) >= minAbsFlow;
+      return (showContrib && wOk) || (showFlow && fOk);
+    };
+
+    let links = base.links.filter(linkPass);
+
+    // Link cap: keep the strongest edges to avoid 3D spaghetti.
+    if (Number.isFinite(capLinks) && capLinks > 0 && links.length > capLinks) {
+      links = [...links]
+        .sort((a, b) => {
+          const sa = Math.max(Math.abs(a.weight), Math.abs(a.flow));
+          const sb = Math.max(Math.abs(b.weight), Math.abs(b.flow));
+          return sb - sa;
+        })
+        .slice(0, capLinks);
+    }
+
+    let keepIds: Set<string>;
+    if (viewMode === 'focus' && selectedId && nodeIdSet.has(selectedId)) {
+      keepIds = bfsSubgraph(nodeIdSet, links, selectedId, Math.max(1, Math.min(4, hops)));
+    } else {
+      keepIds = nodeIdSet;
+    }
+
+    const nodesOut = base.nodes.filter((n) => keepIds.has(n.id));
+    const linksOut = links.filter((l) => keepIds.has(l.source) && keepIds.has(l.target));
+
+    return { nodes: nodesOut, links: linksOut };
+  }, [base, viewMode, selectedId, hops, minAbsWeight, minAbsFlow, showContrib, showFlow, capLinks]);
+
+  // Visual encoding:
   // - node size: importance + |energy|
   // - link width: |weight|
   // - particles: |flow|
@@ -151,7 +224,8 @@ export const DecisionGraph3DView: React.FC<Props> = ({ nodes, edges, onPickNode 
     l.weight >= 0 ? 'rgba(34,197,94,0.70)' : 'rgba(239,68,68,0.70)';
   const particleCount = (l: Decision3DLink) => {
     const f = Math.abs(Number(l.flow) || 0);
-    if (f <= 0.05) return 0;
+    if (!showFlow) return 0;
+    if (f < minAbsFlow) return 0;
     return Math.min(10, Math.ceil(f * 10));
   };
 
@@ -164,31 +238,149 @@ export const DecisionGraph3DView: React.FC<Props> = ({ nodes, edges, onPickNode 
   const nodeColor = (n: Decision3DNode) => {
     switch (n.kind) {
       case 'atom':
-        return 'rgba(56,189,248,0.90)';
+        return 'rgba(56,189,248,0.92)';
       case 'lens':
-        return 'rgba(217,70,239,0.90)';
+        return 'rgba(217,70,239,0.92)';
       case 'goal':
-        return 'rgba(226,232,240,0.92)';
+        return 'rgba(226,232,240,0.94)';
       case 'action':
-        return 'rgba(245,158,11,0.92)';
+        return 'rgba(245,158,11,0.94)';
       default:
-        return 'rgba(148,163,184,0.75)';
+        return 'rgba(148,163,184,0.78)';
     }
   };
 
   return (
     <div className="h-full min-h-0 relative bg-black">
-      <div className="absolute z-10 left-2 top-2 rounded-lg border border-slate-800/70 bg-slate-950/60 px-3 py-2 text-[11px] text-slate-200 max-w-[420px]">
+      {/* Legend */}
+      <div className="absolute z-10 left-2 top-2 rounded-lg border border-slate-800/70 bg-slate-950/60 px-3 py-2 text-[11px] text-slate-200 max-w-[460px]">
         <div className="font-semibold">3D Decision Graph</div>
         <div className="opacity-80">
-          Узлы по слоям (Z): atom/lens/goal/action. Рёбра: толщина=|weight|, частицы=|flow|.
+          Z-слои: atom → lens → goal → action. Толщина ребра = |weight| (вклад). Частицы = |flow|
+          (spread).
+        </div>
+        <div className="mt-2 flex flex-wrap gap-2 text-[10px]">
+          <span className="px-2 py-0.5 rounded border border-slate-700/60">atom</span>
+          <span className="px-2 py-0.5 rounded border border-slate-700/60">lens</span>
+          <span className="px-2 py-0.5 rounded border border-slate-700/60">goal</span>
+          <span className="px-2 py-0.5 rounded border border-slate-700/60">action</span>
+          <span className="px-2 py-0.5 rounded border border-slate-700/60">зел/красн = знак weight</span>
         </div>
       </div>
 
+      {/* Controls */}
+      <div className="absolute z-10 left-2 bottom-2 rounded-lg border border-slate-800/70 bg-slate-950/60 px-3 py-2 text-[11px] text-slate-200 max-w-[520px]">
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="flex items-center gap-2">
+            <span className="opacity-80">mode</span>
+            <select
+              value={viewMode}
+              onChange={(e) => setViewMode(e.target.value as ViewMode)}
+              className="bg-black/25 border border-slate-700/60 rounded px-2 py-0.5 text-[11px]"
+            >
+              <option value="focus">focus</option>
+              <option value="overview">overview</option>
+            </select>
+          </label>
+
+          <label className="flex items-center gap-2">
+            <span className="opacity-80">hops</span>
+            <input
+              type="number"
+              min={1}
+              max={4}
+              value={hops}
+              onChange={(e) => setHops(Math.max(1, Math.min(4, Number(e.target.value) || 2)))}
+              className="w-12 bg-black/25 border border-slate-700/60 rounded px-2 py-0.5 text-[11px] font-mono"
+              disabled={viewMode !== 'focus'}
+            />
+          </label>
+
+          <label className="flex items-center gap-2">
+            <span className="opacity-80">|w|≥</span>
+            <input
+              type="number"
+              min={0}
+              max={5}
+              step={0.05}
+              value={minAbsWeight}
+              onChange={(e) => setMinAbsWeight(Math.max(0, Number(e.target.value) || 0))}
+              className="w-16 bg-black/25 border border-slate-700/60 rounded px-2 py-0.5 text-[11px] font-mono"
+            />
+          </label>
+
+          <label className="flex items-center gap-2">
+            <span className="opacity-80">|f|≥</span>
+            <input
+              type="number"
+              min={0}
+              max={1}
+              step={0.01}
+              value={minAbsFlow}
+              onChange={(e) => setMinAbsFlow(Math.max(0, Number(e.target.value) || 0))}
+              className="w-16 bg-black/25 border border-slate-700/60 rounded px-2 py-0.5 text-[11px] font-mono"
+            />
+          </label>
+
+          <label className="flex items-center gap-2">
+            <span className="opacity-80">cap</span>
+            <input
+              type="number"
+              min={50}
+              max={5000}
+              step={50}
+              value={capLinks}
+              onChange={(e) =>
+                setCapLinks(Math.max(50, Math.min(5000, Number(e.target.value) || 800)))
+              }
+              className="w-16 bg-black/25 border border-slate-700/60 rounded px-2 py-0.5 text-[11px] font-mono"
+            />
+          </label>
+
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={showContrib}
+              onChange={(e) => setShowContrib(e.target.checked)}
+              className="accent-cyan-400"
+            />
+            <span className="opacity-80">contrib</span>
+          </label>
+
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={showFlow}
+              onChange={(e) => setShowFlow(e.target.checked)}
+              className="accent-cyan-400"
+            />
+            <span className="opacity-80">flow</span>
+          </label>
+
+          <button
+            className="ml-auto px-2 py-0.5 rounded border border-slate-700/60 hover:bg-white/10"
+            onClick={() => {
+              const api = fgRef.current;
+              if (!api) return;
+              try {
+                api.zoomToFit?.(350, 50);
+              } catch {
+                // ignore
+              }
+            }}
+          >
+            fit
+          </button>
+        </div>
+      </div>
+
+      {/* Inspector */}
       {selected ? (
         <div className="absolute z-10 right-2 top-2 rounded-lg border border-slate-800/70 bg-slate-950/60 px-3 py-2 text-[11px] text-slate-200 max-w-[420px]">
           <div className="font-semibold truncate">{selected.label}</div>
           <div className="mt-1 grid grid-cols-2 gap-x-3 gap-y-1 opacity-90">
+            <div>id</div>
+            <div className="text-right font-mono truncate">{selected.id}</div>
             <div>kind</div>
             <div className="text-right font-mono">{selected.kind}</div>
             <div>value</div>
@@ -210,7 +402,7 @@ export const DecisionGraph3DView: React.FC<Props> = ({ nodes, edges, onPickNode 
       >
         <ForceGraph3D
           ref={fgRef}
-          graphData={data as any}
+          graphData={filtered as any}
           backgroundColor="rgba(0,0,0,1)"
           showNavInfo={false}
           nodeLabel={(n: any) => `${n.label} (${n.kind})`}
@@ -230,11 +422,10 @@ export const DecisionGraph3DView: React.FC<Props> = ({ nodes, edges, onPickNode 
             onPickNode?.(id);
           }}
           onEngineStop={() => {
-            // Center camera once the layout settles.
             const api = fgRef.current;
             if (!api) return;
             try {
-              api.zoomToFit?.(400, 40);
+              api.zoomToFit?.(400, 60);
             } catch {
               // ignore
             }
@@ -244,4 +435,3 @@ export const DecisionGraph3DView: React.FC<Props> = ({ nodes, edges, onPickNode 
     </div>
   );
 };
-
