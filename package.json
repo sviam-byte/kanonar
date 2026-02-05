@@ -18,8 +18,7 @@
     "reactflow": "^11.11.4",
     "seedrandom": "^3.0.5",
     "dagre": "^0.8.5",
-    "react-force-graph": "^1.48.1",
-    "three": "^0.176.0"
+    "react-force-graph-3d": "^1.29.1"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
