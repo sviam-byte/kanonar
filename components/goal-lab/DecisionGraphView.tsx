@@ -11,6 +11,7 @@ import { curve01, type CurvePreset } from '../../lib/utils/curves';
 
 import { EnergyEdge } from './EnergyEdge';
 import { GoalNode, LensNode, SourceNode } from './DecisionGraphNodes';
+import { DecisionGraph3DView } from './DecisionGraph3DView';
 
 export type DecisionGraphRenderMode = 'graph' | 'meta' | '3d';
 
@@ -195,11 +196,14 @@ export const DecisionGraphView: React.FC<Props> = ({
   frame: _frame,
   goalScores,
   selectedGoalId,
-  mode = 'graph',
+  mode: externalMode = 'graph',
   compact = false,
   temperature = 1,
   curvePreset = 'smoothstep',
 }) => {
+  const [mode, setMode] = useState<DecisionGraphRenderMode>(externalMode);
+  React.useEffect(() => setMode(externalMode), [externalMode]);
+
   const [maxGoals, setMaxGoals] = useState(14);
   const [maxInputs, setMaxInputs] = useState(10);
   const [edgeThreshold, setEdgeThreshold] = useState(0.1);
@@ -212,13 +216,11 @@ export const DecisionGraphView: React.FC<Props> = ({
   const safeScores = arr(goalScores);
 
   const graph = useMemo(() => {
-    if (mode === '3d') return { nodes: [], edges: [] };
-
     if (mode === 'meta') {
       return buildMetaGraph(safeScores, maxGoals);
     }
 
-    // "graph" = strict clean-flow triplet (Sources → Lenses → Goals)
+    // "graph" / "3d" = strict clean-flow triplet (Sources → Lenses → Goals)
     // Uses fixed x-columns and edge filtering to avoid spaghetti.
     return buildDecisionTripletGraph({
       goalScores: safeScores,
@@ -231,7 +233,7 @@ export const DecisionGraphView: React.FC<Props> = ({
 
   // Keep a sensible default for the spread start node.
   React.useEffect(() => {
-    if (mode !== 'graph') return;
+    if (mode !== 'graph' && mode !== '3d') return;
     if (selectedGoalId && !spreadStart) {
       setSpreadStart(`goal:${selectedGoalId}`);
     }
@@ -241,7 +243,7 @@ export const DecisionGraphView: React.FC<Props> = ({
   }, [mode, selectedGoalId, spreadStart, graph.nodes]);
 
   const enrichedGraph = useMemo(() => {
-    if (mode !== 'graph' || !spreadOn) return graph;
+    if ((mode !== 'graph' && mode !== '3d') || !spreadOn) return graph;
 
     const nodeIds = graph.nodes.map(n => String(n.id));
     const nodeBase: Record<string, number> = {};
@@ -332,17 +334,6 @@ export const DecisionGraphView: React.FC<Props> = ({
     []
   );
 
-  if (mode === '3d') {
-    return (
-      <div className="h-full min-h-0 flex flex-col items-center justify-center text-slate-300">
-        <div className="text-sm font-semibold mb-2">3D graph mode (scaffold)</div>
-        <div className="text-xs opacity-70 max-w-[520px] text-center">
-          Здесь будет 3D визуал (force-graph/three.js). Сейчас режим добавлен как точка расширения.
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="h-full min-h-0 flex flex-col">
       <div
@@ -351,10 +342,27 @@ export const DecisionGraphView: React.FC<Props> = ({
         }`}
       >
         <div className="text-[10px] text-slate-300/80">
-          {mode === 'meta' ? 'Meta graph: Context/Lens buckets → Goals' : 'Decision graph: Sources → Lenses → Goals'}
+          {mode === 'meta'
+            ? 'Meta graph: Context/Lens buckets → Goals'
+            : mode === '3d'
+              ? '3D graph: layered (atom/lens/goal/action), contrib + flow'
+              : 'Decision graph: Sources → Lenses → Goals'}
         </div>
 
         <div className="flex items-center gap-2">
+          <label className="flex items-center gap-2 text-[10px] text-slate-300/80">
+            <span className="opacity-70">Mode</span>
+            <select
+              value={mode}
+              onChange={(e) => setMode(e.target.value as any)}
+              className="bg-black/25 border border-slate-700/60 rounded px-2 py-0.5 text-[10px]"
+            >
+              <option value="graph">2D</option>
+              <option value="3d">3D</option>
+              <option value="meta">meta</option>
+            </select>
+          </label>
+
           <label className="flex items-center gap-2 text-[10px] text-slate-300/80">
             <span className="opacity-70">Goals</span>
             <input
@@ -367,7 +375,7 @@ export const DecisionGraphView: React.FC<Props> = ({
             />
           </label>
 
-          {mode === 'graph' ? (
+          {mode === 'graph' || mode === '3d' ? (
             <label className="flex items-center gap-2 text-[10px] text-slate-300/80">
               <span className="opacity-70">Inputs</span>
               <input
@@ -381,7 +389,7 @@ export const DecisionGraphView: React.FC<Props> = ({
             </label>
           ) : null}
 
-          {mode === 'graph' ? (
+          {mode === 'graph' || mode === '3d' ? (
             <label className="flex items-center gap-2 text-[10px] text-slate-300/80">
               <span className="opacity-70">Threshold</span>
               <input
@@ -396,7 +404,7 @@ export const DecisionGraphView: React.FC<Props> = ({
             </label>
           ) : null}
 
-          {mode === 'graph' ? (
+          {mode === 'graph' || mode === '3d' ? (
             <>
               <label className="flex items-center gap-2 text-[10px] text-slate-300/80">
                 <span className="opacity-70">Spread</span>
@@ -460,25 +468,37 @@ export const DecisionGraphView: React.FC<Props> = ({
       </div>
 
       <div className="flex-1 min-h-0">
-        <ReactFlow
-          nodes={enrichedGraph.nodes}
-          edges={enrichedGraph.edges}
-          nodeTypes={nodeTypes}
-          edgeTypes={edgeTypes}
-          fitView
-          nodesDraggable={false}
-          nodesConnectable={false}
-          elementsSelectable={true}
-          panOnDrag
-          className="bg-black"
-          onNodeClick={(_, n) => {
-            if (!spreadOn) return;
-            setSpreadStart(String(n.id));
-          }}
-        >
-          <Background />
-          <Controls />
-        </ReactFlow>
+        {mode === '3d' ? (
+          <DecisionGraph3DView
+            nodes={enrichedGraph.nodes as any}
+            edges={enrichedGraph.edges as any}
+            initialFocusId={spreadStart}
+            onPickNode={(id) => {
+              if (!spreadOn) return;
+              setSpreadStart(String(id));
+            }}
+          />
+        ) : (
+          <ReactFlow
+            nodes={enrichedGraph.nodes}
+            edges={enrichedGraph.edges}
+            nodeTypes={nodeTypes}
+            edgeTypes={edgeTypes}
+            fitView
+            nodesDraggable={false}
+            nodesConnectable={false}
+            elementsSelectable={true}
+            panOnDrag
+            className="bg-black"
+            onNodeClick={(_, n) => {
+              if (!spreadOn) return;
+              setSpreadStart(String(n.id));
+            }}
+          >
+            <Background />
+            <Controls />
+          </ReactFlow>
+        )}
       </div>
     </div>
   );
