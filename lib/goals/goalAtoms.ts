@@ -10,6 +10,7 @@ import { curve01Param } from '../utils/curves';
 import { selectMode } from './modes';
 import { selectActiveGoalsWithHysteresis } from './selectActive';
 import { initGoalState, updateGoalState, type GoalState } from './goalState';
+import { computeDomainProgressDeltasFromAtoms } from './outcomes';
 
 type GoalDomain =
   | 'safety'
@@ -501,13 +502,19 @@ export function deriveGoalAtoms(selfId: string, atoms: ContextAtom[], opts?: { t
   // Update & emit goal-state atoms (tension/lockIn/fatigue/progress).
   const nextStates: Record<string, GoalState> = { ...prevStates };
   const stateAtoms: ContextAtom[] = [];
+
+  // Compute progress deltas from the current atom-frame (events/outcomes bridge).
+  // This intentionally keeps the loop “atom-native”: world→events→atoms→goalState.
+  const progressDeltas = computeDomainProgressDeltasFromAtoms({ atoms, selfId });
+
   for (const e of ecology) {
     const isActive = activeDomains.includes(e.domain);
     const prev = prevStates[e.domain] || null;
-    const st = updateGoalState(prev, { active: isActive, activation: isActive ? e.v : 0, tick });
+    const progressDelta = Number((progressDeltas as any)?.[e.domain] ?? 0);
+    const st = updateGoalState(prev, { active: isActive, activation: isActive ? e.v : 0, tick, progressDelta });
     nextStates[e.domain] = st;
     stateAtoms.push(
-      mkGoalStateAtom(selfId, e.domain, st, [`goal:domain:${e.domain}:${selfId}`, modeAtom.id], { activation: e.v, active: isActive, tick, mode: modeSel.mode })
+      mkGoalStateAtom(selfId, e.domain, st, [`goal:domain:${e.domain}:${selfId}`, modeAtom.id], { activation: e.v, active: isActive, tick, mode: modeSel.mode, progressDelta })
     );
   }
 

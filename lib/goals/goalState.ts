@@ -11,6 +11,11 @@ function clamp01(x: number): number {
   return Math.max(0, Math.min(1, x));
 }
 
+function clamp11(x: number): number {
+  if (!Number.isFinite(x)) return 0;
+  return Math.max(-1, Math.min(1, x));
+}
+
 export function initGoalState(): GoalState {
   return { tension: 0.5, lockIn: 0, fatigue: 0, progress: 0, lastActiveTick: -1 };
 }
@@ -47,13 +52,25 @@ export function updateGoalState(
   const tenDown = isActive ? 0.02 * act : 0.08;
   const tension = clamp01(p.tension * 0.85 + tenUp - tenDown);
 
-  // progress: placeholder (you can later feed it from goal/action outcome atoms)
-  const progress = clamp01(p.progress * 0.97 + clamp01(opts.progressDelta ?? 0));
+  // progress: can be fed from outcome atoms (signed delta: success +, setback -)
+  const dProg = clamp11(opts.progressDelta ?? 0);
+  let progress = clamp01(p.progress * 0.97 + dProg);
+
+  // If progress reaches completion, release tension and slightly reduce sticky/fatigue.
+  let nextTension = tension;
+  let nextLockIn = lockIn;
+  let nextFatigue = fatigue;
+  if (progress >= 0.99 && dProg > 0) {
+    progress = 1;
+    nextTension = clamp01(nextTension * 0.25);
+    nextLockIn = clamp01(nextLockIn * 0.8);
+    nextFatigue = clamp01(nextFatigue * 0.75);
+  }
 
   return {
-    tension,
-    lockIn,
-    fatigue,
+    tension: nextTension,
+    lockIn: nextLockIn,
+    fatigue: nextFatigue,
     progress,
     lastActiveTick: isActive ? opts.tick : p.lastActiveTick,
   };
