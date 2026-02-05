@@ -1,4 +1,4 @@
-import React, { Suspense, useMemo, useRef, useState } from 'react';
+import React, { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 
 // Keep 3D deps out of the initial bundle.
 const ForceGraph3D = React.lazy(() => import('react-force-graph-3d'));
@@ -109,12 +109,20 @@ function build3DGraph(nodes: RFNode[], edges: RFEdge[]): GraphData {
     // DecisionGraphView stores signed flow in edge.data.label (string), e.g. "+0.12".
     const label = String(e.data?.label ?? '0');
     const parsed = Number.parseFloat(label);
-    const flow = Number.isFinite(parsed) ? parsed : 0;
+    const signedFlow = Number.isFinite(parsed) ? parsed : 0;
+
+    // Direction semantics:
+    // If flow < 0, reverse direction for particles; store flow as abs(flow).
+    const src = String(e.source);
+    const tgt = String(e.target);
+    const source = signedFlow < 0 ? tgt : src;
+    const target = signedFlow < 0 ? src : tgt;
+    const flow = Math.abs(signedFlow);
 
     return {
       id: String(e.id),
-      source: String(e.source),
-      target: String(e.target),
+      source,
+      target,
       kind: 'contrib',
       weight: Number.isFinite(weight) ? weight : 0,
       flow,
@@ -162,19 +170,36 @@ type Props = {
 
 export const DecisionGraph3DView: React.FC<Props> = ({ nodes, edges, initialFocusId, onPickNode }) => {
   const fgRef = useRef<any>(null);
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  const [size, setSize] = useState<{ w: number; h: number }>({ w: 800, h: 600 });
 
   const [selectedId, setSelectedId] = useState<string | null>(initialFocusId ?? null);
   const [viewMode, setViewMode] = useState<ViewMode>('focus');
   const [hops, setHops] = useState(2);
 
-  const [minAbsWeight, setMinAbsWeight] = useState(0.1);
-  const [minAbsFlow, setMinAbsFlow] = useState(0.05);
-  const [showContrib, setShowContrib] = useState(true);
+  const [minAbsWeight, setMinAbsWeight] = useState(0.15);
+  const [minAbsFlow, setMinAbsFlow] = useState(0.08);
+  const [showContrib, setShowContrib] = useState(false);
   const [showFlow, setShowFlow] = useState(true);
-  const [capLinks, setCapLinks] = useState(800);
+  const [capLinks, setCapLinks] = useState(600);
 
   const base = useMemo(() => build3DGraph(nodes, edges), [nodes, edges]);
   const selected = selectedId ? base.nodes.find((n) => n.id === selectedId) : null;
+
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => {
+      const r = el.getBoundingClientRect();
+      const w = Math.max(320, Math.floor(r.width));
+      const h = Math.max(240, Math.floor(r.height));
+      setSize({ w, h });
+    });
+    ro.observe(el);
+    const r = el.getBoundingClientRect();
+    setSize({ w: Math.max(320, Math.floor(r.width)), h: Math.max(240, Math.floor(r.height)) });
+    return () => ro.disconnect();
+  }, []);
 
   const filtered = useMemo(() => {
     const nodeIdSet = new Set(base.nodes.map((n) => n.id));
@@ -210,6 +235,17 @@ export const DecisionGraph3DView: React.FC<Props> = ({ nodes, edges, initialFocu
 
     return { nodes: nodesOut, links: linksOut };
   }, [base, viewMode, selectedId, hops, minAbsWeight, minAbsFlow, showContrib, showFlow, capLinks]);
+
+  // On size/data change: refit camera to keep the view stable.
+  useEffect(() => {
+    const api = fgRef.current;
+    if (!api) return;
+    try {
+      api.zoomToFit?.(250, 60);
+    } catch {
+      // ignore
+    }
+  }, [size.w, size.h, filtered.nodes.length, filtered.links.length]);
 
   // Visual encoding:
   // - node size: importance + |energy|
@@ -251,7 +287,7 @@ export const DecisionGraph3DView: React.FC<Props> = ({ nodes, edges, initialFocu
   };
 
   return (
-    <div className="h-full min-h-0 relative bg-black">
+    <div ref={wrapRef} className="h-full w-full min-h-0 relative bg-black overflow-hidden">
       {/* Legend */}
       <div className="absolute z-10 left-2 top-2 rounded-lg border border-slate-800/70 bg-slate-950/60 px-3 py-2 text-[11px] text-slate-200 max-w-[460px]">
         <div className="font-semibold">3D Decision Graph</div>
@@ -403,9 +439,14 @@ export const DecisionGraph3DView: React.FC<Props> = ({ nodes, edges, initialFocu
         <ForceGraph3D
           ref={fgRef}
           graphData={filtered as any}
+          width={size.w}
+          height={size.h}
           backgroundColor="rgba(0,0,0,1)"
           showNavInfo={false}
           nodeLabel={(n: any) => `${n.label} (${n.kind})`}
+          linkLabel={(l: any) =>
+            `weight=${Number(l.weight).toFixed(3)} | flow=${Number(l.flow).toFixed(3)} | ${l.source} → ${l.target}`
+          }
           nodeVal={(n: any) => nodeVal(n)}
           nodeColor={(n: any) => nodeColor(n)}
           linkWidth={(l: any) => linkWidth(l)}
