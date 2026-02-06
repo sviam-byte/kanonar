@@ -494,6 +494,43 @@ export function deriveGoalAtoms(selfId: string, atoms: ContextAtom[], opts?: { t
   const pick = selectActiveGoalsWithHysteresis(candidates, prevActive, { topN, margin: 0.07 });
   const activeDomains = pick.active as GoalDomain[];
 
+  // Competitive inhibition (doc1 S4): selected winners suppress competitors.
+  // We implement this as a post-selection adjustment that ONLY affects non-active
+  // domain-energy atoms (goal:domain:*), so downstream (util.../action) sees the
+  // suppressed field while the pick itself remains based on the pre-inhibition
+  // candidate scores.
+  const inhibitionGamma = 0.25;
+  const winnerEnergies = activeDomains
+    .map((d) => ecology.find((x) => x.domain === d)?.v ?? 0)
+    .filter((v) => Number.isFinite(v));
+  const winnerAvg = winnerEnergies.length ? winnerEnergies.reduce((a, b) => a + b, 0) / winnerEnergies.length : 0;
+  const inhibitedGoalAtoms: ContextAtom[] = [];
+  if (winnerAvg > 0) {
+    for (const e of ecology) {
+      if (activeDomains.includes(e.domain)) continue;
+      const v2 = clamp01(e.v - inhibitionGamma * winnerAvg);
+      if (Math.abs(v2 - e.v) < 1e-6) continue;
+      inhibitedGoalAtoms.push(
+        mkGoalAtom(
+          selfId,
+          e.domain,
+          v2,
+          [...e.used, modeAtom.id],
+          {
+            ...(e.parts || {}),
+            competition: {
+              inhibitedBy: activeDomains,
+              gamma: inhibitionGamma,
+              winnerAvg,
+              before: e.v,
+              after: v2,
+            },
+          }
+        )
+      );
+    }
+  }
+
   const active = activeDomains.map((d) => {
     const e = ecology.find((x) => x.domain === d)!;
     return mkActiveGoal(selfId, d, e.v, [`goal:domain:${d}:${selfId}`, modeAtom.id], { fromDomain: d, score: e.v, mode: modeSel.mode, pick: pick.debug });
@@ -522,5 +559,5 @@ export function deriveGoalAtoms(selfId: string, atoms: ContextAtom[], opts?: { t
   __PREV_ACTIVE__.set(selfId, new Set(activeDomains));
   writeGoalStateMap(selfId, nextStates);
 
-  return { atoms: [...goalAtoms, ...active, modeAtom, ...stateAtoms] };
+  return { atoms: [...goalAtoms, ...inhibitedGoalAtoms, ...active, modeAtom, ...stateAtoms] };
 }

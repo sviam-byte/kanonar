@@ -142,8 +142,9 @@ function actionDomainHintWeight(p: Possibility, domain: string): number {
 }
 
 function getActiveGoalDomains(atoms: ContextAtom[], selfId: string) {
-  // deriveGoalAtoms emits goal:active:<domain>:<selfId> with magnitude = activation.
-  const prefix = 'goal:active:';
+  // Goal layer projects into util:* atoms in S7b; Action layer must not read goal:* directly.
+  // deriveGoalAtoms emits goal:active:<domain>:<selfId> (then projected to util:active:...).
+  const prefix = 'util:active:';
   const res: Array<{ id: string; domain: string; mag: number }> = [];
   for (const a of atoms) {
     const id = String((a as any)?.id || '');
@@ -160,10 +161,10 @@ function getActiveGoalDomains(atoms: ContextAtom[], selfId: string) {
 
 function getPlanGoalSupport(atoms: ContextAtom[], selfId: string, actionKey: string) {
   // Plan goals:
-  // - goal:activeGoal:<selfId>:<goalId> magnitude = activation
-  // - goal:hint:allow:<goalId>:<actionKey> magnitude = 1
-  const activePrefix = `goal:activeGoal:${selfId}:`;
-  const allowPrefix = 'goal:hint:allow:';
+  // - util:activeGoal:<selfId>:<goalId> magnitude = activation
+  // - util:hint:allow:<goalId>:<actionKey> magnitude = 1
+  const activePrefix = `util:activeGoal:${selfId}:`;
+  const allowPrefix = 'util:hint:allow:';
   const allowIds = new Set<string>();
   for (const a of atoms) {
     const id = String((a as any)?.id || '');
@@ -185,7 +186,7 @@ function getPlanGoalSupport(atoms: ContextAtom[], selfId: string, actionKey: str
     const m = clamp01(get(atoms, id, 0));
     support += m;
     used.push(id);
-    used.push(`goal:hint:allow:${goalId}:${actionKey}`);
+    used.push(`util:hint:allow:${goalId}:${actionKey}`);
     partsOut.push({ goalId, active: m, link: 1 });
   }
   return { support: clamp01(support), usedAtomIds: used, parts: partsOut };
@@ -552,7 +553,9 @@ export function toActionOffer(args: {
   p: Possibility;
 }): ActionOffer {
   const { selfId, atoms, p } = args;
-  const scored = scorePossibility({ selfId, atoms, p });
+  // Isolate goal atoms so trace payloads stay focused on non-goal context.
+  const baseAtoms = atoms.filter((a) => !a.id.startsWith('goal:'));
+  const scored = scorePossibility({ selfId, atoms: baseAtoms, p });
   const targetId = (p as any)?.targetId ?? null;
   return {
     id: p.id,
