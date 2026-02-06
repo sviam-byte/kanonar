@@ -13,14 +13,20 @@ import { EnergyEdge } from './EnergyEdge';
 import { GoalNode, LensNode, SourceNode } from './DecisionGraphNodes';
 import { DecisionGraph3DView } from './DecisionGraph3DView';
 
-export type DecisionGraphRenderMode = 'graph' | 'meta' | '3d';
+export type DecisionGraphRenderMode = 'graph' | 'meta' | 'overview' | 'goals' | '3d';
 
 type Props = {
   frame?: AgentContextFrame | null;
   goalScores: ContextualGoalScore[];
   selectedGoalId?: string | null;
 
-  /** graph: full inputs→goals; meta: aggregated (Context/Lens); 3d: placeholder scaffold */
+/**
+ * graph: full inputs→lenses→goals
+ * goals: collapsed inputs (2 buckets) → goals
+ * overview: 3 meta-nodes (Context, Lens, Goals)
+ * meta: per-goal (Context+Lens) buckets (legacy)
+ * 3d: 3D view
+ */
   mode?: DecisionGraphRenderMode;
 
   /** Smaller header for embedding inside the map frame */
@@ -192,6 +198,143 @@ function buildMetaGraph(goalScores: ContextualGoalScore[], maxGoals: number) {
   return { nodes, edges };
 }
 
+/**
+ * Overview graph: a 3-node summary (Context + Lens → Goals).
+ * This is the default "no clutter" view.
+ */
+function buildOverviewGraph(goalScores: ContextualGoalScore[], maxGoals: number) {
+  const ranked = [...arr(goalScores)].sort((a, b) => (b.totalLogit ?? 0) - (a.totalLogit ?? 0));
+  const trimmed = ranked.slice(0, Math.max(1, maxGoals));
+
+  let sumContext = 0;
+  let sumLens = 0;
+  for (const g of trimmed) {
+    const contribs = arr((g as any).contributions) as ContextualGoalContribution[];
+    for (const c of contribs) {
+      const v = Number((c as any).value);
+      if (!Number.isFinite(v)) continue;
+      const label = String((c as any).atomLabel || (c as any).explanation || '');
+      if (isLensLabel(label)) sumLens += v;
+      else sumContext += v;
+    }
+  }
+
+  const nodes: any[] = [
+    {
+      id: 'meta:context',
+      type: 'lens',
+      position: { x: 0, y: 20 },
+      data: { label: `Context (${trimmed.length} goals)` },
+      style: { width: 220, height: 52 },
+    },
+    {
+      id: 'meta:lens',
+      type: 'lens',
+      position: { x: 0, y: 120 },
+      data: { label: 'Lens' },
+      style: { width: 220, height: 52 },
+    },
+    {
+      id: 'meta:goals',
+      type: 'goal',
+      position: { x: 360, y: 70 },
+      data: { label: `Goals (top ${trimmed.length})` },
+      style: { width: 240, height: 52 },
+    },
+  ];
+
+  const edges: any[] = [
+    {
+      id: 'meta:context->meta:goals',
+      source: 'meta:context',
+      target: 'meta:goals',
+      type: 'energy',
+      data: { weight: sumContext, rawWeight: sumContext, label: formatValue(sumContext) },
+    },
+    {
+      id: 'meta:lens->meta:goals',
+      source: 'meta:lens',
+      target: 'meta:goals',
+      type: 'energy',
+      data: { weight: sumLens, rawWeight: sumLens, label: formatValue(sumLens) },
+    },
+  ];
+
+  return { nodes, edges };
+}
+
+/**
+ * Goals-detail graph: collapse inputs into two buckets (Context / Lens), keep goals expanded.
+ */
+function buildGoalsDetailGraph(goalScores: ContextualGoalScore[], maxGoals: number) {
+  const ranked = [...arr(goalScores)].sort((a, b) => (b.totalLogit ?? 0) - (a.totalLogit ?? 0));
+  const trimmed = ranked.slice(0, Math.max(1, maxGoals));
+
+  const nodes: any[] = [];
+  const edges: any[] = [];
+
+  const X_INPUT = 0;
+  const X_GOAL = 360;
+  const GOAL_GAP = 92;
+
+  nodes.push({
+    id: 'meta:context',
+    type: 'lens',
+    position: { x: X_INPUT, y: 0 },
+    data: { label: 'Context' },
+    style: { width: 220, height: 52 },
+  });
+  nodes.push({
+    id: 'meta:lens',
+    type: 'lens',
+    position: { x: X_INPUT, y: 80 },
+    data: { label: 'Lens' },
+    style: { width: 220, height: 52 },
+  });
+
+  trimmed.forEach((g, i) => {
+    const goalId = String(g.goalId);
+    const goalNodeId = `goal:${goalId}`;
+    const y = i * GOAL_GAP;
+
+    const contribs = arr((g as any).contributions) as ContextualGoalContribution[];
+    let sumContext = 0;
+    let sumLens = 0;
+    for (const c of contribs) {
+      const v = Number((c as any).value);
+      if (!Number.isFinite(v)) continue;
+      const label = String((c as any).atomLabel || (c as any).explanation || '');
+      if (isLensLabel(label)) sumLens += v;
+      else sumContext += v;
+    }
+
+    nodes.push({
+      id: goalNodeId,
+      type: 'goal',
+      position: { x: X_GOAL, y },
+      data: { label: goalId },
+      style: { width: 240, height: 52 },
+    });
+
+    edges.push({
+      id: `meta:context->${goalNodeId}`,
+      source: 'meta:context',
+      target: goalNodeId,
+      type: 'energy',
+      data: { weight: sumContext, rawWeight: sumContext, label: formatValue(sumContext) },
+    });
+    edges.push({
+      id: `meta:lens->${goalNodeId}`,
+      source: 'meta:lens',
+      target: goalNodeId,
+      type: 'energy',
+      data: { weight: sumLens, rawWeight: sumLens, label: formatValue(sumLens) },
+    });
+  });
+
+  return { nodes, edges };
+}
+
 export const DecisionGraphView: React.FC<Props> = ({
   frame: _frame,
   goalScores,
@@ -216,9 +359,9 @@ export const DecisionGraphView: React.FC<Props> = ({
   const safeScores = arr(goalScores);
 
   const graph = useMemo(() => {
-    if (mode === 'meta') {
-      return buildMetaGraph(safeScores, maxGoals);
-    }
+    if (mode === 'overview') return buildOverviewGraph(safeScores, maxGoals);
+    if (mode === 'goals') return buildGoalsDetailGraph(safeScores, maxGoals);
+    if (mode === 'meta') return buildMetaGraph(safeScores, maxGoals);
 
     // "graph" / "3d" = strict clean-flow triplet (Sources → Lenses → Goals)
     // Uses fixed x-columns and edge filtering to avoid spaghetti.
@@ -299,7 +442,8 @@ export const DecisionGraphView: React.FC<Props> = ({
           // Keep sign-carrying weight for coloring; show flow separately.
           weight: rawWeight,
           strength,
-          label: formatValue(flow),
+          // Show both the dynamic flow (after diffusion) and the raw model weight.
+          label: `${formatValue(flow)}  |  w=${formatValue(rawWeight)}`,
         },
         animated: strength > 0.35,
       };
@@ -342,11 +486,15 @@ export const DecisionGraphView: React.FC<Props> = ({
         }`}
       >
         <div className="text-[10px] text-slate-300/80">
-          {mode === 'meta'
-            ? 'Meta graph: Context/Lens buckets → Goals'
-            : mode === '3d'
-              ? '3D graph: layered (atom/lens/goal/action), contrib + flow'
-              : 'Decision graph: Sources → Lenses → Goals'}
+          {mode === 'overview'
+            ? 'Overview: Context + Lens → Goals (3 nodes)'
+            : mode === 'goals'
+              ? 'Goals-detail: Context/Lens buckets → Goals'
+              : mode === 'meta'
+                ? 'Meta: per-goal Context/Lens buckets → Goal'
+                : mode === '3d'
+                  ? '3D graph: layered, contrib + flow'
+                  : 'Decision graph: Sources → Lenses → Goals'}
         </div>
 
         <div className="flex items-center gap-2">
@@ -357,7 +505,9 @@ export const DecisionGraphView: React.FC<Props> = ({
               onChange={(e) => setMode(e.target.value as any)}
               className="bg-black/25 border border-slate-700/60 rounded px-2 py-0.5 text-[10px]"
             >
-              <option value="graph">2D</option>
+              <option value="overview">overview</option>
+              <option value="goals">goals</option>
+              <option value="graph">full 2D</option>
               <option value="3d">3D</option>
               <option value="meta">meta</option>
             </select>
