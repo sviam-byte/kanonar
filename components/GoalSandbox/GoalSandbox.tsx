@@ -579,10 +579,20 @@ export const GoalSandbox: React.FC = () => {
     return 'energy';
   });
 
-  const [energyViewMode, setEnergyViewMode] = useState<'overview' | 'graph' | 'meta' | 'dual' | 'explain' | '3d'>(() => {
+  const [energyViewMode, setEnergyViewMode] = useState<'overview' | 'goals-detail' | 'graph' | 'meta' | 'dual' | 'explain' | '3d'>(() => {
     try {
       const stored = localStorage.getItem('goalsandbox.energyViewMode.v1');
-      if (stored === 'overview' || stored === 'graph' || stored === 'meta' || stored === 'dual' || stored === 'explain' || stored === '3d') return stored;
+      if (
+        stored === 'overview' ||
+        stored === 'goals-detail' ||
+        stored === 'graph' ||
+        stored === 'meta' ||
+        stored === 'dual' ||
+        stored === 'explain' ||
+        stored === '3d'
+      ) {
+        return stored;
+      }
     } catch {}
     return 'graph';
   });
@@ -2215,7 +2225,7 @@ export const GoalSandbox: React.FC = () => {
           {centerView === 'energy' ? (
             <>
               <div className="flex items-center gap-1">
-                {(['overview', 'graph', 'meta', 'dual', 'explain', '3d'] as const).map((mode) => (
+                {(['overview', 'goals-detail', 'graph', 'meta', 'dual', 'explain', '3d'] as const).map((mode) => (
                   <button
                     key={mode}
                     onClick={() => setEnergyViewMode(mode)}
@@ -2227,6 +2237,8 @@ export const GoalSandbox: React.FC = () => {
                     title={
                       mode === 'overview'
                         ? 'Overview (context → goals)'
+                        : mode === 'goals-detail'
+                          ? 'Goals detail (context → goals → actions)'
                         : mode === 'graph'
                           ? 'Graph (inputs → goals)'
                           : mode === 'meta'
