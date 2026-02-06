@@ -145,8 +145,26 @@ export function applyCharacterLens(args: {
     0.10 * danger0
   );
 
-  // линза: делаем не просто +/-, а “усиление отклонения от 0.5”
-  const amplify = (x: number, k: number) => clamp01(0.5 + (x - 0.5) * k);
+  /**
+   * Personality modulation model:
+   * - bias shifts baseline ("tends to see more/less")
+   * - sensitivity amplifies deviation from 0.5 ("reacts stronger")
+   *
+   * This intentionally fixes the classic amplify() issue:
+   * with amplify() every trait leaves x=0.5 invariant; but paranoia must
+   * shift perception even when base danger is neutral / low.
+   */
+  function modulate(x: number, bias: number, sensitivity: number): number {
+    const shifted = clamp01(x + bias);
+    const centered = shifted - 0.5;
+    const amplified = centered * sensitivity;
+    return clamp01(0.5 + amplified);
+  }
+
+  // bias terms (each is ~[-0.35..+0.35] in typical ranges)
+  const paranoiaBias = (paranoia - 0.5) * 0.7;
+  const stressBias = (stress - 0.5) * 0.25;
+  const experienceBias = (experience - 0.5) * -0.30; // experience reduces overestimation
 
   // коэффициенты усиления (чтобы персонажи реально расходились)
   const kDanger = 1.0 + 1.2 * (paranoia - 0.5) + 0.6 * (stress - 0.5) + 0.45 * (hpaReactivity - 0.5); // паранойя ↑ => danger субъективно ↑
@@ -164,19 +182,38 @@ export function applyCharacterLens(args: {
   const kHier = 1.0 + 0.8 * (normSens - 0.5) + 0.5 * (paranoia - 0.5);
   const kPriv = 1.0 - 0.8 * (sensitivity - 0.5) - 0.5 * (paranoia - 0.5);
 
-  const danger = amplify(danger0, kDanger);
-  const unc = amplify(unc0, kUnc);
-  const norm = amplify(norm0, kNorm);
-  const pub = amplify(pub0, kPub);
-  const surv = amplify(surv0, kSurv);
-  const crowd = amplify(crowd0, kCrowd);
-  const intim = amplify(intim0, kIntim);
-  const control = amplify(control0, kControl);
-  const timeP = amplify(time0, kTime);
-  const secrecy = amplify(secrecy0, kSecrecy);
-  const legitimacy = amplify(legitimacy0, kLegit);
-  const hierarchy = amplify(hierarchy0, kHier);
-  const privacy = amplify(privacy0, kPriv);
+  // bias terms (baseline shifts). Keep them linear in (trait - 0.5) so that
+  // when everything is 0.5 the lens becomes (almost) identity.
+  const bDanger = paranoiaBias + stressBias + experienceBias;
+  const bUnc = (0.5 - ambiguityTol) * 0.30 + (0.5 - experience) * 0.25;
+  const bNorm = (sensitivity - 0.5) * 0.20 + stressBias;
+  const bPub = 0.35 * (sensitivity - 0.5) + 0.15 * (stress - 0.5);
+  const bSurv = 0.9 * (paranoia - 0.5) + 0.25 * (danger0 - 0.5);
+  const bCrowd = 0.35 * (stress - 0.5) + 0.5 * (paranoia - 0.5);
+  const bIntim = -0.75 * (paranoia - 0.5) - 0.35 * (danger0 - 0.5);
+  const bControl = (experience - 0.5) * 0.22 + (0.5 - stress) * 0.18;
+  const bTime =
+    0.55 * (0.5 - ambiguityTol) +
+    0.4 * (fatigue - 0.5) +
+    0.2 * (danger0 - 0.5);
+  const bSecrecy = paranoiaBias + (norm0 - 0.5) * 0.18;
+  const bLegit = -0.55 * (paranoia - 0.5) + 0.45 * (experience - 0.5) + 0.25 * (normSens - 0.5);
+  const bHier = 0.45 * (normSens - 0.5) + 0.25 * (paranoia - 0.5);
+  const bPriv = -0.45 * (sensitivity - 0.5) - 0.35 * (paranoia - 0.5);
+
+  const danger = modulate(danger0, bDanger, kDanger);
+  const unc = modulate(unc0, bUnc, kUnc);
+  const norm = modulate(norm0, bNorm, kNorm);
+  const pub = modulate(pub0, bPub, kPub);
+  const surv = modulate(surv0, bSurv, kSurv);
+  const crowd = modulate(crowd0, bCrowd, kCrowd);
+  const intim = modulate(intim0, bIntim, kIntim);
+  const control = modulate(control0, bControl, kControl);
+  const timeP = modulate(time0, bTime, kTime);
+  const secrecy = modulate(secrecy0, bSecrecy, kSecrecy);
+  const legitimacy = modulate(legitimacy0, bLegit, kLegit);
+  const hierarchy = modulate(hierarchy0, bHier, kHier);
+  const privacy = modulate(privacy0, bPriv, kPriv);
 
   const usedCtx = [
     `feat:char:${selfId}:trait.paranoia`,

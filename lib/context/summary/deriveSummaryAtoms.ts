@@ -9,17 +9,25 @@ function pickById(atoms: AnyAtom[], id: string) {
   return atoms.find(a => String(a?.id || '') === id) || null;
 }
 
-function getCtx(atoms: AnyAtom[], selfId: string, axis: string, d = 0) {
-  // Prefer self-scoped ids.
-  const a = pickById(atoms, `ctx:${axis}:${selfId}`) || pickById(atoms, `ctx:final:${axis}:${selfId}`) || null;
-  if (a) return num(a.magnitude ?? a.m ?? 0, d);
+function getCtx(atoms: AnyAtom[], selfId: string, axis: string, d = 0, used?: string[]) {
+  // Prefer final perceptions after S3, fallback to base.
+  const a =
+    pickById(atoms, `ctx:final:${axis}:${selfId}`) ||
+    pickById(atoms, `ctx:${axis}:${selfId}`) ||
+    null;
+  if (a) {
+    used?.push(String(a.id));
+    return num(a.magnitude ?? a.m ?? 0, d);
+  }
   // Fallback non-scoped (legacy).
-  const b = pickById(atoms, `ctx:${axis}`) || pickById(atoms, `ctx:final:${axis}`) || null;
+  const b = pickById(atoms, `ctx:final:${axis}`) || pickById(atoms, `ctx:${axis}`) || null;
+  if (b) used?.push(String(b.id));
   return b ? num(b.magnitude ?? b.m ?? 0, d) : d;
 }
 
-function getEmo(atoms: AnyAtom[], selfId: string, emo: string, d = 0) {
+function getEmo(atoms: AnyAtom[], selfId: string, emo: string, d = 0, used?: string[]) {
   const a = pickById(atoms, `emo:${emo}:${selfId}`) || null;
+  if (a) used?.push(String(a.id));
   return a ? num(a.magnitude ?? a.m ?? 0, d) : d;
 }
 
@@ -59,20 +67,20 @@ export function deriveSummaryAtoms(args: { atoms: AnyAtom[]; selfId: string }): 
   const used: string[] = [];
 
   // Core axes.
-  const danger = getCtx(atoms, selfId, 'danger', 0);
-  const control = getCtx(atoms, selfId, 'control', 0);
-  const uncertainty = getCtx(atoms, selfId, 'uncertainty', 0.2);
-  const normPressure = getCtx(atoms, selfId, 'normPressure', 0);
-  const publicness = getCtx(atoms, selfId, 'publicness', 0);
-  const surveillance = getCtx(atoms, selfId, 'surveillance', 0);
-  const scarcity = getCtx(atoms, selfId, 'scarcity', 0);
-  const timePressure = getCtx(atoms, selfId, 'timePressure', 0);
-  const intimacy = getCtx(atoms, selfId, 'intimacy', 0);
+  const danger = getCtx(atoms, selfId, 'danger', 0, used);
+  const control = getCtx(atoms, selfId, 'control', 0, used);
+  const uncertainty = getCtx(atoms, selfId, 'uncertainty', 0.2, used);
+  const normPressure = getCtx(atoms, selfId, 'normPressure', 0, used);
+  const publicness = getCtx(atoms, selfId, 'publicness', 0, used);
+  const surveillance = getCtx(atoms, selfId, 'surveillance', 0, used);
+  const scarcity = getCtx(atoms, selfId, 'scarcity', 0, used);
+  const timePressure = getCtx(atoms, selfId, 'timePressure', 0, used);
+  const intimacy = getCtx(atoms, selfId, 'intimacy', 0, used);
 
   // Emotions.
-  const fear = getEmo(atoms, selfId, 'fear', 0);
-  const anger = getEmo(atoms, selfId, 'anger', 0);
-  const shame = getEmo(atoms, selfId, 'shame', 0);
+  const fear = getEmo(atoms, selfId, 'fear', 0, used);
+  const anger = getEmo(atoms, selfId, 'anger', 0, used);
+  const shame = getEmo(atoms, selfId, 'shame', 0, used);
 
   const idCtx = (k: string) => `ctx:${k}:${selfId}`;
   const idEmo = (k: string) => `emo:${k}:${selfId}`;

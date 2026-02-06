@@ -10,6 +10,13 @@ type EnergyEdgeData = {
   strength?: number;
   /** label text shown above the edge */
   label?: string;
+  /** optional diagnostics for "why this edge exists" */
+  meta?: {
+    atomId?: string;
+    source?: string;
+    formula?: string;
+    explanation?: string;
+  };
 };
 
 /**
@@ -60,7 +67,19 @@ export const EnergyEdge: React.FC<EdgeProps<EnergyEdgeData>> = (props) => {
     targetPosition,
   });
 
-  const label = data?.label;
+  const label = typeof data?.label === 'string'
+    ? data.label
+    : `${weight >= 0 ? '+' : ''}${weight.toFixed(2)}`;
+
+  const meta = data?.meta;
+  const metaText = meta
+    ? [
+        meta.atomId ? `atom: ${meta.atomId}` : null,
+        meta.source ? `source: ${meta.source}` : null,
+        meta.formula ? `formula: ${meta.formula}` : null,
+        meta.explanation ? `note: ${meta.explanation}` : null,
+      ].filter(Boolean).join('\n')
+    : '';
 
   return (
     <>
@@ -91,7 +110,7 @@ export const EnergyEdge: React.FC<EdgeProps<EnergyEdgeData>> = (props) => {
             style={{
               position: 'absolute',
               transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
-              pointerEvents: 'none',
+              pointerEvents: metaText ? 'auto' : 'none',
               fontSize: 10,
               fontFamily:
                 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
@@ -103,6 +122,7 @@ export const EnergyEdge: React.FC<EdgeProps<EnergyEdgeData>> = (props) => {
               borderRadius: 8,
               whiteSpace: 'nowrap',
             }}
+            title={metaText || undefined}
             className="nodrag nopan"
           >
             {label}

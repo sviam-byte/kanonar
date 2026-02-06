@@ -248,8 +248,13 @@ export const DecisionGraph3DView: React.FC<Props> = ({ nodes, edges, initialFocu
       keepIds = nodeIdSet;
     }
 
-    const nodesOut = base.nodes.filter((n) => keepIds.has(n.id));
-    const linksOut = links.filter((l) => keepIds.has(l.source) && keepIds.has(l.target));
+    // Keep nodes stable: never drop nodes just because links were filtered out.
+    // In focus mode we only restrict LINKS (to reduce clutter), but keep all nodes visible.
+    const nodesOut = base.nodes;
+    const linksOut =
+      viewMode === 'focus' && selectedId && nodeIdSet.has(selectedId)
+        ? links.filter((l) => keepIds.has(l.source) && keepIds.has(l.target))
+        : links;
 
     return { nodes: nodesOut, links: linksOut };
   }, [base, viewMode, selectedId, hops, minAbsWeight, minAbsFlow, showContrib, showFlow, capLinks]);
