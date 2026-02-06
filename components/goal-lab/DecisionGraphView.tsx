@@ -12,6 +12,7 @@ import { curve01, type CurvePreset } from '../../lib/utils/curves';
 import { EnergyEdge } from './EnergyEdge';
 import { GoalNode, LensNode, SourceNode } from './DecisionGraphNodes';
 import { DecisionGraph3DView } from './DecisionGraph3DView';
+import { GoalExplanationPanel } from './GoalExplanationPanel';
 
 export type DecisionGraphRenderMode = 'graph' | 'meta' | 'overview' | 'goals' | '3d';
 
@@ -20,13 +21,13 @@ type Props = {
   goalScores: ContextualGoalScore[];
   selectedGoalId?: string | null;
 
-/**
- * graph: full inputs→lenses→goals
- * goals: collapsed inputs (2 buckets) → goals
- * overview: 3 meta-nodes (Context, Lens, Goals)
- * meta: per-goal (Context+Lens) buckets (legacy)
- * 3d: 3D view
- */
+  /**
+   * graph: full inputs→lenses→goals
+   * goals: collapsed inputs (2 buckets) → goals
+   * overview: 3 meta-nodes (Context, Lens, Goals)
+   * meta: per-goal (Context+Lens) buckets (legacy)
+   * 3d: 3D view
+   */
   mode?: DecisionGraphRenderMode;
 
   /** Smaller header for embedding inside the map frame */
@@ -200,7 +201,6 @@ function buildMetaGraph(goalScores: ContextualGoalScore[], maxGoals: number) {
 
 /**
  * Overview graph: a 3-node summary (Context + Lens → Goals).
- * This is the default "no clutter" view.
  */
 function buildOverviewGraph(goalScores: ContextualGoalScore[], maxGoals: number) {
   const ranked = [...arr(goalScores)].sort((a, b) => (b.totalLogit ?? 0) - (a.totalLogit ?? 0));
@@ -224,14 +224,14 @@ function buildOverviewGraph(goalScores: ContextualGoalScore[], maxGoals: number)
       id: 'meta:context',
       type: 'lens',
       position: { x: 0, y: 20 },
-      data: { label: `Context (${trimmed.length} goals)` },
+      data: { label: `Context (top ${trimmed.length})` },
       style: { width: 220, height: 52 },
     },
     {
       id: 'meta:lens',
       type: 'lens',
       position: { x: 0, y: 120 },
-      data: { label: 'Lens' },
+      data: { label: 'Lens (traits)' },
       style: { width: 220, height: 52 },
     },
     {
@@ -288,7 +288,7 @@ function buildGoalsDetailGraph(goalScores: ContextualGoalScore[], maxGoals: numb
     id: 'meta:lens',
     type: 'lens',
     position: { x: X_INPUT, y: 80 },
-    data: { label: 'Lens' },
+    data: { label: 'Lens (traits)' },
     style: { width: 220, height: 52 },
   });
 
@@ -355,8 +355,17 @@ export const DecisionGraphView: React.FC<Props> = ({
   const [spreadDecay, setSpreadDecay] = useState(0.2);
   const [spreadStart, setSpreadStart] = useState<string | null>(null);
   const [spreadDirection, setSpreadDirection] = useState<'backward' | 'forward' | 'undirected'>('backward');
+  const [showGoalExplain, setShowGoalExplain] = useState(true);
 
   const safeScores = arr(goalScores);
+
+  const selectedGoalScore = useMemo(() => {
+    const scores = [...safeScores].sort((a, b) => (b.totalLogit ?? 0) - (a.totalLogit ?? 0));
+    if (selectedGoalId) {
+      return scores.find(s => String(s.goalId) === String(selectedGoalId)) || scores[0] || null;
+    }
+    return scores[0] || null;
+  }, [safeScores, selectedGoalId]);
 
   const graph = useMemo(() => {
     if (mode === 'overview') return buildOverviewGraph(safeScores, maxGoals);
@@ -443,7 +452,7 @@ export const DecisionGraphView: React.FC<Props> = ({
           weight: rawWeight,
           strength,
           // Show both the dynamic flow (after diffusion) and the raw model weight.
-          label: `${formatValue(flow)}  |  w=${formatValue(rawWeight)}`,
+          label: `w=${formatValue(rawWeight)} · f=${formatValue(flow)}`,
         },
         animated: strength > 0.35,
       };
@@ -487,14 +496,14 @@ export const DecisionGraphView: React.FC<Props> = ({
       >
         <div className="text-[10px] text-slate-300/80">
           {mode === 'overview'
-            ? 'Overview: Context + Lens → Goals (3 nodes)'
+            ? 'Overview: Context + Lens → Goals'
             : mode === 'goals'
-              ? 'Goals-detail: Context/Lens buckets → Goals'
+              ? 'Goals: Context + Lens buckets → Goals'
               : mode === 'meta'
-                ? 'Meta: per-goal Context/Lens buckets → Goal'
+                ? 'Meta: per-goal Context/Lens buckets'
                 : mode === '3d'
-                  ? '3D graph: layered, contrib + flow'
-                  : 'Decision graph: Sources → Lenses → Goals'}
+                  ? '3D: Sources → Lenses → Goals'
+                  : '2D: Sources → Lenses → Goals'}
         </div>
 
         <div className="flex items-center gap-2">
@@ -507,10 +516,20 @@ export const DecisionGraphView: React.FC<Props> = ({
             >
               <option value="overview">overview</option>
               <option value="goals">goals</option>
-              <option value="graph">full 2D</option>
+              <option value="graph">2D</option>
               <option value="3d">3D</option>
               <option value="meta">meta</option>
             </select>
+          </label>
+
+          <label className="flex items-center gap-2 text-[10px] text-slate-300/80">
+            <span className="opacity-70">Explain</span>
+            <input
+              type="checkbox"
+              checked={showGoalExplain}
+              onChange={e => setShowGoalExplain(e.target.checked)}
+              className="accent-cyan-400"
+            />
           </label>
 
           <label className="flex items-center gap-2 text-[10px] text-slate-300/80">
@@ -617,38 +636,46 @@ export const DecisionGraphView: React.FC<Props> = ({
         </div>
       </div>
 
-      <div className="flex-1 min-h-0">
-        {mode === '3d' ? (
-          <DecisionGraph3DView
-            nodes={enrichedGraph.nodes as any}
-            edges={enrichedGraph.edges as any}
-            initialFocusId={spreadStart}
-            onPickNode={(id) => {
-              if (!spreadOn) return;
-              setSpreadStart(String(id));
-            }}
-          />
-        ) : (
-          <ReactFlow
-            nodes={enrichedGraph.nodes}
-            edges={enrichedGraph.edges}
-            nodeTypes={nodeTypes}
-            edgeTypes={edgeTypes}
-            fitView
-            nodesDraggable={false}
-            nodesConnectable={false}
-            elementsSelectable={true}
-            panOnDrag
-            className="bg-black"
-            onNodeClick={(_, n) => {
-              if (!spreadOn) return;
-              setSpreadStart(String(n.id));
-            }}
-          >
-            <Background />
-            <Controls />
-          </ReactFlow>
-        )}
+      <div className="flex-1 min-h-0 flex">
+        <div className="flex-1 min-w-0">
+          {mode === '3d' ? (
+            <DecisionGraph3DView
+              nodes={enrichedGraph.nodes as any}
+              edges={enrichedGraph.edges as any}
+              initialFocusId={spreadStart}
+              onPickNode={(id) => {
+                if (!spreadOn) return;
+                setSpreadStart(String(id));
+              }}
+            />
+          ) : (
+            <ReactFlow
+              nodes={enrichedGraph.nodes}
+              edges={enrichedGraph.edges}
+              nodeTypes={nodeTypes}
+              edgeTypes={edgeTypes}
+              fitView
+              nodesDraggable={false}
+              nodesConnectable={false}
+              elementsSelectable={true}
+              panOnDrag
+              className="bg-black"
+              onNodeClick={(_, n) => {
+                if (!spreadOn) return;
+                setSpreadStart(String(n.id));
+              }}
+            >
+              <Background />
+              <Controls />
+            </ReactFlow>
+          )}
+        </div>
+
+        {showGoalExplain && selectedGoalScore ? (
+          <div className="w-[380px] shrink-0 border-l border-slate-800 bg-slate-950/40 p-3 overflow-auto">
+            <GoalExplanationPanel score={selectedGoalScore} />
+          </div>
+        ) : null}
       </div>
     </div>
   );

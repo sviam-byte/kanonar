@@ -2,29 +2,20 @@ import { describe, expect, it } from 'vitest';
 import { runGoalLabPipelineV1 } from '@/lib/goal-lab/pipeline/runPipelineV1';
 
 function mockWorld() {
-  const location = {
-    entityId: 'loc:demo',
-    kind: 'location',
-    name: 'Demo Room',
-    tags: ['demo'],
-    access: { isPublic: true },
-    hazards: [],
-    geometry: {
-      w: 20,
-      h: 20,
-      walls: [],
-      doors: [],
-      exits: [],
-    },
-  };
-
   const agentA = {
-    entityId: 'A',
+    id: 'A',
     name: 'A',
-    locationId: location.entityId,
-    pos: { x: 5, y: 5 },
-    memory: { beliefAtoms: [] },
-    lifeGoals: [],
+    role: 'civilian',
+    locationId: 'L1',
+    relations: {},
+    personality: {
+      paranoia: 0.5,
+      sensitivity: 0.5,
+      experience: 0.5,
+      ambiguityTolerance: 0.5,
+      hpaReactivity: 0.5,
+      normSensitivity: 0.5,
+    },
     body: {
       acute: { pain: 0, fatigue: 0, stress: 0 },
       reserves: { energy: 1, sleep_debt_h: 0 },
@@ -47,6 +38,24 @@ function mockWorld() {
     },
     context: { age: 30 },
     identity: { clearance_level: 0 },
+  };
+
+  const location = {
+    id: 'L1',
+    name: 'Room',
+    tags: [],
+    metrics: {
+      danger: 0,
+      crowd: 0,
+      publicness: 0.3,
+      surveillance: 0.2,
+      scarcity: 0,
+      timePressure: 0,
+      secrecy: 0,
+      legitimacy: 0.5,
+      hierarchy: 0.3,
+      privacy: 0.6,
+    },
   };
 
   return {
