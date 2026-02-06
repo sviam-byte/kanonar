@@ -1,6 +1,7 @@
 import type { WorldState, AgentState } from '../../../types';
 import type { ContextAtom } from '../../context/v2/types';
 import { normalizeAtom } from '../../context/v2/infer';
+import { mergeAtomsPreferNewer } from '../../context/v2/atomMerge';
 
 import { buildStage0Atoms } from '../../context/pipeline/stage0';
 import { deriveSocialProximityAtoms } from '../../context/stage1/socialProximity';
@@ -58,12 +59,6 @@ export type GoalLabPipelineV1 = {
   stages: GoalLabStageFrame[];
 };
 
-type MergeDelta = {
-  atoms: ContextAtom[];
-  newIds: string[];
-  overriddenIds: string[];
-};
-
 function uniqStrings(xs: string[]): string[] {
   const out: string[] = [];
   const seen = new Set<string>();
@@ -76,49 +71,6 @@ function uniqStrings(xs: string[]): string[] {
   return out;
 }
 
-/**
- * Merge atoms without duplicates:
- * - Any id present in `added` overrides the previous value.
- * - The resulting order puts overrides FIRST, so `.find(id)` sees newest value.
- *
- * This is critical because many modules use `atoms.find(a => a.id === ...)`.
- */
-function mergeAtomsPreferNewer(prev: ContextAtom[], added: ContextAtom[]): MergeDelta {
-  const prevIds = indexById(prev);
-  const addedNorm = arr(added)
-    .map(normalizeAtom)
-    .filter(a => a && typeof (a as any).id === 'string');
-
-  const addedIds = new Set<string>();
-  const overriddenIds: string[] = [];
-  const newIds: string[] = [];
-
-  for (const a of addedNorm) {
-    const id = String((a as any).id);
-    if (addedIds.has(id)) continue;
-    addedIds.add(id);
-    if (prevIds.has(id)) overriddenIds.push(id);
-    else newIds.push(id);
-  }
-
-  const rest = prev.filter(a => {
-    const id = (a as any)?.id;
-    return !(typeof id === 'string' && addedIds.has(id));
-  });
-
-  return {
-    atoms: [...addedNorm, ...rest].map(normalizeAtom),
-    newIds,
-    overriddenIds,
-  };
-}
-
-function indexById(atoms: ContextAtom[]): Set<string> {
-  const s = new Set<string>();
-  for (const a of atoms) if (a && typeof (a as any).id === 'string') s.add((a as any).id);
-  return s;
-}
-
 function computeAdded(prev: ContextAtom[], next: ContextAtom[]): string[] {
   const p = indexById(prev);
   const out: string[] = [];
@@ -128,6 +80,12 @@ function computeAdded(prev: ContextAtom[], next: ContextAtom[]): string[] {
     if (!p.has(id)) out.push(id);
   }
   return out;
+}
+
+function indexById(atoms: ContextAtom[]): Set<string> {
+  const s = new Set<string>();
+  for (const a of atoms) if (a && typeof (a as any).id === 'string') s.add((a as any).id);
+  return s;
 }
 
 function stageStats(atoms: ContextAtom[]) {
@@ -416,9 +374,26 @@ export function runGoalLabPipelineV1(input: {
   const mS7a = mergeAtomsPreferNewer(atoms, goalAtoms);
   const mS7b = mergeAtomsPreferNewer(mS7a.atoms, planAtoms);
   const mS7c = mergeAtomsPreferNewer(mS7b.atoms, linkAtoms);
-  const atomsS7 = mS7c.atoms;
-  const s7Added = uniqStrings([...mS7a.newIds, ...mS7b.newIds, ...mS7c.newIds]);
-  const s7Overridden = uniqStrings([...mS7a.overriddenIds, ...mS7b.overriddenIds, ...mS7c.overriddenIds]);
+  // Project Goal-layer atoms to Action-visible utility atoms (one-way dependency: Goal -> Util -> Action).
+  // Decision layer must read `ns === 'util'`, not `ns === 'goal'`.
+  const utilAtoms = mS7c.atoms
+    .filter(a => (a as any)?.ns === 'goal' && typeof (a as any)?.id === 'string' && (a as any).id.startsWith('goal:'))
+    .map(a => ({
+      ...a,
+      ns: 'util' as const,
+      id: (a as any).id.replace(/^goal:/, 'util:'),
+      origin: (a as any).origin ?? 'derived',
+      trace: {
+        ...(a as any).trace,
+        usedAtomIds: uniqStrings([...(a as any)?.trace?.usedAtomIds || [], (a as any).id]),
+        notes: uniqStrings([...(a as any)?.trace?.notes || [], 'goal->util projection'])
+      }
+    }));
+
+  const mS7d = mergeAtomsPreferNewer(mS7c.atoms, utilAtoms as any);
+  const atomsS7 = mS7d.atoms;
+  const s7Added = uniqStrings([...mS7a.newIds, ...mS7b.newIds, ...mS7c.newIds, ...mS7d.newIds]);
+  const s7Overridden = uniqStrings([...mS7a.overriddenIds, ...mS7b.overriddenIds, ...mS7c.overriddenIds, ...mS7d.overriddenIds]);
   atoms = atomsS7;
   stages.push({
     stage: 'S7',
@@ -431,6 +406,7 @@ export function runGoalLabPipelineV1(input: {
       goalAtomsCount: goalAtoms.length,
       planGoalAtomsCount: planAtoms.length,
       goalActionLinksCount: linkAtoms.length,
+      utilAtomsCount: utilAtoms.length,
       topPlanGoals: (planRes as any)?.top || [],
       overriddenIds: s7Overridden
     }
@@ -477,12 +453,25 @@ export function runGoalLabPipelineV1(input: {
     const s8Overridden = uniqStrings([...mS8a.overriddenIds, ...mS8b.overriddenIds, ...mS8c.overriddenIds, ...mS8d.overriddenIds]);
     atoms = atomsS8;
 
+    // Invariant (C2/C8): Action layer must not read Goal atoms directly.
+    // The decision layer is expected to read util:* projections instead.
+    const actionReadsGoalViolations = (() => {
+      const actionAtoms = atomsS8.filter(a => a.ns === 'action');
+      const bad: string[] = [];
+      for (const a of actionAtoms) {
+        const used = arr((a as any)?.trace?.usedAtomIds).map(String);
+        const hits = used.filter(id => id.startsWith('goal:'));
+        if (hits.length) bad.push(`${a.id} <- ${hits.join(', ')}`);
+      }
+      return bad;
+    })();
+
     stages.push({
       stage: 'S8',
       title: 'S8 Decision / actions',
       atoms,
       atomsAddedIds: s8Added,
-      warnings: [],
+      warnings: actionReadsGoalViolations.map(v => `INVARIANT: action reads goal:* (${v})`),
       stats: { atomCount: atoms.length, addedCount: s8Added.length, ...stageStats(atoms) },
       artifacts: {
         // Keep artifacts light: export is dominated by atoms; store only top scoring + access decisions.

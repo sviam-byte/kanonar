@@ -112,6 +112,7 @@ export type AtomNamespace =
   | 'cost'    // Costs / tradeoffs
   | 'tom'     // Theory of Mind (beliefs, relations)
   | 'emo'     // Affect / Emotions
+  | 'util'    // Precomputed utilities / projections (for Action layer)
   | 'goal'    // Active goals
   | 'threat'  // Threat / Risk analysis
   | 'rel'     // Relationships (static/memory)

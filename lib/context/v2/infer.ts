@@ -113,6 +113,7 @@ export function inferAtomNamespace(atom: Pick<ContextAtom, 'kind' | 'id' | 'sour
   if (tags.includes('threat')) return 'threat';
   if (tags.includes('affect') || tags.includes('emo')) return 'emo';
   if (tags.includes('goal')) return 'goal';
+  if (tags.includes('util')) return 'util';
 
   if (k.startsWith('tom_') || k === 'tom_belief') return 'tom';
   if (k.startsWith('rel_') || k === 'relationship_label') return 'rel';
@@ -128,6 +129,7 @@ export function inferAtomNamespace(atom: Pick<ContextAtom, 'kind' | 'id' | 'sour
   if (id.startsWith('emotion:')) return 'emo';
   if (id.startsWith('target_presence:')) return 'obs';
   if (id.startsWith('ctx:')) return 'ctx';
+  if (id.startsWith('util:')) return 'util';
   if (id.startsWith('rel:')) return 'rel';
   if (id.startsWith('prox:')) return 'soc';
   if (id.startsWith('cap:')) return 'cap';

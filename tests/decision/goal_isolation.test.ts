@@ -3,14 +3,16 @@ import { describe, expect, it } from "vitest";
 import type { ContextAtom } from "@/lib/context/v2/types";
 import type { Possibility } from "@/lib/context/possibilities/types";
 import { decideAction } from "@/lib/decision/decide";
-import { makeRng } from "@/lib/simkit/core/rng";
+import { RNG } from "@/lib/core/noise";
 
 function mkAtom(id: string, magnitude: number): ContextAtom {
   const ns: ContextAtom["ns"] = id.startsWith("goal:")
     ? "goal"
-    : id.startsWith("ctx:")
-      ? "ctx"
-      : "world";
+    : id.startsWith("util:")
+      ? "util"
+      : id.startsWith("ctx:")
+        ? "ctx"
+        : "world";
 
   return {
     id,
@@ -32,35 +34,47 @@ describe("decision: goal atoms are isolated", () => {
       mkAtom("goal:domain:safety:A", 0.8),
       mkAtom("goal:planTag:hide:A", 1.0),
       mkAtom("goal:planTag:explore:A", 0.1),
+
+      // Util projections (these are allowed to influence Action-layer scoring).
+      mkAtom("util:active:safety:A", 0.8),
+      mkAtom("util:activeGoal:A:hide", 1.0),
+      mkAtom("util:hint:allow:hide:hide", 1.0),
     ];
 
     const possibilities: Possibility[] = [
       {
+        id: "aff:hide",
+        kind: "affordance",
         actionId: "hide",
-        planTags: ["hide"],
         label: "hide",
-        params: {},
-      },
+        magnitude: 1,
+        enabled: true,
+        actionKey: "hide",
+      } as any,
       {
+        id: "aff:explore",
+        kind: "affordance",
         actionId: "explore",
-        planTags: ["explore"],
         label: "explore",
-        params: {},
-      },
+        magnitude: 1,
+        enabled: true,
+        actionKey: "explore",
+      } as any,
     ];
 
     const res = decideAction({
       selfId,
       atoms,
       possibilities,
-      rng: makeRng(123),
+      rng: new RNG(123),
       temperature: 0.2,
     });
 
-    expect(res.best?.actionId).toBe("hide");
+    expect(res.best?.p.actionId).toBe("hide");
 
     const actionAtom = res.best?.atoms?.find((a) => a.id.startsWith("action:"));
     const used = actionAtom?.trace?.usedAtomIds ?? [];
     expect(used.some((id) => id.startsWith("goal:"))).toBe(false);
+    expect(used.some((id) => id.startsWith("util:"))).toBe(true);
   });
 });

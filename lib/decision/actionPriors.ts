@@ -12,8 +12,9 @@ function getMag(atoms: ContextAtom[], id: string, fb = 0) {
 }
 
 function getGoalDomainMag(atoms: ContextAtom[], selfId: string, domain: string, fb = 0) {
-  // Canonical ids from deriveGoalAtoms(): goal:domain:<domain>:<selfId>
-  return clamp01(getMag(atoms, `goal:domain:${domain}:${selfId}`, fb));
+  // Goal layer projects into util:* atoms in S7b; Action layer must not read goal:* directly.
+  // Canonical ids: util:domain:<domain>:<selfId>
+  return clamp01(getMag(atoms, `util:domain:${domain}:${selfId}`, fb));
 }
 
 function getRel(
@@ -98,9 +99,9 @@ export function deriveActionPriors(args: {
       `threat:final:${selfId}`,
       `ctx:proceduralStrict:${selfId}`,
       `norm:proceduralStrict:${selfId}`,
-      `goal:domain:safety:${selfId}`,
-      `goal:domain:order:${selfId}`,
-      `goal:domain:control:${selfId}`,
+      `util:domain:safety:${selfId}`,
+      `util:domain:order:${selfId}`,
+      `util:domain:control:${selfId}`,
     ].filter(id => atoms.some(a => a?.id === id));
 
     // base
@@ -221,12 +222,12 @@ export function deriveActionPriors(args: {
       ...(survP.id ? [survP.id] : pickCtxId('surveillance', selfId)),
       ...(timeP.id ? [timeP.id] : pickCtxId('timePressure', selfId)),
 
-      `goal:domain:safety:${selfId}`,
-      `goal:domain:control:${selfId}`,
-      `goal:domain:affiliation:${selfId}`,
-      `goal:domain:status:${selfId}`,
-      `goal:domain:exploration:${selfId}`,
-      `goal:domain:order:${selfId}`,
+      `util:domain:safety:${selfId}`,
+      `util:domain:control:${selfId}`,
+      `util:domain:affiliation:${selfId}`,
+      `util:domain:status:${selfId}`,
+      `util:domain:exploration:${selfId}`,
+      `util:domain:order:${selfId}`,
 
       trustP.id,
       hostP.id,
