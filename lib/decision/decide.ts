@@ -174,6 +174,6 @@ export function decideAction(args: {
     );
   }
 
-  const atoms = [...topRanked.flatMap(item => item.atoms || []), ...decisionAtoms];
-  return { best: chosen, ranked: topRanked, atoms };
+  const resultAtoms = [...topRanked.flatMap(item => item.atoms || []), ...decisionAtoms];
+  return { best: chosen, ranked: topRanked, atoms: resultAtoms };
 }
