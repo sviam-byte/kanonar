@@ -1174,6 +1174,8 @@ export const GoalLabResults: React.FC<Props> = ({
     const DecisionGraphTab = () => (
         <DecisionGraphView
             frame={frame}
+            contextAtoms={currentAtoms}
+            selfId={focusSelfId ?? undefined}
             goalScores={tunedGoalScores}
             selectedGoalId={effectiveSelectedId}
         />

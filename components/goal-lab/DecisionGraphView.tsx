@@ -14,20 +14,18 @@ import { GoalNode, LensNode, SourceNode } from './DecisionGraphNodes';
 import { DecisionGraph3DView } from './DecisionGraph3DView';
 import { GoalExplanationPanel } from './GoalExplanationPanel';
 
-export type DecisionGraphRenderMode = 'graph' | 'meta' | 'overview' | 'goals' | '3d';
+export type DecisionGraphRenderMode = 'overview' | 'graph' | 'meta' | 'dual' | 'explain' | '3d';
 
 type Props = {
   frame?: AgentContextFrame | null;
+  /** Full atom set (typically snapshot atoms) used for dual-layer visualization. */
+  contextAtoms?: any[];
+  /** Agent id for ctx:*:selfId addressing in dual-layer visualization. */
+  selfId?: string;
   goalScores: ContextualGoalScore[];
   selectedGoalId?: string | null;
 
-  /**
-   * graph: full inputs→lenses→goals
-   * goals: collapsed inputs (2 buckets) → goals
-   * overview: 3 meta-nodes (Context, Lens, Goals)
-   * meta: per-goal (Context+Lens) buckets (legacy)
-   * 3d: 3D view
-   */
+  /** graph: full; overview/dual/meta/explain: simplified; 3d: 3D */
   mode?: DecisionGraphRenderMode;
 
   /** Smaller header for embedding inside the map frame */
@@ -199,136 +197,132 @@ function buildMetaGraph(goalScores: ContextualGoalScore[], maxGoals: number) {
   return { nodes, edges };
 }
 
-/**
- * Overview graph: a 3-node summary (Context + Lens → Goals).
- */
-function buildOverviewGraph(goalScores: ContextualGoalScore[], maxGoals: number) {
-  const ranked = [...arr(goalScores)].sort((a, b) => (b.totalLogit ?? 0) - (a.totalLogit ?? 0));
-  const trimmed = ranked.slice(0, Math.max(1, maxGoals));
-
-  let sumContext = 0;
-  let sumLens = 0;
-  for (const g of trimmed) {
-    const contribs = arr((g as any).contributions) as ContextualGoalContribution[];
-    for (const c of contribs) {
-      const v = Number((c as any).value);
-      if (!Number.isFinite(v)) continue;
-      const label = String((c as any).atomLabel || (c as any).explanation || '');
-      if (isLensLabel(label)) sumLens += v;
-      else sumContext += v;
-    }
-  }
-
-  const nodes: any[] = [
+function buildOverviewGraph(goalScores: ContextualGoalScore[]) {
+  const goals = arr(goalScores);
+  const goalCount = goals.length;
+  const nodes = [
     {
       id: 'meta:context',
-      type: 'lens',
-      position: { x: 0, y: 20 },
-      data: { label: `Context (top ${trimmed.length})` },
-      style: { width: 220, height: 52 },
-    },
-    {
-      id: 'meta:lens',
-      type: 'lens',
-      position: { x: 0, y: 120 },
-      data: { label: 'Lens (traits)' },
-      style: { width: 220, height: 52 },
+      position: { x: 0, y: 0 },
+      data: { label: 'Context' },
+      style: {
+        width: 220,
+        height: 60,
+        borderRadius: 14,
+        padding: '10px 12px',
+        border: '1px solid rgba(56, 189, 248, 0.45)',
+        background: 'rgba(56, 189, 248, 0.10)',
+        color: '#e2e8f0',
+        fontSize: '12px',
+        fontWeight: 700,
+      },
     },
     {
       id: 'meta:goals',
-      type: 'goal',
-      position: { x: 360, y: 70 },
-      data: { label: `Goals (top ${trimmed.length})` },
-      style: { width: 240, height: 52 },
+      position: { x: 320, y: 0 },
+      data: { label: `Goals (${goalCount})` },
+      style: {
+        width: 220,
+        height: 60,
+        borderRadius: 14,
+        padding: '10px 12px',
+        border: '1px solid rgba(148, 163, 184, 0.35)',
+        background: 'rgba(15, 23, 42, 0.85)',
+        color: '#e2e8f0',
+        fontSize: '12px',
+        fontWeight: 700,
+      },
     },
   ];
 
-  const edges: any[] = [
+  const edges = [
     {
-      id: 'meta:context->meta:goals',
+      id: 'e:meta:context->meta:goals',
       source: 'meta:context',
       target: 'meta:goals',
-      type: 'energy',
-      data: { weight: sumContext, rawWeight: sumContext, label: formatValue(sumContext) },
-    },
-    {
-      id: 'meta:lens->meta:goals',
-      source: 'meta:lens',
-      target: 'meta:goals',
-      type: 'energy',
-      data: { weight: sumLens, rawWeight: sumLens, label: formatValue(sumLens) },
+      type: 'smoothstep',
+      label: '→',
+      style: { stroke: 'rgba(148, 163, 184, 0.55)', strokeWidth: 2 },
+      labelStyle: { fill: 'rgba(148, 163, 184, 0.9)', fontSize: 10 },
     },
   ];
 
   return { nodes, edges };
 }
 
-/**
- * Goals-detail graph: collapse inputs into two buckets (Context / Lens), keep goals expanded.
- */
-function buildGoalsDetailGraph(goalScores: ContextualGoalScore[], maxGoals: number) {
-  const ranked = [...arr(goalScores)].sort((a, b) => (b.totalLogit ?? 0) - (a.totalLogit ?? 0));
-  const trimmed = ranked.slice(0, Math.max(1, maxGoals));
+function buildDualLayerGraph(atoms: any[], selfId: string) {
+  const axes = [
+    'danger', 'control', 'intimacy', 'hierarchy', 'publicness',
+    'normPressure', 'surveillance', 'scarcity', 'timePressure',
+    'uncertainty', 'legitimacy', 'secrecy', 'grief', 'pain',
+  ];
+
+  const getMag = (id: string) => {
+    const a = arr(atoms).find((x: any) => String(x?.id || '') === id);
+    const v = Number((a as any)?.magnitude);
+    return Number.isFinite(v) ? v : 0;
+  };
 
   const nodes: any[] = [];
   const edges: any[] = [];
+  const X_BASE = 0;
+  const X_FINAL = 340;
+  const Y_GAP = 74;
 
-  const X_INPUT = 0;
-  const X_GOAL = 360;
-  const GOAL_GAP = 92;
-
-  nodes.push({
-    id: 'meta:context',
-    type: 'lens',
-    position: { x: X_INPUT, y: 0 },
-    data: { label: 'Context' },
-    style: { width: 220, height: 52 },
-  });
-  nodes.push({
-    id: 'meta:lens',
-    type: 'lens',
-    position: { x: X_INPUT, y: 80 },
-    data: { label: 'Lens (traits)' },
-    style: { width: 220, height: 52 },
-  });
-
-  trimmed.forEach((g, i) => {
-    const goalId = String(g.goalId);
-    const goalNodeId = `goal:${goalId}`;
-    const y = i * GOAL_GAP;
-
-    const contribs = arr((g as any).contributions) as ContextualGoalContribution[];
-    let sumContext = 0;
-    let sumLens = 0;
-    for (const c of contribs) {
-      const v = Number((c as any).value);
-      if (!Number.isFinite(v)) continue;
-      const label = String((c as any).atomLabel || (c as any).explanation || '');
-      if (isLensLabel(label)) sumLens += v;
-      else sumContext += v;
-    }
+  axes.forEach((axis, i) => {
+    const baseId = `ctx:${axis}:${selfId}`;
+    const finId = `ctx:final:${axis}:${selfId}`;
+    const baseVal = getMag(baseId);
+    const finVal = getMag(finId);
+    const y = i * Y_GAP;
 
     nodes.push({
-      id: goalNodeId,
-      type: 'goal',
-      position: { x: X_GOAL, y },
-      data: { label: goalId },
-      style: { width: 240, height: 52 },
+      id: baseId,
+      position: { x: X_BASE, y },
+      data: { label: `${axis}: ${baseVal.toFixed(2)}` },
+      style: {
+        width: 280,
+        height: 52,
+        borderRadius: 12,
+        padding: '8px 12px',
+        border: '1px solid rgba(59, 130, 246, 0.60)',
+        background: 'rgba(59, 130, 246, 0.12)',
+        color: '#e2e8f0',
+        fontSize: '12px',
+        fontWeight: 600,
+      },
     });
 
-    edges.push({
-      id: `meta:context->${goalNodeId}`,
-      source: 'meta:context',
-      target: goalNodeId,
-      type: 'energy',
-      data: { weight: sumContext, rawWeight: sumContext, label: formatValue(sumContext) },
+    nodes.push({
+      id: finId,
+      position: { x: X_FINAL, y },
+      data: { label: `${axis}: ${finVal.toFixed(2)}` },
+      style: {
+        width: 280,
+        height: 52,
+        borderRadius: 12,
+        padding: '8px 12px',
+        border: '1px solid rgba(239, 68, 68, 0.55)',
+        background: 'rgba(239, 68, 68, 0.10)',
+        color: '#e2e8f0',
+        fontSize: '12px',
+        fontWeight: 600,
+      },
     });
+
+    const delta = finVal - baseVal;
+    const label = delta >= 0 ? `+${delta.toFixed(2)}` : `${delta.toFixed(2)}`;
     edges.push({
-      id: `meta:lens->${goalNodeId}`,
-      source: 'meta:lens',
-      target: goalNodeId,
-      type: 'energy',
-      data: { weight: sumLens, rawWeight: sumLens, label: formatValue(sumLens) },
+      id: `e:${baseId}->${finId}`,
+      source: baseId,
+      target: finId,
+      type: 'smoothstep',
+      label,
+      style: {
+        stroke: delta >= 0 ? 'rgba(16, 185, 129, 0.85)' : 'rgba(245, 158, 11, 0.85)',
+        strokeWidth: 1 + Math.min(6, Math.abs(delta) * 10),
+      },
+      labelStyle: { fill: 'rgba(148, 163, 184, 0.9)', fontSize: 10 },
     });
   });
 
@@ -337,6 +331,8 @@ function buildGoalsDetailGraph(goalScores: ContextualGoalScore[], maxGoals: numb
 
 export const DecisionGraphView: React.FC<Props> = ({
   frame: _frame,
+  contextAtoms,
+  selfId,
   goalScores,
   selectedGoalId,
   mode: externalMode = 'graph',
@@ -355,22 +351,21 @@ export const DecisionGraphView: React.FC<Props> = ({
   const [spreadDecay, setSpreadDecay] = useState(0.2);
   const [spreadStart, setSpreadStart] = useState<string | null>(null);
   const [spreadDirection, setSpreadDirection] = useState<'backward' | 'forward' | 'undirected'>('backward');
-  const [showGoalExplain, setShowGoalExplain] = useState(true);
 
   const safeScores = arr(goalScores);
 
-  const selectedGoalScore = useMemo(() => {
-    const scores = [...safeScores].sort((a, b) => (b.totalLogit ?? 0) - (a.totalLogit ?? 0));
-    if (selectedGoalId) {
-      return scores.find(s => String(s.goalId) === String(selectedGoalId)) || scores[0] || null;
-    }
-    return scores[0] || null;
-  }, [safeScores, selectedGoalId]);
-
   const graph = useMemo(() => {
-    if (mode === 'overview') return buildOverviewGraph(safeScores, maxGoals);
-    if (mode === 'goals') return buildGoalsDetailGraph(safeScores, maxGoals);
+    if (mode === 'explain') {
+      return { nodes: [], edges: [] };
+    }
     if (mode === 'meta') return buildMetaGraph(safeScores, maxGoals);
+    if (mode === 'overview') return buildOverviewGraph(safeScores);
+    if (mode === 'dual') {
+      const atoms = arr(contextAtoms);
+      const sid = String(selfId || '').trim();
+      if (!atoms.length || !sid) return { nodes: [], edges: [] };
+      return buildDualLayerGraph(atoms, sid);
+    }
 
     // "graph" / "3d" = strict clean-flow triplet (Sources → Lenses → Goals)
     // Uses fixed x-columns and edge filtering to avoid spaghetti.
@@ -381,7 +376,7 @@ export const DecisionGraphView: React.FC<Props> = ({
       maxInputsPerGoal: maxInputs,
       edgeThreshold,
     });
-  }, [safeScores, selectedGoalId, maxGoals, maxInputs, edgeThreshold, mode]);
+  }, [mode, safeScores, selectedGoalId, maxGoals, maxInputs, edgeThreshold, contextAtoms, selfId]);
 
   // Keep a sensible default for the spread start node.
   React.useEffect(() => {
@@ -487,6 +482,14 @@ export const DecisionGraphView: React.FC<Props> = ({
     []
   );
 
+  if (mode === 'explain') {
+    return (
+      <div className="w-full h-full rounded-xl border border-slate-800/70 bg-black/20 overflow-hidden">
+        <GoalExplanationPanel goalScores={safeScores} selectedGoalId={selectedGoalId ?? undefined} />
+      </div>
+    );
+  }
+
   return (
     <div className="h-full min-h-0 flex flex-col">
       <div
@@ -496,14 +499,14 @@ export const DecisionGraphView: React.FC<Props> = ({
       >
         <div className="text-[10px] text-slate-300/80">
           {mode === 'overview'
-            ? 'Overview: Context + Lens → Goals'
-            : mode === 'goals'
-              ? 'Goals: Context + Lens buckets → Goals'
-              : mode === 'meta'
-                ? 'Meta: per-goal Context/Lens buckets'
+            ? 'Overview: Context → Goals'
+            : mode === 'meta'
+              ? 'Meta graph: Context/Lens buckets → Goals'
+              : mode === 'dual'
+                ? 'Dual-layer: ctx:* (objective) → ctx:final:* (after Character Lens)'
                 : mode === '3d'
-                  ? '3D: Sources → Lenses → Goals'
-                  : '2D: Sources → Lenses → Goals'}
+                  ? '3D graph: layered (atom/lens/goal/action), contrib + flow'
+                  : 'Decision graph: Sources → Lenses → Goals'}
         </div>
 
         <div className="flex items-center gap-2">
@@ -514,22 +517,13 @@ export const DecisionGraphView: React.FC<Props> = ({
               onChange={(e) => setMode(e.target.value as any)}
               className="bg-black/25 border border-slate-700/60 rounded px-2 py-0.5 text-[10px]"
             >
-              <option value="overview">overview</option>
-              <option value="goals">goals</option>
+              <option value="overview">Overview</option>
               <option value="graph">2D</option>
               <option value="3d">3D</option>
-              <option value="meta">meta</option>
+              <option value="meta">Meta</option>
+              <option value="dual">Dual</option>
+              <option value="explain">Explain</option>
             </select>
-          </label>
-
-          <label className="flex items-center gap-2 text-[10px] text-slate-300/80">
-            <span className="opacity-70">Explain</span>
-            <input
-              type="checkbox"
-              checked={showGoalExplain}
-              onChange={e => setShowGoalExplain(e.target.checked)}
-              className="accent-cyan-400"
-            />
           </label>
 
           <label className="flex items-center gap-2 text-[10px] text-slate-300/80">
@@ -636,46 +630,38 @@ export const DecisionGraphView: React.FC<Props> = ({
         </div>
       </div>
 
-      <div className="flex-1 min-h-0 flex">
-        <div className="flex-1 min-w-0">
-          {mode === '3d' ? (
-            <DecisionGraph3DView
-              nodes={enrichedGraph.nodes as any}
-              edges={enrichedGraph.edges as any}
-              initialFocusId={spreadStart}
-              onPickNode={(id) => {
-                if (!spreadOn) return;
-                setSpreadStart(String(id));
-              }}
-            />
-          ) : (
-            <ReactFlow
-              nodes={enrichedGraph.nodes}
-              edges={enrichedGraph.edges}
-              nodeTypes={nodeTypes}
-              edgeTypes={edgeTypes}
-              fitView
-              nodesDraggable={false}
-              nodesConnectable={false}
-              elementsSelectable={true}
-              panOnDrag
-              className="bg-black"
-              onNodeClick={(_, n) => {
-                if (!spreadOn) return;
-                setSpreadStart(String(n.id));
-              }}
-            >
-              <Background />
-              <Controls />
-            </ReactFlow>
-          )}
-        </div>
-
-        {showGoalExplain && selectedGoalScore ? (
-          <div className="w-[380px] shrink-0 border-l border-slate-800 bg-slate-950/40 p-3 overflow-auto">
-            <GoalExplanationPanel score={selectedGoalScore} />
-          </div>
-        ) : null}
+      <div className="flex-1 min-h-0">
+        {mode === '3d' ? (
+          <DecisionGraph3DView
+            nodes={enrichedGraph.nodes as any}
+            edges={enrichedGraph.edges as any}
+            initialFocusId={spreadStart}
+            onPickNode={(id) => {
+              if (!spreadOn) return;
+              setSpreadStart(String(id));
+            }}
+          />
+        ) : (
+          <ReactFlow
+            nodes={enrichedGraph.nodes}
+            edges={enrichedGraph.edges}
+            nodeTypes={nodeTypes}
+            edgeTypes={edgeTypes}
+            fitView
+            nodesDraggable={false}
+            nodesConnectable={false}
+            elementsSelectable={true}
+            panOnDrag
+            className="bg-black"
+            onNodeClick={(_, n) => {
+              if (!spreadOn) return;
+              setSpreadStart(String(n.id));
+            }}
+          >
+            <Background />
+            <Controls />
+          </ReactFlow>
+        )}
       </div>
     </div>
   );

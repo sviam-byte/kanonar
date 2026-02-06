@@ -145,20 +145,26 @@ export function applyCharacterLens(args: {
     0.10 * danger0
   );
 
-  // Personality modulation must include:
-  // - sensitivity: how strongly the axis reacts to evidence (slope)
-  // - bias: baseline shift (e.g. a paranoiac “sees danger” even when danger0≈0)
-  //
-  // NOTE: we keep the math simple and stable:
-  //   y = x + bias + (x - 0.5) * (sensitivity - 1)
-  // This keeps neutrality at traits=0.5 (bias=0, sensitivity≈1),
-  // but allows baseline shifts + stronger/nonlinear reactions.
-  const clampBias = (b: number) => Math.max(-0.5, Math.min(0.5, b));
-  const modulate = (x: number, bias: number, sensitivity: number) => {
-    const k = Number.isFinite(sensitivity) ? sensitivity : 1;
-    const b = clampBias(Number.isFinite(bias) ? bias : 0);
-    return clamp01(x + b + (x - 0.5) * (k - 1));
-  };
+  /**
+   * Personality modulation model:
+   * - bias shifts baseline ("tends to see more/less")
+   * - sensitivity amplifies deviation from 0.5 ("reacts stronger")
+   *
+   * This intentionally fixes the classic amplify() issue:
+   * with amplify() every trait leaves x=0.5 invariant; but paranoia must
+   * shift perception even when base danger is neutral / low.
+   */
+  function modulate(x: number, bias: number, sensitivity: number): number {
+    const shifted = clamp01(x + bias);
+    const centered = shifted - 0.5;
+    const amplified = centered * sensitivity;
+    return clamp01(0.5 + amplified);
+  }
+
+  // bias terms (each is ~[-0.35..+0.35] in typical ranges)
+  const paranoiaBias = (paranoia - 0.5) * 0.7;
+  const stressBias = (stress - 0.5) * 0.25;
+  const experienceBias = (experience - 0.5) * -0.30; // experience reduces overestimation
 
   // коэффициенты усиления (чтобы персонажи реально расходились)
   const kDanger = 1.0 + 1.2 * (paranoia - 0.5) + 0.6 * (stress - 0.5) + 0.45 * (hpaReactivity - 0.5); // паранойя ↑ => danger субъективно ↑
@@ -178,33 +184,19 @@ export function applyCharacterLens(args: {
 
   // bias terms (baseline shifts). Keep them linear in (trait - 0.5) so that
   // when everything is 0.5 the lens becomes (almost) identity.
-  const bDanger =
-    1.1 * (paranoia - 0.5) +
-    0.4 * (stress - 0.5) +
-    0.25 * (hpaReactivity - 0.5) -
-    0.35 * (experience - 0.5);
-  const bUnc =
-    0.75 * (0.5 - ambiguityTol) +
-    0.6 * (0.5 - experience) +
-    0.35 * (fatigue - 0.5) +
-    0.15 * (stress - 0.5);
-  const bNorm = 0.55 * (normSens - 0.5) + 0.25 * (pub0 - 0.5);
+  const bDanger = paranoiaBias + stressBias + experienceBias;
+  const bUnc = (0.5 - ambiguityTol) * 0.30 + (0.5 - experience) * 0.25;
+  const bNorm = (sensitivity - 0.5) * 0.20 + stressBias;
   const bPub = 0.35 * (sensitivity - 0.5) + 0.15 * (stress - 0.5);
   const bSurv = 0.9 * (paranoia - 0.5) + 0.25 * (danger0 - 0.5);
   const bCrowd = 0.35 * (stress - 0.5) + 0.5 * (paranoia - 0.5);
   const bIntim = -0.75 * (paranoia - 0.5) - 0.35 * (danger0 - 0.5);
-  const bControl =
-    0.55 * (0.5 - experience) +
-    0.35 * (stress - 0.5) +
-    0.35 * (paranoia - 0.5);
+  const bControl = (experience - 0.5) * 0.22 + (0.5 - stress) * 0.18;
   const bTime =
     0.55 * (0.5 - ambiguityTol) +
     0.4 * (fatigue - 0.5) +
     0.2 * (danger0 - 0.5);
-  const bSecrecy =
-    0.85 * (paranoia - 0.5) +
-    0.35 * (surv0 - 0.5) +
-    0.2 * (pub0 - 0.5);
+  const bSecrecy = paranoiaBias + (norm0 - 0.5) * 0.18;
   const bLegit = -0.55 * (paranoia - 0.5) + 0.45 * (experience - 0.5) + 0.25 * (normSens - 0.5);
   const bHier = 0.45 * (normSens - 0.5) + 0.25 * (paranoia - 0.5);
   const bPriv = -0.45 * (sensitivity - 0.5) - 0.35 * (paranoia - 0.5);

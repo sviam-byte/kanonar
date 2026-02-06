@@ -579,10 +579,10 @@ export const GoalSandbox: React.FC = () => {
     return 'energy';
   });
 
-  const [energyViewMode, setEnergyViewMode] = useState<'graph' | 'meta' | '3d'>(() => {
+  const [energyViewMode, setEnergyViewMode] = useState<'overview' | 'graph' | 'meta' | 'dual' | 'explain' | '3d'>(() => {
     try {
       const stored = localStorage.getItem('goalsandbox.energyViewMode.v1');
-      if (stored === 'graph' || stored === 'meta' || stored === '3d') return stored;
+      if (stored === 'overview' || stored === 'graph' || stored === 'meta' || stored === 'dual' || stored === 'explain' || stored === '3d') return stored;
     } catch {}
     return 'graph';
   });
@@ -2215,7 +2215,7 @@ export const GoalSandbox: React.FC = () => {
           {centerView === 'energy' ? (
             <>
               <div className="flex items-center gap-1">
-                {(['graph', 'meta', '3d'] as const).map((mode) => (
+                {(['overview', 'graph', 'meta', 'dual', 'explain', '3d'] as const).map((mode) => (
                   <button
                     key={mode}
                     onClick={() => setEnergyViewMode(mode)}
@@ -2224,7 +2224,19 @@ export const GoalSandbox: React.FC = () => {
                         ? 'bg-emerald-600/30 text-emerald-200 border-emerald-500/40'
                         : 'bg-black/20 text-slate-300 border-slate-700/60 hover:border-slate-500/70'
                     }`}
-                    title={mode === 'graph' ? 'Graph (inputs → goals)' : mode === 'meta' ? 'Meta buckets' : '3D scaffold'}
+                    title={
+                      mode === 'overview'
+                        ? 'Overview (context → goals)'
+                        : mode === 'graph'
+                          ? 'Graph (inputs → goals)'
+                          : mode === 'meta'
+                            ? 'Meta buckets'
+                            : mode === 'dual'
+                              ? 'Dual-layer (ctx → ctx:final)'
+                              : mode === 'explain'
+                                ? 'Explain goals'
+                                : '3D scaffold'
+                    }
                   >
                     {mode}
                   </button>
@@ -2268,6 +2280,8 @@ export const GoalSandbox: React.FC = () => {
             <div className="h-full w-full">
               <DecisionGraphView
                 frame={computed.frame as any}
+                contextAtoms={computed.snapshot?.atoms ?? []}
+                selfId={computed.snapshot?.selfId ?? undefined}
                 goalScores={arr(computed.goals) as any}
                 selectedGoalId={null}
                 mode={energyViewMode}
@@ -2328,6 +2342,8 @@ export const GoalSandbox: React.FC = () => {
             <div className="flex-1 min-h-0">
               <DecisionGraphView
                 frame={computed.frame as any}
+                contextAtoms={computed.snapshot?.atoms ?? []}
+                selfId={computed.snapshot?.selfId ?? undefined}
                 goalScores={arr(computed.goals) as any}
                 selectedGoalId={null}
                 mode={energyViewMode}

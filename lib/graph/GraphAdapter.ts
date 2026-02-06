@@ -257,6 +257,12 @@ export function buildDecisionTripletGraph({
           rawWeight: w,
           strength,
           label: formatEdgeLabel(c),
+          meta: {
+            atomId: String((c as any)?.atomId || ''),
+            source: String((c as any)?.source || ''),
+            formula: String((c as any)?.formula || ''),
+            explanation: String((c as any)?.explanation || ''),
+          },
         },
         animated: false,
       });
