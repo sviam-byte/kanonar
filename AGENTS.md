@@ -1,3 +1,57 @@
+# Agent Entry Point (read first)
+
+This repo is an agent-simulation / decision system (Goal Lab / SimKit style).
+Your job as an agent is to make changes safely: preserve invariants, keep outputs interpretable, and keep tests green.
+
+## 1) Read order (15–25 minutes total)
+1. docs/agent/00_INDEX.md
+2. docs/agent/10_ARCHITECTURE.md
+3. docs/agent/20_MATH_MODEL.md  (formulas & invariants)
+4. docs/agent/30_WORKFLOWS.md   (how to add features)
+5. docs/agent/40_TESTING.md     (how to validate)
+6. docs/agent/50_CONTRIBUTING_AGENT.md (patch rules)
+
+## 2) Non-negotiable invariants (do not break)
+These are conceptual invariants; map them to code with ripgrep (rg) as needed.
+
+### Determinism
+- If the system exposes seeding/temperature/noise: runs must be reproducible under the same seed and config.
+- Any randomness must flow through a single RNG utility (no Math.random() in core logic).
+
+### Traceability
+- Every derived decision/goal hypothesis should be explainable:
+  - carry a trace / provenance (usedAtomIds, parts, notes) or equivalent.
+  - never silently drop metadata when transforming.
+
+### Energy / scoring semantics
+- “Energy” is a unitless internal scoring mass used for comparisons.
+- Propagation must conserve mass up to explicit decay/cost terms.
+- Gating (MoE / modes) must be explicit and logged/traceable.
+
+### Safety checks
+- Never crash UI/graph views on undefined arrays (guard every map/forEach on optional data).
+- Validate inputs at boundaries (API -> model; model -> view).
+
+## 3) Fast orientation commands (copy/paste)
+Use these to find the “truth” in the codebase:
+
+### Find core concepts
+- rg -n "Energy|spreadEnergy|propagat|channel" src
+- rg -n "Mixture|MoE|expert|mode|gate" src
+- rg -n "hyster|inertia|threshold" src
+- rg -n "trace|usedAtomIds|proven" src
+- rg -n "seed|RNG|random|temperature" src
+
+### Find UI graph views
+- rg -n "DecisionGraph|ForceGraph|react-force-graph|AFRAME" src
+
+## 4) When you submit a change
+You must provide:
+1) A short intent summary (“what + why”)
+2) The patch (git diff)
+3) The validation you ran (tests / typecheck / build)
+4) Any changes to docs/agent/* if you introduced new invariants or knobs
+
 # Agent Playbook (Kanonar / Goal Lab)
 
 Этот файл предназначен для “агента” (в т.ч. для меня), чтобы быстро и одинаково работать с репо.
