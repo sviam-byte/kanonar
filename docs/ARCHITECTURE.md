@@ -34,3 +34,9 @@ world/obs/mem/rel/life atoms
 1) Начать с `docs/PIPELINE.md` и определить, какая стадия должна была создать нужный сигнал.
 2) Найти атом на соответствующей стадии в Pipeline UI и посмотреть trace.usedAtomIds.
 3) Сопоставить usedAtomIds с контрактом стадии.
+
+---
+
+## Agent docs (Character → Lens → ToM → Goal Lab)
+
+Полный том документации для агентов лежит в `docs/agents/00_README.md`.

@@ -2,6 +2,10 @@
 
 Этот файл предназначен для “агента” (в т.ч. для меня), чтобы быстро и одинаково работать с репо.
 
+## Canonical docs
+
+The detailed, formula-level documentation for the agent model lives in `docs/agents/00_README.md` (Character → Lens → ToM → Goal Lab → Pipeline).
+
 ## Commands (copy-paste)
 
 Install:
