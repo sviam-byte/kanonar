@@ -46,6 +46,33 @@ type GraphData = {
   links: Decision3DLink[];
 };
 
+class Graph3DErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { hasError: boolean; err?: unknown }
+> {
+  state: { hasError: boolean; err?: unknown } = { hasError: false };
+
+  static getDerivedStateFromError(err: unknown) {
+    return { hasError: true, err };
+  }
+
+  componentDidCatch() {
+    // Swallow; 3D is optional and failure should not crash the UI.
+  }
+
+  render() {
+    if (!this.state.hasError) return this.props.children as any;
+    return (
+      <div className="h-full flex flex-col items-center justify-center text-slate-300 text-sm gap-2">
+        <div className="font-semibold">3D renderer failed to load</div>
+        <div className="text-[12px] opacity-80">
+          Switch to 2D mode. (This is usually a bundler / dependency issue.)
+        </div>
+      </div>
+    );
+  }
+}
+
 function clamp01(x: number): number {
   const v = Number(x);
   if (!Number.isFinite(v)) return 0;
@@ -182,6 +209,16 @@ export const DecisionGraph3DView: React.FC<Props> = ({ nodes, edges, initialFocu
   const [showContrib, setShowContrib] = useState(false);
   const [showFlow, setShowFlow] = useState(true);
   const [capLinks, setCapLinks] = useState(600);
+
+  // Some 3D graph builds expect a global AFRAME; provide a harmless shim.
+  useEffect(() => {
+    try {
+      const w = globalThis as any;
+      if (w && typeof w === 'object' && !w.AFRAME) w.AFRAME = {};
+    } catch {
+      // ignore
+    }
+  }, []);
 
   /**
    * Preset to highlight the spread flow quickly.
@@ -435,50 +472,50 @@ export const DecisionGraph3DView: React.FC<Props> = ({ nodes, edges, initialFocu
         </div>
       ) : null}
 
-      <Suspense
-        fallback={
-          <div className="h-full flex items-center justify-center text-slate-300 text-sm">
-            Loading 3D…
-          </div>
-        }
-      >
-        <ForceGraph3D
-          ref={fgRef}
-          graphData={filtered as any}
-          width={size.w}
-          height={size.h}
-          backgroundColor="rgba(0,0,0,1)"
-          showNavInfo={false}
-          nodeLabel={(n: any) => `${n.label} (${n.kind})`}
-          linkLabel={(l: any) =>
-            `weight=${Number(l.weight).toFixed(3)} | flow=${Number(l.flow).toFixed(3)} | ${l.source} → ${l.target}`
+      <Graph3DErrorBoundary>
+        <Suspense
+          fallback={
+            <div className="h-full flex items-center justify-center text-slate-300 text-sm">Loading 3D…</div>
           }
-          nodeVal={(n: any) => nodeVal(n)}
-          nodeColor={(n: any) => nodeColor(n)}
-          linkWidth={(l: any) => linkWidth(l)}
-          linkColor={(l: any) => linkColor(l)}
-          linkDirectionalParticles={(l: any) => particleCount(l)}
-          linkDirectionalParticleWidth={(l: any) => Math.max(0.5, Math.min(3, Math.abs(l.flow) * 2))}
-          linkDirectionalParticleSpeed={(l: any) =>
-            Math.max(0.002, Math.min(0.03, Math.abs(l.flow) * 0.02))
-          }
-          enableNodeDrag={false}
-          onNodeClick={(n: any) => {
-            const id = String(n.id);
-            setSelectedId(id);
-            onPickNode?.(id);
-          }}
-          onEngineStop={() => {
-            const api = fgRef.current;
-            if (!api) return;
-            try {
-              api.zoomToFit?.(400, 60);
-            } catch {
-              // ignore
+        >
+          <ForceGraph3D
+            ref={fgRef}
+            graphData={filtered as any}
+            width={size.w}
+            height={size.h}
+            backgroundColor="rgba(0,0,0,1)"
+            showNavInfo={false}
+            nodeLabel={(n: any) => `${n.label} (${n.kind})`}
+            linkLabel={(l: any) =>
+              `weight=${Number(l.weight).toFixed(3)} | flow=${Number(l.flow).toFixed(3)} | ${l.source} → ${l.target}`
             }
-          }}
-        />
-      </Suspense>
+            nodeVal={(n: any) => nodeVal(n)}
+            nodeColor={(n: any) => nodeColor(n)}
+            linkWidth={(l: any) => linkWidth(l)}
+            linkColor={(l: any) => linkColor(l)}
+            linkDirectionalParticles={(l: any) => particleCount(l)}
+            linkDirectionalParticleWidth={(l: any) => Math.max(0.5, Math.min(3, Math.abs(l.flow) * 2))}
+            linkDirectionalParticleSpeed={(l: any) =>
+              Math.max(0.002, Math.min(0.03, Math.abs(l.flow) * 0.02))
+            }
+            enableNodeDrag={false}
+            onNodeClick={(n: any) => {
+              const id = String(n.id);
+              setSelectedId(id);
+              onPickNode?.(id);
+            }}
+            onEngineStop={() => {
+              const api = fgRef.current;
+              if (!api) return;
+              try {
+                api.zoomToFit?.(400, 60);
+              } catch {
+                // ignore
+              }
+            }}
+          />
+        </Suspense>
+      </Graph3DErrorBoundary>
     </div>
   );
 };

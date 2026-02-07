@@ -3,107 +3,18 @@
 
 import type { SimPlugin } from '../core/simulator';
 import type { SimWorld, SimSnapshot } from '../core/types';
-import { EntityType, type WorldState } from '../../../types';
 import { runGoalLabPipelineV1 } from '../../goal-lab/pipeline/runPipelineV1';
+import { buildWorldStateFromSim } from './goalLabWorldState';
+
+export { buildWorldStateFromSim } from './goalLabWorldState';
 
 function arr<T>(x: any): T[] {
   return Array.isArray(x) ? x : [];
 }
 
-function clamp01(x: number) {
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(0, Math.min(1, x));
-}
-
-function pickAgentId(world: SimWorld): string | null {
+export function pickAgentId(world: SimWorld): string | null {
   const ids = Object.keys(world.characters || {}).sort();
   return ids.length ? ids[0] : null;
-}
-
-function toDomainEvents(snapshot: SimSnapshot): any[] {
-  // Map SimEvent -> DomainEvent (minimal, tolerant)
-  const nowTick = Number((snapshot as any)?.tickIndex ?? 0);
-  return arr<any>((snapshot as any)?.events).map((e: any) => {
-    const p = (e && typeof e === 'object') ? (e.payload || {}) : {};
-    const tick = Number(p.tick ?? p.tickIndex ?? nowTick);
-    const actorId = String(p.actorId ?? p.actor ?? 'system');
-    const targetId = p.targetId != null ? String(p.targetId) : undefined;
-    // tolerate both locationId and legacy locId
-    const locationId = (p.locationId != null)
-      ? String(p.locationId)
-      : (p.locId != null ? String(p.locId) : undefined);
-    const magnitude = clamp01(Number(p.magnitude ?? p.severity ?? 0.5));
-    return {
-      kind: String(e?.type ?? 'event'),
-      tick,
-      actorId,
-      targetId,
-      magnitude,
-      context: { locationId },
-      meta: { simEventId: e?.id, payload: p },
-    };
-  });
-}
-
-function buildWorldStateFromSim(world: SimWorld, snapshot: SimSnapshot): WorldState {
-  const chars = arr<any>((snapshot as any)?.characters);
-  const locs = arr<any>((snapshot as any)?.locations);
-
-  // Agents: minimal fields needed by pipeline, rest as "any"
-  const agents = chars.map((c: any) => {
-    const entityId = String(c?.id);
-    const locId = String(c?.locId ?? 'loc:unknown');
-    return {
-      entityId,
-      type: EntityType.Character,
-      title: String(c?.name ?? entityId),
-      locationId: locId,
-      // pipeline reads agent.memory.beliefAtoms
-      // persisted by perceptionMemoryPlugin into world.facts[mem:beliefAtoms:<id>]
-      memory: { beliefAtoms: arr<any>((world as any)?.facts?.[`mem:beliefAtoms:${entityId}`]) },
-      // keep room for extensions
-      params: {
-        stress: clamp01(Number(c?.stress ?? 0)),
-        health: clamp01(Number(c?.health ?? 1)),
-        energy: clamp01(Number(c?.energy ?? 1)),
-      },
-    } as any;
-  });
-
-  const locations = locs.map((l: any) => {
-    const entityId = String(l?.id);
-    return {
-      entityId,
-      type: EntityType.Location,
-      title: String(l?.name ?? entityId),
-      tags: arr<string>(l?.tags),
-      hazards: l?.hazards || {},
-      norms: l?.norms || {},
-      neighbors: arr<string>(l?.neighbors),
-      // pipeline expects LocationEntity-ish, tolerate extra fields
-    } as any;
-  });
-
-  const w: WorldState = {
-    tick: Number((world as any)?.tickIndex ?? (snapshot as any)?.tickIndex ?? 0),
-    agents,
-    locations,
-    leadership: {} as any,
-    initialRelations: {},
-    eventLog: {
-      schemaVersion: 1,
-      events: toDomainEvents(snapshot),
-    },
-    // lightweight sceneSnapshot hook (optional)
-    sceneSnapshot: {
-      simkit: {
-        tickIndex: Number((snapshot as any)?.tickIndex ?? 0),
-        facts: (world as any)?.facts || {},
-      },
-    },
-  } as any;
-
-  return w;
 }
 
 export function makeGoalLabPipelinePlugin(opts?: {

@@ -4,6 +4,8 @@ export type GoalState = {
   fatigue: number;
   progress: number;
   lastActiveTick: number;
+  /** Exponential moving average of activation (goal score) to reduce flicker. */
+  activationEMA: number;
 };
 
 function clamp01(x: number): number {
@@ -17,7 +19,7 @@ function clamp11(x: number): number {
 }
 
 export function initGoalState(): GoalState {
-  return { tension: 0.5, lockIn: 0, fatigue: 0, progress: 0, lastActiveTick: -1 };
+  return { tension: 0.5, lockIn: 0, fatigue: 0, progress: 0, lastActiveTick: -1, activationEMA: 0 };
 }
 
 /**
@@ -34,8 +36,13 @@ export function updateGoalState(
   opts: { active: boolean; activation: number; tick: number; progressDelta?: number }
 ): GoalState {
   const p = prev ? { ...prev } : initGoalState();
-  const act = clamp01(opts.activation);
+  const actRaw = clamp01(opts.activation);
   const isActive = Boolean(opts.active);
+
+  // Activation hysteresis (EMA): more lockIn => more inertia.
+  const alpha = clamp01(0.65 + 0.25 * (p.lockIn ?? 0));
+  const activationEMA = clamp01(alpha * (p.activationEMA ?? 0) + (1 - alpha) * actRaw);
+  const act = activationEMA;
 
   // lockIn
   const lockUp = isActive ? 0.22 + 0.18 * act : 0;
@@ -73,5 +80,6 @@ export function updateGoalState(
     fatigue: nextFatigue,
     progress,
     lastActiveTick: isActive ? opts.tick : p.lastActiveTick,
+    activationEMA,
   };
 }

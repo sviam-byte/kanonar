@@ -2,6 +2,10 @@
 
 Цель: фиксировать “что где рождается” и какие зависимости допустимы.
 
+## Pipeline output envelope
+
+- `GoalLabPipelineV1.step`: явный снимок шага (tick/seed/events), чтобы фиксировать время и входные события.
+
 ## Naming conventions (atoms)
 
 - `ctx:<axis>:<agentId>` — объективная ось контекста (base)
@@ -70,6 +74,7 @@ Outputs:
 - `goal:*`
 - `util:*` проекция (в конце S7)
 - `goal:state:*` и `goal:active:*` должны переноситься между тиками (memory), т.к. GoalLab хранит состояние через атомы, а не через in-memory кэш.
+- domain scores are smoothed with EMA (activation hysteresis) to reduce flicker.
 
 Forbidden:
 - goal derivation НЕ должна читать `ctx:*` без `:final:` (кроме явно документированного fallback)
@@ -81,6 +86,7 @@ Inputs:
 
 Outputs:
 - `action:*`
+  - decisions scored as `Q(a)=Σ_g E_g*Δg(a) − cost(a)` over ActionCandidate entries
 
 Forbidden:
 - `action:*` НЕ должен зависеть от `goal:*` напрямую (только через `util:*`)

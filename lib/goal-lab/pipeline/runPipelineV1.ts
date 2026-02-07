@@ -31,8 +31,10 @@ import { atomizePossibilities } from '../../possibilities/atomize';
 import { deriveAccess } from '../../access/deriveAccess';
 import { deriveActionPriors } from '../../decision/actionPriors';
 import { decideAction } from '../../decision/decide';
+import { buildActionCandidates } from '../../decision/actionCandidateUtils';
 import { arr } from '../../utils/arr';
 import { buildIntentPreview } from './intentPreview';
+import { makeSimStep, type SimStep } from '../../core/simStep';
 
 export type GoalLabStageId = 'S0'|'S1'|'S2'|'S3'|'S4'|'S5'|'S6'|'S7'|'S8';
 
@@ -55,6 +57,8 @@ export type GoalLabPipelineV1 = {
   schemaVersion: 1;
   selfId: string;
   tick: number;
+  /** Explicit step record (tick + seed + events). */
+  step: SimStep;
   participantIds: string[];
   stages: GoalLabStageFrame[];
 };
@@ -154,6 +158,15 @@ export function runGoalLabPipelineV1(input: {
   if (!agent) return null;
   const selfId = agent.entityId;
 
+  const step = makeSimStep({
+    t: tick,
+    seed: (world as any)?.rngSeed ?? (world as any)?.rng_seed ?? (world as any)?.seed ?? 0,
+    events: [
+      ...arr(input.injectedEvents),
+      ...arr((world as any)?.eventLog?.events),
+    ],
+  });
+
   const stages: GoalLabStageFrame[] = [];
   let atoms: ContextAtom[] = [];
 
@@ -165,10 +178,7 @@ export function runGoalLabPipelineV1(input: {
     mapMetrics: input.mapMetrics,
     beliefAtoms: arr((agent as any)?.memory?.beliefAtoms),
     overrideAtoms: arr(input.manualAtoms).map(normalizeAtom),
-    events: [
-      ...arr(input.injectedEvents),
-      ...arr((world as any)?.eventLog?.events),
-    ],
+    events: step.events,
     sceneSnapshot: (world as any).sceneSnapshot,
     includeAxes: false
   });
@@ -433,12 +443,18 @@ export function runGoalLabPipelineV1(input: {
     })).map(normalizeAtom);
     const mS8c = mergeAtomsPreferNewer(mS8b.atoms, priorsAtoms);
 
-    const decision = decideAction({
+    const { actions, goalEnergy } = buildActionCandidates({
       selfId,
       atoms: mS8c.atoms,
       possibilities: possList,
+    });
+
+    const rng = (agent as any)?.rngChannels?.decide;
+    const decision = decideAction({
+      actions,
+      goalEnergy,
       topK: 10,
-      rng: (agent as any)?.rngChannels?.decide,
+      rng: rng && typeof rng.next === 'function' ? () => rng.next() : () => 0.5,
       temperature:
         (world as any)?.decisionTemperature ??
         (agent as any)?.behavioralParams?.T0 ??
@@ -466,6 +482,11 @@ export function runGoalLabPipelineV1(input: {
       return bad;
     })();
 
+    const rankedActions = arr((decision as any)?.ranked).map((r: any) => ({
+      ...(r?.action || {}),
+      q: Number(r?.q ?? 0),
+    }));
+
     stages.push({
       stage: 'S8',
       title: 'S8 Decision / actions',
@@ -476,12 +497,12 @@ export function runGoalLabPipelineV1(input: {
       artifacts: {
         // Keep artifacts light: export is dominated by atoms; store only top scoring + access decisions.
         accessDecisions: (accessPack as any)?.decisions || [],
-        ranked: (decision as any)?.ranked?.slice?.(0, 10) || [],
+        ranked: rankedActions.slice(0, 10),
         best: (decision as any)?.best || null,
         intentPreview: buildIntentPreview({
           selfId,
           atoms: atomsS8,
-          s8Artifacts: { best: (decision as any)?.best || null, ranked: (decision as any)?.ranked || [] },
+          s8Artifacts: { best: (decision as any)?.best || null, ranked: rankedActions },
           horizonSteps: 5,
         }),
         overriddenIds: s8Overridden,
@@ -507,5 +528,5 @@ export function runGoalLabPipelineV1(input: {
     });
   }
 
-  return { schemaVersion: 1, selfId, tick, participantIds: participantIds.slice(), stages };
+  return { schemaVersion: 1, selfId, tick, step, participantIds: participantIds.slice(), stages };
 }
