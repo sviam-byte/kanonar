@@ -132,6 +132,7 @@ export function applyCharacterLens(args: {
   // дополнительные оси контекста (важно: теперь линза влияет и на них)
   const control0 = getMag(atoms, `ctx:control:${selfId}`, 0);
   const time0 = getMag(atoms, `ctx:timePressure:${selfId}`, 0);
+  const scarcity0 = getMag(atoms, `ctx:scarcity:${selfId}`, 0);
   const secrecy0 = getMag(atoms, `ctx:secrecy:${selfId}`, 0);
   const legitimacy0 = getMag(atoms, `ctx:legitimacy:${selfId}`, 0);
   const hierarchy0 = getMag(atoms, `ctx:hierarchy:${selfId}`, 0);
@@ -177,6 +178,8 @@ export function applyCharacterLens(args: {
   // Новые коэффициенты усиления (контроль/цейтнот/секретность/легитимность/иерархия/приватность)
   const kControl = 1.0 + 0.9 * (0.5 - experience) + 0.6 * (stress - 0.5) + 0.5 * (paranoia - 0.5);
   const kTime = 1.0 + 1.0 * (0.5 - ambiguityTol) + 0.7 * (fatigue - 0.5) + 0.3 * (danger0 - 0.5);
+  // Scarcity: fatigue/stress skew perceived resource tension upward.
+  const kScarcity = 1.0 + 0.7 * (fatigue - 0.5) + 0.4 * (stress - 0.5);
   const kSecrecy = 1.0 + 1.1 * (paranoia - 0.5) + 0.5 * (surv0 - 0.5) + 0.4 * (pub0 - 0.5);
   const kLegit = 1.0 - 0.9 * (paranoia - 0.5) + 0.6 * (experience - 0.5) + 0.4 * (normSens - 0.5);
   const kHier = 1.0 + 0.8 * (normSens - 0.5) + 0.5 * (paranoia - 0.5);
@@ -196,6 +199,7 @@ export function applyCharacterLens(args: {
     0.55 * (0.5 - ambiguityTol) +
     0.4 * (fatigue - 0.5) +
     0.2 * (danger0 - 0.5);
+  const bScarcity = 0.35 * (fatigue - 0.5) + 0.20 * (stress - 0.5);
   const bSecrecy = paranoiaBias + (norm0 - 0.5) * 0.18;
   const bLegit = -0.55 * (paranoia - 0.5) + 0.45 * (experience - 0.5) + 0.25 * (normSens - 0.5);
   const bHier = 0.45 * (normSens - 0.5) + 0.25 * (paranoia - 0.5);
@@ -210,6 +214,7 @@ export function applyCharacterLens(args: {
   const intim = modulate(intim0, bIntim, kIntim);
   const control = modulate(control0, bControl, kControl);
   const timeP = modulate(time0, bTime, kTime);
+  const scarcity = modulate(scarcity0, bScarcity, kScarcity);
   const secrecy = modulate(secrecy0, bSecrecy, kSecrecy);
   const legitimacy = modulate(legitimacy0, bLegit, kLegit);
   const hierarchy = modulate(hierarchy0, bHier, kHier);
@@ -234,6 +239,7 @@ export function applyCharacterLens(args: {
     `ctx:crowd:${selfId}`,
     `ctx:control:${selfId}`,
     `ctx:timePressure:${selfId}`,
+    `ctx:scarcity:${selfId}`,
     `ctx:secrecy:${selfId}`,
     `ctx:legitimacy:${selfId}`,
     `ctx:hierarchy:${selfId}`,
@@ -346,6 +352,17 @@ export function applyCharacterLens(args: {
       ),
       { time0, kTime, ambiguityTol, fatigue, danger0 },
       ['ctx', 'lens', 'timePressure']
+    ),
+    mkDerived(
+      `ctx:final:scarcity:${selfId}`,
+      selfId,
+      scarcity,
+      usedCtxBase(
+        `ctx:final:scarcity:${selfId}`,
+        ensureBaseCopy(atoms, out, `ctx:scarcity:${selfId}`, 'characterLens.ctx')
+      ),
+      { scarcity0, kScarcity, fatigue, stress },
+      ['ctx', 'lens', 'scarcity']
     ),
     mkDerived(
       `ctx:final:secrecy:${selfId}`,

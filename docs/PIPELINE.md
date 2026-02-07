@@ -69,6 +69,7 @@ Inputs:
 Outputs:
 - `goal:*`
 - `util:*` проекция (в конце S7)
+- `goal:state:*` и `goal:active:*` должны переноситься между тиками (memory), т.к. GoalLab хранит состояние через атомы, а не через in-memory кэш.
 
 Forbidden:
 - goal derivation НЕ должна читать `ctx:*` без `:final:` (кроме явно документированного fallback)

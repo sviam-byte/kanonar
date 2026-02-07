@@ -45,6 +45,45 @@ function hasCycle(nodes: string[], edges: Array<[string, string]>): boolean {
   return false;
 }
 
+function findCycle(nodes: string[], edges: Array<[string, string]>): string[] | null {
+  const adj = new Map<string, string[]>();
+  for (const n of nodes) adj.set(n, []);
+  for (const [a, b] of edges) {
+    if (!adj.has(a)) adj.set(a, []);
+    adj.get(a)!.push(b);
+  }
+
+  const stack: string[] = [];
+  const onStack = new Set<string>();
+  const visited = new Set<string>();
+
+  const dfs = (u: string): string[] | null => {
+    visited.add(u);
+    stack.push(u);
+    onStack.add(u);
+    for (const v of adj.get(u) ?? []) {
+      if (!visited.has(v)) {
+        const found = dfs(v);
+        if (found) return found;
+      } else if (onStack.has(v)) {
+        const idx = stack.indexOf(v);
+        return idx >= 0 ? [...stack.slice(idx), v] : [v, u, v];
+      }
+    }
+    stack.pop();
+    onStack.delete(u);
+    return null;
+  };
+
+  for (const n of nodes) {
+    if (!visited.has(n)) {
+      const found = dfs(n);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
 describe('Pipeline: Stage isolation invariants', () => {
   it('S0 atoms must not have ctx:* namespace', () => {
     const p = runGoalLabPipelineV1({ world: mockWorld(), agentId: 'A', participantIds: ['A'] });
@@ -102,8 +141,7 @@ describe('Pipeline: Stage isolation invariants', () => {
     }
   });
 
-  // TODO: enable once trace graphs are guaranteed acyclic across goal/action atoms.
-  it.skip('Within-stage trace subgraph must be acyclic', () => {
+  it('Within-stage trace subgraph must be acyclic', () => {
     const p = runGoalLabPipelineV1({ world: mockWorld(), agentId: 'A', participantIds: ['A'] });
     for (const st of arr(p?.stages)) {
       const atoms = arr(st?.atoms).filter((a) => {
@@ -120,7 +158,8 @@ describe('Pipeline: Stage isolation invariants', () => {
           if (set.has(u)) edges.push([String(a.id), u]);
         }
       }
-      expect(hasCycle(nodeIds, edges)).toBe(false);
+      const cycle = findCycle(nodeIds, edges);
+      expect(cycle).toBeNull();
     }
   });
 });
