@@ -71,26 +71,46 @@ function amplifyByPrio(x: number, prio: number): number {
 }
 
 // ---------------------------------
-// Goal memory (GoalLab / UI recompute)
+// Goal memory (atom-based)
 // ---------------------------------
-// This is a lightweight in-memory state used to stabilize goals between recomputations.
-// For simulation (server/runtime), you will likely want to persist these in world/agent state.
-const __PREV_ACTIVE__: Map<string, Set<string>> = new Map();
-const __GOAL_STATE__: Map<string, Record<string, GoalState>> = new Map();
-const __GOAL_TICK__: Map<string, number> = new Map();
+// IMPORTANT: GoalLab state must be persisted via atoms (goal:state:* and goal:active:*),
+// which are carried across ticks in agent.memory.beliefAtoms (or world memory).
+// This keeps GoalLab deterministic and server-safe (no module-level mutable maps).
 
-function nextTick(selfId: string): number {
-  const t = (__GOAL_TICK__.get(selfId) ?? 0) + 1;
-  __GOAL_TICK__.set(selfId, t);
-  return t;
+function readPrevActiveDomainsFromAtoms(selfId: string, atoms: ContextAtom[]): Set<string> {
+  const out = new Set<string>();
+  for (const a of atoms) {
+    const id = String((a as any)?.id || '');
+    if (!id.startsWith('goal:active:')) continue;
+    const parts = id.split(':');
+    // goal:active:<domain>:<selfId>
+    if (parts.length >= 4 && parts[3] === selfId) out.add(parts[2]);
+  }
+  return out;
 }
 
-function readGoalStateMap(selfId: string): Record<string, GoalState> {
-  return __GOAL_STATE__.get(selfId) || {};
+function readGoalStateMapFromAtoms(selfId: string, atoms: ContextAtom[]): Record<string, GoalState> {
+  const out: Record<string, GoalState> = {};
+  for (const a of atoms) {
+    const id = String((a as any)?.id || '');
+    if (!id.startsWith('goal:state:')) continue;
+    const parts = id.split(':');
+    // goal:state:<domain>:<selfId>
+    if (parts.length < 4 || parts[3] !== selfId) continue;
+    const domain = parts[2];
+    const st = (a as any)?.meta?.state;
+    if (st && typeof st === 'object') out[domain] = st as GoalState;
+  }
+  return out;
 }
 
-function writeGoalStateMap(selfId: string, next: Record<string, GoalState>) {
-  __GOAL_STATE__.set(selfId, next);
+function inferTickFromPrevState(prev: Record<string, GoalState>): number {
+  let maxTick = -1;
+  for (const key of Object.keys(prev)) {
+    const lastActiveTick = Number((prev[key] as any)?.lastActiveTick ?? -1);
+    if (Number.isFinite(lastActiveTick)) maxTick = Math.max(maxTick, lastActiveTick);
+  }
+  return maxTick + 1;
 }
 
 function mkGoalAtom(selfId: string, domain: GoalDomain, v: number, usedAtomIds: string[], parts: any, tags: string[] = []) {
@@ -204,6 +224,7 @@ export function deriveGoalAtoms(selfId: string, atoms: ContextAtom[], opts?: { t
   const publicness = getCtx(atoms, selfId, 'publicness', 0);
   const normP = getCtx(atoms, selfId, 'normPressure', 0);
   const unc = getCtx(atoms, selfId, 'uncertainty', 0);
+  const scarcity = getCtx(atoms, selfId, 'scarcity', 0);
 
   // Context priorities (personal weights)
   const prioDanger = getPrio(atoms, selfId, 'danger', 0.5);
@@ -211,6 +232,7 @@ export function deriveGoalAtoms(selfId: string, atoms: ContextAtom[], opts?: { t
   const prioPublic = getPrio(atoms, selfId, 'publicness', 0.5);
   const prioNorm = getPrio(atoms, selfId, 'normPressure', 0.5);
   const prioUnc = getPrio(atoms, selfId, 'uncertainty', 0.5);
+  const prioScarcity = getPrio(atoms, selfId, 'scarcity', 0.5);
   const fatigue = getAny(atoms, [`cap:fatigue:${selfId}`, `world:body:fatigue:${selfId}`], 0);
 
   // Very light “life weights” (optional). If absent -> 0.5 neutral.
@@ -364,14 +386,34 @@ export function deriveGoalAtoms(selfId: string, atoms: ContextAtom[], opts?: { t
     });
   }
 
-  // Wealth: placeholder (kept at neutral until you define econ signals)
+  // Wealth: scarcity/resource access + (weakly) status motive.
   {
-    const v = 0.30;
+    const scarcityW = amplifyByPrio(scarcity.magnitude, prioScarcity);
+    const access = clamp01(1 - scarcityW);
+    const statusDrive = Number.isFinite(drvStatus) ? clamp01(drvStatus) : clamp01(publicW);
+    const base = clamp01(0.65 * scarcityW + 0.35 * statusDrive);
+    const v = clamp01(0.70 * base + 0.30 * lifeStatus);
     ecology.push({
       domain: 'wealth',
       v,
-      used: [],
-      parts: { note: 'placeholder until econ quarks are defined' }
+      used: [
+        ...usedCommon,
+        scarcity.id || '',
+        `ctx:prio:scarcity:${selfId}`,
+        Number.isFinite(drvStatus) ? `drv:statusNeed:${selfId}` : `ctx:final:publicness:${selfId}`,
+        `goal:lifeDomain:status:${selfId}`,
+      ].filter(Boolean),
+      parts: {
+        scarcity: scarcity.magnitude,
+        prioScarcity,
+        scarcityW,
+        scarcityLayer: scarcity.layer,
+        access,
+        statusDrive,
+        lifeStatus,
+        base,
+        note: 'proxy wealth = f(scarcity,status); add econ quarks to replace'
+      }
     });
   }
 
@@ -406,9 +448,9 @@ export function deriveGoalAtoms(selfId: string, atoms: ContextAtom[], opts?: { t
   };
 
   // Read previous state (GoalLab memory).
-  const tick = nextTick(selfId);
-  const prevActive = __PREV_ACTIVE__.get(selfId) || new Set<string>();
-  const prevStates = readGoalStateMap(selfId);
+  const prevActive = readPrevActiveDomainsFromAtoms(selfId, atoms);
+  const prevStates = readGoalStateMapFromAtoms(selfId, atoms);
+  const tick = inferTickFromPrevState(prevStates);
 
   // Apply bias + mild anti-fatigue to each domain.
   for (const e of ecology) {
@@ -556,8 +598,8 @@ export function deriveGoalAtoms(selfId: string, atoms: ContextAtom[], opts?: { t
   }
 
   // Commit memory for next recomputation.
-  __PREV_ACTIVE__.set(selfId, new Set(activeDomains));
-  writeGoalStateMap(selfId, nextStates);
+  // NOTE: persistence is external (carry goal:state:* atoms across ticks via agent.memory.beliefAtoms).
+  // Returning goal state atoms is sufficient; no module-level state is mutated here.
 
   return { atoms: [...goalAtoms, ...inhibitedGoalAtoms, ...active, modeAtom, ...stateAtoms] };
 }

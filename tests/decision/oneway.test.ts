@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { ContextAtom } from '@/lib/context/v2/types';
 import type { Possibility } from '@/lib/context/possibilities/types';
 import { decideAction } from '@/lib/decision/decide';
+import { RNG } from '@/lib/core/noise';
 
 function mkAtom(id: string, ns: ContextAtom['ns'], magnitude: number): ContextAtom {
   return {
@@ -46,7 +47,7 @@ describe('Decision layer one-way dependency', () => {
       atoms,
       possibilities: [{ ...p, actionKey: p.actionId } as any],
       temperature: 0.15,
-      rng: () => 0.123456,
+      rng: new RNG(123456),
     });
 
     expect(res.best?.p.actionId).toBe('doThing');

@@ -23,15 +23,16 @@ describe('deriveGoalAtoms', () => {
     ];
 
     const out = deriveGoalAtoms(selfId, atoms, { topN: 8 });
-    const ids = new Set(out.map((a) => a.id));
+    const goalAtoms = out.atoms;
+    const ids = new Set(goalAtoms.map((a) => a.id));
 
     // channel->domain
     expect(ids.has('goal:domain:safety:A')).toBe(true);
     expect(ids.has('goal:domain:exploration:A')).toBe(true);
 
     // energy should be >0 for these two under the chosen channels
-    const safety = out.find((a) => a.id === 'goal:domain:safety:A')!;
-    const exploration = out.find((a) => a.id === 'goal:domain:exploration:A')!;
+    const safety = goalAtoms.find((a) => a.id === 'goal:domain:safety:A')!;
+    const exploration = goalAtoms.find((a) => a.id === 'goal:domain:exploration:A')!;
 
     expect(safety.magnitude).toBeGreaterThan(0);
     expect(exploration.magnitude).toBeGreaterThan(0);

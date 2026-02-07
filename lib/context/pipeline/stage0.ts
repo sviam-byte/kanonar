@@ -159,8 +159,11 @@ function buildLifeGoalAtoms(self: AgentState): ContextAtom[] {
     }
   };
 
-  const bridgeAtoms: ContextAtom[] = Object.entries(bridge).map(([domain, b]) => normalizeAtom({
-    id: `goal:lifeDomain:${domain}:${selfId}`,
+  const bridgeAtoms: ContextAtom[] = Object.entries(bridge).map(([domain, b]) => {
+    const outId = `goal:lifeDomain:${domain}:${selfId}`;
+    const used = b.used.filter((id) => id && id !== outId);
+    return normalizeAtom({
+      id: outId,
     ns: 'goal' as any,
     kind: 'life_domain' as any,
     origin: 'profile' as any,
@@ -170,8 +173,13 @@ function buildLifeGoalAtoms(self: AgentState): ContextAtom[] {
     confidence: 0.85,
     tags: ['goal', 'lifeDomain', 'bridge', domain],
     label: `lifeDomain:${domain}=${clamp01(b.val).toFixed(3)}`,
-    trace: { usedAtomIds: b.used.filter(Boolean), notes: ['bridge for GoalLab simplified domains'], parts: b.parts }
-  } as any));
+      trace: {
+        usedAtomIds: used,
+        notes: ['bridge for GoalLab simplified domains (self-cycles removed)'],
+        parts: b.parts
+      }
+    } as any);
+  });
 
   return [...lifeGoalAtoms, ...domainAtoms, ...bridgeAtoms];
 }
