@@ -87,6 +87,7 @@ Inputs:
 Outputs:
 - `action:*`
   - decisions scored as `Q(a)=Σ_g E_g*Δg(a) − cost(a)` over ActionCandidate entries
+  - violent affordances (e.g., `aff:attack:*`) are gated by threat/anger/recent harm signals, with protocol/trust/closeness penalties applied in scoring
 
 Forbidden:
 - `action:*` НЕ должен зависеть от `goal:*` напрямую (только через `util:*`)

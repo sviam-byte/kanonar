@@ -156,7 +156,27 @@ export function derivePossibilities(atoms: ContextAtom[], selfId: string): { pos
     const weaponAccess = getMag(atoms, `access:weapon:${selfId}`, 0);
     const weaponAllowed = weaponAccess > 0.5;
 
-    const attackEnabled = !noViolence && !hardTaboo && weaponAllowed && closeness > 0.15;
+    // Gate violence by threat/anger/harm, not by proximity alone.
+    // Otherwise closeness/nearby can accidentally turn into "attack is sensible".
+    const threatFinal = getMag(atoms, `threat:final:${selfId}`, getMag(atoms, 'threat:final', 0));
+    const anger = getMag(atoms, `emotion:anger:${selfId}`, 0);
+    const recentHarmByTarget = getMag(atoms, `soc:recentHarmBy:${other}:${selfId}`, 0);
+
+    const hasViolenceDrive = (threatFinal > 0.55) || (anger > 0.60) || (recentHarmByTarget > 0.35);
+    const attackEnabled = !noViolence && !hardTaboo && weaponAllowed && hasViolenceDrive;
+
+    // Availability increases with danger/anger/harm and decreases with trust/protocol/closeness.
+    // Keep it conservative to prevent violent "default" choices.
+    const attackAvail =
+      clamp01(
+        0.10
+        + 0.45 * threatFinal
+        + 0.35 * anger
+        + 0.45 * recentHarmByTarget
+        - 0.55 * trustPrior
+        - 0.45 * protocolStrict
+        - 0.25 * closeness
+      );
 
     poss.push({
       id: `aff:attack:${other}`,
@@ -164,13 +184,23 @@ export function derivePossibilities(atoms: ContextAtom[], selfId: string): { pos
       actionId: 'attack',
       targetId: other,
       label: `Attack ${other}`,
-      magnitude: attackEnabled ? clamp01(0.5 + 0.5 * closeness) : 0.02,
+      magnitude: attackEnabled ? attackAvail : 0.01,
       enabled: attackEnabled,
-      whyAtomIds: [`obs:nearby:${other}:closeness`, 'con:protocol:noViolence', `rel:label:${selfId}:${other}`, `access:weapon:${selfId}`].filter(id => has(atoms, id)),
+      whyAtomIds: [
+        `obs:nearby:${other}:closeness`,
+        `threat:final:${selfId}`,
+        `emotion:anger:${selfId}`,
+        `soc:recentHarmBy:${other}:${selfId}`,
+        `ctx:proceduralStrict:${selfId}`,
+        'con:protocol:noViolence',
+        `rel:label:${selfId}:${other}`,
+        `access:weapon:${selfId}`
+      ].filter(id => has(atoms, id)),
       blockedBy: [
         ...(noViolence ? ['con:protocol:noViolence'] : []),
         ...(hardTaboo ? [`con:rel:taboo:attack:${selfId}:${other}`] : []),
-        ...(!weaponAllowed ? [`access:weapon:${selfId}`] : [])
+        ...(!weaponAllowed ? [`access:weapon:${selfId}`] : []),
+        ...(!hasViolenceDrive ? [`gate:attack:no_threat_anger_harm:${selfId}:${other}`] : [])
       ],
       tags: ['violent', ...tags]
     });
