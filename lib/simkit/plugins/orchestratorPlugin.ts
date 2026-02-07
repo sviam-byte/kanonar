@@ -9,8 +9,10 @@ import { runTick } from '../../orchestrator/runTick';
 import { buildRegistry } from '../../orchestrator/registry';
 import type { ContextAtom } from '../../context/v2/types';
 import { derivePossibilitiesRegistry } from '../../possibilities/derive';
-import type { Possibility } from '../../possibilities/catalog';
 import { decideAction } from '../../decision/decide';
+import { buildActionCandidates } from '../../decision/actionCandidateUtils';
+import { keyFromPossibilityId } from '../actions/fromPossibility';
+import { toSimAction } from '../actions/fromActionCandidate';
 
 // -----------------------------
 // small utils
@@ -95,11 +97,6 @@ function sampleSoftmax<T extends { score: number }>(xs: T[], Tval: number, rngNe
   return xs[xs.length - 1];
 }
 
-function keyFromPossibilityId(id: string): string {
-  const parts = String(id || '').split(':');
-  return parts[1] || parts[0] || '';
-}
-
 function isExecutableKey(k: string) {
   return (
     k === 'wait' ||
@@ -142,70 +139,6 @@ function countAtomsBySubject(atomsAll: any[]): Record<string, number> {
 function makeStage(id: TickDebugStageV1['id'], title: string, data: Record<string, any>): TickDebugStageV1 {
   return { id, title, data };
 }
-function toSimActionFromPossibility(p: Possibility, tickIndex: number, actorId: string): SimAction | null {
-  const k = keyFromPossibilityId(p.id);
-  const targetId = (p as any)?.targetId ?? null;
-  const targetNodeId = (p as any)?.targetNodeId ?? null;
-  const meta = (p as any)?.meta ?? null;
-
-  // Stage3 mapping: REST/TALK/INVESTIGATE are not Actions; they are intents.
-  // We keep originalAction inside intent; execution happens at intent_complete.
-  if (k === 'rest' || k === 'talk' || k === 'question_about' || k === 'observe' || k === 'investigate' || k === 'ask_info') {
-    const originalKind =
-      k === 'investigate'
-        ? 'question_about'
-        : k === 'observe' || k === 'ask_info'
-          ? 'question_about'
-          : k;
-
-    return {
-      id: `act:start_intent:${tickIndex}:${actorId}:poss:${k}`,
-      kind: 'start_intent',
-      actorId,
-      targetId: targetId || null,
-      meta,
-      payload: {
-        intentId: `intent:${actorId}:${tickIndex}:${k}`,
-        // v0 duration пока оставляем, даже если staged-скрипты ещё не подключены
-        remainingTicks: k === 'rest' ? 8 : 2,
-        intent: {
-          kind: k,
-          originalAction: {
-            kind: originalKind,
-            targetId: targetId || null,
-            payload: null,
-            meta: meta ?? null,
-          },
-        },
-      },
-    } as any;
-  }
-
-  // NOTE: keep mapping conservative; extend as you add more executable keys.
-  const kindMap: Record<string, string> = {
-    wait: 'wait',
-    // rest/talk/question_about are not mapped here anymore
-    negotiate: 'negotiate',
-    inspect_feature: 'inspect_feature',
-    repair_feature: 'repair_feature',
-    scavenge_feature: 'scavenge_feature',
-    // legacy alias
-    ask_info: 'question_about',
-  };
-
-  const kind = kindMap[k];
-  if (!kind) return null;
-
-  return {
-    id: `act:${kind}:${tickIndex}:${actorId}:poss:${k}`,
-    kind,
-    actorId,
-    targetId: targetId || null,
-    targetNodeId: targetNodeId || null,
-    meta,
-  };
-}
-
 // -----------------------------
 // Bridge: SimSnapshot -> GoalLabSnapshotV1Like
 // Ensures we don't lose Kanonar entities and location map.
@@ -490,13 +423,18 @@ export function makeOrchestratorPlugin(opts: { registry?: any; onPushToGoalLab?:
         const possExec = possAll.filter((p) => isExecutableKey(keyFromPossibilityId(p.id)));
 
         if (possExec.length) {
-          const decision = decideAction({ selfId: actorId, atoms, possibilities: possExec, topK: 20 });
+          const { actions, goalEnergy } = buildActionCandidates({ selfId: actorId, atoms, possibilities: possExec });
+          const decision = decideAction({
+            actions,
+            goalEnergy,
+            topK: 20,
+            rng: () => rng.next(),
+            temperature: T,
+          });
           const ranked = decision.ranked || [];
-          const allowed = ranked.filter((x) => Boolean(x?.allowed));
-
-          const pool = (allowed.length ? allowed : ranked) as any[];
+          const pool = ranked.map((x) => ({ ...x, score: x.q }));
           const picked = sampleSoftmax(pool, T, () => rng.next());
-          const chosen = picked?.p || null;
+          const chosen = decision.best || picked?.action || null;
           const chosenKey = chosen ? keyFromPossibilityId(chosen.id) : '';
 
           // If the possibility layer only yields "do nothing" (wait/observe) but SimKit offers
@@ -520,16 +458,23 @@ export function makeOrchestratorPlugin(opts: { registry?: any; onPushToGoalLab?:
             }
           }
 
-          if (!act) act = chosen ? toSimActionFromPossibility(chosen, tickIndex, actorId) : null;
+          if (!act && chosen) act = toSimAction(chosen, tickIndex);
           if (act) actions.push(act);
 
           // topK probs computed over same pool prefix (stable + explainable)
           const topForProb = pool.slice(0, 25).map((x) => ({
-            key: String(x?.p?.id || x?.id || ''),
+            key: String(x?.action?.id || ''),
             score: Number(x?.score ?? 0),
           }));
           const probs = softmaxProbs(topForProb, T);
           const chosenProb = chosen ? probs.find((p) => p.key === chosen.id)?.prob ?? null : null;
+
+          const chosenScore = chosen
+            ? (ranked.find((x) => x.action.id === chosen.id)?.q ?? 0)
+            : 0;
+          const chosenSupportIds = chosen
+            ? chosen.supportAtoms.map((a) => a?.id).filter(Boolean)
+            : [];
 
           perActor[actorId] = {
             actorId,
@@ -540,16 +485,16 @@ export function makeOrchestratorPlugin(opts: { registry?: any; onPushToGoalLab?:
                   possibilityId: chosen.id,
                   key: keyFromPossibilityId(chosen.id),
                   simKind: act?.kind ?? null,
-                  targetId: (chosen as any)?.targetId ?? null,
-                  score: Number(picked?.score ?? decision.best?.score ?? 0),
-                  cost: Number(picked?.cost ?? decision.best?.cost ?? 0),
-                  allowed: Boolean(picked?.allowed ?? decision.best?.allowed ?? false),
+                  targetId: chosen.targetId ?? null,
+                  score: Number(chosenScore ?? 0),
+                  cost: Number(chosen.cost ?? 0),
+                  allowed: true,
                   prob: chosenProb,
-                  blockedBy: (picked as any)?.why?.blockedBy || [],
-                  usedAtomIds: (picked as any)?.why?.usedAtomIds || [],
+                  blockedBy: [],
+                  usedAtomIds: chosenSupportIds,
                   reason: overriddenOffer
                     ? `override: ${chosenKey} -> offer:${String(overriddenOffer.kind)} (${String(overriddenOffer.reason || '')})`
-                    : (picked as any)?.why?.reason || null,
+                    : null,
                 }
               : null,
             offerOverride: overriddenOffer
@@ -562,31 +507,18 @@ export function makeOrchestratorPlugin(opts: { registry?: any; onPushToGoalLab?:
                 }
               : null,
             topK: pool.slice(0, 25).map((x) => ({
-              possibilityId: x.p?.id ?? x.id,
-              key: keyFromPossibilityId(x.p?.id ?? x.id),
-              targetId: (x.p as any)?.targetId ?? (x as any)?.targetId ?? null,
-              score: Number(x.score ?? 0),
-              cost: Number(x.cost ?? 0),
-              allowed: Boolean(x.allowed),
-              prob: probs.find((p) => p.key === (x.p?.id ?? x.id))?.prob ?? null,
-              blockedBy: (x as any)?.why?.blockedBy || [],
-              reason: (x as any)?.why?.reason || null,
+              possibilityId: x.action?.id ?? '',
+              key: keyFromPossibilityId(x.action?.id ?? ''),
+              targetId: x.action?.targetId ?? null,
+              score: Number(x.q ?? 0),
+              cost: Number(x.action?.cost ?? 0),
+              allowed: true,
+              prob: probs.find((p) => p.key === (x.action?.id ?? ''))?.prob ?? null,
+              blockedBy: [],
+              reason: null,
             })),
-            rejected: ranked
-              .filter((x: any) => !Boolean(x?.allowed))
-              .slice(0, 50)
-              .map((x: any) => ({
-                possibilityId: x.p?.id ?? x.id,
-                key: keyFromPossibilityId(x.p?.id ?? x.id),
-                targetId: (x.p as any)?.targetId ?? (x as any)?.targetId ?? null,
-                score: Number(x.score ?? 0),
-                cost: Number(x.cost ?? 0),
-                allowed: false,
-                blockedBy: (x as any)?.why?.blockedBy || [],
-                usedAtomIds: (x as any)?.why?.usedAtomIds || [],
-                reason: (x as any)?.why?.reason || null,
-              })),
-            rejectedCount: ranked.filter((x: any) => !Boolean(x?.allowed)).length,
+            rejected: [],
+            rejectedCount: 0,
           };
 
           const chosenId = overriddenOffer
@@ -603,18 +535,18 @@ export function makeOrchestratorPlugin(opts: { registry?: any; onPushToGoalLab?:
               chosen: {
                 id: chosenId,
                 key: overriddenOffer ? String(overriddenOffer.kind) : String(chosenKey),
-                score: Number(overriddenOffer?.score ?? picked?.score ?? decision.best?.score ?? 0),
-                blocked: overriddenOffer ? Boolean(overriddenOffer.blocked) : !Boolean(picked?.allowed ?? decision.best?.allowed ?? true),
-                targetId: overriddenOffer?.targetId ?? (chosen as any)?.targetId ?? null,
+                score: Number(overriddenOffer?.score ?? chosenScore ?? 0),
+                blocked: overriddenOffer ? Boolean(overriddenOffer.blocked) : false,
+                targetId: overriddenOffer?.targetId ?? chosen?.targetId ?? null,
                 meta: overriddenOffer ? { mode: 'offer_override', reason: overriddenOffer.reason ?? null } : { mode: 'possibility' },
               },
               topOffers: ranked.slice(0, 8).map((x: any) => ({
-                id: x.p?.id ?? x.id,
-                key: keyFromPossibilityId(x.p?.id ?? x.id),
-                score: Number(x.score ?? 0),
-                blocked: !Boolean(x.allowed),
-                targetId: (x.p as any)?.targetId ?? (x as any)?.targetId ?? null,
-                why: x.why ?? null,
+                id: x.action?.id ?? '',
+                key: keyFromPossibilityId(x.action?.id ?? ''),
+                score: Number(x.q ?? 0),
+                blocked: false,
+                targetId: x.action?.targetId ?? null,
+                why: null,
               })),
               inputs: { temperature: T, rngSeed: world.seed ?? null },
               notes: explanationNotes.length ? explanationNotes : undefined,

@@ -35,6 +35,7 @@ import { deriveAccess } from '../access/deriveAccess';
 import { getLocationForAgent } from '../world/locations';
 import { computeLocalMapMetrics } from '../world/mapMetrics';
 import { decideAction } from '../decision/decide';
+import { buildActionCandidates } from '../decision/actionCandidateUtils';
 import { getGlobalRunSeed, makeDerivedRNG } from '../core/noise';
 import { deriveActionPriors } from '../decision/actionPriors';
 import { computeContextMindScoreboard } from '../contextMind/scoreboard';
@@ -1605,12 +1606,18 @@ export function buildGoalLabContext(
     ? makeDerivedRNG(`goalLab:decide:${selfId}:${decisionNonce}`, getGlobalRunSeed())
     : baseDecideRng;
 
-  const decision = decideAction({
+  const { actions, goalEnergy } = buildActionCandidates({
     selfId,
     atoms: atomsWithMind,
     possibilities: (result as any).possibilities,
+  });
+  const decision = decideAction({
+    actions,
+    goalEnergy,
     topK: 12,
-    rng: decideRng,
+    rng: decideRng && typeof (decideRng as any).next === 'function'
+      ? () => (decideRng as any).next()
+      : () => 0.5,
     temperature:
       (world as any)?.decisionTemperature ??
       (agentForPipeline as any)?.behavioralParams?.T0 ??

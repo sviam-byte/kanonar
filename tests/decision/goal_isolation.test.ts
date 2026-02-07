@@ -1,9 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import type { ContextAtom } from "@/lib/context/v2/types";
-import type { Possibility } from "@/lib/context/possibilities/types";
+import type { ActionCandidate } from "@/lib/decision/actionCandidate";
 import { decideAction } from "@/lib/decision/decide";
-import { RNG } from "@/lib/core/noise";
 
 function mkAtom(id: string, magnitude: number): ContextAtom {
   const ns: ContextAtom["ns"] = id.startsWith("goal:")
@@ -41,38 +40,35 @@ describe("decision: goal atoms are isolated", () => {
       mkAtom("util:hint:allow:hide:hide", 1.0),
     ];
 
-    const possibilities: Possibility[] = [
-      {
-        id: "aff:hide",
-        kind: "affordance",
-        actionId: "hide",
-        label: "hide",
-        magnitude: 1,
-        enabled: true,
-        actionKey: "hide",
-      } as any,
-      {
-        id: "aff:explore",
-        kind: "affordance",
-        actionId: "explore",
-        label: "explore",
-        magnitude: 1,
-        enabled: true,
-        actionKey: "explore",
-      } as any,
-    ];
-
     const res = decideAction({
-      selfId,
-      atoms,
-      possibilities,
-      rng: new RNG(123),
+      actions: [
+        {
+          id: "action:hide",
+          kind: "hide",
+          actorId: selfId,
+          deltaGoals: { hide: 1 },
+          cost: 0,
+          confidence: 1,
+          supportAtoms: atoms,
+        },
+        {
+          id: "action:explore",
+          kind: "explore",
+          actorId: selfId,
+          deltaGoals: { explore: 0.2 },
+          cost: 0,
+          confidence: 1,
+          supportAtoms: atoms,
+        },
+      ] as ActionCandidate[],
+      goalEnergy: { hide: 1, explore: 0.2 },
+      rng: () => 0.5,
       temperature: 0.2,
     });
 
-    expect(res.best?.p.actionId).toBe("hide");
+    expect(res.best?.id).toBe("action:hide");
 
-    const actionAtom = res.best?.atoms?.find((a) => a.id.startsWith("action:"));
+    const actionAtom = res.atoms.find((a) => a.id.startsWith("action:score:"));
     const used = actionAtom?.trace?.usedAtomIds ?? [];
     expect(used.some((id) => id.startsWith("goal:"))).toBe(false);
     expect(used.some((id) => id.startsWith("util:"))).toBe(true);

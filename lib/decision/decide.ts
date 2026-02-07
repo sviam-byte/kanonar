@@ -1,179 +1,92 @@
-
 import { ContextAtom } from '../context/v2/types';
 import { normalizeAtom } from '../context/v2/infer';
-import { Possibility } from '../possibilities/catalog';
-import { scorePossibility, ScoredAction } from './score';
 import { arr } from '../utils/arr';
-import { RNG, sampleGumbel } from '../core/noise';
+import { ActionCandidate } from './actionCandidate';
+import { scoreAction } from './scoreAction';
 
 export type DecisionResult = {
-  best: ScoredAction | null;
-  ranked: ScoredAction[];
+  best: ActionCandidate | null;
+  ranked: Array<{ action: ActionCandidate; q: number }>;
   atoms: ContextAtom[];
 };
-
-function tieBreak(a: ScoredAction, b: ScoredAction) {
-  // 1) allowed first
-  if (Boolean(a.allowed) !== Boolean(b.allowed)) return a.allowed ? -1 : 1;
-  // 2) higher score
-  const ds = (b.score ?? 0) - (a.score ?? 0);
-  if (ds !== 0) return ds;
-  // 3) lower cost
-  const dc = (a.cost ?? 0) - (b.cost ?? 0);
-  if (dc !== 0) return dc;
-  // 4) stable by id
-  return String(a?.p?.id || a?.id || '').localeCompare(String(b?.p?.id || b?.id || ''));
-}
 
 function clamp01(x: number) {
   if (!Number.isFinite(x)) return 0;
   return Math.max(0, Math.min(1, x));
 }
 
-function mkDecisionAtom(
-  id: string,
-  selfId: string,
-  magnitude: number,
-  usedAtomIds: string[],
-  label: string,
-  parts: any,
-  tags: string[]
-): ContextAtom {
+function toDecisionAtom(action: ActionCandidate, q: number): ContextAtom {
+  const usedAtomIds = Array.from(
+    new Set(
+      action.supportAtoms
+        .map((a) => a?.id)
+        .filter((id): id is string => Boolean(id))
+        .filter((id) => !id.startsWith('goal:'))
+    )
+  );
+  const magnitude = clamp01(0.5 + 0.5 * Math.tanh(q));
+
   return normalizeAtom({
-    id,
+    id: `action:score:${action.actorId}:${action.id}`,
     ns: 'action',
     kind: 'decision',
     origin: 'derived',
     source: 'decide',
-    subject: selfId,
+    subject: action.actorId,
     magnitude,
-    confidence: 1,
-    tags,
-    label,
-    trace: { usedAtomIds: Array.from(new Set(usedAtomIds.filter(Boolean))), notes: [], parts }
+    confidence: clamp01(action.confidence),
+    tags: ['action', 'score', action.kind],
+    label: `score:${action.kind}=${magnitude.toFixed(3)}`,
+    trace: {
+      usedAtomIds,
+      notes: [`Q=${q.toFixed(3)}`, `confidence=${action.confidence.toFixed(3)}`],
+      parts: {
+        actionId: action.id,
+        kind: action.kind,
+        targetId: action.targetId ?? null,
+        q,
+        confidence: action.confidence,
+      },
+    },
   } as any);
 }
 
 export function decideAction(args: {
-  selfId: string;
-  atoms: ContextAtom[];
-  // Defensive: during iterative refactors a non-array may appear here.
-  possibilities: Possibility[] | any;
+  actions: ActionCandidate[];
+  goalEnergy: Record<string, number>;
+  temperature: number;
+  rng: (() => number) | { next: () => number };
   topK?: number;
-  /** Optional deterministic RNG (recommended: agent.rngChannels.decide). */
-  rng?: RNG;
-  /** Gumbel-max temperature. T≈0.1 => almost deterministic, T≈1 => human-ish, T≈5 => chaotic. */
-  temperature?: number;
 }): DecisionResult {
-  const poss = arr<Possibility>(args.possibilities);
-  // Isolate goal atoms so action traces stay focused on non-goal context.
-  const atoms = args.atoms.filter((a) => !a.id.startsWith('goal:'));
-  const ranked = poss
-    .map(p => scorePossibility({ selfId: args.selfId, atoms, p }))
-    .sort(tieBreak);
+  const actions = arr<ActionCandidate>(args.actions);
+  const ranked = actions
+    .map((action) => ({ action, q: scoreAction(action, args.goalEnergy) }))
+    .sort((a, b) => b.q - a.q);
 
-  const topK = args.topK ?? 10;
+  const topK = Math.max(1, Number.isFinite(args.topK as any) ? Number(args.topK) : ranked.length);
   const topRanked = ranked.slice(0, topK);
-  const decisionAtoms: ContextAtom[] = [];
 
-  for (const item of topRanked) {
-    const actionId = item.p.id;
-    const used = item.why?.usedAtomIds || [];
-    decisionAtoms.push(
-      mkDecisionAtom(
-        `action:gate:${args.selfId}:${actionId}`,
-        args.selfId,
-        item.allowed ? 1 : 0,
-        used,
-        item.allowed ? `gate:${actionId}=OK` : `gate:${actionId}=BLOCK`,
-        { gateOk: item.allowed, blockedBy: item.why?.blockedBy || [] },
-        ['action', 'gate', actionId]
-      ),
-      mkDecisionAtom(
-        `action:prior:${args.selfId}:${actionId}`,
-        args.selfId,
-        clamp01(item.score),
-        used,
-        `prior:${actionId}=${Math.round(clamp01(item.score) * 100)}%`,
-        { prior: item.score ?? 0 },
-        ['action', 'prior', actionId]
-      )
-    );
-  }
+  const rngNext = typeof args.rng === 'function'
+    ? args.rng
+    : (args.rng && typeof (args.rng as any).next === 'function')
+      ? () => (args.rng as any).next()
+      : () => 0.5;
 
-  // Stochastic but deterministic selection: Gumbel-max over (score / T + gumbel(T)).
-  // If no rng is provided, fall back to deterministic (first allowed).
   const T = Math.max(0.05, Number(args.temperature ?? 1.0));
-  const pool = topRanked.filter(x => x?.allowed);
-  const candidates = (pool.length ? pool : topRanked).filter(Boolean);
+  let chosen: ActionCandidate | null = null;
+  let bestScore = -Infinity;
 
-  let chosen: ScoredAction | null = null;
-  let noAllowed = false;
-
-  if (candidates.length === 0) {
-    chosen = null;
-  } else if (!args.rng) {
-    chosen = candidates[0] || null;
-    noAllowed = Boolean(chosen && !chosen.allowed);
-  } else {
-    let best = candidates[0];
-    let bestFinal = -Infinity;
-    for (const item of candidates) {
-      const base = (item.score ?? 0) / T;
-      const noise = sampleGumbel(T, args.rng);
-      const finalScore = base + noise;
-
-      decisionAtoms.push(
-        mkDecisionAtom(
-          `action:stoch:${args.selfId}:${item.p.id}`,
-          args.selfId,
-          clamp01(finalScore / 10),
-          item.why?.usedAtomIds || [],
-          `stoch:${item.p.id}=base(${(item.score ?? 0).toFixed(3)})/T(${T.toFixed(2)})+g(${noise.toFixed(3)})`,
-          { baseScore: item.score ?? 0, T, noise, finalScore },
-          ['action', 'stochastic', item.p.id]
-        )
-      );
-
-      if (finalScore > bestFinal) {
-        bestFinal = finalScore;
-        best = item;
-      }
+  for (const s of topRanked) {
+    const raw = rngNext();
+    const safe = Math.max(1e-9, Math.min(1 - 1e-9, raw));
+    const noise = -Math.log(-Math.log(safe));
+    const v = s.q / T + noise;
+    if (v > bestScore) {
+      bestScore = v;
+      chosen = s.action;
     }
-    chosen = best || null;
-    noAllowed = Boolean(chosen && !chosen.allowed);
   }
 
-  if (chosen) {
-    const targetId = (chosen.p as any)?.targetId ?? null;
-    decisionAtoms.push(
-      mkDecisionAtom(
-        `action:choice:${args.selfId}`,
-        args.selfId,
-        1,
-        [
-          ...topRanked.map(p => `action:prior:${args.selfId}:${p.p.id}`),
-          ...topRanked.map(p => `action:gate:${args.selfId}:${p.p.id}`),
-          ...topRanked.map(p => `action:utility:${args.selfId}:${p.p.id}`),
-        ],
-        `choice:${chosen.p.id}${targetId ? `→${targetId}` : ''}`,
-        {
-          chosen: chosen.p.id,
-          targetId,
-          noAllowed,
-          top: topRanked.slice(0, 7).map(p => ({
-            a: p.p.id,
-            targetId: (p.p as any)?.targetId ?? null,
-            score: p.score,
-            cost: p.cost,
-            allowed: p.allowed,
-          })),
-        },
-        ['action', 'choice']
-      )
-    );
-  }
-
-  const resultAtoms = [...topRanked.flatMap(item => item.atoms || []), ...decisionAtoms];
-  return { best: chosen, ranked: topRanked, atoms: resultAtoms };
+  const decisionAtoms = topRanked.map((s) => toDecisionAtom(s.action, s.q));
+  return { best: chosen, ranked: topRanked, atoms: decisionAtoms };
 }

@@ -8,6 +8,7 @@ import type { SimSnapshot, SimTickRecord } from '../../simkit/core/types';
 import { buildExport } from '../../simkit/core/export';
 import { makeOrchestratorPlugin } from '../../simkit/plugins/orchestratorPlugin';
 import { makeGoalLabPipelinePlugin } from '../../simkit/plugins/goalLabPipelinePlugin';
+import { makeGoalLabDeciderPlugin } from '../../simkit/plugins/goalLabDeciderPlugin';
 import { makeSimWorldFromSelection } from '../../simkit/adapters/fromKanonarEntities';
 import { basicScenarioId, makeBasicWorld } from '../../simkit/scenarios/basicScenario';
 
@@ -328,13 +329,16 @@ export const SimulatorLab: React.FC<Props> = ({ orchestratorRegistry, onPushToGo
       onPushToGoalLab,
     } as any);
 
+    const goalLabDeciderPlugin = makeGoalLabDeciderPlugin({ storePipeline: false });
     const pipelinePlugin = makeGoalLabPipelinePlugin();
 
     const sim = new SimKitSimulator({
       scenarioId: basicScenarioId,
       seed: 1337,
       initialWorld: world ?? makeBasicWorld(),
-      plugins: [orchestratorPlugin, pipelinePlugin],
+      // Order matters: first decideActions() that returns actions wins.
+      // GoalLab decider is opt-in via world.facts['sim:decider'] = 'goallab'.
+      plugins: [goalLabDeciderPlugin, orchestratorPlugin, pipelinePlugin],
       maxRecords: 500,
     });
 

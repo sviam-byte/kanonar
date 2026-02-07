@@ -14,6 +14,7 @@ import { runGoalLabPipelineV1 } from '../../goal-lab/pipeline/runPipelineV1';
 import type { ContextAtom } from '../../context/v2/types';
 import type { Possibility } from '../../possibilities/catalog';
 import { decideAction } from '../../decision/decide';
+import { buildActionCandidates } from '../../decision/actionCandidateUtils';
 
 function arr<T>(x: any): T[] {
   return Array.isArray(x) ? x : [];
@@ -214,23 +215,30 @@ export function makeFullOrchestratorPlugin(opts?: { T?: number }): SimPlugin {
           .filter((o) => o.actorId === actorId)
           .map(offerToPossibility);
 
-        const decision = decideAction({ selfId: actorId, atoms, possibilities: poss, topK: 10 });
+        const { actions, goalEnergy } = buildActionCandidates({ selfId: actorId, atoms, possibilities: poss });
+        const decision = decideAction({
+          actions,
+          goalEnergy,
+          topK: 10,
+          rng: () => rng.next(),
+          temperature: T,
+        });
         const ranked = arr<any>((decision as any)?.ranked);
         const items = ranked
           .map((x: any) => ({
-            id: String(x?.p?.id || x?.id || ''),
-            score: Number(x?.score ?? 0),
-            allowed: Boolean(x?.allowed),
+            id: String(x?.action?.id || ''),
+            score: Number(x?.q ?? 0),
+            allowed: true,
           }))
           .filter((x) => x.id);
 
         const sampled = softmaxSample({ rngNext: () => rng.next(), items, T });
         const chosenId = sampled.chosenId;
-        const chosen = ranked.find((x: any) => String(x?.p?.id || x?.id || '') === chosenId) || (decision as any)?.best;
-
-        const chosenMeta = (chosen as any)?.p?.meta?.sim;
-        const kind = String(chosenMeta?.kind || '').trim();
-        const targetId = chosenMeta?.targetId != null ? String(chosenMeta.targetId) : ((chosen as any)?.p?.targetId ?? null);
+        const chosen = ranked.find((x: any) => String(x?.action?.id || '') === chosenId)?.action || decision.best;
+        const chosenPoss = poss.find((p: any) => String(p.id) === String(chosen?.id || '')) || null;
+        const chosenMeta = (chosenPoss as any)?.meta?.sim;
+        const kind = String(chosenMeta?.kind || chosen?.kind || '').trim();
+        const targetId = chosenMeta?.targetId != null ? String(chosenMeta.targetId) : (chosen?.targetId ?? null);
 
         const finalKind = [
           'move',
@@ -252,7 +260,7 @@ export function makeFullOrchestratorPlugin(opts?: { T?: number }): SimPlugin {
           kind: finalKind,
           actorId,
           targetId: targetId != null ? String(targetId) : null,
-          targetNodeId: chosenMeta?.targetNodeId ?? null,
+          targetNodeId: chosenMeta?.targetNodeId ?? chosen?.targetNodeId ?? null,
           meta: chosenMeta?.meta ?? null,
           payload: {
             policy: {

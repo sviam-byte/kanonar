@@ -527,6 +527,21 @@ export function deriveGoalAtoms(selfId: string, atoms: ContextAtom[], opts?: { t
     }
   }
 
+  // ------------------------------------------------------------
+  // Activation hysteresis (EMA) on domain scores
+  // ------------------------------------------------------------
+  // Active-set selection already has hysteresis, but downstream decisions still
+  // react to the raw score. Smooth scores with the persisted goal state to reduce
+  // “flicker” and make behavior more stable across ticks.
+  for (const e of ecology) {
+    const st = prevStates[e.domain] || initGoalState();
+    const alpha = clamp01(0.65 + 0.25 * (st.lockIn ?? 0));
+    const before = clamp01(e.v);
+    const after = clamp01(alpha * (st.activationEMA ?? 0) + (1 - alpha) * before);
+    e.v = after;
+    (e.parts as any).activationHysteresis = { alpha, before, prevEMA: st.activationEMA ?? 0, after };
+  }
+
   const modeAtom = mkModeAtom(selfId, modeSel.mode, W, usedCommon, { feltField, logits: modeSel.logits });
 
   const goalAtoms = ecology.map(e => mkGoalAtom(selfId, e.domain, e.v, [...e.used, modeAtom.id], e.parts));

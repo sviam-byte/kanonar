@@ -35,6 +35,7 @@ import { arr } from '../../lib/utils/arr';
 import { OrchestratorLab } from '../../lib/goal-lab/labs/OrchestratorLab';
 import { SimulatorLab } from '../../lib/goal-lab/labs/SimulatorLab';
 import { defaultProducers } from '../../lib/orchestrator/defaultProducers';
+import { generateGoalLabReportMarkdown } from '../../lib/goal-lab/reporting/generateGoalLabReport';
 
 interface Props {
   context: ContextSnapshot | null;
@@ -1531,6 +1532,27 @@ export const GoalLabResults: React.FC<Props> = ({
                             ))}
                         </div>
                         <div className="flex items-center gap-2">
+                            {pipelineV1 && (
+                                <button
+                                    onClick={async () => {
+                                        try {
+                                            const md = generateGoalLabReportMarkdown(pipelineV1, {
+                                                maxAtoms: 80,
+                                                maxGoals: 24,
+                                                maxActions: 16,
+                                            });
+                                            if (navigator?.clipboard?.writeText) {
+                                                await navigator.clipboard.writeText(md);
+                                            }
+                                        } catch {
+                                            // ignore
+                                        }
+                                    }}
+                                    className="px-3 py-1 text-[11px] font-semibold border border-canon-border/60 rounded bg-canon-bg-light hover:bg-canon-bg-light/70 transition-colors"
+                                >
+                                    Copy Explainability Report
+                                </button>
+                            )}
                             {onExportPipelineAll && (
                                 <button
                                     onClick={onExportPipelineAll}
