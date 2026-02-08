@@ -87,6 +87,7 @@ Inputs:
 Outputs:
 - `action:*`
   - decisions scored as `Q(a)=Σ_g E_g*Δg(a) − cost(a)` over ActionCandidate entries
+- violent affordances (e.g., `aff:attack:*`) are gated by aggression drive (danger/threat/affect) + protocol; proximity must still be present
 
 Forbidden:
 - `action:*` НЕ должен зависеть от `goal:*` напрямую (только через `util:*`)
