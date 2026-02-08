@@ -95,6 +95,14 @@ interface Props {
    * - front: Goal Lab as "what I do now" (hide time controls)
    */
   mode?: 'debug' | 'front';
+  /**
+   * Force a specific tab (used by front-mode shortcuts like Affects/Scene).
+   */
+  forcedTab?: 'scene' | 'manual' | 'events' | 'affect' | 'mods' | 'sim';
+  /**
+   * Hide the tab switcher (used when tab is forced by the container).
+   */
+  hideTabs?: boolean;
 }
 
 export const GoalLabControls: React.FC<Props> = ({
@@ -124,6 +132,8 @@ export const GoalLabControls: React.FC<Props> = ({
   sceneControl, onSceneControlChange, scenePresets,
   perspectiveAgentId, onSelectPerspective,
   mode = 'debug',
+  forcedTab,
+  hideTabs = false,
 }) => {
   
   const [selectedActorToAdd, setSelectedActorToAdd] = React.useState<string>('');
@@ -142,15 +152,19 @@ export const GoalLabControls: React.FC<Props> = ({
   const computed = listify(computedAtoms);
 
   const visibleTabs = React.useMemo(() => {
-    const base = ['scenes', 'scene', 'events', 'affect', 'emotions', 'manual', 'mods'] as const;
-    return mode === 'front'
-      ? base
-      : (['scenes', 'scene', 'events', 'sim', 'affect', 'emotions', 'manual', 'mods'] as const);
-  }, [mode]);
+    if (hideTabs) return [] as const;
+    const front = ['scene', 'manual', 'affect'] as const;
+    const debug = ['scenes', 'scene', 'events', 'sim', 'affect', 'emotions', 'manual', 'mods'] as const;
+    return mode === 'front' ? front : debug;
+  }, [mode, hideTabs]);
 
   React.useEffect(() => {
     if (mode === 'front' && activeTab === 'sim') setActiveTab('manual');
   }, [mode, activeTab]);
+
+  React.useEffect(() => {
+    if (forcedTab) setActiveTab(forcedTab);
+  }, [forcedTab]);
   
   // Custom atom form state
   const [customAtomKind, setCustomAtomKind] = React.useState<ContextAtomKind>('threat');
@@ -540,17 +554,19 @@ export const GoalLabControls: React.FC<Props> = ({
       </div>
 
       {/* Tabs */}
-      <div className="flex border-b border-canon-border/50 overflow-x-auto no-scrollbar">
+      {!hideTabs && visibleTabs.length > 0 ? (
+        <div className="flex border-b border-canon-border/50 overflow-x-auto no-scrollbar">
           {visibleTabs.map(tab => (
             <button
-               key={tab}
-               className={`flex-1 py-1 px-2 text-[10px] font-bold uppercase whitespace-nowrap ${activeTab === tab ? 'text-canon-accent border-b-2 border-canon-accent' : 'text-canon-text-light'}`}
-               onClick={() => setActiveTab(tab as any)}
+              key={tab}
+              className={`flex-1 py-1 px-2 text-[10px] font-bold uppercase whitespace-nowrap ${activeTab === tab ? 'text-canon-accent border-b-2 border-canon-accent' : 'text-canon-text-light'}`}
+              onClick={() => setActiveTab(tab as any)}
             >
-                {tab}
+              {tab}
             </button>
           ))}
-      </div>
+        </div>
+      ) : null}
 
       {/* Tab Content */}
       <div className="flex-1 min-h-0 flex flex-col p-2 bg-canon-bg overflow-y-auto custom-scrollbar">

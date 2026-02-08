@@ -14,18 +14,18 @@ import { GoalNode, LensNode, SourceNode } from './DecisionGraphNodes';
 import { DecisionGraph3DView } from './DecisionGraph3DView';
 import { GoalExplanationPanel } from './GoalExplanationPanel';
 
-export type DecisionGraphRenderMode = 'overview' | 'goals-detail' | 'graph' | 'meta' | 'dual' | 'explain' | '3d';
+export type DecisionGraphRenderMode = 'overview' | 'graph' | 'explain' | '3d';
 
 type Props = {
   frame?: AgentContextFrame | null;
-  /** Full atom set (typically snapshot atoms) used for dual-layer visualization. */
+  /** Full atom set (typically snapshot atoms), kept for future graph overlays. */
   contextAtoms?: any[];
-  /** Agent id for ctx:*:selfId addressing in dual-layer visualization. */
+  /** Agent id for ctx:*:selfId addressing in overlays. */
   selfId?: string;
   goalScores: ContextualGoalScore[];
   selectedGoalId?: string | null;
 
-  /** graph: full; overview/goals-detail/dual/meta/explain: simplified; 3d: 3D */
+  /** graph: full; overview/explain: simplified; 3d: 3D */
   mode?: DecisionGraphRenderMode;
 
   /** Smaller header for embedding inside the map frame */
@@ -418,16 +418,7 @@ export const DecisionGraphView: React.FC<Props> = ({
     if (mode === 'explain') {
       return { nodes: [], edges: [] };
     }
-    if (mode === 'meta') return buildMetaGraph(safeScores, maxGoals);
     if (mode === 'overview') return buildOverviewGraph(safeScores);
-    if (mode === 'goals-detail') return buildGoalsDetailGraph(safeScores, maxGoals);
-    if (mode === 'dual') {
-      const atoms = arr(contextAtoms);
-      const sid = String(selfId || '').trim();
-      if (!atoms.length || !sid) return { nodes: [], edges: [] };
-      return buildDualLayerGraph(atoms, sid);
-    }
-
     // "graph" / "3d" = strict clean-flow triplet (Sources → Lenses → Goals)
     // Uses fixed x-columns and edge filtering to avoid spaghetti.
     return buildDecisionTripletGraph({
@@ -510,17 +501,11 @@ export const DecisionGraphView: React.FC<Props> = ({
         <div className="text-[10px] text-slate-300/80">
           {mode === 'overview'
             ? 'Overview: Context → Goals (collapsed)'
-            : mode === 'goals-detail'
-              ? 'Goals detail: Context collapsed → Goals expanded → Actions collapsed'
-              : mode === 'meta'
-                ? 'Meta graph: Context/Lens buckets → Goals'
-                : mode === 'dual'
-                  ? 'Dual-layer: ctx:* (objective) → ctx:final:* (after Character Lens)'
-                  : mode === 'explain'
-                    ? 'Goal explanations (catalog + current scores)'
-                    : mode === '3d'
-                      ? '3D graph: layered (atom/lens/goal/action), contrib + flow'
-                      : 'Decision graph: Sources → Lenses → Goals'}
+            : mode === 'explain'
+              ? 'Goal explanations (catalog + current scores)'
+              : mode === '3d'
+                ? '3D graph: layered (atom/lens/goal/action), contrib + flow'
+                : 'Decision graph: Sources → Lenses → Goals'}
         </div>
 
         <div className="flex items-center gap-2">
@@ -532,11 +517,8 @@ export const DecisionGraphView: React.FC<Props> = ({
               className="bg-black/25 border border-slate-700/60 rounded px-2 py-0.5 text-[10px]"
             >
               <option value="overview">Overview</option>
-              <option value="goals-detail">Goals detail</option>
               <option value="graph">2D</option>
               <option value="3d">3D</option>
-              <option value="meta">Meta</option>
-              <option value="dual">Dual</option>
               <option value="explain">Explain</option>
             </select>
           </label>

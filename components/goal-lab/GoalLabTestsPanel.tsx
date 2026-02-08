@@ -1,56 +1,62 @@
 import React, { useMemo, useState } from 'react';
-import { goalLabScenarios } from '../../lib/goal-lab/tests/scenarios';
+import { goalLabBasicTests } from '../../lib/goal-lab/tests/basic';
 import { runScenario, type ScenarioResult } from '../../lib/goal-lab/tests/runScenario';
 import { runGoalLabPipelineV1 } from '../../lib/goal-lab/pipeline/runPipelineV1';
+
+type Props = {
+  selfId: string;
+  actorLabels?: Record<string, string>;
+};
 
 function formatScore(value?: number): string {
   if (value == null || !Number.isFinite(value)) return '—';
   return Number(value).toFixed(2);
 }
 
-function takeTop<T>(items: T[], count: number): T[] {
-  return items.slice(0, Math.max(0, count));
-}
-
 /**
- * Scenario runner for GoalLab. This is a lightweight, UI-only smoke-check tool.
- * It keeps expectations explicit and surfaces the possibility set for inspection.
+ * Lightweight GoalLab test runner panel for deterministic sanity checks.
+ * It keeps expectations visible and captures the possibility set for inspection.
  */
-export const TestsPanel: React.FC = () => {
-  const scenarios = useMemo(() => goalLabScenarios(), []);
-  const [scenarioId, setScenarioId] = useState(() => scenarios[0]?.id ?? '');
+export const GoalLabTestsPanel: React.FC<Props> = ({ selfId, actorLabels }) => {
+  const effectiveSelfId = selfId || 'assi-the-runner';
+  const label = actorLabels?.[effectiveSelfId] ?? effectiveSelfId;
+
+  const tests = useMemo(() => goalLabBasicTests(effectiveSelfId), [effectiveSelfId]);
+  const [testId, setTestId] = useState(() => tests[0]?.id ?? '');
   const [result, setResult] = useState<ScenarioResult | null>(null);
 
   const selected = useMemo(
-    () => scenarios.find((s) => s.id === scenarioId) ?? scenarios[0] ?? null,
-    [scenarioId, scenarios]
+    () => tests.find((t) => t.id === testId) ?? tests[0] ?? null,
+    [testId, tests]
   );
 
   const enabledList = useMemo(() => {
-    const list = result?.possibilities?.filter((p) => p.enabled) ?? [];
-    return list;
+    return (result?.possibilities ?? []).filter((p) => p.enabled);
   }, [result]);
 
   const topByMagnitude = useMemo(() => {
     const list = [...(result?.possibilities ?? [])];
     list.sort((a, b) => Number(b.magnitude ?? 0) - Number(a.magnitude ?? 0));
-    return takeTop(list, 5);
+    return list.slice(0, 5);
   }, [result]);
 
   return (
     <div className="h-full overflow-y-auto custom-scrollbar p-3 text-[11px]">
-      <div className="text-[10px] text-slate-500 uppercase font-bold mb-2">Scenario tests</div>
-      <div className="rounded-lg border border-slate-800 bg-black/40 p-3">
+      <div className="text-[10px] text-slate-500 uppercase font-bold mb-2">GoalLab Tests</div>
+      <div className="rounded-lg border border-slate-800 bg-black/40 p-3 space-y-2">
+        <div className="text-[10px] text-slate-400">
+          Self: <span className="text-slate-200 font-semibold">{label || '—'}</span>
+        </div>
         <div className="flex flex-wrap gap-2 items-center">
           <select
             className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-[11px]"
-            value={scenarioId}
-            onChange={(e) => setScenarioId(e.target.value)}
-            disabled={!scenarios.length}
+            value={testId}
+            onChange={(e) => setTestId(e.target.value)}
+            disabled={!tests.length}
           >
-            {scenarios.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.title}
+            {tests.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.title}
               </option>
             ))}
           </select>
@@ -58,7 +64,7 @@ export const TestsPanel: React.FC = () => {
             className="px-2 py-1 rounded bg-slate-700 hover:bg-slate-600 text-slate-100 text-[11px]"
             onClick={() => {
               if (!selected) return;
-              // Minimal pipeline run: scenario atoms + selfId.
+              // Deterministic pipeline run: scenario atoms + selfId.
               const world: any = {
                 tick: 0,
                 rngSeed: 123,
@@ -137,7 +143,7 @@ export const TestsPanel: React.FC = () => {
             </div>
           </div>
         ) : (
-          <div className="mt-2 text-[11px] text-slate-500">Select a scenario and run to see results.</div>
+          <div className="mt-2 text-[11px] text-slate-500">Select a test and run to see results.</div>
         )}
       </div>
     </div>

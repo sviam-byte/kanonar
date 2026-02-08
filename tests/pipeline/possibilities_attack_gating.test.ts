@@ -16,9 +16,11 @@ describe('Possibilities: attack gating', () => {
     const atoms = [
       A({ id: `obs:nearby:${otherId}:closeness`, ns: 'obs', origin: 'world', magnitude: 0.9, confidence: 1, target: otherId }),
       A({ id: `access:weapon:${selfId}`, ns: 'access', origin: 'world', magnitude: 1.0, confidence: 1 }),
-      A({ id: `threat:final:${selfId}`, ns: 'threat', origin: 'derived', magnitude: 0.05, confidence: 1 }),
-      A({ id: `emotion:anger:${selfId}`, ns: 'emotion', origin: 'derived', magnitude: 0.05, confidence: 1 }),
-      A({ id: `soc:recentHarmBy:${otherId}:${selfId}`, ns: 'soc', origin: 'derived', magnitude: 0.0, confidence: 1 }),
+      A({ id: `ctx:danger:${selfId}`, ns: 'ctx', origin: 'derived', magnitude: 0.05, confidence: 1 }),
+      A({ id: `sum:threatLevel:${selfId}`, ns: 'sum', origin: 'derived', magnitude: 0.05, confidence: 1 }),
+      A({ id: `affect:e:anger:${selfId}`, ns: 'affect', origin: 'derived', magnitude: 0.05, confidence: 1 }),
+      A({ id: `affect:e:fear:${selfId}`, ns: 'affect', origin: 'derived', magnitude: 0.05, confidence: 1 }),
+      A({ id: `affect:stress:${selfId}`, ns: 'affect', origin: 'derived', magnitude: 0.05, confidence: 1 }),
     ];
 
     const { possibilities } = derivePossibilities(atoms, selfId);
@@ -26,14 +28,15 @@ describe('Possibilities: attack gating', () => {
     expect(attack?.enabled).toBe(false);
   });
 
-  it('enables attack when recent harm is high and weapon access is present', () => {
+  it('enables attack when aggression drive is high and weapon access is present', () => {
     const selfId = 'self';
     const otherId = 'other';
     const atoms = [
       A({ id: `obs:nearby:${otherId}:closeness`, ns: 'obs', origin: 'world', magnitude: 0.4, confidence: 1, target: otherId }),
       A({ id: `access:weapon:${selfId}`, ns: 'access', origin: 'world', magnitude: 1.0, confidence: 1 }),
-      A({ id: `soc:recentHarmBy:${otherId}:${selfId}`, ns: 'soc', origin: 'derived', magnitude: 0.9, confidence: 1 }),
-      A({ id: `emotion:anger:${selfId}`, ns: 'emotion', origin: 'derived', magnitude: 0.7, confidence: 1 }),
+      A({ id: `ctx:danger:${selfId}`, ns: 'ctx', origin: 'derived', magnitude: 0.7, confidence: 1 }),
+      A({ id: `sum:threatLevel:${selfId}`, ns: 'sum', origin: 'derived', magnitude: 0.4, confidence: 1 }),
+      A({ id: `affect:e:anger:${selfId}`, ns: 'affect', origin: 'derived', magnitude: 0.8, confidence: 1 }),
     ];
 
     const { possibilities } = derivePossibilities(atoms, selfId);
@@ -47,8 +50,9 @@ describe('Possibilities: attack gating', () => {
     const atoms = [
       A({ id: `obs:nearby:${otherId}:closeness`, ns: 'obs', origin: 'world', magnitude: 0.5, confidence: 1, target: otherId }),
       A({ id: `access:weapon:${selfId}`, ns: 'access', origin: 'world', magnitude: 1.0, confidence: 1 }),
-      A({ id: `soc:recentHarmBy:${otherId}:${selfId}`, ns: 'soc', origin: 'derived', magnitude: 0.9, confidence: 1 }),
-      A({ id: `emotion:anger:${selfId}`, ns: 'emotion', origin: 'derived', magnitude: 0.7, confidence: 1 }),
+      A({ id: `ctx:danger:${selfId}`, ns: 'ctx', origin: 'derived', magnitude: 0.7, confidence: 1 }),
+      A({ id: `sum:threatLevel:${selfId}`, ns: 'sum', origin: 'derived', magnitude: 0.6, confidence: 1 }),
+      A({ id: `affect:e:anger:${selfId}`, ns: 'affect', origin: 'derived', magnitude: 0.8, confidence: 1 }),
       A({ id: `ctx:proceduralStrict:${selfId}`, ns: 'ctx', origin: 'derived', magnitude: 0.95, confidence: 1 }),
     ];
 

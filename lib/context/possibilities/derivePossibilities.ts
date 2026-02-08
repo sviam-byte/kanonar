@@ -43,6 +43,12 @@ export function derivePossibilities(atoms: ContextAtom[], selfId: string): { pos
   const surveillance = getCtx(atoms, selfId, 'surveillance', 0);
   const normPressure = getCtx(atoms, selfId, 'normPressure', 0);
   const protocolStrict = getMag(atoms, `ctx:proceduralStrict:${selfId}`, 0);
+  const ctxDanger = getCtx(atoms, selfId, 'danger', 0);
+  const ctxThreat = getMag(atoms, `sum:threatLevel:${selfId}`, 0);
+  const anger = getMag(atoms, `affect:e:anger:${selfId}`, 0);
+  const fear = getMag(atoms, `affect:e:fear:${selfId}`, 0);
+  const stress = getMag(atoms, `affect:stress:${selfId}`, 0);
+  const aggressionDrive = clamp01(Math.max(anger, fear * 0.8, stress * 0.6, ctxDanger.magnitude, ctxThreat));
 
   // constraints
   const noViolence = protocolStrict > 0.6 ? 1 : 0;
@@ -156,27 +162,9 @@ export function derivePossibilities(atoms: ContextAtom[], selfId: string): { pos
     const weaponAccess = getMag(atoms, `access:weapon:${selfId}`, 0);
     const weaponAllowed = weaponAccess > 0.5;
 
-    // Gate violence by threat/anger/harm, not by proximity alone.
-    // Otherwise closeness/nearby can accidentally turn into "attack is sensible".
-    const threatFinal = getMag(atoms, `threat:final:${selfId}`, getMag(atoms, 'threat:final', 0));
-    const anger = getMag(atoms, `emotion:anger:${selfId}`, 0);
-    const recentHarmByTarget = getMag(atoms, `soc:recentHarmBy:${other}:${selfId}`, 0);
-
-    const hasViolenceDrive = (threatFinal > 0.55) || (anger > 0.60) || (recentHarmByTarget > 0.35);
-    const attackEnabled = !noViolence && !hardTaboo && weaponAllowed && hasViolenceDrive;
-
-    // Availability increases with danger/anger/harm and decreases with trust/protocol/closeness.
-    // Keep it conservative to prevent violent "default" choices.
-    const attackAvail =
-      clamp01(
-        0.10
-        + 0.45 * threatFinal
-        + 0.35 * anger
-        + 0.45 * recentHarmByTarget
-        - 0.55 * trustPrior
-        - 0.45 * protocolStrict
-        - 0.25 * closeness
-      );
+    const violenceMotivated = aggressionDrive > 0.45 || ctxThreat > 0.55;
+    const attackEnabled = !noViolence && !hardTaboo && weaponAllowed && closeness > 0.15 && violenceMotivated;
+    const attackAvail = attackEnabled ? clamp01(0.2 + 0.8 * aggressionDrive) : 0.02;
 
     poss.push({
       id: `aff:attack:${other}`,
@@ -184,13 +172,15 @@ export function derivePossibilities(atoms: ContextAtom[], selfId: string): { pos
       actionId: 'attack',
       targetId: other,
       label: `Attack ${other}`,
-      magnitude: attackEnabled ? attackAvail : 0.01,
+      magnitude: attackAvail,
       enabled: attackEnabled,
       whyAtomIds: [
         `obs:nearby:${other}:closeness`,
-        `threat:final:${selfId}`,
-        `emotion:anger:${selfId}`,
-        `soc:recentHarmBy:${other}:${selfId}`,
+        ...pickCtxId('danger', selfId),
+        `sum:threatLevel:${selfId}`,
+        `affect:e:anger:${selfId}`,
+        `affect:e:fear:${selfId}`,
+        `affect:stress:${selfId}`,
         `ctx:proceduralStrict:${selfId}`,
         'con:protocol:noViolence',
         `rel:label:${selfId}:${other}`,
@@ -200,7 +190,7 @@ export function derivePossibilities(atoms: ContextAtom[], selfId: string): { pos
         ...(noViolence ? ['con:protocol:noViolence'] : []),
         ...(hardTaboo ? [`con:rel:taboo:attack:${selfId}:${other}`] : []),
         ...(!weaponAllowed ? [`access:weapon:${selfId}`] : []),
-        ...(!hasViolenceDrive ? [`gate:attack:no_threat_anger_harm:${selfId}:${other}`] : [])
+        ...(!violenceMotivated ? [`con:state:noAggressionDrive:${selfId}`] : [])
       ],
       tags: ['violent', ...tags]
     });

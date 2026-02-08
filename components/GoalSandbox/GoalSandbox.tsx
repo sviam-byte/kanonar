@@ -32,6 +32,7 @@ import { GoalActionGraphView } from '../goal-lab/GoalActionGraphView';
 import { CurveStudio } from '../goal-lab/CurveStudio';
 import { ToMPanel } from '../goal-lab/ToMPanel';
 import { CastComparePanel } from '../goal-lab/CastComparePanel';
+import { GoalLabTestsPanel } from '../goal-lab/GoalLabTestsPanel';
 import { eventRegistry } from '../../data/events-registry';
 import { buildGoalLabContext } from '../../lib/goals/goalLabContext';
 import { computeContextualMind } from '../../lib/tom/contextual/engine';
@@ -579,20 +580,10 @@ export const GoalSandbox: React.FC = () => {
     return 'energy';
   });
 
-  const [energyViewMode, setEnergyViewMode] = useState<'overview' | 'goals-detail' | 'graph' | 'meta' | 'dual' | 'explain' | '3d'>(() => {
+  const [energyViewMode, setEnergyViewMode] = useState<'overview' | 'graph' | 'explain' | '3d'>(() => {
     try {
       const stored = localStorage.getItem('goalsandbox.energyViewMode.v1');
-      if (
-        stored === 'overview' ||
-        stored === 'goals-detail' ||
-        stored === 'graph' ||
-        stored === 'meta' ||
-        stored === 'dual' ||
-        stored === 'explain' ||
-        stored === '3d'
-      ) {
-        return stored;
-      }
+      if (stored === 'overview' || stored === 'graph' || stored === 'explain' || stored === '3d') return stored;
     } catch {}
     return 'graph';
   });
@@ -601,7 +592,7 @@ export const GoalSandbox: React.FC = () => {
   const [centerOverlaySize, setCenterOverlaySize] = useState<'wide' | 'max'>('wide');
 
   // Front (non-debug) UX: right panel is constant, left/main switches via tabs.
-  const [frontTab, setFrontTab] = useState<'graph' | 'situation' | 'metrics' | 'curves' | 'debug'>(() => {
+  const [frontTab, setFrontTab] = useState<'graph' | 'situation' | 'metrics' | 'affects' | 'curves' | 'tests' | 'debug'>(() => {
     return 'graph';
   });
 
@@ -2225,7 +2216,7 @@ export const GoalSandbox: React.FC = () => {
           {centerView === 'energy' ? (
             <>
               <div className="flex items-center gap-1">
-                {(['overview', 'goals-detail', 'graph', 'meta', 'dual', 'explain', '3d'] as const).map((mode) => (
+                {(['overview', 'graph', 'explain', '3d'] as const).map((mode) => (
                   <button
                     key={mode}
                     onClick={() => setEnergyViewMode(mode)}
@@ -2237,17 +2228,11 @@ export const GoalSandbox: React.FC = () => {
                     title={
                       mode === 'overview'
                         ? 'Overview (context → goals)'
-                        : mode === 'goals-detail'
-                          ? 'Goals detail (context → goals → actions)'
                         : mode === 'graph'
                           ? 'Graph (inputs → goals)'
-                          : mode === 'meta'
-                            ? 'Meta buckets'
-                            : mode === 'dual'
-                              ? 'Dual-layer (ctx → ctx:final)'
-                              : mode === 'explain'
-                                ? 'Explain goals'
-                                : '3D scaffold'
+                          : mode === 'explain'
+                            ? 'Explain goals'
+                            : '3D scaffold'
                     }
                   >
                     {mode}
@@ -2515,7 +2500,9 @@ export const GoalSandbox: React.FC = () => {
                   ['graph', 'Graph'],
                   ['situation', 'Situation'],
                   ['metrics', 'Metrics'],
+                  ['affects', 'Affects'],
                   ['curves', 'Curves'],
+                  ['tests', 'Tests'],
                   ['debug', 'Debug'],
                 ] as const).map(([key, label]) => (
                   <button
@@ -2588,6 +2575,63 @@ export const GoalSandbox: React.FC = () => {
                   onDecisionCurvePresetChange={setDecisionCurvePreset}
                   onApplySimSettings={onApplySimSettings}
                   mode="front"
+                  forcedTab="scene"
+                  hideTabs
+                />
+              </div>
+            ) : frontTab === 'affects' ? (
+              <div className="h-full overflow-y-auto custom-scrollbar p-3">
+                <GoalLabControls
+                  allCharacters={allCharacters}
+                  allLocations={allLocations as any}
+                  events={eventRegistry.getAll() as any}
+                  computedAtoms={arr((snapshotV1 as any)?.atoms ?? (snapshot as any)?.atoms)}
+                  selectedAgentId={selectedAgentId}
+                  onSelectAgent={handleSelectAgent}
+                  selectedLocationId={selectedLocationId}
+                  onSelectLocation={setSelectedLocationId}
+                  locationMode={locationMode}
+                  onLocationModeChange={setLocationMode}
+                  selectedEventIds={selectedEventIds}
+                  onToggleEvent={(id) =>
+                    setSelectedEventIds((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(id)) next.delete(id);
+                      else next.add(id);
+                      return next;
+                    })
+                  }
+                  manualAtoms={manualAtoms}
+                  onChangeManualAtoms={setManualAtoms}
+                  nearbyActors={nearbyActors}
+                  onNearbyActorsChange={handleNearbyActorsChange}
+                  placingActorId={placingActorId}
+                  onStartPlacement={setPlacingActorId}
+                  affectOverrides={affectOverrides}
+                  onAffectOverridesChange={setAffectOverrides}
+                  onDownloadScene={onDownloadScene}
+                  onImportSceneDumpV2={handleImportSceneDumpV2}
+                  world={worldState as any}
+                  onWorldChange={(w: any) => setWorldState(normalizeWorldShape(w)) as any}
+                  participantIds={participantIds}
+                  onAddParticipant={handleAddParticipant}
+                  onRemoveParticipant={handleRemoveParticipant}
+                  onLoadScene={handleLoadScene}
+                  perspectiveAgentId={perspectiveId}
+                  onSelectPerspective={setPerspectiveAgentId}
+                  sceneControl={sceneControl}
+                  onSceneControlChange={setSceneControl}
+                  scenePresets={Object.values(SCENE_PRESETS) as any}
+                  runSeed={runSeed}
+                  onRunSeedChange={setRunSeed}
+                  decisionTemperature={decisionTemperature}
+                  onDecisionTemperatureChange={setDecisionTemperature}
+                  decisionCurvePreset={decisionCurvePreset}
+                  onDecisionCurvePresetChange={setDecisionCurvePreset}
+                  onApplySimSettings={onApplySimSettings}
+                  mode="front"
+                  forcedTab="affect"
+                  hideTabs
                 />
               </div>
             ) : frontTab === 'curves' ? (
@@ -2648,6 +2692,13 @@ export const GoalSandbox: React.FC = () => {
                   onExportPipelineStage={handleExportPipelineStage}
                   onExportPipelineAll={handleExportPipelineAll}
                   onExportFullDebug={handleExportFullDebug}
+                />
+              </div>
+            ) : frontTab === 'tests' ? (
+              <div className="h-full overflow-y-auto custom-scrollbar p-3">
+                <GoalLabTestsPanel
+                  selfId={perspectiveId || selectedAgentId || ''}
+                  actorLabels={actorLabels as any}
                 />
               </div>
             ) : (

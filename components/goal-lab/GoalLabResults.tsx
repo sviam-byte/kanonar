@@ -36,7 +36,7 @@ import { OrchestratorLab } from '../../lib/goal-lab/labs/OrchestratorLab';
 import { SimulatorLab } from '../../lib/goal-lab/labs/SimulatorLab';
 import { defaultProducers } from '../../lib/orchestrator/defaultProducers';
 import { generateGoalLabReportMarkdown } from '../../lib/goal-lab/reporting/generateGoalLabReport';
-import { TestsPanel } from './TestsPanel';
+import { GoalLabTestsPanel } from './GoalLabTestsPanel';
 
 interface Props {
   context: ContextSnapshot | null;
@@ -1398,7 +1398,7 @@ export const GoalLabResults: React.FC<Props> = ({
             case 18: return <OrchestratorTab />;
             case 19: return <SimulatorTab />;
             case 20: return <TuningTab />;
-            case 21: return <TestsPanel />;
+            case 21: return <GoalLabTestsPanel selfId={focusId || ''} actorLabels={actorLabels as any} />;
             default: return <ExplainTab />;
         }
     };
