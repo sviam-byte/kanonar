@@ -268,10 +268,6 @@ export interface ContextualGoalContribution {
   atomKind?: string;
   atomLabel?: string;
   formula?: string;
-  weight?: number;
-  agentValue?: number;
-  detailCategory?: string;
-  detailKey?: string;
 }
 
 export interface ContextualGoalScore {

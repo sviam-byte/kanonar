@@ -28,28 +28,6 @@ function clamp01(x: number) {
   return Math.max(0, Math.min(1, x));
 }
 
-// Heuristic mapping to keep UI chips/icons consistent for derived contributions.
-function inferContributionAtomKind(category?: string, key?: string): string | undefined {
-  const c = String(category || '').toLowerCase();
-  const k = String(key || '').toLowerCase();
-
-  const has = (s: string) => k.includes(s) || c.includes(s);
-
-  if (has('threat') || has('danger') || has('enemy') || has('combat')) return 'threat';
-  if (has('support') || has('ally') || has('friend') || has('help')) return 'social_support';
-  if (has('wound') || has('hp') || has('injur') || has('pain')) return 'body_wounded';
-  if (has('proximity') || has('distance')) return 'proximity_enemy';
-  if (has('privacy') || has('safe') || has('shelter')) return 'ctx_privacy';
-
-  if (c.includes('trait')) return 'trait';
-  if (c.includes('bio')) return 'bio';
-  if (c.includes('relation')) return 'relational';
-  if (c.includes('tuning') || c.includes('manual')) return 'tuning';
-  if (c.includes('base')) return 'base';
-
-  return undefined;
-}
-
 function getAtomMag(atoms: any[] | undefined, id: string, fb = 0): number {
   const arr = Array.isArray(atoms) ? atoms : [];
   const a: any = arr.find(x => String(x?.id) === id);
@@ -154,12 +132,7 @@ export function scoreContextualGoals(
           value: bd.contribution,
           explanation: `${bd.category}: ${bd.key}`,
           atomLabel: bd.key,
-          formula: `${bd.weight.toFixed(1)} * ${bd.agentValue.toFixed(2)}`,
-          weight: bd.weight,
-          agentValue: bd.agentValue,
-          detailCategory: bd.category,
-          detailKey: bd.key,
-          atomKind: inferContributionAtomKind(bd.category, bd.key),
+          formula: `${bd.weight.toFixed(1)} * ${bd.agentValue.toFixed(2)}`
       }));
 
       // Add a summary contribution for the base logit if not present
