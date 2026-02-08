@@ -1618,6 +1618,9 @@ export function buildGoalLabContext(
     rng: decideRng && typeof (decideRng as any).next === 'function'
       ? () => (decideRng as any).next()
       : () => 0.5,
+    prevActionId: (agentForPipeline as any)?.lastActionId ?? null,
+    minConfidence: (tuning as any)?.decisionMinConfidence ?? (world as any)?.decisionMinConfidence,
+    momentumBonus: (tuning as any)?.decisionMomentumBonus ?? (world as any)?.decisionMomentumBonus,
     temperature:
       (world as any)?.decisionTemperature ??
       (agentForPipeline as any)?.behavioralParams?.T0 ??
