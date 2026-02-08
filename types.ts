@@ -57,6 +57,13 @@ export interface GoalCurveTuning {
   bias?: number;
 }
 
+export interface ContextScoringTuning {
+  /** Ignore context domains below this floor (default 0.20). */
+  noiseFloor?: number;
+  /** Scale domain intensity into logit space (default 4.5). */
+  scale?: number;
+}
+
 export interface GoalTuningConfig {
   /** Global knobs (applies to all goals). */
   global?: GoalCurveTuning;
@@ -66,6 +73,12 @@ export interface GoalTuningConfig {
   goals?: Record<string, GoalCurveTuning>;
   /** Hard veto switches. Key is goal def id. */
   veto?: Record<string, boolean>;
+  /** Context-to-axis projection knobs for domain-based scoring. */
+  contextScoring?: ContextScoringTuning;
+  /** Decision feasibility gate (min confidence, 0..1). */
+  decisionMinConfidence?: number;
+  /** Decision hysteresis bonus (added to q for prev action). */
+  decisionMomentumBonus?: number;
 }
 export type ActionId = string;
 export type SocialActionId = string;
@@ -1719,6 +1732,10 @@ export interface WorldState {
     rngSeed?: number | string;
     /** Decision temperature (higher => noisier Gumbel-max sampling). */
     decisionTemperature?: number;
+    /** Drop actions with confidence below this threshold (default 0.15). */
+    decisionMinConfidence?: number;
+    /** Hysteresis bonus for repeating the previous action (default 0.25). */
+    decisionMomentumBonus?: number;
     /** Non-linear curve preset used by some context/priority transforms. */
     decisionCurvePreset?:
         | 'linear'
@@ -1727,6 +1744,8 @@ export interface WorldState {
         | 'sigmoid'
         | 'pow2'
         | 'pow4';
+    /** Overrides for context domain -> goal-axis scoring. */
+    contextScoring?: ContextScoringTuning;
     orders?: Order[];
     leadershipOffers?: { from: string, to: string, tick: number }[];
     actionsThisTick?: string[];

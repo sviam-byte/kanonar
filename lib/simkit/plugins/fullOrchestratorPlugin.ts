@@ -221,6 +221,9 @@ export function makeFullOrchestratorPlugin(opts?: { T?: number }): SimPlugin {
           goalEnergy,
           topK: 10,
           rng: () => rng.next(),
+          prevActionId: (world as any)?.facts?.[`lastAction:${actorId}`]?.id ?? null,
+          minConfidence: (world as any)?.decisionMinConfidence,
+          momentumBonus: (world as any)?.decisionMomentumBonus,
           temperature: T,
         });
         const ranked = arr<any>((decision as any)?.ranked);

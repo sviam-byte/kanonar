@@ -429,6 +429,9 @@ export function makeOrchestratorPlugin(opts: { registry?: any; onPushToGoalLab?:
             goalEnergy,
             topK: 20,
             rng: () => rng.next(),
+            prevActionId: (world as any)?.facts?.[`lastAction:${actorId}`]?.id ?? null,
+            minConfidence: (world as any)?.decisionMinConfidence,
+            momentumBonus: (world as any)?.decisionMomentumBonus,
             temperature: T,
           });
           const ranked = decision.ranked || [];

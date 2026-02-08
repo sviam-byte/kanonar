@@ -455,6 +455,9 @@ export function runGoalLabPipelineV1(input: {
       goalEnergy,
       topK: 10,
       rng: rng && typeof rng.next === 'function' ? () => rng.next() : () => 0.5,
+      prevActionId: (agent as any)?.lastActionId ?? null,
+      minConfidence: (world as any)?.decisionMinConfidence,
+      momentumBonus: (world as any)?.decisionMomentumBonus,
       temperature:
         (world as any)?.decisionTemperature ??
         (agent as any)?.behavioralParams?.T0 ??
