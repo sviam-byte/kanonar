@@ -1,7 +1,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import type { ContextSnapshot, ContextualGoalScore, ContextAtom, TemporalContextConfig, ContextualGoalContribution } from '../../lib/context/v2/types';
-import { GOAL_DEFS } from '../../lib/goals/space'; 
+import { GOAL_DEFS } from '../../lib/goals/space';
 import { describeGoal } from '../../lib/goals/goalCatalog';
 import { AffectState, GoalTuningConfig, GoalCategoryId } from '../../types';
 import { AgentContextFrame, TomRelationView, TomPhysicalOther } from '../../lib/context/frame/types';
@@ -193,6 +193,11 @@ const ATOM_CONFIG: Record<string, AtomStyle> = {
     'time_pressure': { label: 'Цейтнот', bg: 'bg-amber-900/40', border: 'border-amber-500/50', text: 'text-amber-300', icon: '⏳' },
     'social_visibility': { label: 'На виду', bg: 'bg-cyan-900/40', border: 'border-cyan-500/50', text: 'text-cyan-300', icon: '👀' },
     'ctx_priority': { label: 'Приоритет', bg: 'bg-slate-900/40', border: 'border-slate-500/40', text: 'text-slate-200', icon: '🎛️' },
+    'trait': { label: 'Черта характера', bg: 'bg-purple-900/30', border: 'border-purple-500/40', text: 'text-purple-200', icon: '🧬' },
+    'bio': { label: 'Биография', bg: 'bg-indigo-900/30', border: 'border-indigo-500/40', text: 'text-indigo-200', icon: '📜' },
+    'relational': { label: 'Отношения', bg: 'bg-emerald-900/30', border: 'border-emerald-500/40', text: 'text-emerald-200', icon: '🤝' },
+    'tuning': { label: 'Настройка', bg: 'bg-amber-900/30', border: 'border-amber-500/40', text: 'text-amber-200', icon: '🎚️' },
+    'base': { label: 'База', bg: 'bg-slate-900/40', border: 'border-slate-500/40', text: 'text-slate-200', icon: '🧱' },
     'default': { label: 'Атом', bg: 'bg-canon-bg', border: 'border-canon-border', text: 'text-canon-text-light', icon: '🔹' }
 };
 
@@ -267,35 +272,30 @@ export const ContextPrioritiesRibbon: React.FC<{ atoms: ContextAtom[] }> = ({ at
 
 const ContributionRow: React.FC<{ contrib: ContextualGoalContribution }> = ({ contrib }) => {
     const style = getAtomStyle(contrib.atomKind || 'default');
-    
+
     return (
-        <div className="flex justify-between items-center text-xs bg-black/20 p-2 rounded hover:bg-white/5 border border-transparent hover:border-canon-border/30 transition-colors">
+        <div className="flex justify-between items-center text-xs bg-black/20 p-2 rounded">
             <div className="flex items-center gap-2 overflow-hidden">
-                {/* Visual Indicator of Source */}
-                {contrib.atomKind ? (
-                     <div className={`w-1.5 h-6 rounded-full ${style.bg.replace('/40', '')}`} title={contrib.atomKind}></div>
-                ) : (
-                     <div className="w-1.5 h-6 rounded-full bg-gray-600"></div>
-                )}
-                
+                <div
+                    className={`w-1.5 h-6 rounded-full ${style.bg.replace('/40', '')}`}
+                    title={contrib.atomKind}
+                />
+
                 <div className="flex flex-col min-w-0">
                     <span className="font-medium text-canon-text truncate" title={contrib.explanation}>
                         {contrib.explanation || contrib.source}
                     </span>
                     {contrib.atomLabel && (
                         <span className="text-[9px] text-canon-text-light/70 truncate font-mono">
-                           {contrib.atomLabel} {contrib.formula ? `• ${contrib.formula}` : ''}
-                        </span>
-                    )}
-                    {!contrib.atomLabel && (
-                         <span className="text-[9px] text-canon-text-light/70 truncate font-mono">
-                           {contrib.source}
+                            {contrib.atomLabel} {contrib.formula ? `• ${contrib.formula}` : ''}
                         </span>
                     )}
                 </div>
             </div>
-            
-            <span className={`font-mono font-bold whitespace-nowrap ml-2 ${contrib.value > 0 ? 'text-green-400' : 'text-red-400'}`}>
+
+            <span
+                className={`font-mono font-bold whitespace-nowrap ml-2 ${contrib.value > 0 ? 'text-green-400' : 'text-red-400'}`}
+            >
                 {contrib.value > 0 ? '+' : ''}{contrib.value.toFixed(2)}
             </span>
         </div>
