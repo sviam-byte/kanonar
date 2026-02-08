@@ -5,6 +5,7 @@ export const GoalLabReportPanel: React.FC<{ pipelineV1: any }> = ({ pipelineV1 }
   const md = useMemo(() => {
     if (!pipelineV1) return '';
     try {
+      // Generate a readable, deterministic report for debugging decisions.
       return generateGoalLabReportMarkdown(pipelineV1, { maxAtoms: 140, maxGoals: 40, maxActions: 24 });
     } catch (e) {
       return `Report generation failed: ${String((e as any)?.message ?? e)}`;

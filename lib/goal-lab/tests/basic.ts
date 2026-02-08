@@ -2,8 +2,10 @@ import type { ContextAtom } from '../../context/v2/types';
 import { derivePossibilities } from '../../context/possibilities/derivePossibilities';
 
 export type GoalLabTestResult = { id: string; title: string; ok: boolean; details?: string };
+// Minimal, deterministic scenario expectations for GoalLab sanity checks.
 export type GoalLabTestScenario = { id: string; title: string; atoms: ContextAtom[]; expect: { mustEnable?: string[]; mustDisable?: string[] } };
 
+// Helper to keep test atoms consistent and readable.
 function atom(id: string, magnitude: number, extra: Partial<ContextAtom> = {}): ContextAtom {
   return {
     id,

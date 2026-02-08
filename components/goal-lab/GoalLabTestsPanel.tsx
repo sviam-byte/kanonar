@@ -4,6 +4,7 @@ import { derivePossibilities } from '../../lib/context/possibilities/derivePossi
 
 export const GoalLabTestsPanel: React.FC<{ selfId: string; actorLabels?: Record<string, string> }> = ({ selfId, actorLabels }) => {
   const [results, setResults] = React.useState<GoalLabTestResult[] | null>(null);
+  // Keep scenarios deterministic and scoped to current selfId for consistent expectations.
   const scenarios = React.useMemo(() => goalLabTestScenarios(selfId || 'tester'), [selfId]);
   const [scenarioId, setScenarioId] = React.useState<string>(() => scenarios[0]?.id ?? '');
   const selected = scenarios.find(s => s.id === scenarioId) ?? scenarios[0];
@@ -11,6 +12,7 @@ export const GoalLabTestsPanel: React.FC<{ selfId: string; actorLabels?: Record<
 
   const run = React.useCallback(() => {
     const id = selfId || 'tester';
+    // Run the entire deterministic suite so regressions are visible immediately.
     setResults(runBasicGoalLabTests(id));
     try {
       if (selected) setScenarioPoss(derivePossibilities(selected.atoms as any, id).possibilities);

@@ -43,6 +43,7 @@ export function derivePossibilities(atoms: ContextAtom[], selfId: string): { pos
   const surveillance = getCtx(atoms, selfId, 'surveillance', 0);
   const normPressure = getCtx(atoms, selfId, 'normPressure', 0);
   const protocolStrict = getMag(atoms, `ctx:proceduralStrict:${selfId}`, 0);
+  // Aggression drive is a deterministic, explainable blend of danger/threat and affect signals.
   const ctxDanger = getCtx(atoms, selfId, 'danger', 0);
   const ctxThreat = getMag(atoms, `sum:threatLevel:${selfId}`, 0);
   const anger = getMag(atoms, `affect:e:anger:${selfId}`, 0);
@@ -162,6 +163,7 @@ export function derivePossibilities(atoms: ContextAtom[], selfId: string): { pos
     const weaponAccess = getMag(atoms, `access:weapon:${selfId}`, 0);
     const weaponAllowed = weaponAccess > 0.5;
 
+    // Require explicit aggression/drive signals so proximity alone never enables violence.
     const violenceMotivated = aggressionDrive > 0.45 || ctxThreat > 0.55;
     const attackEnabled = !noViolence && !hardTaboo && weaponAllowed && closeness > 0.15 && violenceMotivated;
     const attackAvail = attackEnabled ? clamp01(0.2 + 0.8 * aggressionDrive) : 0.02;
