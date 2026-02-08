@@ -71,6 +71,31 @@ function mapDomainsToGoalLogits(
   return logits;
 }
 
+function inferContributionAtomKind(
+  detailCategory?: string,
+  detailKey?: string,
+  atomLabel?: string
+): string | undefined {
+  // Heuristic mapping for explainability UI (kept small and deterministic).
+  const s = `${detailCategory || ''} ${detailKey || ''} ${atomLabel || ''}`.toLowerCase();
+  if (!s.trim()) return undefined;
+  if (s.includes('wound') || s.includes('injur') || s.includes('hp') || s.includes('blood')) return 'body_wounded';
+  if (s.includes('threat') || s.includes('danger') || s.includes('hostile')) return 'threat';
+  if (s.includes('trust') || s.includes('bond') || s.includes('ally') || s.includes('support')) return 'social_support';
+  if (s.includes('privacy')) return 'ctx_privacy';
+  if (s.includes('status')) return 'status';
+  if (s.includes('resource') || s.includes('money') || s.includes('food')) return 'resource';
+  if (s.includes('order') || s.includes('rule') || s.includes('norm')) return 'order';
+  if (s.includes('rest') || s.includes('sleep') || s.includes('tired') || s.includes('fatigue')) return 'rest';
+  // categories
+  if ((detailCategory || '').toLowerCase().includes('trait')) return 'trait';
+  if ((detailCategory || '').toLowerCase().includes('bio')) return 'bio';
+  if ((detailCategory || '').toLowerCase().includes('relation')) return 'relational';
+  if ((detailCategory || '').toLowerCase().includes('tuning')) return 'tuning';
+  if ((detailCategory || '').toLowerCase().includes('base')) return 'base';
+  return undefined;
+}
+
 /**
  * UNIFIED SCORING FUNCTION
  * This now delegates the heavy lifting to the V4 Engine (computeConcreteGoals),
@@ -127,13 +152,22 @@ export function scoreContextualGoals(
   // 3. Map V4 Results back to V2 ContextualGoalScore for UI compatibility
   const scores: ContextualGoalScore[] = concreteGoals.map(cg => {
       // Map V4 breakdown to V2 contributions
-      const contributions: ContextualGoalContribution[] = cg.breakdown.map(bd => ({
-          source: bd.category === 'Base' ? 'life' : 'derived',
-          value: bd.contribution,
-          explanation: `${bd.category}: ${bd.key}`,
-          atomLabel: bd.key,
-          formula: `${bd.weight.toFixed(1)} * ${bd.agentValue.toFixed(2)}`
-      }));
+      const contributions: ContextualGoalContribution[] = cg.breakdown.map(bd => {
+          const contrib: ContextualGoalContribution = {
+              source: bd.category === 'Base' ? 'life' : 'derived',
+              value: bd.contribution,
+              explanation: `${bd.category}: ${bd.key}`,
+              atomLabel: bd.key,
+              formula: `${bd.weight?.toFixed?.(1) ?? bd.weight} * ${bd.agentValue?.toFixed?.(2) ?? bd.agentValue}`,
+              weight: bd.weight,
+              agentValue: bd.agentValue,
+              detailCategory: bd.category,
+              detailKey: bd.key,
+          };
+          const inferred = inferContributionAtomKind(bd.category, bd.key, bd.key);
+          if (inferred) contrib.atomKind = inferred;
+          return contrib;
+      });
 
       // Add a summary contribution for the base logit if not present
       if (contributions.length === 0) {
