@@ -1,7 +1,14 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
-import type { ContextSnapshot, ContextualGoalScore, ContextAtom, TemporalContextConfig, ContextualGoalContribution } from '../../lib/context/v2/types';
-import { GOAL_DEFS } from '../../lib/goals/space'; 
+import type {
+  ContextSnapshot,
+  ContextualGoalScore,
+  ContextAtom,
+  TemporalContextConfig,
+  ContextualGoalContribution,
+} from '../../lib/context/v2/types';
+import { GOAL_DEFS } from '../../lib/goals/space';
+import { generateHumanContributionExplanation } from '../../lib/goals/explanations';
 import { describeGoal } from '../../lib/goals/goalCatalog';
 import { AffectState, GoalTuningConfig, GoalCategoryId } from '../../types';
 import { AgentContextFrame, TomRelationView, TomPhysicalOther } from '../../lib/context/frame/types';
@@ -24,6 +31,8 @@ import { ToMPanel } from './ToMPanel';
 import { CoveragePanel } from './CoveragePanel';
 import { DecisionGraphView } from './DecisionGraphView';
 import { GoalActionGraphView } from './GoalActionGraphView';
+import { FlowTab } from './FlowTab';
+import { FormulaExplainer } from './FormulaExplainer';
 import { GoalLabSnapshotV1 } from '../../lib/goal-lab/snapshotTypes';
 import { AtomInspector } from './AtomInspector';
 import { EmotionExplainPanel } from './EmotionExplainPanel';
@@ -193,6 +202,12 @@ const ATOM_CONFIG: Record<string, AtomStyle> = {
     'time_pressure': { label: 'Цейтнот', bg: 'bg-amber-900/40', border: 'border-amber-500/50', text: 'text-amber-300', icon: '⏳' },
     'social_visibility': { label: 'На виду', bg: 'bg-cyan-900/40', border: 'border-cyan-500/50', text: 'text-cyan-300', icon: '👀' },
     'ctx_priority': { label: 'Приоритет', bg: 'bg-slate-900/40', border: 'border-slate-500/40', text: 'text-slate-200', icon: '🎛️' },
+    // Meta “sources” (breakdown categories, etc.)
+    'trait': { label: 'Черта', bg: 'bg-indigo-500/25', border: 'border-indigo-500/30', text: 'text-indigo-200', icon: '🧬' },
+    'bio': { label: 'Биография', bg: 'bg-emerald-500/25', border: 'border-emerald-500/30', text: 'text-emerald-200', icon: '📜' },
+    'relational': { label: 'Отношения', bg: 'bg-pink-500/25', border: 'border-pink-500/30', text: 'text-pink-200', icon: '🤝' },
+    'base': { label: 'База', bg: 'bg-slate-500/25', border: 'border-slate-500/30', text: 'text-slate-200', icon: '🧱' },
+    'tuning': { label: 'Тюнинг', bg: 'bg-amber-500/25', border: 'border-amber-500/30', text: 'text-amber-200', icon: '🎛️' },
     'default': { label: 'Атом', bg: 'bg-canon-bg', border: 'border-canon-border', text: 'text-canon-text-light', icon: '🔹' }
 };
 
@@ -265,39 +280,82 @@ export const ContextPrioritiesRibbon: React.FC<{ atoms: ContextAtom[] }> = ({ at
 
 // ... AnalysisView, GoalRow, EcologyView, ToMEntityCard helper components ...
 
-const ContributionRow: React.FC<{ contrib: ContextualGoalContribution }> = ({ contrib }) => {
-    const style = getAtomStyle(contrib.atomKind || 'default');
-    
+const ContributionRow: React.FC<{
+    contrib: ContextualGoalContribution;
+    goal?: ContextualGoalScore;
+    variant?: 'human' | 'compact';
+}> = ({ contrib, goal, variant = 'human' }) => {
+    const human = generateHumanContributionExplanation(contrib, goal?.goalId);
+    const style = getAtomStyle((human.kind || contrib.atomKind || 'default') as string);
+    const showDetails = variant === 'human';
+
     return (
-        <div className="flex justify-between items-center text-xs bg-black/20 p-2 rounded hover:bg-white/5 border border-transparent hover:border-canon-border/30 transition-colors">
-            <div className="flex items-center gap-2 overflow-hidden">
-                {/* Visual Indicator of Source */}
-                {contrib.atomKind ? (
-                     <div className={`w-1.5 h-6 rounded-full ${style.bg.replace('/40', '')}`} title={contrib.atomKind}></div>
-                ) : (
-                     <div className="w-1.5 h-6 rounded-full bg-gray-600"></div>
-                )}
-                
-                <div className="flex flex-col min-w-0">
-                    <span className="font-medium text-canon-text truncate" title={contrib.explanation}>
-                        {contrib.explanation || contrib.source}
+        <div className="flex flex-col gap-2 text-xs bg-black/20 p-3 rounded border border-transparent hover:border-canon-border/30 hover:bg-white/5 transition-colors">
+            <div className="flex items-start gap-2">
+                <div className="flex items-center gap-2">
+                    <div
+                        className={`w-1.5 h-6 rounded-full ${style.bg.replace('/40', '').replace('bg-', 'bg-')}`}
+                        title={human.kind || contrib.atomKind || contrib.detailCategory || ''}
+                    />
+                    <span className="text-lg leading-none" title={human.kind || contrib.atomKind || ''}>
+                        {style.icon}
                     </span>
-                    {contrib.atomLabel && (
-                        <span className="text-[9px] text-canon-text-light/70 truncate font-mono">
-                           {contrib.atomLabel} {contrib.formula ? `• ${contrib.formula}` : ''}
-                        </span>
+                </div>
+
+                <div className="flex-1 min-w-0">
+                    <div className="font-medium text-white leading-snug" title={contrib.explanation}>
+                        {human.title}
+                    </div>
+
+                    {showDetails && human.details.length > 0 && (
+                        <div className="mt-1 text-[11px] text-canon-text-light/70 space-y-0.5">
+                            {human.details.slice(0, 3).map(line => (
+                                <div key={line} className="truncate" title={line}>
+                                    {line}
+                                </div>
+                            ))}
+                        </div>
                     )}
-                    {!contrib.atomLabel && (
-                         <span className="text-[9px] text-canon-text-light/70 truncate font-mono">
-                           {contrib.source}
-                        </span>
-                    )}
+
+                    <details className="mt-1">
+                        <summary className="text-[9px] text-canon-text-light/50 cursor-pointer hover:text-canon-text-light">
+                            Технические детали
+                        </summary>
+                        <div className="mt-2 text-[9px] font-mono text-canon-text-light/70 space-y-1">
+                            {contrib.detailCategory && <div>Category: {contrib.detailCategory}</div>}
+                            {contrib.detailKey && <div>Key: {contrib.detailKey}</div>}
+                            {contrib.atomLabel && <div>Label: {contrib.atomLabel}</div>}
+                            <div>Source: {contrib.source}</div>
+                            {contrib.formula && (
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    <span>Formula:</span>
+                                    <FormulaExplainer
+                                        formula={contrib.formula}
+                                        weight={contrib.weight}
+                                        agentValue={contrib.agentValue}
+                                        weightLabel="Вес"
+                                        valueLabel="Значение"
+                                    />
+                                </div>
+                            )}
+                        </div>
+                    </details>
+                </div>
+
+                <div className="flex flex-col items-end ml-2">
+                    <span
+                        className={`font-mono font-bold text-lg whitespace-nowrap ${
+                            contrib.value > 0 ? 'text-green-400' : 'text-red-400'
+                        }`}
+                    >
+                        {contrib.value > 0 ? '+' : ''}
+                        {contrib.value.toFixed(2)}
+                    </span>
+                    <span className="text-[9px] text-canon-text-light/60">
+                        {contrib.value > 0 ? '↑ усиливает' : '↓ ослабляет'}
+                    </span>
                 </div>
             </div>
-            
-            <span className={`font-mono font-bold whitespace-nowrap ml-2 ${contrib.value > 0 ? 'text-green-400' : 'text-red-400'}`}>
-                {contrib.value > 0 ? '+' : ''}{contrib.value.toFixed(2)}
-            </span>
         </div>
     );
 }
@@ -329,8 +387,8 @@ export const AnalysisView: React.FC<{ score: ContextualGoalScore }> = ({ score }
                     <div>
                         <h5 className="text-[10px] font-bold text-canon-text-light uppercase mb-2 px-1">Контекст и Окружение</h5>
                         <div className="space-y-1">
-                            {groups['Внешние Факторы (Атомы)'].sort((a,b) => Math.abs(b.value) - Math.abs(a.value)).map((c, i) => (
-                                <ContributionRow key={i} contrib={c} />
+                            {groups['Внешние Факторы (Атомы)'].sort((a, b) => Math.abs(b.value) - Math.abs(a.value)).map((c, i) => (
+                                <ContributionRow key={i} contrib={c} goal={score} />
                             ))}
                         </div>
                     </div>
@@ -340,8 +398,8 @@ export const AnalysisView: React.FC<{ score: ContextualGoalScore }> = ({ score }
                      <div>
                         <h5 className="text-[10px] font-bold text-canon-text-light uppercase mb-2 px-1 border-t border-canon-border/20 pt-4">Личность и Драйвы</h5>
                         <div className="space-y-1">
-                            {groups['Внутренние (Личность)'].sort((a,b) => Math.abs(b.value) - Math.abs(a.value)).map((c, i) => (
-                                <ContributionRow key={i} contrib={c} />
+                            {groups['Внутренние (Личность)'].sort((a, b) => Math.abs(b.value) - Math.abs(a.value)).map((c, i) => (
+                                <ContributionRow key={i} contrib={c} goal={score} />
                             ))}
                         </div>
                     </div>
@@ -1173,6 +1231,22 @@ export const GoalLabResults: React.FC<Props> = ({
     const PossibilitiesTab = () => <PossibilitiesPanel possibilities={possibilities} />;
     const DiffTab = () => <DiffPanel diffs={diffs} />;
     const DecisionTab = () => <DecisionPanel decision={decision} selfId={focusSelfId ?? undefined} castDecisions={castDecisions} />;
+    const flowContext = {
+        locationId: (context as any)?.locationId,
+        locationLabel: (context as any)?.locationLabel,
+        events: arr((context as any)?.events || (snapshotV1 as any)?.events),
+        nearbyActors: arr((context as any)?.nearbyActors || (snapshotV1 as any)?.nearbyActors),
+    };
+    const FlowExplainTab = () => (
+        <div className="absolute inset-0 overflow-y-auto custom-scrollbar pb-20">
+            <FlowTab
+                atoms={currentAtoms}
+                goals={tunedGoalScores}
+                decision={decision}
+                context={flowContext}
+            />
+        </div>
+    );
     const DecisionGraphTab = () => (
         <DecisionGraphView
             frame={frame}
@@ -1378,32 +1452,33 @@ export const GoalLabResults: React.FC<Props> = ({
     const renderContent = () => {
         switch(activeTabIndex) {
             case 0: return <ExplainTab />;
-            case 1: return <AnalysisTab />;
-            case 2: return <AtomsTab />;
-            case 3: return <PipelineTab />;
-            case 4: return <CastTab />;
-            case 5: return <ThreatTab />;
-            case 6: return <ToMTab />;
-            case 7: return <MindTab />;
-            case 8: return <EmotionsTab />;
-            case 9: return <CoverageTab />;
-            case 10: return <PossibilitiesTab />;
-            case 11: return <DecisionTab />;
-            case 12: return <DecisionGraphTab />;
-            case 13: return <GoalActionGraphView />;
-            case 14: return <AccessTab />;
-            case 15: return <DiffTab />;
-            case 16: return <EmotionExplainTab />;
-            case 17: return <DebugTab />;
-            case 18: return <OrchestratorTab />;
-            case 19: return <SimulatorTab />;
-            case 20: return <TuningTab />;
-            case 21: return <GoalLabTestsPanel selfId={focusId || ''} actorLabels={actorLabels as any} />;
+            case 1: return <FlowExplainTab />;
+            case 2: return <AnalysisTab />;
+            case 3: return <AtomsTab />;
+            case 4: return <PipelineTab />;
+            case 5: return <CastTab />;
+            case 6: return <ThreatTab />;
+            case 7: return <ToMTab />;
+            case 8: return <MindTab />;
+            case 9: return <EmotionsTab />;
+            case 10: return <CoverageTab />;
+            case 11: return <PossibilitiesTab />;
+            case 12: return <DecisionTab />;
+            case 13: return <DecisionGraphTab />;
+            case 14: return <GoalActionGraphView />;
+            case 15: return <AccessTab />;
+            case 16: return <DiffTab />;
+            case 17: return <EmotionExplainTab />;
+            case 18: return <DebugTab />;
+            case 19: return <OrchestratorTab />;
+            case 20: return <SimulatorTab />;
+            case 21: return <TuningTab />;
+            case 22: return <GoalLabTestsPanel selfId={focusId || ''} actorLabels={actorLabels as any} />;
             default: return <ExplainTab />;
         }
     };
 
-  const tabsList = ['Explain', 'Analysis', 'Atoms', 'Pipeline', 'Cast', 'Threat', 'ToM', 'CtxMind', 'Emotions', 'Coverage', 'Possibilities', 'Decision', 'Decision Graph', 'Goal Graph', 'Access', 'Diff', 'EmotionExplain', 'Debug', 'Orchestrator', 'Simulation', 'Tuning', 'Tests'];
+  const tabsList = ['Explain', 'Flow', 'Analysis', 'Atoms', 'Pipeline', 'Cast', 'Threat', 'ToM', 'CtxMind', 'Emotions', 'Coverage', 'Possibilities', 'Decision', 'Decision Graph', 'Goal Graph', 'Access', 'Diff', 'EmotionExplain', 'Debug', 'Orchestrator', 'Simulation', 'Tuning', 'Tests'];
 
   const focusId = (context as any)?.agentId;
   const focusLabel = (focusId && actorLabels?.[focusId]) ? actorLabels[focusId] : focusId;
