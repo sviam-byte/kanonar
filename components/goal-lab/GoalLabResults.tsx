@@ -1,7 +1,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import type { ContextSnapshot, ContextualGoalScore, ContextAtom, TemporalContextConfig, ContextualGoalContribution } from '../../lib/context/v2/types';
-import { GOAL_DEFS } from '../../lib/goals/space'; 
+import { GOAL_DEFS } from '../../lib/goals/space';
 import { describeGoal } from '../../lib/goals/goalCatalog';
 import { AffectState, GoalTuningConfig, GoalCategoryId } from '../../types';
 import { AgentContextFrame, TomRelationView, TomPhysicalOther } from '../../lib/context/frame/types';
@@ -32,11 +32,14 @@ import { CurvePreview } from './CurvePreview';
 import type { CurvePreset } from '../../lib/utils/curves';
 import { materializeStageAtoms } from './materializePipeline';
 import { arr } from '../../lib/utils/arr';
+import { FlowTab } from './FlowTab';
+import { FormulaExplainer } from './FormulaExplainer';
 import { OrchestratorLab } from '../../lib/goal-lab/labs/OrchestratorLab';
 import { SimulatorLab } from '../../lib/goal-lab/labs/SimulatorLab';
 import { defaultProducers } from '../../lib/orchestrator/defaultProducers';
 import { generateGoalLabReportMarkdown } from '../../lib/goal-lab/reporting/generateGoalLabReport';
 import { GoalLabTestsPanel } from './GoalLabTestsPanel';
+import { generateHumanContributionExplanation } from '../../lib/goals/explanations';
 
 interface Props {
   context: ContextSnapshot | null;
@@ -193,6 +196,11 @@ const ATOM_CONFIG: Record<string, AtomStyle> = {
     'time_pressure': { label: 'Цейтнот', bg: 'bg-amber-900/40', border: 'border-amber-500/50', text: 'text-amber-300', icon: '⏳' },
     'social_visibility': { label: 'На виду', bg: 'bg-cyan-900/40', border: 'border-cyan-500/50', text: 'text-cyan-300', icon: '👀' },
     'ctx_priority': { label: 'Приоритет', bg: 'bg-slate-900/40', border: 'border-slate-500/40', text: 'text-slate-200', icon: '🎛️' },
+    'trait': { label: 'Черта характера', bg: 'bg-purple-900/30', border: 'border-purple-500/40', text: 'text-purple-200', icon: '🧬' },
+    'bio': { label: 'Биография', bg: 'bg-indigo-900/30', border: 'border-indigo-500/40', text: 'text-indigo-200', icon: '📜' },
+    'relational': { label: 'Отношения', bg: 'bg-emerald-900/30', border: 'border-emerald-500/40', text: 'text-emerald-200', icon: '🤝' },
+    'tuning': { label: 'Настройка', bg: 'bg-amber-900/30', border: 'border-amber-500/40', text: 'text-amber-200', icon: '🎚️' },
+    'base': { label: 'База', bg: 'bg-slate-900/40', border: 'border-slate-500/40', text: 'text-slate-200', icon: '🧱' },
     'default': { label: 'Атом', bg: 'bg-canon-bg', border: 'border-canon-border', text: 'text-canon-text-light', icon: '🔹' }
 };
 
@@ -203,6 +211,12 @@ function getAtomStyle(kind: string): AtomStyle {
 function getGoalLabel(goalId: string): string {
     const def = GOAL_DEFS[goalId as keyof typeof GOAL_DEFS];
     return def?.label_ru || goalId;
+}
+
+function safeGoalLabel(goalId?: string): string {
+    if (!goalId) return 'эту цель';
+    const def = (GOAL_DEFS as any)?.[goalId];
+    return (def?.label_ru || def?.label || goalId) as string;
 }
 
 export const ValueBadge: React.FC<{ label: string, value: number, color?: string }> = ({ label, value, color = "text-canon-text" }) => (
@@ -265,39 +279,68 @@ export const ContextPrioritiesRibbon: React.FC<{ atoms: ContextAtom[] }> = ({ at
 
 // ... AnalysisView, GoalRow, EcologyView, ToMEntityCard helper components ...
 
-const ContributionRow: React.FC<{ contrib: ContextualGoalContribution }> = ({ contrib }) => {
+const ContributionRow: React.FC<{ contrib: ContextualGoalContribution; goal?: ContextualGoalScore }> = ({
+    contrib,
+    goal,
+}) => {
     const style = getAtomStyle(contrib.atomKind || 'default');
-    
+    const goalLabel = safeGoalLabel((goal as any)?.goalId);
+    const human = generateHumanContributionExplanation(contrib, goalLabel);
+
     return (
-        <div className="flex justify-between items-center text-xs bg-black/20 p-2 rounded hover:bg-white/5 border border-transparent hover:border-canon-border/30 transition-colors">
-            <div className="flex items-center gap-2 overflow-hidden">
-                {/* Visual Indicator of Source */}
-                {contrib.atomKind ? (
-                     <div className={`w-1.5 h-6 rounded-full ${style.bg.replace('/40', '')}`} title={contrib.atomKind}></div>
-                ) : (
-                     <div className="w-1.5 h-6 rounded-full bg-gray-600"></div>
-                )}
-                
-                <div className="flex flex-col min-w-0">
-                    <span className="font-medium text-canon-text truncate" title={contrib.explanation}>
-                        {contrib.explanation || contrib.source}
+        <div className="flex flex-col gap-2 text-xs bg-black/20 p-3 rounded border border-transparent hover:border-cyan-500/30 transition-all">
+            <div className="flex items-start gap-2">
+                <span className="text-lg">{human.icon || style.icon}</span>
+                <div className="flex-1 min-w-0">
+                    <div className="font-medium text-white">{human.title}</div>
+                    {human.details?.length ? (
+                        <div className="mt-1 text-[10px] text-white/70 space-y-0.5">
+                            {human.details.slice(0, 3).map((t, i) => (
+                                <div key={i}>{t}</div>
+                            ))}
+                        </div>
+                    ) : null}
+
+                    <details className="mt-1">
+                        <summary className="text-[9px] text-canon-text-light/50 cursor-pointer hover:text-canon-text-light">
+                            Технические детали
+                        </summary>
+                        <div className="text-[9px] font-mono text-canon-text-light/70 mt-1 space-y-0.5">
+                            {contrib.atomKind ? <div>Atom kind: {contrib.atomKind}</div> : null}
+                            {contrib.detailCategory ? <div>Category: {contrib.detailCategory}</div> : null}
+                            {contrib.detailKey ? <div>Key: {contrib.detailKey}</div> : null}
+                            {contrib.atomLabel ? <div>Label: {contrib.atomLabel}</div> : null}
+                            {contrib.formula || (contrib.weight != null && contrib.agentValue != null) ? (
+                                <div className="flex items-center gap-1 flex-wrap">
+                                    <span>Formula:</span>
+                                    <FormulaExplainer
+                                        formula={contrib.formula}
+                                        parts={
+                                            contrib.weight != null && contrib.agentValue != null
+                                                ? {
+                                                    weight: contrib.weight,
+                                                    value: contrib.agentValue,
+                                                    weightLabel: 'Вес (из характера/приоритета)',
+                                                    valueLabel: 'Текущее значение фактора',
+                                                  }
+                                                : undefined
+                                        }
+                                    />
+                                </div>
+                            ) : null}
+                            <div>Source: {contrib.source}</div>
+                        </div>
+                    </details>
+                </div>
+
+                <div className="flex flex-col items-end ml-2">
+                    <span className={`font-mono font-bold text-lg ${contrib.value > 0 ? 'text-green-400' : 'text-red-400'}`}>
+                        {contrib.value > 0 ? '+' : ''}
+                        {contrib.value.toFixed(2)}
                     </span>
-                    {contrib.atomLabel && (
-                        <span className="text-[9px] text-canon-text-light/70 truncate font-mono">
-                           {contrib.atomLabel} {contrib.formula ? `• ${contrib.formula}` : ''}
-                        </span>
-                    )}
-                    {!contrib.atomLabel && (
-                         <span className="text-[9px] text-canon-text-light/70 truncate font-mono">
-                           {contrib.source}
-                        </span>
-                    )}
+                    <span className="text-[9px] text-canon-text-light/60">{contrib.value > 0 ? '↑ усиливает' : '↓ ослабляет'}</span>
                 </div>
             </div>
-            
-            <span className={`font-mono font-bold whitespace-nowrap ml-2 ${contrib.value > 0 ? 'text-green-400' : 'text-red-400'}`}>
-                {contrib.value > 0 ? '+' : ''}{contrib.value.toFixed(2)}
-            </span>
         </div>
     );
 }
@@ -330,7 +373,7 @@ export const AnalysisView: React.FC<{ score: ContextualGoalScore }> = ({ score }
                         <h5 className="text-[10px] font-bold text-canon-text-light uppercase mb-2 px-1">Контекст и Окружение</h5>
                         <div className="space-y-1">
                             {groups['Внешние Факторы (Атомы)'].sort((a,b) => Math.abs(b.value) - Math.abs(a.value)).map((c, i) => (
-                                <ContributionRow key={i} contrib={c} />
+                                <ContributionRow key={i} contrib={c} goal={score} />
                             ))}
                         </div>
                     </div>
@@ -341,7 +384,7 @@ export const AnalysisView: React.FC<{ score: ContextualGoalScore }> = ({ score }
                         <h5 className="text-[10px] font-bold text-canon-text-light uppercase mb-2 px-1 border-t border-canon-border/20 pt-4">Личность и Драйвы</h5>
                         <div className="space-y-1">
                             {groups['Внутренние (Личность)'].sort((a,b) => Math.abs(b.value) - Math.abs(a.value)).map((c, i) => (
-                                <ContributionRow key={i} contrib={c} />
+                                <ContributionRow key={i} contrib={c} goal={score} />
                             ))}
                         </div>
                     </div>
@@ -1378,32 +1421,40 @@ export const GoalLabResults: React.FC<Props> = ({
     const renderContent = () => {
         switch(activeTabIndex) {
             case 0: return <ExplainTab />;
-            case 1: return <AnalysisTab />;
-            case 2: return <AtomsTab />;
-            case 3: return <PipelineTab />;
-            case 4: return <CastTab />;
-            case 5: return <ThreatTab />;
-            case 6: return <ToMTab />;
-            case 7: return <MindTab />;
-            case 8: return <EmotionsTab />;
-            case 9: return <CoverageTab />;
-            case 10: return <PossibilitiesTab />;
-            case 11: return <DecisionTab />;
-            case 12: return <DecisionGraphTab />;
-            case 13: return <GoalActionGraphView />;
-            case 14: return <AccessTab />;
-            case 15: return <DiffTab />;
-            case 16: return <EmotionExplainTab />;
-            case 17: return <DebugTab />;
-            case 18: return <OrchestratorTab />;
-            case 19: return <SimulatorTab />;
-            case 20: return <TuningTab />;
-            case 21: return <GoalLabTestsPanel selfId={focusId || ''} actorLabels={actorLabels as any} />;
+            case 1: return (
+                <FlowTab
+                    atoms={currentAtoms}
+                    goals={goalScores || []}
+                    decision={(context as any)?.decision}
+                    context={(context as any)?.context}
+                />
+            );
+            case 2: return <AnalysisTab />;
+            case 3: return <AtomsTab />;
+            case 4: return <PipelineTab />;
+            case 5: return <CastTab />;
+            case 6: return <ThreatTab />;
+            case 7: return <ToMTab />;
+            case 8: return <MindTab />;
+            case 9: return <EmotionsTab />;
+            case 10: return <CoverageTab />;
+            case 11: return <PossibilitiesTab />;
+            case 12: return <DecisionTab />;
+            case 13: return <DecisionGraphTab />;
+            case 14: return <GoalActionGraphView />;
+            case 15: return <AccessTab />;
+            case 16: return <DiffTab />;
+            case 17: return <EmotionExplainTab />;
+            case 18: return <DebugTab />;
+            case 19: return <OrchestratorTab />;
+            case 20: return <SimulatorTab />;
+            case 21: return <TuningTab />;
+            case 22: return <GoalLabTestsPanel selfId={focusId || ''} actorLabels={actorLabels as any} />;
             default: return <ExplainTab />;
         }
     };
 
-  const tabsList = ['Explain', 'Analysis', 'Atoms', 'Pipeline', 'Cast', 'Threat', 'ToM', 'CtxMind', 'Emotions', 'Coverage', 'Possibilities', 'Decision', 'Decision Graph', 'Goal Graph', 'Access', 'Diff', 'EmotionExplain', 'Debug', 'Orchestrator', 'Simulation', 'Tuning', 'Tests'];
+  const tabsList = ['Explain', 'Flow', 'Analysis', 'Atoms', 'Pipeline', 'Cast', 'Threat', 'ToM', 'CtxMind', 'Emotions', 'Coverage', 'Possibilities', 'Decision', 'Decision Graph', 'Goal Graph', 'Access', 'Diff', 'EmotionExplain', 'Debug', 'Orchestrator', 'Simulation', 'Tuning', 'Tests'];
 
   const focusId = (context as any)?.agentId;
   const focusLabel = (focusId && actorLabels?.[focusId]) ? actorLabels[focusId] : focusId;
