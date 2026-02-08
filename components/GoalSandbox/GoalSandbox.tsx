@@ -33,6 +33,7 @@ import { CurveStudio } from '../goal-lab/CurveStudio';
 import { ToMPanel } from '../goal-lab/ToMPanel';
 import { CastComparePanel } from '../goal-lab/CastComparePanel';
 import { GoalLabTestsPanel } from '../goal-lab/GoalLabTestsPanel';
+import { GoalLabReportPanel } from '../goal-lab/GoalLabReportPanel';
 import { eventRegistry } from '../../data/events-registry';
 import { buildGoalLabContext } from '../../lib/goals/goalLabContext';
 import { computeContextualMind } from '../../lib/tom/contextual/engine';
@@ -592,7 +593,9 @@ export const GoalSandbox: React.FC = () => {
   const [centerOverlaySize, setCenterOverlaySize] = useState<'wide' | 'max'>('wide');
 
   // Front (non-debug) UX: right panel is constant, left/main switches via tabs.
-  const [frontTab, setFrontTab] = useState<'graph' | 'situation' | 'metrics' | 'affects' | 'curves' | 'tests' | 'debug'>(() => {
+  const [frontTab, setFrontTab] = useState<
+    'graph' | 'situation' | 'metrics' | 'affects' | 'curves' | 'tests' | 'report' | 'debug'
+  >(() => {
     return 'graph';
   });
 
@@ -2503,6 +2506,7 @@ export const GoalSandbox: React.FC = () => {
                   ['affects', 'Affects'],
                   ['curves', 'Curves'],
                   ['tests', 'Tests'],
+                  ['report', 'Report'],
                   ['debug', 'Debug'],
                 ] as const).map(([key, label]) => (
                   <button
@@ -2700,6 +2704,10 @@ export const GoalSandbox: React.FC = () => {
                   selfId={perspectiveId || selectedAgentId || ''}
                   actorLabels={actorLabels as any}
                 />
+              </div>
+            ) : frontTab === 'report' ? (
+              <div className="h-full overflow-y-auto custom-scrollbar p-3">
+                <GoalLabReportPanel pipelineV1={pipelineV1 as any} />
               </div>
             ) : (
               <div className="h-full overflow-auto">{mapArea}</div>

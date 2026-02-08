@@ -1,149 +1,104 @@
-import React, { useMemo, useState } from 'react';
-import { goalLabBasicTests } from '../../lib/goal-lab/tests/basic';
-import { runScenario, type ScenarioResult } from '../../lib/goal-lab/tests/runScenario';
-import { runGoalLabPipelineV1 } from '../../lib/goal-lab/pipeline/runPipelineV1';
+import React from 'react';
+import { goalLabTestScenarios, runBasicGoalLabTests, GoalLabTestScenario, GoalLabTestResult } from '../../lib/goal-lab/tests/basic';
+import { derivePossibilities } from '../../lib/context/possibilities/derivePossibilities';
 
-type Props = {
-  selfId: string;
-  actorLabels?: Record<string, string>;
-};
+export const GoalLabTestsPanel: React.FC<{ selfId: string; actorLabels?: Record<string, string> }> = ({ selfId, actorLabels }) => {
+  const [results, setResults] = React.useState<GoalLabTestResult[] | null>(null);
+  const scenarios = React.useMemo(() => goalLabTestScenarios(selfId || 'tester'), [selfId]);
+  const [scenarioId, setScenarioId] = React.useState<string>(() => scenarios[0]?.id ?? '');
+  const selected = scenarios.find(s => s.id === scenarioId) ?? scenarios[0];
+  const [scenarioPoss, setScenarioPoss] = React.useState<any[] | null>(null);
 
-function formatScore(value?: number): string {
-  if (value == null || !Number.isFinite(value)) return '—';
-  return Number(value).toFixed(2);
-}
+  const run = React.useCallback(() => {
+    const id = selfId || 'tester';
+    setResults(runBasicGoalLabTests(id));
+    try {
+      if (selected) setScenarioPoss(derivePossibilities(selected.atoms as any, id).possibilities);
+    } catch {
+      setScenarioPoss(null);
+    }
+  }, [selfId, selected]);
 
-/**
- * Lightweight GoalLab test runner panel for deterministic sanity checks.
- * It keeps expectations visible and captures the possibility set for inspection.
- */
-export const GoalLabTestsPanel: React.FC<Props> = ({ selfId, actorLabels }) => {
-  const effectiveSelfId = selfId || 'assi-the-runner';
-  const label = actorLabels?.[effectiveSelfId] ?? effectiveSelfId;
-
-  const tests = useMemo(() => goalLabBasicTests(effectiveSelfId), [effectiveSelfId]);
-  const [testId, setTestId] = useState(() => tests[0]?.id ?? '');
-  const [result, setResult] = useState<ScenarioResult | null>(null);
-
-  const selected = useMemo(
-    () => tests.find((t) => t.id === testId) ?? tests[0] ?? null,
-    [testId, tests]
-  );
-
-  const enabledList = useMemo(() => {
-    return (result?.possibilities ?? []).filter((p) => p.enabled);
-  }, [result]);
-
-  const topByMagnitude = useMemo(() => {
-    const list = [...(result?.possibilities ?? [])];
-    list.sort((a, b) => Number(b.magnitude ?? 0) - Number(a.magnitude ?? 0));
-    return list.slice(0, 5);
-  }, [result]);
-
+  const label = actorLabels?.[selfId] || selfId || '—';
   return (
-    <div className="h-full overflow-y-auto custom-scrollbar p-3 text-[11px]">
-      <div className="text-[10px] text-slate-500 uppercase font-bold mb-2">GoalLab Tests</div>
-      <div className="rounded-lg border border-slate-800 bg-black/40 p-3 space-y-2">
-        <div className="text-[10px] text-slate-400">
-          Self: <span className="text-slate-200 font-semibold">{label || '—'}</span>
+    <div className="rounded border border-slate-800 bg-slate-950/40 p-3">
+      <div className="flex items-center justify-between gap-2">
+        <div>
+          <div className="text-[10px] text-slate-500 uppercase tracking-widest">GoalLab tests</div>
+          <div className="text-sm font-semibold text-slate-100">Deterministic suite</div>
+          <div className="text-[11px] text-slate-300">Self: {label}</div>
         </div>
-        <div className="flex flex-wrap gap-2 items-center">
+        <button
+          className="px-3 py-2 text-[11px] font-bold rounded bg-slate-800/50 text-slate-100 border border-slate-700 hover:border-slate-500"
+          onClick={run}
+        >
+          Run suite
+        </button>
+      </div>
+
+      {results ? (
+        <div className="mt-3 space-y-2">
+          {results.map(r => (
+            <div key={r.id} className="flex items-center gap-2">
+              <span className={`text-[10px] font-bold ${r.ok ? 'text-emerald-300' : 'text-rose-300'}`}>
+                {r.ok ? 'PASS' : 'FAIL'}
+              </span>
+              <span className="text-[11px] text-slate-200">{r.title}</span>
+              {!r.ok ? <span className="text-[10px] text-rose-200/80">({r.details})</span> : null}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="mt-3 text-[11px] text-slate-400 italic">Run the suite to see results.</div>
+      )}
+
+      <div className="mt-4 border-t border-slate-800/70 pt-3">
+        <div className="flex items-center gap-2 mb-2">
           <select
             className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-[11px]"
-            value={testId}
-            onChange={(e) => setTestId(e.target.value)}
-            disabled={!tests.length}
+            value={scenarioId}
+            onChange={(e) => setScenarioId(e.target.value)}
           >
-            {tests.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.title}
-              </option>
-            ))}
+            {scenarios.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}
           </select>
           <button
             className="px-2 py-1 rounded bg-slate-700 hover:bg-slate-600 text-slate-100 text-[11px]"
             onClick={() => {
-              if (!selected) return;
-              // Deterministic pipeline run: scenario atoms + selfId.
-              const world: any = {
-                tick: 0,
-                rngSeed: 123,
-                agents: [{ entityId: selected.selfId, memory: { beliefAtoms: [] } }],
-              };
-              const pipeline = runGoalLabPipelineV1({
-                world,
-                agentId: selected.selfId,
-                participantIds: [selected.selfId],
-                manualAtoms: selected.atoms,
-              });
-              const out = runScenario(selected, pipeline);
-              setResult(out);
+              const id = selfId || 'tester';
+              if (selected) setScenarioPoss(derivePossibilities(selected.atoms as any, id).possibilities);
             }}
-            disabled={!selected}
           >
-            Run
+            Show possibilities
           </button>
-          {result?.report ? (
-            <button
-              className="px-2 py-1 rounded bg-slate-700 hover:bg-slate-600 text-slate-100 text-[11px]"
-              onClick={async () => {
-                try {
-                  await navigator.clipboard.writeText(result.report ?? '');
-                } catch (err) {
-                  console.warn('Failed to copy report to clipboard', err);
-                }
-              }}
-            >
-              Copy report
-            </button>
-          ) : null}
         </div>
 
-        {result ? (
-          <div className="mt-2 text-[11px] space-y-2">
-            <div className={result.ok ? 'text-emerald-300' : 'text-red-300'}>
-              {result.ok ? 'PASS' : 'FAIL'}
-            </div>
-            {!result.ok ? (
-              <ul className="list-disc pl-5 text-red-200">
-                {result.failures.map((f, i) => (
-                  <li key={i}>{f}</li>
+        {scenarioPoss ? (
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <div className="text-[10px] font-bold text-slate-400 uppercase">Enabled</div>
+              <ul className="text-[11px] text-slate-200 mt-1 space-y-1">
+                {scenarioPoss.filter(p => p.enabled).map(p => (
+                  <li key={p.id} className="flex justify-between gap-2">
+                    <span className="truncate">{p.id}</span>
+                    <span className="text-slate-500">mag {Number(p.magnitude ?? 0).toFixed(2)}</span>
+                  </li>
                 ))}
               </ul>
-            ) : null}
-
-            <div>
-              <div className="text-[10px] uppercase font-semibold text-slate-400">Enabled possibilities</div>
-              {enabledList.length ? (
-                <ul className="mt-1 space-y-1">
-                  {enabledList.map((p) => (
-                    <li key={p.id} className="text-slate-300">
-                      {p.id} <span className="text-slate-500">(mag {formatScore(p.magnitude)} · cost {formatScore(p.cost)})</span>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <div className="text-slate-500">No enabled possibilities.</div>
-              )}
             </div>
-
             <div>
-              <div className="text-[10px] uppercase font-semibold text-slate-400">Top by magnitude</div>
-              {topByMagnitude.length ? (
-                <ul className="mt-1 space-y-1">
-                  {topByMagnitude.map((p) => (
-                    <li key={p.id} className="text-slate-300">
-                      {p.id} <span className="text-slate-500">(mag {formatScore(p.magnitude)} · cost {formatScore(p.cost)})</span>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <div className="text-slate-500">No possibilities available.</div>
-              )}
+              <div className="text-[10px] font-bold text-slate-400 uppercase">All</div>
+              <ul className="text-[11px] text-slate-200 mt-1 space-y-1">
+                {scenarioPoss.map(p => (
+                  <li key={p.id} className="flex justify-between gap-2">
+                    <span className={`truncate ${p.enabled ? 'text-emerald-300' : 'text-slate-400'}`}>{p.id}</span>
+                    <span className="text-slate-500">{p.enabled ? 'ok' : 'blocked'}</span>
+                  </li>
+                ))}
+              </ul>
             </div>
           </div>
         ) : (
-          <div className="mt-2 text-[11px] text-slate-500">Select a test and run to see results.</div>
+          <div className="text-[11px] text-slate-400 italic">Select a scenario and show possibilities.</div>
         )}
       </div>
     </div>
