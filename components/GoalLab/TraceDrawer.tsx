@@ -74,9 +74,11 @@ function quarkCodeFromSpec(specId?: string | null, params?: Record<string, any> 
 
 export function TraceDrawer({
   atom,
+  index,
   onJump,
 }: {
   atom: Atom | null;
+  index?: Record<string, Atom>;
   onJump?: (id: string) => void;
 }) {
   if (!atom) {

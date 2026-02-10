@@ -234,6 +234,7 @@ export function FrameDebugPanel({
           <h3 className="text-xs font-bold text-canon-text-light uppercase tracking-widest mb-4 border-b border-canon-border/30 pb-2">Derivation Trace</h3>
           <TraceDrawer
             atom={selected}
+            index={frame?.index}
             onJump={(id) => setSelected(atoms.find(a => a.id === id) ?? null)}
           />
         </div>

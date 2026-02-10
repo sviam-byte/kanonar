@@ -23,5 +23,20 @@ export function derivePossibilitiesRegistry(args: {
     else out.push(r);
   }
 
+  // Safety net: avoid hard-deadlocks where no possibilities are produced.
+  // This keeps the decision stack functional even when all rules are below their thresholds.
+  if (!out.length) {
+    out.push({
+      id: `cog:wait:${args.selfId}`,
+      kind: "cog",
+      label: "Wait",
+      magnitude: 0.05,
+      confidence: 0.35,
+      subjectId: args.selfId,
+      trace: { usedAtomIds: [], notes: ["fallback: no possibilities met thresholds"] },
+      meta: { fallback: true },
+    });
+  }
+
   return out;
 }

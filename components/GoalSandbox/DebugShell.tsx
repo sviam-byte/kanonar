@@ -76,6 +76,17 @@ export const DebugShell: React.FC<{
     });
   }, [p.pipelineV1]);
 
+  // Auto-detect stage that actually carries goal energy history (no hardcoded S7).
+  const propagationStageId = useMemo(() => {
+    for (const s of pipelineStages as any[]) {
+      const hist = (s as any)?.artifacts?.goalDebug?.energyRefine?.goalEnergyHistory;
+      if (hist && typeof hist === 'object' && Object.keys(hist).length) {
+        return String((s as any).id || (s as any).stage || (s as any).stageId || '');
+      }
+    }
+    return null;
+  }, [pipelineStages]);
+
   const tabs = useMemo(() => {
     return [
       {
@@ -172,12 +183,21 @@ export const DebugShell: React.FC<{
         label: 'Propagation',
         content: (
           <div className="p-3 space-y-3">
-            <div className="text-xs opacity-70">
-              S7: итеративная диффузия энергии целей (artifacts.goalDebug → energyRefine.goalEnergyHistory).
-            </div>
-            <div className="rounded border border-white/10 bg-black/10 p-3">
-              <GoalEnergyHistoryPanel pipelineV1={p.pipelineV1 as any} stageId="S7" />
-            </div>
+            {propagationStageId ? (
+              <>
+                <div className="text-xs opacity-70">
+                  Итеративная диффузия энергии целей: найдено goalEnergyHistory в стадии <code>{propagationStageId}</code>.
+                </div>
+                <div className="rounded border border-white/10 bg-black/10 p-3">
+                  <GoalEnergyHistoryPanel pipelineV1={p.pipelineV1 as any} stageId={propagationStageId} />
+                </div>
+              </>
+            ) : (
+              <div className="text-xs opacity-70">
+                В текущем pipelineV1 нет goalEnergyHistory. Сейчас Goal Lab отдаёт только 5 стадий из <code>snapshot.meta.pipelineDeltas</code>,
+                поэтому истории итераций нет.
+              </div>
+            )}
           </div>
         )
       },
@@ -256,7 +276,7 @@ export const DebugShell: React.FC<{
         )
       },
     ];
-  }, [atoms, p]);
+  }, [atoms, p, pipelineStages, propagationStageId]);
 
   return (
     <div className="h-full min-h-0 flex flex-col border border-canon-border rounded bg-canon-bg overflow-hidden">

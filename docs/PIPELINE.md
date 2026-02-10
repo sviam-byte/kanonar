@@ -87,6 +87,7 @@ Inputs:
 Outputs:
 - `action:*`
   - decisions scored as `Q(a)=Σ_g E_g*Δg(a) − cost(a)` over ActionCandidate entries
+- if no possibility rules fire, S8 must still receive a fallback cognitive option `cog:wait:<selfId>` to avoid hard deadlocks in action selection
 - violent affordances (e.g., `aff:attack:*`) are gated by aggression drive (danger/threat/affect) + protocol; proximity must still be present
 
 Forbidden:
