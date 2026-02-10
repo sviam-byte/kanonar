@@ -8,6 +8,11 @@ function clamp01(x: number) {
   return Math.max(0, Math.min(1, x));
 }
 
+function clamp11(x: number) {
+  if (!Number.isFinite(x)) return 0;
+  return Math.max(-1, Math.min(1, x));
+}
+
 function keyFromPossibilityId(id: string): string {
   const parts = String(id || '').split(':');
   return parts[1] || parts[0] || '';
@@ -19,6 +24,7 @@ function buildGoalEnergyMap(atoms: ContextAtom[], selfId: string): Record<string
   for (const a of atoms) {
     if (!a?.id?.startsWith(activePrefix)) continue;
     const goalId = a.id.slice(activePrefix.length);
+    // Goal energy is a [0..1] activation of each goal.
     out[goalId] = clamp01(Number((a as any)?.magnitude ?? 0));
   }
 
@@ -57,7 +63,8 @@ function buildDeltaGoals(
     const goalId = parts[3];
     const key = parts[4];
     if (!goalId || !key || key !== actionKey) continue;
-    out[goalId] = clamp01(Number((a as any)?.magnitude ?? 0));
+    // IMPORTANT: deltaGoals can be negative (penalize a goal), so keep sign.
+    out[goalId] = clamp11(Number((a as any)?.magnitude ?? 0));
   }
 
   if (Object.keys(out).length) return out;
@@ -65,7 +72,7 @@ function buildDeltaGoals(
   // Fallback: tie the action to the most active goal when no hints exist.
   const topGoal = Object.entries(goalEnergy)
     .sort((a, b) => b[1] - a[1])[0]?.[0];
-  if (topGoal) out[topGoal] = clamp01(fallbackDelta);
+  if (topGoal) out[topGoal] = clamp11(fallbackDelta);
   return out;
 }
 

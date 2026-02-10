@@ -1,5 +1,6 @@
 // components/goal-lab/DecisionPanel.tsx
 import React, { useMemo, useState } from 'react';
+import type { ContextAtom } from '../../lib/context/v2/types';
 import { arr } from '../../lib/utils/arr';
 
 function clamp01(x: number) {
@@ -11,7 +12,37 @@ function pct(x: number) {
   return Math.round(clamp01(x) * 100);
 }
 
-export const DecisionPanel: React.FC<{ decision: any; selfId?: string; castDecisions?: any[] }> = ({ decision, selfId, castDecisions }) => {
+function buildGoalEnergyMap(atoms: ContextAtom[], selfId: string): Record<string, number> {
+  const out: Record<string, number> = {};
+  const activePrefix = `util:activeGoal:${selfId}:`;
+  for (const a of arr<ContextAtom>(atoms)) {
+    const id = String((a as any)?.id || '');
+    if (!id.startsWith(activePrefix)) continue;
+    const goalId = id.slice(activePrefix.length);
+    out[goalId] = clamp01(Number((a as any)?.magnitude ?? 0));
+  }
+  if (Object.keys(out).length) return out;
+  // Fallback: goal domains (if util:* is not present)
+  for (const a of arr<ContextAtom>(atoms)) {
+    const id = String((a as any)?.id || '');
+    if (!id.startsWith('goal:domain:')) continue;
+    const parts = id.split(':');
+    const domain = parts[2];
+    const owner = parts[3];
+    if (!domain || owner !== selfId) continue;
+    out[domain] = clamp01(Number((a as any)?.magnitude ?? 0));
+  }
+  return out;
+}
+
+type Props = {
+  decision: any;
+  selfId?: string;
+  castDecisions?: any[];
+  atoms?: ContextAtom[];
+};
+
+export const DecisionPanel: React.FC<Props> = ({ decision, selfId, castDecisions, atoms }) => {
   const ranked = useMemo(() => arr(decision?.ranked), [decision]);
   const isNew = Boolean(ranked[0]?.action);
   const bestId = isNew ? (decision?.best?.id || null) : (decision?.best?.p?.id || decision?.best?.id || null);
@@ -19,11 +50,39 @@ export const DecisionPanel: React.FC<{ decision: any; selfId?: string; castDecis
   const [sel, setSel] = useState(0);
 
   const current = ranked[sel] || null;
+  const goalEnergy = useMemo(() => {
+    const sid = String(selfId || '');
+    if (!sid) return {};
+    if (decision?.goalEnergy && typeof decision.goalEnergy === 'object') return decision.goalEnergy as Record<string, number>;
+    return buildGoalEnergyMap(arr(atoms), sid);
+  }, [decision, atoms, selfId]);
+
   const labelWithTarget = (a: any) => {
     const node = isNew ? (a?.action || a) : a;
     const targetId = node?.p?.targetId || node?.targetId || null;
     return `${node?.label || node?.p?.id || node?.id || 'Untitled action'}${targetId ? ` → ${targetId}` : ''}`;
   };
+
+  const breakdown = useMemo(() => {
+    if (!current) return null;
+    const node = isNew ? (current?.action || current) : current;
+    const deltaGoals: Record<string, number> = isNew
+      ? (node?.deltaGoals || {})
+      : (node?.why?.parts?.deltaGoals || node?.deltaGoals || {});
+    const cost = Number((node?.cost) ?? 0);
+    const confidence = clamp01(Number((node?.confidence) ?? 1));
+    const rows = Object.entries(deltaGoals)
+      .map(([goalId, delta]) => {
+        const E = Number((goalEnergy as any)?.[goalId] ?? 0);
+        const d = Number(delta ?? 0);
+        return { goalId, E, delta: d, contrib: E * d };
+      })
+      .sort((a, b) => Math.abs(b.contrib) - Math.abs(a.contrib));
+    const sum = rows.reduce((s, r) => s + r.contrib, 0);
+    const preConf = sum - cost;
+    const q = preConf * confidence;
+    return { rows, sum, cost, confidence, preConf, q };
+  }, [current, isNew, goalEnergy]);
 
   // Diagnostics: detect "everything is the same" failure mode.
   // 1) If no trait atoms participate in the top actions, personalization is likely broken.
@@ -145,6 +204,44 @@ export const DecisionPanel: React.FC<{ decision: any; selfId?: string; castDecis
                 </span>
               </div>
             </div>
+
+            {breakdown && (
+              <div className="p-3 rounded bg-black/20 border border-canon-border/30 text-xs">
+                <div className="font-bold text-canon-text-light mb-2 uppercase tracking-wider">Q-value breakdown</div>
+                <div className="border border-white/10 rounded overflow-hidden">
+                  <div className="grid grid-cols-12 bg-black/40 text-[9px] uppercase text-canon-text-light font-bold">
+                    <div className="col-span-5 p-2">goal</div>
+                    <div className="col-span-2 p-2 text-right">E</div>
+                    <div className="col-span-2 p-2 text-right">Δ</div>
+                    <div className="col-span-3 p-2 text-right">E×Δ</div>
+                  </div>
+                  {breakdown.rows.slice(0, 24).map((r) => (
+                    <div key={r.goalId} className="grid grid-cols-12 border-t border-white/5 bg-black/20 text-[10px] font-mono">
+                      <div className="col-span-5 p-2 truncate" title={r.goalId}>{r.goalId}</div>
+                      <div className="col-span-2 p-2 text-right text-canon-accent">{Number(r.E).toFixed(2)}</div>
+                      <div className={`col-span-2 p-2 text-right ${r.delta >= 0 ? 'text-emerald-300' : 'text-amber-300'}`}>{r.delta >= 0 ? '+' : ''}{Number(r.delta).toFixed(2)}</div>
+                      <div className={`col-span-3 p-2 text-right ${r.contrib >= 0 ? 'text-emerald-200' : 'text-amber-200'}`}>{r.contrib >= 0 ? '+' : ''}{Number(r.contrib).toFixed(3)}</div>
+                    </div>
+                  ))}
+                  <div className="grid grid-cols-12 border-t border-white/10 bg-black/30 text-[10px] font-mono">
+                    <div className="col-span-9 p-2 text-right text-canon-text-light">Σ(E×Δ)</div>
+                    <div className="col-span-3 p-2 text-right text-canon-accent">{Number(breakdown.sum).toFixed(3)}</div>
+                  </div>
+                  <div className="grid grid-cols-12 border-t border-white/10 bg-black/30 text-[10px] font-mono">
+                    <div className="col-span-9 p-2 text-right text-canon-text-light">− cost</div>
+                    <div className="col-span-3 p-2 text-right text-orange-300">-{Number(breakdown.cost).toFixed(3)}</div>
+                  </div>
+                  <div className="grid grid-cols-12 border-t border-white/10 bg-black/30 text-[10px] font-mono">
+                    <div className="col-span-9 p-2 text-right text-canon-text-light">× confidence</div>
+                    <div className="col-span-3 p-2 text-right text-canon-text">×{Number(breakdown.confidence).toFixed(2)}</div>
+                  </div>
+                  <div className="grid grid-cols-12 border-t border-white/10 bg-black/40 text-[10px] font-mono font-bold">
+                    <div className="col-span-9 p-2 text-right text-canon-text">Q(a)</div>
+                    <div className="col-span-3 p-2 text-right text-canon-accent">{Number(breakdown.q).toFixed(3)}</div>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {!isNew && current.why?.blockedBy?.length > 0 && (
               <div className="p-3 rounded bg-red-900/10 border border-red-500/30 text-xs">

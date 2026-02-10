@@ -18,6 +18,7 @@ import { PossibilitiesPanel } from './PossibilitiesPanel';
 import { DiffPanel } from './DiffPanel';
 import { AtomDiff } from '../../lib/snapshot/diffAtoms';
 import { DecisionPanel } from './DecisionPanel';
+import { ContextLensPanel } from './ContextLensPanel';
 import { AtomBrowser } from './AtomBrowser';
 import { ThreatPanel } from './ThreatPanel';
 import { ToMPanel } from './ToMPanel';
@@ -1180,7 +1181,17 @@ export const GoalLabResults: React.FC<Props> = ({
     const AccessTab = () => <AccessPanel decisions={accessDecisions} />;
     const PossibilitiesTab = () => <PossibilitiesPanel possibilities={possibilities} />;
     const DiffTab = () => <DiffPanel diffs={diffs} />;
-    const DecisionTab = () => <DecisionPanel decision={decision} selfId={focusSelfId ?? undefined} castDecisions={castDecisions} />;
+    const DecisionTab = () => (
+      <DecisionPanel
+        decision={decision}
+        selfId={focusSelfId ?? undefined}
+        castDecisions={castDecisions}
+        atoms={currentAtoms}
+      />
+    );
+    const ContextLensTab = () => (
+      <ContextLensPanel atoms={currentAtoms} selfId={focusSelfId ?? ''} />
+    );
     const DecisionGraphTab = () => (
         <DecisionGraphView
             frame={frame}
@@ -1408,11 +1419,12 @@ export const GoalLabResults: React.FC<Props> = ({
             case 20: return <SimulatorTab />;
             case 21: return <TuningTab />;
             case 22: return <GoalLabTestsPanel selfId={focusId || ''} actorLabels={actorLabels as any} />;
+            case 23: return <ContextLensTab />;
             default: return <ExplainTab />;
         }
     };
 
-  const tabsList = ['Explain', 'Analysis', 'Atoms', 'Pipeline', 'Propagation', 'Cast', 'Threat', 'ToM', 'CtxMind', 'Emotions', 'Coverage', 'Possibilities', 'Decision', 'Decision Graph', 'Goal Graph', 'Access', 'Diff', 'EmotionExplain', 'Debug', 'Orchestrator', 'Simulation', 'Tuning', 'Tests'];
+  const tabsList = ['Explain', 'Analysis', 'Atoms', 'Pipeline', 'Propagation', 'Cast', 'Threat', 'ToM', 'CtxMind', 'Emotions', 'Coverage', 'Possibilities', 'Decision', 'Decision Graph', 'Goal Graph', 'Access', 'Diff', 'EmotionExplain', 'Debug', 'Orchestrator', 'Simulation', 'Tuning', 'Tests', 'Context Lens'];
 
   const focusId = (context as any)?.agentId;
   const focusLabel = (focusId && actorLabels?.[focusId]) ? actorLabels[focusId] : focusId;
