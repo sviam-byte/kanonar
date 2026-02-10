@@ -26,7 +26,7 @@ type DomainChannelWeights = Record<GoalDomain, Record<EnergyChannel, number>>;
 
 // Conservative default mapping: which energy channels should “feed” which goals.
 // Values are weights (not required to sum to 1).
-const DOMAIN_CHANNEL_WEIGHTS: DomainChannelWeights = {
+export const DOMAIN_CHANNEL_WEIGHTS: DomainChannelWeights = {
   safety: { threat: 1.25, uncertainty: 0.35, norm: 0.1, attachment: 0, resource: 0.1, status: 0, curiosity: 0, base: 0 },
   control: { threat: 0.55, uncertainty: 0.65, norm: 0.15, attachment: 0, resource: 0.25, status: 0.1, curiosity: 0.05, base: 0 },
   affiliation: { threat: 0, uncertainty: 0.1, norm: 0.25, attachment: 1.2, resource: 0.1, status: 0.15, curiosity: 0, base: 0 },
@@ -209,6 +209,9 @@ function mkGoalStateAtom(selfId: string, domain: GoalDomain, st: GoalState, used
  */
 export function deriveGoalAtoms(selfId: string, atoms: ContextAtom[], opts?: { topN?: number }) {
   const topN = Math.max(1, Math.min(5, Number(opts?.topN ?? 3)));
+
+  // Debug payload for GoalLab (used by pipeline viewers; safe to ignore).
+  const __debug: any = { selfId };
 
   // Drivers (preferred)
   const drvSafety = getAny(atoms, [`drv:safetyNeed:${selfId}`, `drv:safety:${selfId}`], NaN);
@@ -451,6 +454,7 @@ export function deriveGoalAtoms(selfId: string, atoms: ContextAtom[], opts?: { t
   const prevActive = readPrevActiveDomainsFromAtoms(selfId, atoms);
   const prevStates = readGoalStateMapFromAtoms(selfId, atoms);
   const tick = inferTickFromPrevState(prevStates);
+  __debug.tick = tick;
 
   // Apply bias + mild anti-fatigue to each domain.
   for (const e of ecology) {
@@ -478,11 +482,25 @@ export function deriveGoalAtoms(selfId: string, atoms: ContextAtom[], opts?: { t
     const atomsForGraph = [...atoms, ...provisionalGoals];
     const g = buildAtomGraph(atomsForGraph, { includeIsolated: false });
     const field = buildSignalField(selfId, atomsForGraph);
+    // Debug: summarize signal field (channel sources)
+    const __channelsList = Object.keys(field.channels || {}) as EnergyChannel[];
+    const __sourceCounts: Record<string, number> = {};
+    for (const ch of __channelsList) {
+      const srcArr = (field.channels as any)?.[ch]?.sources;
+      __sourceCounts[ch] = Array.isArray(srcArr) ? srcArr.length : 0;
+    }
+    __debug.signalField = { channels: __channelsList, sourceCounts: __sourceCounts };
+
+    // Track energy history only for goal nodes (keeps memory bounded).
+    const __goalIdsForHistory = ecology.map((e) => `goal:domain:${e.domain}:${selfId}`);
 
     const energy = propagateAtomEnergy(g, atomsForGraph, field, {
-      steps: 6,
+      steps: 16,
       decay: 0.25,
       topK: 10,
+      convergenceThreshold: 1e-3,
+      trackHistory: true,
+      historyNodeIds: __goalIdsForHistory,
       atomWeightFn: (ch, a) => {
         // Apply agent-specific channel curve at the *source* level.
         const curve = getAgentChannelCurve(selfId, ch, undefined);
@@ -491,6 +509,43 @@ export function deriveGoalAtoms(selfId: string, atoms: ContextAtom[], opts?: { t
         return curve01Param(m * c, curve);
       },
     });
+
+    // Build scalar goal-energy history from per-channel histories (if collected).
+    // goalEnergyHistory[goalId] = [score0..scoreK] where score is the same "energyScore" used below.
+    const __histByCh = (energy as any)?.historyByChannel as Record<string, Record<string, number[]>> | undefined;
+    const __goalEnergyHistory: Record<string, number[]> = {};
+    if (__histByCh) {
+      for (const e of ecology) {
+        const goalId = `goal:domain:${e.domain}:${selfId}`;
+        const w = DOMAIN_CHANNEL_WEIGHTS[e.domain];
+
+        let K = 0;
+        for (const ch of __channelsList) {
+          const arrE = (__histByCh as any)?.[ch]?.[goalId];
+          if (Array.isArray(arrE)) K = Math.max(K, arrE.length);
+        }
+        if (K <= 0) continue;
+
+        const series: number[] = [];
+        for (let t = 0; t < K; t++) {
+          let rawT = 0;
+          for (const ch of __channelsList) {
+            const Eg = Number((__histByCh as any)?.[ch]?.[goalId]?.[t] ?? 0);
+            const ww = Number((w as any)?.[ch] ?? 0);
+            rawT += clampPos(Eg) * (Number.isFinite(ww) ? ww : 0);
+          }
+          const scoreT = 0.5 + 0.5 * Math.tanh(rawT);
+          series.push(clamp01(scoreT));
+        }
+        __goalEnergyHistory[goalId] = series;
+      }
+    }
+
+    __debug.energyRefine = {
+      config: { steps: 16, decay: 0.25, topK: 10, convergenceThreshold: 1e-3 },
+      goalEnergyHistory: __goalEnergyHistory,
+      convergenceByChannel: (energy as any)?.convergenceByChannel ?? null,
+    };
 
     const channels = Object.keys(field.channels || {}) as EnergyChannel[];
 
@@ -561,6 +616,7 @@ export function deriveGoalAtoms(selfId: string, atoms: ContextAtom[], opts?: { t
     .map((d) => ecology.find((x) => x.domain === d)?.v ?? 0)
     .filter((v) => Number.isFinite(v));
   const winnerAvg = winnerEnergies.length ? winnerEnergies.reduce((a, b) => a + b, 0) / winnerEnergies.length : 0;
+  __debug.competition = { activeDomains, inhibitionGamma, winnerAvg, topN, pick: pick.debug };
   const inhibitedGoalAtoms: ContextAtom[] = [];
   if (winnerAvg > 0) {
     for (const e of ecology) {
@@ -616,5 +672,5 @@ export function deriveGoalAtoms(selfId: string, atoms: ContextAtom[], opts?: { t
   // NOTE: persistence is external (carry goal:state:* atoms across ticks via agent.memory.beliefAtoms).
   // Returning goal state atoms is sufficient; no module-level state is mutated here.
 
-  return { atoms: [...goalAtoms, ...inhibitedGoalAtoms, ...active, modeAtom, ...stateAtoms] };
+  return { atoms: [...goalAtoms, ...inhibitedGoalAtoms, ...active, modeAtom, ...stateAtoms], debug: __debug };
 }
