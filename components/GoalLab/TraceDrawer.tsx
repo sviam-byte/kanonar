@@ -81,6 +81,9 @@ export function TraceDrawer({
   index?: Record<string, Atom>;
   onJump?: (id: string) => void;
 }) {
+  // Keep lookups total-safe so trace rendering never crashes on sparse/debug frames.
+  const atomIndex = index || {};
+
   if (!atom) {
     return <div className="p-8 text-center text-canon-text-light italic text-xs">Выберите атом для просмотра трассировки.</div>;
   }
@@ -292,7 +295,7 @@ export function TraceDrawer({
                 <tbody>
                   {topParts.map((p: any, i: number) => {
                     const name = String(p.name);
-                    const canJump = !!index?.[name];
+                    const canJump = Boolean(atomIndex[name]);
                     return (
                       <tr key={i} className="border-t border-canon-border/30 hover:bg-white/5">
                         <td className="p-2">
@@ -330,7 +333,7 @@ export function TraceDrawer({
         <div className="space-y-1">
           {usedIds.length === 0 && <div className="text-xs text-canon-text-light italic px-2">None</div>}
           {arr(usedIds).map(id => {
-            const exists = index?.[id];
+            const exists = atomIndex[id];
             return (
               <div key={id} className="flex gap-2 items-center bg-canon-bg border border-canon-border/30 p-2 rounded hover:bg-canon-bg-light/30 transition-colors">
                 <button

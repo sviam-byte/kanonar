@@ -46,10 +46,13 @@ function buildDeltaGoals(
   goalEnergy: Record<string, number>
 ): Record<string, number> {
   const out: Record<string, number> = {};
-  const allowPrefix = `util:hint:allow:`;
+  // Backward-compatible hint reader: accept both util:* and goal:* sources.
+  const allowPrefixA = `util:hint:allow:`;
+  const allowPrefixB = `goal:hint:allow:`;
 
   for (const a of atoms) {
-    if (!a?.id?.startsWith(allowPrefix)) continue;
+    if (!a?.id) continue;
+    if (!a.id.startsWith(allowPrefixA) && !a.id.startsWith(allowPrefixB)) continue;
     const parts = a.id.split(':');
     const goalId = parts[3];
     const key = parts[4];

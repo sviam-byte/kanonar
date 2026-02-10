@@ -13,14 +13,16 @@ function pct(x: number) {
 
 export const DecisionPanel: React.FC<{ decision: any; selfId?: string; castDecisions?: any[] }> = ({ decision, selfId, castDecisions }) => {
   const ranked = useMemo(() => arr(decision?.ranked), [decision]);
-  const bestId = decision?.best?.p?.id || decision?.best?.id || null;
+  const isNew = Boolean(ranked[0]?.action);
+  const bestId = isNew ? (decision?.best?.id || null) : (decision?.best?.p?.id || decision?.best?.id || null);
   const [showDetails, setShowDetails] = useState(false);
   const [sel, setSel] = useState(0);
 
   const current = ranked[sel] || null;
   const labelWithTarget = (a: any) => {
-    const targetId = a?.p?.targetId || a?.targetId || null;
-    return `${a?.label || a?.p?.id || 'Untitled action'}${targetId ? ` → ${targetId}` : ''}`;
+    const node = isNew ? (a?.action || a) : a;
+    const targetId = node?.p?.targetId || node?.targetId || null;
+    return `${node?.label || node?.p?.id || node?.id || 'Untitled action'}${targetId ? ` → ${targetId}` : ''}`;
   };
 
   // Diagnostics: detect "everything is the same" failure mode.
@@ -28,11 +30,11 @@ export const DecisionPanel: React.FC<{ decision: any; selfId?: string; castDecis
   const traitUsedInTop = useMemo(() => {
     const top = ranked.slice(0, 5);
     for (const a of top) {
-      const used = arr(a?.why?.usedAtomIds);
+      const used = arr(isNew ? a?.action?.supportAtoms?.map((x: any) => x?.id).filter(Boolean) : a?.why?.usedAtomIds);
       if (used.some((id: any) => String(id).includes('feat:char:') && String(id).includes('trait.'))) return true;
     }
     return false;
-  }, [ranked]);
+  }, [ranked, isNew]);
 
   // 2) If many agents have the exact same best action id, target inference or emotions/traits are likely flat.
   // (This panel can still be used standalone; only warns when castDecisions is provided.)
@@ -40,7 +42,7 @@ export const DecisionPanel: React.FC<{ decision: any; selfId?: string; castDecis
     const list = arr(castDecisions);
     if (list.length < 3) return null;
     const bestIds = list
-      .map((d: any) => d?.best?.p?.id || d?.best?.id || null)
+      .map((d: any) => d?.best?.action?.id || d?.best?.p?.id || d?.best?.id || null)
       .filter(Boolean);
     if (bestIds.length < 3) return null;
     const freq = new Map<string, number>();
@@ -78,11 +80,11 @@ export const DecisionPanel: React.FC<{ decision: any; selfId?: string; castDecis
           </div>
         )}
         {ranked.map((a: any, i: number) => {
-          const isBest = (a?.p?.id || a?.id) === bestId;
-          const allowed = Boolean(a?.allowed);
+          const isBest = (isNew ? (a?.action?.id || a?.id) : (a?.p?.id || a?.id)) === bestId;
+          const allowed = isNew ? true : Boolean(a?.allowed);
           return (
             <button
-              key={a.id || i}
+              key={(isNew ? a?.action?.id : a?.id) || i}
               className={`w-full text-left p-3 border-b border-canon-border/50 hover:bg-canon-bg-light/20 transition-colors ${
                 i === sel ? 'bg-canon-accent/10 border-l-2 border-l-canon-accent' : ''
               }`}
@@ -97,7 +99,7 @@ export const DecisionPanel: React.FC<{ decision: any; selfId?: string; castDecis
                 ) : null}
               </div>
               <div className="text-[10px] font-mono mt-1 text-canon-text-light">
-                score={pct(a.score || 0)} cost={pct(a.cost || 0)} {allowed ? '' : 'BLOCKED'}
+                score={isNew ? Number(a?.q ?? 0).toFixed(3) : pct(a.score || 0)} cost={pct((isNew ? a?.action?.cost : a?.cost) || 0)} {allowed ? '' : 'BLOCKED'}
               </div>
             </button>
           );
@@ -115,7 +117,7 @@ export const DecisionPanel: React.FC<{ decision: any; selfId?: string; castDecis
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h3 className="text-xl font-bold text-canon-text mb-1">{labelWithTarget(current)}</h3>
-                <div className="text-xs font-mono text-canon-text-light">id: {current.id}</div>
+                <div className="text-xs font-mono text-canon-text-light">id: {isNew ? (current?.action?.id || current?.id) : current.id}</div>
               </div>
               <label className="flex items-center gap-2 text-xs text-canon-text-light">
                 <input
@@ -130,21 +132,21 @@ export const DecisionPanel: React.FC<{ decision: any; selfId?: string; castDecis
             <div className="grid grid-cols-3 gap-2 text-xs">
               <div className="p-2 bg-canon-bg border border-canon-border rounded">
                 <span className="text-canon-text-light block">Score</span>
-                <span className="font-bold font-mono text-canon-accent">{Number(current.score || 0).toFixed(3)}</span>
+                <span className="font-bold font-mono text-canon-accent">{isNew ? Number(current?.q || 0).toFixed(3) : Number(current.score || 0).toFixed(3)}</span>
               </div>
               <div className="p-2 bg-canon-bg border border-canon-border rounded">
                 <span className="text-canon-text-light block">Cost</span>
-                <span className="font-bold font-mono text-orange-400">{Number(current.cost || 0).toFixed(3)}</span>
+                <span className="font-bold font-mono text-orange-400">{Number((isNew ? current?.action?.cost : current?.cost) || 0).toFixed(3)}</span>
               </div>
               <div className="p-2 bg-canon-bg border border-canon-border rounded">
                 <span className="text-canon-text-light block">Allowed</span>
-                <span className={`font-bold font-mono ${current.allowed ? 'text-green-400' : 'text-red-400'}`}>
-                  {String(current.allowed).toUpperCase()}
+                <span className={`font-bold font-mono ${(isNew ? true : current.allowed) ? 'text-green-400' : 'text-red-400'}`}>
+                  {String(isNew ? true : current.allowed).toUpperCase()}
                 </span>
               </div>
             </div>
 
-            {current.why?.blockedBy?.length > 0 && (
+            {!isNew && current.why?.blockedBy?.length > 0 && (
               <div className="p-3 rounded bg-red-900/10 border border-red-500/30 text-xs">
                 <div className="font-bold text-red-300 mb-2 uppercase tracking-wider">Blocked by</div>
                 <div className="font-mono text-red-200">{current.why.blockedBy.join('  ')}</div>
@@ -156,15 +158,15 @@ export const DecisionPanel: React.FC<{ decision: any; selfId?: string; castDecis
                 <div className="p-3 rounded bg-black/20 border border-canon-border/30 text-xs">
                   <div className="font-bold text-canon-text-light mb-2 uppercase tracking-wider">Why (parts)</div>
                   <pre className="font-mono text-[10px] text-green-400 overflow-auto whitespace-pre-wrap">
-                    {JSON.stringify(current.why?.parts || {}, null, 2)}
+                    {JSON.stringify(isNew ? (current?.action?.deltaGoals || {}) : (current.why?.parts || {}), null, 2)}
                   </pre>
                 </div>
 
                 <div className="p-3 rounded bg-black/20 border border-canon-border/30 text-xs">
                   <div className="font-bold text-canon-text-light mb-2 uppercase tracking-wider">Used Atoms</div>
                   <div className="font-mono text-[10px] text-canon-text-light break-all leading-relaxed">
-                    {arr(current.why?.usedAtomIds).slice(0, 80).join('  ')}
-                    {arr(current.why?.usedAtomIds).length > 80 && ' ...'}
+                    {arr(isNew ? current?.action?.supportAtoms?.map((a: any) => a?.id).filter(Boolean) : current.why?.usedAtomIds).slice(0, 80).join('  ')}
+                    {arr(isNew ? current?.action?.supportAtoms?.map((a: any) => a?.id).filter(Boolean) : current.why?.usedAtomIds).length > 80 && ' ...'}
                   </div>
                 </div>
               </>

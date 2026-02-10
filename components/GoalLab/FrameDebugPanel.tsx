@@ -39,6 +39,14 @@ export function FrameDebugPanel({
   const [selected, setSelected] = useState<Atom | null>(null);
   const atoms = arr(frame?.atoms);
 
+  // Prefer pipeline-provided index, fallback to local map for compatibility with legacy snapshots.
+  const atomIndex = useMemo(() => {
+    if (frame?.index) return frame.index;
+    const m: Record<string, Atom> = {};
+    for (const a of atoms) m[a.id] = a;
+    return m;
+  }, [frame, atoms]);
+
   const mind = frame?.panels?.mind;
   const threat = frame?.panels?.threat;
 
@@ -234,8 +242,8 @@ export function FrameDebugPanel({
           <h3 className="text-xs font-bold text-canon-text-light uppercase tracking-widest mb-4 border-b border-canon-border/30 pb-2">Derivation Trace</h3>
           <TraceDrawer
             atom={selected}
-            index={frame?.index}
-            onJump={(id) => setSelected(atoms.find(a => a.id === id) ?? null)}
+            index={atomIndex}
+            onJump={(id) => setSelected(atomIndex[id] ?? null)}
           />
         </div>
       </div>
