@@ -15,6 +15,7 @@ import { ToMPanel } from '../goal-lab/ToMPanel';
 import { ContextMindPanel } from '../goal-lab/ContextMindPanel';
 import { RelationsPanel } from '../goal-lab/RelationsPanel';
 import { PipelinePanel } from '../goal-lab/PipelinePanel';
+import { GoalEnergyHistoryPanel } from '../goal-lab/GoalEnergyHistoryPanel';
 import { ValidatorPanel } from '../goal-lab/ValidatorPanel';
 import { FrameDebugPanel } from '../GoalLab/FrameDebugPanel';
 import { arr } from '../../lib/utils/arr';
@@ -58,6 +59,22 @@ export const DebugShell: React.FC<{
   const atoms = useMemo(() => asArray<any>(p.snapshotV1?.atoms), [p.snapshotV1]);
   const manualAtoms = useMemo(() => asArray<ContextAtom>(p.manualAtoms), [p.manualAtoms]);
   const onChangeManualAtoms = p.onChangeManualAtoms ?? (() => {});
+
+  // Normalize raw pipeline stages for PipelinePanel contract.
+  const pipelineStages = useMemo(() => {
+    const raw = (p.pipelineV1 as any)?.stages;
+    if (!Array.isArray(raw)) return [];
+    return raw.map((s: any, idx: number) => {
+      const id = String(s?.stage || s?.id || s?.stageId || `S${idx}`);
+      const label = String(s?.title || s?.label || s?.name || id);
+      const atomCount = Number.isFinite(Number(s?.stats?.atomCount))
+        ? Number(s.stats.atomCount)
+        : Array.isArray(s?.atoms)
+          ? s.atoms.length
+          : 0;
+      return { ...s, id, label, atomCount };
+    });
+  }, [p.pipelineV1]);
 
   const tabs = useMemo(() => {
     return [
@@ -121,12 +138,10 @@ export const DebugShell: React.FC<{
             </div>
 
             <PipelinePanel
-              snapshotV1={p.snapshotV1 as any}
-              pipelineV1={p.pipelineV1 as any}
-              pipelineStageId={p.pipelineStageId}
-              onChangePipelineStageId={p.onChangePipelineStageId}
-              onExportPipelineStage={p.onExportPipelineStage as any}
-              onExportPipelineAll={p.onExportPipelineAll as any}
+              stages={pipelineStages as any}
+              selectedId={p.pipelineStageId}
+              onSelect={p.onChangePipelineStageId as any}
+              onExportStage={p.onExportPipelineStage as any}
             />
 
             <div className="rounded border border-white/10 bg-black/10">
@@ -149,6 +164,19 @@ export const DebugShell: React.FC<{
                 manualAtoms={p.manualAtoms as any}
                 onChangeManualAtoms={p.onChangeManualAtoms as any}
               />
+            </div>
+          </div>
+        )
+      },
+      {
+        label: 'Propagation',
+        content: (
+          <div className="p-3 space-y-3">
+            <div className="text-xs opacity-70">
+              S7: итеративная диффузия энергии целей (artifacts.goalDebug → energyRefine.goalEnergyHistory).
+            </div>
+            <div className="rounded border border-white/10 bg-black/10 p-3">
+              <GoalEnergyHistoryPanel pipelineV1={p.pipelineV1 as any} stageId="S7" />
             </div>
           </div>
         )
