@@ -375,29 +375,52 @@ export const DEFAULT_POSSIBILITY_DEFS: PossibilityDef[] = [
   },
 
   // -------------------
-  // HARD-GATED VIOLENCE (placeholder)
+  // THREAT-GATED VIOLENCE
   // -------------------
   {
     key: 'attack',
-    kind: 'aff',
-    label: 'Attack (generic)',
-    build: ({ selfId, helpers }) => {
+    kind: 'off',
+    label: 'Attack',
+    build: ({ selfId, helpers, atoms }) => {
       const noViolence = proto(helpers, 'noViolence');
       const taboo = tabooPrefix(helpers, `con:rel:taboo:attack:${selfId}:`);
       const blockedBy: string[] = [];
       if (noViolence) blockedBy.push(noViolence);
       blockedBy.push(...taboo);
 
-      return mkSelf({
-        kind: 'aff',
-        selfId,
-        key: 'attack',
-        label: 'Attack',
-        magnitude: 1,
-        blockedBy,
-        usedAtomIds: blockedBy,
-        notes: ['attack base possibility; gating later']
-      });
+      // Safety invariant: only offer attack when threat is present and a concrete target exists.
+      const threatAtom =
+        helpers.findPrefix(`ctx:threat:${selfId}`)[0]?.id ||
+        helpers.findPrefix(`ctx:threat`)[0]?.id;
+      const threat = threatAtom ? helpers.get(threatAtom, 0) : 0;
+      if (threat < 0.25) return null;
+
+      const others = inferOtherIds(selfId, atoms || []);
+      if (!others.length) return null;
+
+      return others.map(otherId => {
+        const nearId = `obs:nearby:${selfId}:${otherId}`;
+        const near = getMag(atoms || [], nearId, 0);
+        const hostId = `rel:state:${selfId}:${otherId}:hostility`;
+        const host = getMag(atoms || [], hostId, 0);
+
+        const magnitude = clamp01(0.65 * threat + 0.2 * near + 0.15 * host);
+        if (magnitude < 0.1) return null;
+
+        return mkTargeted({
+          kind: 'off',
+          selfId,
+          otherId,
+          key: 'attack',
+          label: 'Attack',
+          magnitude,
+          blockedBy,
+          usedAtomIds: uniq([threatAtom, nearId, hostId, ...blockedBy].filter(Boolean) as any),
+          notes: ['threat+nearby(+hostility) => targeted attack'],
+          parts: { threat, near, host },
+          meta: { cost: 0.05 }
+        });
+      }).filter(Boolean) as any;
     }
   },
 
