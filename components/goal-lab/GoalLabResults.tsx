@@ -28,6 +28,7 @@ import { GoalLabSnapshotV1 } from '../../lib/goal-lab/snapshotTypes';
 import { AtomInspector } from './AtomInspector';
 import { EmotionExplainPanel } from './EmotionExplainPanel';
 import { PipelinePanel } from './PipelinePanel';
+import { GoalEnergyHistoryPanel } from './GoalEnergyHistoryPanel';
 import { CurvePreview } from './CurvePreview';
 import type { CurvePreset } from '../../lib/utils/curves';
 import { materializeStageAtoms } from './materializePipeline';
@@ -810,6 +811,13 @@ export const GoalLabResults: React.FC<Props> = ({
         />
     );
 
+    // S7 propagation diagnostics from artifacts.goalDebug (if present).
+    const PropagationTab = () => (
+        <div className="p-3">
+            <GoalEnergyHistoryPanel pipelineV1={pipelineV1 as any} stageId="S7" />
+        </div>
+    );
+
     const ThreatTab = () => (
         <ThreatPanel atoms={currentAtoms} />
     );
@@ -1381,29 +1389,30 @@ export const GoalLabResults: React.FC<Props> = ({
             case 1: return <AnalysisTab />;
             case 2: return <AtomsTab />;
             case 3: return <PipelineTab />;
-            case 4: return <CastTab />;
-            case 5: return <ThreatTab />;
-            case 6: return <ToMTab />;
-            case 7: return <MindTab />;
-            case 8: return <EmotionsTab />;
-            case 9: return <CoverageTab />;
-            case 10: return <PossibilitiesTab />;
-            case 11: return <DecisionTab />;
-            case 12: return <DecisionGraphTab />;
-            case 13: return <GoalActionGraphView />;
-            case 14: return <AccessTab />;
-            case 15: return <DiffTab />;
-            case 16: return <EmotionExplainTab />;
-            case 17: return <DebugTab />;
-            case 18: return <OrchestratorTab />;
-            case 19: return <SimulatorTab />;
-            case 20: return <TuningTab />;
-            case 21: return <GoalLabTestsPanel selfId={focusId || ''} actorLabels={actorLabels as any} />;
+            case 4: return <PropagationTab />;
+            case 5: return <CastTab />;
+            case 6: return <ThreatTab />;
+            case 7: return <ToMTab />;
+            case 8: return <MindTab />;
+            case 9: return <EmotionsTab />;
+            case 10: return <CoverageTab />;
+            case 11: return <PossibilitiesTab />;
+            case 12: return <DecisionTab />;
+            case 13: return <DecisionGraphTab />;
+            case 14: return <GoalActionGraphView />;
+            case 15: return <AccessTab />;
+            case 16: return <DiffTab />;
+            case 17: return <EmotionExplainTab />;
+            case 18: return <DebugTab />;
+            case 19: return <OrchestratorTab />;
+            case 20: return <SimulatorTab />;
+            case 21: return <TuningTab />;
+            case 22: return <GoalLabTestsPanel selfId={focusId || ''} actorLabels={actorLabels as any} />;
             default: return <ExplainTab />;
         }
     };
 
-  const tabsList = ['Explain', 'Analysis', 'Atoms', 'Pipeline', 'Cast', 'Threat', 'ToM', 'CtxMind', 'Emotions', 'Coverage', 'Possibilities', 'Decision', 'Decision Graph', 'Goal Graph', 'Access', 'Diff', 'EmotionExplain', 'Debug', 'Orchestrator', 'Simulation', 'Tuning', 'Tests'];
+  const tabsList = ['Explain', 'Analysis', 'Atoms', 'Pipeline', 'Propagation', 'Cast', 'Threat', 'ToM', 'CtxMind', 'Emotions', 'Coverage', 'Possibilities', 'Decision', 'Decision Graph', 'Goal Graph', 'Access', 'Diff', 'EmotionExplain', 'Debug', 'Orchestrator', 'Simulation', 'Tuning', 'Tests'];
 
   const focusId = (context as any)?.agentId;
   const focusLabel = (focusId && actorLabels?.[focusId]) ? actorLabels[focusId] : focusId;

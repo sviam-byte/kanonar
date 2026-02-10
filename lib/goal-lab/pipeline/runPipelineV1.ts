@@ -414,6 +414,7 @@ export function runGoalLabPipelineV1(input: {
     stats: { atomCount: atoms.length, addedCount: s7Added.length, ...stageStats(atoms) },
     artifacts: {
       goalAtomsCount: goalAtoms.length,
+      goalDebug: (goalRes as any)?.debug ?? null,
       planGoalAtomsCount: planAtoms.length,
       goalActionLinksCount: linkAtoms.length,
       utilAtomsCount: utilAtoms.length,

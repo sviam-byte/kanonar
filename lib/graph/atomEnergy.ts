@@ -9,6 +9,23 @@ export type AtomEnergyResult = {
   nodeEnergyByChannel: Record<EnergyChannel, Record<string, number>>;
   edgeFlowByChannel: Record<EnergyChannel, Record<string, number>>;
   attributionByChannel: Record<EnergyChannel, Record<string, AtomEnergyAttribution>>;
+
+  /**
+   * Optional: per-channel node energy history across propagation iterations.
+   * Only present if opts.trackHistory is true.
+   *
+   * historyByChannel[ch][nodeId] = [E0, E1, ...]
+   */
+  historyByChannel?: Record<EnergyChannel, Record<string, number[]>>;
+
+  /**
+   * Optional: convergence diagnostics per channel.
+   * Only present if opts.convergenceThreshold > 0.
+   */
+  convergenceByChannel?: Record<
+    EnergyChannel,
+    { iterations: number; converged: boolean; maxDelta: number; threshold: number }
+  >;
 };
 
 function clamp01(x: number): number {
@@ -64,6 +81,25 @@ export function propagateAtomEnergy(
     steps?: number;
     decay?: number;
     topK?: number;
+
+    /**
+     * If > 0, stop early when max(|E_next - E_prev|) < threshold for the channel.
+     * This is useful for stable, flicker-resistant goal energies.
+     */
+    convergenceThreshold?: number;
+
+    /**
+     * If true, collect node energy history over iterations.
+     * Use historyNodeIds to limit tracked nodes (recommended).
+     */
+    trackHistory?: boolean;
+
+    /**
+     * Optional: track history only for these node ids.
+     * If omitted and trackHistory=true, tracks ALL nodes (can be heavy).
+     */
+    historyNodeIds?: string[];
+
     /**
      * Optional per-channel atom weight function.
      * If provided, it is used for seeding from SignalField.sources.
@@ -78,9 +114,22 @@ export function propagateAtomEnergy(
   const topK = Math.max(1, Math.min(24, Math.floor(Number(opts?.topK ?? 8))));
   const atomWeightFn = opts?.atomWeightFn;
 
+  const convergenceThreshold = Number(opts?.convergenceThreshold ?? 0);
+  const trackHistory = Boolean(opts?.trackHistory);
+  const historyNodeSet =
+    trackHistory && Array.isArray(opts?.historyNodeIds) && opts!.historyNodeIds!.length
+      ? new Set(opts!.historyNodeIds!.map(String))
+      : null;
+
   const nodeEnergyByChannel: Record<string, Record<string, number>> = {};
   const edgeFlowByChannel: Record<string, Record<string, number>> = {};
   const attributionByChannel: Record<string, Record<string, AtomEnergyAttribution>> = {};
+
+  const historyByChannel: Record<string, Record<string, number[]>> = {};
+  const convergenceByChannel: Record<
+    string,
+    { iterations: number; converged: boolean; maxDelta: number; threshold: number }
+  > = {};
 
   // Pre-index atoms by id so SignalField.sources objects can be swapped/normalized safely.
   const byId = new Map<string, ContextAtom>();
@@ -109,7 +158,21 @@ export function propagateAtomEnergy(
       contrib[sid].set(sid, (contrib[sid].get(sid) ?? 0) + w);
     }
 
-    // Propagate
+    // Optional: history tracking (per node)
+    const hist: Record<string, number[]> | null = trackHistory ? {} : null;
+    if (hist) {
+      for (const id of nodeIds) {
+        if (historyNodeSet && !historyNodeSet.has(id)) continue;
+        hist[id] = [Number(energy[id] ?? 0)];
+      }
+    }
+
+    // Propagate (random-walk style diffusion with inertia).
+    // If convergenceThreshold > 0, stop early when maxDelta < threshold.
+    let iterationsUsed = 0;
+    let converged = false;
+    let lastMaxDelta = Number.POSITIVE_INFINITY;
+
     for (let step = 0; step < steps; step++) {
       const nextE: Record<string, number> = Object.fromEntries(nodeIds.map((id) => [id, 0]));
       const nextC: Record<string, Map<string, number>> = Object.fromEntries(nodeIds.map((id) => [id, new Map()]));
@@ -149,11 +212,37 @@ export function propagateAtomEnergy(
         }
       }
 
-      // Swap
+      // Swap + convergence check + history write
+      let maxDelta = 0;
       for (const id of nodeIds) {
-        energy[id] = nextE[id] ?? 0;
+        const prev = Number(energy[id] ?? 0);
+        const ne = Number(nextE[id] ?? 0);
+        const d = Math.abs(ne - prev);
+        if (Number.isFinite(d)) maxDelta = Math.max(maxDelta, d);
+
+        energy[id] = ne;
         contrib[id] = nextC[id] ?? new Map();
+
+        if (hist && hist[id]) hist[id].push(ne);
       }
+
+      iterationsUsed = step + 1;
+      lastMaxDelta = maxDelta;
+
+      if (convergenceThreshold > 0 && maxDelta < convergenceThreshold) {
+        converged = true;
+        break;
+      }
+    }
+
+    if (hist) historyByChannel[ch] = hist;
+    if (convergenceThreshold > 0) {
+      convergenceByChannel[ch] = {
+        iterations: iterationsUsed,
+        converged,
+        maxDelta: lastMaxDelta,
+        threshold: convergenceThreshold,
+      };
     }
 
     nodeEnergyByChannel[ch] = energy;
@@ -170,5 +259,7 @@ export function propagateAtomEnergy(
     nodeEnergyByChannel: nodeEnergyByChannel as any,
     edgeFlowByChannel: edgeFlowByChannel as any,
     attributionByChannel: attributionByChannel as any,
+    historyByChannel: Object.keys(historyByChannel).length ? (historyByChannel as any) : undefined,
+    convergenceByChannel: Object.keys(convergenceByChannel).length ? (convergenceByChannel as any) : undefined,
   };
 }
