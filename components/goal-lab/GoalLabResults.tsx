@@ -22,7 +22,7 @@ import { DecisionPanel } from './DecisionPanel';
 import { ContextLensPanel } from './ContextLensPanel';
 import { OverviewPanel } from './OverviewPanel';
 import { StoryModePanel } from './StoryModePanel';
-import { ValueFunctionPanel } from './ValueFunctionPanel';
+import { ValuePanel } from '../GoalSandbox/ValuePanel';
 import { AtomBrowser } from './AtomBrowser';
 import { ThreatPanel } from './ThreatPanel';
 import { ToMPanel } from './ToMPanel';
@@ -1225,13 +1225,7 @@ export const GoalLabResults: React.FC<Props> = ({
       <OverviewPanel atoms={currentAtoms} decision={decision} selfId={focusSelfId ?? ''} onJumpToAtomId={jumpToAtomId} />
     );
     const ValueTab = () => (
-      <ValueFunctionPanel
-        sceneDump={sceneDump as any}
-        snapshotV1={snapshotV1 as any}
-        goalScores={goalScores as any}
-        tunedGoalScores={tunedGoalScores as any}
-        decision={(snapshotV1 as any)?.decision ?? null}
-      />
+      <ValuePanel sceneDump={sceneDump as any} snapshotV1={snapshotV1 as any} />
     );
 
     const StoryModeTab = () => (

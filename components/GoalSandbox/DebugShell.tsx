@@ -20,6 +20,7 @@ import { ValidatorPanel } from '../goal-lab/ValidatorPanel';
 import { FrameDebugPanel } from '../GoalLab/FrameDebugPanel';
 import { arr } from '../../lib/utils/arr';
 import { buildRelGraphFromAtoms } from '../../lib/goal-lab/buildRelGraphFromAtoms';
+import { ValuePanel } from './ValuePanel';
 
 function asArray<T>(x: any): T[] {
   return Array.isArray(x) ? x : [];
@@ -254,6 +255,14 @@ export const DebugShell: React.FC<{
             ) : (
               <div className="text-xs italic opacity-70">No pipeline frame available.</div>
             )}
+          </div>
+        )
+      },
+      {
+        label: 'Value',
+        content: (
+          <div className="p-3">
+            <ValuePanel sceneDump={p.sceneDump} snapshotV1={p.snapshotV1} />
           </div>
         )
       },
