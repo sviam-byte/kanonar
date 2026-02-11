@@ -22,6 +22,7 @@ import { DecisionPanel } from './DecisionPanel';
 import { ContextLensPanel } from './ContextLensPanel';
 import { OverviewPanel } from './OverviewPanel';
 import { StoryModePanel } from './StoryModePanel';
+import { ValueFunctionPanel } from './ValueFunctionPanel';
 import { AtomBrowser } from './AtomBrowser';
 import { ThreatPanel } from './ThreatPanel';
 import { ToMPanel } from './ToMPanel';
@@ -1223,6 +1224,16 @@ export const GoalLabResults: React.FC<Props> = ({
     const OverviewTab = () => (
       <OverviewPanel atoms={currentAtoms} decision={decision} selfId={focusSelfId ?? ''} onJumpToAtomId={jumpToAtomId} />
     );
+    const ValueTab = () => (
+      <ValueFunctionPanel
+        sceneDump={sceneDump as any}
+        snapshotV1={snapshotV1 as any}
+        goalScores={goalScores as any}
+        tunedGoalScores={tunedGoalScores as any}
+        decision={(snapshotV1 as any)?.decision ?? null}
+      />
+    );
+
     const StoryModeTab = () => (
       <StoryModePanel
         atoms={currentAtoms}
@@ -1477,6 +1488,7 @@ export const GoalLabResults: React.FC<Props> = ({
             case 25: return <ContextLensTab />;
             case 26: return <OverviewTab />;
             case 27: return <StoryModeTab />;
+            case 28: return <ValueTab />;
             default: return <ExplainTab />;
         }
     };
@@ -1487,7 +1499,7 @@ export const GoalLabResults: React.FC<Props> = ({
     'Propagation', 'Cast', 'Threat', 'ToM', 'CtxMind', 'Emotions', 'Coverage',
     'Possibilities', 'Decision', 'Decision Graph', 'Goal Graph', 'Access', 'Diff',
     'EmotionExplain', 'Debug', 'Orchestrator', 'Simulation', 'Tuning', 'Tests',
-    'Context Lens', 'Overview', 'Story'
+    'Context Lens', 'Overview', 'Story', 'Value'
   ];
 
   const focusId = (context as any)?.agentId;
