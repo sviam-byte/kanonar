@@ -1,6 +1,10 @@
 import React from 'react';
 import type { GoalSandboxVM } from '../../GoalSandbox/GoalSandbox';
 
+/**
+ * World truth mode surfaces raw scene state and derived metrics for quick inspection.
+ * This is intentionally read-only to keep it deterministic and explainable.
+ */
 export const WorldTruthMode: React.FC<{ vm: GoalSandboxVM }> = ({ vm }) => {
   // MVP: пока просто показываем truth-дамп и метрики.
   const metrics = (vm.sceneDump as any)?.world?.scene?.metrics ?? null;

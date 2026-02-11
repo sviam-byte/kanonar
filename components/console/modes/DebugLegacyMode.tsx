@@ -2,6 +2,10 @@ import React from 'react';
 import type { GoalSandboxVM } from '../../GoalSandbox/GoalSandbox';
 import { DebugShell } from '../../GoalSandbox/DebugShell';
 
+/**
+ * Compatibility mode that proxies VM fields into the legacy DebugShell.
+ * Kept to avoid regressions while new console modes are being migrated.
+ */
 export const DebugLegacyMode: React.FC<{ vm: GoalSandboxVM }> = ({ vm }) => {
   return (
     <div className="h-full w-full overflow-hidden">

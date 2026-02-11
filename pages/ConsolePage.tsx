@@ -2,6 +2,7 @@ import React from 'react';
 import { GoalSandbox } from '../components/GoalSandbox/GoalSandbox';
 import { ConsoleShell } from '../components/console/ConsoleShell';
 
+/** Route page for the experimental console surface. */
 export const ConsolePage: React.FC = () => {
   return (
     <div className="h-full w-full overflow-hidden">

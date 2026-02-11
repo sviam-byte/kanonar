@@ -2,6 +2,7 @@ import React from 'react';
 
 export type ConsoleMode = 'world' | 'pipeline' | 'debug' | 'tom';
 
+/** Compact top navigation for selecting console diagnostic mode. */
 export const TopNav: React.FC<{
   mode: ConsoleMode;
   onChangeMode: (m: ConsoleMode) => void;

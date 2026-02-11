@@ -2,6 +2,7 @@ import React from 'react';
 import type { GoalSandboxVM } from '../../GoalSandbox/GoalSandbox';
 import { FriendlyDyadToMPanel } from '../../GoalSandbox/FriendlyDyadToMPanel';
 
+/** ToM mode keeps legacy dyad panel available inside the new console shell. */
 export const ToMDyadMode: React.FC<{ vm: GoalSandboxVM }> = ({ vm }) => {
   return (
     <div className="h-full w-full overflow-hidden">

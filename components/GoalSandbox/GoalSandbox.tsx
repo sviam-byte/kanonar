@@ -458,13 +458,17 @@ const cloneWorld = <T,>(w: T): T => {
   }
 };
 
+/**
+ * View-model contract exposed by GoalSandbox for external renderers (e.g. Console).
+ * Keep this additive/backward-compatible while legacy DebugShell still depends on it.
+ */
 export type GoalSandboxVM = {
   // core dumps
   sceneDump: any;
   snapshotV1: any;
   pipelineV1: any;
   pipelineFrame: any;
-  pipelineStageId: string | null;
+  pipelineStageId: string;
 
   // selection / ids
   perspectiveId: string;
@@ -482,7 +486,7 @@ export type GoalSandboxVM = {
   worldState: any;
 
   // callbacks used by DebugShell and console
-  onChangePipelineStageId: (id: string | null) => void;
+  onChangePipelineStageId: (id: string) => void;
   onSetPerspectiveId: (id: string) => void;
   onDownloadScene: () => void;
   onImportScene: (file: File) => void;
@@ -493,6 +497,7 @@ export type GoalSandboxVM = {
 };
 
 type GoalSandboxProps = {
+  /** Optional custom renderer. If omitted, GoalSandbox renders its built-in UI. */
   render?: (vm: GoalSandboxVM) => ReactNode;
 };
 
@@ -2396,6 +2401,7 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render }) => {
     </div>
   );
 
+  // Build a stable VM so external shells can reuse GoalSandbox logic without duplicating state wiring.
   const vm: GoalSandboxVM = useMemo(() => ({
     sceneDump: sceneDumpV2 as any,
     snapshotV1: snapshotV1 as any,

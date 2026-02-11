@@ -1,6 +1,7 @@
 import React from 'react';
 import type { GoalSandboxVM } from '../../GoalSandbox/GoalSandbox';
 
+/** Pipeline mode exposes raw pipeline payload for stage-by-stage debugging. */
 export const PipelineMode: React.FC<{ vm: GoalSandboxVM }> = ({ vm }) => {
   return (
     <div className="h-full w-full overflow-hidden">
