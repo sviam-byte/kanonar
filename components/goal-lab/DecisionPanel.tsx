@@ -40,9 +40,17 @@ type Props = {
   selfId?: string;
   castDecisions?: any[];
   atoms?: ContextAtom[];
+  onJumpToAtomId?: (id: string) => void;
 };
 
-export const DecisionPanel: React.FC<Props> = ({ decision, selfId, castDecisions, atoms }) => {
+function findFirstExistingAtomId(atoms: ContextAtom[] | undefined, candidates: string[]): string | null {
+  const list = arr(atoms);
+  const set = new Set(list.map((a) => String((a as any)?.id || '')));
+  for (const c of candidates) if (set.has(c)) return c;
+  return null;
+}
+
+export const DecisionPanel: React.FC<Props> = ({ decision, selfId, castDecisions, atoms, onJumpToAtomId }) => {
   const ranked = useMemo(() => arr(decision?.ranked), [decision]);
   const isNew = Boolean(ranked[0]?.action);
   const bestId = isNew ? (decision?.best?.id || null) : (decision?.best?.p?.id || decision?.best?.id || null);
@@ -97,6 +105,28 @@ export const DecisionPanel: React.FC<Props> = ({ decision, selfId, castDecisions
 
   // 2) If many agents have the exact same best action id, target inference or emotions/traits are likely flat.
   // (This panel can still be used standalone; only warns when castDecisions is provided.)
+
+
+  const jumpToGoal = (goalId: string) => {
+    const sid = String(selfId || '');
+    if (!sid || !onJumpToAtomId) return;
+
+    // Keep namespace/fallback compatibility explicit:
+    // 1) util:activeGoal (preferred post-S3), 2) util:domain (legacy), 3) goal:domain (legacy).
+    const preferred = [
+      `util:activeGoal:${sid}:${goalId}`,
+      `util:domain:${goalId}:${sid}`,
+      `goal:domain:${goalId}:${sid}`,
+    ];
+
+    const found = findFirstExistingAtomId(atoms, preferred) || preferred[0];
+    onJumpToAtomId(found);
+  };
+
+  const jumpToSupportAtom = (id: string) => {
+    if (!id || !onJumpToAtomId) return;
+    onJumpToAtomId(id);
+  };
   const castSameBestWarning = useMemo(() => {
     const list = arr(castDecisions);
     if (list.length < 3) return null;
@@ -217,7 +247,16 @@ export const DecisionPanel: React.FC<Props> = ({ decision, selfId, castDecisions
                   </div>
                   {breakdown.rows.slice(0, 24).map((r) => (
                     <div key={r.goalId} className="grid grid-cols-12 border-t border-white/5 bg-black/20 text-[10px] font-mono">
-                      <div className="col-span-5 p-2 truncate" title={r.goalId}>{r.goalId}</div>
+                      <div className="col-span-5 p-2 truncate" title={r.goalId}>
+                        {onJumpToAtomId ? (
+                          <button
+                            className="text-left underline decoration-white/20 hover:decoration-white/60"
+                            onClick={() => jumpToGoal(r.goalId)}
+                          >
+                            {r.goalId}
+                          </button>
+                        ) : r.goalId}
+                      </div>
                       <div className="col-span-2 p-2 text-right text-canon-accent">{Number(r.E).toFixed(2)}</div>
                       <div className={`col-span-2 p-2 text-right ${r.delta >= 0 ? 'text-emerald-300' : 'text-amber-300'}`}>{r.delta >= 0 ? '+' : ''}{Number(r.delta).toFixed(2)}</div>
                       <div className={`col-span-3 p-2 text-right ${r.contrib >= 0 ? 'text-emerald-200' : 'text-amber-200'}`}>{r.contrib >= 0 ? '+' : ''}{Number(r.contrib).toFixed(3)}</div>
@@ -243,6 +282,29 @@ export const DecisionPanel: React.FC<Props> = ({ decision, selfId, castDecisions
               </div>
             )}
 
+
+
+            {showDetails && isNew && current?.action?.supportAtoms?.length ? (
+              <div className="p-3 rounded bg-black/20 border border-canon-border/30 text-xs">
+                <div className="font-bold text-canon-text-light mb-2 uppercase tracking-wider">Support atoms</div>
+                <div className="flex flex-wrap gap-2">
+                  {arr(current.action.supportAtoms).map((a: any, i: number) => {
+                    const id = String(a?.id || '');
+                    if (!id) return null;
+                    return (
+                      <button
+                        key={id + i}
+                        className="px-2 py-1 rounded border border-white/10 bg-black/20 hover:bg-black/30 font-mono text-[10px]"
+                        onClick={() => jumpToSupportAtom(id)}
+                        title="Open in Atoms"
+                      >
+                        {id}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
             {!isNew && current.why?.blockedBy?.length > 0 && (
               <div className="p-3 rounded bg-red-900/10 border border-red-500/30 text-xs">
                 <div className="font-bold text-red-300 mb-2 uppercase tracking-wider">Blocked by</div>
