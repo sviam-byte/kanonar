@@ -19,6 +19,7 @@ import { DiffPanel } from './DiffPanel';
 import { AtomDiff } from '../../lib/snapshot/diffAtoms';
 import { DecisionPanel } from './DecisionPanel';
 import { ContextLensPanel } from './ContextLensPanel';
+import { OverviewPanel } from './OverviewPanel';
 import { AtomBrowser } from './AtomBrowser';
 import { ThreatPanel } from './ThreatPanel';
 import { ToMPanel } from './ToMPanel';
@@ -617,6 +618,14 @@ export const GoalLabResults: React.FC<Props> = ({
   const [isPreviewOpen, setPreviewOpen] = useState(false);
   const [activeTabIndex, setActiveTabIndex] = useState(0);
   const [selectedAtomId, setSelectedAtomId] = useState<string | null>(null);
+
+  // One-click navigation: from any diagnostics link jump into Atoms tab and focus atom.
+  const jumpToAtomId = (id: string | null) => {
+    if (!id) return;
+    setSelectedAtomId(id);
+    // Tab index is stable in this file: 2 === Atoms.
+    setActiveTabIndex(2);
+  };
   const [headersCollapsed, setHeadersCollapsed] = useState<boolean>(() => {
     try {
       return localStorage.getItem('goalLab.headersCollapsed') === '1';
@@ -794,7 +803,7 @@ export const GoalLabResults: React.FC<Props> = ({
                   <AtomInspector
                     atom={atom}
                     allAtoms={currentAtoms}
-                    onJumpToAtomId={(id) => setSelectedAtomId(id)}
+                    onJumpToAtomId={(id) => jumpToAtomId(id)}
                   />
                 </div>
               )}
@@ -1187,10 +1196,14 @@ export const GoalLabResults: React.FC<Props> = ({
         selfId={focusSelfId ?? undefined}
         castDecisions={castDecisions}
         atoms={currentAtoms}
+        onJumpToAtomId={jumpToAtomId}
       />
     );
     const ContextLensTab = () => (
-      <ContextLensPanel atoms={currentAtoms} selfId={focusSelfId ?? ''} />
+      <ContextLensPanel atoms={currentAtoms} selfId={focusSelfId ?? ''} onJumpToAtomId={jumpToAtomId} />
+    );
+    const OverviewTab = () => (
+      <OverviewPanel atoms={currentAtoms} decision={decision} selfId={focusSelfId ?? ''} onJumpToAtomId={jumpToAtomId} />
     );
     const DecisionGraphTab = () => (
         <DecisionGraphView
@@ -1420,11 +1433,12 @@ export const GoalLabResults: React.FC<Props> = ({
             case 21: return <TuningTab />;
             case 22: return <GoalLabTestsPanel selfId={focusId || ''} actorLabels={actorLabels as any} />;
             case 23: return <ContextLensTab />;
+            case 24: return <OverviewTab />;
             default: return <ExplainTab />;
         }
     };
 
-  const tabsList = ['Explain', 'Analysis', 'Atoms', 'Pipeline', 'Propagation', 'Cast', 'Threat', 'ToM', 'CtxMind', 'Emotions', 'Coverage', 'Possibilities', 'Decision', 'Decision Graph', 'Goal Graph', 'Access', 'Diff', 'EmotionExplain', 'Debug', 'Orchestrator', 'Simulation', 'Tuning', 'Tests', 'Context Lens'];
+  const tabsList = ['Explain', 'Analysis', 'Atoms', 'Pipeline', 'Propagation', 'Cast', 'Threat', 'ToM', 'CtxMind', 'Emotions', 'Coverage', 'Possibilities', 'Decision', 'Decision Graph', 'Goal Graph', 'Access', 'Diff', 'EmotionExplain', 'Debug', 'Orchestrator', 'Simulation', 'Tuning', 'Tests', 'Context Lens', 'Overview'];
 
   const focusId = (context as any)?.agentId;
   const focusLabel = (focusId && actorLabels?.[focusId]) ? actorLabels[focusId] : focusId;

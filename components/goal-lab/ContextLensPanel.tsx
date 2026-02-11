@@ -26,7 +26,7 @@ type Row = {
   diffPct: number | null;
 };
 
-export const ContextLensPanel: React.FC<{ atoms: ContextAtom[]; selfId: string; axes?: string[] }> = ({ atoms, selfId, axes }) => {
+export const ContextLensPanel: React.FC<{ atoms: ContextAtom[]; selfId: string; axes?: string[]; onJumpToAtomId?: (id: string) => void }> = ({ atoms, selfId, axes, onJumpToAtomId }) => {
   const axisList = axes ?? [
     'danger',
     'control',
@@ -57,6 +57,12 @@ export const ContextLensPanel: React.FC<{ atoms: ContextAtom[]; selfId: string; 
     });
   }, [atoms, selfId, axisList.join('|')]);
 
+  const jumpAxis = (r: Row) => {
+    if (!onJumpToAtomId) return;
+    // Prefer subjective final-axis atom; table tooltip still shows base → final mapping.
+    onJumpToAtomId(r.finalId);
+  };
+
   return (
     <div className="p-4 h-full overflow-auto custom-scrollbar">
       <div className="text-sm font-bold text-canon-text">Context Lens (objective → subjective)</div>
@@ -78,7 +84,16 @@ export const ContextLensPanel: React.FC<{ atoms: ContextAtom[]; selfId: string; 
           const tone = r.diff > 1e-6 ? 'text-emerald-300' : r.diff < -1e-6 ? 'text-amber-300' : 'text-canon-text-light';
           return (
             <div key={r.axis} className="grid grid-cols-12 border-t border-white/5 bg-black/20 text-[10px] font-mono">
-              <div className="col-span-3 p-2 truncate" title={`${r.baseId} → ${r.finalId}`}>{r.axis}</div>
+              <div className="col-span-3 p-2 truncate" title={`${r.baseId} → ${r.finalId}`}>
+                {onJumpToAtomId ? (
+                  <button
+                    className="text-left underline decoration-white/20 hover:decoration-white/60"
+                    onClick={() => jumpAxis(r)}
+                  >
+                    {r.axis}
+                  </button>
+                ) : r.axis}
+              </div>
               <div className="col-span-2 p-2 text-right text-canon-accent">{r.base.toFixed(2)}</div>
               <div className="col-span-2 p-2 text-right text-canon-text">{r.prio.toFixed(2)}</div>
               <div className="col-span-2 p-2 text-right text-canon-accent">{r.final.toFixed(2)}</div>
