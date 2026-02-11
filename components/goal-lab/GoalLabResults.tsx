@@ -1219,7 +1219,9 @@ export const GoalLabResults: React.FC<Props> = ({
       />
     );
 
-    const validationReport = useMemo(() => validateAtoms(currentAtoms || [], { autofix: false }), [currentAtoms]);
+    // IMPORTANT: keep this as a plain calculation here (no hook in tab/render helper paths).
+    // This avoids subtle hook-order regressions when tab composition changes.
+    const validationReport = validateAtoms(currentAtoms || [], { autofix: false });
     const PipelineFlowTab = () => <PipelineFlowPanel pipeline={pipelineV1 as any} />;
     const ValidatorTab = () => <ValidatorPanel report={validationReport as any} onSelectAtomId={jumpToAtomId} />;
     const DecisionGraphTab = () => (
