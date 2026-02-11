@@ -1,6 +1,7 @@
 // components/GoalSandbox/GoalSandbox.tsx
 
 import React, { useMemo, useState, useEffect, useCallback, useRef } from 'react';
+import type { ReactNode } from 'react';
 import {
   EntityType,
   Branch,
@@ -457,7 +458,50 @@ const cloneWorld = <T,>(w: T): T => {
   }
 };
 
-export const GoalSandbox: React.FC = () => {
+/**
+ * View-model contract exposed by GoalSandbox for external renderers (e.g. Console).
+ * Keep this additive/backward-compatible while legacy DebugShell still depends on it.
+ */
+export type GoalSandboxVM = {
+  // core dumps
+  sceneDump: any;
+  snapshotV1: any;
+  pipelineV1: any;
+  pipelineFrame: any;
+  pipelineStageId: string;
+
+  // selection / ids
+  perspectiveId: string;
+
+  // debug data
+  castRows: any[];
+  passportAtoms: any[];
+  passportMeta: any;
+  contextualMind: any;
+  locationScores: any;
+  tomScores: any;
+  tom: any;
+  atomDiff: any;
+  manualAtoms: any[];
+  worldState: any;
+
+  // callbacks used by DebugShell and console
+  onChangePipelineStageId: (id: string) => void;
+  onSetPerspectiveId: (id: string) => void;
+  onDownloadScene: () => void;
+  onImportScene: (file: File) => void;
+  onChangeManualAtoms: (atoms: any[]) => void;
+  onExportPipelineStage: () => void;
+  onExportPipelineAll: () => void;
+  onExportFullDebug: () => void;
+};
+
+type GoalSandboxProps = {
+  /** Optional custom renderer. If omitted, GoalSandbox renders its built-in UI. */
+  render?: (vm: GoalSandboxVM) => ReactNode;
+};
+
+export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render }) => {
   const { characters: sandboxCharacters, setDyadConfigFor } = useSandbox();
   const { activeModule } = useAccess();
   const devValidateAtoms = import.meta.env?.DEV ?? false;
@@ -2356,6 +2400,42 @@ export const GoalSandbox: React.FC = () => {
       ) : null}
     </div>
   );
+
+  // Build a stable VM so external shells can reuse GoalSandbox logic without duplicating state wiring.
+  const vm: GoalSandboxVM = useMemo(() => ({
+    sceneDump: sceneDumpV2 as any,
+    snapshotV1: snapshotV1 as any,
+    pipelineV1: pipelineV1 as any,
+    pipelineFrame: pipelineFrame as any,
+    pipelineStageId: currentPipelineStageId,
+    perspectiveId: focusId,
+    castRows: castRowsSafe as any,
+    passportAtoms: passportAtoms as any,
+    passportMeta: canonicalAtoms as any,
+    contextualMind: contextualMind as any,
+    locationScores: locationScores as any,
+    tomScores: tomScores as any,
+    tom: (worldState as any)?.tom?.[focusId as any],
+    atomDiff: atomDiff as any,
+    manualAtoms: manualAtoms as any,
+    worldState: worldState as any,
+    onChangePipelineStageId: (id) => setPipelineStageId(id),
+    onSetPerspectiveId: (id) => setPerspectiveAgentId(id),
+    onDownloadScene: onDownloadScene,
+    onImportScene: handleImportSceneClick,
+    onChangeManualAtoms: (atoms) => setManualAtoms(atoms as any),
+    onExportPipelineStage: handleExportPipelineStage,
+    onExportPipelineAll: handleExportPipelineAll,
+    onExportFullDebug: handleExportFullDebug,
+  }), [
+    sceneDumpV2, snapshotV1, pipelineV1, pipelineFrame, currentPipelineStageId,
+    focusId, castRowsSafe, passportAtoms, canonicalAtoms, contextualMind,
+    locationScores, tomScores, worldState, atomDiff, manualAtoms,
+    onDownloadScene, handleImportSceneClick, handleExportPipelineStage,
+    handleExportPipelineAll, handleExportFullDebug,
+  ]);
+
+  if (render) return <>{render(vm)}</>;
 
   return (
     <div className="flex h-full bg-[#020617] text-slate-300 overflow-hidden font-mono">
