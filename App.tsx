@@ -35,6 +35,7 @@ import { NarrativePage } from './pages/NarrativePage';
 import { RelationsLabPage } from './pages/RelationsLabPage';
 import { SimKitLabPage } from './pages/SimKitLabPage';
 import { LocationConstructorPage } from './pages/LocationConstructorPage';
+import { ConsolePage } from './pages/ConsolePage';
 
 
 function App() {
@@ -72,6 +73,7 @@ function App() {
                     <Route path="/planning-lab" element={<PlanningLabPage />} />
                     <Route path="/dialogue-lab" element={<DialogueLabPage />} />
                     <Route path="/goal-lab" element={<GoalLabPage />} />
+                    <Route path="/console" element={<ConsolePage />} />
                     <Route path="/simkit-lab" element={<SimKitLabPage />} />
                     <Route path="/relations-lab" element={<RelationsLabPage />} />
                     <Route path="/biography-lab" element={<BiographyLabPage />} />
