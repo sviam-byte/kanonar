@@ -92,6 +92,45 @@ export const DecisionPanel: React.FC<Props> = ({ decision, selfId, castDecisions
     return { rows, sum, cost, confidence, preConf, q };
   }, [current, isNew, goalEnergy]);
 
+
+
+  const whyNot = useMemo(() => {
+    if (!current) return null;
+
+    const curNode = isNew ? (current?.action || current) : current;
+    const bestDelta: Record<string, number> = isNew
+      ? (curNode?.deltaGoals || {})
+      : (curNode?.why?.parts?.deltaGoals || curNode?.deltaGoals || {});
+
+    const bestQ = isNew ? Number(current?.q ?? 0) : Number(current?.score ?? 0);
+    const alts = ranked.slice(0, 6).filter((_, i) => i !== sel).slice(0, 3);
+
+    const rows = alts.map((a: any) => {
+      const node = isNew ? (a?.action || a) : a;
+      const delta: Record<string, number> = isNew
+        ? (node?.deltaGoals || {})
+        : (node?.why?.parts?.deltaGoals || node?.deltaGoals || {});
+      const q = isNew ? Number(a?.q ?? 0) : Number(a?.score ?? 0);
+
+      const diffs: Array<{ goalId: string; diff: number }> = [];
+      const keys = new Set([...Object.keys(bestDelta || {}), ...Object.keys(delta || {})]);
+      for (const goalId of keys) {
+        const E = Number((goalEnergy as any)?.[goalId] ?? 0);
+        if (!Number.isFinite(E) || Math.abs(E) < 1e-9) continue;
+
+        const b = E * Number((bestDelta as any)?.[goalId] ?? 0);
+        const t = E * Number((delta as any)?.[goalId] ?? 0);
+        const d = b - t;
+        if (Math.abs(d) < 0.01) continue;
+        diffs.push({ goalId, diff: d });
+      }
+
+      diffs.sort((x, y) => Math.abs(y.diff) - Math.abs(x.diff));
+      return { a, q, dq: bestQ - q, diffs: diffs.slice(0, 3) };
+    });
+
+    return rows;
+  }, [current, ranked, sel, isNew, goalEnergy]);
   // Diagnostics: detect "everything is the same" failure mode.
   // 1) If no trait atoms participate in the top actions, personalization is likely broken.
   const traitUsedInTop = useMemo(() => {
@@ -284,6 +323,49 @@ export const DecisionPanel: React.FC<Props> = ({ decision, selfId, castDecisions
 
 
 
+
+
+            {whyNot && whyNot.length > 0 && (
+              <div className="p-3 rounded bg-black/20 border border-canon-border/30 text-xs">
+                <div className="font-bold text-canon-text-light mb-2 uppercase tracking-wider">Why this, not that</div>
+                <div className="space-y-2">
+                  {whyNot.map((w, idx) => {
+                    const node = isNew ? (w.a?.action || w.a) : w.a;
+                    const id = String(node?.id || node?.p?.id || idx);
+                    return (
+                      <div key={id} className="border border-white/10 rounded bg-black/30 p-2">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="font-bold">{labelWithTarget(w.a)}</div>
+                          <div className="font-mono text-[11px] text-canon-text-light">
+                            Q={Number(w.q).toFixed(3)} Δ={Number(w.dq).toFixed(3)}
+                          </div>
+                        </div>https://github.com/sviam-byte/kanonar/pull/143/conflict?name=components%252Fgoal-lab%252FGoalLabResults.tsx&ancestor_oid=b361a04c7d222b5aa7998c33fe335fc90127684b&base_oid=e7223ee5177e97d47c6cc9fc406974c348397fc4&head_oid=bef18de1b1e576c8cc4a20280909dee3c768f13e
+                        {w.diffs.length ? (
+                          <div className="mt-2 space-y-1 font-mono text-[11px]">
+                            {w.diffs.map((d) => (
+                              <div key={d.goalId} className="flex items-center justify-between gap-3">
+                                <button
+                                  className="underline decoration-white/20 hover:decoration-white/60 truncate"
+                                  onClick={() => jumpToGoal(d.goalId)}
+                                  title={d.goalId}
+                                >
+                                  {d.goalId}
+                                </button>
+                                <div className={d.diff >= 0 ? 'text-emerald-200' : 'text-amber-200'}>
+                                  Δ={d.diff >= 0 ? '+' : ''}{d.diff.toFixed(3)}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="mt-2 text-[11px] text-canon-text-light/60 italic">No meaningful goal-diffs (maybe deltaGoals are flat).</div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
             {showDetails && isNew && current?.action?.supportAtoms?.length ? (
               <div className="p-3 rounded bg-black/20 border border-canon-border/30 text-xs">
                 <div className="font-bold text-canon-text-light mb-2 uppercase tracking-wider">Support atoms</div>

@@ -110,6 +110,67 @@ export function validateAtoms(atoms: ContextAtom[], opts?: { autofix?: boolean }
   }
 
   // 2. Logic Consistency Checks
+  // 2a. Goal/Util/Action invariants (GoalLab)
+
+  // Invariant: action:* atoms must NOT depend on goal:* directly (must go through util:*).
+  for (const a of atoms) {
+    const id = String(a?.id ?? '');
+    if (!id.startsWith('action:')) continue;
+    const used = Array.isArray((a as any)?.trace?.usedAtomIds) ? (a as any).trace.usedAtomIds : [];
+    const bad = used.filter((x: any) => typeof x === 'string' && x.startsWith('goal:'));
+    if (bad.length) {
+      push(
+        'error',
+        'invariant.action_depends_on_goal',
+        'Action atom depends on goal:* (must go through util:*)',
+        id,
+        { badUsedAtomIds: bad.slice(0, 12) }
+      );
+    }
+  }
+
+  // Invariant: if goal:domain:* exists, util:domain:* counterpart should usually exist (projection).
+  const goalDomains = atoms.filter(a => String(a?.id ?? '').startsWith('goal:domain:'));
+  if (goalDomains.length) {
+    let missing = 0;
+    for (const g of goalDomains) {
+      const gid = String(g.id);
+      const uid = gid.replace(/^goal:/, 'util:');
+      if (!atoms.some(a => a.id === uid)) missing++;
+    }
+    if (missing > 0) {
+      push(
+        'warn',
+        'invariant.goal_to_util_projection_missing',
+        `Some goal:domain atoms have no util:* projection (missing=${missing})`,
+        goalDomains[0]?.id,
+        {
+          exampleGoalId: goalDomains[0]?.id,
+          exampleUtilId: String(goalDomains[0]?.id ?? '').replace(/^goal:/, 'util:'),
+        }
+      );
+    }
+  }
+
+  // Heuristic: if util:activeGoal exists, action:score traces should carry breakdown in trace.parts.
+  const hasActiveGoal = atoms.some(a => String(a?.id ?? '').startsWith('util:activeGoal:'));
+  const actionScoreAtoms = atoms.filter(a => String(a?.id ?? '').startsWith('action:score:'));
+  if (hasActiveGoal && actionScoreAtoms.length) {
+    let empty = 0;
+    for (const a of actionScoreAtoms) {
+      const parts = (a as any)?.trace?.parts;
+      if (!parts) empty++;
+    }
+    if (empty === actionScoreAtoms.length) {
+      push(
+        'info',
+        'hint.decision_trace_parts_sparse',
+        'Decision atoms have sparse trace.parts; consider adding breakdown (deltaGoals, cost) for UI explanations',
+        actionScoreAtoms[0]?.id
+      );
+    }
+  }
+
   
   // Escape vs Exits
   const escape = getMag(atoms, 'world:map:escape:');

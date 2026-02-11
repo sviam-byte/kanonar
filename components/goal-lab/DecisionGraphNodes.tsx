@@ -75,76 +75,79 @@ function Badges({ energy, importance }: { energy?: number; importance?: number }
   );
 }
 
-/**
- * Circular node for source/context inputs.
- */
-export const SourceNode: React.FC<NodeProps<BaseNodeData>> = ({ data }) => {
-  const val = data?.value;
-  const isActive = Number.isFinite(val) ? Math.abs(Number(val)) > 1e-6 : true;
+function RectNode({
+  data,
+  selected,
+  accent = 'rgba(148,163,184,0.35)',
+  glow = 'rgba(56,189,248,0.22)',
+  width = 280,
+}: {
+  data?: BaseNodeData;
+  selected?: boolean;
+  accent?: string;
+  glow?: string;
+  width?: number;
+}) {
   const energyRaw = Number(data?.energy);
   const importanceRaw = Number(data?.importance);
   const energy = clamp01(energyRaw);
   const importance = clamp01(importanceRaw);
+  const intensity = Math.max(energy, importance);
+
   return (
     <div
       style={{
-        width: 86,
-        height: 86,
-        borderRadius: 999,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        flexDirection: 'column',
-        border: `1px solid rgba(148, 163, 184, ${0.25 + 0.5 * energy})`,
-        background: isActive ? 'rgba(15, 23, 42, 0.88)' : 'rgba(15, 23, 42, 0.45)',
+        width,
+        minHeight: 62,
+        borderRadius: 14,
+        padding: '10px 12px',
+        border: `1px solid ${selected ? 'rgba(56, 189, 248, 0.75)' : accent}`,
+        background: selected ? 'rgba(14, 116, 144, 0.18)' : 'rgba(15, 23, 42, 0.88)',
         color: '#e2e8f0',
-        padding: 8,
-        textAlign: 'center',
-        boxShadow: energy > 0 ? `0 0 ${4 + energy * 8}px rgba(34, 197, 94, ${0.2 + 0.35 * energy})` : 'none',
+        boxShadow: intensity > 0 ? `0 0 ${6 + intensity * 14}px ${glow}` : 'none',
       }}
     >
-      <div style={{ fontSize: 11, fontWeight: 700, lineHeight: 1.1 }}>{data?.label}</div>
-      {Number.isFinite(val) ? (
-        <div style={{ marginTop: 4, fontSize: 10, opacity: 0.75, fontFamily: mono }}>{formatSmall(val)}</div>
+      <div style={{ fontSize: 12, fontWeight: 800, lineHeight: 1.15 }}>{data?.label}</div>
+      {data?.subtitle ? (
+        <div style={{ marginTop: 4, fontSize: 10, opacity: 0.75, fontFamily: mono, whiteSpace: 'pre-line' }}>
+          {data.subtitle}
+        </div>
+      ) : null}
+      {Number.isFinite(data?.value) ? (
+        <div style={{ marginTop: 6, fontSize: 11, opacity: 0.85, fontFamily: mono }}>
+          score: {formatSmall(data?.value)}
+        </div>
       ) : null}
       <Badges energy={energyRaw} importance={importanceRaw} />
     </div>
   );
+}
+
+/**
+ * Source/context inputs — now rectangular (no circles).
+ */
+export const SourceNode: React.FC<NodeProps<BaseNodeData>> = ({ data }) => {
+  return (
+    <RectNode
+      data={data}
+      width={260}
+      accent="rgba(148,163,184,0.30)"
+      glow="rgba(250,204,21,0.20)"
+    />
+  );
 };
 
 /**
- * Diamond node for lens/trait inputs.
+ * Lens/traits — now rectangular (no diamonds).
  */
 export const LensNode: React.FC<NodeProps<BaseNodeData>> = ({ data }) => {
-  const energyRaw = Number(data?.energy);
-  const importanceRaw = Number(data?.importance);
-  const energy = clamp01(energyRaw);
-  const importance = clamp01(importanceRaw);
   return (
-    <div
-      style={{
-        width: 180,
-        height: 56,
-        transform: 'rotate(45deg)',
-        borderRadius: 12,
-        border: `1px solid rgba(217, 70, 239, ${0.2 + 0.5 * (energy || importance)})`,
-        background: `rgba(217, 70, 239, ${0.08 + 0.25 * energy})`,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        color: '#e2e8f0',
-        boxShadow:
-          energy > 0 ? `0 0 ${4 + energy * 10}px rgba(217, 70, 239, ${0.2 + 0.35 * energy})` : 'none',
-      }}
-    >
-      <div style={{ transform: 'rotate(-45deg)', textAlign: 'center', padding: '0 10px' }}>
-        <div style={{ fontSize: 11, fontWeight: 700, lineHeight: 1.1 }}>{data?.label}</div>
-        {data?.subtitle ? (
-          <div style={{ marginTop: 3, fontSize: 10, opacity: 0.75, fontFamily: mono }}>{data.subtitle}</div>
-        ) : null}
-        <Badges energy={energyRaw} importance={importanceRaw} />
-      </div>
-    </div>
+    <RectNode
+      data={data}
+      width={260}
+      accent="rgba(217,70,239,0.35)"
+      glow="rgba(217,70,239,0.22)"
+    />
   );
 };
 
@@ -152,39 +155,13 @@ export const LensNode: React.FC<NodeProps<BaseNodeData>> = ({ data }) => {
  * Larger rectangular node for goals.
  */
 export const GoalNode: React.FC<NodeProps<BaseNodeData>> = ({ data, selected }) => {
-  const energyRaw = Number(data?.energy);
-  const importanceRaw = Number(data?.importance);
-  const energy = clamp01(energyRaw);
-  const importance = clamp01(importanceRaw);
   return (
-    <div
-      style={{
-        width: 280,
-        minHeight: 62,
-        borderRadius: 14,
-        padding: '10px 12px',
-        border: `1px solid ${
-          selected ? 'rgba(56, 189, 248, 0.75)' : `rgba(148, 163, 184, ${0.25 + 0.5 * energy})`
-        }`,
-        background: selected ? 'rgba(14, 116, 144, 0.28)' : 'rgba(15, 23, 42, 0.88)',
-        color: '#e2e8f0',
-        boxShadow: selected
-          ? '0 0 0 1px rgba(56,189,248,0.35)'
-          : energy > 0
-            ? `0 0 ${6 + energy * 12}px rgba(34, 197, 94, ${0.2 + 0.35 * energy})`
-            : 'none',
-      }}
-    >
-      <div style={{ fontSize: 12, fontWeight: 800, lineHeight: 1.15 }}>{data?.label}</div>
-      {data?.subtitle ? (
-        <div style={{ marginTop: 4, fontSize: 10, opacity: 0.75 }}>{data.subtitle}</div>
-      ) : null}
-      {Number.isFinite(data?.value) ? (
-        <div style={{ marginTop: 6, fontSize: 11, opacity: 0.85, fontFamily: mono }}>
-          score: {formatSmall(data.value)}
-        </div>
-      ) : null}
-      <Badges energy={energyRaw} importance={importanceRaw} />
-    </div>
+    <RectNode
+      data={data}
+      selected={selected}
+      width={300}
+      accent="rgba(148,163,184,0.35)"
+      glow="rgba(34,197,94,0.20)"
+    />
   );
 };

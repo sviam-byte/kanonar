@@ -1,6 +1,7 @@
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import type { ContextSnapshot, ContextualGoalScore, ContextAtom, TemporalContextConfig, ContextualGoalContribution } from '../../lib/context/v2/types';
+import { validateAtoms } from '../../lib/context/validate/frameValidator';
 import { GOAL_DEFS } from '../../lib/goals/space'; 
 import { describeGoal } from '../../lib/goals/goalCatalog';
 import { AffectState, GoalTuningConfig, GoalCategoryId } from '../../types';
@@ -20,6 +21,7 @@ import { AtomDiff } from '../../lib/snapshot/diffAtoms';
 import { DecisionPanel } from './DecisionPanel';
 import { ContextLensPanel } from './ContextLensPanel';
 import { OverviewPanel } from './OverviewPanel';
+import { StoryModePanel } from './StoryModePanel';
 import { AtomBrowser } from './AtomBrowser';
 import { ThreatPanel } from './ThreatPanel';
 import { ToMPanel } from './ToMPanel';
@@ -40,6 +42,22 @@ import { SimulatorLab } from '../../lib/goal-lab/labs/SimulatorLab';
 import { defaultProducers } from '../../lib/orchestrator/defaultProducers';
 import { generateGoalLabReportMarkdown } from '../../lib/goal-lab/reporting/generateGoalLabReport';
 import { GoalLabTestsPanel } from './GoalLabTestsPanel';
+
+import { ValidatorPanel } from './ValidatorPanel';
+import { PipelineFlowPanel } from './PipelineFlowPanel';
+
+/**
+ * IMPORTANT (hotfix):
+ * React error #310 happens when hooks order changes between renders.
+ * In GoalLabResults we often have debug-only memoizations that may end up conditional.
+ * This local "useMemo" is NOT a React hook and is safe to call anywhere.
+ * Tradeoff: less perf, but stable production builds.
+ */
+const useMemo = <T,>(factory: () => T, _deps: any[]): T => {
+  return factory();
+};
+
+
 
 interface Props {
   context: ContextSnapshot | null;
@@ -1205,6 +1223,21 @@ export const GoalLabResults: React.FC<Props> = ({
     const OverviewTab = () => (
       <OverviewPanel atoms={currentAtoms} decision={decision} selfId={focusSelfId ?? ''} onJumpToAtomId={jumpToAtomId} />
     );
+    const StoryModeTab = () => (
+      <StoryModePanel
+        atoms={currentAtoms}
+        decision={decision}
+        selfId={focusSelfId ?? ''}
+        actorLabels={actorLabels as any}
+        onJumpToAtomId={jumpToAtomId}
+      />
+    );
+
+    // IMPORTANT: keep this as a plain calculation here (no hook in tab/render helper paths).
+    // This avoids subtle hook-order regressions when tab composition changes.
+    const validationReport = validateAtoms(currentAtoms || [], { autofix: false });
+    const PipelineFlowTab = () => <PipelineFlowPanel pipeline={pipelineV1 as any} />;
+    const ValidatorTab = () => <ValidatorPanel report={validationReport as any} onSelectAtomId={jumpToAtomId} />;
     const DecisionGraphTab = () => (
         <DecisionGraphView
             frame={frame}
@@ -1413,32 +1446,49 @@ export const GoalLabResults: React.FC<Props> = ({
             case 1: return <AnalysisTab />;
             case 2: return <AtomsTab />;
             case 3: return <PipelineTab />;
-            case 4: return <PropagationTab />;
-            case 5: return <CastTab />;
-            case 6: return <ThreatTab />;
-            case 7: return <ToMTab />;
-            case 8: return <MindTab />;
-            case 9: return <EmotionsTab />;
-            case 10: return <CoverageTab />;
-            case 11: return <PossibilitiesTab />;
-            case 12: return <DecisionTab />;
-            case 13: return <DecisionGraphTab />;
-            case 14: return <GoalActionGraphView />;
-            case 15: return <AccessTab />;
-            case 16: return <DiffTab />;
-            case 17: return <EmotionExplainTab />;
-            case 18: return <DebugTab />;
-            case 19: return <OrchestratorTab />;
-            case 20: return <SimulatorTab />;
-            case 21: return <TuningTab />;
-            case 22: return <GoalLabTestsPanel selfId={focusId || ''} actorLabels={actorLabels as any} />;
-            case 23: return <ContextLensTab />;
-            case 24: return <OverviewTab />;
+            case 4: return <PipelineFlowTab />;
+            case 5: return <ValidatorTab />;
+            case 6: return <PropagationTab />;
+            case 7: return <CastTab />;
+            case 8: return <ThreatTab />;
+            case 9: return <ToMTab />;
+            case 10: return <MindTab />;
+            case 11: return <EmotionsTab />;
+            case 12: return <CoverageTab />;
+            case 13: return <PossibilitiesTab />;
+            case 14: return <DecisionTab />;
+            case 15: return <DecisionGraphTab />;
+            case 16: return (
+              <GoalActionGraphView
+                atoms={currentAtoms}
+                decision={decision}
+                selfId={focusSelfId ?? ''}
+                onJumpToAtomId={jumpToAtomId}
+              />
+            );
+            case 17: return <AccessTab />;
+            case 18: return <DiffTab />;
+            case 19: return <EmotionExplainTab />;
+            case 20: return <DebugTab />;
+            case 21: return <OrchestratorTab />;
+            case 22: return <SimulatorTab />;
+            case 23: return <TuningTab />;
+            case 24: return <GoalLabTestsPanel selfId={focusId || ''} actorLabels={actorLabels as any} />;
+            case 25: return <ContextLensTab />;
+            case 26: return <OverviewTab />;
+            case 27: return <StoryModeTab />;
             default: return <ExplainTab />;
         }
     };
 
-  const tabsList = ['Explain', 'Analysis', 'Atoms', 'Pipeline', 'Propagation', 'Cast', 'Threat', 'ToM', 'CtxMind', 'Emotions', 'Coverage', 'Possibilities', 'Decision', 'Decision Graph', 'Goal Graph', 'Access', 'Diff', 'EmotionExplain', 'Debug', 'Orchestrator', 'Simulation', 'Tuning', 'Tests', 'Context Lens', 'Overview'];
+  const tabsList = [
+    'Explain', 'Analysis', 'Atoms',
+    'Pipeline', 'Pipeline Flow', 'Validator',
+    'Propagation', 'Cast', 'Threat', 'ToM', 'CtxMind', 'Emotions', 'Coverage',
+    'Possibilities', 'Decision', 'Decision Graph', 'Goal Graph', 'Access', 'Diff',
+    'EmotionExplain', 'Debug', 'Orchestrator', 'Simulation', 'Tuning', 'Tests',
+    'Context Lens', 'Overview', 'Story'
+  ];
 
   const focusId = (context as any)?.agentId;
   const focusLabel = (focusId && actorLabels?.[focusId]) ? actorLabels[focusId] : focusId;

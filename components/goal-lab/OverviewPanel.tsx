@@ -119,6 +119,11 @@ export const OverviewPanel: React.FC<Props> = ({ atoms, decision, selfId, onJump
     return { rows, sum, cost, confidence, q };
   }, [best, goalEnergy]);
 
+  const bestDeltaGoals = useMemo(() => {
+    const dg: Record<string, number> = (best as any)?.deltaGoals || (best as any)?.why?.parts?.deltaGoals || (best as any)?.action?.deltaGoals || {};
+    return dg || {};
+  }, [best]);
+
   const alternatives = useMemo(() => {
     const bestId = String(best?.id || best?.action?.id || '');
     return ranked
@@ -136,10 +141,27 @@ export const OverviewPanel: React.FC<Props> = ({ atoms, decision, selfId, onJump
           q: Number(r?.q ?? r?.score ?? 0),
           cost: Number(action?.cost ?? 0),
           confidence: clamp01(Number(action?.confidence ?? 1)),
+          deltaGoals: (action?.deltaGoals || action?.why?.parts?.deltaGoals || {}) as Record<string, number>,
         };
       })
       .filter((a) => Boolean(a.id));
   }, [ranked, best]);
+
+  const whyNotDiff = (altDeltaGoals: Record<string, number>) => {
+    const rows = [] as Array<{ goalId: string; best: number; alt: number; diff: number }>;
+    const keys = new Set<string>([...Object.keys(bestDeltaGoals || {}), ...Object.keys(altDeltaGoals || {})]);
+    for (const goalId of keys) {
+      const E = Number((goalEnergy as any)?.[goalId] ?? 0);
+      if (!Number.isFinite(E) || Math.abs(E) < 1e-9) continue;
+      const b = E * Number((bestDeltaGoals as any)?.[goalId] ?? 0);
+      const a = E * Number((altDeltaGoals as any)?.[goalId] ?? 0);
+      const d = b - a;
+      if (Math.abs(d) < 0.01) continue;
+      rows.push({ goalId, best: b, alt: a, diff: d });
+    }
+    rows.sort((x, y) => Math.abs(y.diff) - Math.abs(x.diff));
+    return rows.slice(0, 3);
+  };
 
   const jump = (id: string) => {
     if (!id || !onJumpToAtomId) return;
@@ -308,25 +330,53 @@ export const OverviewPanel: React.FC<Props> = ({ atoms, decision, selfId, onJump
               {alternatives.map((a) => {
                 const id = `action:score:${selfId}:${a.id}`;
                 const dq = (bestQ !== null ? (bestQ - a.q) : null);
+                const diffs = whyNotDiff(a.deltaGoals || {});
                 return (
-                  <div key={a.id} className="flex items-center justify-between gap-3 border border-white/10 rounded bg-black/20 p-2">
-                    <div className="min-w-0">
-                      <div className="text-[11px] text-canon-text">
-                        <span className="font-mono">{a.kind}</span>
-                        {a.targetId ? <span className="ml-2 text-canon-text-light/70">→ {String(a.targetId)}</span> : null}
+                  <div key={a.id} className="border border-white/10 rounded bg-black/20 p-2">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="text-[11px] text-canon-text">
+                          <span className="font-mono">{a.kind}</span>
+                          {a.targetId ? <span className="ml-2 text-canon-text-light/70">→ {String(a.targetId)}</span> : null}
+                        </div>
+                        <div className="text-[10px] font-mono text-canon-text-light/70">
+                          Q={fmt3(a.q)}{dq !== null ? ` (Δ=${dq >= 0 ? '+' : ''}${fmt3(dq)})` : ''} · cost={fmt2(a.cost)} · conf={fmt2(a.confidence)}
+                        </div>
                       </div>
-                      <div className="text-[10px] font-mono text-canon-text-light/70">
-                        Q={fmt3(a.q)}{dq !== null ? ` (Δ=${dq >= 0 ? '+' : ''}${fmt3(dq)})` : ''} · cost={fmt2(a.cost)} · conf={fmt2(a.confidence)}
-                      </div>
+                      {onJumpToAtomId ? (
+                        <button
+                          className="shrink-0 px-2 py-1 rounded border border-white/10 bg-black/30 hover:bg-black/40 text-[10px] font-mono"
+                          onClick={() => jump(id)}
+                          title="Open decision atom in Atoms"
+                        >
+                          open atom
+                        </button>
+                      ) : null}
                     </div>
-                    {onJumpToAtomId ? (
-                      <button
-                        className="shrink-0 px-2 py-1 rounded border border-white/10 bg-black/30 hover:bg-black/40 text-[10px] font-mono"
-                        onClick={() => jump(id)}
-                        title="Open decision atom in Atoms"
-                      >
-                        open atom
-                      </button>
+
+                    {diffs.length ? (
+                      <div className="mt-2 text-[10px]">
+                        <div className="text-[9px] uppercase tracking-wider font-bold text-canon-text-light">main reasons (chosen vs this)</div>
+                        <div className="mt-1 space-y-1 font-mono">
+                          {diffs.map((d) => (
+                            <div key={d.goalId} className="flex items-center justify-between gap-3">
+                              <div className="truncate" title={d.goalId}>
+                                {onJumpToAtomId ? (
+                                  <button
+                                    className="underline decoration-white/20 hover:decoration-white/60"
+                                    onClick={() => jumpGoal(d.goalId)}
+                                  >
+                                    {d.goalId}
+                                  </button>
+                                ) : d.goalId}
+                              </div>
+                              <div className={`${d.diff >= 0 ? 'text-emerald-200' : 'text-amber-200'}`}>
+                                Δ={d.diff >= 0 ? '+' : ''}{fmt3(d.diff)}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
                     ) : null}
                   </div>
                 );
