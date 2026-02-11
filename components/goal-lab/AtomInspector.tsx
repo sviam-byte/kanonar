@@ -1,6 +1,7 @@
 import React from 'react';
 import type { ContextAtom } from '../../lib/context/v2/types';
 import { describeAtom } from '../../lib/context/v2/describeAtom';
+import { AtomDependencyGraph } from './AtomDependencyGraph';
 import { resolveAtomSpec } from '../../lib/context/catalog/atomSpecs';
 import { arr } from '../../lib/utils/arr';
 
@@ -227,6 +228,18 @@ export function AtomInspector({ atom, allAtoms, onJumpToAtomId }: Props) {
 {JSON.stringify(partsRaw, null, 2)}
             </pre>
           )}
+        </div>
+      </div>
+
+
+
+      <div className="mt-4 p-3 rounded-lg border border-canon-border bg-black/20">
+        <div className="text-[10px] uppercase tracking-wider text-canon-text-light font-bold">Dependency graph</div>
+        <div className="mt-2 text-[11px] text-canon-text-light/70">
+          usedAtomIds (depth=2). Click node → jump.
+        </div>
+        <div className="mt-2">
+          <AtomDependencyGraph atom={atom} allAtoms={allAtoms} depth={2} onJumpToAtomId={onJumpToAtomId} />
         </div>
       </div>
 

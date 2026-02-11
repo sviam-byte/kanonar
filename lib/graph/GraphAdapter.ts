@@ -239,11 +239,25 @@ export function buildDecisionTripletGraph({
             label,
             atomId: c.atomId,
             value: w,
+            // Helps renderer show explicit provenance without guessing.
+            subtitle: c.atomId ? String(c.atomId) : undefined,
           },
           selectable: false,
           style: isLens
-            ? { width: 180, height: NODE_HEIGHT }
-            : { width: 86, height: 86 },
+            ? {
+                width: INPUT_NODE_WIDTH,
+                height: NODE_HEIGHT,
+                borderRadius: 14,
+                border: '1px solid rgba(217, 70, 239, 0.45)',
+                background: 'rgba(217, 70, 239, 0.08)',
+              }
+            : {
+                width: INPUT_NODE_WIDTH,
+                height: NODE_HEIGHT,
+                borderRadius: 14,
+                border: '1px solid rgba(56, 189, 248, 0.45)',
+                background: 'rgba(56, 189, 248, 0.08)',
+              },
         });
       }
 

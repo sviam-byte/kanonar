@@ -40,9 +40,17 @@ type Props = {
   selfId?: string;
   castDecisions?: any[];
   atoms?: ContextAtom[];
+  onJumpToAtomId?: (id: string) => void;
 };
 
-export const DecisionPanel: React.FC<Props> = ({ decision, selfId, castDecisions, atoms }) => {
+function findFirstExistingAtomId(atoms: ContextAtom[] | undefined, candidates: string[]): string | null {
+  const list = arr(atoms);
+  const set = new Set(list.map((a) => String((a as any)?.id || '')));
+  for (const c of candidates) if (set.has(c)) return c;
+  return null;
+}
+
+export const DecisionPanel: React.FC<Props> = ({ decision, selfId, castDecisions, atoms, onJumpToAtomId }) => {
   const ranked = useMemo(() => arr(decision?.ranked), [decision]);
   const isNew = Boolean(ranked[0]?.action);
   const bestId = isNew ? (decision?.best?.id || null) : (decision?.best?.p?.id || decision?.best?.id || null);
@@ -84,6 +92,45 @@ export const DecisionPanel: React.FC<Props> = ({ decision, selfId, castDecisions
     return { rows, sum, cost, confidence, preConf, q };
   }, [current, isNew, goalEnergy]);
 
+
+
+  const whyNot = useMemo(() => {
+    if (!current) return null;
+
+    const curNode = isNew ? (current?.action || current) : current;
+    const bestDelta: Record<string, number> = isNew
+      ? (curNode?.deltaGoals || {})
+      : (curNode?.why?.parts?.deltaGoals || curNode?.deltaGoals || {});
+
+    const bestQ = isNew ? Number(current?.q ?? 0) : Number(current?.score ?? 0);
+    const alts = ranked.slice(0, 6).filter((_, i) => i !== sel).slice(0, 3);
+
+    const rows = alts.map((a: any) => {
+      const node = isNew ? (a?.action || a) : a;
+      const delta: Record<string, number> = isNew
+        ? (node?.deltaGoals || {})
+        : (node?.why?.parts?.deltaGoals || node?.deltaGoals || {});
+      const q = isNew ? Number(a?.q ?? 0) : Number(a?.score ?? 0);
+
+      const diffs: Array<{ goalId: string; diff: number }> = [];
+      const keys = new Set([...Object.keys(bestDelta || {}), ...Object.keys(delta || {})]);
+      for (const goalId of keys) {
+        const E = Number((goalEnergy as any)?.[goalId] ?? 0);
+        if (!Number.isFinite(E) || Math.abs(E) < 1e-9) continue;
+
+        const b = E * Number((bestDelta as any)?.[goalId] ?? 0);
+        const t = E * Number((delta as any)?.[goalId] ?? 0);
+        const d = b - t;
+        if (Math.abs(d) < 0.01) continue;
+        diffs.push({ goalId, diff: d });
+      }
+
+      diffs.sort((x, y) => Math.abs(y.diff) - Math.abs(x.diff));
+      return { a, q, dq: bestQ - q, diffs: diffs.slice(0, 3) };
+    });
+
+    return rows;
+  }, [current, ranked, sel, isNew, goalEnergy]);
   // Diagnostics: detect "everything is the same" failure mode.
   // 1) If no trait atoms participate in the top actions, personalization is likely broken.
   const traitUsedInTop = useMemo(() => {
@@ -97,6 +144,28 @@ export const DecisionPanel: React.FC<Props> = ({ decision, selfId, castDecisions
 
   // 2) If many agents have the exact same best action id, target inference or emotions/traits are likely flat.
   // (This panel can still be used standalone; only warns when castDecisions is provided.)
+
+
+  const jumpToGoal = (goalId: string) => {
+    const sid = String(selfId || '');
+    if (!sid || !onJumpToAtomId) return;
+
+    // Keep namespace/fallback compatibility explicit:
+    // 1) util:activeGoal (preferred post-S3), 2) util:domain (legacy), 3) goal:domain (legacy).
+    const preferred = [
+      `util:activeGoal:${sid}:${goalId}`,
+      `util:domain:${goalId}:${sid}`,
+      `goal:domain:${goalId}:${sid}`,
+    ];
+
+    const found = findFirstExistingAtomId(atoms, preferred) || preferred[0];
+    onJumpToAtomId(found);
+  };
+
+  const jumpToSupportAtom = (id: string) => {
+    if (!id || !onJumpToAtomId) return;
+    onJumpToAtomId(id);
+  };
   const castSameBestWarning = useMemo(() => {
     const list = arr(castDecisions);
     if (list.length < 3) return null;
@@ -217,7 +286,16 @@ export const DecisionPanel: React.FC<Props> = ({ decision, selfId, castDecisions
                   </div>
                   {breakdown.rows.slice(0, 24).map((r) => (
                     <div key={r.goalId} className="grid grid-cols-12 border-t border-white/5 bg-black/20 text-[10px] font-mono">
-                      <div className="col-span-5 p-2 truncate" title={r.goalId}>{r.goalId}</div>
+                      <div className="col-span-5 p-2 truncate" title={r.goalId}>
+                        {onJumpToAtomId ? (
+                          <button
+                            className="text-left underline decoration-white/20 hover:decoration-white/60"
+                            onClick={() => jumpToGoal(r.goalId)}
+                          >
+                            {r.goalId}
+                          </button>
+                        ) : r.goalId}
+                      </div>
                       <div className="col-span-2 p-2 text-right text-canon-accent">{Number(r.E).toFixed(2)}</div>
                       <div className={`col-span-2 p-2 text-right ${r.delta >= 0 ? 'text-emerald-300' : 'text-amber-300'}`}>{r.delta >= 0 ? '+' : ''}{Number(r.delta).toFixed(2)}</div>
                       <div className={`col-span-3 p-2 text-right ${r.contrib >= 0 ? 'text-emerald-200' : 'text-amber-200'}`}>{r.contrib >= 0 ? '+' : ''}{Number(r.contrib).toFixed(3)}</div>
@@ -243,6 +321,72 @@ export const DecisionPanel: React.FC<Props> = ({ decision, selfId, castDecisions
               </div>
             )}
 
+
+
+
+
+            {whyNot && whyNot.length > 0 && (
+              <div className="p-3 rounded bg-black/20 border border-canon-border/30 text-xs">
+                <div className="font-bold text-canon-text-light mb-2 uppercase tracking-wider">Why this, not that</div>
+                <div className="space-y-2">
+                  {whyNot.map((w, idx) => {
+                    const node = isNew ? (w.a?.action || w.a) : w.a;
+                    const id = String(node?.id || node?.p?.id || idx);
+                    return (
+                      <div key={id} className="border border-white/10 rounded bg-black/30 p-2">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="font-bold">{labelWithTarget(w.a)}</div>
+                          <div className="font-mono text-[11px] text-canon-text-light">
+                            Q={Number(w.q).toFixed(3)} Δ={Number(w.dq).toFixed(3)}
+                          </div>
+                        </div>
+                        {w.diffs.length ? (
+                          <div className="mt-2 space-y-1 font-mono text-[11px]">
+                            {w.diffs.map((d) => (
+                              <div key={d.goalId} className="flex items-center justify-between gap-3">
+                                <button
+                                  className="underline decoration-white/20 hover:decoration-white/60 truncate"
+                                  onClick={() => jumpToGoal(d.goalId)}
+                                  title={d.goalId}
+                                >
+                                  {d.goalId}
+                                </button>
+                                <div className={d.diff >= 0 ? 'text-emerald-200' : 'text-amber-200'}>
+                                  Δ={d.diff >= 0 ? '+' : ''}{d.diff.toFixed(3)}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="mt-2 text-[11px] text-canon-text-light/60 italic">No meaningful goal-diffs (maybe deltaGoals are flat).</div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+            {showDetails && isNew && current?.action?.supportAtoms?.length ? (
+              <div className="p-3 rounded bg-black/20 border border-canon-border/30 text-xs">
+                <div className="font-bold text-canon-text-light mb-2 uppercase tracking-wider">Support atoms</div>
+                <div className="flex flex-wrap gap-2">
+                  {arr(current.action.supportAtoms).map((a: any, i: number) => {
+                    const id = String(a?.id || '');
+                    if (!id) return null;
+                    return (
+                      <button
+                        key={id + i}
+                        className="px-2 py-1 rounded border border-white/10 bg-black/20 hover:bg-black/30 font-mono text-[10px]"
+                        onClick={() => jumpToSupportAtom(id)}
+                        title="Open in Atoms"
+                      >
+                        {id}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
             {!isNew && current.why?.blockedBy?.length > 0 && (
               <div className="p-3 rounded bg-red-900/10 border border-red-500/30 text-xs">
                 <div className="font-bold text-red-300 mb-2 uppercase tracking-wider">Blocked by</div>
