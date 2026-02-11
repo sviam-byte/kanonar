@@ -339,7 +339,7 @@ export const DecisionPanel: React.FC<Props> = ({ decision, selfId, castDecisions
                           <div className="font-mono text-[11px] text-canon-text-light">
                             Q={Number(w.q).toFixed(3)} Δ={Number(w.dq).toFixed(3)}
                           </div>
-                        </div>
+                        </div>https://github.com/sviam-byte/kanonar/pull/143/conflict?name=components%252Fgoal-lab%252FGoalLabResults.tsx&ancestor_oid=b361a04c7d222b5aa7998c33fe335fc90127684b&base_oid=e7223ee5177e97d47c6cc9fc406974c348397fc4&head_oid=bef18de1b1e576c8cc4a20280909dee3c768f13e
                         {w.diffs.length ? (
                           <div className="mt-2 space-y-1 font-mono text-[11px]">
                             {w.diffs.map((d) => (
