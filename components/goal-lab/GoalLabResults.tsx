@@ -1,5 +1,5 @@
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import type { ContextSnapshot, ContextualGoalScore, ContextAtom, TemporalContextConfig, ContextualGoalContribution } from '../../lib/context/v2/types';
 import { validateAtoms } from '../../lib/context/validate/frameValidator';
 import { GOAL_DEFS } from '../../lib/goals/space'; 
@@ -42,8 +42,22 @@ import { SimulatorLab } from '../../lib/goal-lab/labs/SimulatorLab';
 import { defaultProducers } from '../../lib/orchestrator/defaultProducers';
 import { generateGoalLabReportMarkdown } from '../../lib/goal-lab/reporting/generateGoalLabReport';
 import { GoalLabTestsPanel } from './GoalLabTestsPanel';
+
 import { ValidatorPanel } from './ValidatorPanel';
 import { PipelineFlowPanel } from './PipelineFlowPanel';
+
+/**
+ * IMPORTANT (hotfix):
+ * React error #310 happens when hooks order changes between renders.
+ * In GoalLabResults we often have debug-only memoizations that may end up conditional.
+ * This local "useMemo" is NOT a React hook and is safe to call anywhere.
+ * Tradeoff: less perf, but stable production builds.
+ */
+const useMemo = <T,>(factory: () => T, _deps: any[]): T => {
+  return factory();
+};
+
+
 
 interface Props {
   context: ContextSnapshot | null;
