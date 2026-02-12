@@ -96,19 +96,27 @@ export function scoreContextualGoals(
   // We map the V2 domains (calculated from atoms) into V4 Pre-Goal Logits
   const contextLogits = mapDomainsToGoalLogits(ctx.domains);
 
-  // Combine Logits: Traits + Bio + Context
+  // Combine logits: Traits + Bio + Context.
+  //
+  // Anti "Traits Trap": static intrinsics (traits/bio) should provide a baseline,
+  // but must not dominate when context weight is high. We therefore blend base and
+  // context terms through a shared gate (`ctxW`) instead of raw additive stacking.
   const combinedLogits = makeZeroGoalLogits();
   const curvePreset = ((world as any)?.decisionCurvePreset || 'smoothstep') as CurvePreset;
   const ctxW = computeContextWeight(ctx, agent.entityId, curvePreset);
   for (const axis of GOAL_AXES) {
-    // Priority-aware context weight per axis:
+    // Priority-aware context multiplier per axis.
     const prio = getCtxPrio(ctx, String(axis), agent.entityId, 0.5);
     const prioMul = prioToMultiplier(prio);
 
-    combinedLogits[axis] =
-      (traitLogits[axis] || 0) +
-      (bioLogits[axis] || 0) +
-      (contextLogits[axis] || 0) * ctxW * prioMul;
+    const base = (traitLogits[axis] || 0) + (bioLogits[axis] || 0);
+    const ctxTerm = (contextLogits[axis] || 0) * prioMul;
+
+    // Keep baseline bounded so agents remain character-consistent, but context-sensitive.
+    const baseW = Math.min(0.8, Math.max(0.2, 1 - ctxW));
+    const ctxWAxis = 1 - baseW;
+
+    combinedLogits[axis] = base * baseW + ctxTerm * ctxWAxis;
   }
 
   // 2. Run V4 Engine

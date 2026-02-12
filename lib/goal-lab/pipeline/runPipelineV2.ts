@@ -1,99 +1,74 @@
-import { runGoalLabPipelineV1 } from './runPipelineV1';
-import type {
-  GoalLabArtifactV2,
-  GoalLabSnapshotV1,
-  GoalLabSnapshotV2,
-  GoalLabStageFrameV2,
-} from '../snapshotTypes';
+import type { Artifact, PipelineTrace, StageTrace } from './types';
 
 /**
- * Wraps the existing V1 pipeline snapshot into a UI-friendly V2 snapshot.
+ * Adapter: wraps the current (V1) pipeline report into a stable UI trace.
  *
- * Conservative adapter: keeps simulation math untouched and only repackages
- * already-produced stage artifacts for a new inspector surface.
+ * This file intentionally avoids new inference logic. It only normalizes the
+ * report envelope so UI components can render stage/inspector views without
+ * depending on internal V1 shapes.
  */
-export function runPipelineV2(ctx: any): GoalLabSnapshotV2 {
-  const legacy = runGoalLabPipelineV1(ctx as any) as GoalLabSnapshotV1 | null;
+export function buildPipelineTraceFromV1(opts: {
+  selfId: string;
+  tick: number;
+  report: unknown;
+}): PipelineTrace {
+  const { selfId, tick, report } = opts;
 
-  if (!legacy) {
-    return {
-      schemaVersion: 2,
-      tick: Number((ctx as any)?.tickOverride ?? (ctx as any)?.world?.tick ?? 0),
-      selfId: String((ctx as any)?.agentId ?? ''),
-      actorIds: Array.isArray((ctx as any)?.participantIds) ? (ctx as any).participantIds : undefined,
-      stages: [],
-    };
-  }
+  // Best-effort extraction of stage list from a legacy report.
+  const stagesIn: any[] = Array.isArray((report as any)?.stages) ? (report as any).stages : [];
 
-  const stages: GoalLabStageFrameV2[] = (legacy.stages ?? []).map((s: any) => {
-    const artifacts: GoalLabArtifactV2[] = [];
+  const stages: StageTrace[] = stagesIn.map((s: any, idx: number) => {
+    const stageId = String(s?.stage ?? s?.id ?? s?.stageId ?? `S${idx}`);
+    const stageTitle = String(s?.title ?? s?.name ?? stageId);
 
-    if (s.atomsProduced?.length) {
-      artifacts.push({
-        kind: 'atoms',
-        label: `Atoms produced (${s.atomsProduced.length})`,
-        layer: 'derived',
-        payload: s.atomsProduced,
-      });
-    }
-    if (s.atomsConsumed?.length) {
-      artifacts.push({
-        kind: 'atoms',
-        label: `Atoms consumed (${s.atomsConsumed.length})`,
-        layer: 'derived',
-        payload: s.atomsConsumed,
-      });
-    }
+    const artifactsIn: any[] = Array.isArray(s?.artifacts)
+      ? s.artifacts
+      : Array.isArray(s?.outputs)
+        ? s.outputs
+        : [];
 
-    const a = s.artifacts || {};
-    const pushIf = (kind: GoalLabArtifactV2['kind'], label: string, payload: unknown, layer?: GoalLabArtifactV2['layer']) => {
-      if (payload === undefined) return;
-      artifacts.push({ kind, label, payload, layer });
-    };
+    const artifacts: Artifact[] = artifactsIn.map((a: any, j: number) => {
+      const inferredKind = String(a?.kind ?? a?.type ?? 'raw') as Artifact['kind'];
+      const title = String(a?.title ?? a?.name ?? `${stageTitle} / ${inferredKind} #${j}`);
+      const payload = a?.payload ?? a?.data ?? a;
+      const provenance = Array.isArray(a?.provenance)
+        ? a.provenance.map((p: any) => String(p))
+        : [];
 
-    pushIf('belief', 'Belief / contextMind', a.contextMind ?? a.belief, 'belief');
-    pushIf('goal.logits', 'Goal logits', a.goalLogits ?? a.logits, 'derived');
-    pushIf('goals', 'Concrete goals', a.concreteGoals ?? a.goals, 'derived');
-    pushIf('tom', 'ToM (dyadic)', a.tom ?? a.tomResult, 'belief');
-    pushIf('decision', 'Decision snapshot', a.decision, 'derived');
-    pushIf('world.truth', 'World truth / scene', a.worldTruth ?? a.sceneDump ?? a.world, 'truth');
-    pushIf('world.actors', 'Actors (truth)', a.worldActors ?? a.actors, 'truth');
-    pushIf('observation', 'Observation', a.observation ?? a.obs, 'observation');
-    pushIf('intrinsics', 'Intrinsics', a.intrinsics ?? a.traits ?? a.bio, 'config');
-    pushIf('dynamics', 'Dynamics / tick model', a.dynamics ?? a.transition, 'derived');
-    pushIf('validators', 'Validators / stabilizers', a.validators ?? a.stabilizers, 'config');
-    pushIf('modes', 'Pipeline modes', a.pipelineModes ?? a.modes ?? a.toggles, 'config');
+      return {
+        id: String(a?.id ?? `${stageId}:${inferredKind}:${j}`),
+        kind: inferredKind,
+        title,
+        payload,
+        provenance,
+      };
+    });
 
     return {
-      stageId: s.stage,
-      stageName: s.title,
-      summary: s.summary,
+      id: stageId,
+      title: stageTitle,
+      index: idx,
       artifacts,
+      meta: { selfId, tick },
     };
   });
 
-  const pickFirst = (kind: GoalLabArtifactV2['kind']): unknown => {
-    for (const st of stages) {
-      const hit = st.artifacts.find((x) => x.kind === kind);
-      if (hit) return hit.payload;
-    }
-    return undefined;
-  };
-
   return {
-    schemaVersion: 2,
-    tick: legacy.tick,
-    selfId: legacy.selfId,
-    actorIds: (legacy as any).participantIds,
-    worldTruth: pickFirst('world.truth'),
-    worldActors: pickFirst('world.actors'),
-    observation: pickFirst('observation'),
-    belief: pickFirst('belief'),
-    intrinsics: pickFirst('intrinsics'),
-    tom: pickFirst('tom'),
-    goals: pickFirst('goals'),
-    decision: pickFirst('decision'),
+    version: 'v2-adapter',
+    selfId,
+    tick,
     stages,
-    legacy,
+    raw: report,
   };
+}
+
+/**
+ * Backward-friendly alias kept for the previous naming used by callers.
+ */
+export function runPipelineV2(opts: {
+  selfId: string;
+  tick: number;
+  report: unknown;
+}): PipelineTrace {
+  return buildPipelineTraceFromV1(opts);
 }
