@@ -190,7 +190,26 @@ export function runGoalLabPipelineV1(input: {
     atomsAddedIds: atoms.map(a => String((a as any).id)).filter(Boolean),
     warnings: [],
     stats: { atomCount: atoms.length, addedCount: atoms.length, ...stageStats(atoms) },
-    artifacts: { obsAtomsCount: arr((s0 as any)?.obsAtoms).length, provenanceSize: ((s0 as any)?.provenance as any)?.size ?? 0 }
+    artifacts: {
+      obsAtomsCount: arr((s0 as any)?.obsAtoms).length,
+      provenanceSize: ((s0 as any)?.provenance as any)?.size ?? 0,
+
+      // Explainability truth inputs for the new inspector (best-effort, non-breaking payloads).
+      worldTruth: {
+        scene: (world as any)?.scene ?? null,
+        sceneMetrics: (world as any)?.scene?.metrics ?? null,
+        geometry: (world as any)?.geometry ?? null,
+        objects: (world as any)?.objects ?? null,
+      },
+      worldActors: {
+        self: (world as any)?.actors?.[selfId] ?? (world as any)?.actorsById?.[selfId] ?? null,
+        actorsCount: (world as any)?.actors ? Object.keys((world as any).actors).length : null,
+      },
+      pipelineModes: {
+        fastMode: Boolean((input as any)?.sceneControl?.fastMode ?? (input as any)?.fastMode ?? false),
+        useOverrides: arr(input.manualAtoms).length > 0 || Boolean(input.affectOverrides),
+      },
+    }
   });
 
   // S1: Normalize -> Quarks (минимально)

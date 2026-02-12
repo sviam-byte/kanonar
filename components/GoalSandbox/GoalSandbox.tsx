@@ -25,6 +25,7 @@ import { computeLocationGoalsForAgent } from '../../lib/context/v2/locationGoals
 import { computeTomGoalsForAgent } from '../../lib/context/v2/tomGoals';
 import { GoalLabControls } from '../goal-lab/GoalLabControls';
 import { GoalLabResults } from '../goal-lab/GoalLabResults';
+import { GoalLabConsole } from '../goal-lab2/GoalLabConsole';
 import { DoNowCard } from '../goal-lab/DoNowCard';
 import { CurvesPanel } from '../goal-lab/CurvesPanel';
 import { PipelinePanel } from '../goal-lab/PipelinePanel';
@@ -2891,6 +2892,22 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render }) => {
         </div>
         <div className="flex-1 overflow-y-auto custom-scrollbar min-h-0 p-3 space-y-3">
           <DoNowCard decision={(snapshotV1 as any)?.decision ?? null} />
+
+          {/*
+            New lightweight console for stage-by-stage artifact inspection.
+            We keep it side-by-side with the legacy panel while V2 schema settles.
+          */}
+          <GoalLabConsole
+            snapshotV1={snapshotV1 as any}
+            stageId={currentPipelineStageId}
+            onChangeStageId={setPipelineStageId as any}
+          />
+
+          <details className="rounded border border-slate-800">
+            <summary className="cursor-pointer select-none px-2 py-1 text-[11px] font-semibold text-slate-200">
+              Legacy GoalLabResults (old UI)
+            </summary>
+            <div className="p-2">
           <GoalLabResults
             context={snapshot as any}
             frame={computed.frame as any}
@@ -2915,6 +2932,8 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render }) => {
             onExportPipelineStage={handleExportPipelineStage as any}
             onExportPipelineAll={handleExportPipelineAll as any}
           />
+            </div>
+          </details>
         </div>
       </aside>
 
