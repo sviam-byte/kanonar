@@ -1,5 +1,5 @@
 
-import { GoalLabSnapshotV1 } from './snapshotTypes';
+import { GoalLabSnapshotV1, GoalLabSnapshotV2 } from './snapshotTypes';
 import { ContextAtom } from '../context/v2/types';
 import { normalizeAtom } from '../context/v2/infer';
 import { arr } from '../utils/arr';
@@ -82,4 +82,18 @@ export function adaptToSnapshotV1(raw: any, args: { selfId: string }): GoalLabSn
   };
 
   return normalizeSnapshot(adapted);
+}
+
+
+export type GoalLabSnapshotAny = GoalLabSnapshotV1 | GoalLabSnapshotV2;
+
+/**
+ * Backwards compatible adapter: keeps V1 adaptation for legacy payloads,
+ * while allowing already-built V2 snapshots to pass through untouched.
+ */
+export function adaptToSnapshot(raw: any, args: { selfId: string }): GoalLabSnapshotAny {
+  if (raw && typeof raw === 'object' && Number((raw as any).schemaVersion) === 2) {
+    return raw as GoalLabSnapshotV2;
+  }
+  return adaptToSnapshotV1(raw, args);
 }

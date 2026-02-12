@@ -19,6 +19,7 @@
 
 Outputs:
 - `world:*`, `obs:*`, `mem:*`, `rel:*`, `life:*`
+- stage artifacts for inspector: `worldTruth`, `worldActors`, `pipelineModes` (non-atom debug payloads)
 
 Forbidden:
 - любые `ctx:*`
