@@ -25,6 +25,7 @@ import { computeLocationGoalsForAgent } from '../../lib/context/v2/locationGoals
 import { computeTomGoalsForAgent } from '../../lib/context/v2/tomGoals';
 import { GoalLabControls } from '../goal-lab/GoalLabControls';
 import { GoalLabResults } from '../goal-lab/GoalLabResults';
+import { GoalLabConsoleResults } from '../goal-lab/GoalLabConsoleResults';
 import { DoNowCard } from '../goal-lab/DoNowCard';
 import { CurvesPanel } from '../goal-lab/CurvesPanel';
 import { PipelinePanel } from '../goal-lab/PipelinePanel';
@@ -502,9 +503,11 @@ export type GoalSandboxVM = {
 type GoalSandboxProps = {
   /** Optional custom renderer. If omitted, GoalSandbox renders its built-in UI. */
   render?: (vm: GoalSandboxVM) => ReactNode;
+  /** Optional mode override for dedicated routes (e.g. console page). */
+  uiMode?: 'front' | 'debug' | 'console';
 };
 
-export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render }) => {
+export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forcedUiMode }) => {
   const { characters: sandboxCharacters, setDyadConfigFor } = useSandbox();
   const { activeModule } = useAccess();
   const devValidateAtoms = import.meta.env?.DEV ?? false;
@@ -586,8 +589,13 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render }) => {
     {}
   );
   const actorPositionsRef = useRef<Record<string, { x: number; y: number }>>({});
+  // Per-agent location overrides (console editor). If empty, derived worlds place everyone into active location.
+  const [actorLocationOverrides, setActorLocationOverrides] = useState<Record<string, string>>({});
+  const actorLocationOverridesRef = useRef<Record<string, string>>({});
+  // IMPORTANT: must be synchronous to avoid stale override leaks
+  actorLocationOverridesRef.current = actorLocationOverrides;
+
   const importInputRef = useRef<HTMLInputElement | null>(null);
-  // IMPORTANT: must be synchronous to avoid “previous scene positions” leaking into rebuild
   actorPositionsRef.current = actorPositions;
   const [rebuildNonce, setRebuildNonce] = useState(0);
 
@@ -611,7 +619,8 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render }) => {
   const lockedMapIdRef = useRef<string | null>(null);
 
   // UI mode: a compact “front” view for normal use, and a “debug” view for pipeline/atoms.
-  const [uiMode, setUiMode] = useState<'front' | 'debug'>(() => {
+  const [uiMode, setUiMode] = useState<'front' | 'debug' | 'console'>(() => {
+    if (forcedUiMode) return forcedUiMode;
     try {
       return (localStorage.getItem('goalsandbox.uiMode.v1') as any) === 'debug' ? 'debug' : 'front';
     } catch {
@@ -620,10 +629,11 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render }) => {
   });
 
   useEffect(() => {
+    if (forcedUiMode) return;
     try {
       localStorage.setItem('goalsandbox.uiMode.v1', uiMode);
     } catch {}
-  }, [uiMode]);
+  }, [uiMode, forcedUiMode]);
 
   // Center view (map vs. goal graphs) is persisted so the UI reopens where the user left it.
   const [centerView, setCenterView] = useState<'map' | 'energy' | 'actions'>(() => {
@@ -896,11 +906,12 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render }) => {
 
   const refreshWorldDerived = useCallback(
     (prev: WorldState, nextAgents: AgentState[]) => {
-      const locId = getActiveLocationId();
+      const defaultLocId = getActiveLocationId();
       const agentIds = nextAgents.map(a => a.entityId);
 
       const agentsWithLoc = nextAgents.map(a => {
         const pos = actorPositionsRef.current[a.entityId] || (a as any).position || { x: 5, y: 5 };
+        const locId = actorLocationOverridesRef.current[a.entityId] || defaultLocId;
         return { ...(a as any), locationId: locId, position: pos } as AgentState;
       });
 
@@ -928,6 +939,26 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render }) => {
     },
     [ensureCompleteInitialRelations, getActiveLocationId, runtimeDyadConfigs]
   );
+
+
+  // Keep the derived world consistent when the editor changes location mode/preset.
+  // Without this, agents can keep stale locationId and world.locations can drift from overrideLocation.
+  const lastLocationKeyRef = useRef<string>('');
+  useEffect(() => {
+    const key = `${locationMode}:${selectedLocationId}`;
+    if (lastLocationKeyRef.current === key) return;
+    lastLocationKeyRef.current = key;
+    if (worldSource !== 'derived') return;
+    // Best-effort: update agents' locationId + recompute roles/tom without wiping other world fields.
+    setWorldState(prev => {
+      if (!prev) return prev;
+      try {
+        return refreshWorldDerived(prev as any, arr((prev as any).agents) as any) as any;
+      } catch {
+        return prev;
+      }
+    });
+  }, [locationMode, selectedLocationId, worldSource, refreshWorldDerived]);
 
   const rebuildWorldFromParticipants = useCallback(
     (idsInput: Set<string>) => {
@@ -1018,6 +1049,74 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render }) => {
       setSelectedAgentId(id);
     },
     [sceneParticipants, selectedAgentId]
+  );
+
+
+  const handleSetAgentLocation = useCallback(
+    (agentId: string, locationId: string) => {
+      const aid = String(agentId || '').trim();
+      const lid = String(locationId || '').trim();
+      if (!aid) return;
+      setActorLocationOverrides(prev => ({ ...(prev || {}), [aid]: lid }));
+      setWorldState(prev => {
+        if (!prev) return prev;
+        const nextAgents = arr((prev as any).agents).map((a: any) =>
+          String(a?.entityId) === aid ? ({ ...(a || {}), locationId: lid } as any) : a
+        );
+        try {
+          return worldSource === 'derived' ? (refreshWorldDerived(prev as any, nextAgents as any) as any) : ({ ...(prev as any), agents: nextAgents } as any);
+        } catch {
+          return { ...(prev as any), agents: nextAgents } as any;
+        }
+      });
+    },
+    [worldSource, refreshWorldDerived]
+  );
+
+  const handleSetAgentPosition = useCallback(
+    (agentId: string, pos: { x: number; y: number }) => {
+      const aid = String(agentId || '').trim();
+      if (!aid) return;
+      const x = Number(pos?.x);
+      const y = Number(pos?.y);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+      setActorPositions(prev => ({ ...(prev || {}), [aid]: { x, y } }));
+      setWorldState(prev => {
+        if (!prev) return prev;
+        const nextAgents = arr((prev as any).agents).map((a: any) =>
+          String(a?.entityId) === aid ? ({ ...(a || {}), position: { x, y } } as any) : a
+        );
+        try {
+          return worldSource === 'derived' ? (refreshWorldDerived(prev as any, nextAgents as any) as any) : ({ ...(prev as any), agents: nextAgents } as any);
+        } catch {
+          return { ...(prev as any), agents: nextAgents } as any;
+        }
+      });
+    },
+    [worldSource, refreshWorldDerived]
+  );
+
+  const handleMoveAllToLocation = useCallback(
+    (locationId: string) => {
+      const lid = String(locationId || '').trim();
+      if (!lid) return;
+      const ids = arr(participantIds).map(String);
+      setActorLocationOverrides(prev => {
+        const next = { ...(prev || {}) } as Record<string, string>;
+        for (const id of ids) next[id] = lid;
+        return next;
+      });
+      setWorldState(prev => {
+        if (!prev) return prev;
+        const nextAgents = arr((prev as any).agents).map((a: any) => (ids.includes(String(a?.entityId)) ? ({ ...(a || {}), locationId: lid } as any) : a));
+        try {
+          return worldSource === 'derived' ? (refreshWorldDerived(prev as any, nextAgents as any) as any) : ({ ...(prev as any), agents: nextAgents } as any);
+        } catch {
+          return { ...(prev as any), agents: nextAgents } as any;
+        }
+      });
+    },
+    [participantIds, worldSource, refreshWorldDerived]
   );
 
   const handleAddParticipant = useCallback(
@@ -2935,36 +3034,120 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render }) => {
       </main>
 
       {/* RIGHT: GoalLab results, pipeline export/import, etc. */}
-      <aside className="w-[420px] border-l border-slate-800 bg-slate-950/50 flex flex-col shrink-0">
+      <aside className="w-[420px] border-l border-slate-800 bg-slate-950/50 flex flex-col shrink-0 min-h-0">
         <div className="p-3 border-b border-slate-800 text-[10px] font-bold text-slate-500 uppercase">
           Passport + Atoms
         </div>
-        <div className="flex-1 overflow-y-auto custom-scrollbar min-h-0 p-3 space-y-3">
-          <DoNowCard decision={(snapshotV1 as any)?.decision ?? null} />
-          <GoalLabResults
-            context={snapshot as any}
-            frame={computed.frame as any}
-            goalScores={goals as any}
-            situation={situation as any}
-            goalPreview={goalPreview as any}
-            actorLabels={actorLabels as any}
-            contextualMind={contextualMind as any}
-            locationScores={locationScores as any}
-            tomScores={tomScores as any}
-            atomDiff={atomDiff as any}
-            snapshotV1={snapshotV1 as any}
-            pipelineV1={pipelineV1 as any}
-            perspectiveAgentId={focusId as any}
-            sceneDump={sceneDumpV2 as any}
-            onDownloadScene={onDownloadScene}
-            onImportScene={handleImportSceneClick}
-            manualAtoms={manualAtoms as any}
-            onChangeManualAtoms={setManualAtoms as any}
-            pipelineStageId={currentPipelineStageId}
-            onChangePipelineStageId={setPipelineStageId as any}
-            onExportPipelineStage={handleExportPipelineStage as any}
-            onExportPipelineAll={handleExportPipelineAll as any}
-          />
+        <div
+          className={
+            uiMode === 'console'
+              ? 'flex-1 min-h-0 overflow-hidden p-3'
+              : 'flex-1 overflow-y-auto custom-scrollbar min-h-0 p-3 space-y-3'
+          }
+        >
+          {uiMode === 'console' ? (
+            <div className="flex-1 min-h-0 overflow-hidden">
+              <GoalLabConsoleResults
+                snapshot={snapshot as any}
+                frame={computed.frame as any}
+                situation={situation as any}
+                snapshotV1={snapshotV1 as any}
+                pipelineV1={pipelineV1 as any}
+                focusId={focusId as any}
+                pomdpRun={pomdpRun as any}
+                pomdpRawV1={pomdpPipelineV1 as any}
+                observeLiteParams={observeLiteParams}
+                onObserveLiteParamsChange={setObserveLiteParams}
+                onForceAction={(actionId) => {
+                  // Persist a single active force_action for this focus agent.
+                  // This affects decision ranking in the console pipeline (without stepping world dynamics).
+                  const agentId = String(focusId || '');
+                  setInjectedEvents((prev) => {
+                    const filtered = arr(prev).filter((e: any) => {
+                      const t = String(e?.type || e?.kind || '');
+                      const a = String(e?.agentId || e?.selfId || '');
+                      return !(t === 'force_action' && a === agentId);
+                    });
+                    if (!actionId) return filtered;
+                    const tick = Number((worldState as any)?.tick ?? 0);
+                    return [...filtered, { type: 'force_action', agentId, actionId, tick }];
+                  });
+                  setDecisionNonce((n) => n + 1);
+                }}
+                sceneDump={sceneDumpV2 as any}
+                onDownloadScene={onDownloadScene}
+                onImportScene={handleImportSceneClick}
+                manualAtoms={manualAtoms as any}
+                onChangeManualAtoms={setManualAtoms as any}
+                pipelineStageId={currentPipelineStageId}
+                onChangePipelineStageId={setPipelineStageId as any}
+                onExportPipelineStage={handleExportPipelineStage as any}
+                onExportPipelineAll={handleExportPipelineAll as any}
+                goalScores={goals as any}
+                goalPreview={goalPreview as any}
+                actorLabels={actorLabels as any}
+                contextualMind={contextualMind as any}
+                locationScores={locationScores as any}
+                tomScores={tomScores as any}
+                atomDiff={atomDiff as any}
+
+                characters={allCharacters as any}
+                locations={allLocations as any}
+                selectedAgentId={selectedAgentId as any}
+                onSelectAgentId={handleSelectAgent as any}
+                locationMode={locationMode as any}
+                onSetLocationMode={setLocationMode as any}
+                selectedLocationId={selectedLocationId as any}
+                onSelectLocationId={setSelectedLocationId as any}
+
+                agents={(worldState as any)?.agents as any}
+                onSetAgentLocation={handleSetAgentLocation as any}
+                onSetAgentPosition={handleSetAgentPosition as any}
+                onMoveAllToLocation={handleMoveAllToLocation as any}
+                onRebuildWorld={() => {
+                  // Rebuild the derived world so agent/location ids and roles/tom are consistent with editor state.
+                  if (worldSource === 'imported') {
+                    // Do not silently destroy imported scenes; just refresh derived fields.
+                    setWorldState(prev => {
+                      if (!prev) return prev;
+                      try { return refreshWorldDerived(prev as any, arr((prev as any).agents) as any) as any; } catch { return prev; }
+                    });
+                    return;
+                  }
+                  setWorldSource('derived');
+                  rebuildWorldFromParticipants(new Set(sceneParticipants));
+                }}
+              />
+            </div>
+          ) : (
+            <>
+              <DoNowCard decision={(snapshotV1 as any)?.decision ?? null} />
+              <GoalLabResults
+                context={snapshot as any}
+                frame={computed.frame as any}
+                goalScores={goals as any}
+                situation={situation as any}
+                goalPreview={goalPreview as any}
+                actorLabels={actorLabels as any}
+                contextualMind={contextualMind as any}
+                locationScores={locationScores as any}
+                tomScores={tomScores as any}
+                atomDiff={atomDiff as any}
+                snapshotV1={snapshotV1 as any}
+                pipelineV1={pipelineV1 as any}
+                perspectiveAgentId={focusId as any}
+                sceneDump={sceneDumpV2 as any}
+                onDownloadScene={onDownloadScene}
+                onImportScene={handleImportSceneClick}
+                manualAtoms={manualAtoms as any}
+                onChangeManualAtoms={setManualAtoms as any}
+                pipelineStageId={currentPipelineStageId}
+                onChangePipelineStageId={setPipelineStageId as any}
+                onExportPipelineStage={handleExportPipelineStage as any}
+                onExportPipelineAll={handleExportPipelineAll as any}
+              />
+            </>
+          )}
         </div>
       </aside>
 

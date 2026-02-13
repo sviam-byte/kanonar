@@ -143,6 +143,64 @@ function computeQuarks(atoms: ContextAtom[]) {
   return quarks;
 }
 
+function safeLogit01(p01: number): number {
+  const p = Math.max(1e-6, Math.min(1 - 1e-6, Number(p01)));
+  return Math.log(p / (1 - p));
+}
+
+function buildGoalLayerSnapshot(selfId: string, atomsAfterS7: ContextAtom[], goalRes: any, planRes: any) {
+  const domainAtoms = atomsAfterS7.filter((a: any) => a?.ns === 'goal' && typeof a?.id === 'string' && a.id.startsWith(`goal:domain:`) && a.id.endsWith(`:${selfId}`));
+  const activeDomainAtoms = atomsAfterS7.filter((a: any) => a?.ns === 'goal' && typeof a?.id === 'string' && a.id.startsWith(`goal:active:`) && a.id.endsWith(`:${selfId}`));
+  const modeAtom = atomsAfterS7.find((a: any) => a?.ns === 'goal' && typeof a?.id === 'string' && a.id === `goal:mode:${selfId}`) as any;
+
+  const domains = domainAtoms
+    .map((a: any) => {
+      const id: string = String(a.id);
+      const domain = id.split(':')[2] || id;
+      const score01 = Number(a.magnitude ?? 0);
+      const parts = a?.trace?.parts ?? null;
+      return {
+        id,
+        domain,
+        score01,
+        logit: safeLogit01(score01),
+        label: a?.label ?? null,
+        parts,
+        usedAtomIds: arr(a?.trace?.usedAtomIds).slice(0, 50),
+      };
+    })
+    .sort((x: any, y: any) => (y.score01 ?? 0) - (x.score01 ?? 0));
+
+  const activeDomains = activeDomainAtoms
+    .map((a: any) => {
+      const id: string = String(a.id);
+      const domain = id.split(':')[2] || id;
+      return { id, domain, score01: Number(a.magnitude ?? 0), usedAtomIds: arr(a?.trace?.usedAtomIds).slice(0, 50) };
+    })
+    .sort((x: any, y: any) => (y.score01 ?? 0) - (x.score01 ?? 0));
+
+  const planningTop = arr(planRes?.top).map((x: any) => ({ goalId: String(x?.goalId || ''), v: Number(x?.v ?? 0) })).filter((x: any) => x.goalId);
+  const goalDebug = goalRes?.debug ?? null;
+
+  const mode = modeAtom ? {
+    id: String(modeAtom.id),
+    magnitude: Number(modeAtom.magnitude ?? 0),
+    label: modeAtom.label ?? null,
+    parts: modeAtom?.trace?.parts ?? null,
+    usedAtomIds: arr(modeAtom?.trace?.usedAtomIds).slice(0, 50),
+  } : null;
+
+  return {
+    selfId,
+    domains,
+    activeDomains,
+    mode,
+    planningTop,
+    // Keep the raw goalDebug for deep inspection in legacy/dev mode.
+    goalDebug,
+  };
+}
+
 export function runGoalLabPipelineV1(input: {
   world: WorldState;
   agentId: string;
@@ -463,6 +521,9 @@ export function runGoalLabPipelineV1(input: {
   const s7Added = uniqStrings([...mS7a.newIds, ...mS7b.newIds, ...mS7c.newIds, ...mS7d.newIds]);
   const s7Overridden = uniqStrings([...mS7a.overriddenIds, ...mS7b.overriddenIds, ...mS7c.overriddenIds, ...mS7d.overriddenIds]);
   atoms = atomsS7;
+
+  // Level 4.0b (F/G): explicit goal layer snapshot (domains/logits/goals/modes).
+  const goalLayerSnapshot = buildGoalLayerSnapshot(selfId, atomsS7, goalRes as any, planRes as any);
   stages.push({
     stage: 'S7',
     title: 'S7 Goals (ecology + planning)',
@@ -473,6 +534,7 @@ export function runGoalLabPipelineV1(input: {
     artifacts: {
       goalAtomsCount: goalAtoms.length,
       goalDebug: (goalRes as any)?.debug ?? null,
+      goalLayerSnapshot,
       planGoalAtomsCount: planAtoms.length,
       goalActionLinksCount: linkAtoms.length,
       utilAtomsCount: utilAtoms.length,
@@ -509,16 +571,18 @@ export function runGoalLabPipelineV1(input: {
     });
 
     const rng = (agent as any)?.rngChannels?.decide;
+    const temperature =
+      (world as any)?.decisionTemperature ??
+      (agent as any)?.behavioralParams?.T0 ??
+      (agent as any)?.temperature ??
+      1.0;
+
     const decision = decideAction({
       actions,
       goalEnergy,
       topK: 10,
       rng: rng && typeof rng.next === 'function' ? () => rng.next() : () => 0.5,
-      temperature:
-        (world as any)?.decisionTemperature ??
-        (agent as any)?.behavioralParams?.T0 ??
-        (agent as any)?.temperature ??
-        1.0,
+      temperature,
     });
 
     const decisionAtoms = arr((decision as any)?.atoms).map(normalizeAtom);
@@ -546,6 +610,83 @@ export function runGoalLabPipelineV1(input: {
       q: Number(r?.q ?? 0),
     }));
 
+    // Level 4.0b (J): decision breakdown per action (goal contributions + cost/confidence).
+    const buildDecisionBreakdown = (actionObj: any, q: number) => {
+      const deltaGoals = actionObj?.deltaGoals && typeof actionObj.deltaGoals === 'object' ? actionObj.deltaGoals : {};
+      const contribByGoal: Record<string, number> = {};
+      let sum = 0;
+      for (const [g, delta] of Object.entries(deltaGoals)) {
+        const w = Number((goalEnergy as any)?.[g] ?? 0);
+        const d = Number(delta ?? 0);
+        const c = w * d;
+        contribByGoal[String(g)] = c;
+        sum += c;
+      }
+      const cost = Number(actionObj?.cost ?? 0);
+      const conf = Number(actionObj?.confidence ?? 1);
+      return {
+        id: String(actionObj?.id || actionObj?.actionId || actionObj?.name || ''),
+        kind: String(actionObj?.kind || ''),
+        targetId: actionObj?.targetId ?? null,
+        q: Number(q ?? 0),
+        cost,
+        confidence: conf,
+        deltaGoals,
+        contribByGoal,
+        rawBeforeConfidence: sum - cost,
+      };
+    };
+
+    // Optional console override: if a force_action event is injected for this agent,
+    // promote that action as "best" in artifacts (without stepping world dynamics).
+    const forcedActionId = (() => {
+      const evs = arr(input.injectedEvents);
+      let last: any = null;
+      for (const e of evs) {
+        const t = String((e as any)?.type || (e as any)?.kind || '');
+        if (t !== 'force_action') continue;
+        const a = String((e as any)?.agentId || (e as any)?.selfId || '');
+        if (a && a !== selfId) continue;
+        last = e;
+      }
+      const id = String((last as any)?.actionId || (last as any)?.action || '');
+      return id && id !== 'undefined' && id !== 'null' ? id : '';
+    })();
+
+    const bestRaw = (decision as any)?.best || null;
+    const bestOverridden = forcedActionId
+      ? (rankedActions.find((a: any) => String(a?.id || a?.actionId || a?.name || '') === forcedActionId) || { id: forcedActionId })
+      : bestRaw;
+
+    const rankedOverridden = (() => {
+      if (!forcedActionId) return rankedActions;
+      const rest = rankedActions.filter((a: any) => String(a?.id || a?.actionId || a?.name || '') !== forcedActionId);
+      const forced = rankedActions.find((a: any) => String(a?.id || a?.actionId || a?.name || '') === forcedActionId) || { id: forcedActionId, q: (rest[0]?.q ?? 0) + 1e-6 };
+      return [forced, ...rest];
+    })();
+
+    const decisionWarnings = arr<string>((decision as any)?.warnings);
+
+    // Level 4.5: explicit mode/stabilizer snapshots for console observability.
+    const modesSnapshot = {
+      fastMode: !!(input.sceneControl as any)?.fastMode,
+      source: (input as any)?.worldSource || 'derived',
+      consoleMode: true,
+      observe: {
+        radius: input.observeLiteParams?.radius ?? null,
+        noise: input.observeLiteParams?.noiseSigma ?? null,
+        seed: input.observeLiteParams?.seed ?? null,
+      },
+      forcedActionId: forcedActionId || null,
+    };
+
+    const stabilizersSnapshot = {
+      temperature,
+      forced: forcedActionId || null,
+      emptyGoalEnergy: !goalEnergy || Object.keys(goalEnergy).length === 0,
+      warnings: decisionWarnings || [],
+    };
+
     stages.push({
       stage: 'S8',
       title: 'S8 Decision / actions',
@@ -556,12 +697,25 @@ export function runGoalLabPipelineV1(input: {
       artifacts: {
         // Keep artifacts light: export is dominated by atoms; store only top scoring + access decisions.
         accessDecisions: (accessPack as any)?.decisions || [],
-        ranked: rankedActions.slice(0, 10),
-        best: (decision as any)?.best || null,
+        ranked: rankedOverridden.slice(0, 10),
+        best: bestOverridden,
+        decisionSnapshot: {
+          selfId,
+          temperature,
+          goalEnergy,
+          ranked: arr((decision as any)?.ranked).slice(0, 10).map((r: any) => buildDecisionBreakdown(r?.action || {}, r?.q)),
+          rankedOverridden: rankedOverridden.slice(0, 10).map((a: any) => buildDecisionBreakdown(a, a?.q)),
+          best: bestOverridden ? buildDecisionBreakdown(bestOverridden as any, (bestOverridden as any)?.q ?? 0) : null,
+          forcedActionId: forcedActionId || null,
+          note: 'Decision breakdown: Q(a)=Σ_g goalEnergy[g]*Δg(a) - cost(a), then *confidence(a). contribByGoal are pre-confidence.'
+        },
+        forcedActionId: forcedActionId || null,
+        modesSnapshot,
+        stabilizersSnapshot,
         intentPreview: buildIntentPreview({
           selfId,
           atoms: atomsS8,
-          s8Artifacts: { best: (decision as any)?.best || null, ranked: rankedActions },
+          s8Artifacts: { best: bestOverridden, ranked: rankedOverridden },
           horizonSteps: 5,
         }),
         overriddenIds: s8Overridden,

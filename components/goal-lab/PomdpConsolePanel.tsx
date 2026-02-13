@@ -27,9 +27,11 @@ type Props = {
   rawV1?: any;
   observeLiteParams?: { radius: number; maxAgents: number; noiseSigma: number; seed: number };
   onObserveLiteParamsChange?: (p: { radius: number; maxAgents: number; noiseSigma: number; seed: number }) => void;
+  // If provided, allows forcing an action as "best" (via injected events) without stepping the world.
+  onForceAction?: (actionId: string | null) => void;
 };
 
-export const PomdpConsolePanel: React.FC<Props> = ({ run, rawV1, observeLiteParams, onObserveLiteParamsChange }) => {
+export const PomdpConsolePanel: React.FC<Props> = ({ run, rawV1, observeLiteParams, onObserveLiteParamsChange, onForceAction }) => {
   const stages = arr<PipelineStage>(run?.stages);
   const stageIds = useMemo(() => stages.map((s) => safeStr(s?.id)), [stages]);
   const [stageId, setStageId] = useState<string>('S0');
@@ -102,6 +104,9 @@ export const PomdpConsolePanel: React.FC<Props> = ({ run, rawV1, observeLitePara
   }, [selectedArtifact?.id]);
 
   const atomsArtifact = useMemo(() => artifacts.find((a) => a.kind === 'atoms') || null, [artifacts]);
+  // Level 4.5 snapshots are stage-level artifacts and shown above the decision details when available.
+  const modes = useMemo(() => artifacts.find((a) => a.kind === 'modes')?.data, [artifacts]);
+  const stabilizers = useMemo(() => artifacts.find((a) => a.kind === 'stabilizers')?.data, [artifacts]);
   const atoms = useMemo(() => arr<any>((atomsArtifact as any)?.data?.atoms), [atomsArtifact]);
 
   const filteredAtoms = useMemo(() => {
@@ -292,9 +297,144 @@ export const PomdpConsolePanel: React.FC<Props> = ({ run, rawV1, observeLitePara
             </div>
           ) : null}
 
+          {modes ? (
+            <div className="mb-3 rounded border border-slate-700 bg-slate-900/40 p-2">
+              <div className="mb-1 text-xs font-bold">MODES</div>
+              <pre className="text-[11px] text-slate-200">{JSON.stringify(modes, null, 2)}</pre>
+            </div>
+          ) : null}
+
+          {stabilizers ? (
+            <div className="mb-3 rounded border border-slate-700 bg-slate-900/40 p-2">
+              <div className="mb-1 text-xs font-bold">STABILIZERS</div>
+              <pre className="text-[11px] text-slate-200">{JSON.stringify(stabilizers, null, 2)}</pre>
+            </div>
+          ) : null}
+
           {selectedArtifact?.kind === 'decision' ? (
             (() => {
               const data = (selectedArtifact as any)?.data || {};
+              // New (Level 4.0b): DecisionSnapshot breakdown.
+              if (data && typeof data === 'object' && (data.goalEnergy || data.rankedOverridden || data.contribByGoal)) {
+                const ranked = arr<any>(data?.rankedOverridden || data?.ranked);
+                const best = data?.best ?? null;
+                const goalEnergy = data?.goalEnergy || {};
+                const picked = pickedRankIdx != null ? ranked[pickedRankIdx] : null;
+                const fmt = (x: any) => (Number.isFinite(Number(x)) ? Number(x).toFixed(4) : '0.0000');
+                const topContribs = (contrib: Record<string, number>) =>
+                  Object.entries(contrib || {})
+                    .sort((a, b) => (Number(b[1]) ?? 0) - (Number(a[1]) ?? 0))
+                    .slice(0, 6);
+
+                return (
+                  <div className="space-y-3">
+                    <div className="rounded border border-slate-800 bg-black/20 p-2">
+                      <div className="text-[10px] text-slate-500 uppercase tracking-widest">Decision snapshot</div>
+                      <div className="mt-1 text-[11px] text-slate-500 font-mono">T={fmt(data?.temperature)} forced={safeStr(data?.forcedActionId || '') || '—'}</div>
+                    </div>
+
+                    <div className="rounded border border-slate-800 bg-black/20 p-2">
+                      <div className="text-[10px] text-slate-500 uppercase tracking-widest">Ranked actions (breakdown)</div>
+                      <div className="mt-2 space-y-1">
+                        {ranked.slice(0, 10).map((r, i) => {
+                          const id = safeStr(r?.id || `#${i}`);
+                          const q = Number(r?.q ?? 0);
+                          const cost = Number(r?.cost ?? 0);
+                          const conf = Number(r?.confidence ?? 1);
+                          return (
+                            <button
+                              key={id || i}
+                              className={`w-full text-left px-2 py-1 rounded border ${
+                                pickedRankIdx === i
+                                  ? 'border-cyan-400/40 bg-cyan-400/10'
+                                  : 'border-slate-800 bg-slate-950/30 hover:bg-slate-800/40'
+                              }`}
+                              onClick={() => setPickedRankIdx(i)}
+                            >
+                              <div className="flex justify-between gap-2 text-[12px]">
+                                <div className="font-mono text-slate-200 truncate">{id}</div>
+                                <div className="font-mono text-cyan-300">q={fmt(q)}</div>
+                              </div>
+                              <div className="flex justify-between gap-2 text-[11px] text-slate-500 font-mono">
+                                <div>cost={fmt(cost)} conf={fmt(conf)}</div>
+                                <div>raw={fmt(r?.rawBeforeConfidence ?? 0)}</div>
+                              </div>
+                            </button>
+                          );
+                        })}
+                        {!ranked.length ? <div className="text-xs text-slate-500">No ranked actions</div> : null}
+                      </div>
+                    </div>
+
+                    {picked ? (
+                      <div className="rounded border border-slate-800 bg-black/20 p-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="text-[10px] text-slate-500 uppercase tracking-widest">Picked action</div>
+                          {onForceAction ? (
+                            <div className="flex items-center gap-2">
+                              <button
+                                className="text-xs px-2 py-1 rounded border border-cyan-400/40 bg-cyan-400/10 text-cyan-200 hover:bg-cyan-400/20"
+                                onClick={() => {
+                                  const actId = safeStr(picked?.id);
+                                  if (!actId) return;
+                                  onForceAction(actId);
+                                }}
+                                title="Mark this action as forced-best (console only)"
+                              >
+                                Force best
+                              </button>
+                              <button
+                                className="text-xs px-2 py-1 rounded border border-slate-700 bg-slate-900/30 text-slate-200 hover:bg-slate-800/40"
+                                onClick={() => onForceAction(null)}
+                                title="Clear forced action"
+                              >
+                                Clear
+                              </button>
+                            </div>
+                          ) : null}
+                        </div>
+
+                        <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2">
+                          <div className="rounded border border-slate-800 bg-slate-950/30 p-2">
+                            <div className="text-[10px] text-slate-500 uppercase tracking-widest">Goal energy</div>
+                            <pre className="mt-1 text-[11px] text-slate-200 overflow-auto">{prettyJson(goalEnergy)}</pre>
+                          </div>
+                          <div className="rounded border border-slate-800 bg-slate-950/30 p-2">
+                            <div className="text-[10px] text-slate-500 uppercase tracking-widest">ΔGoals</div>
+                            <pre className="mt-1 text-[11px] text-slate-200 overflow-auto">{prettyJson(picked?.deltaGoals || {})}</pre>
+                          </div>
+                        </div>
+
+                        <div className="mt-2 rounded border border-slate-800 bg-slate-950/30 p-2">
+                          <div className="text-[10px] text-slate-500 uppercase tracking-widest">Top contributors (goalEnergy × Δg)</div>
+                          <div className="mt-1 space-y-1">
+                            {topContribs(picked?.contribByGoal || {}).map(([g, v]) => (
+                              <div key={g} className="flex justify-between gap-2 text-[12px] font-mono">
+                                <div className="text-slate-200 truncate">{g}</div>
+                                <div className="text-cyan-300">{fmt(v)}</div>
+                              </div>
+                            ))}
+                            {!topContribs(picked?.contribByGoal || {}).length ? (
+                              <div className="text-xs text-slate-500">No goal contributions</div>
+                            ) : null}
+                          </div>
+                        </div>
+
+                        <pre className="mt-2 text-[11px] text-slate-200 overflow-auto">{prettyJson(picked)}</pre>
+                      </div>
+                    ) : null}
+
+                    {best ? (
+                      <div className="rounded border border-slate-800 bg-black/20 p-2">
+                        <div className="text-[10px] text-slate-500 uppercase tracking-widest">Best</div>
+                        <pre className="mt-2 text-[11px] text-slate-200 overflow-auto">{prettyJson(best)}</pre>
+                      </div>
+                    ) : null}
+
+                    {data?.note ? <div className="text-[11px] text-slate-500">{safeStr(data.note)}</div> : null}
+                  </div>
+                );
+              }
               const ranked = arr<any>(data?.ranked);
               const best = data?.best ?? null;
               const intent = data?.intentPreview ?? null;
@@ -329,7 +469,31 @@ export const PomdpConsolePanel: React.FC<Props> = ({ run, rawV1, observeLitePara
 
                   {picked ? (
                     <div className="rounded border border-slate-800 bg-black/20 p-2">
-                      <div className="text-[10px] text-slate-500 uppercase tracking-widest">Picked action</div>
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="text-[10px] text-slate-500 uppercase tracking-widest">Picked action</div>
+                        {onForceAction ? (
+                          <div className="flex items-center gap-2">
+                            <button
+                              className="text-xs px-2 py-1 rounded border border-cyan-400/40 bg-cyan-400/10 text-cyan-200 hover:bg-cyan-400/20"
+                              onClick={() => {
+                                const actId = safeStr(picked?.id || picked?.actionId || picked?.name);
+                                if (!actId) return;
+                                onForceAction(actId);
+                              }}
+                              title="Mark this action as forced-best (console only)"
+                            >
+                              Force best
+                            </button>
+                            <button
+                              className="text-xs px-2 py-1 rounded border border-slate-700 bg-slate-900/30 text-slate-200 hover:bg-slate-800/40"
+                              onClick={() => onForceAction(null)}
+                              title="Clear forced action"
+                            >
+                              Clear
+                            </button>
+                          </div>
+                        ) : null}
+                      </div>
                       <pre className="mt-2 text-[11px] text-slate-200 overflow-auto">{prettyJson(picked)}</pre>
                     </div>
                   ) : null}
@@ -353,6 +517,59 @@ export const PomdpConsolePanel: React.FC<Props> = ({ run, rawV1, observeLitePara
                       ) : null}
                     </div>
                   ) : null}
+                </div>
+              );
+            })()
+          ) : selectedArtifact?.kind === 'domains' || selectedArtifact?.kind === 'logits' ? (
+            (() => {
+              const data = (selectedArtifact as any)?.data || {};
+              const domains = arr<any>(data?.domains);
+              const active = new Set(arr<any>(data?.activeDomains).map((x) => safeStr(x?.domain || x?.id)));
+              const fmt = (x: any) => (Number.isFinite(Number(x)) ? Number(x).toFixed(4) : '0.0000');
+              return (
+                <div className="space-y-3">
+                  <div className="rounded border border-slate-800 bg-black/20 p-2">
+                    <div className="text-[10px] text-slate-500 uppercase tracking-widest">
+                      {safeStr(selectedArtifact.kind)}
+                    </div>
+                    <div className="mt-2 space-y-1 max-h-[380px] overflow-auto">
+                      {domains.slice(0, 48).map((d: any) => {
+                        const name = safeStr(d?.domain || d?.id);
+                        const score01 = Number(d?.score01 ?? d?.magnitude ?? 0);
+                        const logit = Number(d?.logit ?? 0);
+                        return (
+                          <div
+                            key={name}
+                            className={`px-2 py-1 rounded border ${
+                              active.has(name) ? 'border-cyan-400/40 bg-cyan-400/10' : 'border-slate-800 bg-slate-950/30'
+                            }`}
+                          >
+                            <div className="flex justify-between gap-2 text-[12px] font-mono">
+                              <div className="text-slate-200 truncate">{name}</div>
+                              <div className="text-cyan-300">p={fmt(score01)}</div>
+                            </div>
+                            {selectedArtifact.kind === 'logits' ? (
+                              <div className="flex justify-between gap-2 text-[11px] font-mono text-slate-500">
+                                <div>logit</div>
+                                <div>{fmt(logit)}</div>
+                              </div>
+                            ) : null}
+                          </div>
+                        );
+                      })}
+                      {!domains.length ? <div className="text-xs text-slate-500">No domains</div> : null}
+                    </div>
+                    {data?.mode ? (
+                      <div className="mt-2 rounded border border-slate-800 bg-slate-950/30 p-2">
+                        <div className="text-[10px] text-slate-500 uppercase tracking-widest">Mode</div>
+                        <pre className="mt-1 text-[11px] text-slate-200 overflow-auto">{prettyJson(data.mode)}</pre>
+                      </div>
+                    ) : null}
+                    {data?.note ? <div className="mt-2 text-[11px] text-slate-500">{safeStr(data.note)}</div> : null}
+                  </div>
+                  <pre className="text-[11px] text-slate-200 bg-black/20 border border-slate-800 rounded p-2 overflow-auto">
+                    {prettyJson({ ...data, domains: domains.slice(0, 12) })}
+                  </pre>
                 </div>
               );
             })()
