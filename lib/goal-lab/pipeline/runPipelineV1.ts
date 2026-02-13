@@ -35,6 +35,7 @@ import { buildActionCandidates } from '../../decision/actionCandidateUtils';
 import { arr } from '../../utils/arr';
 import { buildIntentPreview } from './intentPreview';
 import { makeSimStep, type SimStep } from '../../core/simStep';
+import { observeLite } from './observeLite';
 
 export type GoalLabStageId = 'S0'|'S1'|'S2'|'S3'|'S4'|'S5'|'S6'|'S7'|'S8';
 
@@ -183,6 +184,22 @@ export function runGoalLabPipelineV1(input: {
     includeAxes: false
   });
   atoms = arr((s0 as any)?.mergedAtoms).map(normalizeAtom);
+  // Observation snapshot (lite): best-effort visibility model for GoalLab console.
+  // IMPORTANT: this does not replace the existing obs-atoms pipeline.
+  const observationLite = observeLite({
+    world,
+    agent,
+    selfId,
+    tick,
+    params: {
+      // Conservative defaults; can be made user-tunable later (GoalLab top bar).
+      radius: 10,
+      maxAgents: 12,
+      noiseSigma: 0,
+      seed: Number((world as any)?.rngSeed ?? 0),
+    },
+  });
+
   const s0ObsAtomIds = arr((s0 as any)?.obsAtoms)
     .map((a: any) => String(a?.id || ''))
     .filter(Boolean);
@@ -202,7 +219,8 @@ export function runGoalLabPipelineV1(input: {
         agentId: selfId,
         tick,
         rawObservations: s0RawObservations,
-        obsAtomIds: s0ObsAtomIds.slice(0, 400),
+        obsAtomIds: s0ObsAtomIds.slice(0, 800),
+        observationLite,
         note: 'Lite snapshot: world.observations[agentId] + obsAtomIds from Stage0 (extractObservationAtoms).',
       },
     }

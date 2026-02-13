@@ -5,6 +5,7 @@ import { arr } from '../../utils/arr';
 const TYPED_V1_KEYS = new Set([
   'obsAtomsCount',
   'provenanceSize',
+  'observationSnapshot',
   'quarks',
   'socialProximity',
   'hazardGeometry',
@@ -137,9 +138,14 @@ function buildArtifactsFromFrame(frame: GoalLabStageFrame, run: GoalLabPipelineV
       });
 
     const pickByIds = (ids: string[]) => {
-      const set = new Set(ids.filter(Boolean));
-      if (!set.size) return [];
-      return atoms.filter((a: any) => set.has(String((a as any)?.id || '')));
+      if (!ids.length) return [];
+      const set = new Set(ids);
+      const outAtoms: any[] = [];
+      for (const a of atoms) {
+        const id = String((a as any)?.id || '');
+        if (set.has(id)) outAtoms.push(a);
+      }
+      return outAtoms;
     };
 
     // Heuristic prefix groups (best-effort, but faithful to existing S0 atom ids).
@@ -148,8 +154,10 @@ function buildArtifactsFromFrame(frame: GoalLabStageFrame, run: GoalLabPipelineV
     const beliefPfx = new Set(['belief', 'mem', 'prior', 'self', 'trait', 'bio', 'ctx']);
 
     const truthAtoms = pickByPrefix(truthPfx);
-    const obsIds = arr<string>((v1 as any)?.observationSnapshot?.obsAtomIds);
-    const obsAtoms = obsIds.length ? pickByIds(obsIds) : pickByPrefix(obsPfx);
+    // Level 3.1+: prefer explicit obsAtomIds from observationSnapshot if present.
+    const obsSnap = (v1 as any)?.observationSnapshot;
+    const obsAtomIds = Array.isArray(obsSnap?.obsAtomIds) ? obsSnap.obsAtomIds.filter((x: any) => typeof x === 'string') : [];
+    const obsAtoms = obsAtomIds.length ? pickByIds(obsAtomIds) : pickByPrefix(obsPfx);
     const beliefAtoms = pickByPrefix(beliefPfx);
 
     push('truth', 'truth_atoms', 'Truth atoms (S0)', {
@@ -161,7 +169,9 @@ function buildArtifactsFromFrame(frame: GoalLabStageFrame, run: GoalLabPipelineV
     push('observation', 'observation_atoms', 'Observation atoms (S0)', {
       count: obsAtoms.length,
       atoms: obsAtoms.slice(0, 300),
-      note: 'S0 observation slice by atom id prefix (obs:* / vis:*).',
+      note: obsAtomIds.length
+        ? 'S0 observation slice by explicit obsAtomIds (from observationSnapshot).'
+        : 'S0 observation slice by atom id prefix (obs:* / vis:*).',
     });
 
     push('belief', 'belief_atoms', 'Belief/Memory atoms (S0)', {
@@ -175,12 +185,15 @@ function buildArtifactsFromFrame(frame: GoalLabStageFrame, run: GoalLabPipelineV
       tick: Number(run.tick ?? 0),
       step: (run as any).step ?? null,
     });
-    if ((v1 as any).obsAtomsCount != null || (v1 as any).provenanceSize != null) {
+    if ((v1 as any).obsAtomsCount != null || (v1 as any).provenanceSize != null || (v1 as any)?.observationSnapshot != null) {
       push('observation', 'observation_summary', 'Observation summary', {
         obsAtomsCount: (v1 as any).obsAtomsCount ?? null,
         provenanceSize: (v1 as any).provenanceSize ?? null,
         observationSnapshot: (v1 as any).observationSnapshot ?? null,
       });
+      if ((v1 as any)?.observationSnapshot != null) {
+        push('observation', 'observation_snapshot', 'ObservationSnapshot (S0)', (v1 as any).observationSnapshot);
+      }
     }
   }
 
