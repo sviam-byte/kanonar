@@ -28,6 +28,7 @@ import { GoalLabResults } from '../goal-lab/GoalLabResults';
 import { DoNowCard } from '../goal-lab/DoNowCard';
 import { CurvesPanel } from '../goal-lab/CurvesPanel';
 import { PipelinePanel } from '../goal-lab/PipelinePanel';
+import { PomdpConsolePanel } from '../goal-lab/PomdpConsolePanel';
 import { DecisionGraphView } from '../goal-lab/DecisionGraphView';
 import { GoalActionGraphView } from '../goal-lab/GoalActionGraphView';
 import { CurveStudio } from '../goal-lab/CurveStudio';
@@ -45,6 +46,8 @@ import { runTicksForCast } from '../../lib/engine/tick';
 import type { AtomDiff } from '../../lib/snapshot/diffAtoms';
 import { diffAtoms } from '../../lib/snapshot/diffAtoms';
 import { adaptToSnapshotV1, normalizeSnapshot } from '../../lib/goal-lab/snapshotAdapter';
+import { runGoalLabPipelineV1 } from '../../lib/goal-lab/pipeline/runPipelineV1';
+import { adaptPipelineV1ToContract } from '../../lib/goal-lab/pipeline/adaptV1ToContract';
 import { buildGoalLabSceneDumpV2, downloadJson } from '../../lib/goal-lab/sceneDump';
 import { materializeStageAtoms } from '../goal-lab/materializePipeline';
 import { buildFullDebugDump } from '../../lib/debug/buildFullDebugDump';
@@ -597,7 +600,7 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render }) => {
   const [selectedEventIds, setSelectedEventIds] = useState<Set<string>>(new Set());
   const [manualAtoms, setManualAtoms] = useState<ContextAtom[]>([]);
   const [pipelineStageId, setPipelineStageId] = useState<string>('S5');
-  const [activeBottomTab, setActiveBottomTab] = useState<'debug' | 'tom' | 'pipeline' | 'compare' | 'curves'>('pipeline');
+  const [activeBottomTab, setActiveBottomTab] = useState<'debug' | 'tom' | 'pipeline' | 'pomdp' | 'compare' | 'curves'>('pipeline');
   const [lockedMapViewport, setLockedMapViewport] = useState<{ w: number; h: number } | null>(null);
   const lockedMapIdRef = useRef<string | null>(null);
 
@@ -1637,6 +1640,31 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render }) => {
       stages,
     } as any;
   }, [snapshotV1, perspectiveId]);
+
+
+  // POMDP console pipeline (real stages from runGoalLabPipelineV1), adapted to strict contracts.
+  // This keeps UI-level parsing stable even if internal V1 artifact shapes evolve.
+  const pomdpPipelineV1 = useMemo(() => {
+    if (!worldState) return null;
+    const agentId = String(focusId || perspectiveId || selectedAgentId || '');
+    if (!agentId) return null;
+    try {
+      return runGoalLabPipelineV1({
+        world: worldState as any,
+        agentId,
+        participantIds: participantIds as any,
+        manualAtoms: manualAtoms as any,
+        injectedEvents,
+        sceneControl,
+        tickOverride: Number((worldState as any)?.tick ?? 0),
+      });
+    } catch (e) {
+      console.error('[GoalSandbox] runGoalLabPipelineV1 failed', e);
+      return null;
+    }
+  }, [worldState, focusId, perspectiveId, selectedAgentId, participantIds, manualAtoms, injectedEvents, sceneControl]);
+
+  const pomdpRun = useMemo(() => adaptPipelineV1ToContract(pomdpPipelineV1 as any), [pomdpPipelineV1]);
 
   // Prefer staged pipeline ids, fallback to snapshot deltas (or a safe default list) for legacy data.
   const pipelineStageOptions = useMemo(() => {
@@ -2798,7 +2826,7 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render }) => {
             {mapArea}
             <div className="flex-1 min-h-[220px] border-t border-slate-800 bg-slate-950 flex flex-col min-h-0">
               <nav className="flex border-b border-slate-800 bg-slate-900/20">
-                {(['debug', 'tom', 'pipeline', 'compare', 'curves'] as const).map((t) => (
+                {(['debug', 'tom', 'pipeline', 'pomdp', 'compare', 'curves'] as const).map((t) => (
                   <button
                     key={t}
                     onClick={() => setActiveBottomTab(t)}
@@ -2821,6 +2849,9 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render }) => {
                     onSelect={setPipelineStageId as any}
                     onExportStage={handleExportPipelineStage}
                   />
+                ) : null}
+                {activeBottomTab === 'pomdp' ? (
+                  <PomdpConsolePanel run={pomdpRun as any} rawV1={pomdpPipelineV1 as any} />
                 ) : null}
                 {activeBottomTab === 'tom' ? (
                   // IMPORTANT: ToM atoms are produced by GoalLab pipeline stages, not by the raw SimSnapshot.
