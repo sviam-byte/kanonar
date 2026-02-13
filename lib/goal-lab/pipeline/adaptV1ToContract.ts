@@ -22,6 +22,7 @@ const TYPED_V1_KEYS = new Set([
   'drvCount',
   'goalAtomsCount',
   'goalDebug',
+  'goalLayerSnapshot',
   'planGoalAtomsCount',
   'goalActionLinksCount',
   'utilAtomsCount',
@@ -33,6 +34,7 @@ const TYPED_V1_KEYS = new Set([
   'overriddenIds',
   'priorsAtomIds',
   'decisionAtomIds',
+  'decisionSnapshot',
   'error',
 ]);
 
@@ -253,9 +255,25 @@ function buildArtifactsFromFrame(frame: GoalLabStageFrame, run: GoalLabPipelineV
 
   // S7: Goal ecology and planning surface.
   if (stageId === 'S7') {
+    const gls = (v1 as any).goalLayerSnapshot ?? null;
+    if (gls) {
+      push('domains', 'domains', 'Domains (goal ecology)', {
+        domains: (gls as any).domains ?? [],
+        activeDomains: (gls as any).activeDomains ?? [],
+        mode: (gls as any).mode ?? null,
+      });
+      push('logits', 'logits', 'Logits (derived from 0..1 domain scores)', {
+        domains: (gls as any).domains ?? [],
+        note: 'logit = log(p/(1-p)) where p is domain score01. This is a UI helper until true logits exist in engine.',
+      });
+      push('goals', 'concrete_goals', 'Concrete goals (planning top)', {
+        planningTop: (gls as any).planningTop ?? [],
+      });
+    }
     push('goals', 'goals', 'Goals (ecology + planning)', {
       goalAtomsCount: (v1 as any).goalAtomsCount ?? null,
       goalDebug: (v1 as any).goalDebug ?? null,
+      goalLayerSnapshot: (v1 as any).goalLayerSnapshot ?? null,
       planGoalAtomsCount: (v1 as any).planGoalAtomsCount ?? null,
       goalActionLinksCount: (v1 as any).goalActionLinksCount ?? null,
       utilAtomsCount: (v1 as any).utilAtomsCount ?? null,
@@ -269,10 +287,14 @@ function buildArtifactsFromFrame(frame: GoalLabStageFrame, run: GoalLabPipelineV
     if ((v1 as any).error) {
       push('decision', 'decision_error', 'Decision error', (v1 as any).error);
     }
+    if ((v1 as any).decisionSnapshot != null) {
+      push('decision', 'decision_snapshot', 'DecisionSnapshot (breakdown)', (v1 as any).decisionSnapshot);
+    }
     push('decision', 'decision', 'Decision (ranked/best/intent)', {
       accessDecisions: (v1 as any).accessDecisions ?? [],
       ranked: (v1 as any).ranked ?? [],
       best: (v1 as any).best ?? null,
+      decisionSnapshot: (v1 as any).decisionSnapshot ?? null,
       intentPreview: (v1 as any).intentPreview ?? null,
       overriddenIds: (v1 as any).overriddenIds ?? [],
       priorsAtomIds: (v1 as any).priorsAtomIds ?? [],
