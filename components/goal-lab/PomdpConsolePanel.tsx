@@ -27,9 +27,11 @@ type Props = {
   rawV1?: any;
   observeLiteParams?: { radius: number; maxAgents: number; noiseSigma: number; seed: number };
   onObserveLiteParamsChange?: (p: { radius: number; maxAgents: number; noiseSigma: number; seed: number }) => void;
+  // If provided, allows forcing an action as "best" (via injected events) without stepping the world.
+  onForceAction?: (actionId: string | null) => void;
 };
 
-export const PomdpConsolePanel: React.FC<Props> = ({ run, rawV1, observeLiteParams, onObserveLiteParamsChange }) => {
+export const PomdpConsolePanel: React.FC<Props> = ({ run, rawV1, observeLiteParams, onObserveLiteParamsChange, onForceAction }) => {
   const stages = arr<PipelineStage>(run?.stages);
   const stageIds = useMemo(() => stages.map((s) => safeStr(s?.id)), [stages]);
   const [stageId, setStageId] = useState<string>('S0');
@@ -329,7 +331,31 @@ export const PomdpConsolePanel: React.FC<Props> = ({ run, rawV1, observeLitePara
 
                   {picked ? (
                     <div className="rounded border border-slate-800 bg-black/20 p-2">
-                      <div className="text-[10px] text-slate-500 uppercase tracking-widest">Picked action</div>
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="text-[10px] text-slate-500 uppercase tracking-widest">Picked action</div>
+                        {onForceAction ? (
+                          <div className="flex items-center gap-2">
+                            <button
+                              className="text-xs px-2 py-1 rounded border border-cyan-400/40 bg-cyan-400/10 text-cyan-200 hover:bg-cyan-400/20"
+                              onClick={() => {
+                                const actId = safeStr(picked?.id || picked?.actionId || picked?.name);
+                                if (!actId) return;
+                                onForceAction(actId);
+                              }}
+                              title="Mark this action as forced-best (console only)"
+                            >
+                              Force best
+                            </button>
+                            <button
+                              className="text-xs px-2 py-1 rounded border border-slate-700 bg-slate-900/30 text-slate-200 hover:bg-slate-800/40"
+                              onClick={() => onForceAction(null)}
+                              title="Clear forced action"
+                            >
+                              Clear
+                            </button>
+                          </div>
+                        ) : null}
+                      </div>
                       <pre className="mt-2 text-[11px] text-slate-200 overflow-auto">{prettyJson(picked)}</pre>
                     </div>
                   ) : null}

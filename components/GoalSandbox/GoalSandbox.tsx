@@ -2960,6 +2960,26 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
                 snapshotV1={snapshotV1 as any}
                 pipelineV1={pipelineV1 as any}
                 focusId={focusId as any}
+                pomdpRun={pomdpRun as any}
+                pomdpRawV1={pomdpPipelineV1 as any}
+                observeLiteParams={observeLiteParams}
+                onObserveLiteParamsChange={setObserveLiteParams}
+                onForceAction={(actionId) => {
+                  // Persist a single active force_action for this focus agent.
+                  // This affects decision ranking in the console pipeline (without stepping world dynamics).
+                  const agentId = String(focusId || '');
+                  setInjectedEvents((prev) => {
+                    const filtered = arr(prev).filter((e: any) => {
+                      const t = String(e?.type || e?.kind || '');
+                      const a = String(e?.agentId || e?.selfId || '');
+                      return !(t === 'force_action' && a === agentId);
+                    });
+                    if (!actionId) return filtered;
+                    const tick = Number((worldState as any)?.tick ?? 0);
+                    return [...filtered, { type: 'force_action', agentId, actionId, tick }];
+                  });
+                  setDecisionNonce((n) => n + 1);
+                }}
                 sceneDump={sceneDumpV2 as any}
                 onDownloadScene={onDownloadScene}
                 onImportScene={handleImportSceneClick}

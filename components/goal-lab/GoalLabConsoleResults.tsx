@@ -1,7 +1,7 @@
-import React, { useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import { GoalLabResults } from './GoalLabResults';
 import { PomdpConsolePanel } from './PomdpConsolePanel';
-import { adaptPipelineV1ToContract } from '../../lib/goal-lab/pipeline/adaptV1ToContract';
+import type { PipelineRun } from '../../lib/goal-lab/pipeline/contracts';
 
 // Console shell: keep a bounded height and a dedicated scrollable body.
 
@@ -21,8 +21,15 @@ type Props = {
   situation: any;
 
   snapshotV1: any;
-  pipelineV1: any;
+  pipelineV1: any; // legacy deltas (for Debug tab)
   focusId: string;
+
+  // POMDP console run (real staged pipeline from runGoalLabPipelineV1, adapted to contracts)
+  pomdpRun: PipelineRun | null;
+  pomdpRawV1?: any;
+  observeLiteParams?: { radius: number; maxAgents: number; noiseSigma: number; seed: number };
+  onObserveLiteParamsChange?: (p: { radius: number; maxAgents: number; noiseSigma: number; seed: number }) => void;
+  onForceAction?: (actionId: string | null) => void;
 
   sceneDump: any;
   onDownloadScene: () => void;
@@ -56,17 +63,6 @@ type Props = {
 export const GoalLabConsoleResults: React.FC<Props> = (props) => {
   const [tab, setTab] = useState<TabId>('pipeline');
 
-  const pomdp = useMemo(() => {
-    try {
-      if (props.pipelineV1 && Array.isArray(props.pipelineV1?.stages)) {
-        return adaptPipelineV1ToContract(props.pipelineV1);
-      }
-      return null;
-    } catch (e) {
-      console.error('[GoalLabConsoleResults] adaptPipelineV1ToContract failed', e);
-      return null;
-    }
-  }, [props.pipelineV1]);
 
   return (
     <div className="h-full min-h-0 w-full rounded border border-slate-800 bg-slate-950/40 flex flex-col">
@@ -99,11 +95,13 @@ export const GoalLabConsoleResults: React.FC<Props> = (props) => {
       <div className="flex-1 min-h-0 overflow-hidden p-3">
         <div className="h-full min-h-0 overflow-auto">
           {tab === 'pipeline' ? (
-            pomdp ? (
-              <PomdpConsolePanel pipeline={pomdp as any} />
-            ) : (
-              <div className="text-sm text-slate-400">No pipeline contract available.</div>
-            )
+            <PomdpConsolePanel
+              run={props.pomdpRun}
+              rawV1={props.pomdpRawV1}
+              observeLiteParams={props.observeLiteParams}
+              onObserveLiteParamsChange={props.onObserveLiteParamsChange}
+              onForceAction={props.onForceAction}
+            />
           ) : null}
 
           {tab === 'world' ? (

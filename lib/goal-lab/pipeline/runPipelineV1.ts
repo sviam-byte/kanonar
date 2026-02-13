@@ -546,6 +546,34 @@ export function runGoalLabPipelineV1(input: {
       q: Number(r?.q ?? 0),
     }));
 
+    // Optional console override: if a force_action event is injected for this agent,
+    // promote that action as "best" in artifacts (without stepping world dynamics).
+    const forcedActionId = (() => {
+      const evs = arr(input.injectedEvents);
+      let last: any = null;
+      for (const e of evs) {
+        const t = String((e as any)?.type || (e as any)?.kind || '');
+        if (t !== 'force_action') continue;
+        const a = String((e as any)?.agentId || (e as any)?.selfId || '');
+        if (a && a !== selfId) continue;
+        last = e;
+      }
+      const id = String((last as any)?.actionId || (last as any)?.action || '');
+      return id && id !== 'undefined' && id !== 'null' ? id : '';
+    })();
+
+    const bestRaw = (decision as any)?.best || null;
+    const bestOverridden = forcedActionId
+      ? (rankedActions.find((a: any) => String(a?.id || a?.actionId || a?.name || '') === forcedActionId) || { id: forcedActionId })
+      : bestRaw;
+
+    const rankedOverridden = (() => {
+      if (!forcedActionId) return rankedActions;
+      const rest = rankedActions.filter((a: any) => String(a?.id || a?.actionId || a?.name || '') !== forcedActionId);
+      const forced = rankedActions.find((a: any) => String(a?.id || a?.actionId || a?.name || '') === forcedActionId) || { id: forcedActionId, q: (rest[0]?.q ?? 0) + 1e-6 };
+      return [forced, ...rest];
+    })();
+
     stages.push({
       stage: 'S8',
       title: 'S8 Decision / actions',
@@ -556,12 +584,13 @@ export function runGoalLabPipelineV1(input: {
       artifacts: {
         // Keep artifacts light: export is dominated by atoms; store only top scoring + access decisions.
         accessDecisions: (accessPack as any)?.decisions || [],
-        ranked: rankedActions.slice(0, 10),
-        best: (decision as any)?.best || null,
+        ranked: rankedOverridden.slice(0, 10),
+        best: bestOverridden,
+        forcedActionId: forcedActionId || null,
         intentPreview: buildIntentPreview({
           selfId,
           atoms: atomsS8,
-          s8Artifacts: { best: (decision as any)?.best || null, ranked: rankedActions },
+          s8Artifacts: { best: bestOverridden, ranked: rankedOverridden },
           horizonSteps: 5,
         }),
         overriddenIds: s8Overridden,
