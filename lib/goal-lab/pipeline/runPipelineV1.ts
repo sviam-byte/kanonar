@@ -36,6 +36,7 @@ import { arr } from '../../utils/arr';
 import { buildIntentPreview } from './intentPreview';
 import { makeSimStep, type SimStep } from '../../core/simStep';
 import { observeLite, type ObserveLiteParams } from './observeLite';
+import { buildBeliefUpdateLiteSnapshot } from './beliefUpdateLite';
 
 export type GoalLabStageId = 'S0'|'S1'|'S2'|'S3'|'S4'|'S5'|'S6'|'S7'|'S8';
 
@@ -233,14 +234,20 @@ export function runGoalLabPipelineV1(input: {
         observationLite,
         note: 'Lite snapshot: world.observations[agentId] + obsAtomIds from Stage0 (extractObservationAtoms).',
       },
-      // Belief update (lite): explicit counts + IDs used as priors/overrides in S0.
-      beliefUpdateSnapshot: {
-        priorBeliefAtomIds: beliefAtomIds.slice(0, 800),
-        priorBeliefAtomsCount: beliefAtomIds.length,
-        overrideAtomIds: overrideAtomIds.slice(0, 800),
-        overrideAtomsCount: overrideAtomIds.length,
+      // Belief update (lite): strict snapshot for the "prior belief injection" step in S0.
+      // This is the first brick of the future U(b,a,o) protocol.
+      beliefUpdateSnapshot: buildBeliefUpdateLiteSnapshot({
+        world,
+        agent,
+        selfId,
+        tick,
+        mergedAtomsS0: atoms,
+        obsAtomIds: s0ObsAtomIds,
+        priorBeliefAtomIds: beliefAtomIds,
+        overrideAtomIds,
         eventsCount: arr(step.events).length,
-      },
+        params: { maxIds: 800 },
+      }),
     }
   });
 
