@@ -123,6 +123,13 @@ const ConsoleWorldTab: React.FC<WorldTabProps> = ({
 }) => {
   const [view, setView] = useState<'truth' | 'observation' | 'belief' | 'both'>('both');
 
+  // Bulk layout helpers for quickly arranging agents in the scene.
+  // These only call the provided callbacks; the actual persistence is owned by GoalSandbox.
+  const [gridCols, setGridCols] = useState<number>(3);
+  const [gridStep, setGridStep] = useState<number>(2);
+  const [originX, setOriginX] = useState<number>(0);
+  const [originY, setOriginY] = useState<number>(0);
+
   const truth = findArtifact(run, 'S0', 'truth');
   const obs = findArtifact(run, 'S0', 'observation');
   const bel = findArtifact(run, 'S0', 'belief');
@@ -268,6 +275,102 @@ const ConsoleWorldTab: React.FC<WorldTabProps> = ({
               <div className="text-xs text-slate-400">Редактирование best-effort: обновляет worldState (derived/imported) и трассировку</div>
             </div>
             <div className="flex items-end gap-2">
+              <div className="flex items-end gap-2">
+                <div>
+                  <div className="text-[10px] text-slate-500 uppercase tracking-widest">Grid cols</div>
+                  <input
+                    className="w-[74px] bg-slate-900/40 border border-slate-800 rounded px-2 py-1 text-xs text-slate-200"
+                    type="number"
+                    min={1}
+                    value={gridCols}
+                    onChange={(e) => setGridCols(Math.max(1, Number(e.target.value || 1)))}
+                  />
+                </div>
+                <div>
+                  <div className="text-[10px] text-slate-500 uppercase tracking-widest">Step</div>
+                  <input
+                    className="w-[74px] bg-slate-900/40 border border-slate-800 rounded px-2 py-1 text-xs text-slate-200"
+                    type="number"
+                    value={gridStep}
+                    onChange={(e) => setGridStep(Number(e.target.value || 0))}
+                  />
+                </div>
+                <div>
+                  <div className="text-[10px] text-slate-500 uppercase tracking-widest">Origin</div>
+                  <div className="flex gap-1">
+                    <input
+                      className="w-[62px] bg-slate-900/40 border border-slate-800 rounded px-2 py-1 text-xs text-slate-200"
+                      type="number"
+                      value={originX}
+                      onChange={(e) => setOriginX(Number(e.target.value || 0))}
+                    />
+                    <input
+                      className="w-[62px] bg-slate-900/40 border border-slate-800 rounded px-2 py-1 text-xs text-slate-200"
+                      type="number"
+                      value={originY}
+                      onChange={(e) => setOriginY(Number(e.target.value || 0))}
+                    />
+                  </div>
+                </div>
+                <button
+                  className="px-2 py-1 rounded text-xs border bg-black/10 border-slate-800 text-slate-300 hover:text-slate-100 hover:border-slate-700"
+                  onClick={() => {
+                    const ids = arr(participantIds);
+                    const cols = Math.max(1, Math.floor(Number(gridCols) || 1));
+                    const step = Number(gridStep) || 0;
+                    const ox = Number(originX) || 0;
+                    const oy = Number(originY) || 0;
+                    ids.forEach((id, i) => {
+                      const r = Math.floor(i / cols);
+                      const c = i % cols;
+                      onSetAgentPosition(String(id), { x: ox + c * step, y: oy + r * step });
+                    });
+                  }}
+                  title="Arrange participants on a simple grid"
+                >
+                  GRID
+                </button>
+                <button
+                  className="px-2 py-1 rounded text-xs border bg-black/10 border-slate-800 text-slate-300 hover:text-slate-100 hover:border-slate-700"
+                  onClick={() => {
+                    arr(participantIds).forEach((id) => onSetAgentPosition(String(id), { x: 0, y: 0 }));
+                  }}
+                  title="Reset all participant positions to (0,0)"
+                >
+                  RESET POS
+                </button>
+                <button
+                  className="px-2 py-1 rounded text-xs border bg-black/10 border-slate-800 text-slate-300 hover:text-slate-100 hover:border-slate-700"
+                  onClick={() => {
+                    const ids = arr(participantIds).map(String);
+                    const pts = ids
+                      .map((id) => {
+                        const a = arr(agents).find((x: any) => String(x?.entityId) === String(id)) || null;
+                        const pos = (a as any)?.position || (a as any)?.pos || { x: 0, y: 0 };
+                        const x = Number((pos as any)?.x ?? 0);
+                        const y = Number((pos as any)?.y ?? 0);
+                        return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null;
+                      })
+                      .filter(Boolean) as Array<{ x: number; y: number }>;
+                    if (!pts.length) return;
+                    const mx = pts.reduce((s, p) => s + p.x, 0) / pts.length;
+                    const my = pts.reduce((s, p) => s + p.y, 0) / pts.length;
+                    const ox = Number(originX) || 0;
+                    const oy = Number(originY) || 0;
+                    ids.forEach((id) => {
+                      const a = arr(agents).find((x: any) => String(x?.entityId) === String(id)) || null;
+                      const pos = (a as any)?.position || (a as any)?.pos || { x: 0, y: 0 };
+                      const x = Number((pos as any)?.x ?? 0);
+                      const y = Number((pos as any)?.y ?? 0);
+                      if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+                      onSetAgentPosition(String(id), { x: x - mx + ox, y: y - my + oy });
+                    });
+                  }}
+                  title="Center the cast around Origin (subtract mean position)"
+                >
+                  CENTER
+                </button>
+              </div>
               <div>
                 <div className="text-[10px] text-slate-500 uppercase tracking-widest">Move all to</div>
                 <select

@@ -571,16 +571,18 @@ export function runGoalLabPipelineV1(input: {
     });
 
     const rng = (agent as any)?.rngChannels?.decide;
+    const temperature =
+      (world as any)?.decisionTemperature ??
+      (agent as any)?.behavioralParams?.T0 ??
+      (agent as any)?.temperature ??
+      1.0;
+
     const decision = decideAction({
       actions,
       goalEnergy,
       topK: 10,
       rng: rng && typeof rng.next === 'function' ? () => rng.next() : () => 0.5,
-      temperature:
-        (world as any)?.decisionTemperature ??
-        (agent as any)?.behavioralParams?.T0 ??
-        (agent as any)?.temperature ??
-        1.0,
+      temperature,
     });
 
     const decisionAtoms = arr((decision as any)?.atoms).map(normalizeAtom);
@@ -663,6 +665,28 @@ export function runGoalLabPipelineV1(input: {
       return [forced, ...rest];
     })();
 
+    const decisionWarnings = arr<string>((decision as any)?.warnings);
+
+    // Level 4.5: explicit mode/stabilizer snapshots for console observability.
+    const modesSnapshot = {
+      fastMode: !!(input.sceneControl as any)?.fastMode,
+      source: (input as any)?.worldSource || 'derived',
+      consoleMode: true,
+      observe: {
+        radius: input.observeLiteParams?.radius ?? null,
+        noise: input.observeLiteParams?.noiseSigma ?? null,
+        seed: input.observeLiteParams?.seed ?? null,
+      },
+      forcedActionId: forcedActionId || null,
+    };
+
+    const stabilizersSnapshot = {
+      temperature,
+      forced: forcedActionId || null,
+      emptyGoalEnergy: !goalEnergy || Object.keys(goalEnergy).length === 0,
+      warnings: decisionWarnings || [],
+    };
+
     stages.push({
       stage: 'S8',
       title: 'S8 Decision / actions',
@@ -677,11 +701,7 @@ export function runGoalLabPipelineV1(input: {
         best: bestOverridden,
         decisionSnapshot: {
           selfId,
-          temperature:
-            (world as any)?.decisionTemperature ??
-            (agent as any)?.behavioralParams?.T0 ??
-            (agent as any)?.temperature ??
-            1.0,
+          temperature,
           goalEnergy,
           ranked: arr((decision as any)?.ranked).slice(0, 10).map((r: any) => buildDecisionBreakdown(r?.action || {}, r?.q)),
           rankedOverridden: rankedOverridden.slice(0, 10).map((a: any) => buildDecisionBreakdown(a, a?.q)),
@@ -690,6 +710,8 @@ export function runGoalLabPipelineV1(input: {
           note: 'Decision breakdown: Q(a)=Σ_g goalEnergy[g]*Δg(a) - cost(a), then *confidence(a). contribByGoal are pre-confidence.'
         },
         forcedActionId: forcedActionId || null,
+        modesSnapshot,
+        stabilizersSnapshot,
         intentPreview: buildIntentPreview({
           selfId,
           atoms: atomsS8,

@@ -104,6 +104,9 @@ export const PomdpConsolePanel: React.FC<Props> = ({ run, rawV1, observeLitePara
   }, [selectedArtifact?.id]);
 
   const atomsArtifact = useMemo(() => artifacts.find((a) => a.kind === 'atoms') || null, [artifacts]);
+  // Level 4.5 snapshots are stage-level artifacts and shown above the decision details when available.
+  const modes = useMemo(() => artifacts.find((a) => a.kind === 'modes')?.data, [artifacts]);
+  const stabilizers = useMemo(() => artifacts.find((a) => a.kind === 'stabilizers')?.data, [artifacts]);
   const atoms = useMemo(() => arr<any>((atomsArtifact as any)?.data?.atoms), [atomsArtifact]);
 
   const filteredAtoms = useMemo(() => {
@@ -291,6 +294,20 @@ export const PomdpConsolePanel: React.FC<Props> = ({ run, rawV1, observeLitePara
                   </div>
                 ))}
               </div>
+            </div>
+          ) : null}
+
+          {modes ? (
+            <div className="mb-3 rounded border border-slate-700 bg-slate-900/40 p-2">
+              <div className="mb-1 text-xs font-bold">MODES</div>
+              <pre className="text-[11px] text-slate-200">{JSON.stringify(modes, null, 2)}</pre>
+            </div>
+          ) : null}
+
+          {stabilizers ? (
+            <div className="mb-3 rounded border border-slate-700 bg-slate-900/40 p-2">
+              <div className="mb-1 text-xs font-bold">STABILIZERS</div>
+              <pre className="text-[11px] text-slate-200">{JSON.stringify(stabilizers, null, 2)}</pre>
             </div>
           ) : null}
 

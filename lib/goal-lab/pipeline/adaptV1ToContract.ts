@@ -35,6 +35,8 @@ const TYPED_V1_KEYS = new Set([
   'priorsAtomIds',
   'decisionAtomIds',
   'decisionSnapshot',
+  'modesSnapshot',
+  'stabilizersSnapshot',
   'error',
 ]);
 
@@ -286,6 +288,12 @@ function buildArtifactsFromFrame(frame: GoalLabStageFrame, run: GoalLabPipelineV
   if (stageId === 'S8') {
     if ((v1 as any).error) {
       push('decision', 'decision_error', 'Decision error', (v1 as any).error);
+    }
+    if ((v1 as any).modesSnapshot) {
+      push('modes', 'modes', 'ModesSnapshot', (v1 as any).modesSnapshot);
+    }
+    if ((v1 as any).stabilizersSnapshot) {
+      push('stabilizers', 'stabilizers', 'StabilizersSnapshot', (v1 as any).stabilizersSnapshot);
     }
     if ((v1 as any).decisionSnapshot != null) {
       push('decision', 'decision_snapshot', 'DecisionSnapshot (breakdown)', (v1 as any).decisionSnapshot);
