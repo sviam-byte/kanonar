@@ -136,13 +136,20 @@ function buildArtifactsFromFrame(frame: GoalLabStageFrame, run: GoalLabPipelineV
         return allow.has(p);
       });
 
+    const pickByIds = (ids: string[]) => {
+      const set = new Set(ids.filter(Boolean));
+      if (!set.size) return [];
+      return atoms.filter((a: any) => set.has(String((a as any)?.id || '')));
+    };
+
     // Heuristic prefix groups (best-effort, but faithful to existing S0 atom ids).
     const truthPfx = new Set(['truth', 'world', 'scene', 'geo', 'phys', 'map', 'loc']);
     const obsPfx = new Set(['obs', 'see', 'seen', 'vis', 'percept']);
     const beliefPfx = new Set(['belief', 'mem', 'prior', 'self', 'trait', 'bio', 'ctx']);
 
     const truthAtoms = pickByPrefix(truthPfx);
-    const obsAtoms = pickByPrefix(obsPfx);
+    const obsIds = arr<string>((v1 as any)?.observationSnapshot?.obsAtomIds);
+    const obsAtoms = obsIds.length ? pickByIds(obsIds) : pickByPrefix(obsPfx);
     const beliefAtoms = pickByPrefix(beliefPfx);
 
     push('truth', 'truth_atoms', 'Truth atoms (S0)', {
@@ -172,6 +179,7 @@ function buildArtifactsFromFrame(frame: GoalLabStageFrame, run: GoalLabPipelineV
       push('observation', 'observation_summary', 'Observation summary', {
         obsAtomsCount: (v1 as any).obsAtomsCount ?? null,
         provenanceSize: (v1 as any).provenanceSize ?? null,
+        observationSnapshot: (v1 as any).observationSnapshot ?? null,
       });
     }
   }

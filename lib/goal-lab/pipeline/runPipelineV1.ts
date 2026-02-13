@@ -183,6 +183,10 @@ export function runGoalLabPipelineV1(input: {
     includeAxes: false
   });
   atoms = arr((s0 as any)?.mergedAtoms).map(normalizeAtom);
+  const s0ObsAtomIds = arr((s0 as any)?.obsAtoms)
+    .map((a: any) => String(a?.id || ''))
+    .filter(Boolean);
+  const s0RawObservations = arr((world as any)?.observations?.[selfId]).slice(0, 50);
   stages.push({
     stage: 'S0',
     title: 'S0 Canonicalization (world/obs/mem/override)',
@@ -190,7 +194,18 @@ export function runGoalLabPipelineV1(input: {
     atomsAddedIds: atoms.map(a => String((a as any).id)).filter(Boolean),
     warnings: [],
     stats: { atomCount: atoms.length, addedCount: atoms.length, ...stageStats(atoms) },
-    artifacts: { obsAtomsCount: arr((s0 as any)?.obsAtoms).length, provenanceSize: ((s0 as any)?.provenance as any)?.size ?? 0 }
+    artifacts: {
+      obsAtomsCount: arr((s0 as any)?.obsAtoms).length,
+      provenanceSize: ((s0 as any)?.provenance as any)?.size ?? 0,
+      // Level 3.1: explicit observation snapshot (lite).
+      observationSnapshot: {
+        agentId: selfId,
+        tick,
+        rawObservations: s0RawObservations,
+        obsAtomIds: s0ObsAtomIds.slice(0, 400),
+        note: 'Lite snapshot: world.observations[agentId] + obsAtomIds from Stage0 (extractObservationAtoms).',
+      },
+    }
   });
 
   // S1: Normalize -> Quarks (минимально)
