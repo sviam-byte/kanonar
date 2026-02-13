@@ -934,6 +934,26 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
     [ensureCompleteInitialRelations, getActiveLocationId, runtimeDyadConfigs]
   );
 
+
+  // Keep the derived world consistent when the editor changes location mode/preset.
+  // Without this, agents can keep stale locationId and world.locations can drift from overrideLocation.
+  const lastLocationKeyRef = useRef<string>('');
+  useEffect(() => {
+    const key = `${locationMode}:${selectedLocationId}`;
+    if (lastLocationKeyRef.current === key) return;
+    lastLocationKeyRef.current = key;
+    if (worldSource !== 'derived') return;
+    // Best-effort: update agents' locationId + recompute roles/tom without wiping other world fields.
+    setWorldState(prev => {
+      if (!prev) return prev;
+      try {
+        return refreshWorldDerived(prev as any, arr((prev as any).agents) as any) as any;
+      } catch {
+        return prev;
+      }
+    });
+  }, [locationMode, selectedLocationId, worldSource, refreshWorldDerived]);
+
   const rebuildWorldFromParticipants = useCallback(
     (idsInput: Set<string>) => {
       const subject = allCharacters.find(c => c.entityId === selectedAgentId);
@@ -2996,6 +3016,28 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
                 locationScores={locationScores as any}
                 tomScores={tomScores as any}
                 atomDiff={atomDiff as any}
+
+                characters={allCharacters as any}
+                locations={allLocations as any}
+                selectedAgentId={selectedAgentId as any}
+                onSelectAgentId={handleSelectAgent as any}
+                locationMode={locationMode as any}
+                onSetLocationMode={setLocationMode as any}
+                selectedLocationId={selectedLocationId as any}
+                onSelectLocationId={setSelectedLocationId as any}
+                onRebuildWorld={() => {
+                  // Rebuild the derived world so agent/location ids and roles/tom are consistent with editor state.
+                  if (worldSource === 'imported') {
+                    // Do not silently destroy imported scenes; just refresh derived fields.
+                    setWorldState(prev => {
+                      if (!prev) return prev;
+                      try { return refreshWorldDerived(prev as any, arr((prev as any).agents) as any) as any; } catch { return prev; }
+                    });
+                    return;
+                  }
+                  setWorldSource('derived');
+                  rebuildWorldFromParticipants(new Set(sceneParticipants));
+                }}
               />
             </div>
           ) : (

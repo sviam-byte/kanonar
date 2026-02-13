@@ -3,8 +3,6 @@ import { GoalLabResults } from './GoalLabResults';
 import { PomdpConsolePanel } from './PomdpConsolePanel';
 import type { PipelineRun } from '../../lib/goal-lab/pipeline/contracts';
 
-// Console shell: keep a bounded height and a dedicated scrollable body.
-
 function pretty(x: any): string {
   try {
     return JSON.stringify(x, null, 2);
@@ -33,10 +31,9 @@ type Props = {
   situation: any;
 
   snapshotV1: any;
-  pipelineV1: any; // legacy deltas (for Debug tab)
+  pipelineV1: any;
   focusId: string;
 
-  // POMDP console run (real staged pipeline from runGoalLabPipelineV1, adapted to contracts)
   pomdpRun: PipelineRun | null;
   pomdpRawV1?: any;
   observeLiteParams?: { radius: number; maxAgents: number; noiseSigma: number; seed: number };
@@ -55,7 +52,6 @@ type Props = {
   onExportPipelineStage: () => void;
   onExportPipelineAll: () => void;
 
-  // Legacy props mirrored from GoalLabResults for the Debug tab.
   goalScores: any;
   goalPreview: any;
   actorLabels: any;
@@ -63,6 +59,17 @@ type Props = {
   locationScores: any;
   tomScores: any;
   atomDiff: any;
+
+  // World editor state (from GoalSandbox)
+  characters: Array<{ entityId: string; title?: string }>;
+  locations: Array<{ entityId: string; title?: string }>;
+  selectedAgentId: string;
+  onSelectAgentId: (id: string) => void;
+  locationMode: 'preset' | 'custom';
+  onSetLocationMode: (m: 'preset' | 'custom') => void;
+  selectedLocationId: string;
+  onSelectLocationId: (id: string) => void;
+  onRebuildWorld: () => void;
 };
 
 type WorldTabProps = {
@@ -71,9 +78,35 @@ type WorldTabProps = {
   sceneDump: any;
   onDownloadScene: () => void;
   onImportScene: () => void;
+
+  // World editor (console)
+  characters: Array<{ entityId: string; title?: string }>;
+  locations: Array<{ entityId: string; title?: string }>;
+  selectedAgentId: string;
+  onSelectAgentId: (id: string) => void;
+  locationMode: 'preset' | 'custom';
+  onSetLocationMode: (m: 'preset' | 'custom') => void;
+  selectedLocationId: string;
+  onSelectLocationId: (id: string) => void;
+  onRebuildWorld: () => void;
 };
 
-const ConsoleWorldTab: React.FC<WorldTabProps> = ({ run, situation, sceneDump, onDownloadScene, onImportScene }) => {
+const ConsoleWorldTab: React.FC<WorldTabProps> = ({
+  run,
+  situation,
+  sceneDump,
+  onDownloadScene,
+  onImportScene,
+  characters,
+  locations,
+  selectedAgentId,
+  onSelectAgentId,
+  locationMode,
+  onSetLocationMode,
+  selectedLocationId,
+  onSelectLocationId,
+  onRebuildWorld,
+}) => {
   const [view, setView] = useState<'truth' | 'observation' | 'belief' | 'both'>('both');
 
   const truth = findArtifact(run, 'S0', 'truth');
@@ -83,16 +116,16 @@ const ConsoleWorldTab: React.FC<WorldTabProps> = ({ run, situation, sceneDump, o
   const renderAtoms = (art: any, title: string) => {
     const atoms = Array.isArray(art?.data?.atoms) ? art.data.atoms : [];
     return (
-      <div className="flex min-h-0 flex-col rounded border border-slate-800 bg-black/20 p-2">
+      <div className="rounded border border-slate-800 bg-black/20 p-2 min-h-0 flex flex-col">
         <div className="flex items-baseline justify-between">
-          <div className="text-[10px] uppercase tracking-widest text-slate-500">{title}</div>
+          <div className="text-[10px] text-slate-500 uppercase tracking-widest">{title}</div>
           <div className="text-xs text-slate-500">n={atoms.length}</div>
         </div>
-        <div className="mt-2 max-h-[520px] overflow-auto pr-1">
+        <div className="mt-2 overflow-auto max-h-[520px] pr-1">
           {atoms.slice(0, 400).map((a: any) => (
-            <div key={String(a?.id)} className="flex justify-between gap-2 border-b border-slate-900/40 py-1">
-              <div className="truncate font-mono text-[11px] text-slate-200">{String(a?.id || '')}</div>
-              <div className="font-mono text-[11px] text-cyan-300">{Number(a?.magnitude ?? 0).toFixed(3)}</div>
+            <div key={String(a?.id)} className="flex justify-between gap-2 py-1 border-b border-slate-900/40">
+              <div className="text-[11px] text-slate-200 font-mono truncate">{String(a?.id || '')}</div>
+              <div className="text-[11px] text-cyan-300 font-mono">{Number(a?.magnitude ?? 0).toFixed(3)}</div>
             </div>
           ))}
           {!atoms.length ? <div className="text-xs text-slate-500">No atoms</div> : null}
@@ -110,19 +143,121 @@ const ConsoleWorldTab: React.FC<WorldTabProps> = ({ run, situation, sceneDump, o
       aa.find((a: any) => String(a?.id || '').includes('observation_summary')) ||
       obs;
     return (
-      <div className="flex min-h-0 flex-col rounded border border-slate-800 bg-black/20 p-2">
+      <div className="rounded border border-slate-800 bg-black/20 p-2 min-h-0 flex flex-col">
         <div className="flex items-center justify-between">
-          <div className="text-[10px] uppercase tracking-widest text-slate-500">Observation snapshot</div>
+          <div className="text-[10px] text-slate-500 uppercase tracking-widest">Observation snapshot</div>
         </div>
-        <pre className="mt-2 max-h-[520px] overflow-auto text-[11px] text-slate-200">{pretty(snap?.data ?? null)}</pre>
+        <pre className="mt-2 text-[11px] text-slate-200 overflow-auto max-h-[520px]">{pretty(snap?.data ?? null)}</pre>
       </div>
     );
   };
 
   const hasRun = !!run?.stages?.length;
 
+  const labelForChar = (id: string) => {
+    const c = characters.find((x) => x.entityId === id);
+    return c?.title ? `${c.title} (${id})` : id;
+  };
+  const labelForLoc = (id: string) => {
+    const l = locations.find((x) => x.entityId === id);
+    return l?.title ? `${l.title} (${id})` : id;
+  };
+
+  // Tiny, high-signal metric overlay derived from atoms (best-effort; does NOT pretend to be full truth).
+  const getMetric = (art: any, keys: string[]): number | null => {
+    const atoms = Array.isArray(art?.data?.atoms) ? art.data.atoms : [];
+    for (const k of keys) {
+      const hit = atoms.find((a: any) => String(a?.id || '').toLowerCase().includes(k));
+      if (hit) {
+        const v = Number(hit?.magnitude);
+        if (Number.isFinite(v)) return v;
+      }
+    }
+    return null;
+  };
+  const overlay = [
+    { label: 'THREAT', keys: ['threat', 'угроза'] },
+    { label: 'PRESSURE', keys: ['pressure', 'давление'] },
+    { label: 'SUPPORT', keys: ['support', 'поддерж'] },
+    { label: 'CROWD', keys: ['crowd', 'толпа'] },
+  ].map((m) => {
+    const tv = getMetric(truth, m.keys);
+    const bv = getMetric(bel, m.keys);
+    const dv = tv != null && bv != null ? bv - tv : null;
+    return { ...m, truth: tv, belief: bv, delta: dv };
+  });
+
   return (
-    <div className="flex min-h-0 flex-col gap-3">
+    <div className="flex flex-col gap-3 min-h-0">
+      <div className="rounded border border-slate-800 bg-black/20 p-2">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div className="flex flex-wrap items-end gap-3">
+            <div>
+              <div className="text-[10px] text-slate-500 uppercase tracking-widest">Character (perspective)</div>
+              <select
+                className="bg-slate-900/40 border border-slate-800 rounded px-2 py-1 text-xs text-slate-200"
+                value={selectedAgentId || ''}
+                onChange={(e) => onSelectAgentId(e.target.value)}
+              >
+                {characters.map((c) => (
+                  <option key={c.entityId} value={c.entityId}>
+                    {labelForChar(c.entityId)}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <div className="text-[10px] text-slate-500 uppercase tracking-widest">Location mode</div>
+              <select
+                className="bg-slate-900/40 border border-slate-800 rounded px-2 py-1 text-xs text-slate-200"
+                value={locationMode}
+                onChange={(e) => onSetLocationMode(e.target.value as any)}
+              >
+                <option value="preset">preset</option>
+                <option value="custom">custom</option>
+              </select>
+            </div>
+
+            <div>
+              <div className="text-[10px] text-slate-500 uppercase tracking-widest">Location (preset)</div>
+              <select
+                className="bg-slate-900/40 border border-slate-800 rounded px-2 py-1 text-xs text-slate-200"
+                value={selectedLocationId || ''}
+                onChange={(e) => onSelectLocationId(e.target.value)}
+                disabled={locationMode !== 'preset'}
+              >
+                <option value="">(auto)</option>
+                {locations.map((l) => (
+                  <option key={l.entityId} value={l.entityId}>
+                    {labelForLoc(l.entityId)}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <button
+            className="px-3 py-1 rounded text-xs border bg-slate-800/30 border-slate-700 text-slate-100 hover:bg-slate-800/50"
+            onClick={onRebuildWorld}
+            title="Rebuild world so agents/location ids are consistent"
+          >
+            REBUILD WORLD
+          </button>
+        </div>
+
+        <div className="mt-2 flex flex-wrap gap-2">
+          {overlay.map((o) => (
+            <div key={o.label} className="rounded border border-slate-800 bg-black/10 px-2 py-1">
+              <div className="text-[10px] text-slate-500 uppercase tracking-widest">{o.label}</div>
+              <div className="text-xs text-slate-200 font-mono">
+                t={o.truth == null ? '—' : o.truth.toFixed(3)} · b={o.belief == null ? '—' : o.belief.toFixed(3)} · Δ={o.delta == null ? '—' : o.delta.toFixed(3)}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
       <div className="flex items-center justify-between gap-3">
         <div className="text-xs text-slate-500">S0 views (Truth / Observation / Belief)</div>
         <div className="flex items-center gap-2">
@@ -131,10 +266,10 @@ const ConsoleWorldTab: React.FC<WorldTabProps> = ({ run, situation, sceneDump, o
               key={v}
               onClick={() => setView(v)}
               className={[
-                'rounded border px-2 py-1 text-xs',
+                'px-2 py-1 rounded text-xs border',
                 view === v
-                  ? 'border-slate-700 bg-slate-800/50 text-slate-100'
-                  : 'border-slate-800 bg-black/10 text-slate-400 hover:border-slate-700 hover:text-slate-200',
+                  ? 'bg-slate-800/50 border-slate-700 text-slate-100'
+                  : 'bg-black/10 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700',
               ].join(' ')}
             >
               {v.toUpperCase()}
@@ -143,48 +278,37 @@ const ConsoleWorldTab: React.FC<WorldTabProps> = ({ run, situation, sceneDump, o
         </div>
       </div>
 
-      {!hasRun ? <div className="text-sm text-slate-400">No POMDP run</div> : null}
+      {!hasRun ? <div className="text-slate-400 text-sm">No POMDP run</div> : null}
 
-      <div className="grid min-h-0 grid-cols-1 gap-3 lg:grid-cols-2">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 min-h-0">
         {view === 'both' || view === 'truth' ? renderAtoms(truth, 'Truth atoms') : null}
         {view === 'both' || view === 'observation' ? renderObsSnap() : null}
         {view === 'both' || view === 'belief' ? renderAtoms(bel, 'Belief atoms') : null}
-        <div className="flex min-h-0 flex-col rounded border border-slate-800 bg-black/20 p-2">
+        <div className="rounded border border-slate-800 bg-black/20 p-2 min-h-0 flex flex-col">
           <div className="flex items-center justify-between">
-            <div className="text-[10px] uppercase tracking-widest text-slate-500">Scene dump</div>
+            <div className="text-[10px] text-slate-500 uppercase tracking-widest">Scene dump</div>
             <div className="flex gap-2">
-              <button className="text-xs text-slate-300 hover:text-slate-100" onClick={onDownloadScene}>
-                export
-              </button>
-              <button className="text-xs text-slate-300 hover:text-slate-100" onClick={onImportScene}>
-                import
-              </button>
+              <button className="text-xs text-slate-300 hover:text-slate-100" onClick={onDownloadScene}>export</button>
+              <button className="text-xs text-slate-300 hover:text-slate-100" onClick={onImportScene}>import</button>
             </div>
           </div>
-          <pre className="mt-2 max-h-[520px] overflow-auto text-[11px] text-slate-200">{pretty(sceneDump)}</pre>
+          <pre className="mt-2 text-[11px] text-slate-200 overflow-auto max-h-[520px]">{pretty(sceneDump)}</pre>
         </div>
 
-        <div className="flex min-h-0 flex-col rounded border border-slate-800 bg-black/20 p-2 lg:col-span-2">
-          <div className="mb-2 text-[10px] uppercase tracking-widest text-slate-500">Situation (legacy)</div>
-          <pre className="max-h-[320px] overflow-auto text-[11px] text-slate-200">{pretty(situation)}</pre>
+        <div className="rounded border border-slate-800 bg-black/20 p-2 min-h-0 flex flex-col lg:col-span-2">
+          <div className="text-[10px] text-slate-500 uppercase tracking-widest mb-2">Situation (legacy)</div>
+          <pre className="text-[11px] text-slate-200 overflow-auto max-h-[320px]">{pretty(situation)}</pre>
         </div>
       </div>
     </div>
   );
 };
 
-/**
- * Console-first Goal Lab result panel with focused tabs:
- * - PIPELINE: POMDP-like contract view
- * - WORLD: situation + scene dump
- * - TOM: contextual mind and ToM scores
- * - DEBUG: fallback to legacy GoalLabResults panel
- */
 export const GoalLabConsoleResults: React.FC<Props> = (props) => {
   const [tab, setTab] = useState<TabId>('pipeline');
 
   return (
-    <div className="flex h-full min-h-0 w-full flex-col rounded border border-slate-800 bg-slate-950/40">
+    <div className="h-full min-h-0 w-full rounded border border-slate-800 bg-slate-950/40 flex flex-col">
       <div className="flex items-center justify-between gap-3 border-b border-slate-800 px-3 py-2">
         <div className="flex items-baseline gap-2">
           <div className="text-xs text-slate-400">Console</div>
@@ -230,6 +354,15 @@ export const GoalLabConsoleResults: React.FC<Props> = (props) => {
               sceneDump={props.sceneDump}
               onDownloadScene={props.onDownloadScene}
               onImportScene={props.onImportScene}
+              characters={props.characters}
+              locations={props.locations}
+              selectedAgentId={props.selectedAgentId}
+              onSelectAgentId={props.onSelectAgentId}
+              locationMode={props.locationMode}
+              onSetLocationMode={props.onSetLocationMode}
+              selectedLocationId={props.selectedLocationId}
+              onSelectLocationId={props.onSelectLocationId}
+              onRebuildWorld={props.onRebuildWorld}
             />
           ) : null}
 
