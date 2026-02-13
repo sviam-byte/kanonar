@@ -324,6 +324,49 @@ export const PomdpConsolePanel: React.FC<Props> = ({ run, rawV1 }) => {
                 </div>
               );
             })()
+          ) : (selectedArtifact?.kind === 'truth' || selectedArtifact?.kind === 'observation' || selectedArtifact?.kind === 'belief') &&
+            Array.isArray((selectedArtifact as any)?.data?.atoms) ? (
+            (() => {
+              const data = (selectedArtifact as any)?.data || {};
+              const list = arr<any>(data?.atoms);
+              return (
+                <div className="space-y-3">
+                  <div className="rounded border border-slate-800 bg-black/20 p-2">
+                    <div className="text-[10px] text-slate-500 uppercase tracking-widest">{safeStr(selectedArtifact.kind)} atoms</div>
+                    <div className="mt-2 text-xs text-slate-500">
+                      count={Number(data?.count ?? list.length)} (showing up to {Math.min(120, list.length)})
+                    </div>
+                    <div className="mt-2 space-y-1 max-h-[320px] overflow-auto">
+                      {list.slice(0, 120).map((a: any) => {
+                        const id = safeStr(a?.id);
+                        const mag = Number(a?.magnitude ?? 0);
+                        const label = safeStr(a?.label || a?.code);
+                        return (
+                          <button
+                            key={id}
+                            className="w-full text-left px-2 py-1 rounded border border-slate-800 bg-slate-950/30 hover:bg-slate-800/40"
+                            onClick={() => jumpToAtom(id)}
+                            title="Jump to atom"
+                          >
+                            <div className="flex justify-between gap-2 text-[12px]">
+                              <div className="font-mono text-slate-200 truncate">{id}</div>
+                              <div className="font-mono text-cyan-300">{mag.toFixed(4)}</div>
+                            </div>
+                            {label ? <div className="text-[11px] text-slate-400 truncate">{label}</div> : null}
+                          </button>
+                        );
+                      })}
+                      {!list.length ? <div className="text-xs text-slate-500">No atoms in this slice</div> : null}
+                    </div>
+                    {data?.note ? <div className="mt-2 text-[11px] text-slate-500">{safeStr(data.note)}</div> : null}
+                  </div>
+
+                  <pre className="text-[11px] text-slate-200 bg-black/20 border border-slate-800 rounded p-2 overflow-auto">
+                    {prettyJson({ ...data, atoms: list.slice(0, 20) })}
+                  </pre>
+                </div>
+              );
+            })()
           ) : (
             <pre className="text-[11px] text-slate-200 bg-black/20 border border-slate-800 rounded p-2 overflow-auto">
               {prettyJson(selectedArtifact?.data)}

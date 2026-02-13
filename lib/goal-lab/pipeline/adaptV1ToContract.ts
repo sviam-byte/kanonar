@@ -119,7 +119,8 @@ function buildArtifactsFromFrame(frame: GoalLabStageFrame, run: GoalLabPipelineV
   };
 
   // S0: canonicalization summary (truth/observation/modes proxy).
-  // We do not have full world snapshot in this frame, so we expose transparent summary counters.
+  // Level 3.0 (minimal honesty): expose Truth vs Observation vs Belief slices from S0 atoms.
+  // We do not have the full world snapshot here, but S0 already produces typed atoms with stable prefixes.
   if (stageId === 'S0') {
     const prefixCounts: Record<string, number> = {};
     for (const a of atoms) {
@@ -127,6 +128,41 @@ function buildArtifactsFromFrame(frame: GoalLabStageFrame, run: GoalLabPipelineV
       const pfx = id.split(':', 1)[0] || 'other';
       prefixCounts[pfx] = (prefixCounts[pfx] || 0) + 1;
     }
+
+    const pickByPrefix = (allow: Set<string>) =>
+      atoms.filter((a: any) => {
+        const id = String(a?.id || '');
+        const p = id.split(':', 1)[0] || '';
+        return allow.has(p);
+      });
+
+    // Heuristic prefix groups (best-effort, but faithful to existing S0 atom ids).
+    const truthPfx = new Set(['truth', 'world', 'scene', 'geo', 'phys', 'map', 'loc']);
+    const obsPfx = new Set(['obs', 'see', 'seen', 'vis', 'percept']);
+    const beliefPfx = new Set(['belief', 'mem', 'prior', 'self', 'trait', 'bio', 'ctx']);
+
+    const truthAtoms = pickByPrefix(truthPfx);
+    const obsAtoms = pickByPrefix(obsPfx);
+    const beliefAtoms = pickByPrefix(beliefPfx);
+
+    push('truth', 'truth_atoms', 'Truth atoms (S0)', {
+      count: truthAtoms.length,
+      atoms: truthAtoms.slice(0, 300),
+      note: 'Best-effort slice by atom id prefix. This is the closest available Truth view in S0.',
+    });
+
+    push('observation', 'observation_atoms', 'Observation atoms (S0)', {
+      count: obsAtoms.length,
+      atoms: obsAtoms.slice(0, 300),
+      note: 'S0 observation slice by atom id prefix (obs:* / vis:*).',
+    });
+
+    push('belief', 'belief_atoms', 'Belief/Memory atoms (S0)', {
+      count: beliefAtoms.length,
+      atoms: beliefAtoms.slice(0, 300),
+      note: 'S0 belief-ish slice by atom id prefix (mem:* / belief:* / self:* / trait:*).',
+    });
+
     push('truth', 'truth_summary', 'Truth summary (by atom prefix)', { prefixCounts });
     push('modes', 'run_step', 'Modes / step', {
       tick: Number(run.tick ?? 0),
