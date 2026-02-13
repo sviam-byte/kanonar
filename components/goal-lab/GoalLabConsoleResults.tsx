@@ -3,6 +3,8 @@ import { GoalLabResults } from './GoalLabResults';
 import { PomdpConsolePanel } from './PomdpConsolePanel';
 import { adaptPipelineV1ToContract } from '../../lib/goal-lab/pipeline/adaptV1ToContract';
 
+// Console shell: keep a bounded height and a dedicated scrollable body.
+
 function pretty(x: any): string {
   try {
     return JSON.stringify(x, null, 2);
@@ -67,7 +69,7 @@ export const GoalLabConsoleResults: React.FC<Props> = (props) => {
   }, [props.pipelineV1]);
 
   return (
-    <div className="rounded border border-slate-800 bg-slate-950/40">
+    <div className="h-full min-h-0 w-full rounded border border-slate-800 bg-slate-950/40 flex flex-col">
       <div className="flex items-center justify-between gap-3 border-b border-slate-800 px-3 py-2">
         <div className="flex items-baseline gap-2">
           <div className="text-xs text-slate-400">Console</div>
@@ -93,77 +95,80 @@ export const GoalLabConsoleResults: React.FC<Props> = (props) => {
         </div>
       </div>
 
-      <div className="p-3">
-        {tab === 'pipeline' ? (
-          pomdp ? (
-            <PomdpConsolePanel pipeline={pomdp as any} />
-          ) : (
-            <div className="text-sm text-slate-400">No pipeline contract available.</div>
-          )
-        ) : null}
+      {/* IMPORTANT: bounded scroll container to prevent infinite panel growth. */}
+      <div className="flex-1 min-h-0 overflow-hidden p-3">
+        <div className="h-full min-h-0 overflow-auto">
+          {tab === 'pipeline' ? (
+            pomdp ? (
+              <PomdpConsolePanel pipeline={pomdp as any} />
+            ) : (
+              <div className="text-sm text-slate-400">No pipeline contract available.</div>
+            )
+          ) : null}
 
-        {tab === 'world' ? (
-          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-            <div className="rounded border border-slate-800 bg-black/20 p-2">
-              <div className="mb-2 text-[10px] uppercase tracking-widest text-slate-500">Situation</div>
-              <pre className="max-h-[520px] overflow-auto text-[11px] text-slate-200">{pretty(props.situation)}</pre>
-            </div>
-            <div className="rounded border border-slate-800 bg-black/20 p-2">
-              <div className="flex items-center justify-between">
-                <div className="text-[10px] uppercase tracking-widest text-slate-500">Scene dump</div>
-                <div className="flex gap-2">
-                  <button className="text-xs text-slate-300 hover:text-slate-100" onClick={props.onDownloadScene}>
-                    export
-                  </button>
-                  <button className="text-xs text-slate-300 hover:text-slate-100" onClick={props.onImportScene}>
-                    import
-                  </button>
-                </div>
+          {tab === 'world' ? (
+            <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+              <div className="rounded border border-slate-800 bg-black/20 p-2">
+                <div className="mb-2 text-[10px] uppercase tracking-widest text-slate-500">Situation</div>
+                <pre className="max-h-[520px] overflow-auto text-[11px] text-slate-200">{pretty(props.situation)}</pre>
               </div>
-              <pre className="mt-2 max-h-[520px] overflow-auto text-[11px] text-slate-200">{pretty(props.sceneDump)}</pre>
+              <div className="rounded border border-slate-800 bg-black/20 p-2">
+                <div className="flex items-center justify-between">
+                  <div className="text-[10px] uppercase tracking-widest text-slate-500">Scene dump</div>
+                  <div className="flex gap-2">
+                    <button className="text-xs text-slate-300 hover:text-slate-100" onClick={props.onDownloadScene}>
+                      export
+                    </button>
+                    <button className="text-xs text-slate-300 hover:text-slate-100" onClick={props.onImportScene}>
+                      import
+                    </button>
+                  </div>
+                </div>
+                <pre className="mt-2 max-h-[520px] overflow-auto text-[11px] text-slate-200">{pretty(props.sceneDump)}</pre>
+              </div>
             </div>
-          </div>
-        ) : null}
+          ) : null}
 
-        {tab === 'tom' ? (
-          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-            <div className="rounded border border-slate-800 bg-black/20 p-2">
-              <div className="mb-2 text-[10px] uppercase tracking-widest text-slate-500">ToM scores</div>
-              <pre className="max-h-[520px] overflow-auto text-[11px] text-slate-200">{pretty(props.tomScores)}</pre>
+          {tab === 'tom' ? (
+            <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+              <div className="rounded border border-slate-800 bg-black/20 p-2">
+                <div className="mb-2 text-[10px] uppercase tracking-widest text-slate-500">ToM scores</div>
+                <pre className="max-h-[520px] overflow-auto text-[11px] text-slate-200">{pretty(props.tomScores)}</pre>
+              </div>
+              <div className="rounded border border-slate-800 bg-black/20 p-2">
+                <div className="mb-2 text-[10px] uppercase tracking-widest text-slate-500">Contextual mind</div>
+                <pre className="max-h-[520px] overflow-auto text-[11px] text-slate-200">{pretty(props.contextualMind)}</pre>
+              </div>
             </div>
-            <div className="rounded border border-slate-800 bg-black/20 p-2">
-              <div className="mb-2 text-[10px] uppercase tracking-widest text-slate-500">Contextual mind</div>
-              <pre className="max-h-[520px] overflow-auto text-[11px] text-slate-200">{pretty(props.contextualMind)}</pre>
-            </div>
-          </div>
-        ) : null}
+          ) : null}
 
-        {tab === 'debug' ? (
-          <GoalLabResults
-            context={props.snapshot as any}
-            frame={props.frame as any}
-            goalScores={props.goalScores as any}
-            situation={props.situation as any}
-            goalPreview={props.goalPreview as any}
-            actorLabels={props.actorLabels as any}
-            contextualMind={props.contextualMind as any}
-            locationScores={props.locationScores as any}
-            tomScores={props.tomScores as any}
-            atomDiff={props.atomDiff as any}
-            snapshotV1={props.snapshotV1 as any}
-            pipelineV1={props.pipelineV1 as any}
-            perspectiveAgentId={props.focusId as any}
-            sceneDump={props.sceneDump as any}
-            onDownloadScene={props.onDownloadScene as any}
-            onImportScene={props.onImportScene as any}
-            manualAtoms={props.manualAtoms as any}
-            onChangeManualAtoms={props.onChangeManualAtoms as any}
-            pipelineStageId={props.pipelineStageId as any}
-            onChangePipelineStageId={props.onChangePipelineStageId as any}
-            onExportPipelineStage={props.onExportPipelineStage as any}
-            onExportPipelineAll={props.onExportPipelineAll as any}
-          />
-        ) : null}
+          {tab === 'debug' ? (
+            <GoalLabResults
+              context={props.snapshot as any}
+              frame={props.frame as any}
+              goalScores={props.goalScores as any}
+              situation={props.situation as any}
+              goalPreview={props.goalPreview as any}
+              actorLabels={props.actorLabels as any}
+              contextualMind={props.contextualMind as any}
+              locationScores={props.locationScores as any}
+              tomScores={props.tomScores as any}
+              atomDiff={props.atomDiff as any}
+              snapshotV1={props.snapshotV1 as any}
+              pipelineV1={props.pipelineV1 as any}
+              perspectiveAgentId={props.focusId as any}
+              sceneDump={props.sceneDump as any}
+              onDownloadScene={props.onDownloadScene as any}
+              onImportScene={props.onImportScene as any}
+              manualAtoms={props.manualAtoms as any}
+              onChangeManualAtoms={props.onChangeManualAtoms as any}
+              pipelineStageId={props.pipelineStageId as any}
+              onChangePipelineStageId={props.onChangePipelineStageId as any}
+              onExportPipelineStage={props.onExportPipelineStage as any}
+              onExportPipelineAll={props.onExportPipelineAll as any}
+            />
+          ) : null}
+        </div>
       </div>
     </div>
   );

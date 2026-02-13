@@ -2940,36 +2940,44 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
       </main>
 
       {/* RIGHT: GoalLab results, pipeline export/import, etc. */}
-      <aside className="w-[420px] border-l border-slate-800 bg-slate-950/50 flex flex-col shrink-0">
+      <aside className="w-[420px] border-l border-slate-800 bg-slate-950/50 flex flex-col shrink-0 min-h-0">
         <div className="p-3 border-b border-slate-800 text-[10px] font-bold text-slate-500 uppercase">
           Passport + Atoms
         </div>
-        <div className="flex-1 overflow-y-auto custom-scrollbar min-h-0 p-3 space-y-3">
+        <div
+          className={
+            uiMode === 'console'
+              ? 'flex-1 min-h-0 overflow-hidden p-3'
+              : 'flex-1 overflow-y-auto custom-scrollbar min-h-0 p-3 space-y-3'
+          }
+        >
           {uiMode === 'console' ? (
-            <GoalLabConsoleResults
-              snapshot={snapshot as any}
-              frame={computed.frame as any}
-              situation={situation as any}
-              snapshotV1={snapshotV1 as any}
-              pipelineV1={pipelineV1 as any}
-              focusId={focusId as any}
-              sceneDump={sceneDumpV2 as any}
-              onDownloadScene={onDownloadScene}
-              onImportScene={handleImportSceneClick}
-              manualAtoms={manualAtoms as any}
-              onChangeManualAtoms={setManualAtoms as any}
-              pipelineStageId={currentPipelineStageId}
-              onChangePipelineStageId={setPipelineStageId as any}
-              onExportPipelineStage={handleExportPipelineStage as any}
-              onExportPipelineAll={handleExportPipelineAll as any}
-              goalScores={goals as any}
-              goalPreview={goalPreview as any}
-              actorLabels={actorLabels as any}
-              contextualMind={contextualMind as any}
-              locationScores={locationScores as any}
-              tomScores={tomScores as any}
-              atomDiff={atomDiff as any}
-            />
+            <div className="flex-1 min-h-0 overflow-hidden">
+              <GoalLabConsoleResults
+                snapshot={snapshot as any}
+                frame={computed.frame as any}
+                situation={situation as any}
+                snapshotV1={snapshotV1 as any}
+                pipelineV1={pipelineV1 as any}
+                focusId={focusId as any}
+                sceneDump={sceneDumpV2 as any}
+                onDownloadScene={onDownloadScene}
+                onImportScene={handleImportSceneClick}
+                manualAtoms={manualAtoms as any}
+                onChangeManualAtoms={setManualAtoms as any}
+                pipelineStageId={currentPipelineStageId}
+                onChangePipelineStageId={setPipelineStageId as any}
+                onExportPipelineStage={handleExportPipelineStage as any}
+                onExportPipelineAll={handleExportPipelineAll as any}
+                goalScores={goals as any}
+                goalPreview={goalPreview as any}
+                actorLabels={actorLabels as any}
+                contextualMind={contextualMind as any}
+                locationScores={locationScores as any}
+                tomScores={tomScores as any}
+                atomDiff={atomDiff as any}
+              />
+            </div>
           ) : (
             <>
               <DoNowCard decision={(snapshotV1 as any)?.decision ?? null} />
