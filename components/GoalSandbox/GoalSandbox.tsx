@@ -589,8 +589,13 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
     {}
   );
   const actorPositionsRef = useRef<Record<string, { x: number; y: number }>>({});
+  // Per-agent location overrides (console editor). If empty, derived worlds place everyone into active location.
+  const [actorLocationOverrides, setActorLocationOverrides] = useState<Record<string, string>>({});
+  const actorLocationOverridesRef = useRef<Record<string, string>>({});
+  // IMPORTANT: must be synchronous to avoid stale override leaks
+  actorLocationOverridesRef.current = actorLocationOverrides;
+
   const importInputRef = useRef<HTMLInputElement | null>(null);
-  // IMPORTANT: must be synchronous to avoid “previous scene positions” leaking into rebuild
   actorPositionsRef.current = actorPositions;
   const [rebuildNonce, setRebuildNonce] = useState(0);
 
@@ -901,11 +906,12 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
 
   const refreshWorldDerived = useCallback(
     (prev: WorldState, nextAgents: AgentState[]) => {
-      const locId = getActiveLocationId();
+      const defaultLocId = getActiveLocationId();
       const agentIds = nextAgents.map(a => a.entityId);
 
       const agentsWithLoc = nextAgents.map(a => {
         const pos = actorPositionsRef.current[a.entityId] || (a as any).position || { x: 5, y: 5 };
+        const locId = actorLocationOverridesRef.current[a.entityId] || defaultLocId;
         return { ...(a as any), locationId: locId, position: pos } as AgentState;
       });
 
@@ -1043,6 +1049,74 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
       setSelectedAgentId(id);
     },
     [sceneParticipants, selectedAgentId]
+  );
+
+
+  const handleSetAgentLocation = useCallback(
+    (agentId: string, locationId: string) => {
+      const aid = String(agentId || '').trim();
+      const lid = String(locationId || '').trim();
+      if (!aid) return;
+      setActorLocationOverrides(prev => ({ ...(prev || {}), [aid]: lid }));
+      setWorldState(prev => {
+        if (!prev) return prev;
+        const nextAgents = arr((prev as any).agents).map((a: any) =>
+          String(a?.entityId) === aid ? ({ ...(a || {}), locationId: lid } as any) : a
+        );
+        try {
+          return worldSource === 'derived' ? (refreshWorldDerived(prev as any, nextAgents as any) as any) : ({ ...(prev as any), agents: nextAgents } as any);
+        } catch {
+          return { ...(prev as any), agents: nextAgents } as any;
+        }
+      });
+    },
+    [worldSource, refreshWorldDerived]
+  );
+
+  const handleSetAgentPosition = useCallback(
+    (agentId: string, pos: { x: number; y: number }) => {
+      const aid = String(agentId || '').trim();
+      if (!aid) return;
+      const x = Number(pos?.x);
+      const y = Number(pos?.y);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+      setActorPositions(prev => ({ ...(prev || {}), [aid]: { x, y } }));
+      setWorldState(prev => {
+        if (!prev) return prev;
+        const nextAgents = arr((prev as any).agents).map((a: any) =>
+          String(a?.entityId) === aid ? ({ ...(a || {}), position: { x, y } } as any) : a
+        );
+        try {
+          return worldSource === 'derived' ? (refreshWorldDerived(prev as any, nextAgents as any) as any) : ({ ...(prev as any), agents: nextAgents } as any);
+        } catch {
+          return { ...(prev as any), agents: nextAgents } as any;
+        }
+      });
+    },
+    [worldSource, refreshWorldDerived]
+  );
+
+  const handleMoveAllToLocation = useCallback(
+    (locationId: string) => {
+      const lid = String(locationId || '').trim();
+      if (!lid) return;
+      const ids = arr(participantIds).map(String);
+      setActorLocationOverrides(prev => {
+        const next = { ...(prev || {}) } as Record<string, string>;
+        for (const id of ids) next[id] = lid;
+        return next;
+      });
+      setWorldState(prev => {
+        if (!prev) return prev;
+        const nextAgents = arr((prev as any).agents).map((a: any) => (ids.includes(String(a?.entityId)) ? ({ ...(a || {}), locationId: lid } as any) : a));
+        try {
+          return worldSource === 'derived' ? (refreshWorldDerived(prev as any, nextAgents as any) as any) : ({ ...(prev as any), agents: nextAgents } as any);
+        } catch {
+          return { ...(prev as any), agents: nextAgents } as any;
+        }
+      });
+    },
+    [participantIds, worldSource, refreshWorldDerived]
   );
 
   const handleAddParticipant = useCallback(
@@ -3025,6 +3099,11 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
                 onSetLocationMode={setLocationMode as any}
                 selectedLocationId={selectedLocationId as any}
                 onSelectLocationId={setSelectedLocationId as any}
+
+                agents={(worldState as any)?.agents as any}
+                onSetAgentLocation={handleSetAgentLocation as any}
+                onSetAgentPosition={handleSetAgentPosition as any}
+                onMoveAllToLocation={handleMoveAllToLocation as any}
                 onRebuildWorld={() => {
                   // Rebuild the derived world so agent/location ids and roles/tom are consistent with editor state.
                   if (worldSource === 'imported') {

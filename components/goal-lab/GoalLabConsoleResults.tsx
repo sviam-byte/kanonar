@@ -3,6 +3,8 @@ import { GoalLabResults } from './GoalLabResults';
 import { PomdpConsolePanel } from './PomdpConsolePanel';
 import type { PipelineRun } from '../../lib/goal-lab/pipeline/contracts';
 
+function arr<T>(x: any): T[] { return Array.isArray(x) ? x : []; }
+
 function pretty(x: any): string {
   try {
     return JSON.stringify(x, null, 2);
@@ -69,6 +71,10 @@ type Props = {
   onSetLocationMode: (m: 'preset' | 'custom') => void;
   selectedLocationId: string;
   onSelectLocationId: (id: string) => void;
+  agents: any[];
+  onSetAgentLocation: (agentId: string, locationId: string) => void;
+  onSetAgentPosition: (agentId: string, pos: { x: number; y: number }) => void;
+  onMoveAllToLocation: (locationId: string) => void;
   onRebuildWorld: () => void;
 };
 
@@ -88,6 +94,10 @@ type WorldTabProps = {
   onSetLocationMode: (m: 'preset' | 'custom') => void;
   selectedLocationId: string;
   onSelectLocationId: (id: string) => void;
+  agents: any[];
+  onSetAgentLocation: (agentId: string, locationId: string) => void;
+  onSetAgentPosition: (agentId: string, pos: { x: number; y: number }) => void;
+  onMoveAllToLocation: (locationId: string) => void;
   onRebuildWorld: () => void;
 };
 
@@ -105,6 +115,10 @@ const ConsoleWorldTab: React.FC<WorldTabProps> = ({
   onSetLocationMode,
   selectedLocationId,
   onSelectLocationId,
+  onMoveAllToLocation,
+  agents,
+  onSetAgentLocation,
+  onSetAgentPosition,
   onRebuildWorld,
 }) => {
   const [view, setView] = useState<'truth' | 'observation' | 'belief' | 'both'>('both');
@@ -246,6 +260,81 @@ const ConsoleWorldTab: React.FC<WorldTabProps> = ({
           </button>
         </div>
 
+        {/* Locations & positions editor (console) */}
+        <div className="mt-3 rounded border border-slate-800 bg-black/10 p-2">
+          <div className="flex flex-wrap items-end justify-between gap-2">
+            <div>
+              <div className="text-[10px] text-slate-500 uppercase tracking-widest">Agents: location & position</div>
+              <div className="text-xs text-slate-400">Редактирование best-effort: обновляет worldState (derived/imported) и трассировку</div>
+            </div>
+            <div className="flex items-end gap-2">
+              <div>
+                <div className="text-[10px] text-slate-500 uppercase tracking-widest">Move all to</div>
+                <select
+                  className="bg-slate-900/40 border border-slate-800 rounded px-2 py-1 text-xs text-slate-200"
+                  value={selectedLocationId || ''}
+                  onChange={(e) => onMoveAllToLocation(e.target.value)}
+                  disabled={!locations.length}
+                >
+                  <option value="">(choose)</option>
+                  {locations.map((l) => (
+                    <option key={l.entityId} value={l.entityId}>{labelForLoc(l.entityId)}</option>
+                  ))}
+                </select>
+              </div>
+              <button
+                className="px-2 py-1 rounded text-xs border bg-black/10 border-slate-800 text-slate-300 hover:text-slate-100 hover:border-slate-700"
+                onClick={onRebuildWorld}
+              >
+                SYNC
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-2 max-h-[260px] overflow-auto pr-1">
+            {arr(participantIds).map((id) => {
+              const a = arr(agents).find((x: any) => String(x?.entityId) === String(id)) || null;
+              const locId = String((a as any)?.locationId || '');
+              const pos = (a as any)?.position || (a as any)?.pos || { x: 0, y: 0 };
+              const x = Number((pos as any)?.x ?? 0);
+              const y = Number((pos as any)?.y ?? 0);
+              return (
+                <div key={String(id)} className="grid grid-cols-12 gap-2 items-center py-1 border-b border-slate-900/40">
+                  <div className="col-span-5 min-w-0">
+                    <div className="text-[11px] text-slate-200 truncate">{labelForChar(String(id))}</div>
+                  </div>
+                  <div className="col-span-4">
+                    <select
+                      className="w-full bg-slate-900/40 border border-slate-800 rounded px-2 py-1 text-xs text-slate-200"
+                      value={locId}
+                      onChange={(e) => onSetAgentLocation(String(id), e.target.value)}
+                    >
+                      <option value="">(none)</option>
+                      {locations.map((l) => (
+                        <option key={l.entityId} value={l.entityId}>{l.title ? l.title : l.entityId}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="col-span-3 flex items-center gap-2">
+                    <input
+                      className="w-12 bg-slate-900/40 border border-slate-800 rounded px-2 py-1 text-xs text-slate-200"
+                      type="number"
+                      value={Number.isFinite(x) ? x : 0}
+                      onChange={(e) => onSetAgentPosition(String(id), { x: Number(e.target.value), y })}
+                    />
+                    <input
+                      className="w-12 bg-slate-900/40 border border-slate-800 rounded px-2 py-1 text-xs text-slate-200"
+                      type="number"
+                      value={Number.isFinite(y) ? y : 0}
+                      onChange={(e) => onSetAgentPosition(String(id), { x, y: Number(e.target.value) })}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
         <div className="mt-2 flex flex-wrap gap-2">
           {overlay.map((o) => (
             <div key={o.label} className="rounded border border-slate-800 bg-black/10 px-2 py-1">
@@ -362,6 +451,10 @@ export const GoalLabConsoleResults: React.FC<Props> = (props) => {
               onSetLocationMode={props.onSetLocationMode}
               selectedLocationId={props.selectedLocationId}
               onSelectLocationId={props.onSelectLocationId}
+              agents={props.agents}
+              onSetAgentLocation={props.onSetAgentLocation}
+              onSetAgentPosition={props.onSetAgentPosition}
+              onMoveAllToLocation={props.onMoveAllToLocation}
               onRebuildWorld={props.onRebuildWorld}
             />
           ) : null}
