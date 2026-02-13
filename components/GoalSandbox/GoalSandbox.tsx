@@ -1647,39 +1647,6 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render }) => {
     } as any;
   }, [snapshotV1, perspectiveId]);
 
-
-  // POMDP console pipeline (real stages from runGoalLabPipelineV1), adapted to strict contracts.
-  // This keeps UI-level parsing stable even if internal V1 artifact shapes evolve.
-  const pomdpPipelineV1 = useMemo(() => {
-    if (!worldState) return null;
-    const agentId = String(focusId || perspectiveId || selectedAgentId || '');
-    if (!agentId) return null;
-    try {
-      return runGoalLabPipelineV1({
-        world: worldState as any,
-        agentId,
-        participantIds: participantIds as any,
-        manualAtoms: manualAtoms as any,
-        injectedEvents,
-        sceneControl,
-        tickOverride: Number((worldState as any)?.tick ?? 0),
-        observeLiteParams,
-      });
-    } catch (e) {
-      console.error('[GoalSandbox] runGoalLabPipelineV1 failed', e);
-      return null;
-    }
-  }, [worldState, focusId, perspectiveId, selectedAgentId, participantIds, manualAtoms, injectedEvents, sceneControl, observeLiteParams]);
-
-  const pomdpRun = useMemo(() => adaptPipelineV1ToContract(pomdpPipelineV1 as any), [pomdpPipelineV1]);
-
-  // Keep observeLite seed synced to world RNG seed (but don't override user-edited values).
-  useEffect(() => {
-    const s = Number((worldState as any)?.rngSeed ?? 0);
-    if (!Number.isFinite(s)) return;
-    setObserveLiteParams((p) => (p.seed === 0 ? { ...p, seed: s } : p));
-  }, [worldState]);
-
   // Prefer staged pipeline ids, fallback to snapshot deltas (or a safe default list) for legacy data.
   const pipelineStageOptions = useMemo(() => {
     if (pipelineV1 && Array.isArray((pipelineV1 as any).stages)) {
@@ -1881,6 +1848,39 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render }) => {
     perspectiveId ||
     selectedAgentId ||
     (castRowsSafe?.[0]?.id ? String(castRowsSafe[0].id) : '');
+
+  // POMDP console pipeline (real stages from runGoalLabPipelineV1), adapted to strict contracts.
+  // NOTE: focusId is resolved above to avoid TDZ crashes in optimized/prod builds.
+  // This keeps UI-level parsing stable even if internal V1 artifact shapes evolve.
+  const pomdpPipelineV1 = useMemo(() => {
+    if (!worldState) return null;
+    const agentId = String(focusId || perspectiveId || selectedAgentId || '');
+    if (!agentId) return null;
+    try {
+      return runGoalLabPipelineV1({
+        world: worldState as any,
+        agentId,
+        participantIds: participantIds as any,
+        manualAtoms: manualAtoms as any,
+        injectedEvents,
+        sceneControl,
+        tickOverride: Number((worldState as any)?.tick ?? 0),
+        observeLiteParams,
+      });
+    } catch (e) {
+      console.error('[GoalSandbox] runGoalLabPipelineV1 failed', e);
+      return null;
+    }
+  }, [worldState, focusId, perspectiveId, selectedAgentId, participantIds, manualAtoms, injectedEvents, sceneControl, observeLiteParams]);
+
+  const pomdpRun = useMemo(() => adaptPipelineV1ToContract(pomdpPipelineV1 as any), [pomdpPipelineV1]);
+
+  // Keep observeLite seed synced to world RNG seed (but don't override user-edited values).
+  useEffect(() => {
+    const s = Number((worldState as any)?.rngSeed ?? 0);
+    if (!Number.isFinite(s)) return;
+    setObserveLiteParams((p) => (p.seed === 0 ? { ...p, seed: s } : p));
+  }, [worldState]);
 
   const sceneDumpV2 = useMemo(() => {
     return buildGoalLabSceneDumpV2({
