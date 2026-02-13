@@ -30,6 +30,7 @@ import { PlanningLabPage } from './pages/PlanningLabPage';
 import { DialogueLabPage } from './pages/DialogueLabPage';
 import { BiographyLabPage } from './pages/BiographyLabPage';
 import { GoalLabPage } from './pages/GoalLabPage';
+import { GoalLabConsolePage } from './pages/GoalLabConsolePage';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { NarrativePage } from './pages/NarrativePage';
 import { RelationsLabPage } from './pages/RelationsLabPage';
@@ -73,6 +74,7 @@ function App() {
                     <Route path="/planning-lab" element={<PlanningLabPage />} />
                     <Route path="/dialogue-lab" element={<DialogueLabPage />} />
                     <Route path="/goal-lab" element={<GoalLabPage />} />
+                    <Route path="/goal-lab-console" element={<GoalLabConsolePage />} />
                     <Route path="/console" element={<ConsolePage />} />
                     <Route path="/simkit-lab" element={<SimKitLabPage />} />
                     <Route path="/relations-lab" element={<RelationsLabPage />} />

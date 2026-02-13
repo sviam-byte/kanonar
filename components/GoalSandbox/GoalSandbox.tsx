@@ -25,6 +25,7 @@ import { computeLocationGoalsForAgent } from '../../lib/context/v2/locationGoals
 import { computeTomGoalsForAgent } from '../../lib/context/v2/tomGoals';
 import { GoalLabControls } from '../goal-lab/GoalLabControls';
 import { GoalLabResults } from '../goal-lab/GoalLabResults';
+import { GoalLabConsoleResults } from '../goal-lab/GoalLabConsoleResults';
 import { DoNowCard } from '../goal-lab/DoNowCard';
 import { CurvesPanel } from '../goal-lab/CurvesPanel';
 import { PipelinePanel } from '../goal-lab/PipelinePanel';
@@ -502,9 +503,11 @@ export type GoalSandboxVM = {
 type GoalSandboxProps = {
   /** Optional custom renderer. If omitted, GoalSandbox renders its built-in UI. */
   render?: (vm: GoalSandboxVM) => ReactNode;
+  /** Optional mode override for dedicated routes (e.g. console page). */
+  uiMode?: 'front' | 'debug' | 'console';
 };
 
-export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render }) => {
+export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forcedUiMode }) => {
   const { characters: sandboxCharacters, setDyadConfigFor } = useSandbox();
   const { activeModule } = useAccess();
   const devValidateAtoms = import.meta.env?.DEV ?? false;
@@ -611,7 +614,8 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render }) => {
   const lockedMapIdRef = useRef<string | null>(null);
 
   // UI mode: a compact “front” view for normal use, and a “debug” view for pipeline/atoms.
-  const [uiMode, setUiMode] = useState<'front' | 'debug'>(() => {
+  const [uiMode, setUiMode] = useState<'front' | 'debug' | 'console'>(() => {
+    if (forcedUiMode) return forcedUiMode;
     try {
       return (localStorage.getItem('goalsandbox.uiMode.v1') as any) === 'debug' ? 'debug' : 'front';
     } catch {
@@ -620,10 +624,11 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render }) => {
   });
 
   useEffect(() => {
+    if (forcedUiMode) return;
     try {
       localStorage.setItem('goalsandbox.uiMode.v1', uiMode);
     } catch {}
-  }, [uiMode]);
+  }, [uiMode, forcedUiMode]);
 
   // Center view (map vs. goal graphs) is persisted so the UI reopens where the user left it.
   const [centerView, setCenterView] = useState<'map' | 'energy' | 'actions'>(() => {
@@ -2940,31 +2945,60 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render }) => {
           Passport + Atoms
         </div>
         <div className="flex-1 overflow-y-auto custom-scrollbar min-h-0 p-3 space-y-3">
-          <DoNowCard decision={(snapshotV1 as any)?.decision ?? null} />
-          <GoalLabResults
-            context={snapshot as any}
-            frame={computed.frame as any}
-            goalScores={goals as any}
-            situation={situation as any}
-            goalPreview={goalPreview as any}
-            actorLabels={actorLabels as any}
-            contextualMind={contextualMind as any}
-            locationScores={locationScores as any}
-            tomScores={tomScores as any}
-            atomDiff={atomDiff as any}
-            snapshotV1={snapshotV1 as any}
-            pipelineV1={pipelineV1 as any}
-            perspectiveAgentId={focusId as any}
-            sceneDump={sceneDumpV2 as any}
-            onDownloadScene={onDownloadScene}
-            onImportScene={handleImportSceneClick}
-            manualAtoms={manualAtoms as any}
-            onChangeManualAtoms={setManualAtoms as any}
-            pipelineStageId={currentPipelineStageId}
-            onChangePipelineStageId={setPipelineStageId as any}
-            onExportPipelineStage={handleExportPipelineStage as any}
-            onExportPipelineAll={handleExportPipelineAll as any}
-          />
+          {uiMode === 'console' ? (
+            <GoalLabConsoleResults
+              snapshot={snapshot as any}
+              frame={computed.frame as any}
+              situation={situation as any}
+              snapshotV1={snapshotV1 as any}
+              pipelineV1={pipelineV1 as any}
+              focusId={focusId as any}
+              sceneDump={sceneDumpV2 as any}
+              onDownloadScene={onDownloadScene}
+              onImportScene={handleImportSceneClick}
+              manualAtoms={manualAtoms as any}
+              onChangeManualAtoms={setManualAtoms as any}
+              pipelineStageId={currentPipelineStageId}
+              onChangePipelineStageId={setPipelineStageId as any}
+              onExportPipelineStage={handleExportPipelineStage as any}
+              onExportPipelineAll={handleExportPipelineAll as any}
+              goalScores={goals as any}
+              goalPreview={goalPreview as any}
+              actorLabels={actorLabels as any}
+              contextualMind={contextualMind as any}
+              locationScores={locationScores as any}
+              tomScores={tomScores as any}
+              atomDiff={atomDiff as any}
+            />
+          ) : (
+            <>
+              <DoNowCard decision={(snapshotV1 as any)?.decision ?? null} />
+              <GoalLabResults
+                context={snapshot as any}
+                frame={computed.frame as any}
+                goalScores={goals as any}
+                situation={situation as any}
+                goalPreview={goalPreview as any}
+                actorLabels={actorLabels as any}
+                contextualMind={contextualMind as any}
+                locationScores={locationScores as any}
+                tomScores={tomScores as any}
+                atomDiff={atomDiff as any}
+                snapshotV1={snapshotV1 as any}
+                pipelineV1={pipelineV1 as any}
+                perspectiveAgentId={focusId as any}
+                sceneDump={sceneDumpV2 as any}
+                onDownloadScene={onDownloadScene}
+                onImportScene={handleImportSceneClick}
+                manualAtoms={manualAtoms as any}
+                onChangeManualAtoms={setManualAtoms as any}
+                pipelineStageId={currentPipelineStageId}
+                onChangePipelineStageId={setPipelineStageId as any}
+                onExportPipelineStage={handleExportPipelineStage as any}
+                onExportPipelineAll={handleExportPipelineAll as any}
+              />
+            </>
+          )}
         </div>
       </aside>
 
