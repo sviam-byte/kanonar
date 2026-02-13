@@ -35,6 +35,8 @@ import { buildActionCandidates } from '../../decision/actionCandidateUtils';
 import { arr } from '../../utils/arr';
 import { buildIntentPreview } from './intentPreview';
 import { makeSimStep, type SimStep } from '../../core/simStep';
+import { observeLite, type ObserveLiteParams } from './observeLite';
+import { buildBeliefUpdateLiteSnapshot } from './beliefUpdateLite';
 
 export type GoalLabStageId = 'S0'|'S1'|'S2'|'S3'|'S4'|'S5'|'S6'|'S7'|'S8';
 
@@ -151,6 +153,7 @@ export function runGoalLabPipelineV1(input: {
   affectOverrides?: any;
   mapMetrics?: any;
   tickOverride?: number;
+  observeLiteParams?: ObserveLiteParams;
 }): GoalLabPipelineV1 | null {
   const { world, agentId, participantIds } = input;
   const tick = Number(input.tickOverride ?? (world as any)?.tick ?? 0);
@@ -183,6 +186,35 @@ export function runGoalLabPipelineV1(input: {
     includeAxes: false
   });
   atoms = arr((s0 as any)?.mergedAtoms).map(normalizeAtom);
+  // Observation snapshot (lite): best-effort visibility model for GoalLab console.
+  // IMPORTANT: this does not replace the existing obs-atoms pipeline.
+  const observationLite = observeLite({
+    world,
+    agent,
+    selfId,
+    tick,
+    params: {
+      // Defaults are conservative; GoalLab console can override via input.observeLiteParams.
+      radius: Number(input.observeLiteParams?.radius ?? 10),
+      maxAgents: Number(input.observeLiteParams?.maxAgents ?? 12),
+      noiseSigma: Number(input.observeLiteParams?.noiseSigma ?? 0),
+      seed: Number(input.observeLiteParams?.seed ?? (world as any)?.rngSeed ?? 0),
+    },
+  });
+
+  const s0ObsAtomIds = arr((s0 as any)?.obsAtoms)
+    .map((a: any) => String(a?.id || ''))
+    .filter(Boolean);
+  const s0RawObservations = arr((world as any)?.observations?.[selfId]).slice(0, 50);
+
+  const beliefAtomIds = arr((agent as any)?.memory?.beliefAtoms)
+    .map((a: any) => (typeof a?.id === 'string' ? a.id : null))
+    .filter(Boolean) as string[];
+
+  const overrideAtomIds = arr(input.manualAtoms)
+    .map((a: any) => (typeof a?.id === 'string' ? a.id : null))
+    .filter(Boolean) as string[];
+
   stages.push({
     stage: 'S0',
     title: 'S0 Canonicalization (world/obs/mem/override)',
@@ -190,7 +222,33 @@ export function runGoalLabPipelineV1(input: {
     atomsAddedIds: atoms.map(a => String((a as any).id)).filter(Boolean),
     warnings: [],
     stats: { atomCount: atoms.length, addedCount: atoms.length, ...stageStats(atoms) },
-    artifacts: { obsAtomsCount: arr((s0 as any)?.obsAtoms).length, provenanceSize: ((s0 as any)?.provenance as any)?.size ?? 0 }
+    artifacts: {
+      obsAtomsCount: arr((s0 as any)?.obsAtoms).length,
+      provenanceSize: ((s0 as any)?.provenance as any)?.size ?? 0,
+      // Level 3.1: explicit observation snapshot (lite).
+      observationSnapshot: {
+        agentId: selfId,
+        tick,
+        rawObservations: s0RawObservations,
+        obsAtomIds: s0ObsAtomIds.slice(0, 800),
+        observationLite,
+        note: 'Lite snapshot: world.observations[agentId] + obsAtomIds from Stage0 (extractObservationAtoms).',
+      },
+      // Belief update (lite): strict snapshot for the "prior belief injection" step in S0.
+      // This is the first brick of the future U(b,a,o) protocol.
+      beliefUpdateSnapshot: buildBeliefUpdateLiteSnapshot({
+        world,
+        agent,
+        selfId,
+        tick,
+        mergedAtomsS0: atoms,
+        obsAtomIds: s0ObsAtomIds,
+        priorBeliefAtomIds: beliefAtomIds,
+        overrideAtomIds,
+        eventsCount: arr(step.events).length,
+        params: { maxIds: 800 },
+      }),
+    }
   });
 
   // S1: Normalize -> Quarks (минимально)
