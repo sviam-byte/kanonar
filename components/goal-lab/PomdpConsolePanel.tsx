@@ -25,9 +25,11 @@ function prettyJson(x: any): string {
 type Props = {
   run: PipelineRun | null;
   rawV1?: any;
+  observeLiteParams?: { radius: number; maxAgents: number; noiseSigma: number; seed: number };
+  onObserveLiteParamsChange?: (p: { radius: number; maxAgents: number; noiseSigma: number; seed: number }) => void;
 };
 
-export const PomdpConsolePanel: React.FC<Props> = ({ run, rawV1 }) => {
+export const PomdpConsolePanel: React.FC<Props> = ({ run, rawV1, observeLiteParams, onObserveLiteParamsChange }) => {
   const stages = arr<PipelineStage>(run?.stages);
   const stageIds = useMemo(() => stages.map((s) => safeStr(s?.id)), [stages]);
   const [stageId, setStageId] = useState<string>('S0');
@@ -184,6 +186,63 @@ export const PomdpConsolePanel: React.FC<Props> = ({ run, rawV1 }) => {
         </div>
 
         <div className="text-xs text-slate-500">artifacts={artifacts.length} atoms={atoms.length}</div>
+
+        {observeLiteParams && onObserveLiteParamsChange ? (
+          <div className="flex flex-wrap items-end gap-2 ml-auto">
+            <div>
+              <div className="text-[10px] text-slate-500 uppercase tracking-widest">Obs radius</div>
+              <input
+                className="w-[90px] bg-slate-900/40 border border-slate-800 rounded px-2 py-1 text-sm text-slate-200"
+                type="number"
+                step={0.5}
+                value={observeLiteParams.radius}
+                onChange={(e) => {
+                  const v = Number(e.target.value);
+                  onObserveLiteParamsChange({ ...observeLiteParams, radius: Number.isFinite(v) ? v : observeLiteParams.radius });
+                }}
+              />
+            </div>
+            <div>
+              <div className="text-[10px] text-slate-500 uppercase tracking-widest">maxAgents</div>
+              <input
+                className="w-[90px] bg-slate-900/40 border border-slate-800 rounded px-2 py-1 text-sm text-slate-200"
+                type="number"
+                step={1}
+                value={observeLiteParams.maxAgents}
+                onChange={(e) => {
+                  const v = Math.max(0, Math.floor(Number(e.target.value)));
+                  onObserveLiteParamsChange({ ...observeLiteParams, maxAgents: Number.isFinite(v) ? v : observeLiteParams.maxAgents });
+                }}
+              />
+            </div>
+            <div>
+              <div className="text-[10px] text-slate-500 uppercase tracking-widest">noiseσ</div>
+              <input
+                className="w-[90px] bg-slate-900/40 border border-slate-800 rounded px-2 py-1 text-sm text-slate-200"
+                type="number"
+                step={0.05}
+                value={observeLiteParams.noiseSigma}
+                onChange={(e) => {
+                  const v = Math.max(0, Number(e.target.value));
+                  onObserveLiteParamsChange({ ...observeLiteParams, noiseSigma: Number.isFinite(v) ? v : observeLiteParams.noiseSigma });
+                }}
+              />
+            </div>
+            <div>
+              <div className="text-[10px] text-slate-500 uppercase tracking-widest">seed</div>
+              <input
+                className="w-[120px] bg-slate-900/40 border border-slate-800 rounded px-2 py-1 text-sm text-slate-200"
+                type="number"
+                step={1}
+                value={observeLiteParams.seed}
+                onChange={(e) => {
+                  const v = Math.floor(Number(e.target.value));
+                  onObserveLiteParamsChange({ ...observeLiteParams, seed: Number.isFinite(v) ? v : observeLiteParams.seed });
+                }}
+              />
+            </div>
+          </div>
+        ) : null}
       </div>
 
       <div className="rounded border border-slate-800 bg-slate-950/40 p-3">

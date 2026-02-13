@@ -601,6 +601,12 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render }) => {
   const [manualAtoms, setManualAtoms] = useState<ContextAtom[]>([]);
   const [pipelineStageId, setPipelineStageId] = useState<string>('S5');
   const [activeBottomTab, setActiveBottomTab] = useState<'debug' | 'tom' | 'pipeline' | 'pomdp' | 'compare' | 'curves'>('pipeline');
+  const [observeLiteParams, setObserveLiteParams] = useState<{ radius: number; maxAgents: number; noiseSigma: number; seed: number }>(() => ({
+    radius: 10,
+    maxAgents: 12,
+    noiseSigma: 0,
+    seed: 0,
+  }));
   const [lockedMapViewport, setLockedMapViewport] = useState<{ w: number; h: number } | null>(null);
   const lockedMapIdRef = useRef<string | null>(null);
 
@@ -1657,14 +1663,22 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render }) => {
         injectedEvents,
         sceneControl,
         tickOverride: Number((worldState as any)?.tick ?? 0),
+        observeLiteParams,
       });
     } catch (e) {
       console.error('[GoalSandbox] runGoalLabPipelineV1 failed', e);
       return null;
     }
-  }, [worldState, focusId, perspectiveId, selectedAgentId, participantIds, manualAtoms, injectedEvents, sceneControl]);
+  }, [worldState, focusId, perspectiveId, selectedAgentId, participantIds, manualAtoms, injectedEvents, sceneControl, observeLiteParams]);
 
   const pomdpRun = useMemo(() => adaptPipelineV1ToContract(pomdpPipelineV1 as any), [pomdpPipelineV1]);
+
+  // Keep observeLite seed synced to world RNG seed (but don't override user-edited values).
+  useEffect(() => {
+    const s = Number((worldState as any)?.rngSeed ?? 0);
+    if (!Number.isFinite(s)) return;
+    setObserveLiteParams((p) => (p.seed === 0 ? { ...p, seed: s } : p));
+  }, [worldState]);
 
   // Prefer staged pipeline ids, fallback to snapshot deltas (or a safe default list) for legacy data.
   const pipelineStageOptions = useMemo(() => {
@@ -2851,7 +2865,12 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render }) => {
                   />
                 ) : null}
                 {activeBottomTab === 'pomdp' ? (
-                  <PomdpConsolePanel run={pomdpRun as any} rawV1={pomdpPipelineV1 as any} />
+                  <PomdpConsolePanel
+                    run={pomdpRun as any}
+                    rawV1={pomdpPipelineV1 as any}
+                    observeLiteParams={observeLiteParams}
+                    onObserveLiteParamsChange={setObserveLiteParams}
+                  />
                 ) : null}
                 {activeBottomTab === 'tom' ? (
                   // IMPORTANT: ToM atoms are produced by GoalLab pipeline stages, not by the raw SimSnapshot.

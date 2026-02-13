@@ -195,6 +195,10 @@ function buildArtifactsFromFrame(frame: GoalLabStageFrame, run: GoalLabPipelineV
         push('observation', 'observation_snapshot', 'ObservationSnapshot (S0)', (v1 as any).observationSnapshot);
       }
     }
+
+    if ((v1 as any)?.beliefUpdateSnapshot != null) {
+      push('belief', 'belief_update_snapshot', 'BeliefUpdateSnapshot (lite, S0)', (v1 as any).beliefUpdateSnapshot);
+    }
   }
 
   // S1: quarks are compact observation features.

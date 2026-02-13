@@ -35,7 +35,7 @@ import { buildActionCandidates } from '../../decision/actionCandidateUtils';
 import { arr } from '../../utils/arr';
 import { buildIntentPreview } from './intentPreview';
 import { makeSimStep, type SimStep } from '../../core/simStep';
-import { observeLite } from './observeLite';
+import { observeLite, type ObserveLiteParams } from './observeLite';
 
 export type GoalLabStageId = 'S0'|'S1'|'S2'|'S3'|'S4'|'S5'|'S6'|'S7'|'S8';
 
@@ -152,6 +152,7 @@ export function runGoalLabPipelineV1(input: {
   affectOverrides?: any;
   mapMetrics?: any;
   tickOverride?: number;
+  observeLiteParams?: ObserveLiteParams;
 }): GoalLabPipelineV1 | null {
   const { world, agentId, participantIds } = input;
   const tick = Number(input.tickOverride ?? (world as any)?.tick ?? 0);
@@ -192,11 +193,11 @@ export function runGoalLabPipelineV1(input: {
     selfId,
     tick,
     params: {
-      // Conservative defaults; can be made user-tunable later (GoalLab top bar).
-      radius: 10,
-      maxAgents: 12,
-      noiseSigma: 0,
-      seed: Number((world as any)?.rngSeed ?? 0),
+      // Defaults are conservative; GoalLab console can override via input.observeLiteParams.
+      radius: Number(input.observeLiteParams?.radius ?? 10),
+      maxAgents: Number(input.observeLiteParams?.maxAgents ?? 12),
+      noiseSigma: Number(input.observeLiteParams?.noiseSigma ?? 0),
+      seed: Number(input.observeLiteParams?.seed ?? (world as any)?.rngSeed ?? 0),
     },
   });
 
@@ -204,6 +205,15 @@ export function runGoalLabPipelineV1(input: {
     .map((a: any) => String(a?.id || ''))
     .filter(Boolean);
   const s0RawObservations = arr((world as any)?.observations?.[selfId]).slice(0, 50);
+
+  const beliefAtomIds = arr((agent as any)?.memory?.beliefAtoms)
+    .map((a: any) => (typeof a?.id === 'string' ? a.id : null))
+    .filter(Boolean) as string[];
+
+  const overrideAtomIds = arr(input.manualAtoms)
+    .map((a: any) => (typeof a?.id === 'string' ? a.id : null))
+    .filter(Boolean) as string[];
+
   stages.push({
     stage: 'S0',
     title: 'S0 Canonicalization (world/obs/mem/override)',
@@ -222,6 +232,14 @@ export function runGoalLabPipelineV1(input: {
         obsAtomIds: s0ObsAtomIds.slice(0, 800),
         observationLite,
         note: 'Lite snapshot: world.observations[agentId] + obsAtomIds from Stage0 (extractObservationAtoms).',
+      },
+      // Belief update (lite): explicit counts + IDs used as priors/overrides in S0.
+      beliefUpdateSnapshot: {
+        priorBeliefAtomIds: beliefAtomIds.slice(0, 800),
+        priorBeliefAtomsCount: beliefAtomIds.length,
+        overrideAtomIds: overrideAtomIds.slice(0, 800),
+        overrideAtomsCount: overrideAtomIds.length,
+        eventsCount: arr(step.events).length,
       },
     }
   });
