@@ -60,6 +60,10 @@ type Props = {
   sceneControl: any;
   onSetSceneControl: (next: any) => void;
   onUpdateAgentVitals: (agentId: string, patch: { hp?: number; fatigue?: number; stress?: number }) => void;
+  sceneMetrics?: Record<string, number> | null;
+  sceneMetricDefs?: Record<string, { min: number; max: number; initial: number }> | null;
+  onSetSceneMetric?: (metricKey: string, value: number) => void;
+  onApplyActionMvp?: (actionId: string) => void;
 
   manualAtoms: any;
   onChangeManualAtoms: (atoms: any) => void;
@@ -111,6 +115,10 @@ type WorldTabProps = {
   sceneControl: any;
   onSetSceneControl: (next: any) => void;
   onUpdateAgentVitals: (agentId: string, patch: { hp?: number; fatigue?: number; stress?: number }) => void;
+  sceneMetrics?: Record<string, number> | null;
+  sceneMetricDefs?: Record<string, { min: number; max: number; initial: number }> | null;
+  onSetSceneMetric?: (metricKey: string, value: number) => void;
+  onApplyActionMvp?: (actionId: string) => void;
 
 
   // World editor (console)
@@ -467,6 +475,43 @@ const ConsoleWorldTab: React.FC<WorldTabProps> = ({
                 />
               </div>
             </div>
+
+            <div>
+              <div className="text-[10px] text-slate-500 uppercase tracking-widest">Scene metrics (truth)</div>
+              <div className="mt-1 grid grid-cols-2 gap-2">
+                {(() => {
+                  const defs = sceneMetricDefs || null;
+                  const cur = sceneMetrics || null;
+                  if (!defs || !onSetSceneMetric) {
+                    return <div className="col-span-2 text-xs text-slate-500">No scene metrics in this world</div>;
+                  }
+                  const keys = Object.keys(defs)
+                    .filter((k) => k !== 'tick')
+                    .sort((a, b) => metricKeyOrder(a) - metricKeyOrder(b) || a.localeCompare(b))
+                    .slice(0, 8);
+                  return keys.map((k) => {
+                    const d: any = (defs as any)[k];
+                    const vRaw = cur && Object.prototype.hasOwnProperty.call(cur, k) ? (cur as any)[k] : d?.initial;
+                    const v = Number.isFinite(Number(vRaw)) ? Number(vRaw) : Number(d?.initial ?? 0);
+                    return (
+                      <label key={k} className="flex items-center justify-between gap-2 rounded border border-slate-800 bg-slate-950/30 px-2 py-1">
+                        <span className="text-xs text-slate-300 truncate" title={k}>{k}</span>
+                        <input
+                          className="w-[92px] bg-slate-900/40 border border-slate-800 rounded px-2 py-1 text-xs text-slate-200"
+                          type="number"
+                          min={Number(d?.min ?? 0)}
+                          max={Number(d?.max ?? 100)}
+                          step={1}
+                          value={v}
+                          onChange={(e) => onSetSceneMetric(k, Number(e.target.value || 0))}
+                        />
+                      </label>
+                    );
+                  });
+                })()}
+              </div>
+              <div className="mt-1 text-[11px] text-slate-500">Редактирует world.scene.metrics (а не sceneControl), влияет на TruthSnapshot/atoms.</div>
+            </div>
           </div>
 
           <div className="mt-3">
@@ -747,6 +792,7 @@ export const GoalLabConsoleResults: React.FC<Props> = (props) => {
               observeLiteParams={props.observeLiteParams}
               onObserveLiteParamsChange={props.onObserveLiteParamsChange}
               onForceAction={props.onForceAction}
+              onApplyActionMvp={props.onApplyActionMvp}
             />
           ) : null}
 
@@ -767,6 +813,9 @@ export const GoalLabConsoleResults: React.FC<Props> = (props) => {
             sceneControl={props.sceneControl}
             onSetSceneControl={props.onSetSceneControl}
             onUpdateAgentVitals={props.onUpdateAgentVitals}
+            sceneMetrics={props.sceneMetrics}
+            sceneMetricDefs={props.sceneMetricDefs}
+            onSetSceneMetric={props.onSetSceneMetric}
               characters={props.characters}
               locations={props.locations}
               selectedAgentId={props.selectedAgentId}

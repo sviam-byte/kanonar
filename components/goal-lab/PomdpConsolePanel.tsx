@@ -22,6 +22,15 @@ function prettyJson(x: any): string {
   }
 }
 
+/**
+ * Serialize JSON safely and truncate very large blobs to keep console rendering responsive.
+ */
+function prettyJsonTrunc(x: any, maxChars: number): { text: string; truncated: boolean } {
+  const text = prettyJson(x);
+  if (text.length <= maxChars) return { text, truncated: false };
+  return { text: `${text.slice(0, Math.max(0, maxChars - 64))}\n…(truncated)…\n`, truncated: true };
+}
+
 type Props = {
   run: PipelineRun | null;
   rawV1?: any;
@@ -29,9 +38,10 @@ type Props = {
   onObserveLiteParamsChange?: (p: { radius: number; maxAgents: number; noiseSigma: number; seed: number }) => void;
   // If provided, allows forcing an action as "best" (via injected events) without stepping the world.
   onForceAction?: (actionId: string | null) => void;
+  onApplyActionMvp?: (actionId: string) => void;
 };
 
-export const PomdpConsolePanel: React.FC<Props> = ({ run, rawV1, observeLiteParams, onObserveLiteParamsChange, onForceAction }) => {
+export const PomdpConsolePanel: React.FC<Props> = ({ run, rawV1, observeLiteParams, onObserveLiteParamsChange, onForceAction, onApplyActionMvp }) => {
   const stages = arr<PipelineStage>(run?.stages);
   const stageIds = useMemo(() => stages.map((s) => safeStr(s?.id)), [stages]);
   const [stageId, setStageId] = useState<string>('S0');
@@ -39,6 +49,8 @@ export const PomdpConsolePanel: React.FC<Props> = ({ run, rawV1, observeLitePara
   const [atomQuery, setAtomQuery] = useState<string>('');
   const [pickedAtomId, setPickedAtomId] = useState<string | null>(null);
   const [pickedRankIdx, setPickedRankIdx] = useState<number | null>(null);
+  const [showAllAtoms, setShowAllAtoms] = useState<boolean>(false);
+  const [showRawArtifact, setShowRawArtifact] = useState<boolean>(false);
 
   // Cross-stage atom index for "why" navigation: atomId -> { stageId, atom }.
   // We keep earliest occurrence to bias navigation to likely origin points.
@@ -83,6 +95,8 @@ export const PomdpConsolePanel: React.FC<Props> = ({ run, rawV1, observeLitePara
   useEffect(() => {
     setArtifactId('');
     setPickedAtomId(null);
+    setShowAllAtoms(false);
+    setShowRawArtifact(false);
   }, [stageId]);
 
   const stage = useMemo(() => {
@@ -101,6 +115,7 @@ export const PomdpConsolePanel: React.FC<Props> = ({ run, rawV1, observeLitePara
   // Reset decision selection when artifact changes.
   useEffect(() => {
     setPickedRankIdx(null);
+    setShowRawArtifact(false);
   }, [selectedArtifact?.id]);
 
   const atomsArtifact = useMemo(() => artifacts.find((a) => a.kind === 'atoms') || null, [artifacts]);
@@ -123,10 +138,23 @@ export const PomdpConsolePanel: React.FC<Props> = ({ run, rawV1, observeLitePara
     return out;
   }, [atoms, atomQuery]);
 
+  const atomsToRender = useMemo(() => {
+    return showAllAtoms ? filteredAtoms : filteredAtoms.slice(0, 60);
+  }, [filteredAtoms, showAllAtoms]);
+
   const pickedAtom = useMemo(() => {
     if (!pickedAtomId) return null;
     return atoms.find((a) => safeStr(a?.id) === pickedAtomId) || null;
   }, [atoms, pickedAtomId]);
+
+  const rawArtifactJson = useMemo(() => {
+    // Keep heavy stringify out of render; show truncated JSON by default.
+    const maxChars = showRawArtifact ? 200_000 : 30_000;
+    return prettyJsonTrunc(selectedArtifact?.data, maxChars);
+  }, [selectedArtifact?.data, showRawArtifact]);
+
+  const modesJson = useMemo(() => prettyJsonTrunc(modes, 20_000), [modes]);
+  const stabilizersJson = useMemo(() => prettyJsonTrunc(stabilizers, 20_000), [stabilizers]);
 
   if (!run) {
     return (
@@ -142,7 +170,7 @@ export const PomdpConsolePanel: React.FC<Props> = ({ run, rawV1, observeLitePara
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="h-full min-h-0 flex flex-col gap-4">
       <div className="flex flex-wrap items-end gap-4">
         <div>
           <div className="text-[10px] text-slate-500 uppercase tracking-widest">Actor / Tick</div>
@@ -278,8 +306,8 @@ export const PomdpConsolePanel: React.FC<Props> = ({ run, rawV1, observeLitePara
         ) : null}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div className="rounded border border-slate-800 bg-slate-950/40 p-3">
+      <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-2 gap-4 overflow-hidden">
+        <div className="rounded border border-slate-800 bg-slate-950/40 p-3 min-h-0 overflow-y-auto">
           <div className="text-[10px] text-slate-500 uppercase tracking-widest mb-2">Artifact viewer</div>
 
           {selectedArtifact?.provenance?.length ? (
@@ -300,14 +328,14 @@ export const PomdpConsolePanel: React.FC<Props> = ({ run, rawV1, observeLitePara
           {modes ? (
             <div className="mb-3 rounded border border-slate-700 bg-slate-900/40 p-2">
               <div className="mb-1 text-xs font-bold">MODES</div>
-              <pre className="text-[11px] text-slate-200">{JSON.stringify(modes, null, 2)}</pre>
+              <pre className="text-[11px] text-slate-200 overflow-auto">{modesJson.text}</pre>
             </div>
           ) : null}
 
           {stabilizers ? (
             <div className="mb-3 rounded border border-slate-700 bg-slate-900/40 p-2">
               <div className="mb-1 text-xs font-bold">STABILIZERS</div>
-              <pre className="text-[11px] text-slate-200">{JSON.stringify(stabilizers, null, 2)}</pre>
+              <pre className="text-[11px] text-slate-200 overflow-auto">{stabilizersJson.text}</pre>
             </div>
           ) : null}
 
@@ -508,6 +536,19 @@ export const PomdpConsolePanel: React.FC<Props> = ({ run, rawV1, observeLitePara
                             >
                               Force best
                             </button>
+                            {onApplyActionMvp ? (
+                              <button
+                                className="text-xs px-2 py-1 rounded border border-emerald-400/40 bg-emerald-400/10 text-emerald-200 hover:bg-emerald-400/20"
+                                onClick={() => {
+                                  const actId = safeStr(picked?.id || picked?.actionId || picked?.name);
+                                  if (!actId) return;
+                                  onApplyActionMvp(actId);
+                                }}
+                                title="Apply scenario actionEffects.metricDelta to world.scene.metrics (MVP transition)"
+                              >
+                                Apply (MVP)
+                              </button>
+                            ) : null}
                             <button
                               className="text-xs px-2 py-1 rounded border border-slate-700 bg-slate-900/30 text-slate-200 hover:bg-slate-800/40"
                               onClick={() => onForceAction(null)}
@@ -668,13 +709,23 @@ export const PomdpConsolePanel: React.FC<Props> = ({ run, rawV1, observeLitePara
               );
             })()
           ) : (
-            <pre className="text-[11px] text-slate-200 bg-black/20 border border-slate-800 rounded p-2 overflow-auto">
-              {prettyJson(selectedArtifact?.data)}
-            </pre>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-[10px] text-slate-500 font-mono">{rawArtifactJson.truncated ? 'raw json truncated' : 'raw json'}</div>
+                <button
+                  className="text-xs px-2 py-1 rounded border border-slate-700 bg-slate-900/30 text-slate-200 hover:bg-slate-800/40"
+                  onClick={() => setShowRawArtifact((v) => !v)}
+                  title={showRawArtifact ? 'Show truncated JSON' : 'Show larger JSON (may be heavy)'}
+                >
+                  {showRawArtifact ? 'Truncate' : 'Show more'}
+                </button>
+              </div>
+              <pre className="text-[11px] text-slate-200 bg-black/20 border border-slate-800 rounded p-2 overflow-auto">{rawArtifactJson.text}</pre>
+            </div>
           )}
         </div>
 
-        <div className="rounded border border-slate-800 bg-slate-950/40 p-3">
+        <div className="rounded border border-slate-800 bg-slate-950/40 p-3 min-h-0 flex flex-col overflow-hidden">
           <div className="flex items-baseline justify-between gap-2">
             <div className="text-[10px] text-slate-500 uppercase tracking-widest">Atoms</div>
             <input
@@ -685,8 +736,21 @@ export const PomdpConsolePanel: React.FC<Props> = ({ run, rawV1, observeLitePara
             />
           </div>
 
-          <div className="mt-2 max-h-[420px] overflow-auto">
-            {filteredAtoms.map((a) => {
+          <div className="mt-2 flex items-center justify-between gap-2 text-[11px] text-slate-500">
+            <div className="font-mono">showing {atomsToRender.length}/{filteredAtoms.length}</div>
+            {filteredAtoms.length > 60 ? (
+              <button
+                className="text-xs px-2 py-1 rounded border border-slate-700 bg-slate-900/30 text-slate-200 hover:bg-slate-800/40"
+                onClick={() => setShowAllAtoms((v) => !v)}
+                title={showAllAtoms ? 'Show fewer atoms' : 'Show all atoms (may be heavy)'}
+              >
+                {showAllAtoms ? 'Show less' : 'Show all'}
+              </button>
+            ) : null}
+          </div>
+
+          <div className="mt-2 flex-1 min-h-0 overflow-auto">
+            {atomsToRender.map((a) => {
               const id = safeStr(a?.id);
               const mag = Number(a?.magnitude ?? 0);
               const code = safeStr(a?.code);
@@ -709,7 +773,7 @@ export const PomdpConsolePanel: React.FC<Props> = ({ run, rawV1, observeLitePara
                 </button>
               );
             })}
-            {!filteredAtoms.length ? <div className="text-xs text-slate-500">No atoms matched</div> : null}
+            {!atomsToRender.length ? <div className="text-xs text-slate-500">No atoms matched</div> : null}
           </div>
         </div>
       </div>

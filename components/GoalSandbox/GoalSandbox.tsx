@@ -1,6 +1,7 @@
 // components/GoalSandbox/GoalSandbox.tsx
 
 import React, { useMemo, useState, useEffect, useCallback, useRef } from 'react';
+import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import type { ReactNode } from 'react';
 import {
   EntityType,
@@ -634,6 +635,7 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
       localStorage.setItem('goalsandbox.uiMode.v1', uiMode);
     } catch {}
   }, [uiMode, forcedUiMode]);
+
 
   // Center view (map vs. goal graphs) is persisted so the UI reopens where the user left it.
   const [centerView, setCenterView] = useState<'map' | 'energy' | 'actions'>(() => {
@@ -1996,29 +1998,32 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
     selectedAgentId ||
     (castRowsSafe?.[0]?.id ? String(castRowsSafe[0].id) : '');
 
+  // Debounce expensive pipeline recomputation during high-frequency UI updates (dragging, sliders).
+  const debouncedWorldState = useDebouncedValue(worldState, uiMode === 'console' ? 90 : 0);
+
   // POMDP console pipeline (real stages from runGoalLabPipelineV1), adapted to strict contracts.
   // NOTE: focusId is resolved above to avoid TDZ crashes in optimized/prod builds.
   // This keeps UI-level parsing stable even if internal V1 artifact shapes evolve.
   const pomdpPipelineV1 = useMemo(() => {
-    if (!worldState) return null;
+    if (!debouncedWorldState) return null;
     const agentId = String(focusId || perspectiveId || selectedAgentId || '');
     if (!agentId) return null;
     try {
       return runGoalLabPipelineV1({
-        world: worldState as any,
+        world: debouncedWorldState as any,
         agentId,
         participantIds: participantIds as any,
         manualAtoms: manualAtoms as any,
         injectedEvents,
         sceneControl,
-        tickOverride: Number((worldState as any)?.tick ?? 0),
+        tickOverride: Number((debouncedWorldState as any)?.tick ?? 0),
         observeLiteParams,
       });
     } catch (e) {
       console.error('[GoalSandbox] runGoalLabPipelineV1 failed', e);
       return null;
     }
-  }, [worldState, focusId, perspectiveId, selectedAgentId, participantIds, manualAtoms, injectedEvents, sceneControl, observeLiteParams]);
+  }, [debouncedWorldState, focusId, perspectiveId, selectedAgentId, participantIds, manualAtoms, injectedEvents, sceneControl, observeLiteParams]);
 
   const pomdpRun = useMemo(() => adaptPipelineV1ToContract(pomdpPipelineV1 as any), [pomdpPipelineV1]);
 
@@ -2269,6 +2274,62 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
 
   const handleImportSceneClick = useCallback(() => {
     importInputRef.current?.click();
+  }, []);
+
+  const handleSetSceneMetric = useCallback((metricKey: string, value: number) => {
+    setWorldState((prev) => {
+      if (!prev) return prev;
+      const scenario: any = (prev as any)?.scenario || null;
+      const defs: any = scenario?.metrics || null;
+      const def: any = defs && metricKey in defs ? defs[metricKey] : null;
+      let v = Number(value);
+      if (!Number.isFinite(v)) v = Number(def?.initial ?? 0);
+      if (def) v = Math.max(Number(def.min ?? 0), Math.min(Number(def.max ?? 100), v));
+      const scene: any = { ...((prev as any).scene || {}) };
+      const metrics: any = { ...(scene.metrics || {}) };
+      metrics[metricKey] = v;
+      scene.metrics = metrics;
+      if (!scene.scenarioDef && scenario) scene.scenarioDef = scenario;
+      const ctxEx: any = (prev as any).contextEx && typeof (prev as any).contextEx === 'object' ? { ...(prev as any).contextEx } : null;
+      if (ctxEx) ctxEx.metrics = { ...(ctxEx.metrics || {}), [metricKey]: v };
+      return { ...(prev as any), scene, ...(ctxEx ? { contextEx: ctxEx } : {}) } as any;
+    });
+  }, []);
+
+  const handleApplyActionMvp = useCallback((actionId: string) => {
+    const actId = String(actionId || '').trim();
+    if (!actId) return;
+    setWorldState((prev) => {
+      if (!prev) return prev;
+      const scenario: any = (prev as any)?.scenario || null;
+      const effects: any[] = Array.isArray(scenario?.actionEffects) ? scenario.actionEffects : [];
+      const fx = effects.find((e) => String(e?.actionId || '') === actId) || null;
+      const metricDelta: Record<string, number> = (fx && fx.metricDelta && typeof fx.metricDelta === 'object') ? fx.metricDelta : {};
+      const defs: any = scenario?.metrics || null;
+      const scene: any = { ...((prev as any).scene || {}) };
+      const cur: any = { ...(scene.metrics || {}) };
+      const next: any = { ...(prev as any) };
+      // apply deltas + clamp
+      for (const [k, dvRaw] of Object.entries(metricDelta)) {
+        const dv = Number(dvRaw);
+        if (!Number.isFinite(dv)) continue;
+        const def: any = defs && k in defs ? defs[k] : null;
+        const baseRaw = Object.prototype.hasOwnProperty.call(cur, k) ? cur[k] : def?.initial;
+        let v = (Number.isFinite(Number(baseRaw)) ? Number(baseRaw) : Number(def?.initial ?? 0)) + dv;
+        if (def) v = Math.max(Number(def.min ?? 0), Math.min(Number(def.max ?? 100), v));
+        cur[k] = v;
+      }
+      scene.metrics = cur;
+      if (!scene.scenarioDef && scenario) scene.scenarioDef = scenario;
+      // tick++ and remember action
+      next.tick = Number((prev as any).tick ?? 0) + 1;
+      next.actionsThisTick = [actId];
+      next.scene = scene;
+      // observations and caches are now stale
+      delete next.observations;
+      delete (next as any).debugSnapshots;
+      return next as any;
+    });
   }, []);
 
   const handleImportSceneFile = useCallback(
@@ -2627,7 +2688,7 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
   if (render) return <>{render(vm)}</>;
 
   return (
-    <div className="flex h-full bg-[#020617] text-slate-300 overflow-hidden font-mono">
+    <div className="flex h-screen min-h-0 bg-[#020617] text-slate-300 overflow-hidden font-mono">
       {/* LEFT (debug only): controls + quick ctx input */}
       {uiMode === 'debug' ? (
         <aside className="w-[350px] border-r border-slate-800 flex flex-col bg-slate-950/50 shrink-0">
@@ -3118,6 +3179,10 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
           {uiMode === 'console' ? (
             <div className="flex-1 min-h-0 overflow-hidden">
               <GoalLabConsoleResults
+                sceneMetrics={((worldState as any)?.scene?.metrics as any) ?? null}
+                sceneMetricDefs={((worldState as any)?.scenario?.metrics as any) ?? null}
+                onSetSceneMetric={handleSetSceneMetric}
+                onApplyActionMvp={handleApplyActionMvp}
                 snapshot={snapshot as any}
                 frame={computed.frame as any}
                 situation={situation as any}
