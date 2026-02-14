@@ -60,6 +60,10 @@ type Props = {
   sceneControl: any;
   onSetSceneControl: (next: any) => void;
   onUpdateAgentVitals: (agentId: string, patch: { hp?: number; fatigue?: number; stress?: number }) => void;
+  sceneMetrics?: Record<string, number> | null;
+  sceneMetricDefs?: Record<string, { min: number; max: number; initial: number }> | null;
+  onSetSceneMetric?: (metricKey: string, value: number) => void;
+  onApplyActionMvp?: (actionId: string) => void;
 
   manualAtoms: any;
   onChangeManualAtoms: (atoms: any) => void;
@@ -91,6 +95,10 @@ type Props = {
   onSetAgentPosition: (agentId: string, pos: { x: number; y: number }) => void;
   onMoveAllToLocation: (locationId: string) => void;
   onRebuildWorld: () => void;
+
+  // Map placement (click on map to set position)
+  placingActorId?: string | null;
+  onStartPlacement?: (actorId: string | null) => void;
 };
 
 type WorldTabProps = {
@@ -111,6 +119,10 @@ type WorldTabProps = {
   sceneControl: any;
   onSetSceneControl: (next: any) => void;
   onUpdateAgentVitals: (agentId: string, patch: { hp?: number; fatigue?: number; stress?: number }) => void;
+  sceneMetrics?: Record<string, number> | null;
+  sceneMetricDefs?: Record<string, { min: number; max: number; initial: number }> | null;
+  onSetSceneMetric?: (metricKey: string, value: number) => void;
+  onApplyActionMvp?: (actionId: string) => void;
 
 
   // World editor (console)
@@ -127,6 +139,10 @@ type WorldTabProps = {
   onSetAgentPosition: (agentId: string, pos: { x: number; y: number }) => void;
   onMoveAllToLocation: (locationId: string) => void;
   onRebuildWorld: () => void;
+
+  // Map placement (click on map to set position)
+  placingActorId?: string | null;
+  onStartPlacement?: (actorId: string | null) => void;
 };
 
 const ConsoleWorldTab: React.FC<WorldTabProps> = ({
@@ -158,6 +174,11 @@ const ConsoleWorldTab: React.FC<WorldTabProps> = ({
   onSetAgentLocation,
   onSetAgentPosition,
   onRebuildWorld,
+  placingActorId,
+  onStartPlacement,
+  sceneMetrics,
+  sceneMetricDefs,
+  onSetSceneMetric,
 }: WorldTabProps) => {
   const [view, setView] = useState<'truth' | 'observation' | 'belief' | 'both'>('both');
 
@@ -467,6 +488,43 @@ const ConsoleWorldTab: React.FC<WorldTabProps> = ({
                 />
               </div>
             </div>
+
+            <div>
+              <div className="text-[10px] text-slate-500 uppercase tracking-widest">Scene metrics (truth)</div>
+              <div className="mt-1 grid grid-cols-2 gap-2">
+                {(() => {
+                  const defs = sceneMetricDefs || null;
+                  const cur = sceneMetrics || null;
+                  if (!defs || !onSetSceneMetric) {
+                    return <div className="col-span-2 text-xs text-slate-500">No scene metrics in this world</div>;
+                  }
+                  const keys = Object.keys(defs)
+                    .filter((k) => k !== 'tick')
+                    .sort((a, b) => metricKeyOrder(a) - metricKeyOrder(b) || a.localeCompare(b))
+                    .slice(0, 8);
+                  return keys.map((k) => {
+                    const d: any = (defs as any)[k];
+                    const vRaw = cur && Object.prototype.hasOwnProperty.call(cur, k) ? (cur as any)[k] : d?.initial;
+                    const v = Number.isFinite(Number(vRaw)) ? Number(vRaw) : Number(d?.initial ?? 0);
+                    return (
+                      <label key={k} className="flex items-center justify-between gap-2 rounded border border-slate-800 bg-slate-950/30 px-2 py-1">
+                        <span className="text-xs text-slate-300 truncate" title={k}>{k}</span>
+                        <input
+                          className="w-[92px] bg-slate-900/40 border border-slate-800 rounded px-2 py-1 text-xs text-slate-200"
+                          type="number"
+                          min={Number(d?.min ?? 0)}
+                          max={Number(d?.max ?? 100)}
+                          step={1}
+                          value={v}
+                          onChange={(e) => onSetSceneMetric(k, Number(e.target.value || 0))}
+                        />
+                      </label>
+                    );
+                  });
+                })()}
+              </div>
+              <div className="mt-1 text-[11px] text-slate-500">Редактирует world.scene.metrics (а не sceneControl), влияет на TruthSnapshot/atoms.</div>
+            </div>
           </div>
 
           <div className="mt-3">
@@ -614,8 +672,23 @@ const ConsoleWorldTab: React.FC<WorldTabProps> = ({
               const y = Number((pos as any)?.y ?? 0);
               return (
                 <div key={String(id)} className="grid grid-cols-12 gap-2 items-center py-1 border-b border-slate-900/40">
-                  <div className="col-span-5 min-w-0">
+                  <div className="col-span-4 min-w-0">
                     <div className="text-[11px] text-slate-200 truncate">{labelForChar(String(id))}</div>
+                  </div>
+                  <div className="col-span-1 flex justify-end">
+                    {onStartPlacement ? (
+                      <button
+                        className={`px-2 py-1 rounded text-[10px] border font-mono ${
+                          String(placingActorId || '') === String(id)
+                            ? 'bg-cyan-600/30 text-cyan-100 border-cyan-500/50'
+                            : 'bg-black/10 text-slate-300 border-slate-800 hover:border-slate-700 hover:text-slate-100'
+                        }`}
+                        onClick={() => onStartPlacement(String(placingActorId || '') === String(id) ? null : String(id))}
+                        title="Click, then click on the map to place this actor"
+                      >
+                        {String(placingActorId || '') === String(id) ? 'PLACING' : 'PLACE'}
+                      </button>
+                    ) : null}
                   </div>
                   <div className="col-span-4">
                     <select
@@ -647,6 +720,14 @@ const ConsoleWorldTab: React.FC<WorldTabProps> = ({
               );
             })}
           </div>
+
+          {onStartPlacement ? (
+            <div className="mt-2 text-[11px] text-slate-500">
+              {placingActorId
+                ? `Placement mode: click on the map to set position for ${labelForChar(String(placingActorId))}.`
+                : 'Tip: use PLACE then click on the map to set (x,y) for an actor.'}
+            </div>
+          ) : null}
         </div>
 
         <div className="mt-2 flex flex-wrap gap-2">
@@ -747,6 +828,7 @@ export const GoalLabConsoleResults: React.FC<Props> = (props) => {
               observeLiteParams={props.observeLiteParams}
               onObserveLiteParamsChange={props.onObserveLiteParamsChange}
               onForceAction={props.onForceAction}
+              onApplyActionMvp={props.onApplyActionMvp}
             />
           ) : null}
 
@@ -767,6 +849,9 @@ export const GoalLabConsoleResults: React.FC<Props> = (props) => {
             sceneControl={props.sceneControl}
             onSetSceneControl={props.onSetSceneControl}
             onUpdateAgentVitals={props.onUpdateAgentVitals}
+            sceneMetrics={props.sceneMetrics}
+            sceneMetricDefs={props.sceneMetricDefs}
+            onSetSceneMetric={props.onSetSceneMetric}
               characters={props.characters}
               locations={props.locations}
               selectedAgentId={props.selectedAgentId}
@@ -780,6 +865,8 @@ export const GoalLabConsoleResults: React.FC<Props> = (props) => {
               onSetAgentPosition={props.onSetAgentPosition}
               onMoveAllToLocation={props.onMoveAllToLocation}
               onRebuildWorld={props.onRebuildWorld}
+              placingActorId={props.placingActorId}
+              onStartPlacement={props.onStartPlacement}
             />
           ) : null}
 
