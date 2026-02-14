@@ -23,6 +23,8 @@ const TYPED_V1_KEYS = new Set([
   'goalAtomsCount',
   'goalDebug',
   'goalLayerSnapshot',
+  'tomEnabled',
+  'transitionSnapshot',
   'planGoalAtomsCount',
   'goalActionLinksCount',
   'utilAtomsCount',
@@ -307,6 +309,18 @@ function buildArtifactsFromFrame(frame: GoalLabStageFrame, run: GoalLabPipelineV
       overriddenIds: (v1 as any).overriddenIds ?? [],
       priorsAtomIds: (v1 as any).priorsAtomIds ?? [],
       decisionAtomIds: (v1 as any).decisionAtomIds ?? [],
+    });
+  }
+
+
+  if (stageId === 'S9') {
+    stageArtifacts.push({
+      id: `${stageId}:transition`,
+      kind: 'transition',
+      label: 'Predict tick (linear lookahead)',
+      data: v1?.transitionSnapshot ?? { missing: true, reason: 'disabled or unavailable' },
+      provenance: arr((v1?.transitionSnapshot as any)?.z0?.provenanceByKey?.threat).slice(0, 2),
+      links: [{ rel: 'used_in', to: 'S8:decision' }],
     });
   }
 

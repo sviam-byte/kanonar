@@ -331,6 +331,9 @@ export const PomdpConsolePanel: React.FC<Props> = ({ run, rawV1, observeLitePara
                     <div className="rounded border border-slate-800 bg-black/20 p-2">
                       <div className="text-[10px] text-slate-500 uppercase tracking-widest">Decision snapshot</div>
                       <div className="mt-1 text-[11px] text-slate-500 font-mono">T={fmt(data?.temperature)} forced={safeStr(data?.forcedActionId || '') || '—'}</div>
+                      {data?.lookahead?.enabled ? (
+                        <div className="mt-1 text-[11px] text-slate-500 font-mono">lookahead: γ={fmt(data?.lookahead?.gamma)} risk={fmt(data?.lookahead?.riskAversion)} v0={fmt(data?.lookahead?.v0)}</div>
+                      ) : null}
                     </div>
 
                     <div className="rounded border border-slate-800 bg-black/20 p-2">
@@ -339,6 +342,9 @@ export const PomdpConsolePanel: React.FC<Props> = ({ run, rawV1, observeLitePara
                         {ranked.slice(0, 10).map((r, i) => {
                           const id = safeStr(r?.id || `#${i}`);
                           const q = Number(r?.q ?? 0);
+                          const qL = r?.qLookahead != null ? Number(r?.qLookahead ?? 0) : null;
+                          const dL = r?.deltaLookahead != null ? Number(r?.deltaLookahead ?? 0) : null;
+                          const v1 = r?.v1 != null ? Number(r?.v1 ?? 0) : null;
                           const cost = Number(r?.cost ?? 0);
                           const conf = Number(r?.confidence ?? 1);
                           return (
@@ -359,6 +365,12 @@ export const PomdpConsolePanel: React.FC<Props> = ({ run, rawV1, observeLitePara
                                 <div>cost={fmt(cost)} conf={fmt(conf)}</div>
                                 <div>raw={fmt(r?.rawBeforeConfidence ?? 0)}</div>
                               </div>
+                              {qL != null ? (
+                                <div className="flex justify-between gap-2 text-[11px] text-slate-500 font-mono">
+                                  <div>look={fmt(qL)} Δ={fmt(dL ?? 0)}</div>
+                                  <div>v1={fmt(v1 ?? 0)}</div>
+                                </div>
+                              ) : null}
                             </button>
                           );
                         })}
@@ -393,6 +405,18 @@ export const PomdpConsolePanel: React.FC<Props> = ({ run, rawV1, observeLitePara
                             </div>
                           ) : null}
                         </div>
+
+                        {picked?.qLookahead != null ? (
+                          <div className="mt-2 rounded border border-slate-800 bg-slate-950/30 p-2">
+                            <div className="text-[10px] text-slate-500 uppercase tracking-widest">Lookahead</div>
+                            <div className="mt-1 text-[12px] font-mono flex flex-wrap gap-x-4 gap-y-1">
+                              <div className="text-slate-200">q_now=<span className="text-cyan-300">{fmt(picked?.q)}</span></div>
+                              <div className="text-slate-200">q_look=<span className="text-cyan-300">{fmt(picked?.qLookahead)}</span></div>
+                              <div className="text-slate-200">Δ=<span className="text-cyan-300">{fmt(picked?.deltaLookahead ?? 0)}</span></div>
+                              <div className="text-slate-200">v1=<span className="text-cyan-300">{fmt(picked?.v1 ?? 0)}</span></div>
+                            </div>
+                          </div>
+                        ) : null}
 
                         <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2">
                           <div className="rounded border border-slate-800 bg-slate-950/30 p-2">

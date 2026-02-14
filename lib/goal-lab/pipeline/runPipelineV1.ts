@@ -37,8 +37,9 @@ import { buildIntentPreview } from './intentPreview';
 import { makeSimStep, type SimStep } from '../../core/simStep';
 import { observeLite, type ObserveLiteParams } from './observeLite';
 import { buildBeliefUpdateLiteSnapshot } from './beliefUpdateLite';
+import { buildTransitionSnapshot } from './lookahead';
 
-export type GoalLabStageId = 'S0'|'S1'|'S2'|'S3'|'S4'|'S5'|'S6'|'S7'|'S8';
+export type GoalLabStageId = 'S0'|'S1'|'S2'|'S3'|'S4'|'S5'|'S6'|'S7'|'S8'|'S9';
 
 export type GoalLabStageFrame = {
   stage: GoalLabStageId;
@@ -426,42 +427,56 @@ export function runGoalLabPipelineV1(input: {
   });
 
   // S5: ToM (priors/ctx/final + policy)
-  const relPriors = applyRelationPriorsToDyads({ selfId, atoms });
-  const relAtoms = arr((relPriors as any)?.atoms).map(normalizeAtom);
-  const mS5a = mergeAtomsPreferNewer(atoms, relAtoms);
+  const enableToM = (input.sceneControl as any)?.enableToM !== false;
+  if (enableToM) {
+    const relPriors = applyRelationPriorsToDyads({ selfId, atoms });
+    const relAtoms = arr((relPriors as any)?.atoms).map(normalizeAtom);
+    const mS5a = mergeAtomsPreferNewer(atoms, relAtoms);
 
-  const othersForTom = participantIds.filter(id => id && id !== selfId);
-  const nonCtx = deriveNonContextDyadAtoms({ selfId, otherIds: othersForTom, atoms: mS5a.atoms });
-  const nonCtxAtoms = arr((nonCtx as any)?.atoms).map(normalizeAtom);
-  const mS5x = mergeAtomsPreferNewer(mS5a.atoms, nonCtxAtoms);
+    const othersForTom = participantIds.filter(id => id && id !== selfId);
+    const nonCtx = deriveNonContextDyadAtoms({ selfId, otherIds: othersForTom, atoms: mS5a.atoms });
+    const nonCtxAtoms = arr((nonCtx as any)?.atoms).map(normalizeAtom);
+    const mS5x = mergeAtomsPreferNewer(mS5a.atoms, nonCtxAtoms);
 
-  const beliefBias = buildBeliefToMBias({ selfId, atoms: mS5x.atoms });
-  const beliefAtoms = arr((beliefBias as any)?.atoms).map(normalizeAtom);
-  const mS5b = mergeAtomsPreferNewer(mS5x.atoms, beliefAtoms);
+    const beliefBias = buildBeliefToMBias({ selfId, atoms: mS5x.atoms });
+    const beliefAtoms = arr((beliefBias as any)?.atoms).map(normalizeAtom);
+    const mS5b = mergeAtomsPreferNewer(mS5x.atoms, beliefAtoms);
 
-  const policy = buildTomPolicyLayer({ selfId, atoms: mS5b.atoms });
-  const policyAtoms = arr((policy as any)?.atoms).map(normalizeAtom);
-  const mS5c = mergeAtomsPreferNewer(mS5b.atoms, policyAtoms);
+    const policy = buildTomPolicyLayer({ selfId, atoms: mS5b.atoms });
+    const policyAtoms = arr((policy as any)?.atoms).map(normalizeAtom);
+    const mS5c = mergeAtomsPreferNewer(mS5b.atoms, policyAtoms);
 
-  const atomsS5 = mS5c.atoms;
-  const s5Added = uniqStrings([...mS5a.newIds, ...mS5x.newIds, ...mS5b.newIds, ...mS5c.newIds]);
-  const s5Overridden = uniqStrings([...mS5a.overriddenIds, ...mS5x.overriddenIds, ...mS5b.overriddenIds, ...mS5c.overriddenIds]);
-  atoms = atomsS5;
-  stages.push({
-    stage: 'S5',
-    title: 'S5 ToM (priors/ctx/final + policy)',
-    atoms,
-    atomsAddedIds: s5Added,
-    warnings: [],
-    stats: { atomCount: atoms.length, addedCount: s5Added.length, ...stageStats(atoms) },
-    artifacts: {
-      relPriorsCount: relAtoms.length,
-      nonContextDyadCount: nonCtxAtoms.length,
-      beliefBiasCount: beliefAtoms.length,
-      policyCount: policyAtoms.length,
-      overriddenIds: s5Overridden,
-    }
-  });
+    const atomsS5 = mS5c.atoms;
+    const s5Added = uniqStrings([...mS5a.newIds, ...mS5x.newIds, ...mS5b.newIds, ...mS5c.newIds]);
+    const s5Overridden = uniqStrings([...mS5a.overriddenIds, ...mS5x.overriddenIds, ...mS5b.overriddenIds, ...mS5c.overriddenIds]);
+    atoms = atomsS5;
+    stages.push({
+      stage: 'S5',
+      title: 'S5 ToM (priors/ctx/final + policy)',
+      atoms,
+      atomsAddedIds: s5Added,
+      warnings: [],
+      stats: { atomCount: atoms.length, addedCount: s5Added.length, ...stageStats(atoms) },
+      artifacts: {
+        tomEnabled: true,
+        relPriorsCount: relAtoms.length,
+        nonContextDyadCount: nonCtxAtoms.length,
+        beliefBiasCount: beliefAtoms.length,
+        policyCount: policyAtoms.length,
+        overriddenIds: s5Overridden,
+      }
+    });
+  } else {
+    stages.push({
+      stage: 'S5',
+      title: 'S5 ToM (disabled)',
+      atoms,
+      atomsAddedIds: [],
+      warnings: ['ToM disabled'],
+      stats: { atomCount: atoms.length, addedCount: 0, ...stageStats(atoms) },
+      artifacts: { tomEnabled: false },
+    });
+  }
 
   // S6: drivers bridge (canonical drv:* atoms)
   const scoreboard = computeContextMindScoreboard({ selfId, atoms });
@@ -624,8 +639,12 @@ export function runGoalLabPipelineV1(input: {
       }
       const cost = Number(actionObj?.cost ?? 0);
       const conf = Number(actionObj?.confidence ?? 1);
+
+      const id = String(actionObj?.id || actionObj?.actionId || actionObj?.name || '');
+      const look = id ? (lookByActionId.get(id) || null) : null;
+
       return {
-        id: String(actionObj?.id || actionObj?.actionId || actionObj?.name || ''),
+        id,
         kind: String(actionObj?.kind || ''),
         targetId: actionObj?.targetId ?? null,
         q: Number(q ?? 0),
@@ -634,6 +653,10 @@ export function runGoalLabPipelineV1(input: {
         deltaGoals,
         contribByGoal,
         rawBeforeConfidence: sum - cost,
+        // Lookahead (optional): Q_lookahead = Q_now + gamma * V(z_hat).
+        qLookahead: look ? Number(look.qLookahead ?? 0) : null,
+        deltaLookahead: look ? Number(look.delta ?? 0) : null,
+        v1: look ? Number(look.v1 ?? 0) : null,
       };
     };
 
@@ -665,6 +688,33 @@ export function runGoalLabPipelineV1(input: {
       return [forced, ...rest];
     })();
 
+    const enablePredict = (input.sceneControl as any)?.enablePredict === true;
+    const lookaheadGamma = Number((input.sceneControl as any)?.lookaheadGamma ?? 0.7);
+    const lookaheadRisk = Number((input.sceneControl as any)?.lookaheadRiskAversion ?? (input.sceneControl as any)?.riskAversion ?? 0);
+    const transitionSnapshot = enablePredict
+      ? buildTransitionSnapshot({
+          selfId,
+          tick,
+          seed: Number(input.observeLiteParams?.seed ?? (step as any)?.seed ?? 0),
+          gamma: lookaheadGamma,
+          riskAversion: lookaheadRisk,
+          atoms: atomsS8,
+          actions: rankedOverridden.slice(0, 10).map((a: any) => ({
+            id: String(a?.id || a?.actionId || a?.name || ''),
+            kind: String(a?.kind || ''),
+            qNow: Number(a?.q ?? 0),
+          })),
+        })
+      : null;
+
+    const lookByActionId = new Map<string, any>();
+    if (transitionSnapshot) {
+      for (const ev of transitionSnapshot.perAction || []) {
+        const id = String((ev as any)?.actionId || '');
+        if (id) lookByActionId.set(id, ev);
+      }
+    }
+
     const decisionWarnings = arr<string>((decision as any)?.warnings);
 
     // Level 4.5: explicit mode/stabilizer snapshots for console observability.
@@ -678,6 +728,9 @@ export function runGoalLabPipelineV1(input: {
         seed: input.observeLiteParams?.seed ?? null,
       },
       forcedActionId: forcedActionId || null,
+      enableToM: (input.sceneControl as any)?.enableToM !== false,
+      enablePredict: enablePredict,
+      lookahead: enablePredict ? { gamma: lookaheadGamma, riskAversion: lookaheadRisk } : null,
     };
 
     const stabilizersSnapshot = {
@@ -707,7 +760,22 @@ export function runGoalLabPipelineV1(input: {
           rankedOverridden: rankedOverridden.slice(0, 10).map((a: any) => buildDecisionBreakdown(a, a?.q)),
           best: bestOverridden ? buildDecisionBreakdown(bestOverridden as any, (bestOverridden as any)?.q ?? 0) : null,
           forcedActionId: forcedActionId || null,
-          note: 'Decision breakdown: Q(a)=Σ_g goalEnergy[g]*Δg(a) - cost(a), then *confidence(a). contribByGoal are pre-confidence.'
+          note: 'Decision breakdown: Q(a)=Σ_g goalEnergy[g]*Δg(a) - cost(a), then *confidence(a). contribByGoal are pre-confidence.',
+          lookahead: transitionSnapshot ? {
+            enabled: true,
+            gamma: transitionSnapshot.gamma,
+            riskAversion: transitionSnapshot.riskAversion,
+            v0: transitionSnapshot.valueFn?.v0 ?? null,
+            ranked: (transitionSnapshot.perAction || []).slice(0, 10).map((x: any) => ({
+              actionId: String(x?.actionId || ''),
+              qLookahead: Number(x?.qLookahead ?? 0),
+              delta: Number(x?.delta ?? 0),
+              v1: Number(x?.v1 ?? 0),
+            })),
+          } : { enabled: false },
+          noteLookahead: 'Q_lookahead = Q_now + gamma * V(z_hat); z_hat = z + Δz_passive + Δz_action + noise; V is an MVP weighted mixture.',
+          featureVector: transitionSnapshot ? transitionSnapshot.z0 : null
+
         },
         forcedActionId: forcedActionId || null,
         modesSnapshot,
@@ -723,6 +791,21 @@ export function runGoalLabPipelineV1(input: {
         decisionAtomIds: decisionAtoms.map(a => String((a as any)?.id || '')),
       }
     });
+
+
+    if (transitionSnapshot) {
+      stages.push({
+        stage: 'S9',
+        title: 'S9 Predict tick (linear lookahead)',
+        atoms,
+        atomsAddedIds: [],
+        warnings: (transitionSnapshot.warnings || []).slice(),
+        stats: { atomCount: atoms.length, addedCount: 0, ...stageStats(atoms) },
+        artifacts: {
+          transitionSnapshot,
+        }
+      });
+    }
   } catch (e: any) {
     stages.push({
       stage: 'S8',

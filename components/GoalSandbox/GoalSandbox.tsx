@@ -1096,6 +1096,54 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
     [worldSource, refreshWorldDerived]
   );
 
+
+  const handleUpdateAgentVitals = useCallback(
+    (agentId: string, patch: { hp?: number; fatigue?: number; stress?: number }) => {
+      const aid = String(agentId || '').trim();
+      if (!aid) return;
+      const hp = patch?.hp;
+      const fatigue = patch?.fatigue;
+      const stress = patch?.stress;
+
+      setWorldState(prev => {
+        if (!prev) return prev;
+        const nextAgents = arr((prev as any).agents).map((a: any) => {
+          if (String(a?.entityId) !== aid) return a;
+          const next = { ...(a || {}) } as any;
+          const body = { ...(next.body || {}) } as any;
+          const acute = { ...((body.acute || {}) as any) } as any;
+
+          if (hp != null && Number.isFinite(Number(hp))) {
+            const v = Number(hp);
+            next.hp = v;
+            acute.hp = v;
+          }
+          if (fatigue != null && Number.isFinite(Number(fatigue))) {
+            const v = Number(fatigue);
+            acute.fatigue = v;
+            next.fatigue = v;
+          }
+          if (stress != null && Number.isFinite(Number(stress))) {
+            const v = Number(stress);
+            acute.stress = v;
+            next.stress = v;
+          }
+
+          body.acute = acute;
+          next.body = body;
+          return next;
+        });
+
+        try {
+          return worldSource === 'derived' ? (refreshWorldDerived(prev as any, nextAgents as any) as any) : ({ ...(prev as any), agents: nextAgents } as any);
+        } catch {
+          return { ...(prev as any), agents: nextAgents } as any;
+        }
+      });
+    },
+    [worldSource, refreshWorldDerived]
+  );
+
   const handleMoveAllToLocation = useCallback(
     (locationId: string) => {
       const lid = String(locationId || '').trim();
@@ -2912,6 +2960,17 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
                   sceneDump={sceneDumpV2 as any}
                   onDownloadScene={onDownloadScene}
                   onImportScene={handleImportSceneClick}
+
+                activeScenarioId={activeScenarioId}
+                onSetActiveScenarioId={setActiveScenarioId}
+                runSeed={normalizeSeedValue(runSeed)}
+                onSetRunSeed={(n) => setRunSeed(String(n))}
+                onApplySimSettings={onApplySimSettings}
+                sceneParticipants={Array.from(sceneParticipants)}
+                onSetSceneParticipants={(ids) => setSceneParticipants(new Set(ids))}
+                sceneControl={sceneControl}
+                onSetSceneControl={setSceneControl}
+                onUpdateAgentVitals={handleUpdateAgentVitals}
                   manualAtoms={manualAtoms}
                   onChangeManualAtoms={setManualAtoms}
                   onExportPipelineStage={handleExportPipelineStage}
@@ -3019,6 +3078,17 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
                       sceneDump={sceneDumpV2 as any}
                       onDownloadScene={onDownloadScene}
                       onImportScene={handleImportSceneClick}
+
+                activeScenarioId={activeScenarioId}
+                onSetActiveScenarioId={setActiveScenarioId}
+                runSeed={normalizeSeedValue(runSeed)}
+                onSetRunSeed={(n) => setRunSeed(String(n))}
+                onApplySimSettings={onApplySimSettings}
+                sceneParticipants={Array.from(sceneParticipants)}
+                onSetSceneParticipants={(ids) => setSceneParticipants(new Set(ids))}
+                sceneControl={sceneControl}
+                onSetSceneControl={setSceneControl}
+                onUpdateAgentVitals={handleUpdateAgentVitals}
                       manualAtoms={manualAtoms}
                       onChangeManualAtoms={setManualAtoms}
                       onExportPipelineStage={handleExportPipelineStage}
@@ -3077,6 +3147,17 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
                 sceneDump={sceneDumpV2 as any}
                 onDownloadScene={onDownloadScene}
                 onImportScene={handleImportSceneClick}
+
+                activeScenarioId={activeScenarioId}
+                onSetActiveScenarioId={setActiveScenarioId}
+                runSeed={normalizeSeedValue(runSeed)}
+                onSetRunSeed={(n) => setRunSeed(String(n))}
+                onApplySimSettings={onApplySimSettings}
+                sceneParticipants={Array.from(sceneParticipants)}
+                onSetSceneParticipants={(ids) => setSceneParticipants(new Set(ids))}
+                sceneControl={sceneControl}
+                onSetSceneControl={setSceneControl}
+                onUpdateAgentVitals={handleUpdateAgentVitals}
                 manualAtoms={manualAtoms as any}
                 onChangeManualAtoms={setManualAtoms as any}
                 pipelineStageId={currentPipelineStageId}
@@ -3139,6 +3220,17 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
                 sceneDump={sceneDumpV2 as any}
                 onDownloadScene={onDownloadScene}
                 onImportScene={handleImportSceneClick}
+
+                activeScenarioId={activeScenarioId}
+                onSetActiveScenarioId={setActiveScenarioId}
+                runSeed={normalizeSeedValue(runSeed)}
+                onSetRunSeed={(n) => setRunSeed(String(n))}
+                onApplySimSettings={onApplySimSettings}
+                sceneParticipants={Array.from(sceneParticipants)}
+                onSetSceneParticipants={(ids) => setSceneParticipants(new Set(ids))}
+                sceneControl={sceneControl}
+                onSetSceneControl={setSceneControl}
+                onUpdateAgentVitals={handleUpdateAgentVitals}
                 manualAtoms={manualAtoms as any}
                 onChangeManualAtoms={setManualAtoms as any}
                 pipelineStageId={currentPipelineStageId}

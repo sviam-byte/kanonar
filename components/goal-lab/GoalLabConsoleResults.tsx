@@ -1,6 +1,9 @@
 import React, { useState } from 'react';
 import { GoalLabResults } from './GoalLabResults';
 import { PomdpConsolePanel } from './PomdpConsolePanel';
+import { allScenarioDefs } from '../../data/scenarios/index';
+import { ScenePanel } from './ScenePanel';
+import { SCENE_PRESETS } from '../../lib/scene/presets';
 import type { PipelineRun } from '../../lib/goal-lab/pipeline/contracts';
 
 function arr<T>(x: any): T[] { return Array.isArray(x) ? x : []; }
@@ -46,6 +49,18 @@ type Props = {
   onDownloadScene: () => void;
   onImportScene: () => void;
 
+  // Situation
+  activeScenarioId: string;
+  onSetActiveScenarioId: (id: string) => void;
+  runSeed: number;
+  onSetRunSeed: (n: number) => void;
+  onApplySimSettings: () => void;
+  sceneParticipants: string[];
+  onSetSceneParticipants: (ids: string[]) => void;
+  sceneControl: any;
+  onSetSceneControl: (next: any) => void;
+  onUpdateAgentVitals: (agentId: string, patch: { hp?: number; fatigue?: number; stress?: number }) => void;
+
   manualAtoms: any;
   onChangeManualAtoms: (atoms: any) => void;
 
@@ -85,6 +100,19 @@ type WorldTabProps = {
   onDownloadScene: () => void;
   onImportScene: () => void;
 
+  // Situation
+  activeScenarioId: string;
+  onSetActiveScenarioId: (id: string) => void;
+  runSeed: number;
+  onSetRunSeed: (n: number) => void;
+  onApplySimSettings: () => void;
+  sceneParticipants: string[];
+  onSetSceneParticipants: (ids: string[]) => void;
+  sceneControl: any;
+  onSetSceneControl: (next: any) => void;
+  onUpdateAgentVitals: (agentId: string, patch: { hp?: number; fatigue?: number; stress?: number }) => void;
+
+
   // World editor (console)
   characters: Array<{ entityId: string; title?: string }>;
   locations: Array<{ entityId: string; title?: string }>;
@@ -107,6 +135,16 @@ const ConsoleWorldTab: React.FC<WorldTabProps> = ({
   sceneDump,
   onDownloadScene,
   onImportScene,
+  activeScenarioId,
+  onSetActiveScenarioId,
+  runSeed,
+  onSetRunSeed,
+  onApplySimSettings,
+  sceneParticipants,
+  onSetSceneParticipants,
+  sceneControl,
+  onSetSceneControl,
+  onUpdateAgentVitals,
   characters,
   locations,
   selectedAgentId,
@@ -120,7 +158,7 @@ const ConsoleWorldTab: React.FC<WorldTabProps> = ({
   onSetAgentLocation,
   onSetAgentPosition,
   onRebuildWorld,
-}) => {
+}: WorldTabProps) => {
   const [view, setView] = useState<'truth' | 'observation' | 'belief' | 'both'>('both');
 
   // Bulk layout helpers for quickly arranging agents in the scene.
@@ -131,8 +169,8 @@ const ConsoleWorldTab: React.FC<WorldTabProps> = ({
   const [originY, setOriginY] = useState<number>(0);
 
   const truth = findArtifact(run, 'S0', 'truth');
-  const obs = findArtifact(run, 'S0', 'observation');
-  const bel = findArtifact(run, 'S0', 'belief');
+  const obs = findArtifact(run, 'S1', 'observation');
+  const bel = findArtifact(run, 'S2', 'belief');
 
   const renderAtoms = (art: any, title: string) => {
     const atoms = Array.isArray(art?.data?.atoms) ? art.data.atoms : [];
@@ -183,6 +221,9 @@ const ConsoleWorldTab: React.FC<WorldTabProps> = ({
     const l = locations.find((x) => x.entityId === id);
     return l?.title ? `${l.title} (${id})` : id;
   };
+
+  const selAgent: any = arr(agents).find((a: any) => String(a?.entityId ?? a?.id ?? '') === String(selectedAgentId)) || null;
+  const selAcute: any = selAgent?.body?.acute || selAgent?.body?.state?.acute || {};
 
   // Tiny, high-signal metric overlay derived from atoms (best-effort; does NOT pretend to be full truth).
   const getMetric = (art: any, keys: string[]): number | null => {
@@ -265,6 +306,170 @@ const ConsoleWorldTab: React.FC<WorldTabProps> = ({
           >
             REBUILD WORLD
           </button>
+        </div>
+
+        {/* Situation (console) */}
+        <div className="mt-3 rounded border border-slate-800 bg-black/10 p-2">
+          <div className="flex flex-wrap items-end justify-between gap-2">
+            <div>
+              <div className="text-[10px] text-slate-500 uppercase tracking-widest">Situation</div>
+              <div className="text-xs text-slate-400">Scenario / seed / cast / ToM / Predict</div>
+            </div>
+            <button
+              className="px-3 py-1 rounded text-xs border bg-slate-800/30 border-slate-700 text-slate-100 hover:bg-slate-800/50"
+              onClick={onApplySimSettings}
+              title="Apply seed/scenario and rebuild world"
+            >
+              APPLY
+            </button>
+          </div>
+
+          <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <div className="text-[10px] text-slate-500 uppercase tracking-widest">Scenario</div>
+              <select
+                className="w-full bg-slate-900/40 border border-slate-800 rounded px-2 py-1 text-xs text-slate-200"
+                value={activeScenarioId}
+                onChange={(e) => onSetActiveScenarioId(e.target.value)}
+              >
+                {Object.keys(allScenarioDefs).map((sid) => (
+                  <option key={sid} value={sid}>{sid}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <div className="text-[10px] text-slate-500 uppercase tracking-widest">Seed</div>
+              <input
+                className="w-full bg-slate-900/40 border border-slate-800 rounded px-2 py-1 text-xs text-slate-200"
+                type="number"
+                value={Number.isFinite(runSeed) ? runSeed : 0}
+                onChange={(e) => onSetRunSeed(Number(e.target.value || 0))}
+              />
+              <div className="mt-1 text-[11px] text-slate-500 font-mono">runId={run?.runId?.slice(0, 8) || '—'}</div>
+            </div>
+          </div>
+
+          <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div>
+              <div className="text-[10px] text-slate-500 uppercase tracking-widest">Toggles</div>
+              <div className="mt-1 flex flex-wrap gap-3 text-xs">
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={(sceneControl as any)?.enableToM !== false}
+                    onChange={(e) => onSetSceneControl({ ...(sceneControl || {}), enableToM: e.target.checked })}
+                  />
+                  <span>ToM</span>
+                </label>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={(sceneControl as any)?.enablePredict === true}
+                    onChange={(e) => onSetSceneControl({ ...(sceneControl || {}), enablePredict: e.target.checked })}
+                  />
+                  <span>Predict</span>
+                </label>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={(sceneControl as any)?.fastMode === true}
+                    onChange={(e) => onSetSceneControl({ ...(sceneControl || {}), fastMode: e.target.checked })}
+                  />
+                  <span>fast</span>
+                </label>
+              </div>
+
+              {(sceneControl as any)?.enablePredict === true ? (
+                <div className="mt-2">
+                  <div className="text-[10px] text-slate-500 uppercase tracking-widest">γ</div>
+                  <div className="mt-1 flex items-center gap-2">
+                    <input
+                      className="w-40"
+                      type="range"
+                      min={0}
+                      max={1}
+                      step={0.05}
+                      value={Number((sceneControl as any)?.lookaheadGamma ?? 0.7)}
+                      onChange={(e) => onSetSceneControl({ ...(sceneControl || {}), lookaheadGamma: Number(e.target.value) })}
+                    />
+                    <div className="text-[11px] text-slate-400 font-mono">{Number((sceneControl as any)?.lookaheadGamma ?? 0.7).toFixed(2)}</div>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+
+            <div>
+              <div className="text-[10px] text-slate-500 uppercase tracking-widest">Cast</div>
+              <div className="mt-1 flex flex-wrap gap-2">
+                {sceneParticipants.map((pid) => (
+                  <button
+                    key={pid}
+                    className="rounded border border-slate-800 bg-slate-900/40 px-2 py-1 text-xs text-slate-200 hover:bg-slate-900/60"
+                    onClick={() => onSetSceneParticipants(sceneParticipants.filter(x => x !== pid))}
+                    title="Remove"
+                  >{pid} ×</button>
+                ))}
+              </div>
+              <div className="mt-2">
+                <select
+                  className="w-full bg-slate-900/40 border border-slate-800 rounded px-2 py-1 text-xs text-slate-200"
+                  value=""
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    if (!v) return;
+                    if (!sceneParticipants.includes(v)) onSetSceneParticipants([...sceneParticipants, v]);
+                  }}
+                >
+                  <option value="">Add…</option>
+                  {characters.filter(c => !sceneParticipants.includes(c.entityId)).map((c) => (
+                    <option key={c.entityId} value={c.entityId}>{labelForChar(c.entityId)}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <div className="text-[10px] text-slate-500 uppercase tracking-widest">Vitals (selected agent)</div>
+              <div className="mt-1 flex flex-wrap gap-2 items-center text-xs">
+                <label className="text-slate-500">hp</label>
+                <input
+                  className="w-[76px] bg-slate-900/40 border border-slate-800 rounded px-2 py-1 text-xs text-slate-200"
+                  type="number"
+                  value={Number(selAcute?.hp ?? selAgent?.hp ?? 100)}
+                  onChange={(e) => onUpdateAgentVitals(selectedAgentId, { hp: Number(e.target.value || 0) })}
+                />
+                <label className="text-slate-500">fatigue</label>
+                <input
+                  className="w-[76px] bg-slate-900/40 border border-slate-800 rounded px-2 py-1 text-xs text-slate-200"
+                  type="number"
+                  min={0}
+                  max={100}
+                  step={1}
+                  value={Number(selAcute?.fatigue ?? selAgent?.fatigue ?? 0)}
+                  onChange={(e) => onUpdateAgentVitals(selectedAgentId, { fatigue: Number(e.target.value || 0) })}
+                />
+                <label className="text-slate-500">stress</label>
+                <input
+                  className="w-[76px] bg-slate-900/40 border border-slate-800 rounded px-2 py-1 text-xs text-slate-200"
+                  type="number"
+                  min={0}
+                  max={100}
+                  step={1}
+                  value={Number(selAcute?.stress ?? selAgent?.stress ?? 0)}
+                  onChange={(e) => onUpdateAgentVitals(selectedAgentId, { stress: Number(e.target.value || 0) })}
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-3">
+            <ScenePanel
+              control={sceneControl}
+              onChange={onSetSceneControl}
+              presets={Object.values(SCENE_PRESETS)}
+            />
+          </div>
         </div>
 
         {/* Locations & positions editor (console) */}
@@ -546,6 +751,16 @@ export const GoalLabConsoleResults: React.FC<Props> = (props) => {
               sceneDump={props.sceneDump}
               onDownloadScene={props.onDownloadScene}
               onImportScene={props.onImportScene}
+            activeScenarioId={props.activeScenarioId}
+            onSetActiveScenarioId={props.onSetActiveScenarioId}
+            runSeed={props.runSeed}
+            onSetRunSeed={props.onSetRunSeed}
+            onApplySimSettings={props.onApplySimSettings}
+            sceneParticipants={props.sceneParticipants}
+            onSetSceneParticipants={props.onSetSceneParticipants}
+            sceneControl={props.sceneControl}
+            onSetSceneControl={props.onSetSceneControl}
+            onUpdateAgentVitals={props.onUpdateAgentVitals}
               characters={props.characters}
               locations={props.locations}
               selectedAgentId={props.selectedAgentId}
