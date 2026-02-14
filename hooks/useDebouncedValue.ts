@@ -12,8 +12,8 @@ export function useDebouncedValue<T>(value: T, delayMs: number): T {
       setDebounced(value);
       return;
     }
-    const h = window.setTimeout(() => setDebounced(value), Math.max(0, Math.floor(delayMs)));
-    return () => window.clearTimeout(h);
+    const h = globalThis.setTimeout(() => setDebounced(value), Math.max(0, Math.floor(delayMs)));
+    return () => globalThis.clearTimeout(h);
   }, [value, delayMs]);
 
   return debounced;
@@ -27,13 +27,13 @@ export function useDebouncedValue<T>(value: T, delayMs: number): T {
 export function useDebouncedValueWithFlush<T>(value: T, delayMs: number): [T, () => void] {
   const [debounced, setDebounced] = useState<T>(value);
   const latestRef = useRef<T>(value);
-  const timerRef = useRef<number | null>(null);
+  const timerRef = useRef<ReturnType<typeof globalThis.setTimeout> | null>(null);
 
   latestRef.current = value;
 
   const flush = useCallback(() => {
     if (timerRef.current != null) {
-      window.clearTimeout(timerRef.current);
+      globalThis.clearTimeout(timerRef.current);
       timerRef.current = null;
     }
     setDebounced(latestRef.current);
@@ -45,15 +45,15 @@ export function useDebouncedValueWithFlush<T>(value: T, delayMs: number): [T, ()
       return;
     }
     if (timerRef.current != null) {
-      window.clearTimeout(timerRef.current);
+      globalThis.clearTimeout(timerRef.current);
     }
-    timerRef.current = window.setTimeout(() => {
+    timerRef.current = globalThis.setTimeout(() => {
       timerRef.current = null;
       setDebounced(latestRef.current);
     }, Math.max(0, Math.floor(delayMs)));
     return () => {
       if (timerRef.current != null) {
-        window.clearTimeout(timerRef.current);
+        globalThis.clearTimeout(timerRef.current);
         timerRef.current = null;
       }
     };

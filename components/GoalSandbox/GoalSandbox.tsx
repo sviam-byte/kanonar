@@ -2005,7 +2005,7 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
 
   // Flush debounced world on pointer-up so the pipeline updates immediately after a drag ends.
   useEffect(() => {
-    if (uiMode !== 'console') return;
+    if (uiMode !== 'console' || typeof window === 'undefined') return;
     const onUp = () => flushDebounce();
     window.addEventListener('pointerup', onUp, { passive: true });
     window.addEventListener('mouseup', onUp, { passive: true });
