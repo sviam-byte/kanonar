@@ -95,6 +95,10 @@ type Props = {
   onSetAgentPosition: (agentId: string, pos: { x: number; y: number }) => void;
   onMoveAllToLocation: (locationId: string) => void;
   onRebuildWorld: () => void;
+
+  // Map placement (click on map to set position)
+  placingActorId?: string | null;
+  onStartPlacement?: (actorId: string | null) => void;
 };
 
 type WorldTabProps = {
@@ -135,6 +139,10 @@ type WorldTabProps = {
   onSetAgentPosition: (agentId: string, pos: { x: number; y: number }) => void;
   onMoveAllToLocation: (locationId: string) => void;
   onRebuildWorld: () => void;
+
+  // Map placement (click on map to set position)
+  placingActorId?: string | null;
+  onStartPlacement?: (actorId: string | null) => void;
 };
 
 const ConsoleWorldTab: React.FC<WorldTabProps> = ({
@@ -166,6 +174,11 @@ const ConsoleWorldTab: React.FC<WorldTabProps> = ({
   onSetAgentLocation,
   onSetAgentPosition,
   onRebuildWorld,
+  placingActorId,
+  onStartPlacement,
+  sceneMetrics,
+  sceneMetricDefs,
+  onSetSceneMetric,
 }: WorldTabProps) => {
   const [view, setView] = useState<'truth' | 'observation' | 'belief' | 'both'>('both');
 
@@ -659,8 +672,23 @@ const ConsoleWorldTab: React.FC<WorldTabProps> = ({
               const y = Number((pos as any)?.y ?? 0);
               return (
                 <div key={String(id)} className="grid grid-cols-12 gap-2 items-center py-1 border-b border-slate-900/40">
-                  <div className="col-span-5 min-w-0">
+                  <div className="col-span-4 min-w-0">
                     <div className="text-[11px] text-slate-200 truncate">{labelForChar(String(id))}</div>
+                  </div>
+                  <div className="col-span-1 flex justify-end">
+                    {onStartPlacement ? (
+                      <button
+                        className={`px-2 py-1 rounded text-[10px] border font-mono ${
+                          String(placingActorId || '') === String(id)
+                            ? 'bg-cyan-600/30 text-cyan-100 border-cyan-500/50'
+                            : 'bg-black/10 text-slate-300 border-slate-800 hover:border-slate-700 hover:text-slate-100'
+                        }`}
+                        onClick={() => onStartPlacement(String(placingActorId || '') === String(id) ? null : String(id))}
+                        title="Click, then click on the map to place this actor"
+                      >
+                        {String(placingActorId || '') === String(id) ? 'PLACING' : 'PLACE'}
+                      </button>
+                    ) : null}
                   </div>
                   <div className="col-span-4">
                     <select
@@ -692,6 +720,14 @@ const ConsoleWorldTab: React.FC<WorldTabProps> = ({
               );
             })}
           </div>
+
+          {onStartPlacement ? (
+            <div className="mt-2 text-[11px] text-slate-500">
+              {placingActorId
+                ? `Placement mode: click on the map to set position for ${labelForChar(String(placingActorId))}.`
+                : 'Tip: use PLACE then click on the map to set (x,y) for an actor.'}
+            </div>
+          ) : null}
         </div>
 
         <div className="mt-2 flex flex-wrap gap-2">
@@ -829,6 +865,8 @@ export const GoalLabConsoleResults: React.FC<Props> = (props) => {
               onSetAgentPosition={props.onSetAgentPosition}
               onMoveAllToLocation={props.onMoveAllToLocation}
               onRebuildWorld={props.onRebuildWorld}
+              placingActorId={props.placingActorId}
+              onStartPlacement={props.onStartPlacement}
             />
           ) : null}
 
