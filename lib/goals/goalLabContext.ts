@@ -38,6 +38,7 @@ import { decideAction } from '../decision/decide';
 import { buildActionCandidates } from '../decision/actionCandidateUtils';
 import { getGlobalRunSeed, makeDerivedRNG } from '../core/noise';
 import { deriveActionPriors } from '../decision/actionPriors';
+import { scoreAction } from '../decision/scoreAction';
 import { computeContextMindScoreboard } from '../contextMind/scoreboard';
 import { atomizeContextMindMetrics } from '../contextMind/atomizeMind';
 import { deriveSocialProximityAtoms } from '../context/stage1/socialProximity';
@@ -1611,10 +1612,27 @@ export function buildGoalLabContext(
     atoms: atomsWithMind,
     possibilities: (result as any).possibilities,
   });
+
+  // Optional override from console: if a force_action event is injected for this agent,
+  // ensure this action is exposed as decision.best in the real tick context as well.
+  const forcedActionId = (() => {
+    const evs = arr<any>((opts as any)?.snapshotOptions?.overrideEvents);
+    let last: any = null;
+    for (const e of evs) {
+      const t = String((e as any)?.type || (e as any)?.kind || '');
+      if (t !== 'force_action') continue;
+      const a = String((e as any)?.agentId || (e as any)?.selfId || '');
+      if (a && a !== selfId) continue;
+      last = e;
+    }
+    const id = String((last as any)?.actionId || (last as any)?.action || '');
+    return id && id !== 'undefined' && id !== 'null' ? id : '';
+  })();
+
   const decision = decideAction({
     actions,
     goalEnergy,
-    topK: 12,
+    topK: forcedActionId ? Math.max(12, actions.length) : 12,
     rng: decideRng && typeof (decideRng as any).next === 'function'
       ? () => (decideRng as any).next()
       : () => 0.5,
@@ -1624,6 +1642,37 @@ export function buildGoalLabContext(
       (agentForPipeline as any)?.temperature ??
       1.0,
   });
+
+  if (forcedActionId) {
+    const forced = actions.find(a => String((a as any)?.id || '') === forcedActionId) || null;
+    if (forced) {
+      const qForced = scoreAction(forced as any, goalEnergy as any);
+      const prevRanked = Array.isArray((decision as any).ranked) ? (decision as any).ranked : [];
+      const rest = prevRanked.filter((r: any) => String(r?.action?.id || '') !== forcedActionId);
+
+      // Keep ranked item shape stable: [{ action, q }, ...].
+      (decision as any).ranked = [{ action: forced, q: qForced }, ...rest]
+        .slice(0, Math.max(1, prevRanked.length));
+      (decision as any).best = forced;
+
+      // Explicit marker atom for debugging and console traceability.
+      (decision as any).atoms = arr((decision as any).atoms).concat([
+        normalizeAtom({
+          id: `action:forced:${selfId}`,
+          ns: 'action',
+          kind: 'decision',
+          origin: 'derived',
+          source: 'decide',
+          subject: selfId,
+          magnitude: 1,
+          confidence: 1,
+          tags: ['action', 'forced'],
+          label: `forced:${forcedActionId}`,
+          trace: { parts: { forcedActionId } },
+        } as any),
+      ]);
+    }
+  }
 
   const decisionAtoms = arr((decision as any)?.atoms).map(normalizeAtom);
   const atomsWithDecision = dedupeAtomsById([

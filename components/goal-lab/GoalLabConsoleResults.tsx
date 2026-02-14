@@ -161,6 +161,12 @@ const ConsoleWorldTab: React.FC<WorldTabProps> = ({
 }: WorldTabProps) => {
   const [view, setView] = useState<'truth' | 'observation' | 'belief' | 'both'>('both');
 
+  // Hardening: keep participant list always defined because layout controls and editors
+  // below iterate over participantIds. Prefer pipeline run participants when available.
+  const participantIds: string[] = Array.isArray((run as any)?.participantIds)
+    ? (run as any).participantIds
+    : arr(sceneParticipants).map((id: any) => String(id));
+
   // Bulk layout helpers for quickly arranging agents in the scene.
   // These only call the provided callbacks; the actual persistence is owned by GoalSandbox.
   const [gridCols, setGridCols] = useState<number>(3);
@@ -317,8 +323,8 @@ const ConsoleWorldTab: React.FC<WorldTabProps> = ({
             </div>
             <button
               className="px-3 py-1 rounded text-xs border bg-slate-800/30 border-slate-700 text-slate-100 hover:bg-slate-800/50"
-              onClick={onApplySimSettings}
-              title="Apply seed/scenario and rebuild world"
+              onClick={onRebuildWorld}
+              title="Rebuild world from scenario/seed/cast"
             >
               APPLY
             </button>
