@@ -162,4 +162,35 @@ describe('Pipeline: Stage isolation invariants', () => {
       expect(cycle).toBeNull();
     }
   });
+
+  it('S5 can be disabled via sceneControl.enableToM', () => {
+    const p = runGoalLabPipelineV1({
+      world: mockWorld(),
+      agentId: 'A',
+      participantIds: ['A'],
+      sceneControl: { enableToM: false },
+    });
+    const s5 = arr(p?.stages).find((s: any) => String(s?.stage) === 'S5');
+    expect(s5).toBeDefined();
+    expect((s5 as any)?.artifacts?.tomEnabled).toBe(false);
+  });
+
+  it('S9 lookahead is deterministic for same seed/config', () => {
+    const input = {
+      world: mockWorld(),
+      agentId: 'A',
+      participantIds: ['A'],
+      observeLiteParams: { seed: 123 },
+      sceneControl: { enablePredict: true, lookaheadGamma: 0.7, lookaheadRiskAversion: 0.2 },
+    } as any;
+
+    const p1 = runGoalLabPipelineV1(input);
+    const p2 = runGoalLabPipelineV1(input);
+
+    const s9a = arr(p1?.stages).find((s: any) => String(s?.stage) === 'S9');
+    const s9b = arr(p2?.stages).find((s: any) => String(s?.stage) === 'S9');
+    expect(s9a).toBeDefined();
+    expect(s9b).toBeDefined();
+    expect((s9a as any)?.artifacts?.transitionSnapshot).toEqual((s9b as any)?.artifacts?.transitionSnapshot);
+  });
 });

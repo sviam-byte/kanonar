@@ -1,4 +1,4 @@
-# Pipeline contracts (S0…S8)
+# Pipeline contracts (S0…S9)
 
 Цель: фиксировать “что где рождается” и какие зависимости допустимы.
 
@@ -60,6 +60,10 @@ Outputs:
 Outputs:
 - dyads / priors / tom-политики (зависит от реализации)
 
+Notes:
+- стадия может быть отключена через `sceneControl.enableToM === false`
+- при отключении стадия не добавляет атомы и пишет артефакт `tomEnabled: false`
+
 ## S6 — Drivers / ContextMind
 
 Outputs:
@@ -93,3 +97,22 @@ Outputs:
 
 Forbidden:
 - `action:*` НЕ должен зависеть от `goal:*` напрямую (только через `util:*`)
+
+## S9 — Predict tick (linear lookahead)
+
+Purpose:
+- дополнительная объяснимая оценка для top-K действий из S8
+
+Inputs:
+- top-K действий из S8 (`id/kind/q`)
+- feature-вектор `z` из атомов
+- `sceneControl.enablePredict`, `sceneControl.lookaheadGamma`, `sceneControl.lookaheadRiskAversion`
+
+Outputs:
+- артефакт `transitionSnapshot`:
+  - `z0` + provenance по каждой фиче
+  - `perAction[]` с `qNow`, `qLookahead`, `delta`, `v1`
+  - предупреждения по отсутствующим фичам
+
+Determinism:
+- шум в lookahead должен быть детерминирован по `seed/tick/actionId`
