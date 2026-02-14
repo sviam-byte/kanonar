@@ -1,7 +1,7 @@
 // components/GoalSandbox/GoalSandbox.tsx
 
 import React, { useMemo, useState, useEffect, useCallback, useRef } from 'react';
-import { useDebouncedValue } from '../../hooks/useDebouncedValue';
+import { useDebouncedValueWithFlush } from '../../hooks/useDebouncedValue';
 import type { ReactNode } from 'react';
 import {
   EntityType,
@@ -1999,7 +1999,23 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
     (castRowsSafe?.[0]?.id ? String(castRowsSafe[0].id) : '');
 
   // Debounce expensive pipeline recomputation during high-frequency UI updates (dragging, sliders).
-  const debouncedWorldState = useDebouncedValue(worldState, uiMode === 'console' ? 90 : 0);
+  // In console mode we also expose `flushDebounce()` to recompute immediately on pointer-up (drag end).
+  const debounceMs = uiMode === 'console' ? 90 : 0;
+  const [debouncedWorldState, flushDebounce] = useDebouncedValueWithFlush(worldState, debounceMs);
+
+  // Flush debounced world on pointer-up so the pipeline updates immediately after a drag ends.
+  useEffect(() => {
+    if (uiMode !== 'console') return;
+    const onUp = () => flushDebounce();
+    window.addEventListener('pointerup', onUp, { passive: true });
+    window.addEventListener('mouseup', onUp, { passive: true });
+    window.addEventListener('touchend', onUp, { passive: true });
+    return () => {
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('mouseup', onUp);
+      window.removeEventListener('touchend', onUp);
+    };
+  }, [uiMode, flushDebounce]);
 
   // POMDP console pipeline (real stages from runGoalLabPipelineV1), adapted to strict contracts.
   // NOTE: focusId is resolved above to avoid TDZ crashes in optimized/prod builds.
