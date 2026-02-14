@@ -51,6 +51,7 @@ export const PomdpConsolePanel: React.FC<Props> = ({ run, rawV1, observeLitePara
   const [pickedRankIdx, setPickedRankIdx] = useState<number | null>(null);
   const [showAllAtoms, setShowAllAtoms] = useState<boolean>(false);
   const [showRawArtifact, setShowRawArtifact] = useState<boolean>(false);
+  const [showFullSnapshots, setShowFullSnapshots] = useState<boolean>(false);
 
   // Cross-stage atom index for "why" navigation: atomId -> { stageId, atom }.
   // We keep earliest occurrence to bias navigation to likely origin points.
@@ -97,6 +98,7 @@ export const PomdpConsolePanel: React.FC<Props> = ({ run, rawV1, observeLitePara
     setPickedAtomId(null);
     setShowAllAtoms(false);
     setShowRawArtifact(false);
+    setShowFullSnapshots(false);
   }, [stageId]);
 
   const stage = useMemo(() => {
@@ -116,6 +118,7 @@ export const PomdpConsolePanel: React.FC<Props> = ({ run, rawV1, observeLitePara
   useEffect(() => {
     setPickedRankIdx(null);
     setShowRawArtifact(false);
+    setShowFullSnapshots(false);
   }, [selectedArtifact?.id]);
 
   const atomsArtifact = useMemo(() => artifacts.find((a) => a.kind === 'atoms') || null, [artifacts]);
@@ -124,16 +127,16 @@ export const PomdpConsolePanel: React.FC<Props> = ({ run, rawV1, observeLitePara
   const stabilizers = useMemo(() => artifacts.find((a) => a.kind === 'stabilizers')?.data, [artifacts]);
   const atoms = useMemo(() => arr<any>((atomsArtifact as any)?.data?.atoms), [atomsArtifact]);
 
+  // Keep filtering complete for traceability; default render is still capped in atomsToRender.
   const filteredAtoms = useMemo(() => {
     const q = atomQuery.trim().toLowerCase();
-    if (!q) return atoms.slice(0, 250);
+    if (!q) return atoms;
     const out: any[] = [];
     for (const a of atoms) {
       const id = safeStr(a?.id).toLowerCase();
       const code = safeStr(a?.code).toLowerCase();
       const label = safeStr(a?.label).toLowerCase();
       if (id.includes(q) || code.includes(q) || label.includes(q)) out.push(a);
-      if (out.length >= 250) break;
     }
     return out;
   }, [atoms, atomQuery]);
@@ -153,8 +156,8 @@ export const PomdpConsolePanel: React.FC<Props> = ({ run, rawV1, observeLitePara
     return prettyJsonTrunc(selectedArtifact?.data, maxChars);
   }, [selectedArtifact?.data, showRawArtifact]);
 
-  const modesJson = useMemo(() => prettyJsonTrunc(modes, 20_000), [modes]);
-  const stabilizersJson = useMemo(() => prettyJsonTrunc(stabilizers, 20_000), [stabilizers]);
+  const modesJson = useMemo(() => prettyJsonTrunc(modes, showFullSnapshots ? 120_000 : 20_000), [modes, showFullSnapshots]);
+  const stabilizersJson = useMemo(() => prettyJsonTrunc(stabilizers, showFullSnapshots ? 120_000 : 20_000), [stabilizers, showFullSnapshots]);
 
   if (!run) {
     return (
@@ -327,15 +330,33 @@ export const PomdpConsolePanel: React.FC<Props> = ({ run, rawV1, observeLitePara
 
           {modes ? (
             <div className="mb-3 rounded border border-slate-700 bg-slate-900/40 p-2">
-              <div className="mb-1 text-xs font-bold">MODES</div>
+              <div className="mb-1 flex items-center justify-between gap-2">
+                <div className="text-xs font-bold">MODES</div>
+                {modesJson.truncated ? <div className="text-[10px] text-amber-300 font-mono">truncated</div> : null}
+              </div>
               <pre className="text-[11px] text-slate-200 overflow-auto">{modesJson.text}</pre>
             </div>
           ) : null}
 
           {stabilizers ? (
             <div className="mb-3 rounded border border-slate-700 bg-slate-900/40 p-2">
-              <div className="mb-1 text-xs font-bold">STABILIZERS</div>
+              <div className="mb-1 flex items-center justify-between gap-2">
+                <div className="text-xs font-bold">STABILIZERS</div>
+                {stabilizersJson.truncated ? <div className="text-[10px] text-amber-300 font-mono">truncated</div> : null}
+              </div>
               <pre className="text-[11px] text-slate-200 overflow-auto">{stabilizersJson.text}</pre>
+            </div>
+          ) : null}
+
+          {modes || stabilizers ? (
+            <div className="mb-3 flex justify-end">
+              <button
+                className="text-xs px-2 py-1 rounded border border-slate-700 bg-slate-900/30 text-slate-200 hover:bg-slate-800/40"
+                onClick={() => setShowFullSnapshots((v) => !v)}
+                title={showFullSnapshots ? 'Show truncated snapshot JSON' : 'Show larger snapshot JSON (may be heavy)'}
+              >
+                {showFullSnapshots ? 'Truncate snapshots' : 'Show more snapshots'}
+              </button>
             </div>
           ) : null}
 
