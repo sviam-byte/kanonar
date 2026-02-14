@@ -16,9 +16,15 @@ function safeStr(x: any): string {
 
 function prettyJson(x: any): string {
   try {
-    return JSON.stringify(x, null, 2);
+    const s = JSON.stringify(x, null, 2);
+    // JSON.stringify(undefined) returns undefined; keep callers safe.
+    return typeof s === 'string' ? s : '';
   } catch {
-    return String(x);
+    try {
+      return x == null ? '' : String(x);
+    } catch {
+      return '';
+    }
   }
 }
 
@@ -26,7 +32,7 @@ function prettyJson(x: any): string {
  * Serialize JSON safely and truncate very large blobs to keep console rendering responsive.
  */
 function prettyJsonTrunc(x: any, maxChars: number): { text: string; truncated: boolean } {
-  const text = prettyJson(x);
+  const text = prettyJson(x) || '';
   if (text.length <= maxChars) return { text, truncated: false };
   return { text: `${text.slice(0, Math.max(0, maxChars - 64))}\n…(truncated)…\n`, truncated: true };
 }
