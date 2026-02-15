@@ -145,41 +145,49 @@ type WorldTabProps = {
   onStartPlacement?: (actorId: string | null) => void;
 };
 
-const ConsoleWorldTab: React.FC<WorldTabProps> = ({
-  run,
-  situation,
-  sceneDump,
-  onDownloadScene,
-  onImportScene,
-  activeScenarioId,
-  onSetActiveScenarioId,
-  runSeed,
-  onSetRunSeed,
-  onApplySimSettings,
-  sceneParticipants,
-  onSetSceneParticipants,
-  sceneControl,
-  onSetSceneControl,
-  onUpdateAgentVitals,
-  characters,
-  locations,
-  selectedAgentId,
-  onSelectAgentId,
-  locationMode,
-  onSetLocationMode,
-  selectedLocationId,
-  onSelectLocationId,
-  onMoveAllToLocation,
-  agents,
-  onSetAgentLocation,
-  onSetAgentPosition,
-  onRebuildWorld,
-  placingActorId,
-  onStartPlacement,
-  sceneMetrics,
-  sceneMetricDefs,
-  onSetSceneMetric,
-}: WorldTabProps) => {
+// NOTE: Destructure props inside the function body (not in the parameter list).
+// This reduces risk of build/runtime mismatches where a free identifier can appear.
+const ConsoleWorldTab: React.FC<WorldTabProps> = (props: WorldTabProps) => {
+  const {
+    run,
+    situation,
+    sceneDump,
+    onDownloadScene,
+    onImportScene,
+    activeScenarioId,
+    onSetActiveScenarioId,
+    runSeed,
+    onSetRunSeed,
+    onApplySimSettings,
+    sceneParticipants,
+    onSetSceneParticipants,
+    sceneControl,
+    onSetSceneControl,
+    onUpdateAgentVitals,
+    characters,
+    locations,
+    selectedAgentId,
+    onSelectAgentId,
+    locationMode,
+    onSetLocationMode,
+    selectedLocationId,
+    onSelectLocationId,
+    onMoveAllToLocation,
+    agents,
+    onSetAgentLocation,
+    onSetAgentPosition,
+    onRebuildWorld,
+    placingActorId,
+    onStartPlacement,
+    sceneMetrics: sceneMetricsProp,
+    sceneMetricDefs: sceneMetricDefsProp,
+    onSetSceneMetric,
+  } = props;
+
+  // Hardening: always bind metrics in scope; fall back to situation.world when available.
+  const sceneMetricDefs = (sceneMetricDefsProp ?? ((situation as any)?.world?.scenario?.metrics ?? null)) as any;
+  const sceneMetrics = (sceneMetricsProp ?? ((situation as any)?.world?.scene?.metrics ?? null)) as any;
+
   const [view, setView] = useState<'truth' | 'observation' | 'belief' | 'both'>('both');
 
   // Hardening: keep participant list always defined because layout controls and editors
