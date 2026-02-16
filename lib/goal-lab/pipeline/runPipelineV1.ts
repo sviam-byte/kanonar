@@ -704,6 +704,7 @@ export function runGoalLabPipelineV1(input: {
             kind: String(a?.kind || ''),
             qNow: Number(a?.q ?? 0),
           })),
+          goalEnergy,
         })
       : null;
 
@@ -748,6 +749,40 @@ export function runGoalLabPipelineV1(input: {
       warnings: actionReadsGoalViolations.map(v => `INVARIANT: action reads goal:* (${v})`),
       stats: { atomCount: atoms.length, addedCount: s8Added.length, ...stageStats(atoms) },
       artifacts: {
+        // Linear approximation table for explicit Q(a) decomposition per goal.
+        linearApprox: {
+          note: 'Q(a)=Σ_g E_g·Δg(a)-cost(a); confidence multiplier is applied after qRaw.',
+          goalEnergy,
+          actions: rankedOverridden.slice(0, 10).map((a: any) => {
+            const actionId = String(a?.id || a?.actionId || a?.name || '');
+            const deltaGoals = (a?.deltaGoals && typeof a.deltaGoals === 'object') ? a.deltaGoals : {};
+            const contributions = Object.entries(deltaGoals)
+              .map(([goalId, delta]) => {
+                const energy = Number((goalEnergy as any)?.[goalId] ?? 0);
+                const d = Number(delta ?? 0);
+                return {
+                  goalId: String(goalId),
+                  energy,
+                  delta: d,
+                  contribution: energy * d,
+                };
+              })
+              .sort((x, y) => Math.abs(y.contribution) - Math.abs(x.contribution));
+
+            const totalContrib = contributions.reduce((s, e) => s + Number(e?.contribution ?? 0), 0);
+            const cost = Number(a?.cost ?? 0);
+            const confidence = Number(a?.confidence ?? 1);
+            return {
+              actionId,
+              kind: String(a?.kind || ''),
+              cost,
+              confidence,
+              qRaw: totalContrib - cost,
+              qFinal: (totalContrib - cost) * confidence,
+              contributions,
+            };
+          }),
+        },
         // Keep artifacts light: export is dominated by atoms; store only top scoring + access decisions.
         accessDecisions: (accessPack as any)?.decisions || [],
         ranked: rankedOverridden.slice(0, 10),
