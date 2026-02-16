@@ -15,6 +15,17 @@ function clamp01(x: number) {
   return Math.max(0, Math.min(1, x));
 }
 
+
+function samplingQForAction(
+  actionId: string,
+  baseQ: number,
+  overrides: Record<string, number>,
+): number {
+  const raw = overrides[actionId];
+  const v = Number(raw);
+  return Number.isFinite(v) ? v : baseQ;
+}
+
 function toDecisionAtom(action: ActionCandidate, q: number): ContextAtom {
   const usedAtomIds = Array.from(
     new Set(
@@ -90,9 +101,7 @@ export function decideAction(args: {
     const noise = -Math.log(-Math.log(safe));
 
     const id = String(s.action?.id || '');
-    const qUsed = Number.isFinite(Number((overrides as any)[id]))
-      ? Number((overrides as any)[id])
-      : s.q;
+    const qUsed = samplingQForAction(id, s.q, overrides);
 
     const v = qUsed / T + noise;
     if (v > bestScore) {
