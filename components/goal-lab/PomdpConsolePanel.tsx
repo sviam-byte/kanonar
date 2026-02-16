@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import type { ArtifactRef, PipelineRun, PipelineStage } from '../../lib/goal-lab/pipeline/contracts';
+import { buildPredictedWorldSummary } from '../../lib/goal-lab/pipeline/lookahead';
 
 function arr<T>(x: any): T[] {
   return Array.isArray(x) ? x : [];
@@ -498,6 +499,60 @@ export const PomdpConsolePanel: React.FC<Props> = ({ run, rawV1, observeLitePara
                             ) : null}
                           </div>
                         </div>
+
+                        {/* Predicted world + sensitivity are sourced from S9 transition snapshot. */}
+                        {(() => {
+                          const trans = arr<any>((rawV1 as any)?.stages).find((s: any) => String(s?.stage) === 'S9')?.artifacts?.transitionSnapshot;
+                          if (!trans?.perAction?.length) return null;
+                          const pickedActionId = safeStr(picked?.id || picked?.actionId || picked?.name);
+                          if (!pickedActionId) return null;
+                          const actionEval = arr<any>(trans.perAction).find((e: any) => safeStr(e?.actionId) === pickedActionId);
+                          if (!actionEval) return null;
+                          const summary = buildPredictedWorldSummary(actionEval, (trans?.z0?.z || {}) as any);
+                          return (
+                            <div className="mt-2 rounded border border-amber-400/30 bg-amber-950/10 p-2">
+                              <div className="text-[10px] text-amber-300 uppercase tracking-widest font-bold">Predicted world</div>
+                              <div className="mt-1 space-y-1">
+                                {arr<any>(summary.statements).filter((st: any) => Math.abs(Number(st?.delta ?? 0)) > 0.005).slice(0, 8).map((st: any) => (
+                                  <div key={safeStr(st?.feature)} className="flex justify-between gap-2 text-[11px] font-mono">
+                                    <div className="text-slate-200 truncate">{safeStr(st?.interpretation)}</div>
+                                    <div className={Number(st?.delta ?? 0) >= 0 ? 'text-emerald-300' : 'text-red-300'}>{Number(st?.delta ?? 0) >= 0 ? '+' : ''}{Number(st?.delta ?? 0).toFixed(3)}</div>
+                                  </div>
+                                ))}
+                              </div>
+                              {arr<any>(summary.goalOutlook).length ? (
+                                <div className="mt-2 border-t border-amber-400/20 pt-2">
+                                  <div className="text-[10px] text-amber-300 uppercase tracking-widest">Goal outlook</div>
+                                  {arr<any>(summary.goalOutlook).filter((g: any) => Math.abs(Number(g?.delta ?? 0)) > 0.001).map((g: any) => (
+                                    <div key={safeStr(g?.goalId)} className="flex justify-between gap-2 text-[11px] font-mono mt-1">
+                                      <div className="text-slate-200">{safeStr(g?.goalId)}</div>
+                                      <div className={Number(g?.delta ?? 0) >= 0 ? 'text-emerald-300' : 'text-red-300'}>{Number(g?.currentContribution ?? 0).toFixed(3)} → {Number(g?.predictedContribution ?? 0).toFixed(3)}</div>
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : null}
+                              <div className="mt-2 text-[10px] text-slate-500">overall ΔV={Number(summary?.overallDelta ?? 0).toFixed(4)}</div>
+                            </div>
+                          );
+                        })()}
+
+                        {(() => {
+                          const trans = arr<any>((rawV1 as any)?.stages).find((s: any) => String(s?.stage) === 'S9')?.artifacts?.transitionSnapshot;
+                          if (!trans?.sensitivity || !arr<any>(trans?.flipCandidates).length) return null;
+                          return (
+                            <div className="mt-2 rounded border border-purple-400/30 bg-purple-950/10 p-2">
+                              <div className="text-[10px] text-purple-300 uppercase tracking-widest font-bold">Sensitivity (∂Q/∂z)</div>
+                              <div className="mt-1 space-y-1">
+                                {arr<any>(trans.flipCandidates).slice(0, 8).map((fc: any) => (
+                                  <div key={safeStr(fc?.feature)} className="flex justify-between gap-2 text-[11px] font-mono">
+                                    <div className="text-slate-200">{safeStr(fc?.feature)}{fc?.wouldFlip ? <span className="ml-1 text-red-400 text-[9px]">⚠ FLIP</span> : null}</div>
+                                    <div className="text-purple-300">ΔQ={Number(fc?.deltaQ ?? 0).toFixed(4)}</div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })()}
 
                         <pre className="mt-2 text-[11px] text-slate-200 overflow-auto">{prettyJson(picked)}</pre>
                       </div>

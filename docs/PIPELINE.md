@@ -105,14 +105,21 @@ Purpose:
 
 Inputs:
 - top-K действий из S8 (`id/kind/q`)
+- `goalEnergy` из S8 (для субъективной V*)
 - feature-вектор `z` из атомов
 - `sceneControl.enablePredict`, `sceneControl.lookaheadGamma`, `sceneControl.lookaheadRiskAversion`
 
 Outputs:
 - артефакт `transitionSnapshot`:
   - `z0` + provenance по каждой фиче
-  - `perAction[]` с `qNow`, `qLookahead`, `delta`, `v1`
+  - `perAction[]` с `qNow`, `qLookahead`, `delta`, `v1`, `v0PerGoal`, `v1PerGoal`
+  - `sensitivity` (finite difference: ∂Q/∂z_k для top action)
+  - `flipCandidates` (какие ±0.1 shifts могут перевернуть top action)
   - предупреждения по отсутствующим фичам
 
 Determinism:
 - шум в lookahead должен быть детерминирован по `seed/tick/actionId`
+
+Invariant:
+- V*(z, goalEnergy) обязана учитывать веса goalEnergy; при пустом goalEnergy используется fallback на legacy V(z).
+- feature vector в S9 включает `socialTrust` и `emotionValence` (10 признаков).

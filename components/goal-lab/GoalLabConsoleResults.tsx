@@ -5,6 +5,7 @@ import { allScenarioDefs } from '../../data/scenarios/index';
 import { ScenePanel } from './ScenePanel';
 import { SCENE_PRESETS } from '../../lib/scene/presets';
 import type { PipelineRun } from '../../lib/goal-lab/pipeline/contracts';
+import { buildPredictedWorldSummary } from '../../lib/goal-lab/pipeline/lookahead';
 
 function arr<T>(x: any): T[] { return Array.isArray(x) ? x : []; }
 
@@ -28,7 +29,7 @@ function findArtifact(run: any, stageId: string, kind: string): any | null {
   return aa.find((a: any) => String(a?.kind) === kind) || null;
 }
 
-type TabId = 'world' | 'pipeline' | 'debug' | 'tom';
+type TabId = 'world' | 'pipeline' | 'debug' | 'tom' | 'predict';
 
 type Props = {
   snapshot: any;
@@ -799,6 +800,55 @@ const ConsoleWorldTab: React.FC<WorldTabProps> = (props: WorldTabProps) => {
 export const GoalLabConsoleResults: React.FC<Props> = (props) => {
   const [tab, setTab] = useState<TabId>('pipeline');
 
+  /**
+   * Predict tab: compact side-by-side projection for top lookahead actions.
+   * Kept read-only to avoid introducing world-state mutation paths in this panel.
+   */
+  const renderPredictTab = () => {
+    const rawPipeline = props.pomdpRawV1 as any;
+    const s9 = arr<any>(rawPipeline?.stages).find((s: any) => String(s?.stage) === 'S9');
+    const trans = s9?.artifacts?.transitionSnapshot;
+    if (!trans?.perAction?.length) {
+      return <div className="p-4 text-sm text-slate-500">Enable Predict mode (sceneControl.enablePredict=true) to view world projections.</div>;
+    }
+    const z0 = (trans?.z0?.z || {}) as any;
+    const topActions = arr<any>(trans.perAction).slice(0, 3);
+    return (
+      <div className="p-3 space-y-3 overflow-auto">
+        <div className="text-[10px] text-slate-500 uppercase tracking-widest font-bold">Predicted worlds for top-{topActions.length} actions</div>
+        {topActions.map((ae: any) => {
+          const summary = buildPredictedWorldSummary(ae, z0);
+          return (
+            <div key={String(ae?.actionId || '')} className="rounded border border-slate-800 bg-black/20 p-2">
+              <div className="flex justify-between text-[11px] font-mono">
+                <span className="text-cyan-300 font-bold">{String(ae?.actionId || '')}</span>
+                <span className="text-slate-400">Q_look={Number(ae?.qLookahead ?? 0).toFixed(4)}</span>
+              </div>
+              <div className="mt-1 space-y-0.5">
+                {arr<any>(summary.statements).filter((st: any) => Math.abs(Number(st?.delta ?? 0)) > 0.005).slice(0, 10).map((st: any) => (
+                  <div key={String(st?.feature || '')} className="flex justify-between text-[10px] font-mono">
+                    <span className="text-slate-300">{String(st?.interpretation || '')}</span>
+                    <span className={Number(st?.delta ?? 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}>{Number(st?.delta ?? 0) >= 0 ? '+' : ''}{Number(st?.delta ?? 0).toFixed(3)}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-1 text-[10px] text-slate-500">ΔV={Number(summary?.overallDelta ?? 0).toFixed(4)}</div>
+            </div>
+          );
+        })}
+        {arr<any>(trans.flipCandidates).length ? (
+          <div className="rounded border border-purple-400/30 bg-purple-950/10 p-2">
+            <div className="text-[10px] text-purple-300 uppercase tracking-widest font-bold">Flip analysis (±0.1 per feature)</div>
+            {arr<any>(trans.flipCandidates).filter((f: any) => !!f?.wouldFlip).map((f: any) => (
+              <div key={String(f?.feature || '')} className="text-[11px] font-mono text-red-300 mt-1">⚠ {String(f?.feature || '')}: ΔQ={Number(f?.deltaQ ?? 0).toFixed(4)}</div>
+            ))}
+            {!arr<any>(trans.flipCandidates).some((f: any) => !!f?.wouldFlip) ? <div className="text-[10px] text-slate-500 mt-1">Decision looks stable under ±0.1 feature perturbation.</div> : null}
+          </div>
+        ) : null}
+      </div>
+    );
+  };
+
   return (
     <div className="h-full min-h-0 w-full rounded border border-slate-800 bg-slate-950/40 flex flex-col">
       <div className="flex items-center justify-between gap-3 border-b border-slate-800 px-3 py-2">
@@ -809,7 +859,7 @@ export const GoalLabConsoleResults: React.FC<Props> = (props) => {
         </div>
 
         <div className="flex items-center gap-2">
-          {(['world', 'pipeline', 'debug', 'tom'] as TabId[]).map((id) => (
+          {(['world', 'pipeline', 'predict', 'debug', 'tom'] as TabId[]).map((id) => (
             <button
               key={id}
               onClick={() => setTab(id)}
@@ -839,6 +889,8 @@ export const GoalLabConsoleResults: React.FC<Props> = (props) => {
               onApplyActionMvp={props.onApplyActionMvp}
             />
           ) : null}
+
+          {tab === 'predict' ? renderPredictTab() : null}
 
           {tab === 'world' ? (
             <ConsoleWorldTab

@@ -57,10 +57,18 @@ export function decideAction(args: {
   temperature: number;
   rng: (() => number) | { next: () => number };
   topK?: number;
+  /** Optional score overrides (e.g. S9 lookahead q-values) by action id. */
+  qOverrides?: Record<string, number>;
 }): DecisionResult {
   const actions = arr<ActionCandidate>(args.actions);
+  const qOverrides = args.qOverrides && typeof args.qOverrides === "object" ? args.qOverrides : {};
   const ranked = actions
-    .map((action) => ({ action, q: scoreAction(action, args.goalEnergy) }))
+    .map((action) => {
+      const qBase = scoreAction(action, args.goalEnergy);
+      const qOverride = action.id ? qOverrides[action.id] : undefined;
+      const q = qOverride == null ? qBase : Number(qOverride);
+      return { action, q };
+    })
     .sort((a, b) => b.q - a.q);
 
   const topK = Math.max(1, Number.isFinite(args.topK as any) ? Number(args.topK) : ranked.length);
