@@ -39,6 +39,7 @@ import { buildActionCandidates } from '../decision/actionCandidateUtils';
 import { getGlobalRunSeed, makeDerivedRNG } from '../core/noise';
 import { deriveActionPriors } from '../decision/actionPriors';
 import { scoreAction } from '../decision/scoreAction';
+import { buildTransitionSnapshot } from '../goal-lab/pipeline/lookahead';
 import { computeContextMindScoreboard } from '../contextMind/scoreboard';
 import { atomizeContextMindMetrics } from '../contextMind/atomizeMind';
 import { deriveSocialProximityAtoms } from '../context/stage1/socialProximity';
@@ -1629,19 +1630,113 @@ export function buildGoalLabContext(
     return id && id !== 'undefined' && id !== 'null' ? id : '';
   })();
 
+  // Compact decision digest: useful for UI and debug export compatibility.
+  const goalEntries = Object.entries(goalEnergy || {})
+    .map(([id, energy]) => ({ id: String(id), energy: Number(energy) }))
+    .filter((x) => x.id && Number.isFinite(x.energy));
+  goalEntries.sort((a, b) => Math.abs(b.energy) - Math.abs(a.energy));
+  const leadingGoal = goalEntries.length ? goalEntries[0] : null;
+
+  // Baseline linear ranking (Q_now without lookahead override), used for digest clarity.
+  const rankedLinear = actions
+    .map((a: any) => ({ action: a, qNow: scoreAction(a, goalEnergy as any) }))
+    .sort((a: any, b: any) => Number(b.qNow) - Number(a.qNow));
+  const linearBest = rankedLinear.length
+    ? {
+        actionId: String((rankedLinear[0].action as any)?.id || ''),
+        kind: String((rankedLinear[0].action as any)?.kind || ''),
+        targetId: (rankedLinear[0].action as any)?.targetId ? String((rankedLinear[0].action as any).targetId) : undefined,
+        qNow: Number(rankedLinear[0].qNow ?? 0),
+      }
+    : null;
+
+  const enablePredict = !!(sc as any)?.enablePredict;
+  const useLookaheadForChoice = !!(sc as any)?.useLookaheadForChoice;
+  const lookaheadGamma = Number.isFinite(Number((sc as any)?.lookaheadGamma)) ? Number((sc as any)?.lookaheadGamma) : 0.9;
+  const lookaheadRisk = Number.isFinite(Number((sc as any)?.lookaheadRisk)) ? Number((sc as any)?.lookaheadRisk) : 0.0;
+
+  const lookaheadSeedBase = (() => {
+    const s = Number((sc as any)?.seed);
+    if (Number.isFinite(s)) return s;
+    const w = Number((world as any)?.rngSeed);
+    if (Number.isFinite(w)) return w;
+    return Number(getGlobalRunSeed() || 0);
+  })();
+
+  // Lookahead snapshot remains deterministic (seeded via scene/world/global + decisionNonce).
+  const transitionSnapshot = enablePredict
+    ? buildTransitionSnapshot({
+        seed: lookaheadSeedBase + (Number.isFinite(decisionNonce) ? decisionNonce * 1000 : 0),
+        tick: Number((world as any)?.tick ?? 0),
+        gamma: lookaheadGamma,
+        riskAversion: lookaheadRisk,
+        atoms: atomsWithMind,
+        selfId,
+        goalEnergy: goalEnergy as any,
+        actions: rankedLinear.slice(0, 10).map((r: any) => ({
+          actionId: String((r.action as any)?.id || ''),
+          kind: String((r.action as any)?.kind || ''),
+          qNow: Number(r.qNow ?? 0),
+          action: r.action,
+        })),
+      })
+    : null;
+
+  const qSamplingOverrides = useLookaheadForChoice && transitionSnapshot
+    ? Object.fromEntries(
+        (transitionSnapshot.perAction || [])
+          .filter((x: any) => x && (x as any).actionId)
+          .map((x: any) => [String((x as any).actionId), Number((x as any).qLookahead ?? 0)])
+      )
+    : undefined;
+
+  const pomdpBest = transitionSnapshot && (transitionSnapshot.perAction || []).length
+    ? (() => {
+        const x: any = (transitionSnapshot.perAction || [])[0];
+        return {
+          actionId: String(x?.actionId || ''),
+          kind: String(x?.kind || ''),
+          qNow: Number(x?.qNow ?? 0),
+          qLookahead: Number(x?.qLookahead ?? 0),
+          delta: Number(x?.delta ?? 0),
+        };
+      })()
+    : null;
+
   const decision = decideAction({
     actions,
     goalEnergy,
     topK: forcedActionId ? Math.max(12, actions.length) : 12,
-    rng: decideRng && typeof (decideRng as any).next === 'function'
-      ? () => (decideRng as any).next()
-      : () => 0.5,
+    rng:
+      decideRng && typeof (decideRng as any).next === 'function'
+        ? () => (decideRng as any).next()
+        : () => 0.5,
     temperature:
       (world as any)?.decisionTemperature ??
       (agentForPipeline as any)?.behavioralParams?.T0 ??
       (agentForPipeline as any)?.temperature ??
       1.0,
+    qSamplingOverrides,
   });
+
+  // Attach compact debug payload for UI interpretability and backward-safe rendering.
+  (decision as any).debug = {
+    leadingGoal: leadingGoal ? { id: leadingGoal.id, energy: leadingGoal.energy } : null,
+    linearBest,
+    pomdpBest,
+    enablePredict,
+    useLookaheadForChoice,
+    forcedActionId: forcedActionId || null,
+  };
+
+  (decision as any).transitionSnapshot = transitionSnapshot
+    ? {
+        enabled: true,
+        gamma: transitionSnapshot.gamma,
+        riskAversion: transitionSnapshot.riskAversion,
+        v0: transitionSnapshot.valueFn?.v0 ?? null,
+      }
+    : { enabled: false };
 
   if (forcedActionId) {
     const forced = actions.find(a => String((a as any)?.id || '') === forcedActionId) || null;

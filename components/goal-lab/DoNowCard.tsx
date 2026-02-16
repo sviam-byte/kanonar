@@ -3,6 +3,15 @@ import React from 'react';
 type DecisionLike = {
   best?: any;
   ranked?: any[];
+  /**
+   * Debug payload returned by newer decision engines.
+   * Kept optional for backward compatibility with legacy snapshots.
+   */
+  debug?: any;
+  /**
+   * Some pipeline builds expose the same debug data under `digest`.
+   */
+  digest?: any;
 };
 
 type Props = {
@@ -20,6 +29,15 @@ function chips(xs?: string[], max = 6): string[] {
   return xs.slice(0, max).map(String);
 }
 
+function formatMetric(value: unknown, digits = 3): string {
+  const n = Number(value);
+  return Number.isFinite(n) ? n.toFixed(digits) : '—';
+}
+
+function resolveDecisionDebug(decision: DecisionLike | null) {
+  return (decision as any)?.debug || (decision as any)?.digest || null;
+}
+
 /**
  * Lightweight "do now" summary for the Goal Lab front panel.
  * Supports both legacy decision format (p/score) and new format (action/q).
@@ -34,6 +52,10 @@ export const DoNowCard: React.FC<Props> = ({ decision }) => {
   const blockedBy = chips((choice as any)?.blockedBy, 6);
   const mag = (choice as any)?.magnitude;
   const cost = (choice as any)?.cost;
+  const dbg = resolveDecisionDebug(decision);
+  const leading = dbg?.leadingGoal || dbg?.leading || null;
+  const linear = dbg?.linearBest || dbg?.linear || null;
+  const pomdp = dbg?.pomdpBest || dbg?.pomdp || dbg?.lookaheadBest || null;
 
   return (
     <div className="rounded border border-slate-800 bg-slate-950/40 p-3 space-y-2">
@@ -46,6 +68,28 @@ export const DoNowCard: React.FC<Props> = ({ decision }) => {
         <div className="flex items-center gap-3 text-[10px] text-slate-500 tabular-nums">
           {Number.isFinite(mag) ? <div>mag {Number(mag).toFixed(2)}</div> : null}
           {Number.isFinite(cost) ? <div>cost {Number(cost).toFixed(2)}</div> : null}
+        </div>
+      ) : null}
+      {dbg ? (
+        <div className="space-y-1 text-[10px] text-slate-400 font-mono">
+          {leading?.id ? (
+            <div>
+              lead goal: <span className="text-slate-200">{String(leading.id)}</span>{' '}
+              <span className="text-slate-500">E={formatMetric(leading.energy)}</span>
+            </div>
+          ) : null}
+          {linear ? (
+            <div>
+              linear best: <span className="text-slate-200">{formatActionLabel(linear)}</span>{' '}
+              {linear.qNow != null ? <span className="text-slate-500">q={formatMetric(linear.qNow)}</span> : null}
+            </div>
+          ) : null}
+          {pomdp ? (
+            <div>
+              pomdp best: <span className="text-slate-200">{formatActionLabel(pomdp)}</span>{' '}
+              {pomdp.qLookahead != null ? <span className="text-slate-500">qL={formatMetric(pomdp.qLookahead)}</span> : null}
+            </div>
+          ) : null}
         </div>
       ) : null}
       {why.length > 0 ? (
