@@ -188,6 +188,26 @@ const ConsoleWorldTab: React.FC<WorldTabProps> = (props: WorldTabProps) => {
   const sceneMetricDefs = (sceneMetricDefsProp ?? ((situation as any)?.world?.scenario?.metrics ?? null)) as any;
   const sceneMetrics = (sceneMetricsProp ?? ((situation as any)?.world?.scene?.metrics ?? null)) as any;
 
+  // Stable ordering for common scene metric keys (purely UI; does not affect the simulation).
+  // Unknown keys keep alphabetical order after the prioritized ones.
+  const metricKeyOrder = (k: string): number => {
+    const PRIORITY: string[] = [
+      'danger',
+      'threat',
+      'security',
+      'alert',
+      'noise',
+      'visibility',
+      'light',
+      'crowd',
+      'morale',
+      'time',
+      'tick',
+    ];
+    const idx = PRIORITY.indexOf(k);
+    return idx === -1 ? 1000 : idx;
+  };
+
   const [view, setView] = useState<'truth' | 'observation' | 'belief' | 'both'>('both');
 
   // World Builder (guided flow) modal state.
