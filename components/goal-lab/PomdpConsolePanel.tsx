@@ -389,6 +389,17 @@ export const PomdpConsolePanel: React.FC<Props> = ({ run, rawV1, observeLitePara
                       {data?.lookahead?.enabled ? (
                         <div className="mt-1 text-[11px] text-slate-500 font-mono">lookahead: γ={fmt(data?.lookahead?.gamma)} risk={fmt(data?.lookahead?.riskAversion)} v0={fmt(data?.lookahead?.v0)}</div>
                       ) : null}
+                      {data?.digest ? (
+                        <div className="mt-1 text-[11px] text-slate-500 font-mono">
+                          digest: lead={safeStr(data?.digest?.leadingGoal?.id) || '—'}
+                          {data?.digest?.leadingGoal?.energy != null ? `(${fmt(data?.digest?.leadingGoal?.energy)})` : ''}{' '}
+                          linear={safeStr(data?.digest?.linearBest?.actionId) || '—'}
+                          {data?.digest?.linearBest?.targetId ? `→${safeStr(data?.digest?.linearBest?.targetId)}` : ''}{' '}
+                          pomdp={safeStr(data?.digest?.pomdpBest?.actionId) || '—'}
+                          {data?.digest?.pomdpBest?.targetId ? `→${safeStr(data?.digest?.pomdpBest?.targetId)}` : ''}{' '}
+                          chosen={safeStr(data?.digest?.chosen?.actionId) || safeStr(best?.id) || '—'}
+                        </div>
+                      ) : null}
                     </div>
 
                     <div className="rounded border border-slate-800 bg-black/20 p-2">

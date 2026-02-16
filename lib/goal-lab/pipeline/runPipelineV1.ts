@@ -791,6 +791,55 @@ export function runGoalLabPipelineV1(input: {
           selfId,
           temperature,
           goalEnergy,
+          digest: (() => {
+            const entries = Object.entries(goalEnergy || {})
+              .map(([id, energy]) => ({ id: String(id), energy: Number(energy) }))
+              .filter((x) => x.id && Number.isFinite(x.energy));
+            entries.sort((a, b) => Math.abs(b.energy) - Math.abs(a.energy));
+            const leadingGoal = entries.length ? entries[0] : null;
+
+            const linearBest = rankedBaseline && rankedBaseline.length
+              ? (() => {
+                  const top: any = rankedBaseline[0];
+                  const a: any = top?.action;
+                  return {
+                    actionId: String(a?.id || ''),
+                    kind: String(a?.kind || ''),
+                    targetId: a?.targetId ? String(a.targetId) : undefined,
+                    qNow: Number(top?.q ?? 0),
+                  };
+                })()
+              : null;
+
+            const pomdpBest = transitionSnapshot && (transitionSnapshot.perAction || []).length
+              ? (() => {
+                  const x: any = (transitionSnapshot.perAction || [])[0];
+                  return {
+                    actionId: String(x?.actionId || ''),
+                    kind: String(x?.kind || ''),
+                    qNow: Number(x?.qNow ?? 0),
+                    qLookahead: Number(x?.qLookahead ?? 0),
+                    delta: Number(x?.delta ?? 0),
+                  };
+                })()
+              : null;
+
+            const chosen = bestOverridden
+              ? {
+                  actionId: String((bestOverridden as any)?.id || ''),
+                  kind: String((bestOverridden as any)?.kind || ''),
+                  targetId: (bestOverridden as any)?.targetId ? String((bestOverridden as any).targetId) : undefined,
+                  forcedActionId: forcedActionId || null,
+                }
+              : null;
+
+            return {
+              leadingGoal: leadingGoal ? { id: leadingGoal.id, energy: leadingGoal.energy } : null,
+              linearBest,
+              pomdpBest,
+              chosen,
+            };
+          })(),
           ranked: arr((decision as any)?.ranked).slice(0, 10).map((r: any) => buildDecisionBreakdown(r?.action || {}, r?.q)),
           rankedOverridden: rankedOverridden.slice(0, 10).map((a: any) => buildDecisionBreakdown(a, a?.q)),
           best: bestOverridden ? buildDecisionBreakdown(bestOverridden as any, (bestOverridden as any)?.q ?? 0) : null,

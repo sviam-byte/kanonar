@@ -1693,6 +1693,29 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
     }
   }, [glCtxResult.err]);
 
+  // Perf: avoid recomputing heavy diagnostics unless a panel actually needs them.
+  // (GoalSandbox is intentionally a "god component"; keep refactors incremental and low-risk.)
+  const needContextualMind =
+    uiMode === 'console' ||
+    uiMode === 'debug' ||
+    frontTab === 'debug' ||
+    activeBottomTab === 'tom' ||
+    activeBottomTab === 'debug';
+
+  // Cast snapshots are expensive; compute eagerly only for tabs/modes where they are rendered/exported.
+  const needCastRows =
+    uiMode === 'console' ||
+    uiMode === 'debug' ||
+    frontTab === 'metrics' ||
+    frontTab === 'debug' ||
+    activeBottomTab === 'compare' ||
+    activeBottomTab === 'tom' ||
+    activeBottomTab === 'debug';
+
+  // Pipeline V1 run can be heavy; keep it lazy unless POMDP console is active.
+  const needPomdpPipeline =
+    uiMode === 'console' || activeBottomTab === 'pomdp';
+
   const computed = useMemo(() => {
     const empty = {
       frame: null,
@@ -1729,17 +1752,19 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
       const tomScores = computeTomGoalsForAgent(worldState, agent.entityId);
 
       let cm: ContextualMindReport | null = null;
-      try {
-        cm = computeContextualMind({
-          world: worldState,
-          agent,
-          frame: frame || null,
-          goalPreview: goalPreview?.goals ?? null,
-          domainMix: { ...(snapshot?.domains ?? {}), ...(goalPreview?.debug?.d_mix ?? {}) } as any,
-          atoms: snapshot.atoms,
-        }).report;
-      } catch (e) {
-        console.error(e);
+      if (needContextualMind) {
+        try {
+          cm = computeContextualMind({
+            world: worldState,
+            agent,
+            frame: frame || null,
+            goalPreview: goalPreview?.goals ?? null,
+            domainMix: { ...(snapshot?.domains ?? {}), ...(goalPreview?.debug?.d_mix ?? {}) } as any,
+            atoms: snapshot.atoms,
+          }).report;
+        } catch (e) {
+          console.error(e);
+        }
       }
 
       return {
@@ -1757,7 +1782,7 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
       console.error('[GoalSandbox] compute pipeline failed', e);
       return { ...empty, error: e };
     }
-  }, [glCtx, worldState]);
+  }, [glCtx, worldState, needContextualMind]);
 
   const { snapshot, goals, locationScores, tomScores, situation, goalPreview, contextualMind, error: computeError } = computed;
 
@@ -1882,19 +1907,16 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
     return rows;
   }, [worldState, participantIds, perspectiveId]);
 
-  const castRows = useMemo(() => {
-    if (!worldState) return [];
+  const buildCastRowForAgent = useCallback(
+    (agentId: string) => {
+      if (!worldState) return null;
 
-    const activeEvents = eventRegistry.getAll().filter(e => selectedEventIds.has(e.id));
-    const loc = getSelectedLocationEntity();
-    const ids = participantIds; // control perf removed; export needs full cast
-
-    return ids.map(id => {
-      const char = allCharacters.find(c => c.entityId === id);
-      let snap: any = null;
+      const activeEvents = eventRegistry.getAll().filter((e) => selectedEventIds.has(e.id));
+      const loc = getSelectedLocationEntity();
+      const char = allCharacters.find((c) => c.entityId === agentId);
 
       try {
-        const res = buildGoalLabContext(worldState, id, {
+        const res = buildGoalLabContext(worldState, agentId, {
           snapshotOptions: {
             activeEvents,
             participantIds,
@@ -1910,32 +1932,51 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
           timeOverride: (worldState as any).tick,
           devValidateAtoms,
         });
-        snap = res?.snapshot ?? null;
-      } catch {
-        snap = null;
+        const snap: any = res?.snapshot ?? null;
+        return {
+          id: agentId,
+          label: char?.title || agentId,
+          snapshot: snap,
+        };
+      } catch (e) {
+        console.error('[GoalSandbox] buildGoalLabContext failed for cast member', agentId, e);
+        return {
+          id: agentId,
+          label: char?.title || agentId,
+          snapshot: null,
+        };
       }
+    },
+    [
+      worldState,
+      participantIds,
+      allCharacters,
+      selectedEventIds,
+      getSelectedLocationEntity,
+      manualAtoms,
+      activeMap,
+      atomOverridesLayer,
+      injectedEvents,
+      sceneControl,
+      affectOverrides,
+      devValidateAtoms,
+      decisionNonce,
+    ]
+  );
 
-      return {
-        id,
-        label: char?.title || id,
-        snapshot: snap,
-      };
-    });
-  }, [
-    worldState,
-    participantIds,
-    allCharacters,
-    selectedEventIds,
-    getSelectedLocationEntity,
-    manualAtoms,
-    activeMap,
-    atomOverridesLayer,
-    injectedEvents,
-    sceneControl,
-    affectOverrides,
-    devValidateAtoms,
-    decisionNonce,
-  ]);
+  const castRows = useMemo(() => {
+    if (!needCastRows) return [];
+    if (!worldState) return [];
+
+    const ids =
+      participantIds && participantIds.length
+        ? participantIds
+        : arr((worldState as any)?.agents)
+            .map((a: any) => String(a?.entityId || ''))
+            .filter(Boolean);
+
+    return ids.map((id) => buildCastRowForAgent(String(id))).filter(Boolean) as any[];
+  }, [needCastRows, worldState, participantIds, buildCastRowForAgent]);
 
   /**
    * Ensure the compare/dyad panels have at least two entries when possible.
@@ -1943,54 +1984,20 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
    */
   const castRowsSafe = useMemo(() => {
     if (Array.isArray(castRows) && castRows.length >= 2) return castRows;
-    const agents = Array.isArray((worldState as any)?.agents) ? (worldState as any).agents : [];
-    if (!agents.length) return castRows || [];
 
-    const activeEvents = eventRegistry.getAll().filter((e) => selectedEventIds.has(e.id));
-    const loc = getSelectedLocationEntity();
+    const ids =
+      participantIds && participantIds.length
+        ? participantIds
+        : arr((worldState as any)?.agents)
+            .map((a: any) => String(a?.entityId || ''))
+            .filter(Boolean);
 
-    return agents.map((a: any) => {
-      const id = String(a?.entityId || '');
-      const char = allCharacters.find((c) => c.entityId === id);
-      let snap: any = null;
-      try {
-        const res = buildGoalLabContext(worldState as any, id, {
-          snapshotOptions: {
-            activeEvents,
-            participantIds,
-            overrideLocation: loc,
-            manualAtoms,
-            gridMap: activeMap,
-            atomOverridesLayer,
-            overrideEvents: injectedEvents,
-            sceneControl,
-            affectOverrides,
-            decisionNonce,
-          },
-          timeOverride: (worldState as any)?.tick,
-          devValidateAtoms,
-        });
-        snap = res?.snapshot ?? null;
-      } catch {
-        snap = null;
-      }
-      return { id, label: char?.title || id, snapshot: snap };
-    });
+    return ids.map((id) => buildCastRowForAgent(String(id))).filter(Boolean) as any[];
   }, [
     castRows,
-    worldState,
-    allCharacters,
-    selectedEventIds,
-    getSelectedLocationEntity,
     participantIds,
-    manualAtoms,
-    activeMap,
-    atomOverridesLayer,
-    injectedEvents,
-    sceneControl,
-    affectOverrides,
-    devValidateAtoms,
-    decisionNonce,
+    worldState,
+    buildCastRowForAgent,
   ]);
 
   const focusId =
@@ -2022,6 +2029,7 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
   // This keeps UI-level parsing stable even if internal V1 artifact shapes evolve.
   const pomdpPipelineV1 = useMemo(() => {
     if (!debouncedWorldState) return null;
+    if (!needPomdpPipeline) return null;
     const agentId = String(focusId || perspectiveId || selectedAgentId || '');
     if (!agentId) return null;
     try {
@@ -2039,7 +2047,7 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
       console.error('[GoalSandbox] runGoalLabPipelineV1 failed', e);
       return null;
     }
-  }, [debouncedWorldState, focusId, perspectiveId, selectedAgentId, participantIds, manualAtoms, injectedEvents, sceneControl, observeLiteParams]);
+  }, [debouncedWorldState, needPomdpPipeline, focusId, perspectiveId, selectedAgentId, participantIds, manualAtoms, injectedEvents, sceneControl, observeLiteParams]);
 
   const pomdpRun = useMemo(() => adaptPipelineV1ToContract(pomdpPipelineV1 as any), [pomdpPipelineV1]);
 
@@ -2051,6 +2059,17 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
   }, [worldState]);
 
   const sceneDumpV2 = useMemo(() => {
+    const castRowsNow = (() => {
+      if (!worldState) return [];
+      const ids =
+        participantIds && participantIds.length
+          ? participantIds
+          : arr((worldState as any)?.agents)
+              .map((a: any) => String(a?.entityId || ''))
+              .filter(Boolean);
+      return ids.map((id) => buildCastRowForAgent(String(id))).filter(Boolean) as any[];
+    })();
+
     return buildGoalLabSceneDumpV2({
       world: worldState,
       selectedAgentId,
@@ -2077,7 +2096,7 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
       pipelineFrame,
       pipelineV1,
       tomMatrixForPerspective,
-      castRows,
+      castRows: castRowsNow,
     });
   }, [
     worldState,
@@ -2105,7 +2124,7 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
     pipelineFrame,
     pipelineV1,
     tomMatrixForPerspective,
-    castRows,
+    buildCastRowForAgent,
   ]);
 
   const handleRunTicks = useCallback(
@@ -2251,13 +2270,24 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
   const handleExportFullDebug = useCallback(() => {
     if (!snapshotV1) return;
 
+    const castRowsNow = (() => {
+      if (!worldState) return [];
+      const ids =
+        participantIds && participantIds.length
+          ? participantIds
+          : arr((worldState as any)?.agents)
+              .map((a: any) => String(a?.entityId || ''))
+              .filter(Boolean);
+      return ids.map((id) => buildCastRowForAgent(String(id))).filter(Boolean) as any[];
+    })();
+
     const payload = buildFullDebugDump({
       snapshotV1,
       pipelineV1,
       pipelineFrame,
       worldState,
       sceneDump: sceneDumpV2,
-      castRows,
+      castRows: castRowsNow,
       manualAtoms,
       selectedEventIds,
       selectedLocationId,
@@ -2279,7 +2309,8 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
     pipelineFrame,
     worldState,
     sceneDumpV2,
-    castRows,
+    participantIds,
+    buildCastRowForAgent,
     manualAtoms,
     selectedEventIds,
     selectedLocationId,
