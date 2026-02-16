@@ -31,6 +31,7 @@ import { atomizePossibilities } from '../../possibilities/atomize';
 import { deriveAccess } from '../../access/deriveAccess';
 import { deriveActionPriors } from '../../decision/actionPriors';
 import { decideAction } from '../../decision/decide';
+import { scoreAction } from '../../decision/scoreAction';
 import { buildActionCandidates } from '../../decision/actionCandidateUtils';
 import { arr } from '../../utils/arr';
 import { buildIntentPreview } from './intentPreview';
@@ -592,12 +593,79 @@ export function runGoalLabPipelineV1(input: {
       (agent as any)?.temperature ??
       1.0;
 
+    const enablePredict = (input.sceneControl as any)?.enablePredict === true;
+    const useLookaheadForChoice = (input.sceneControl as any)?.useLookaheadForChoice === true;
+    const lookaheadGamma = Number((input.sceneControl as any)?.lookaheadGamma ?? 0.7);
+    const lookaheadRisk = Number((input.sceneControl as any)?.lookaheadRiskAversion ?? (input.sceneControl as any)?.riskAversion ?? 0);
+
+    // Build deterministic baseline ranking for lookahead (does not consume RNG channel).
+    const rankedBaseline = actions
+      .map((action: any) => ({
+        ...(action || {}),
+        q: Number(scoreAction(action, goalEnergy) ?? 0),
+      }))
+      .sort((a: any, b: any) => Number(b?.q ?? 0) - Number(a?.q ?? 0));
+
+    // Optional console override: if a force_action event is injected for this agent,
+    // promote that action as "best" in artifacts (without stepping world dynamics).
+    const forcedActionId = (() => {
+      const evs = arr(input.injectedEvents);
+      let last: any = null;
+      for (const e of evs) {
+        const t = String((e as any)?.type || (e as any)?.kind || '');
+        if (t !== 'force_action') continue;
+        const a = String((e as any)?.agentId || (e as any)?.selfId || '');
+        if (a && a !== selfId) continue;
+        last = e;
+      }
+      const id = String((last as any)?.actionId || (last as any)?.action || '');
+      return id && id !== 'undefined' && id !== 'null' ? id : '';
+    })();
+
+    const rankedForLookahead = (() => {
+      if (!forcedActionId) return rankedBaseline;
+      const rest = rankedBaseline.filter((a: any) => String(a?.id || a?.actionId || a?.name || '') !== forcedActionId);
+      const forced = rankedBaseline.find((a: any) => String(a?.id || a?.actionId || a?.name || '') === forcedActionId) || { id: forcedActionId, q: (rest[0]?.q ?? 0) + 1e-6 };
+      return [forced, ...rest];
+    })();
+
+    const transitionSnapshot = enablePredict
+      ? buildTransitionSnapshot({
+          selfId,
+          tick,
+          seed: Number(input.observeLiteParams?.seed ?? (step as any)?.seed ?? 0),
+          gamma: lookaheadGamma,
+          riskAversion: lookaheadRisk,
+          atoms: mS8c.atoms,
+          actions: rankedForLookahead.slice(0, 10).map((a: any) => ({
+            id: String(a?.id || a?.actionId || a?.name || ''),
+            kind: String(a?.kind || ''),
+            qNow: Number(a?.q ?? 0),
+          })),
+          goalEnergy,
+        })
+      : null;
+
+    // Optional: steer stochastic choice by lookahead Q while preserving ranked q reporting.
+    const qSamplingOverrides = (useLookaheadForChoice && transitionSnapshot)
+      ? (() => {
+          const out: Record<string, number> = {};
+          for (const ev of transitionSnapshot.perAction || []) {
+            const id = String((ev as any)?.actionId || '');
+            if (!id) continue;
+            out[id] = Number((ev as any)?.qLookahead ?? 0);
+          }
+          return out;
+        })()
+      : undefined;
+
     const decision = decideAction({
       actions,
       goalEnergy,
       topK: 10,
       rng: rng && typeof rng.next === 'function' ? () => rng.next() : () => 0.5,
       temperature,
+      qSamplingOverrides,
     });
 
     const decisionAtoms = arr((decision as any)?.atoms).map(normalizeAtom);
@@ -660,22 +728,6 @@ export function runGoalLabPipelineV1(input: {
       };
     };
 
-    // Optional console override: if a force_action event is injected for this agent,
-    // promote that action as "best" in artifacts (without stepping world dynamics).
-    const forcedActionId = (() => {
-      const evs = arr(input.injectedEvents);
-      let last: any = null;
-      for (const e of evs) {
-        const t = String((e as any)?.type || (e as any)?.kind || '');
-        if (t !== 'force_action') continue;
-        const a = String((e as any)?.agentId || (e as any)?.selfId || '');
-        if (a && a !== selfId) continue;
-        last = e;
-      }
-      const id = String((last as any)?.actionId || (last as any)?.action || '');
-      return id && id !== 'undefined' && id !== 'null' ? id : '';
-    })();
-
     const bestRaw = (decision as any)?.best || null;
     const bestOverridden = forcedActionId
       ? (rankedActions.find((a: any) => String(a?.id || a?.actionId || a?.name || '') === forcedActionId) || { id: forcedActionId })
@@ -687,25 +739,6 @@ export function runGoalLabPipelineV1(input: {
       const forced = rankedActions.find((a: any) => String(a?.id || a?.actionId || a?.name || '') === forcedActionId) || { id: forcedActionId, q: (rest[0]?.q ?? 0) + 1e-6 };
       return [forced, ...rest];
     })();
-
-    const enablePredict = (input.sceneControl as any)?.enablePredict === true;
-    const lookaheadGamma = Number((input.sceneControl as any)?.lookaheadGamma ?? 0.7);
-    const lookaheadRisk = Number((input.sceneControl as any)?.lookaheadRiskAversion ?? (input.sceneControl as any)?.riskAversion ?? 0);
-    const transitionSnapshot = enablePredict
-      ? buildTransitionSnapshot({
-          selfId,
-          tick,
-          seed: Number(input.observeLiteParams?.seed ?? (step as any)?.seed ?? 0),
-          gamma: lookaheadGamma,
-          riskAversion: lookaheadRisk,
-          atoms: atomsS8,
-          actions: rankedOverridden.slice(0, 10).map((a: any) => ({
-            id: String(a?.id || a?.actionId || a?.name || ''),
-            kind: String(a?.kind || ''),
-            qNow: Number(a?.q ?? 0),
-          })),
-        })
-      : null;
 
     const lookByActionId = new Map<string, any>();
     if (transitionSnapshot) {
@@ -730,6 +763,7 @@ export function runGoalLabPipelineV1(input: {
       forcedActionId: forcedActionId || null,
       enableToM: (input.sceneControl as any)?.enableToM !== false,
       enablePredict: enablePredict,
+      useLookaheadForChoice: useLookaheadForChoice,
       lookahead: enablePredict ? { gamma: lookaheadGamma, riskAversion: lookaheadRisk } : null,
     };
 
@@ -737,6 +771,7 @@ export function runGoalLabPipelineV1(input: {
       temperature,
       forced: forcedActionId || null,
       emptyGoalEnergy: !goalEnergy || Object.keys(goalEnergy).length === 0,
+      useLookaheadForChoice: useLookaheadForChoice,
       warnings: decisionWarnings || [],
     };
 
@@ -773,8 +808,26 @@ export function runGoalLabPipelineV1(input: {
               v1: Number(x?.v1 ?? 0),
             })),
           } : { enabled: false },
-          noteLookahead: 'Q_lookahead = Q_now + gamma * V(z_hat); z_hat = z + Δz_passive + Δz_action + noise; V is an MVP weighted mixture.',
-          featureVector: transitionSnapshot ? transitionSnapshot.z0 : null
+          noteLookahead: 'Q_lookahead = Q_now + gamma * V*(z_hat, goalEnergy); z_hat = z + Δz_passive + Δz_action + noise; V* uses goal-weighted projections over features (fallbacks to legacy V if goalEnergy empty).',
+          featureVector: transitionSnapshot ? transitionSnapshot.z0 : null,
+          linearApprox: transitionSnapshot ? {
+            perAction: (transitionSnapshot.perAction || []).slice(0, 10).map((x: any, i: number) => ({
+              rank: i + 1,
+              actionId: String(x?.actionId || ''),
+              kind: String(x?.kind || ''),
+              qNow: Number(x?.qNow ?? 0),
+              qLookahead: Number(x?.qLookahead ?? 0),
+              deltaLookahead: Number(x?.delta ?? 0),
+              v1: Number(x?.v1 ?? 0),
+              topDeltas: Object.entries(x?.deltas || {})
+                .map(([k, v]: any) => ({ k, v: Number(v ?? 0) }))
+                .sort((a: any, b: any) => Math.abs(b.v) - Math.abs(a.v))
+                .slice(0, 4),
+              v1PerGoal: x?.v1PerGoal || null,
+            })),
+            sensitivity: transitionSnapshot.sensitivity || null,
+            flipCandidates: transitionSnapshot.flipCandidates || null,
+          } : null
 
         },
         forcedActionId: forcedActionId || null,
