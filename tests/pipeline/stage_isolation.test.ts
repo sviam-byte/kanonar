@@ -175,6 +175,36 @@ describe('Pipeline: Stage isolation invariants', () => {
     expect((s5 as any)?.artifacts?.tomEnabled).toBe(false);
   });
 
+
+  it('S8 exposes lookahead-choice diagnostics when enabled', () => {
+    const p = runGoalLabPipelineV1({
+      world: mockWorld(),
+      agentId: 'A',
+      participantIds: ['A'],
+      observeLiteParams: { seed: 42 },
+      sceneControl: {
+        enablePredict: true,
+        useLookaheadForChoice: true,
+        lookaheadGamma: 0.7,
+        lookaheadRiskAversion: 0.2,
+      },
+    } as any);
+
+    const s8 = arr(p?.stages).find((s: any) => String(s?.stage) === 'S8');
+    expect(s8).toBeDefined();
+
+    const modes = (s8 as any)?.artifacts?.modesSnapshot;
+    const stabs = (s8 as any)?.artifacts?.stabilizersSnapshot;
+    const ds = (s8 as any)?.artifacts?.decisionSnapshot;
+
+    expect(modes?.enablePredict).toBe(true);
+    expect(modes?.useLookaheadForChoice).toBe(true);
+    expect(stabs?.useLookaheadForChoice).toBe(true);
+    expect(ds?.lookahead?.enabled).toBe(true);
+    expect(ds?.linearApprox).toBeTruthy();
+    expect(Array.isArray(ds?.linearApprox?.perAction)).toBe(true);
+  });
+
   it('S9 lookahead is deterministic for same seed/config', () => {
     const input = {
       world: mockWorld(),

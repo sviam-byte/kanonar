@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { GoalLabResults } from './GoalLabResults';
 import { PomdpConsolePanel } from './PomdpConsolePanel';
 import { allScenarioDefs } from '../../data/scenarios/index';
@@ -188,7 +188,34 @@ const ConsoleWorldTab: React.FC<WorldTabProps> = (props: WorldTabProps) => {
   const sceneMetricDefs = (sceneMetricDefsProp ?? ((situation as any)?.world?.scenario?.metrics ?? null)) as any;
   const sceneMetrics = (sceneMetricsProp ?? ((situation as any)?.world?.scene?.metrics ?? null)) as any;
 
+  // Stable ordering for common scene metric keys (purely UI; does not affect the simulation).
+  // Unknown keys keep alphabetical order after the prioritized ones.
+  const metricKeyOrder = (k: string): number => {
+    const PRIORITY: string[] = [
+      'danger',
+      'threat',
+      'security',
+      'alert',
+      'noise',
+      'visibility',
+      'light',
+      'crowd',
+      'morale',
+      'time',
+      'tick',
+    ];
+    const idx = PRIORITY.indexOf(k);
+    return idx === -1 ? 1000 : idx;
+  };
+
   const [view, setView] = useState<'truth' | 'observation' | 'belief' | 'both'>('both');
+
+  // World Builder (guided flow) modal state.
+  const [worldBuilderOpen, setWorldBuilderOpen] = useState<boolean>(false);
+  const [wbStep, setWbStep] = useState<1 | 2 | 3 | 4>(1);
+  const [wbMapScale, setWbMapScale] = useState<number>(20); // world units covered by the mini-map radius
+  const wbMapRef = useRef<HTMLDivElement | null>(null);
+
 
   // Hardening: keep participant list always defined because layout controls and editors
   // below iterate over participantIds. Prefer pipeline run participants when available.
@@ -286,6 +313,172 @@ const ConsoleWorldTab: React.FC<WorldTabProps> = (props: WorldTabProps) => {
 
   return (
     <div className="flex flex-col gap-3 min-h-0">
+      {worldBuilderOpen ? (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-[1040px] max-h-[92vh] overflow-hidden rounded border border-slate-700 bg-slate-950 shadow-xl flex flex-col">
+            <div className="p-3 border-b border-slate-800 flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-sm font-semibold text-slate-200">World Builder</div>
+                <div className="text-[11px] text-slate-500 font-mono truncate">
+                  step {wbStep}/4 · scenario={activeScenarioId} · seed={Number.isFinite(runSeed) ? runSeed : 0} · cast={sceneParticipants.length}
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                {[1, 2, 3, 4].map((n) => (
+                  <button
+                    key={n}
+                    className={`px-2 py-1 rounded text-[11px] border font-mono ${
+                      wbStep === n
+                        ? 'bg-cyan-600/20 text-cyan-100 border-cyan-500/40'
+                        : 'bg-black/10 text-slate-300 border-slate-800 hover:border-slate-700 hover:text-slate-100'
+                    }`}
+                    onClick={() => setWbStep(n as 1 | 2 | 3 | 4)}
+                    title={n === 1 ? 'Cast' : n === 2 ? 'Location' : n === 3 ? 'Placement' : 'Run'}
+                  >
+                    {n === 1 ? 'CAST' : n === 2 ? 'LOC' : n === 3 ? 'PLACE' : 'RUN'}
+                  </button>
+                ))}
+                <button
+                  className="px-2 py-1 rounded text-xs border bg-black/10 border-slate-800 text-slate-200 hover:bg-slate-900/40 hover:border-slate-700"
+                  onClick={() => setWorldBuilderOpen(false)}
+                  title="Close"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+
+            <div className="flex-1 min-h-0 overflow-auto p-3">
+              {wbStep === 1 ? (
+                <div className="rounded border border-slate-800 bg-black/20 p-2">
+                  <div className="text-[10px] text-slate-500 uppercase tracking-widest">Cast</div>
+                  <div className="mt-1 text-xs text-slate-400">Выбери участников сцены. Без кастинга pipeline часто выглядит “пустым”.</div>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {sceneParticipants.map((pid) => (
+                      <button
+                        key={pid}
+                        className="rounded border border-slate-800 bg-slate-900/40 px-2 py-1 text-xs text-slate-200 hover:bg-slate-900/60"
+                        onClick={() => onSetSceneParticipants(sceneParticipants.filter((x) => x !== pid))}
+                        title="Remove"
+                      >
+                        {labelForChar(pid)} ×
+                      </button>
+                    ))}
+                    {!sceneParticipants.length ? <div className="text-xs text-amber-300">cast пустой</div> : null}
+                  </div>
+                </div>
+              ) : null}
+
+              {wbStep === 2 ? (
+                <div className="rounded border border-slate-800 bg-black/20 p-2">
+                  <div className="text-[10px] text-slate-500 uppercase tracking-widest">Location</div>
+                  <div className="mt-1 text-xs text-slate-400">Выбери локацию мира (preset) или переключись на custom.</div>
+                  <div className="mt-2 grid grid-cols-1 md:grid-cols-3 gap-2">
+                    <div>
+                      <div className="text-[10px] text-slate-500 uppercase tracking-widest">Location mode</div>
+                      <select
+                        className="w-full bg-slate-900/40 border border-slate-800 rounded px-2 py-1 text-xs text-slate-200"
+                        value={locationMode}
+                        onChange={(e) => onSetLocationMode(e.target.value as 'preset' | 'custom')}
+                      >
+                        <option value="preset">preset</option>
+                        <option value="custom">custom</option>
+                      </select>
+                    </div>
+                    <div className="md:col-span-2">
+                      <div className="text-[10px] text-slate-500 uppercase tracking-widest">Location (preset)</div>
+                      <select
+                        className="w-full bg-slate-900/40 border border-slate-800 rounded px-2 py-1 text-xs text-slate-200"
+                        value={selectedLocationId || ''}
+                        onChange={(e) => onSelectLocationId(e.target.value)}
+                        disabled={locationMode !== 'preset'}
+                      >
+                        <option value="">(auto)</option>
+                        {locations.map((l) => (
+                          <option key={l.entityId} value={l.entityId}>{labelForLoc(l.entityId)}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
+              {wbStep === 3 ? (
+                <div className="rounded border border-slate-800 bg-black/20 p-2">
+                  <div className="text-[10px] text-slate-500 uppercase tracking-widest">Placement</div>
+                  <div className="mt-1 text-xs text-slate-400">Кликни PLACE у актёра, затем кликни по мини-карте.</div>
+                  <div
+                    ref={wbMapRef}
+                    className="mt-2 relative w-full max-w-[460px] aspect-square rounded border border-slate-800 bg-slate-950/60 overflow-hidden select-none"
+                    onClick={(e) => {
+                      const actorId = String(placingActorId || '');
+                      if (!actorId || !onStartPlacement) return;
+                      const el = wbMapRef.current;
+                      if (!el) return;
+                      const rect = el.getBoundingClientRect();
+                      const px = (e.clientX - rect.left) / Math.max(1, rect.width);
+                      const py = (e.clientY - rect.top) / Math.max(1, rect.height);
+                      const scale = Number(wbMapScale) || 20;
+                      const x = Math.round(((px - 0.5) * 2 * scale) * 10) / 10;
+                      const y = Math.round(((0.5 - py) * 2 * scale) * 10) / 10;
+                      onSetAgentPosition(actorId, { x, y });
+                      onStartPlacement(null);
+                    }}
+                  >
+                    <div className="absolute inset-0 pointer-events-none">
+                      <div className="absolute left-1/2 top-0 bottom-0 w-px bg-slate-800/60" />
+                      <div className="absolute top-1/2 left-0 right-0 h-px bg-slate-800/60" />
+                    </div>
+                  </div>
+                  <div className="mt-2 flex items-center gap-2">
+                    <div className="text-[10px] text-slate-500 uppercase tracking-widest">scale</div>
+                    <input type="range" min={5} max={60} step={1} value={Number(wbMapScale) || 20} onChange={(e) => setWbMapScale(Number(e.target.value || 20))} />
+                    <div className="text-[11px] text-slate-400 font-mono">{Number(wbMapScale || 20).toFixed(0)}</div>
+                  </div>
+                </div>
+              ) : null}
+
+              {wbStep === 4 ? (
+                <div className="rounded border border-slate-800 bg-black/20 p-2">
+                  <div className="text-[10px] text-slate-500 uppercase tracking-widest">Run</div>
+                  <div className="mt-1 text-xs text-slate-400">Финальная проверка и запуск.</div>
+                  <button
+                    className="mt-3 px-3 py-1 rounded text-xs border bg-slate-800/30 border-slate-700 text-slate-100 hover:bg-slate-800/50 disabled:opacity-40"
+                    disabled={!sceneParticipants.length}
+                    onClick={() => {
+                      onRebuildWorld();
+                      setWorldBuilderOpen(false);
+                    }}
+                  >
+                    APPLY & CLOSE
+                  </button>
+                </div>
+              ) : null}
+            </div>
+
+            <div className="p-3 border-t border-slate-800 flex items-center justify-between gap-2">
+              <div className="text-[11px] text-slate-500">{wbStep === 1 ? '1) cast' : wbStep === 2 ? '2) location' : wbStep === 3 ? '3) placement' : '4) run'}</div>
+              <div className="flex items-center gap-2">
+                <button
+                  className="px-3 py-1 rounded text-xs border bg-black/10 border-slate-800 text-slate-200 hover:bg-slate-900/40 hover:border-slate-700 disabled:opacity-40"
+                  disabled={wbStep === 1}
+                  onClick={() => setWbStep((wbStep - 1) as 1 | 2 | 3 | 4)}
+                >
+                  Back
+                </button>
+                <button
+                  className="px-3 py-1 rounded text-xs border bg-slate-800/30 border-slate-700 text-slate-100 hover:bg-slate-800/50 disabled:opacity-40"
+                  disabled={(wbStep === 1 && !sceneParticipants.length) || wbStep === 4}
+                  onClick={() => setWbStep(Math.min(4, wbStep + 1) as 1 | 2 | 3 | 4)}
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       <div className="rounded border border-slate-800 bg-black/20 p-2">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div className="flex flex-wrap items-end gap-3">
@@ -334,13 +527,25 @@ const ConsoleWorldTab: React.FC<WorldTabProps> = (props: WorldTabProps) => {
             </div>
           </div>
 
-          <button
-            className="px-3 py-1 rounded text-xs border bg-slate-800/30 border-slate-700 text-slate-100 hover:bg-slate-800/50"
-            onClick={onRebuildWorld}
-            title="Rebuild world so agents/location ids are consistent"
-          >
-            REBUILD WORLD
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              className="px-3 py-1 rounded text-xs border bg-black/10 border-slate-800 text-slate-200 hover:bg-slate-900/40 hover:border-slate-700"
+              onClick={() => {
+                setWbStep(1);
+                setWorldBuilderOpen(true);
+              }}
+              title="Open a guided flow for world setup (cast → location → placement → run)"
+            >
+              WORLD BUILDER
+            </button>
+            <button
+              className="px-3 py-1 rounded text-xs border bg-slate-800/30 border-slate-700 text-slate-100 hover:bg-slate-800/50"
+              onClick={onRebuildWorld}
+              title="Rebuild world so agents/location ids are consistent"
+            >
+              REBUILD WORLD
+            </button>
+          </div>
         </div>
 
         {/* Situation (console) */}

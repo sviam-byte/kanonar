@@ -90,7 +90,8 @@ Inputs:
 
 Outputs:
 - `action:*`
-  - decisions scored as `Q(a)=Σ_g E_g*Δg(a) − cost(a)` over ActionCandidate entries
+  - canonical ranking/reporting remains `Q(a)=Σ_g E_g*Δg(a) − cost(a)` over ActionCandidate entries
+  - optional sampling override path (`sceneControl.useLookaheadForChoice`) may use lookahead logits **only for stochastic choice**, without mutating reported/ranked canonical `Q`
 - if no possibility rules fire, S8 must still receive a fallback cognitive option `cog:wait:<selfId>` to avoid hard deadlocks in action selection
 - violent affordances (e.g., `off:attack:*`) are target-specific and gated by explicit threat + protocol; without threat or concrete target they must not be emitted
 - decision hints are consumed from `util:hint:allow:*`; legacy `goal:hint:allow:*` may be accepted only as compatibility fallback
@@ -107,6 +108,7 @@ Inputs:
 - top-K действий из S8 (`id/kind/q`)
 - feature-вектор `z` из атомов
 - `sceneControl.enablePredict`, `sceneControl.lookaheadGamma`, `sceneControl.lookaheadRiskAversion`
+- optional `goalEnergy` weights from S8 for subjective `V*(z, goalEnergy)`; empty/missing goalEnergy must fallback to legacy `V(z)`
 
 Outputs:
 - артефакт `transitionSnapshot`:

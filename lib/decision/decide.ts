@@ -15,6 +15,17 @@ function clamp01(x: number) {
   return Math.max(0, Math.min(1, x));
 }
 
+
+function samplingQForAction(
+  actionId: string,
+  baseQ: number,
+  overrides: Record<string, number>,
+): number {
+  const raw = overrides[actionId];
+  const v = Number(raw);
+  return Number.isFinite(v) ? v : baseQ;
+}
+
 function toDecisionAtom(action: ActionCandidate, q: number): ContextAtom {
   const usedAtomIds = Array.from(
     new Set(
@@ -57,8 +68,12 @@ export function decideAction(args: {
   temperature: number;
   rng: (() => number) | { next: () => number };
   topK?: number;
+  /** Optional override used only during stochastic sampling; ranked q values remain unchanged. */
+  qSamplingOverrides?: Record<string, number>;
 }): DecisionResult {
   const actions = arr<ActionCandidate>(args.actions);
+
+  // Base scores are used for ranking, reporting and decision traceability.
   const ranked = actions
     .map((action) => ({ action, q: scoreAction(action, args.goalEnergy) }))
     .sort((a, b) => b.q - a.q);
@@ -72,6 +87,10 @@ export function decideAction(args: {
       ? () => (args.rng as any).next()
       : () => 0.5;
 
+  const overrides = (args.qSamplingOverrides && typeof args.qSamplingOverrides === 'object')
+    ? args.qSamplingOverrides
+    : {};
+
   const T = Math.max(0.05, Number(args.temperature ?? 1.0));
   let chosen: ActionCandidate | null = null;
   let bestScore = -Infinity;
@@ -80,7 +99,11 @@ export function decideAction(args: {
     const raw = rngNext();
     const safe = Math.max(1e-9, Math.min(1 - 1e-9, raw));
     const noise = -Math.log(-Math.log(safe));
-    const v = s.q / T + noise;
+
+    const id = String(s.action?.id || '');
+    const qUsed = samplingQForAction(id, s.q, overrides);
+
+    const v = qUsed / T + noise;
     if (v > bestScore) {
       bestScore = v;
       chosen = s.action;
