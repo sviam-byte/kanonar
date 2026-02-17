@@ -1,6 +1,7 @@
 import type { ContextAtom } from '../context/v2/types';
 import type { Possibility } from '../possibilities/catalog';
 import { arr } from '../utils/arr';
+import { actionEffectForKind, FEATURE_GOAL_PROJECTION_KEYS } from './actionProjection';
 import { ActionCandidate } from './actionCandidate';
 
 function clamp01(x: number) {
@@ -69,10 +70,34 @@ function buildDeltaGoals(
 
   if (Object.keys(out).length) return out;
 
-  // Fallback: tie the action to the most active goal when no hints exist.
-  const topGoal = Object.entries(goalEnergy)
-    .sort((a, b) => b[1] - a[1])[0]?.[0];
-  if (topGoal) out[topGoal] = clamp11(fallbackDelta);
+  // Fallback #1: infer multi-goal deltas from action's feature-level effect.
+  // This keeps multi-goal behavior even when explicit goal hints are absent.
+  const effect = actionEffectForKind(actionKey);
+  const effectKeys = Object.keys(effect);
+
+  if (effectKeys.length > 0) {
+    for (const [goalId, energy] of Object.entries(goalEnergy)) {
+      if (Math.abs(energy) < 1e-6) continue;
+      const proj = FEATURE_GOAL_PROJECTION_KEYS[goalId];
+      if (!proj) continue;
+
+      let dot = 0;
+      for (const [fk, coeff] of Object.entries(proj)) {
+        dot += Number(coeff ?? 0) * Number((effect as any)[fk] ?? 0);
+      }
+
+      // Scale projection to typical Δg range and clamp to stable bounds.
+      if (Math.abs(dot) > 1e-6) out[goalId] = clamp11(dot * 4);
+    }
+  }
+
+  // Fallback #2: preserve legacy top-goal behavior when projection is unavailable.
+  if (!Object.keys(out).length) {
+    const topGoal = Object.entries(goalEnergy)
+      .sort((a, b) => b[1] - a[1])[0]?.[0];
+    if (topGoal) out[topGoal] = clamp11(fallbackDelta);
+  }
+
   return out;
 }
 

@@ -56,6 +56,7 @@ describe('lookahead subjective model', () => {
     expect(snapshot.perAction[0]?.actionId).toBe('action:cooperate');
     expect(snapshot.perAction[0]?.v1PerGoal?.social).toBeGreaterThan(snapshot.perAction[1]?.v1PerGoal?.social ?? -1);
     expect(snapshot.sensitivity).toBeDefined();
+    expect(snapshot.sensitivityZ0).toBeDefined();
     expect((snapshot.flipCandidates || []).length).toBeGreaterThan(0);
 
     const summary = buildPredictedWorldSummary(snapshot.perAction[0], snapshot.z0.z);

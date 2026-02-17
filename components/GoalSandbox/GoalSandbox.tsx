@@ -2007,7 +2007,7 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
 
   // Debounce expensive pipeline recomputation during high-frequency UI updates (dragging, sliders).
   // In console mode we also expose `flushDebounce()` to recompute immediately on pointer-up (drag end).
-  const debounceMs = uiMode === 'console' ? 90 : 0;
+  const debounceMs = uiMode === 'console' ? 90 : 200;
   const [debouncedWorldState, flushDebounce] = useDebouncedValueWithFlush(worldState, debounceMs);
 
   // Flush debounced world on pointer-up so the pipeline updates immediately after a drag ends.
@@ -2905,7 +2905,7 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
 
         {uiMode === 'front' ? (
           <div className="flex-1 min-h-0 overflow-hidden">
-            {frontTab === 'situation' ? (
+            {frontTab === 'situation' || frontTab === 'affects' ? (
               <div className="h-full overflow-y-auto custom-scrollbar p-3">
                 <GoalLabControls
                   allCharacters={allCharacters}
@@ -2956,62 +2956,7 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
                   onDecisionCurvePresetChange={setDecisionCurvePreset}
                   onApplySimSettings={onApplySimSettings}
                   mode="front"
-                  forcedTab="scene"
-                  hideTabs
-                />
-              </div>
-            ) : frontTab === 'affects' ? (
-              <div className="h-full overflow-y-auto custom-scrollbar p-3">
-                <GoalLabControls
-                  allCharacters={allCharacters}
-                  allLocations={allLocations as any}
-                  events={eventRegistry.getAll() as any}
-                  computedAtoms={arr((snapshotV1 as any)?.atoms ?? (snapshot as any)?.atoms)}
-                  selectedAgentId={selectedAgentId}
-                  onSelectAgent={handleSelectAgent}
-                  selectedLocationId={selectedLocationId}
-                  onSelectLocation={setSelectedLocationId}
-                  locationMode={locationMode}
-                  onLocationModeChange={setLocationMode}
-                  selectedEventIds={selectedEventIds}
-                  onToggleEvent={(id) =>
-                    setSelectedEventIds((prev) => {
-                      const next = new Set(prev);
-                      if (next.has(id)) next.delete(id);
-                      else next.add(id);
-                      return next;
-                    })
-                  }
-                  manualAtoms={manualAtoms}
-                  onChangeManualAtoms={setManualAtoms}
-                  nearbyActors={nearbyActors}
-                  onNearbyActorsChange={handleNearbyActorsChange}
-                  placingActorId={placingActorId}
-                  onStartPlacement={setPlacingActorId}
-                  affectOverrides={affectOverrides}
-                  onAffectOverridesChange={setAffectOverrides}
-                  onDownloadScene={onDownloadScene}
-                  onImportSceneDumpV2={handleImportSceneDumpV2}
-                  world={worldState as any}
-                  onWorldChange={(w: any) => setWorldState(normalizeWorldShape(w)) as any}
-                  participantIds={participantIds}
-                  onAddParticipant={handleAddParticipant}
-                  onRemoveParticipant={handleRemoveParticipant}
-                  onLoadScene={handleLoadScene}
-                  perspectiveAgentId={perspectiveId}
-                  onSelectPerspective={setPerspectiveAgentId}
-                  sceneControl={sceneControl}
-                  onSceneControlChange={setSceneControl}
-                  scenePresets={Object.values(SCENE_PRESETS) as any}
-                  runSeed={runSeed}
-                  onRunSeedChange={setRunSeed}
-                  decisionTemperature={decisionTemperature}
-                  onDecisionTemperatureChange={setDecisionTemperature}
-                  decisionCurvePreset={decisionCurvePreset}
-                  onDecisionCurvePresetChange={setDecisionCurvePreset}
-                  onApplySimSettings={onApplySimSettings}
-                  mode="front"
-                  forcedTab="affect"
+                  forcedTab={frontTab === 'situation' ? 'scene' : 'affect'}
                   hideTabs
                 />
               </div>

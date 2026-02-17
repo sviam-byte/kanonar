@@ -90,7 +90,7 @@ Inputs:
 
 Outputs:
 - `action:*`
-  - canonical ranking/reporting remains `Q(a)=Σ_g E_g*Δg(a) − cost(a)` over ActionCandidate entries
+  - canonical ranking/reporting: `Q_raw(a)=Σ_g E_g*Δg(a) − cost(a)`, then confidence is applied as additive risk penalty `Q=Q_raw−k·|Q_raw|·(1−conf)`
   - optional sampling override path (`sceneControl.useLookaheadForChoice`) may use lookahead logits **only for stochastic choice**, without mutating reported/ranked canonical `Q`
 - if no possibility rules fire, S8 must still receive a fallback cognitive option `cog:wait:<selfId>` to avoid hard deadlocks in action selection
 - violent affordances (e.g., `off:attack:*`) are target-specific and gated by explicit threat + protocol; without threat or concrete target they must not be emitted
@@ -109,11 +109,15 @@ Inputs:
 - feature-вектор `z` из атомов
 - `sceneControl.enablePredict`, `sceneControl.lookaheadGamma`, `sceneControl.lookaheadRiskAversion`
 - optional `goalEnergy` weights from S8 for subjective `V*(z, goalEnergy)`; empty/missing goalEnergy must fallback to legacy `V(z)`
+- action effects are context-modulated: `Δz_action = actionEffect(kind, z0)` to preserve scenario sensitivity
 
 Outputs:
 - артефакт `transitionSnapshot`:
   - `z0` + provenance по каждой фиче
   - `perAction[]` с `qNow`, `qLookahead`, `delta`, `v1`
+  - `sensitivity` (at z1) and `sensitivityZ0` (at current z0) for explainability
+  - `flipCandidates` must use `sensitivityZ0` so UI answers “what to change now to flip decision”
+  - risk penalty for lookahead value is downside-weighted (only deltas worsening V* are penalized)
   - предупреждения по отсутствующим фичам
 
 Determinism:

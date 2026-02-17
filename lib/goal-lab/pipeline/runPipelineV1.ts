@@ -875,6 +875,7 @@ export function runGoalLabPipelineV1(input: {
               v1PerGoal: x?.v1PerGoal || null,
             })),
             sensitivity: transitionSnapshot.sensitivity || null,
+            sensitivityZ0: transitionSnapshot.sensitivityZ0 || null,
             flipCandidates: transitionSnapshot.flipCandidates || null,
           } : null
 

@@ -54,4 +54,34 @@ describe('decision hint compatibility', () => {
     expect(utilRes.actions[0].deltaGoals.deescalate).toBeCloseTo(0.9, 6);
     expect(goalRes.actions[0].deltaGoals.deescalate).toBeCloseTo(0.9, 6);
   });
+
+  it('falls back to multi-goal projection when no hint atoms exist', () => {
+    const selfId = 'A';
+    const p: Possibility = {
+      id: 'cog:help:A:B',
+      actorId: selfId,
+      targetId: 'B',
+      label: 'Help',
+      kind: 'cog',
+      magnitude: 0.4,
+      blockedBy: [],
+      confidence: 1,
+      trace: { usedAtomIds: [] },
+      source: 'rules',
+      meta: {},
+    } as any;
+
+    const atoms: ContextAtom[] = [
+      mkAtom(`util:activeGoal:${selfId}:social`, 0.8),
+      mkAtom(`util:activeGoal:${selfId}:wellbeing`, 0.6),
+    ];
+
+    const res = buildActionCandidates({ selfId, atoms, possibilities: [p] });
+    const dg = res.actions[0].deltaGoals;
+
+    expect(Object.keys(dg).length).toBeGreaterThan(1);
+    expect(dg.social).toBeGreaterThan(0);
+    expect(dg.wellbeing).toBeGreaterThan(0);
+  });
+
 });

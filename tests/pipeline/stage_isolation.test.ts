@@ -203,6 +203,7 @@ describe('Pipeline: Stage isolation invariants', () => {
     expect(ds?.lookahead?.enabled).toBe(true);
     expect(ds?.linearApprox).toBeTruthy();
     expect(Array.isArray(ds?.linearApprox?.perAction)).toBe(true);
+    expect(ds?.linearApprox?.sensitivityZ0).toBeTruthy();
   });
 
   it('S9 lookahead is deterministic for same seed/config', () => {
