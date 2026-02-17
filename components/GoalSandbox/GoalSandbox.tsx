@@ -49,6 +49,7 @@ import type { AtomDiff } from '../../lib/snapshot/diffAtoms';
 import { diffAtoms } from '../../lib/snapshot/diffAtoms';
 import { adaptToSnapshotV1, normalizeSnapshot } from '../../lib/goal-lab/snapshotAdapter';
 import { runGoalLabPipelineV1 } from '../../lib/goal-lab/pipeline/runPipelineV1';
+import { EasyModePanel } from '../goal-lab/EasyModePanel';
 import { adaptPipelineV1ToContract } from '../../lib/goal-lab/pipeline/adaptV1ToContract';
 import { buildGoalLabSceneDumpV2, downloadJson } from '../../lib/goal-lab/sceneDump';
 import { materializeStageAtoms } from '../goal-lab/materializePipeline';
@@ -505,7 +506,7 @@ type GoalSandboxProps = {
   /** Optional custom renderer. If omitted, GoalSandbox renders its built-in UI. */
   render?: (vm: GoalSandboxVM) => ReactNode;
   /** Optional mode override for dedicated routes (e.g. console page). */
-  uiMode?: 'front' | 'debug' | 'console';
+  uiMode?: 'easy' | 'front' | 'debug' | 'console';
 };
 
 export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forcedUiMode }) => {
@@ -620,7 +621,7 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
   const lockedMapIdRef = useRef<string | null>(null);
 
   // UI mode: a compact “front” view for normal use, and a “debug” view for pipeline/atoms.
-  const [uiMode, setUiMode] = useState<'front' | 'debug' | 'console'>(() => {
+  const [uiMode, setUiMode] = useState<'easy' | 'front' | 'debug' | 'console'>(() => {
     if (forcedUiMode) return forcedUiMode;
     try {
       return (localStorage.getItem('goalsandbox.uiMode.v1') as any) === 'debug' ? 'debug' : 'front';
@@ -1714,7 +1715,7 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
 
   // Pipeline V1 run can be heavy; keep it lazy unless POMDP console is active.
   const needPomdpPipeline =
-    uiMode === 'console' || activeBottomTab === 'pomdp';
+    uiMode === 'easy' || uiMode === 'console' || activeBottomTab === 'pomdp';
 
   const computed = useMemo(() => {
     const empty = {
@@ -2059,17 +2060,6 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
   }, [worldState]);
 
   const sceneDumpV2 = useMemo(() => {
-    const castRowsNow = (() => {
-      if (!worldState) return [];
-      const ids =
-        participantIds && participantIds.length
-          ? participantIds
-          : arr((worldState as any)?.agents)
-              .map((a: any) => String(a?.entityId || ''))
-              .filter(Boolean);
-      return ids.map((id) => buildCastRowForAgent(String(id))).filter(Boolean) as any[];
-    })();
-
     return buildGoalLabSceneDumpV2({
       world: worldState,
       selectedAgentId,
@@ -2096,7 +2086,7 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
       pipelineFrame,
       pipelineV1,
       tomMatrixForPerspective,
-      castRows: castRowsNow,
+      castRows: castRowsSafe,
     });
   }, [
     worldState,
@@ -2124,7 +2114,7 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
     pipelineFrame,
     pipelineV1,
     tomMatrixForPerspective,
-    buildCastRowForAgent,
+    castRowsSafe,
   ]);
 
   const handleRunTicks = useCallback(
@@ -2270,24 +2260,13 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
   const handleExportFullDebug = useCallback(() => {
     if (!snapshotV1) return;
 
-    const castRowsNow = (() => {
-      if (!worldState) return [];
-      const ids =
-        participantIds && participantIds.length
-          ? participantIds
-          : arr((worldState as any)?.agents)
-              .map((a: any) => String(a?.entityId || ''))
-              .filter(Boolean);
-      return ids.map((id) => buildCastRowForAgent(String(id))).filter(Boolean) as any[];
-    })();
-
     const payload = buildFullDebugDump({
       snapshotV1,
       pipelineV1,
       pipelineFrame,
       worldState,
       sceneDump: sceneDumpV2,
-      castRows: castRowsNow,
+      castRows: castRowsSafe,
       manualAtoms,
       selectedEventIds,
       selectedLocationId,
@@ -2309,8 +2288,7 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
     pipelineFrame,
     worldState,
     sceneDumpV2,
-    participantIds,
-    buildCastRowForAgent,
+    castRowsSafe,
     manualAtoms,
     selectedEventIds,
     selectedLocationId,
@@ -2847,7 +2825,32 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
 
       {/* CENTER */}
       <main className="flex-1 flex flex-col relative min-w-0 bg-black">
-        {uiMode === 'front' ? (
+        {uiMode === 'easy' ? (
+          <div className="flex-1 flex flex-col min-h-0">
+            <div className="flex-none border-b border-slate-800 bg-slate-900/40 p-3 flex items-center justify-between">
+              <div>
+                <div className="text-[10px] font-bold text-cyan-500 uppercase tracking-widest">GoalLab — Easy</div>
+                <div className="text-[11px] text-slate-300">
+                  Perspective: <span className="text-cyan-300 font-bold">{focusId || '—'}</span>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <button className="px-3 py-1 text-[10px] rounded uppercase bg-cyan-600 text-white" onClick={() => setUiMode('easy')}>Easy</button>
+                <button className="px-3 py-1 text-[10px] rounded uppercase bg-slate-800 text-slate-300 border border-slate-700" onClick={() => setUiMode('front')}>Front</button>
+                <button className="px-3 py-1 text-[10px] rounded uppercase bg-slate-800 text-slate-300 border border-slate-700" onClick={() => setUiMode('debug')}>Debug</button>
+                <button className="px-3 py-1 text-[10px] rounded uppercase bg-slate-800 text-slate-300 border border-slate-700" onClick={() => setUiMode('console')}>Console</button>
+              </div>
+            </div>
+            <div className="flex-1 min-h-0">
+              <EasyModePanel
+                pipelineV1={pomdpPipelineV1}
+                agentLabel={focusId || selectedAgentId || ''}
+                onSwitchToDebug={() => setUiMode('debug')}
+                onSwitchToConsole={() => setUiMode('console')}
+              />
+            </div>
+          </div>
+        ) : uiMode === 'front' ? (
           <div className="flex-none border-b border-slate-800 bg-slate-900/40">
             <div className="p-3 flex items-center justify-between gap-3">
               <div className="min-w-0">
@@ -2857,6 +2860,12 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
                 </div>
               </div>
               <div className="flex gap-2 shrink-0">
+                <button
+                  className="px-3 py-1 text-[10px] rounded uppercase bg-slate-800 text-slate-200 border border-slate-700/60 hover:border-slate-500/70"
+                  onClick={() => setUiMode('easy')}
+                >
+                  Easy
+                </button>
                 {uiMode === 'front' ? (
                   <button
                     className="px-3 py-1 text-[10px] rounded uppercase bg-slate-800 text-slate-200 border border-slate-700/60 hover:border-slate-500/70"

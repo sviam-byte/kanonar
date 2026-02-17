@@ -51,6 +51,7 @@ describe('lookahead subjective model', () => {
         { id: 'action:cooperate', kind: 'cooperate', qNow: 0 },
         { id: 'action:betray', kind: 'betray', qNow: 0 },
       ],
+      enableSensitivityZ0: true,
     });
 
     expect(snapshot.perAction[0]?.actionId).toBe('action:cooperate');
@@ -63,4 +64,22 @@ describe('lookahead subjective model', () => {
     expect(summary.actionId).toBe('action:cooperate');
     expect(summary.statements.length).toBeGreaterThan(0);
   });
+  it('computes sensitivityZ0 only when explicitly enabled', () => {
+    const baseArgs = {
+      selfId: 'A',
+      tick: 1,
+      seed: 999,
+      gamma: 1,
+      riskAversion: 0.2,
+      atoms: [],
+      actions: [{ id: 'action:wait', kind: 'wait', qNow: 0 }],
+    };
+
+    const withoutZ0 = buildTransitionSnapshot(baseArgs);
+    const withZ0 = buildTransitionSnapshot({ ...baseArgs, enableSensitivityZ0: true });
+
+    expect(withoutZ0.sensitivityZ0).toBeUndefined();
+    expect(withZ0.sensitivityZ0).toBeDefined();
+  });
+
 });

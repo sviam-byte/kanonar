@@ -115,9 +115,10 @@ Outputs:
 - артефакт `transitionSnapshot`:
   - `z0` + provenance по каждой фиче
   - `perAction[]` с `qNow`, `qLookahead`, `delta`, `v1`
-  - `sensitivity` (at z1) and `sensitivityZ0` (at current z0) for explainability
-  - `flipCandidates` must use `sensitivityZ0` so UI answers “what to change now to flip decision”
-  - risk penalty for lookahead value is downside-weighted (only deltas worsening V* are penalized)
+  - `sensitivity` (at z1) for explainability
+  - optional `sensitivityZ0` (at current z0) is computed only when explicitly enabled (`enableSensitivityZ0`)
+  - `flipCandidates` use `sensitivityZ0` when available so UI answers “what to change now to flip decision”
+  - risk penalty for lookahead value uses L1 uncertainty over feature deltas: `V_risk = clamp01(V* - riskAversion * 0.3 * Σ|Δz|)`
   - предупреждения по отсутствующим фичам
 
 Determinism:

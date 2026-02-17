@@ -426,7 +426,7 @@ function evalActionQLookahead(
     totalAbs += Math.abs(d);
   }
   const v1 = valueFnSubjective(z1, goalEnergy);
-  const v1Risk = clamp01(v1.v - Math.max(0, riskAversion) * 0.6 * totalAbs);
+  const v1Risk = clamp01(v1.v - Math.max(0, riskAversion) * 0.3 * totalAbs);
   return qNow + Math.max(0, gamma) * v1Risk;
 }
 
@@ -439,6 +439,8 @@ export function buildTransitionSnapshot(args: {
   atoms: any[];
   actions: Array<{ id: string; kind: string; qNow: number }>;
   goalEnergy?: Record<string, number>;
+  /** Set true to compute sensitivityZ0 (expensive: ~110 valueFnSubjective calls). */
+  enableSensitivityZ0?: boolean;
 }): TransitionSnapshotLite {
   const warnings: string[] = [];
 
@@ -485,19 +487,11 @@ export function buildTransitionSnapshot(args: {
 
     const v1 = valueFnSubjective(z1, ge);
 
-    // Risk adjustment: penalize downside uncertainty only.
-    // Compute sensitivity-weighted downside: only features whose delta worsens V* contribute.
-    let downsideRisk = 0;
-    for (const key of Object.keys(z0.z) as FeatureKey[]) {
-      const d = Number((deltas as any)[key] ?? 0);
-      if (Math.abs(d) < 1e-6) continue;
-      // Finite-difference: does this delta direction lower V*?
-      const zCheck = { ...z1, [key]: clamp01(z1[key] - d) };
-      const vCheck = valueFnSubjective(zCheck, ge).v;
-      const isDownside = v1.v < vCheck; // removing this delta would improve V*
-      if (isDownside) downsideRisk += Math.abs(d);
-    }
-    const v1Risk = clamp01(v1.v - Math.max(0, args.riskAversion) * 0.6 * downsideRisk);
+    // Risk adjustment: L1-norm of feature deltas, scaled by risk aversion.
+    // Coefficient 0.3 (lower than old 0.5) because multi-goal projection already
+    // makes Q more accurate, so we don't need as aggressive penalization.
+    const uncertainty = Object.values(deltas).reduce((s, x) => s + Math.abs(Number(x ?? 0)), 0);
+    const v1Risk = clamp01(v1.v - Math.max(0, args.riskAversion) * 0.3 * uncertainty);
 
     const qLookahead = qNow + Math.max(0, Number(args.gamma)) * v1Risk;
     const delta = qLookahead - qNow;
@@ -536,10 +530,14 @@ export function buildTransitionSnapshot(args: {
   const topAction = perAction[0];
   if (topAction) {
     sensitivity = computeSensitivity(topAction.z1, ge, Number(args.gamma));
-    sensitivityZ0 = computeSensitivityZ0(
-      z0.z, topAction.kind, topAction.qNow, ge,
-      Number(args.gamma), Number(args.riskAversion),
-    );
+
+    // sensitivityZ0 is expensive (~110 valueFnSubjective calls). Only compute when requested.
+    if (args.enableSensitivityZ0) {
+      sensitivityZ0 = computeSensitivityZ0(
+        z0.z, topAction.kind, topAction.qNow, ge,
+        Number(args.gamma), Number(args.riskAversion),
+      );
+    }
 
     if (perAction.length >= 2) {
       const gap = (perAction[0]?.qLookahead ?? 0) - (perAction[1]?.qLookahead ?? 0);
