@@ -1,5 +1,6 @@
 import type { Provenance } from './contracts';
 import { arr } from '../../utils/arr';
+import { FEATURE_GOAL_PROJECTION_KEYS } from '../../decision/actionProjection';
 
 function clamp01(x: number): number {
   if (!Number.isFinite(x)) return 0;
@@ -72,8 +73,10 @@ export type TransitionSnapshotLite = {
   valueFn: { v0: number; note: string };
   perAction: LookaheadActionEval[];
   warnings: string[];
-  /** Sensitivity: ∂Q_look/∂z_k (finite differences) for the top action. */
+  /** Sensitivity at z1 (predicted): d(V*)/dz_k for the top action. */
   sensitivity?: Record<FeatureKey, number>;
+  /** Sensitivity at z0 (current): how z0 perturbations change the Q_lookahead ranking. */
+  sensitivityZ0?: Record<FeatureKey, number>;
   /** Which feature shift of ±0.1 would most affect the top-vs-2nd gap. */
   flipCandidates?: Array<{ feature: FeatureKey; deltaQ: number; wouldFlip: boolean }>;
 };
@@ -227,14 +230,8 @@ function valueFnDefault(z: Record<FeatureKey, number>): { v: number; note: strin
  * Maps each goal domain to a linear projection over features.
  * Coeff sign: + means high feature is good for that goal; - means bad.
  */
-const FEATURE_GOAL_PROJECTION: Record<string, Partial<Record<FeatureKey, number>>> = {
-  survival: { threat: -1.0, escape: 0.6, cover: 0.5, fatigue: -0.3, stress: -0.3 },
-  safety: { threat: -0.9, cover: 0.4, visibility: -0.3, escape: 0.3 },
-  social: { socialTrust: 0.8, emotionValence: 0.4, visibility: 0.2 },
-  resource: { resourceAccess: 0.7, scarcity: -0.6 },
-  autonomy: { escape: 0.5, cover: 0.3, visibility: -0.2 },
-  wellbeing: { fatigue: -0.5, stress: -0.5, emotionValence: 0.4, socialTrust: 0.2 },
-};
+const FEATURE_GOAL_PROJECTION: Record<string, Partial<Record<FeatureKey, number>>> =
+  FEATURE_GOAL_PROJECTION_KEYS as Record<string, Partial<Record<FeatureKey, number>>>;
 
 /**
  * Subjective value function: V*(z, goalEnergy).
@@ -298,7 +295,7 @@ function passiveDelta(z: Record<FeatureKey, number>): Partial<Record<FeatureKey,
   };
 }
 
-function actionEffect(kindRaw: string): Partial<Record<FeatureKey, number>> {
+function actionEffect(kindRaw: string, z?: Record<FeatureKey, number>): Partial<Record<FeatureKey, number>> {
   const kind = String(kindRaw || '').toLowerCase();
 
   const byKind: Record<string, Partial<Record<FeatureKey, number>>> = {
@@ -316,21 +313,55 @@ function actionEffect(kindRaw: string): Partial<Record<FeatureKey, number>> {
     cooperate: { socialTrust: +0.10, emotionValence: +0.06, stress: -0.02, fatigue: +0.01 },
   };
 
-  if (byKind[kind]) return byKind[kind];
+  let base: Partial<Record<FeatureKey, number>> | undefined = byKind[kind];
 
-  // Pattern fallbacks.
-  if (kind.includes('hide')) return byKind.hide;
-  if (kind.includes('escape') || kind.includes('run') || kind.includes('flee')) return byKind.escape;
-  if (kind.includes('wait') || kind.includes('idle')) return byKind.wait;
-  if (kind.includes('rest') || kind.includes('sleep')) return byKind.rest;
-  if (kind.includes('approach') || kind.includes('move')) return byKind.approach;
-  if (kind.includes('talk') || kind.includes('negot') || kind.includes('ask') || kind.includes('persuade')) return byKind.negotiate;
-  if (kind.includes('help') || kind.includes('assist') || kind.includes('save') || kind.includes('cooperate')) return byKind.help;
-  if (kind.includes('attack') || kind.includes('fight') || kind.includes('shoot')) return byKind.attack;
-  if (kind.includes('loot') || kind.includes('take') || kind.includes('steal')) return byKind.loot;
-  if (kind.includes('betray')) return byKind.betray;
+  if (!base) {
+    // Pattern fallbacks.
+    if (kind.includes('hide')) base = byKind.hide;
+    else if (kind.includes('escape') || kind.includes('run') || kind.includes('flee')) base = byKind.escape;
+    else if (kind.includes('wait') || kind.includes('idle')) base = byKind.wait;
+    else if (kind.includes('rest') || kind.includes('sleep')) base = byKind.rest;
+    else if (kind.includes('approach') || kind.includes('move')) base = byKind.approach;
+    else if (kind.includes('talk') || kind.includes('negot') || kind.includes('ask') || kind.includes('persuade')) base = byKind.negotiate;
+    else if (kind.includes('help') || kind.includes('assist') || kind.includes('save') || kind.includes('cooperate')) base = byKind.help;
+    else if (kind.includes('attack') || kind.includes('fight') || kind.includes('shoot')) base = byKind.attack;
+    else if (kind.includes('loot') || kind.includes('take') || kind.includes('steal')) base = byKind.loot;
+    else if (kind.includes('betray')) base = byKind.betray;
+  }
 
-  return {};
+  if (!base) return {};
+  if (!z) return base;
+
+  // Context modulation: scale base effect by relevant environmental features.
+  const out = { ...base };
+  const k = kind.includes('hide') ? 'hide'
+    : kind.includes('escape') ? 'escape'
+    : kind.includes('attack') ? 'attack'
+    : kind.includes('negot') || kind.includes('talk') ? 'negotiate'
+    : kind.includes('help') || kind.includes('cooperate') ? 'help'
+    : null;
+
+  if (k === 'hide') {
+    // Better cover → hiding is more effective; higher threat → more threat reduction.
+    out.cover = (out.cover ?? 0) * (0.6 + 0.8 * z.cover);
+    out.threat = (out.threat ?? 0) * (0.6 + 0.6 * z.threat);
+    out.visibility = (out.visibility ?? 0) * (0.6 + 0.6 * z.visibility);
+  } else if (k === 'escape') {
+    // Available escape routes → more effective; fatigue reduces effectiveness.
+    out.escape = (out.escape ?? 0) * (0.5 + 0.8 * z.escape) * (1.1 - 0.3 * z.fatigue);
+  } else if (k === 'attack') {
+    // Higher fatigue → more costly attack; higher threat → more payoff.
+    out.fatigue = (out.fatigue ?? 0) * (0.7 + 0.6 * z.fatigue);
+    out.threat = (out.threat ?? 0) * (0.5 + 0.8 * z.threat);
+  } else if (k === 'negotiate') {
+    // Low trust → negotiation less effective on trust gain.
+    out.socialTrust = (out.socialTrust ?? 0) * (0.4 + 0.8 * z.socialTrust);
+  } else if (k === 'help') {
+    // Already high trust → diminishing returns on trust gain.
+    out.socialTrust = (out.socialTrust ?? 0) * (1.2 - 0.4 * z.socialTrust);
+  }
+
+  return out;
 }
 
 function computeSensitivity(
@@ -347,6 +378,56 @@ function computeSensitivity(
     out[k] = Math.max(0, Number(gamma) || 0) * (vPlus - v0) / eps;
   }
   return out;
+}
+
+/**
+ * Sensitivity at z0: ∂Q_lookahead(best)/∂z0_k.
+ * Perturb z0 by ±eps for each feature, rerun the full transition for the top action,
+ * measure how Q_lookahead changes. This answers "what change in the CURRENT world
+ * would flip the decision?"
+ */
+function computeSensitivityZ0(
+  z0: Record<FeatureKey, number>,
+  topKind: string,
+  topQNow: number,
+  goalEnergy: Record<string, number>,
+  gamma: number,
+  riskAversion: number,
+): Record<FeatureKey, number> {
+  const eps = 0.02;
+  const out = {} as Record<FeatureKey, number>;
+
+  const baseQ = evalActionQLookahead(z0, topKind, topQNow, goalEnergy, gamma, riskAversion);
+
+  for (const k of Object.keys(z0) as FeatureKey[]) {
+    const z0Plus = { ...z0, [k]: clamp01(z0[k] + eps) };
+    const qPlus = evalActionQLookahead(z0Plus, topKind, topQNow, goalEnergy, gamma, riskAversion);
+    out[k] = (qPlus - baseQ) / eps;
+  }
+  return out;
+}
+
+/** Helper: compute Q_lookahead for a single action given z0. */
+function evalActionQLookahead(
+  z0: Record<FeatureKey, number>,
+  kind: string,
+  qNow: number,
+  goalEnergy: Record<string, number>,
+  gamma: number,
+  riskAversion: number,
+): number {
+  const dzPassive = passiveDelta(z0);
+  const dzAct = actionEffect(kind, z0);
+  const z1 = { ...z0 };
+  let totalAbs = 0;
+  for (const key of Object.keys(z0) as FeatureKey[]) {
+    const d = Number((dzPassive as any)[key] ?? 0) + Number((dzAct as any)[key] ?? 0);
+    z1[key] = clamp01(z1[key] + d);
+    totalAbs += Math.abs(d);
+  }
+  const v1 = valueFnSubjective(z1, goalEnergy);
+  const v1Risk = clamp01(v1.v - Math.max(0, riskAversion) * 0.6 * totalAbs);
+  return qNow + Math.max(0, gamma) * v1Risk;
 }
 
 export function buildTransitionSnapshot(args: {
@@ -380,7 +461,7 @@ export function buildTransitionSnapshot(args: {
     const rng = mulberry32((baseSeed ^ hash32(actionId)) >>> 0);
 
     const dzPassive = passiveDelta(z0.z);
-    const dzAct = actionEffect(kind);
+    const dzAct = actionEffect(kind, z0.z);
 
     // Small gaussian-ish noise via sum of uniforms.
     const noiseScale = 0.02;
@@ -404,9 +485,19 @@ export function buildTransitionSnapshot(args: {
 
     const v1 = valueFnSubjective(z1, ge);
 
-    // Risk adjustment: penalize the action-specific stochasticity.
-    const uncertainty = Object.values(deltas).reduce((s, x) => s + Math.abs(Number(x ?? 0)), 0);
-    const v1Risk = clamp01(v1.v - Math.max(0, args.riskAversion) * 0.5 * uncertainty);
+    // Risk adjustment: penalize downside uncertainty only.
+    // Compute sensitivity-weighted downside: only features whose delta worsens V* contribute.
+    let downsideRisk = 0;
+    for (const key of Object.keys(z0.z) as FeatureKey[]) {
+      const d = Number((deltas as any)[key] ?? 0);
+      if (Math.abs(d) < 1e-6) continue;
+      // Finite-difference: does this delta direction lower V*?
+      const zCheck = { ...z1, [key]: clamp01(z1[key] - d) };
+      const vCheck = valueFnSubjective(zCheck, ge).v;
+      const isDownside = v1.v < vCheck; // removing this delta would improve V*
+      if (isDownside) downsideRisk += Math.abs(d);
+    }
+    const v1Risk = clamp01(v1.v - Math.max(0, args.riskAversion) * 0.6 * downsideRisk);
 
     const qLookahead = qNow + Math.max(0, Number(args.gamma)) * v1Risk;
     const delta = qLookahead - qNow;
@@ -439,17 +530,23 @@ export function buildTransitionSnapshot(args: {
 
   // Sensitivity analysis for the top action.
   let sensitivity: Record<FeatureKey, number> | undefined;
+  let sensitivityZ0: Record<FeatureKey, number> | undefined;
   let flipCandidates: Array<{ feature: FeatureKey; deltaQ: number; wouldFlip: boolean }> | undefined;
 
   const topAction = perAction[0];
   if (topAction) {
     sensitivity = computeSensitivity(topAction.z1, ge, Number(args.gamma));
+    sensitivityZ0 = computeSensitivityZ0(
+      z0.z, topAction.kind, topAction.qNow, ge,
+      Number(args.gamma), Number(args.riskAversion),
+    );
 
     if (perAction.length >= 2) {
       const gap = (perAction[0]?.qLookahead ?? 0) - (perAction[1]?.qLookahead ?? 0);
       const out: Array<{ feature: FeatureKey; deltaQ: number; wouldFlip: boolean }> = [];
       for (const k of Object.keys(z0.z) as FeatureKey[]) {
-        const dq = Math.abs(Number((sensitivity as any)[k] ?? 0)) * 0.1;
+        // Use z0 sensitivity for flip analysis — "what would I change NOW to flip?"
+        const dq = Math.abs(Number((sensitivityZ0 as any)[k] ?? 0)) * 0.1;
         out.push({ feature: k, deltaQ: dq, wouldFlip: dq > gap });
       }
       out.sort((a, b) => b.deltaQ - a.deltaQ);
@@ -467,6 +564,7 @@ export function buildTransitionSnapshot(args: {
     perAction,
     warnings,
     sensitivity,
+    sensitivityZ0,
     flipCandidates,
   };
 }

@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import type { ArtifactRef, PipelineRun, PipelineStage } from '../../lib/goal-lab/pipeline/contracts';
+import { buildPredictedWorldSummary } from '../../lib/goal-lab/pipeline/lookahead';
 
 function arr<T>(x: any): T[] {
   return Array.isArray(x) ? x : [];
@@ -36,6 +37,84 @@ function prettyJsonTrunc(x: any, maxChars: number): { text: string; truncated: b
   if (text.length <= maxChars) return { text, truncated: false };
   return { text: `${text.slice(0, Math.max(0, maxChars - 64))}\n…(truncated)…\n`, truncated: true };
 }
+
+
+function fmt(x: any): string {
+  return Number.isFinite(Number(x)) ? Number(x).toFixed(4) : '—';
+}
+
+function fmtPct(x: number): string {
+  return `${(x * 100).toFixed(0)}%`;
+}
+
+const FEATURE_LABELS_RU: Record<string, string> = {
+  threat: 'Угроза', escape: 'Бегство', cover: 'Укрытие', visibility: 'Видимость',
+  socialTrust: 'Доверие', emotionValence: 'Эмоц. валентность',
+  resourceAccess: 'Ресурсы', scarcity: 'Дефицит', fatigue: 'Усталость', stress: 'Стресс',
+};
+
+const DecisionSummaryCard: React.FC<{ digest: any; goalEnergy: Record<string, number> }> = ({ digest, goalEnergy }) => {
+  if (!digest) return null;
+  const linear = digest.linearBest;
+  const pomdp = digest.pomdpBest;
+  const chosen = digest.chosen;
+  const divergent = linear && pomdp && linear.actionId !== pomdp.actionId;
+  const goalEntries = Object.entries(goalEnergy || {})
+    .map(([id, e]) => ({ id, e: Number(e) }))
+    .filter((x) => Math.abs(x.e) > 1e-6)
+    .sort((a, b) => Math.abs(b.e) - Math.abs(a.e));
+  return (
+    <div className="rounded-lg border border-cyan-500/30 bg-cyan-950/20 p-3 space-y-3">
+      <div className="text-[10px] text-cyan-400 uppercase tracking-widest font-bold">Решение агента</div>
+      <div className="space-y-1.5">
+        <div className="text-[10px] text-slate-500 uppercase tracking-widest">Ведущие цели</div>
+        {goalEntries.slice(0, 5).map(({ id, e }) => (
+          <div key={id} className="flex items-center gap-2">
+            <div className="w-24 text-[11px] text-slate-300 truncate">{id}</div>
+            <div className="flex-1 h-3 bg-slate-800 rounded-full overflow-hidden"><div className="h-full bg-cyan-500/60 rounded-full" style={{ width: `${Math.min(100, Math.abs(e) * 100)}%` }} /></div>
+            <div className="w-10 text-right text-[11px] text-cyan-300 font-mono">{fmtPct(e)}</div>
+          </div>
+        ))}
+      </div>
+      <div className="rounded border border-emerald-500/30 bg-emerald-950/20 p-2">
+        <div className="text-[13px] text-emerald-200 font-bold uppercase">{safeStr(chosen?.kind || chosen?.actionId || '—')}</div>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <div className="rounded border border-slate-700 bg-slate-950/30 p-2"><div className="text-[10px] text-slate-500 uppercase tracking-widest">Linear best</div><div className="text-[11px] text-slate-300 font-mono">{safeStr(linear?.actionId || '—')} Q={fmt(linear?.qNow)}</div></div>
+        <div className={`rounded border p-2 ${divergent ? 'border-amber-500/40 bg-amber-950/15' : 'border-slate-700 bg-slate-950/30'}`}><div className="text-[10px] text-slate-500 uppercase tracking-widest">POMDP best</div><div className="text-[11px] text-slate-300 font-mono">{safeStr(pomdp?.actionId || '—')} Q_look={fmt(pomdp?.qLookahead)}</div></div>
+      </div>
+    </div>
+  );
+};
+
+const PredictedWorldView: React.FC<{ perAction: any[]; z0: Record<string, number>; pickedIdx: number | null }> = ({ perAction, z0, pickedIdx }) => {
+  const actionEval = pickedIdx != null ? perAction[pickedIdx] : perAction[0];
+  if (!actionEval || !z0) return null;
+  const summary = buildPredictedWorldSummary(actionEval as any, z0 as any);
+  return (
+    <div className="rounded border border-slate-800 bg-black/20 p-2 space-y-2">
+      <div className="text-[10px] text-slate-500 uppercase tracking-widest">Предсказанный мир → {safeStr(actionEval.kind || actionEval.actionId)}</div>
+      {summary.statements.filter((st) => Math.abs(st.delta) > 0.005).slice(0, 6).map((st) => (
+        <div key={st.feature} className="text-[11px] text-slate-300 font-mono">{FEATURE_LABELS_RU[st.feature] || st.feature}: {st.current.toFixed(2)} → {st.predicted.toFixed(2)}</div>
+      ))}
+    </div>
+  );
+};
+
+const SensitivityView: React.FC<{ sensitivity?: Record<string, number>; sensitivityZ0?: Record<string, number>; flipCandidates?: Array<{ feature: string; deltaQ: number; wouldFlip: boolean }>; }> = ({ sensitivity, sensitivityZ0, flipCandidates }) => {
+  const top = Object.entries(sensitivityZ0 || sensitivity || {})
+    .map(([k, v]) => ({ k, v: Math.abs(Number(v)) }))
+    .sort((a, b) => b.v - a.v)
+    .slice(0, 6);
+  if (!top.length && !arr(flipCandidates).length) return null;
+  return (
+    <div className="rounded border border-slate-800 bg-black/20 p-2 space-y-1">
+      <div className="text-[10px] text-slate-500 uppercase tracking-widest">Чувствительность решения</div>
+      {top.map(({ k, v }) => (<div key={k} className="text-[11px] text-violet-200">{FEATURE_LABELS_RU[k] || k}: {v.toFixed(3)}</div>))}
+      {arr(flipCandidates).filter((f) => f.wouldFlip).slice(0, 3).map((f) => (<div key={f.feature} className="text-[11px] text-amber-300">{FEATURE_LABELS_RU[f.feature] || f.feature}: ΔQ≈{Number(f.deltaQ).toFixed(4)}</div>))}
+    </div>
+  );
+};
 
 type Props = {
   run: PipelineRun | null;
@@ -375,14 +454,16 @@ export const PomdpConsolePanel: React.FC<Props> = ({ run, rawV1, observeLitePara
                 const best = data?.best ?? null;
                 const goalEnergy = data?.goalEnergy || {};
                 const picked = pickedRankIdx != null ? ranked[pickedRankIdx] : null;
-                const fmt = (x: any) => (Number.isFinite(Number(x)) ? Number(x).toFixed(4) : '0.0000');
                 const topContribs = (contrib: Record<string, number>) =>
                   Object.entries(contrib || {})
                     .sort((a, b) => (Number(b[1]) ?? 0) - (Number(a[1]) ?? 0))
                     .slice(0, 6);
+                const transSnap = data?.linearApprox || null;
+                const featureZ0 = data?.featureVector?.z || null;
 
                 return (
                   <div className="space-y-3">
+                    <DecisionSummaryCard digest={data?.digest} goalEnergy={goalEnergy} />
                     <div className="rounded border border-slate-800 bg-black/20 p-2">
                       <div className="text-[10px] text-slate-500 uppercase tracking-widest">Decision snapshot</div>
                       <div className="mt-1 text-[11px] text-slate-500 font-mono">T={fmt(data?.temperature)} forced={safeStr(data?.forcedActionId || '') || '—'}</div>
@@ -513,6 +594,16 @@ export const PomdpConsolePanel: React.FC<Props> = ({ run, rawV1, observeLitePara
                         <pre className="mt-2 text-[11px] text-slate-200 overflow-auto">{prettyJson(picked)}</pre>
                       </div>
                     ) : null}
+
+                    {transSnap?.perAction && featureZ0 ? (
+                      <PredictedWorldView perAction={transSnap.perAction} z0={featureZ0} pickedIdx={pickedRankIdx} />
+                    ) : null}
+
+                    <SensitivityView
+                      sensitivity={transSnap?.sensitivity}
+                      sensitivityZ0={transSnap?.sensitivityZ0}
+                      flipCandidates={transSnap?.flipCandidates}
+                    />
 
                     {best ? (
                       <div className="rounded border border-slate-800 bg-black/20 p-2">
