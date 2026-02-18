@@ -164,6 +164,7 @@ type Props = {
 export const PomdpConsolePanel: React.FC<Props> = ({ run, rawV1, observeLiteParams, onObserveLiteParamsChange, onForceAction, onApplyActionMvp }) => {
   const stages = arr<PipelineStage>(run?.stages);
   const stageIds = useMemo(() => stages.map((s) => safeStr(s?.id)), [stages]);
+  // Default to decision stage if present (what action + why).
   const [stageId, setStageId] = useState<string>('S8');
   const [artifactId, setArtifactId] = useState<string>('');
   const [atomQuery, setAtomQuery] = useState<string>('');
@@ -214,7 +215,9 @@ export const PomdpConsolePanel: React.FC<Props> = ({ run, rawV1, observeLitePara
       return;
     }
     if (!stageIds.includes(stageId)) {
-      setStageId(stageIds[stageIds.length - 1] || 'S0');
+      // Prefer S8 (decision) when available; otherwise last stage.
+      if (stageIds.includes('S8')) setStageId('S8');
+      else setStageId(stageIds[stageIds.length - 1] || 'S0');
     }
   }, [stageIds, stageId]);
 
@@ -234,6 +237,14 @@ export const PomdpConsolePanel: React.FC<Props> = ({ run, rawV1, observeLitePara
   }, [stages, stageIds, stageId]);
 
   const artifacts = arr<ArtifactRef>(stage?.artifacts);
+
+  // Make panel immediately useful: if a decision artifact exists, select it by default
+  // so the user sees "какое действие и почему" without extra clicks.
+  useEffect(() => {
+    if (artifactId) return;
+    const decisionArtifact = artifacts.find((a) => a?.kind === 'decision');
+    if (decisionArtifact?.id) setArtifactId(String(decisionArtifact.id));
+  }, [artifacts, artifactId]);
 
   const selectedArtifact = useMemo(() => {
     if (!artifactId) return artifacts[0] || null;
