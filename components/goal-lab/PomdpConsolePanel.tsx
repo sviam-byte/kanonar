@@ -164,7 +164,7 @@ type Props = {
 export const PomdpConsolePanel: React.FC<Props> = ({ run, rawV1, observeLiteParams, onObserveLiteParamsChange, onForceAction, onApplyActionMvp }) => {
   const stages = arr<PipelineStage>(run?.stages);
   const stageIds = useMemo(() => stages.map((s) => safeStr(s?.id)), [stages]);
-  const [stageId, setStageId] = useState<string>('S0');
+  const [stageId, setStageId] = useState<string>('S8');
   const [artifactId, setArtifactId] = useState<string>('');
   const [atomQuery, setAtomQuery] = useState<string>('');
   const [pickedAtomId, setPickedAtomId] = useState<string | null>(null);
@@ -189,6 +189,12 @@ export const PomdpConsolePanel: React.FC<Props> = ({ run, rawV1, observeLitePara
     }
     return idx;
   }, [stages]);
+
+  // Prefer decision surface on first render when available, but do not fight manual stage selection.
+  useEffect(() => {
+    if (!stageIds.length) return;
+    if (stageIds.includes('S8') && stageId === 'S0') setStageId('S8');
+  }, [stageIds, stageId]);
 
   const jumpToAtom = (atomId: string) => {
     const hit = atomIndex.get(atomId);
@@ -247,6 +253,23 @@ export const PomdpConsolePanel: React.FC<Props> = ({ run, rawV1, observeLitePara
   const stabilizers = useMemo(() => artifacts.find((a) => a.kind === 'stabilizers')?.data, [artifacts]);
   const atoms = useMemo(() => arr<any>((atomsArtifact as any)?.data?.atoms), [atomsArtifact]);
 
+  // Fast ToM view: small digest of tom:predict atoms from S5 without expanding heavy artifacts.
+  const tomPredictFast = useMemo(() => {
+    const s5 = stages.find((s) => safeStr((s as any)?.id) === 'S5');
+    const s5Artifacts = arr<ArtifactRef>((s5 as any)?.artifacts);
+    const s5AtomsArtifact = s5Artifacts.find((a) => a.kind === 'atoms');
+    const s5Atoms = arr<any>((s5AtomsArtifact as any)?.data?.atoms);
+    return s5Atoms
+      .filter((a) => safeStr(a?.id).startsWith('tom:predict:'))
+      .map((a) => ({
+        id: safeStr(a?.id),
+        mag: Number(a?.magnitude ?? a?.mag ?? 0),
+        label: safeStr(a?.label || a?.code || ''),
+      }))
+      .sort((x, y) => Math.abs(y.mag) - Math.abs(x.mag))
+      .slice(0, 10);
+  }, [stages]);
+
   // Keep filtering complete for traceability; default render is still capped in atomsToRender.
   const filteredAtoms = useMemo(() => {
     const q = atomQuery.trim().toLowerCase();
@@ -294,6 +317,18 @@ export const PomdpConsolePanel: React.FC<Props> = ({ run, rawV1, observeLitePara
 
   return (
     <div className="h-full min-h-0 flex flex-col gap-4">
+      {tomPredictFast.length ? (
+        <div className="rounded border border-slate-800 bg-black/20 p-2">
+          <div className="text-[10px] text-slate-500 uppercase tracking-widest">ToM predict (fast)</div>
+          <div className="mt-1 space-y-1">
+            {tomPredictFast.map((p) => (
+              <div key={p.id} className="text-[11px] text-slate-300 font-mono truncate" title={p.label || p.id}>
+                {p.id} <span className="text-slate-500">m={Number(p.mag).toFixed(3)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
       <div className="flex flex-wrap items-end gap-4">
         <div>
           <div className="text-[10px] text-slate-500 uppercase tracking-widest">Actor / Tick</div>

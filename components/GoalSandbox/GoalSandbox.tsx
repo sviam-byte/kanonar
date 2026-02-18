@@ -692,7 +692,14 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
   });
 
   const [injectedEvents, setInjectedEvents] = useState<any[]>([]);
-  const [sceneControl, setSceneControl] = useState<any>({ presetId: 'safe_hub' });
+  const [sceneControl, setSceneControl] = useState<any>(() => {
+    // Console defaults: keep world dynamics unchanged, but pre-enable predict diagnostics.
+    // Front/easy modes intentionally stay minimal to preserve previous UX behavior.
+    if (forcedUiMode === 'console') {
+      return { presetId: 'safe_hub', enablePredict: true, useLookaheadForChoice: false };
+    }
+    return { presetId: 'safe_hub' };
+  });
 
   const [atomDiff, setAtomDiff] = useState<AtomDiff[]>([]);
 

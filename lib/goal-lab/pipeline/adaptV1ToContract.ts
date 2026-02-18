@@ -314,7 +314,8 @@ function buildArtifactsFromFrame(frame: GoalLabStageFrame, run: GoalLabPipelineV
 
 
   if (stageId === 'S9') {
-    stageArtifacts.push({
+    // Keep transition snapshot as a first-class artifact in the same output list.
+    out.push({
       id: `${stageId}:transition`,
       kind: 'transition',
       label: 'Predict tick (linear lookahead)',
