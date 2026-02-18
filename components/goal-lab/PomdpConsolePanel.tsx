@@ -53,7 +53,7 @@ const FEATURE_LABELS_RU: Record<string, string> = {
   resourceAccess: 'Ресурсы', scarcity: 'Дефицит', fatigue: 'Усталость', stress: 'Стресс',
 };
 
-const DecisionSummaryCard: React.FC<{ digest: any; goalEnergy: Record<string, number> }> = ({ digest, goalEnergy }) => {
+const DecisionSummaryCard: React.FC<{ digest: any; goalEnergy: Record<string, number>; ranked?: any[] }> = ({ digest, goalEnergy, ranked }) => {
   if (!digest) return null;
   const linear = digest.linearBest;
   const pomdp = digest.pomdpBest;
@@ -63,6 +63,16 @@ const DecisionSummaryCard: React.FC<{ digest: any; goalEnergy: Record<string, nu
     .map(([id, e]) => ({ id, e: Number(e) }))
     .filter((x) => Math.abs(x.e) > 1e-6)
     .sort((a, b) => Math.abs(b.e) - Math.abs(a.e));
+
+  // Find chosen action in ranked list for breakdown.
+  const chosenRanked = arr(ranked).find((r: any) =>
+    safeStr(r?.id || r?.actionId) === safeStr(chosen?.actionId || chosen?.id)
+  );
+  const contribs = Object.entries((chosenRanked as any)?.contribByGoal || {})
+    .map(([g, v]: [string, any]) => ({ g, v: Number(v) }))
+    .sort((a, b) => Math.abs(b.v) - Math.abs(a.v))
+    .slice(0, 5);
+
   return (
     <div className="rounded-lg border border-cyan-500/30 bg-cyan-950/20 p-3 space-y-3">
       <div className="text-[10px] text-cyan-400 uppercase tracking-widest font-bold">Решение агента</div>
@@ -76,13 +86,38 @@ const DecisionSummaryCard: React.FC<{ digest: any; goalEnergy: Record<string, nu
           </div>
         ))}
       </div>
-      <div className="rounded border border-emerald-500/30 bg-emerald-950/20 p-2">
-        <div className="text-[13px] text-emerald-200 font-bold uppercase">{safeStr(chosen?.kind || chosen?.actionId || '—')}</div>
+
+      {/* Chosen action with explanation. */}
+      <div className="rounded border border-emerald-500/30 bg-emerald-950/20 p-2 space-y-2">
+        <div className="flex items-center gap-2">
+          <span className="text-emerald-400">⭐</span>
+          <span className="text-[13px] text-emerald-200 font-bold uppercase">{safeStr(chosen?.kind || chosen?.actionId || '—')}</span>
+          {chosen?.targetId ? <span className="text-[11px] text-slate-400">→ {safeStr(chosen.targetId)}</span> : null}
+          <span className="ml-auto text-[11px] text-slate-400 font-mono">Q={fmt((chosenRanked as any)?.q)}</span>
+        </div>
+        {contribs.length > 0 ? (
+          <div className="space-y-0.5 pl-5">
+            <div className="text-[9px] text-slate-500 uppercase tracking-widest">Почему</div>
+            {contribs.map(({ g, v }) => (
+              <div key={g} className="flex justify-between text-[11px] font-mono">
+                <span className="text-slate-300">{g} × Δ</span>
+                <span className={v >= 0 ? 'text-emerald-400' : 'text-rose-400'}>{v >= 0 ? '+' : ''}{v.toFixed(4)}</span>
+              </div>
+            ))}
+          </div>
+        ) : null}
       </div>
+
+      {/* Linear vs POMDP. */}
       <div className="grid grid-cols-2 gap-2">
         <div className="rounded border border-slate-700 bg-slate-950/30 p-2"><div className="text-[10px] text-slate-500 uppercase tracking-widest">Linear best</div><div className="text-[11px] text-slate-300 font-mono">{safeStr(linear?.actionId || '—')} Q={fmt(linear?.qNow)}</div></div>
         <div className={`rounded border p-2 ${divergent ? 'border-amber-500/40 bg-amber-950/15' : 'border-slate-700 bg-slate-950/30'}`}><div className="text-[10px] text-slate-500 uppercase tracking-widest">POMDP best</div><div className="text-[11px] text-slate-300 font-mono">{safeStr(pomdp?.actionId || '—')} Q_look={fmt(pomdp?.qLookahead)}</div></div>
       </div>
+      {divergent ? (
+        <div className="text-[11px] text-amber-300 bg-amber-950/20 rounded px-2 py-1 border border-amber-500/20">
+          ⚠ Линейная оценка: «{safeStr(linear?.actionId)}» (Q={fmt(linear?.qNow)}). Lookahead предпочитает «{safeStr(pomdp?.actionId)}» — в перспективе лучше (Δ=+{fmt((pomdp?.qLookahead ?? 0) - (linear?.qNow ?? 0))}).
+        </div>
+      ) : null}
     </div>
   );
 };
@@ -463,7 +498,7 @@ export const PomdpConsolePanel: React.FC<Props> = ({ run, rawV1, observeLitePara
 
                 return (
                   <div className="space-y-3">
-                    <DecisionSummaryCard digest={data?.digest} goalEnergy={goalEnergy} />
+                    <DecisionSummaryCard digest={data?.digest} goalEnergy={goalEnergy} ranked={ranked} />
                     <div className="rounded border border-slate-800 bg-black/20 p-2">
                       <div className="text-[10px] text-slate-500 uppercase tracking-widest">Decision snapshot</div>
                       <div className="mt-1 text-[11px] text-slate-500 font-mono">T={fmt(data?.temperature)} forced={safeStr(data?.forcedActionId || '') || '—'}</div>

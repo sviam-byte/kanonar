@@ -643,6 +643,7 @@ export function runGoalLabPipelineV1(input: {
             qNow: Number(a?.q ?? 0),
           })),
           goalEnergy,
+          enableSensitivityZ0: true,
         })
       : null;
 
