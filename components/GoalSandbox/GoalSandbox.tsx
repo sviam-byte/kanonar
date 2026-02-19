@@ -692,7 +692,16 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
   });
 
   const [injectedEvents, setInjectedEvents] = useState<any[]>([]);
-  const [sceneControl, setSceneControl] = useState<any>({ presetId: 'safe_hub' });
+  const [sceneControl, setSceneControl] = useState<any>(() => {
+    // Console defaults: fast + informative out of the box.
+    // - enablePredict: show ToM predict artifacts
+    // - fastMode: minimize heavy work for responsiveness
+    // - useLookaheadForChoice: keep policy stable unless user opts in
+    if (forcedUiMode === 'console') {
+      return { presetId: 'safe_hub', enablePredict: true, fastMode: true, useLookaheadForChoice: false };
+    }
+    return { presetId: 'safe_hub' };
+  });
 
   const [atomDiff, setAtomDiff] = useState<AtomDiff[]>([]);
 
