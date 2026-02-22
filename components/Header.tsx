@@ -72,9 +72,11 @@ export const Header: React.FC = () => {
   };
 
   return (
-    <header className={`border-b p-4 flex justify-between items-center sticky top-0 z-50 backdrop-blur-md transition-colors duration-500 ${isAdmin ? 'bg-red-950/80 border-red-900/50' : 'bg-canon-bg/90 border-canon-border'}`}>
-      <div className="flex items-center gap-8">
-        <Link to="/" className="text-lg font-bold text-canon-accent font-mono flex items-center gap-2 hover:opacity-80 transition-opacity">
+    // Responsive header: stacks on narrow screens, keeps desktop layout on xl+ breakpoints.
+    <header className={`border-b p-3 md:p-4 sticky top-0 z-50 backdrop-blur-md transition-colors duration-500 ${isAdmin ? 'bg-red-950/80 border-red-900/50' : 'bg-canon-bg/90 border-canon-border'}`}>
+      <div className="flex w-full flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+      <div className="flex min-w-0 flex-col gap-3 xl:flex-row xl:items-center xl:gap-8">
+        <Link to="/" className="text-lg font-bold text-canon-accent font-mono flex min-w-0 flex-wrap items-center gap-2 hover:opacity-80 transition-opacity">
           KANONAR 4.0
           <span className="text-[10px] bg-canon-blue/20 text-canon-blue px-1.5 py-0.5 rounded border border-canon-blue/40">{PATCH_REVISION}</span>
           {isAdmin && <span className="text-[10px] bg-red-600 text-white px-1.5 py-0.5 rounded uppercase tracking-wider">Admin</span>}
@@ -95,7 +97,7 @@ export const Header: React.FC = () => {
         </Link>
         
         {/* Main Navigation Groups */}
-        <nav className="flex items-center gap-6">
+        <nav className="flex flex-wrap items-center gap-3 md:gap-4 lg:gap-6">
             
             <NavDropdown 
                 label="Entities" 
@@ -155,7 +157,7 @@ export const Header: React.FC = () => {
         </nav>
       </div>
       
-      <div className="flex items-center gap-4">
+      <div className="flex flex-wrap items-center gap-3 md:gap-4 xl:self-auto">
         <Link 
             to="/inspector" 
             className={`
@@ -195,6 +197,7 @@ export const Header: React.FC = () => {
                  KEY
              </Link>
         )}
+      </div>
       </div>
     </header>
   );

@@ -1,5 +1,5 @@
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import type { ContextSnapshot, ContextualGoalScore, ContextAtom, TemporalContextConfig, ContextualGoalContribution } from '../../lib/context/v2/types';
 import { validateAtoms } from '../../lib/context/validate/frameValidator';
 import { GOAL_DEFS } from '../../lib/goals/space'; 
@@ -47,16 +47,10 @@ import { GoalLabTestsPanel } from './GoalLabTestsPanel';
 import { ValidatorPanel } from './ValidatorPanel';
 import { PipelineFlowPanel } from './PipelineFlowPanel';
 
-/**
- * IMPORTANT (hotfix):
- * React error #310 happens when hooks order changes between renders.
- * In GoalLabResults we often have debug-only memoizations that may end up conditional.
- * This local "useMemo" is NOT a React hook and is safe to call anywhere.
- * Tradeoff: less perf, but stable production builds.
- */
-const useMemo = <T,>(factory: () => T, _deps: any[]): T => {
-  return factory();
-};
+// NOTE: Previous code shadowed React.useMemo with a no-op to "fix" hook order errors.
+// The real fix is to never call hooks conditionally. All memoizations below now use
+// React.useMemo properly. If hook-order errors resurface, the conditional hook call
+// must be found and fixed — not papered over by killing memoization.
 
 
 
@@ -635,15 +629,15 @@ export const GoalLabResults: React.FC<Props> = ({
 }) => {
   const [selectedGoalId, setSelectedGoalId] = useState<string | null>(null);
   const [isPreviewOpen, setPreviewOpen] = useState(false);
-  const [activeTabIndex, setActiveTabIndex] = useState(0);
+  const [activeTabKey, setActiveTabKey] = useState<string>('explain');
   const [selectedAtomId, setSelectedAtomId] = useState<string | null>(null);
 
   // One-click navigation: from any diagnostics link jump into Atoms tab and focus atom.
   const jumpToAtomId = (id: string | null) => {
     if (!id) return;
     setSelectedAtomId(id);
-    // Tab index is stable in this file: 2 === Atoms.
-    setActiveTabIndex(2);
+    // Tab key is stable: 'atoms' === Atoms tab.
+    setActiveTabKey('atoms');
   };
   const [headersCollapsed, setHeadersCollapsed] = useState<boolean>(() => {
     try {
@@ -1445,56 +1439,49 @@ export const GoalLabResults: React.FC<Props> = ({
         );
     };
 
-    const renderContent = () => {
-        switch(activeTabIndex) {
-            case 0: return <ExplainTab />;
-            case 1: return <AnalysisTab />;
-            case 2: return <AtomsTab />;
-            case 3: return <PipelineTab />;
-            case 4: return <PipelineFlowTab />;
-            case 5: return <ValidatorTab />;
-            case 6: return <PropagationTab />;
-            case 7: return <CastTab />;
-            case 8: return <ThreatTab />;
-            case 9: return <ToMTab />;
-            case 10: return <MindTab />;
-            case 11: return <EmotionsTab />;
-            case 12: return <CoverageTab />;
-            case 13: return <PossibilitiesTab />;
-            case 14: return <DecisionTab />;
-            case 15: return <DecisionGraphTab />;
-            case 16: return (
-              <GoalActionGraphView
-                atoms={currentAtoms}
-                decision={decision}
-                selfId={focusSelfId ?? ''}
-                onJumpToAtomId={jumpToAtomId}
-              />
-            );
-            case 17: return <AccessTab />;
-            case 18: return <DiffTab />;
-            case 19: return <EmotionExplainTab />;
-            case 20: return <DebugTab />;
-            case 21: return <OrchestratorTab />;
-            case 22: return <SimulatorTab />;
-            case 23: return <TuningTab />;
-            case 24: return <GoalLabTestsPanel selfId={focusId || ''} actorLabels={actorLabels as any} />;
-            case 25: return <ContextLensTab />;
-            case 26: return <OverviewTab />;
-            case 27: return <StoryModeTab />;
-            case 28: return <ValueTab />;
-            default: return <ExplainTab />;
-        }
-    };
+    const TAB_REGISTRY: Array<{ key: string; label: string; render: () => React.ReactNode }> = [
+      { key: 'explain', label: 'Explain', render: () => <ExplainTab /> },
+      { key: 'analysis', label: 'Analysis', render: () => <AnalysisTab /> },
+      { key: 'atoms', label: 'Atoms', render: () => <AtomsTab /> },
+      { key: 'pipeline', label: 'Pipeline', render: () => <PipelineTab /> },
+      { key: 'pipeline-flow', label: 'Pipeline Flow', render: () => <PipelineFlowTab /> },
+      { key: 'validator', label: 'Validator', render: () => <ValidatorTab /> },
+      { key: 'propagation', label: 'Propagation', render: () => <PropagationTab /> },
+      { key: 'cast', label: 'Cast', render: () => <CastTab /> },
+      { key: 'threat', label: 'Threat', render: () => <ThreatTab /> },
+      { key: 'tom', label: 'ToM', render: () => <ToMTab /> },
+      { key: 'mind', label: 'CtxMind', render: () => <MindTab /> },
+      { key: 'emotions', label: 'Emotions', render: () => <EmotionsTab /> },
+      { key: 'coverage', label: 'Coverage', render: () => <CoverageTab /> },
+      { key: 'possibilities', label: 'Possibilities', render: () => <PossibilitiesTab /> },
+      { key: 'decision', label: 'Decision', render: () => <DecisionTab /> },
+      { key: 'decision-graph', label: 'Decision Graph', render: () => <DecisionGraphTab /> },
+      { key: 'goal-graph', label: 'Goal Graph', render: () => (
+        <GoalActionGraphView
+          atoms={currentAtoms}
+          decision={decision}
+          selfId={focusSelfId ?? ''}
+          onJumpToAtomId={jumpToAtomId}
+        />
+      )},
+      { key: 'access', label: 'Access', render: () => <AccessTab /> },
+      { key: 'diff', label: 'Diff', render: () => <DiffTab /> },
+      { key: 'emotion-explain', label: 'EmotionExplain', render: () => <EmotionExplainTab /> },
+      { key: 'debug', label: 'Debug', render: () => <DebugTab /> },
+      { key: 'orchestrator', label: 'Orchestrator', render: () => <OrchestratorTab /> },
+      { key: 'simulator', label: 'Simulation', render: () => <SimulatorTab /> },
+      { key: 'tuning', label: 'Tuning', render: () => <TuningTab /> },
+      { key: 'tests', label: 'Tests', render: () => <GoalLabTestsPanel selfId={focusId || ''} actorLabels={actorLabels as any} /> },
+      { key: 'context-lens', label: 'Context Lens', render: () => <ContextLensTab /> },
+      { key: 'overview', label: 'Overview', render: () => <OverviewTab /> },
+      { key: 'story', label: 'Story', render: () => <StoryModeTab /> },
+      { key: 'value', label: 'Value', render: () => <ValueTab /> },
+    ];
 
-  const tabsList = [
-    'Explain', 'Analysis', 'Atoms',
-    'Pipeline', 'Pipeline Flow', 'Validator',
-    'Propagation', 'Cast', 'Threat', 'ToM', 'CtxMind', 'Emotions', 'Coverage',
-    'Possibilities', 'Decision', 'Decision Graph', 'Goal Graph', 'Access', 'Diff',
-    'EmotionExplain', 'Debug', 'Orchestrator', 'Simulation', 'Tuning', 'Tests',
-    'Context Lens', 'Overview', 'Story', 'Value'
-  ];
+    const renderContent = () => {
+    const activeEntry = TAB_REGISTRY.find(t => t.key === activeTabKey) || TAB_REGISTRY[0];
+    return activeEntry.render();
+    };
 
   const focusId = (context as any)?.agentId;
   const focusLabel = (focusId && actorLabels?.[focusId]) ? actorLabels[focusId] : focusId;
@@ -1618,8 +1605,8 @@ export const GoalLabResults: React.FC<Props> = ({
                 <div className="flex-1 flex flex-col overflow-hidden bg-canon-bg">
                     <div className="border-b border-canon-border flex-shrink-0 flex items-center justify-between gap-2 px-2">
                         <div className="flex overflow-x-auto custom-scrollbar no-scrollbar">
-                            {arr(tabsList).map((label, index) => (
-                                <button key={label} onClick={() => setActiveTabIndex(index)} className={`px-4 py-2 text-sm font-medium transition-colors whitespace-nowrap ${activeTabIndex === index ? 'border-b-2 border-canon-accent text-canon-accent' : 'text-canon-text-light hover:text-white'}`}>
+                            {TAB_REGISTRY.map(({ key, label }) => (
+                                <button key={key} onClick={() => setActiveTabKey(key)} className={`px-4 py-2 text-sm font-medium transition-colors whitespace-nowrap ${activeTabKey === key ? 'border-b-2 border-canon-accent text-canon-accent' : 'text-canon-text-light hover:text-white'}`}>
                                 {label}
                                 </button>
                             ))}
