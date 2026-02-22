@@ -156,11 +156,13 @@ export const GoalLabShell: React.FC = () => {
   const errorMsg = world.fatalError || engine.error;
 
   return (
-    <div className="flex h-full min-h-0 bg-[#020617] text-slate-300 overflow-hidden font-mono">
+    <div className="flex h-full min-h-0 flex-col bg-[#020617] text-slate-300 overflow-hidden font-mono">
 
-      {/* === HEADER BAR === */}
-      <div className="absolute top-0 left-0 right-0 z-10 border-b border-slate-800 bg-slate-900/80 backdrop-blur-sm">
-        <div className="px-4 py-2 flex items-center justify-between gap-4">
+      {/* === HEADER BAR ===
+          Keep this in normal document flow (not absolute) so on small screens
+          with wrapped controls the content below is never clipped. */}
+      <div className="z-10 border-b border-slate-800 bg-slate-900/80 backdrop-blur-sm">
+        <div className="px-3 md:px-4 py-2 flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
             <div className="text-[10px] font-bold text-cyan-500 uppercase tracking-widest">GoalLab</div>
             <div className="text-[11px] text-slate-400 truncate">
@@ -172,15 +174,16 @@ export const GoalLabShell: React.FC = () => {
         {uiMode === 'front' && <FrontTabBar current={frontTab} onChange={setFrontTab} />}
       </div>
 
-      {/* === ERROR BANNER === */}
+      {/* === ERROR BANNER ===
+          Also in flow, so it reserves space and does not overlap console content. */}
       {errorMsg && (
-        <div className="absolute top-14 left-0 right-0 z-20 bg-red-900/80 border-b border-red-700 px-4 py-2 text-[11px] text-red-200">
+        <div className="z-20 bg-red-900/80 border-b border-red-700 px-3 md:px-4 py-2 text-[11px] text-red-200">
           {errorMsg}
         </div>
       )}
 
       {/* === MAIN CONTENT === */}
-      <div className={`flex-1 flex min-h-0 ${uiMode === 'front' ? 'pt-[72px]' : 'pt-10'} ${errorMsg ? 'mt-8' : ''}`}>
+      <div className="flex-1 flex min-h-0">
 
         {/* CENTER */}
         <main className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
@@ -202,7 +205,8 @@ export const GoalLabShell: React.FC = () => {
             )}
 
             {uiMode === 'console' && (
-              <div className="flex-1 min-h-0 overflow-hidden p-3">
+              // Console gets tighter mobile paddings and internal scroll safety.
+              <div className="flex-1 min-h-0 overflow-auto p-2 md:p-3">
                 <GoalLabConsoleResults
                   snapshot={engine.snapshot}
                   frame={engine.pipelineFrame}
