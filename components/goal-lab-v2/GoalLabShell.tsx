@@ -1,314 +1,534 @@
 /**
- * GoalLabShell — clean layout for GoalLab.
+ * GoalLabShell v2 — full three-panel layout.
  *
- * Replaces GoalSandbox.tsx (3325 lines) with a thin layout shell (~200 lines).
- * All state lives in GoalLabContext. All computation in hooks.
- * This component only does: layout + tab routing + lazy panel loading.
+ * LEFT   — Scene setup controls (cast, location, scenario, events)
+ * CENTER — GoalLabResults (full internal TAB_REGISTRY)
+ * RIGHT  — Causal chain inspector (pipeline -> atoms -> channels -> drivers -> goals -> decision)
+ *
+ * Notes:
+ * - Shell owns layout only; heavy data rendering remains delegated to existing panels.
+ * - All optional/partial data is guarded to keep UI crash-safe.
  */
 
-import React, { Suspense, lazy, useMemo } from 'react';
+import React, { Suspense, lazy, useMemo, useState } from 'react';
 import { useGoalLab } from '../../contexts/GoalLabContext';
-import type { UiMode, FrontTab } from '../../contexts/GoalLabContext';
 import { allLocations } from '../../data/locations';
+import { allScenarioDefs } from '../../data/scenarios/index';
+import { eventRegistry } from '../../data/events-registry';
+import { SCENE_PRESETS } from '../../lib/scene/presets';
+import type { ContextAtom } from '../../lib/context/v2/types';
 
 // ---------------------------------------------------------------------------
-// Lazy panels — code-split so inactive tabs don't load
+// Lazy panels
 // ---------------------------------------------------------------------------
 
 const GoalLabResults = lazy(() =>
   import('../goal-lab/GoalLabResults').then(m => ({ default: m.GoalLabResults }))
 );
-const GoalLabConsoleResults = lazy(() =>
-  import('../goal-lab/GoalLabConsoleResults').then(m => ({ default: m.GoalLabConsoleResults }))
-);
-const GoalLabControls = lazy(() =>
-  import('../goal-lab/GoalLabControls').then(m => ({ default: m.GoalLabControls }))
-);
-const DoNowCard = lazy(() =>
-  import('../goal-lab/DoNowCard').then(m => ({ default: m.DoNowCard }))
-);
-const EasyModePanel = lazy(() =>
-  import('../goal-lab/EasyModePanel').then(m => ({ default: m.EasyModePanel }))
-);
-const PomdpConsolePanel = lazy(() =>
-  import('../goal-lab/PomdpConsolePanel').then(m => ({ default: m.PomdpConsolePanel }))
-);
-const ToMPanel = lazy(() =>
-  import('../goal-lab/ToMPanel').then(m => ({ default: m.ToMPanel }))
-);
-const CastComparePanel = lazy(() =>
-  import('../goal-lab/CastComparePanel').then(m => ({ default: m.CastComparePanel }))
-);
-const CurveStudio = lazy(() =>
-  import('../goal-lab/CurveStudio').then(m => ({ default: m.CurveStudio }))
-);
-const PipelinePanel = lazy(() =>
-  import('../goal-lab/PipelinePanel').then(m => ({ default: m.PipelinePanel }))
-);
-const CurvesPanel = lazy(() =>
-  import('../goal-lab/CurvesPanel').then(m => ({ default: m.CurvesPanel }))
-);
 
 // ---------------------------------------------------------------------------
-// Loading fallback
+// Loaders
 // ---------------------------------------------------------------------------
 
-const PanelLoader: React.FC = () => (
-  <div className="flex items-center justify-center h-full min-h-[120px]">
-    <div className="text-[10px] text-slate-500 uppercase tracking-widest animate-pulse">Loading…</div>
+const PanelLoader = () => (
+  <div className="flex items-center justify-center h-full min-h-[80px]">
+    <span className="text-[9px] text-slate-600 uppercase tracking-[0.2em] animate-pulse">…</span>
   </div>
 );
 
 // ---------------------------------------------------------------------------
-// Mode switcher
+// Compact scene setup (inline, no GoalLabControls dependency for MVP)
 // ---------------------------------------------------------------------------
 
-const ModeSwitcher: React.FC<{ current: UiMode; onChange: (m: UiMode) => void }> = ({ current, onChange }) => {
-  const modes: UiMode[] = ['easy', 'front', 'debug', 'console'];
+const SceneSetup: React.FC = () => {
+  const ctx = useGoalLab();
+  const { world, allCharacters, sceneControl, setSceneControl, selectedEventIds, toggleEvent } = ctx;
+  const [collapsed, setCollapsed] = useState({ chars: false, loc: false, scene: false, events: true });
+
+  const toggle = (k: keyof typeof collapsed) => setCollapsed(prev => ({ ...prev, [k]: !prev[k] }));
+
+  const scenarioKeys = Object.keys(allScenarioDefs || {});
+  const scenePresetKeys = Object.keys(SCENE_PRESETS || {});
+  const events = eventRegistry.getAll() || [];
+  const participants = Array.from(world.sceneParticipants || []);
+
   return (
-    <div className="flex gap-1.5">
-      {modes.map(m => (
-        <button
-          key={m}
-          onClick={() => onChange(m)}
-          className={`px-3 py-1 text-[10px] rounded uppercase tracking-wider transition-all ${
-            current === m
-              ? 'bg-cyan-600/30 text-cyan-200 border border-cyan-500/40'
-              : 'bg-slate-800/60 text-slate-400 border border-slate-700/40 hover:text-slate-200 hover:border-slate-600'
-          }`}
+    <div className="space-y-0.5 text-[10px]">
+      {/* Characters */}
+      <Section title="Characters" open={!collapsed.chars} toggle={() => toggle('chars')}>
+        <div className="space-y-1">
+          {(allCharacters || []).map((ch: any) => {
+            const isIn = participants.includes(ch.entityId);
+            const isPerspective = world.perspectiveId === ch.entityId;
+            return (
+              <div key={ch.entityId} className="flex items-center gap-1.5 group">
+                <button
+                  onClick={() => (isIn ? world.removeParticipant(ch.entityId) : world.addParticipant(ch.entityId))}
+                  className={`w-3.5 h-3.5 rounded border flex-shrink-0 flex items-center justify-center transition ${
+                    isIn
+                      ? 'bg-cyan-600/40 border-cyan-500/60 text-cyan-200'
+                      : 'border-slate-700 text-transparent hover:border-slate-500'
+                  }`}
+                >
+                  {isIn && <span className="text-[7px]">✓</span>}
+                </button>
+                <button
+                  onClick={() => world.setPerspectiveAgentId(ch.entityId)}
+                  className={`flex-1 text-left truncate transition ${
+                    isPerspective ? 'text-cyan-300 font-bold' : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                  title={isPerspective ? 'Current perspective' : 'Set as perspective'}
+                >
+                  {isPerspective && <span className="text-cyan-500 mr-1">◉</span>}
+                  {ch.title || ch.entityId}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+        <div className="mt-1.5 text-[9px] text-slate-600">Click name → perspective · Checkbox → in scene</div>
+      </Section>
+
+      {/* Location */}
+      <Section title="Location" open={!collapsed.loc} toggle={() => toggle('loc')}>
+        <select
+          value={world.selectedLocationId}
+          onChange={e => {
+            world.setSelectedLocationId(e.target.value);
+            world.setLocationMode('preset');
+          }}
+          className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-[10px] text-slate-300"
         >
-          {m}
+          <option value="">— none —</option>
+          {(allLocations || []).map((loc: any) => (
+            <option key={loc.entityId} value={loc.entityId}>
+              {loc.title}
+            </option>
+          ))}
+        </select>
+      </Section>
+
+      {/* Scenario */}
+      <Section title="Scenario" open={!collapsed.scene} toggle={() => toggle('scene')}>
+        <select
+          value={world.activeScenarioId}
+          onChange={e => world.setActiveScenarioId(e.target.value)}
+          className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-[10px] text-slate-300 mb-1.5"
+        >
+          {scenarioKeys.map(k => (
+            <option key={k} value={k}>
+              {allScenarioDefs[k]?.title || k}
+            </option>
+          ))}
+        </select>
+
+        <div className="text-[9px] text-slate-500 mt-1">Scene preset</div>
+        <select
+          value={sceneControl?.presetId || 'safe_hub'}
+          onChange={e => setSceneControl({ ...sceneControl, presetId: e.target.value })}
+          className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-[10px] text-slate-300"
+        >
+          {scenePresetKeys.map(k => (
+            <option key={k} value={k}>
+              {SCENE_PRESETS[k]?.title || k}
+            </option>
+          ))}
+        </select>
+
+        <button
+          onClick={world.forceRebuild}
+          className="mt-2 w-full py-1 bg-cyan-700/30 border border-cyan-600/40 rounded text-cyan-300 hover:bg-cyan-700/50 transition text-[9px] uppercase tracking-wider"
+        >
+          Rebuild World
         </button>
-      ))}
+      </Section>
+
+      {/* Events */}
+      <Section title={`Events (${selectedEventIds.size})`} open={!collapsed.events} toggle={() => toggle('events')}>
+        {events.length === 0 ? (
+          <div className="text-slate-600 italic">No events registered</div>
+        ) : (
+          <div className="space-y-1 max-h-[120px] overflow-y-auto custom-scrollbar">
+            {events.map((ev: any) => (
+              <label key={ev.id} className="flex items-center gap-1.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={selectedEventIds.has(ev.id)}
+                  onChange={() => toggleEvent(ev.id)}
+                  className="w-3 h-3 rounded accent-cyan-500"
+                />
+                <span className="truncate text-slate-400">{ev.title || ev.id}</span>
+              </label>
+            ))}
+          </div>
+        )}
+      </Section>
     </div>
   );
 };
 
 // ---------------------------------------------------------------------------
-// Front-mode tab bar
+// Causal Chain Inspector (RIGHT panel)
 // ---------------------------------------------------------------------------
 
-const FRONT_TABS: Array<{ key: FrontTab; label: string }> = [
-  { key: 'graph', label: 'Graph' },
-  { key: 'situation', label: 'Situation' },
-  { key: 'metrics', label: 'Metrics' },
-  { key: 'affects', label: 'Affects' },
-  { key: 'curves', label: 'Curves' },
-  { key: 'tests', label: 'Tests' },
-  { key: 'report', label: 'Report' },
-  { key: 'debug', label: 'Debug' },
-];
+const CausalChain: React.FC = () => {
+  const { engine } = useGoalLab();
 
-const FrontTabBar: React.FC<{ current: FrontTab; onChange: (t: FrontTab) => void }> = ({ current, onChange }) => (
-  <div className="flex flex-wrap items-center gap-1.5 px-3 pb-2">
-    {FRONT_TABS.map(({ key, label }) => (
-      <button
-        key={key}
-        onClick={() => onChange(key)}
-        className={`px-3 py-1 text-[10px] rounded uppercase border transition-all ${
-          current === key
-            ? 'bg-cyan-600/25 text-cyan-200 border-cyan-500/40'
-            : 'bg-black/10 text-slate-300 border-slate-700/60 hover:border-slate-500'
-        }`}
-      >
-        {label}
-      </button>
-    ))}
+  const stages = useMemo(() => {
+    const raw = (engine.pipelineV1 as any)?.stages;
+    if (!Array.isArray(raw)) return [];
+
+    return raw.map((s: any, i: number) => ({
+      id: s?.stage || s?.id || `S${i}`,
+      label: s?.title || s?.label || s?.stage || `S${i}`,
+      atomCount: s?.atomCount || (Array.isArray(s?.full) ? s.full.length : 0),
+      addedCount: Array.isArray(s?.added) ? s.added.length : 0,
+      changedCount: Array.isArray(s?.changed) ? s.changed.length : 0,
+    }));
+  }, [engine.pipelineV1]);
+
+  const atomCategories = useMemo(() => {
+    const atoms: ContextAtom[] = engine.passportAtoms || [];
+    const cats: Record<string, { count: number; topMag: number; examples: string[] }> = {};
+
+    for (const atom of atoms) {
+      const id = String((atom as any).id || '');
+      const ns = id.split(':')[0] || 'unknown';
+      if (!cats[ns]) cats[ns] = { count: 0, topMag: 0, examples: [] };
+
+      cats[ns].count += 1;
+      const mag = Number((atom as any).magnitude ?? 0);
+      if (mag > cats[ns].topMag) cats[ns].topMag = mag;
+      if (cats[ns].examples.length < 2) cats[ns].examples.push(id);
+    }
+
+    return Object.entries(cats)
+      .sort((a, b) => b[1].count - a[1].count)
+      .slice(0, 15);
+  }, [engine.passportAtoms]);
+
+  const energyChannels = useMemo(() => {
+    const atoms: any[] = engine.passportAtoms || [];
+    const channels: Array<{ name: string; raw: number; felt: number }> = [];
+    const prefixes = ['threat', 'norm', 'attachment', 'curiosity', 'status', 'autonomy'];
+
+    for (const channelName of prefixes) {
+      const rawAtom = atoms.find(a => String(a?.id).startsWith(`ener:raw:${channelName}:`));
+      const feltAtom = atoms.find(a => String(a?.id).startsWith(`ener:felt:${channelName}:`));
+      if (rawAtom || feltAtom) {
+        channels.push({
+          name: channelName,
+          raw: Number(rawAtom?.magnitude ?? 0),
+          felt: Number(feltAtom?.magnitude ?? 0),
+        });
+      }
+    }
+
+    return channels;
+  }, [engine.passportAtoms]);
+
+  const drivers = useMemo(() => {
+    const atoms: any[] = engine.passportAtoms || [];
+    return atoms
+      .filter(a => String(a?.id).startsWith('drv:'))
+      .map(a => ({ id: String(a.id), mag: Number(a.magnitude ?? 0), label: String(a.label || a.id) }))
+      .sort((a, b) => b.mag - a.mag)
+      .slice(0, 8);
+  }, [engine.passportAtoms]);
+
+  const decision = useMemo(() => {
+    const d = (engine.snapshotV1 as any)?.decision;
+    if (!d) return null;
+    const ranked = Array.isArray(d.ranked) ? d.ranked : Array.isArray(d) ? d : [];
+
+    return ranked.slice(0, 5).map((r: any) => ({
+      label: r?.action?.label || r?.action?.id || r?.label || '?',
+      q: Number(r?.q ?? r?.score ?? 0),
+    }));
+  }, [engine.snapshotV1]);
+
+  const topGoals = useMemo(() => {
+    return (engine.goals || []).slice(0, 6).map((g: any) => ({
+      id: g.goalId || g.id || '?',
+      label: g.label || g.goalId || g.id,
+      prob: Number(g.probability ?? 0),
+    }));
+  }, [engine.goals]);
+
+  return (
+    <div className="space-y-2 text-[10px]">
+      <ChainSection title="Pipeline Stages" count={stages.length}>
+        <div className="space-y-px">
+          {stages.map(s => {
+            const isActive = engine.pipelineStageId === s.id;
+            return (
+              <button
+                key={s.id}
+                onClick={() => engine.setPipelineStageId(s.id)}
+                className={`w-full text-left px-1.5 py-0.5 rounded flex items-center gap-1.5 transition ${
+                  isActive
+                    ? 'bg-cyan-900/40 text-cyan-300'
+                    : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800/40'
+                }`}
+              >
+                <span className="font-mono text-[8px] w-8 shrink-0 text-right opacity-60">{s.id}</span>
+                <span className="flex-1 truncate">{s.label}</span>
+                <span className="text-[8px] opacity-50">{s.atomCount}a</span>
+                {s.addedCount > 0 && <span className="text-green-500 text-[8px]">+{s.addedCount}</span>}
+                {s.changedCount > 0 && <span className="text-amber-500 text-[8px]">~{s.changedCount}</span>}
+              </button>
+            );
+          })}
+        </div>
+      </ChainSection>
+
+      <Arrow />
+
+      <ChainSection title="Atoms by Namespace" count={atomCategories.reduce((sum, [, v]) => sum + v.count, 0)}>
+        <div className="space-y-0.5">
+          {atomCategories.map(([ns, data]) => (
+            <div key={ns} className="flex items-center gap-1.5">
+              <span className="font-mono w-12 text-right text-cyan-600 shrink-0">{ns}</span>
+              <div className="flex-1 h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                <div className="h-full bg-cyan-600/60 rounded-full" style={{ width: `${Math.min(100, data.count / 2)}%` }} />
+              </div>
+              <span className="text-slate-500 w-6 text-right">{data.count}</span>
+            </div>
+          ))}
+        </div>
+      </ChainSection>
+
+      <Arrow />
+
+      <ChainSection title="Energy Channels" count={energyChannels.length}>
+        {energyChannels.length === 0 ? (
+          <div className="text-slate-600 italic">No energy atoms yet</div>
+        ) : (
+          <div className="space-y-1">
+            {energyChannels.map(ch => (
+              <div key={ch.name} className="flex items-center gap-1.5">
+                <span className="w-16 text-right text-slate-400 shrink-0">{ch.name}</span>
+                <div className="flex-1 flex gap-0.5">
+                  <Bar value={ch.raw} color="bg-amber-600/60" label="raw" />
+                  <Bar value={ch.felt} color="bg-rose-500/60" label="felt" />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </ChainSection>
+
+      <Arrow />
+
+      <ChainSection title="Drivers" count={drivers.length}>
+        {drivers.map(d => (
+          <div key={d.id} className="flex items-center gap-1.5">
+            <span className="flex-1 truncate text-slate-400">{d.label}</span>
+            <MagBadge value={d.mag} />
+          </div>
+        ))}
+      </ChainSection>
+
+      <Arrow />
+
+      <ChainSection title="Active Goals" count={topGoals.length}>
+        {topGoals.map(g => (
+          <div key={g.id} className="flex items-center gap-1.5">
+            <span className="flex-1 truncate text-slate-300">{g.label}</span>
+            <span className="text-[9px] font-mono text-amber-400">{(g.prob * 100).toFixed(0)}%</span>
+          </div>
+        ))}
+      </ChainSection>
+
+      <Arrow />
+
+      <ChainSection title="Decision (ranked actions)">
+        {decision ? (
+          <div className="space-y-0.5">
+            {decision.map((d: any, i: number) => (
+              <div
+                key={`${d.label}-${i}`}
+                className={`flex items-center gap-1.5 ${i === 0 ? 'text-emerald-300 font-bold' : 'text-slate-400'}`}
+              >
+                <span className="w-3 text-right text-[8px] opacity-50">{i + 1}</span>
+                <span className="flex-1 truncate">{d.label}</span>
+                <span className="text-[9px] font-mono">{d.q.toFixed(2)}</span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="text-slate-600 italic">No decision yet</div>
+        )}
+      </ChainSection>
+    </div>
+  );
+};
+
+// ---------------------------------------------------------------------------
+// Micro-components
+// ---------------------------------------------------------------------------
+
+const Section: React.FC<{ title: string; open: boolean; toggle: () => void; children: React.ReactNode }> = ({
+  title,
+  open,
+  toggle,
+  children,
+}) => (
+  <div className="border border-slate-800/60 rounded bg-slate-900/30">
+    <button
+      onClick={toggle}
+      className="w-full px-2 py-1.5 flex items-center justify-between text-[10px] font-bold text-slate-400 uppercase tracking-wider hover:text-slate-200 transition"
+    >
+      <span>{title}</span>
+      <span className="text-[8px] opacity-50">{open ? '▼' : '▶'}</span>
+    </button>
+    {open && <div className="px-2 pb-2">{children}</div>}
   </div>
 );
 
+const ChainSection: React.FC<{ title: string; count?: number; children: React.ReactNode }> = ({
+  title,
+  count,
+  children,
+}) => (
+  <div className="border border-slate-800/50 rounded bg-slate-950/60 px-2 py-1.5">
+    <div className="text-[9px] font-bold text-slate-500 uppercase tracking-wider mb-1 flex items-center justify-between">
+      <span>{title}</span>
+      {count !== undefined && <span className="text-cyan-600 font-mono">{count}</span>}
+    </div>
+    {children}
+  </div>
+);
+
+const Arrow = () => (
+  <div className="flex justify-center py-0.5">
+    <div className="w-px h-3 bg-gradient-to-b from-cyan-600/40 to-cyan-600/10" />
+    <div className="absolute mt-2 w-0 h-0 border-l-[3px] border-r-[3px] border-t-[4px] border-l-transparent border-r-transparent border-t-cyan-600/30" />
+  </div>
+);
+
+const Bar: React.FC<{ value: number; color: string; label: string }> = ({ value, color, label }) => (
+  <div
+    className="flex-1 relative h-3 bg-slate-800/80 rounded-sm overflow-hidden group"
+    title={`${label}: ${value.toFixed(2)}`}
+  >
+    <div className={`h-full ${color} rounded-sm`} style={{ width: `${Math.min(100, value * 100)}%` }} />
+    <span className="absolute inset-0 flex items-center justify-center text-[7px] text-white/40 opacity-0 group-hover:opacity-100 transition">
+      {value.toFixed(2)}
+    </span>
+  </div>
+);
+
+const MagBadge: React.FC<{ value: number }> = ({ value }) => {
+  const color = value > 0.6 ? 'text-rose-400' : value > 0.3 ? 'text-amber-400' : 'text-slate-500';
+  return <span className={`text-[9px] font-mono ${color}`}>{value.toFixed(2)}</span>;
+};
+
+const PanelToggle: React.FC<{ label: string; open: boolean; onClick: () => void }> = ({ label, open, onClick }) => (
+  <button
+    onClick={onClick}
+    className={`px-2 py-0.5 rounded text-[9px] uppercase tracking-wider border transition ${
+      open
+        ? 'bg-cyan-900/20 text-cyan-400 border-cyan-700/40'
+        : 'bg-slate-800/40 text-slate-500 border-slate-700/40 hover:text-slate-300'
+    }`}
+  >
+    {label}
+  </button>
+);
+
 // ---------------------------------------------------------------------------
-// Shell
+// Main Shell
 // ---------------------------------------------------------------------------
 
 export const GoalLabShell: React.FC = () => {
   const ctx = useGoalLab();
-  const {
-    world, engine, uiMode, setUiMode, frontTab, setFrontTab,
-    bottomTab, setBottomTab, actorLabels,
-  } = ctx;
+  const { world, engine, actorLabels } = ctx;
+
+  const [leftOpen, setLeftOpen] = useState(true);
+  const [rightOpen, setRightOpen] = useState(true);
 
   const focusId = world.perspectiveId || world.selectedAgentId;
   const focusLabel = actorLabels[focusId] || focusId;
 
-  // Shared props for GoalLabResults (used in both front and debug modes)
-  const resultsProps = {
-    context: engine.snapshot,
-    frame: engine.pipelineFrame,
-    goalScores: engine.goals,
-    situation: engine.situation,
-    goalPreview: engine.goalPreview,
-    actorLabels,
-    contextualMind: engine.contextualMind,
-    locationScores: engine.locationScores,
-    tomScores: engine.tomScores,
-    atomDiff: engine.atomDiff,
-    snapshotV1: engine.snapshotV1,
-    pipelineV1: engine.pipelineV1,
-    perspectiveAgentId: focusId,
-    manualAtoms: ctx.manualAtoms,
-    onChangeManualAtoms: ctx.setManualAtoms,
-    pipelineStageId: engine.pipelineStageId,
-    onChangePipelineStageId: engine.setPipelineStageId,
-  } as const;
+  const resultsProps = useMemo(
+    () => ({
+      context: engine.snapshot,
+      frame: engine.pipelineFrame,
+      goalScores: engine.goals,
+      situation: engine.situation,
+      goalPreview: engine.goalPreview,
+      actorLabels,
+      contextualMind: engine.contextualMind,
+      locationScores: engine.locationScores,
+      tomScores: engine.tomScores,
+      atomDiff: engine.atomDiff,
+      snapshotV1: engine.snapshotV1,
+      pipelineV1: engine.pipelineV1,
+      perspectiveAgentId: focusId,
+      manualAtoms: ctx.manualAtoms,
+      onChangeManualAtoms: ctx.setManualAtoms,
+      pipelineStageId: engine.pipelineStageId,
+      onChangePipelineStageId: engine.setPipelineStageId,
+      sceneDump: engine.sceneDump,
+      onDownloadScene: engine.downloadScene,
+      castRows: engine.castRows,
+      worldState: world.worldState,
+    }),
+    [engine, actorLabels, focusId, ctx.manualAtoms, ctx.setManualAtoms, world.worldState]
+  );
 
-  // --- Error banner ---
   const errorMsg = world.fatalError || engine.error;
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-[#020617] text-slate-300 overflow-hidden font-mono">
-
-      {/* === HEADER BAR ===
-          Keep this in normal document flow (not absolute) so on small screens
-          with wrapped controls the content below is never clipped. */}
-      <div className="z-10 border-b border-slate-800 bg-slate-900/80 backdrop-blur-sm">
-        <div className="px-3 md:px-4 py-2 flex flex-wrap items-center justify-between gap-3">
-          <div className="min-w-0">
-            <div className="text-[10px] font-bold text-cyan-500 uppercase tracking-widest">GoalLab</div>
-            <div className="text-[11px] text-slate-400 truncate">
-              {focusLabel && <>Perspective: <span className="text-cyan-300 font-semibold">{focusLabel}</span></>}
-            </div>
-          </div>
-          <ModeSwitcher current={uiMode} onChange={setUiMode} />
+      <header className="shrink-0 border-b border-slate-800 bg-slate-900/80 backdrop-blur-sm px-3 py-1.5 flex items-center justify-between gap-3 z-10">
+        <div className="flex items-center gap-3 min-w-0">
+          <span className="text-[10px] font-bold text-cyan-500 uppercase tracking-widest shrink-0">GoalLab</span>
+          {focusLabel && (
+            <span className="text-[10px] text-slate-500 truncate">
+              ◉ <span className="text-cyan-300 font-semibold">{focusLabel}</span>
+              <span className="ml-2 text-slate-600">{world.participantIds.length} in scene</span>
+            </span>
+          )}
         </div>
-        {uiMode === 'front' && <FrontTabBar current={frontTab} onChange={setFrontTab} />}
-      </div>
+        <div className="flex items-center gap-1.5 shrink-0">
+          <PanelToggle label="Setup" open={leftOpen} onClick={() => setLeftOpen(prev => !prev)} />
+          <PanelToggle label="Chain" open={rightOpen} onClick={() => setRightOpen(prev => !prev)} />
+        </div>
+      </header>
 
-      {/* === ERROR BANNER ===
-          Also in flow, so it reserves space and does not overlap console content. */}
       {errorMsg && (
-        <div className="z-20 bg-red-900/80 border-b border-red-700 px-3 md:px-4 py-2 text-[11px] text-red-200">
-          {errorMsg}
-        </div>
+        <div className="shrink-0 bg-red-900/80 border-b border-red-700 px-3 py-1.5 text-[10px] text-red-200">{errorMsg}</div>
       )}
 
-      {/* === MAIN CONTENT === */}
-      <div className="flex-1 flex min-h-0">
+      <div className="flex-1 flex min-h-0 overflow-hidden">
+        {leftOpen && (
+          <aside className="w-[240px] shrink-0 border-r border-slate-800 bg-slate-950/50 flex flex-col min-h-0">
+            <div className="px-2 py-1.5 border-b border-slate-800/60 text-[9px] font-bold text-slate-500 uppercase tracking-widest">
+              Scene Setup
+            </div>
+            <div className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1">
+              <SceneSetup />
+            </div>
+          </aside>
+        )}
 
-        {/* CENTER */}
         <main className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
           <Suspense fallback={<PanelLoader />}>
-            {uiMode === 'easy' && (
-              <EasyModePanel
-                pipelineV1={engine.pomdpPipelineV1}
-                agentLabel={focusLabel}
-                onSwitchToDebug={() => setUiMode('debug')}
-                onSwitchToConsole={() => setUiMode('console')}
-              />
-            )}
-
-            {uiMode === 'front' && (
-              <div className="flex-1 overflow-y-auto custom-scrollbar p-3">
-                {/* Front tab content is rendered by GoalLabResults internally via TAB_REGISTRY */}
-                <GoalLabResults {...resultsProps} />
-              </div>
-            )}
-
-            {uiMode === 'console' && (
-              // Console gets tighter mobile paddings and internal scroll safety.
-              <div className="flex-1 min-h-0 overflow-auto p-2 md:p-3">
-                <GoalLabConsoleResults
-                  snapshot={engine.snapshot}
-                  frame={engine.pipelineFrame}
-                  situation={engine.situation}
-                  snapshotV1={engine.snapshotV1}
-                  pipelineV1={engine.pipelineV1}
-                  focusId={focusId}
-                  pomdpRun={engine.pomdpRun}
-                  pomdpRawV1={engine.pomdpPipelineV1}
-                  observeLiteParams={ctx.observeLiteParams}
-                  onObserveLiteParamsChange={ctx.setObserveLiteParams}
-                  sceneDump={engine.sceneDump}
-                  onDownloadScene={engine.downloadScene}
-                  onImportScene={() => {}}
-                  activeScenarioId={world.activeScenarioId}
-                  onSetActiveScenarioId={world.setActiveScenarioId}
-                  runSeed={Number(world.simSettings.runSeed) || 0}
-                  onSetRunSeed={(n) => world.setSimSettings({ runSeed: String(n) })}
-                  onApplySimSettings={world.applySimSettings}
-                  sceneParticipants={Array.from(world.sceneParticipants)}
-                  onSetSceneParticipants={(ids) => world.setSceneParticipants(new Set(ids))}
-                  sceneControl={ctx.sceneControl}
-                  onSetSceneControl={ctx.setSceneControl}
-                  onUpdateAgentVitals={world.updateAgentVitals}
-                  manualAtoms={ctx.manualAtoms}
-                  onChangeManualAtoms={ctx.setManualAtoms}
-                  pipelineStageId={engine.pipelineStageId}
-                  onChangePipelineStageId={engine.setPipelineStageId}
-                  onExportPipelineStage={() => {}}
-                  onExportPipelineAll={() => {}}
-                  goalScores={engine.goals}
-                  goalPreview={engine.goalPreview}
-                  actorLabels={actorLabels}
-                  contextualMind={engine.contextualMind}
-                  locationScores={engine.locationScores}
-                  tomScores={engine.tomScores}
-                  atomDiff={engine.atomDiff}
-                  characters={ctx.allCharacters}
-                  locations={allLocations as any}
-                  selectedAgentId={world.selectedAgentId}
-                  onSelectAgentId={world.setSelectedAgentId}
-                  locationMode={world.locationMode}
-                  onSetLocationMode={world.setLocationMode}
-                  selectedLocationId={world.selectedLocationId}
-                  onSelectLocationId={world.setSelectedLocationId}
-                  agents={world.worldState?.agents}
-                  onSetAgentLocation={world.setAgentLocation}
-                  onSetAgentPosition={world.setAgentPosition}
-                  onMoveAllToLocation={world.moveAllToLocation}
-                  onRebuildWorld={world.forceRebuild}
-                />
-              </div>
-            )}
-
-            {uiMode === 'debug' && (
-              <div className="flex-1 flex flex-col min-h-0">
-                {/* Top half: results */}
-                <div className="flex-1 overflow-y-auto custom-scrollbar p-3">
-                  <GoalLabResults {...resultsProps} />
-                </div>
-                {/* Bottom panel */}
-                <div className="h-[260px] shrink-0 border-t border-slate-800 bg-slate-950 flex flex-col">
-                  <nav className="flex border-b border-slate-800 bg-slate-900/20">
-                    {(['pipeline', 'pomdp', 'tom', 'compare', 'curves'] as const).map(t => (
-                      <button
-                        key={t}
-                        onClick={() => setBottomTab(t)}
-                        className={`px-5 py-1.5 text-[10px] font-bold uppercase tracking-widest border-r border-slate-800 transition ${
-                          bottomTab === t
-                            ? 'bg-cyan-500/10 text-cyan-400 shadow-[inset_0_-2px_0_#06b6d4]'
-                            : 'text-slate-500 hover:text-slate-300'
-                        }`}
-                      >
-                        {t}
-                      </button>
-                    ))}
-                  </nav>
-                  <div className="flex-1 overflow-y-auto custom-scrollbar p-3">
-                    <Suspense fallback={<PanelLoader />}>
-                      {bottomTab === 'pipeline' && <PipelinePanel stages={[]} selectedId={engine.pipelineStageId} onSelect={engine.setPipelineStageId} />}
-                      {bottomTab === 'pomdp' && <PomdpConsolePanel run={engine.pomdpRun} rawV1={engine.pomdpPipelineV1} observeLiteParams={ctx.observeLiteParams} onObserveLiteParamsChange={ctx.setObserveLiteParams} />}
-                      {bottomTab === 'tom' && <ToMPanel atoms={engine.passportAtoms} />}
-                      {bottomTab === 'compare' && <CastComparePanel rows={engine.castRows} focusId={focusId} />}
-                      {bottomTab === 'curves' && <CurveStudio selfId={focusId} atoms={engine.passportAtoms as any} preset={world.simSettings.decisionCurvePreset as any} />}
-                    </Suspense>
-                  </div>
-                </div>
-              </div>
-            )}
+            <div className="flex-1 overflow-y-auto custom-scrollbar">
+              <GoalLabResults {...resultsProps} />
+            </div>
           </Suspense>
         </main>
 
-        {/* RIGHT SIDEBAR: DoNow + passport */}
-        {(uiMode === 'front' || uiMode === 'debug') && (
-          <aside className="w-[380px] border-l border-slate-800 bg-slate-950/50 flex flex-col shrink-0 min-h-0">
-            <div className="p-3 border-b border-slate-800 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-              Passport + Atoms
+        {rightOpen && (
+          <aside className="w-[260px] shrink-0 border-l border-slate-800 bg-slate-950/50 flex flex-col min-h-0">
+            <div className="px-2 py-1.5 border-b border-slate-800/60 text-[9px] font-bold text-slate-500 uppercase tracking-widest">
+              Causal Chain
             </div>
-            <div className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-3">
-              <Suspense fallback={<PanelLoader />}>
-                <DoNowCard decision={(engine.snapshotV1 as any)?.decision ?? null} />
-              </Suspense>
+            <div className="flex-1 overflow-y-auto custom-scrollbar p-2">
+              <CausalChain />
             </div>
           </aside>
         )}
