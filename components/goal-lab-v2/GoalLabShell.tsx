@@ -533,13 +533,10 @@ export const GoalLabShell: React.FC = () => {
       tomScores: engine.tomScores,
       atomDiff: engine.atomDiff,
       snapshotV1: engine.snapshotV1,
-      // NOTE: Do NOT pass pipelineV1 here. GoalLabResults has two code paths for pipeline:
-      // 1. pipelineV1.stages[i].atoms format (POMDP pipeline, different schema)
-      // 2. snapshotV1.meta.pipelineDeltas format (full/added/changed/removedIds)
-      // Our engine's pipelineV1 wraps pipelineDeltas but GoalLabResults tries path 1 first,
-      // expecting .atoms per stage (which doesn't exist), yielding empty pipeline.
-      // By not passing pipelineV1, GoalLabResults falls to path 2 which works correctly.
-      // pipelineV1: engine.pipelineV1, // DISABLED — see above
+      // pipelineV1 uses delta format (full/added/changed/removedIds).
+      // GoalLabResults now detects this and uses materializeStageAtoms path.
+      // Still passed for Propagation + PipelineFlow tabs.
+      pipelineV1: engine.pipelineV1,
       perspectiveAgentId: focusId,
       manualAtoms: ctx.manualAtoms,
       onChangeManualAtoms: ctx.setManualAtoms,

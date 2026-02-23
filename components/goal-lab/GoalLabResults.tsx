@@ -733,8 +733,9 @@ export const GoalLabResults: React.FC<Props> = ({
         });
 
     const pipelineStages = ((): any[] => {
-        // Prefer staged debug pipeline (pipelineV1) if provided; fallback to snapshotV1.meta.pipelineDeltas
-        if (pipelineV1 && Array.isArray((pipelineV1 as any).stages)) {
+        // Prefer staged debug pipeline (pipelineV1) if provided AND stages contain per-stage .atoms arrays.
+        // If stages use delta format (full/added/changed/removedIds) — skip to pipelineDeltas path below.
+        if (pipelineV1 && Array.isArray((pipelineV1 as any).stages) && (pipelineV1 as any).stages[0]?.atoms) {
             const frames = (pipelineV1 as any).stages as any[];
             const out: any[] = [];
             for (let i = 0; i < frames.length; i++) {
