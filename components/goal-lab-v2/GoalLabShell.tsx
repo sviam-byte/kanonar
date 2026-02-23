@@ -429,6 +429,42 @@ const MagBadge: React.FC<{ value: number }> = ({ value }) => {
 };
 
 // ---------------------------------------------------------------------------
+// Center pane: Results | Map tabs
+// ---------------------------------------------------------------------------
+
+const CenterPane: React.FC<{ resultsProps: any }> = ({ resultsProps }) => {
+  const [view, setView] = useState<'results' | 'map'>('results');
+  return (
+    <>
+      <div className="shrink-0 flex border-b border-slate-800/60 bg-slate-900/40">
+        {(['results', 'map'] as const).map(v => (
+          <button
+            key={v}
+            onClick={() => setView(v)}
+            className={`px-3 py-1 text-[9px] font-bold uppercase tracking-wider transition ${
+              view === v ? 'text-cyan-400 border-b-2 border-cyan-500 bg-cyan-900/10' : 'text-slate-600 hover:text-slate-400'
+            }`}
+          >
+            {v === 'results' ? 'Results' : 'Map & Placement'}
+          </button>
+        ))}
+      </div>
+      <div className="flex-1 overflow-hidden min-h-0">
+        {view === 'results' ? (
+          <Suspense fallback={<PanelLoader />}>
+            <div className="h-full overflow-y-auto custom-scrollbar">
+              <GoalLabResults {...resultsProps} />
+            </div>
+          </Suspense>
+        ) : (
+          <SceneMapPanel />
+        )}
+      </div>
+    </>
+  );
+};
+
+// ---------------------------------------------------------------------------
 // Right panel with tabs
 // ---------------------------------------------------------------------------
 
@@ -478,6 +514,7 @@ const RightPanel: React.FC = () => {
             selfId={focusId}
             actorLabels={actorLabels}
             participantIds={world.participantIds}
+            decision={(engine.snapshotV1 as any)?.decision}
           />
         )}
         {tab === 'decision' && (
@@ -582,17 +619,13 @@ export const GoalLabShell: React.FC = () => {
             </div>
             <div className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1">
               <SceneSetup />
-              <SceneMapPanel />
             </div>
           </aside>
         )}
 
         <main className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
-          <Suspense fallback={<PanelLoader />}>
-            <div className="flex-1 overflow-y-auto custom-scrollbar">
-              <GoalLabResults {...resultsProps} />
-            </div>
-          </Suspense>
+          {/* Center pane tabs: Results | Map */}
+          <CenterPane resultsProps={resultsProps} />
         </main>
 
         {rightOpen && <RightPanel />}
