@@ -17,6 +17,9 @@ import { allScenarioDefs } from '../../data/scenarios/index';
 import { eventRegistry } from '../../data/events-registry';
 import { SCENE_PRESETS } from '../../lib/scene/presets';
 import type { ContextAtom } from '../../lib/context/v2/types';
+import { WorldModelPanel } from './WorldModelPanel';
+import { DecisionAnatomyPanel } from './DecisionAnatomyPanel';
+import { SceneMapPanel } from './SceneMapPanel';
 
 // ---------------------------------------------------------------------------
 // Lazy panels
@@ -175,17 +178,18 @@ const CausalChain: React.FC = () => {
   const { engine } = useGoalLab();
 
   const stages = useMemo(() => {
-    const raw = (engine.pipelineV1 as any)?.stages;
+    // Use snapshotV1.meta.pipelineDeltas — the canonical delta format with full/added/changed.
+    const raw = (engine.snapshotV1 as any)?.meta?.pipelineDeltas;
     if (!Array.isArray(raw)) return [];
 
     return raw.map((s: any, i: number) => ({
-      id: s?.stage || s?.id || `S${i}`,
-      label: s?.title || s?.label || s?.stage || `S${i}`,
+      id: s?.id || `S${i}`,
+      label: s?.label || s?.id || `S${i}`,
       atomCount: s?.atomCount || (Array.isArray(s?.full) ? s.full.length : 0),
       addedCount: Array.isArray(s?.added) ? s.added.length : 0,
       changedCount: Array.isArray(s?.changed) ? s.changed.length : 0,
     }));
-  }, [engine.pipelineV1]);
+  }, [engine.snapshotV1]);
 
   const atomCategories = useMemo(() => {
     const atoms: ContextAtom[] = engine.passportAtoms || [];
@@ -424,6 +428,71 @@ const MagBadge: React.FC<{ value: number }> = ({ value }) => {
   return <span className={`text-[9px] font-mono ${color}`}>{value.toFixed(2)}</span>;
 };
 
+// ---------------------------------------------------------------------------
+// Right panel with tabs
+// ---------------------------------------------------------------------------
+
+type RightTab = 'chain' | 'world' | 'decision';
+const RIGHT_TABS: Array<{ key: RightTab; label: string }> = [
+  { key: 'chain', label: 'Chain' },
+  { key: 'world', label: 'World Model' },
+  { key: 'decision', label: 'Action' },
+];
+
+const RightPanel: React.FC = () => {
+  const ctx = useGoalLab();
+  const { world, engine, actorLabels } = ctx;
+  const [tab, setTab] = useState<RightTab>('chain');
+  const focusId = world.perspectiveId || world.selectedAgentId;
+
+  const currentAtoms: ContextAtom[] = useMemo(() => {
+    const a = (engine.snapshotV1 as any)?.atoms;
+    return Array.isArray(a) ? a : [];
+  }, [engine.snapshotV1]);
+
+  return (
+    <aside className="w-[280px] shrink-0 border-l border-slate-800 bg-slate-950/50 flex flex-col min-h-0">
+      {/* Tab bar */}
+      <div className="flex border-b border-slate-800/60">
+        {RIGHT_TABS.map(t => (
+          <button
+            key={t.key}
+            onClick={() => setTab(t.key)}
+            className={`flex-1 px-1 py-1.5 text-[9px] font-bold uppercase tracking-wider transition ${
+              tab === t.key
+                ? 'text-cyan-400 bg-cyan-900/10 border-b-2 border-cyan-500'
+                : 'text-slate-600 hover:text-slate-400'
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Content */}
+      <div className="flex-1 overflow-y-auto custom-scrollbar p-2">
+        {tab === 'chain' && <CausalChain />}
+        {tab === 'world' && (
+          <WorldModelPanel
+            atoms={currentAtoms}
+            selfId={focusId}
+            actorLabels={actorLabels}
+            participantIds={world.participantIds}
+          />
+        )}
+        {tab === 'decision' && (
+          <DecisionAnatomyPanel
+            decision={(engine.snapshotV1 as any)?.decision}
+            atoms={currentAtoms}
+            selfId={focusId}
+            actorLabels={actorLabels}
+          />
+        )}
+      </div>
+    </aside>
+  );
+};
+
 const PanelToggle: React.FC<{ label: string; open: boolean; onClick: () => void }> = ({ label, open, onClick }) => (
   <button
     onClick={onClick}
@@ -464,7 +533,13 @@ export const GoalLabShell: React.FC = () => {
       tomScores: engine.tomScores,
       atomDiff: engine.atomDiff,
       snapshotV1: engine.snapshotV1,
-      pipelineV1: engine.pipelineV1,
+      // NOTE: Do NOT pass pipelineV1 here. GoalLabResults has two code paths for pipeline:
+      // 1. pipelineV1.stages[i].atoms format (POMDP pipeline, different schema)
+      // 2. snapshotV1.meta.pipelineDeltas format (full/added/changed/removedIds)
+      // Our engine's pipelineV1 wraps pipelineDeltas but GoalLabResults tries path 1 first,
+      // expecting .atoms per stage (which doesn't exist), yielding empty pipeline.
+      // By not passing pipelineV1, GoalLabResults falls to path 2 which works correctly.
+      // pipelineV1: engine.pipelineV1, // DISABLED — see above
       perspectiveAgentId: focusId,
       manualAtoms: ctx.manualAtoms,
       onChangeManualAtoms: ctx.setManualAtoms,
@@ -510,6 +585,7 @@ export const GoalLabShell: React.FC = () => {
             </div>
             <div className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1">
               <SceneSetup />
+              <SceneMapPanel />
             </div>
           </aside>
         )}
@@ -522,16 +598,7 @@ export const GoalLabShell: React.FC = () => {
           </Suspense>
         </main>
 
-        {rightOpen && (
-          <aside className="w-[260px] shrink-0 border-l border-slate-800 bg-slate-950/50 flex flex-col min-h-0">
-            <div className="px-2 py-1.5 border-b border-slate-800/60 text-[9px] font-bold text-slate-500 uppercase tracking-widest">
-              Causal Chain
-            </div>
-            <div className="flex-1 overflow-y-auto custom-scrollbar p-2">
-              <CausalChain />
-            </div>
-          </aside>
-        )}
+        {rightOpen && <RightPanel />}
       </div>
     </div>
   );
