@@ -1,386 +1,193 @@
 /**
  * WorldModelPanel — character's subjective world model.
- *
- * Pipeline-correct metric names from extractTomDyadAtoms:
- *   trust, threat, intimacy, alignment, respect, dominance, uncertainty, support
- *   + contextual: trust_ctx, threat_ctx
- *   + effective: tom:effective:dyad:self:other:*
- *
- * Sections:
- *   1. Self-State (feat:char:* vitals + emotions)
- *   2. Event History (event:* atoms — what happened to me and what it did)
- *   3. Perceived Context ƒ(ctx:final)
- *   4. ToM Dyads ƒ(tom:dyad) — beliefs about others
- *   5. Energy Channels ƒ(ener)
- *   6. What I Want ƒ(goal:active) — desires with domain-specific value
- *   7. How I Get It ƒ(decision) — desire→action mapping
+ * Correct metrics: trust, threat, intimacy, alignment, respect, dominance, uncertainty, support
+ * DIAGNOSTIC header shows atom counts so we can always see WHY dyads may be empty.
  */
-
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import type { ContextAtom } from '../../lib/context/v2/types';
 import { arr } from '../../lib/utils/arr';
 
-function m(atoms: ContextAtom[], id: string, fb = 0): number {
+const cl = (x: number) => Math.max(0, Math.min(1, Number.isFinite(x) ? x : 0));
+const pc = (x: number) => Math.round(cl(x) * 100);
+const hu = (v: number) => `hsl(${Math.round(v * 120)},70%,45%)`;
+function mg(atoms: ContextAtom[], id: string, fb = 0): number {
   const a = atoms.find(x => String((x as any).id) === id);
   return Number((a as any)?.magnitude ?? fb);
 }
-function cl(x: number) { return Math.max(0, Math.min(1, Number.isFinite(x) ? x : 0)); }
-function pct(x: number) { return Math.round(cl(x) * 100); }
-function hue(v: number): string { return `hsl(${Math.round(v * 120)}, 70%, 45%)`; }
 
-type Props = {
-  atoms: ContextAtom[];
-  selfId: string;
-  actorLabels?: Record<string, string>;
-  participantIds?: string[];
-  decision?: any;
-};
+type Props = { atoms: ContextAtom[]; selfId: string; actorLabels?: Record<string, string>; participantIds?: string[]; decision?: any };
 
-export const WorldModelPanel: React.FC<Props> = ({
-  atoms, selfId, actorLabels = {}, participantIds = [], decision,
-}) => {
-  const lbl = (id: string) => actorLabels[id] || id.slice(0, 8);
+export const WorldModelPanel: React.FC<Props> = ({ atoms, selfId, actorLabels = {}, participantIds = [], decision }) => {
+  const lb = (id: string) => actorLabels[id] || id.slice(0, 8);
   const all = arr(atoms);
+  const [showDiag, setShowDiag] = useState(false);
 
-  // ─── 1. Self-State ───
-  const selfState = useMemo(() => {
-    const keys = [
-      ['body.stress', true], ['body.fatigue', true], ['body.pain', true],
-      ['body.hunger', true], ['body.morale', false],
-      ['trait.paranoia', true], ['trait.sensitivity', true], ['trait.autonomy', false],
-    ] as const;
-    return keys.map(([k, isDanger]) => ({
-      name: k.split('.')[1],
-      value: m(all, `feat:char:${selfId}:${k}`, k.includes('morale') ? 0.5 : 0),
-      isDanger: isDanger as boolean,
-    })).filter(s => s.value > 0.01 || s.name === 'morale');
-  }, [all, selfId]);
+  const diag = useMemo(() => {
+    const td = all.filter(a => String((a as any).id).startsWith('tom:dyad:'));
+    const te = all.filter(a => String((a as any).id).startsWith('tom:effective:'));
+    const ta = all.filter(a => String((a as any).id).startsWith('tom:'));
+    const em = all.filter(a => String((a as any).id).startsWith('emo:'));
+    return { total: all.length, tomDyad: td.length, tomEff: te.length, tomAll: ta.length, emo: em.length,
+      others: participantIds.filter(id => id !== selfId),
+      sampleIds: td.slice(0, 5).map(a => String((a as any).id)) };
+  }, [all, selfId, participantIds]);
 
   const emotions = useMemo(() =>
-    all.filter(a => {
-      const id = String((a as any).id);
-      return id.startsWith('emo:') && id.endsWith(`:${selfId}`) && !id.includes(':dyad:');
-    }).map(a => ({
-      name: String((a as any).id).split(':')[1],
-      v: cl(Number((a as any).magnitude ?? 0)),
-    })).filter(e => e.v > 0.02).sort((a, b) => b.v - a.v).slice(0, 8)
-  , [all, selfId]);
+    all.filter(a => { const id = String((a as any).id); return id.startsWith('emo:') && id.endsWith(`:${selfId}`) && !id.includes(':dyad:'); })
+      .map(a => ({ n: String((a as any).id).split(':')[1], v: cl(Number((a as any).magnitude ?? 0)) }))
+      .filter(e => e.v > 0.02).sort((a, b) => b.v - a.v).slice(0, 8), [all, selfId]);
 
-  // ─── 2. Event History ───
-  const events = useMemo(() => {
-    return all.filter(a => {
-      const id = String((a as any).id);
-      return id.startsWith('event:') && !id.startsWith('event:didTo');
-    }).map(a => {
-      const id = String((a as any).id);
-      const ev = (a as any).meta?.event;
-      const kind = ev?.kind || id.split(':')[1] || '?';
-      const actor = ev?.actorId || (a as any).subject || '?';
-      const target = ev?.targetId || (a as any).target || '?';
-      const mag = cl(Number((a as any).magnitude ?? 0));
-      const tick = ev?.tick ?? (a as any)?.trace?.parts?.tick ?? '?';
-      const isDirect = (a as any)?.tags?.includes?.('direct');
-      return { kind, actor, target, mag, tick, isDirect, id };
-    }).sort((a, b) => (b.tick === '?' ? 0 : b.tick) - (a.tick === '?' ? 0 : a.tick)).slice(0, 10);
-  }, [all]);
+  const events = useMemo(() =>
+    all.filter(a => { const id = String((a as any).id); return id.startsWith('event:') && !id.startsWith('event:didTo'); })
+      .map(a => { const ev = (a as any).meta?.event; return { kind: ev?.kind || String((a as any).id).split(':')[1], actor: ev?.actorId || '?', target: ev?.targetId || '', mag: cl(Number((a as any).magnitude ?? 0)), tick: ev?.tick ?? '?' }; })
+      .sort((a, b) => (typeof b.tick === 'number' && typeof a.tick === 'number' ? b.tick - a.tick : 0)).slice(0, 8), [all]);
 
   const didToMe = useMemo(() =>
-    all.filter(a => String((a as any).id).startsWith(`event:didTo:`) && String((a as any).id).includes(`:${selfId}:`))
-      .map(a => {
-        const parts = String((a as any).id).split(':');
-        return { actor: parts[2], kind: parts[4] || '?', mag: cl(Number((a as any).magnitude ?? 0)) };
-      }).sort((a, b) => b.mag - a.mag).slice(0, 6)
-  , [all, selfId]);
+    all.filter(a => String((a as any).id).startsWith('event:didTo:') && String((a as any).id).includes(`:${selfId}:`))
+      .map(a => { const p = String((a as any).id).split(':'); return { actor: p[2], kind: p[4] || '?', mag: cl(Number((a as any).magnitude ?? 0)) }; })
+      .sort((a, b) => b.mag - a.mag).slice(0, 6), [all, selfId]);
 
-  // ─── 3. Perceived Context ───
   const ctxAxes = useMemo(() => {
-    const axes: Array<{ name: string; value: number }> = [];
-    for (const a of all) {
-      const id = String((a as any).id);
-      if (id.startsWith('ctx:final:') && id.endsWith(`:${selfId}`)) {
-        const name = id.slice(10, id.length - selfId.length - 1);
-        if (name && !name.includes(':') && name.length < 25 && !axes.find(x => x.name === name))
-          axes.push({ name, value: cl(Number((a as any).magnitude ?? 0)) });
-      }
-    }
-    return axes.sort((a, b) => b.value - a.value).slice(0, 12);
+    const out: Array<{ n: string; v: number }> = [];
+    for (const a of all) { const id = String((a as any).id); if (id.startsWith('ctx:final:') && id.endsWith(`:${selfId}`)) { const n = id.slice(10, id.length - selfId.length - 1); if (n && !n.includes(':') && n.length < 25 && !out.find(x => x.n === n)) out.push({ n, v: cl(Number((a as any).magnitude ?? 0)) }); } }
+    return out.sort((a, b) => b.v - a.v).slice(0, 10);
   }, [all, selfId]);
 
-  // ─── 4. ToM Dyads (CORRECT metrics) ───
-  const METRICS = ['trust', 'threat', 'intimacy', 'alignment', 'respect', 'dominance', 'uncertainty', 'support'] as const;
-  const DANGER = new Set(['threat', 'uncertainty']);
+  const MS = ['trust', 'threat', 'intimacy', 'alignment', 'respect', 'dominance', 'uncertainty', 'support'] as const;
+  const DNG = new Set(['threat', 'uncertainty']);
 
   const dyads = useMemo(() => {
-    const others = participantIds.filter(id => id !== selfId);
+    let others = participantIds.filter(id => id !== selfId);
+    if (!others.length) { const s = new Set<string>(); for (const a of all) { const id = String((a as any).id); if (id.startsWith(`tom:dyad:${selfId}:`)) { const o = id.slice(`tom:dyad:${selfId}:`.length).split(':')[0]; if (o && o !== selfId) s.add(o); } } others = Array.from(s); }
     return others.map(oid => {
-      const base: Record<string, number> = {};
-      const ctx: Record<string, number> = {};
-      const eff: Record<string, number> = {};
-      for (const metric of METRICS) {
-        base[metric] = m(all, `tom:dyad:${selfId}:${oid}:${metric}`, metric === 'trust' || metric === 'respect' ? 0.5 : 0);
-        ctx[metric] = m(all, `tom:dyad:${selfId}:${oid}:${metric}_ctx`, -1);
-        eff[metric] = m(all, `tom:effective:dyad:${selfId}:${oid}:${metric}`, -1);
+      const b: Record<string, number> = {}, c: Record<string, number> = {}, e: Record<string, number> = {};
+      for (const mt of MS) {
+        b[mt] = mg(all, `tom:dyad:${selfId}:${oid}:${mt}`, mt === 'trust' || mt === 'respect' ? 0.5 : 0);
+        c[mt] = mg(all, `tom:dyad:${selfId}:${oid}:${mt}_ctx`, -1);
+        e[mt] = mg(all, `tom:effective:dyad:${selfId}:${oid}:${mt}`, -1);
       }
-      const hasAny = METRICS.some(mt => base[mt] > 0.01 || (eff[mt] >= 0 && eff[mt] > 0.01));
-      return { id: oid, base, ctx, eff, hasAny };
+      return { id: oid, b, c, e, has: MS.some(mt => b[mt] > 0.01 || (e[mt] >= 0 && e[mt] > 0.01)) };
     });
   }, [all, selfId, participantIds]);
 
-  // ─── 5. Energy ───
-  const energy = useMemo(() => {
-    const chs = ['threat', 'norm', 'attachment', 'curiosity', 'status', 'autonomy'];
-    return chs.map(ch => ({
-      name: ch,
-      raw: m(all, `ener:raw:${ch}:${selfId}`),
-      felt: m(all, `ener:felt:${ch}:${selfId}`),
-    })).filter(c => c.raw > 0.01 || c.felt > 0.01);
-  }, [all, selfId]);
+  const energy = useMemo(() =>
+    ['threat', 'norm', 'attachment', 'curiosity', 'status', 'autonomy', 'resource', 'uncertainty']
+      .map(ch => ({ ch, raw: mg(all, `ener:raw:${ch}:${selfId}`), felt: mg(all, `ener:felt:${ch}:${selfId}`) }))
+      .filter(c => c.raw > 0.01 || c.felt > 0.01), [all, selfId]);
 
-  // ─── 6. What I Want (goals with domain-specific value) ───
-  const DOMAIN_VALUE: Record<string, string> = {
-    survival: '🔴 critical — life preservation',
-    safety: '🟠 high — harm avoidance',
-    social: '🟡 medium — belonging & trust',
-    resource: '🟢 instrumental — material needs',
-    autonomy: '🔵 identity — freedom & control',
-    wellbeing: '💜 long-term — health & flourishing',
-  };
-
+  const DVAL: Record<string, string> = { survival: '🔴 critical', safety: '🟠 high', social: '🟡 medium', resource: '🟢 instrumental', autonomy: '🔵 identity', wellbeing: '💜 long-term' };
   const goals = useMemo(() => {
-    const out: Array<{ id: string; activation: number; domain: string }> = [];
-    for (const a of all) {
-      const id = String((a as any).id);
-      if (id.startsWith('goal:active:') && id.endsWith(`:${selfId}`)) {
-        const gid = id.slice(12, id.length - selfId.length - 1);
-        const parts = (a as any)?.trace?.parts || {};
-        out.push({ id: gid, activation: cl(Number((a as any).magnitude ?? 0)), domain: parts.domain || gid.split(':')[0] || '?' });
-      }
-    }
-    if (!out.length) {
-      for (const a of all) {
-        const id = String((a as any).id);
-        if (id.startsWith('goal:domain:') && id.endsWith(`:${selfId}`)) {
-          const gid = id.slice(12, id.length - selfId.length - 1);
-          out.push({ id: gid, activation: cl(Number((a as any).magnitude ?? 0)), domain: gid });
-        }
-      }
-    }
-    return out.sort((a, b) => b.activation - a.activation).slice(0, 10);
+    const out: Array<{ id: string; a: number; d: string }> = [];
+    for (const at of all) { const id = String((at as any).id); if (id.startsWith('goal:active:') && id.endsWith(`:${selfId}`)) { const gid = id.slice(12, id.length - selfId.length - 1); out.push({ id: gid, a: cl(Number((at as any).magnitude ?? 0)), d: (at as any)?.trace?.parts?.domain || gid.split(':')[0] }); } }
+    if (!out.length) for (const at of all) { const id = String((at as any).id); if (id.startsWith('goal:domain:') && id.endsWith(`:${selfId}`)) out.push({ id: id.slice(12, id.length - selfId.length - 1), a: cl(Number((at as any).magnitude ?? 0)), d: id.split(':')[2] || '?' }); }
+    return out.sort((a, b) => b.a - a.a).slice(0, 10);
   }, [all, selfId]);
 
-  // ─── 7. How I Get It ───
-  const desireActions = useMemo(() => {
+  const dActs = useMemo(() => {
     if (!decision?.ranked) return [];
     return arr(decision.ranked).slice(0, 5).map((r: any) => {
-      const a = r?.action || r;
-      const dg = a?.deltaGoals || {};
-      const topG = Object.entries(dg)
-        .sort((x: any, y: any) => Math.abs(y[1] as number) - Math.abs(x[1] as number))
-        .slice(0, 3);
-      return {
-        label: a?.label || a?.id || a?.kind || '?',
-        kind: a?.kind || '?',
-        q: Number(r?.q ?? 0),
-        cost: Number(a?.cost ?? 0),
-        conf: Number(a?.confidence ?? 1),
-        targetId: a?.targetId,
-        topGoals: topG.map(([g, d]) => ({ goal: g, delta: d as number })),
-      };
+      const ac = r?.action || r; const dg = ac?.deltaGoals || {};
+      const top = Object.entries(dg).sort((x: any, y: any) => Math.abs(y[1] as number) - Math.abs(x[1] as number)).slice(0, 3);
+      return { label: ac?.label || ac?.kind || '?', kind: ac?.kind || '?', q: Number(r?.q ?? 0), cost: Number(ac?.cost ?? 0), conf: cl(Number(ac?.confidence ?? 1)), tid: ac?.targetId, top: top.map(([g, d]) => ({ g, d: d as number })) };
     });
   }, [decision]);
 
   return (
     <div className="space-y-2 text-[10px]">
-
-      {/* 1. Self-State */}
-      <Sec title={`${lbl(selfId)} — Internal State`}>
-        <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
-          {selfState.map(s => (
-            <Row key={s.name} label={s.name} value={s.value} color={s.isDanger ? hue(1 - s.value) : hue(s.value)} />
-          ))}
-        </div>
-        {emotions.length > 0 && (
-          <div className="flex flex-wrap gap-1 mt-1 pt-1 border-t border-slate-800/30">
-            {emotions.map(e => (
-              <span key={e.name} className="px-1 py-0.5 rounded bg-slate-800/50 text-[9px]">
-                {e.name} <span className="text-amber-400 font-mono">{pct(e.v)}</span>
-              </span>
-            ))}
+      <div className="border border-amber-800/40 rounded bg-amber-950/20 p-1.5">
+        <button onClick={() => setShowDiag(p => !p)} className="text-[9px] text-amber-500 font-bold w-full text-left">
+          🔎 {diag.total} atoms | tom:dyad={diag.tomDyad} eff={diag.tomEff} | emo={diag.emo} | others={diag.others.length} {showDiag ? '▼' : '▶'}
+        </button>
+        {showDiag && (
+          <div className="mt-1 text-[8px] text-slate-500 space-y-0.5">
+            <div>selfId: <span className="text-cyan-400">{selfId}</span></div>
+            <div>participantIds: {participantIds.map(id => lb(id)).join(', ') || 'none'}</div>
+            <div>sample tom:dyad IDs: {diag.sampleIds.length ? diag.sampleIds.join(', ') : <span className="text-red-400">NONE — pipeline may not inject tom atoms at this stage</span>}</div>
           </div>
         )}
-      </Sec>
+      </div>
 
-      {/* 2. Event History */}
+      {emotions.length > 0 && <S t="Emotions"><div className="flex flex-wrap gap-1">{emotions.map(e => <span key={e.n} className="px-1 py-0.5 rounded bg-slate-800/50 text-[9px]">{e.n} <span className="text-amber-400 font-mono">{pc(e.v)}</span></span>)}</div></S>}
+
       {(events.length > 0 || didToMe.length > 0) && (
-        <Sec title="Event History ƒ(event:*)">
-          <F>event atoms = ƒ(world.eventLog, age decay, direct/witnessed)</F>
-          {didToMe.length > 0 && (
-            <div className="mb-1">
-              <div className="text-[8px] text-slate-600 mb-0.5">What others did to me (aggregated):</div>
-              {didToMe.map((d, i) => (
-                <div key={i} className="flex items-center gap-1 text-[9px]">
-                  <span className="text-slate-400">{lbl(d.actor)}</span>
-                  <span className="text-slate-600">→</span>
-                  <span className={d.kind.includes('attack') || d.kind.includes('harm') ? 'text-red-400' : d.kind.includes('help') ? 'text-emerald-400' : 'text-slate-300'}>
-                    {d.kind}
-                  </span>
-                  <span className="font-mono text-[8px] text-slate-500">{d.mag.toFixed(2)}</span>
-                </div>
-              ))}
-            </div>
-          )}
-          {events.length > 0 && (
-            <div>
-              <div className="text-[8px] text-slate-600 mb-0.5">Recent events:</div>
-              {events.map((ev, i) => (
-                <div key={i} className="flex items-center gap-1 text-[9px] mb-0.5">
-                  <span className="text-[7px] text-slate-700 w-6">t{ev.tick}</span>
-                  <span className="text-slate-400 w-10 truncate">{lbl(ev.actor)}</span>
-                  <span className="text-slate-600">→</span>
-                  <span className="text-slate-300 flex-1 truncate">{ev.kind}</span>
-                  <span className="text-slate-400 w-10 truncate text-right">{ev.target !== '?' ? lbl(ev.target) : ''}</span>
-                  <span className="font-mono text-[8px] text-amber-500">{pct(ev.mag)}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </Sec>
+        <S t="Past Events ƒ(event:*)">
+          <Fm>ƒ(eventLog, decay halfLife=12, direct/witnessed)</Fm>
+          {didToMe.map((d, i) => <div key={i} className="flex gap-1 text-[9px]"><span className="text-slate-400 w-14 truncate">{lb(d.actor)}</span><span className={d.kind.match(/attack|harm/) ? 'text-red-400' : 'text-emerald-400'}>{d.kind}</span><span className="text-slate-600 font-mono">{d.mag.toFixed(2)}</span></div>)}
+          {events.slice(0, 5).map((ev, i) => <div key={i} className="flex gap-1 text-[9px] mb-0.5"><span className="text-[7px] text-slate-700 w-5">t{ev.tick}</span><span className="text-slate-400 w-12 truncate">{lb(ev.actor)}</span><span className="text-slate-300 flex-1 truncate">{ev.kind}</span><span className="text-amber-500 font-mono">{pc(ev.mag)}</span></div>)}
+        </S>
       )}
 
-      {/* 3. Perceived Context */}
-      {ctxAxes.length > 0 && (
-        <Sec title="Perceived Context ƒ(ctx:final)">
-          <F>ctx:final = ƒ(S0 world → S1 axes → S2c lens subjectivity)</F>
-          <div className="space-y-0.5">
-            {ctxAxes.map(a => <Row key={a.name} label={a.name} value={a.value} color="#38bdf8" />)}
+      {ctxAxes.length > 0 && <S t="Context ƒ(ctx:final)"><Fm>ƒ(S0→S1 axes→S2c lens)</Fm>{ctxAxes.map(a => <Rw key={a.n} l={a.n} v={a.v} c="#38bdf8" />)}</S>}
+
+      <S t="Beliefs ƒ(tom:dyad)">
+        <Fm>base=ƒ(initTom) → ctx=ƒ(beliefBias) → eff=ƒ(ctx)</Fm>
+        {dyads.length > 0 ? dyads.map(d => (
+          <div key={d.id} className="border border-slate-800/40 rounded p-1.5 bg-slate-950/30 mb-1">
+            <div className="font-bold text-slate-300 text-[9px] mb-0.5">→ {lb(d.id)}</div>
+            {!d.has && <div className="text-[8px] text-red-500">⚠ No tom:dyad atoms for {selfId}→{d.id}</div>}
+            <div className="grid grid-cols-2 gap-x-2 gap-y-0.5">
+              {MS.map(mt => {
+                const bv = d.b[mt], cv = d.c[mt], ev = d.e[mt];
+                if (bv < 0.01 && cv < 0 && ev < 0) return null;
+                const dn = DNG.has(mt);
+                return (
+                  <div key={mt} className="flex items-center gap-1">
+                    <span className={`w-14 text-right text-[9px] ${dn ? 'text-rose-500' : 'text-slate-500'}`}>{mt}</span>
+                    <span className="font-mono text-[9px]" style={{ color: dn ? (bv > 0.4 ? '#ef4444' : '#64748b') : hu(bv) }}>{pc(bv)}</span>
+                    {cv >= 0 && Math.abs(cv - bv) > 0.02 && <span className="text-[8px] text-yellow-600">→{pc(cv)}</span>}
+                    {ev >= 0 && Math.abs(ev - (cv >= 0 ? cv : bv)) > 0.02 && <span className="text-[8px] text-cyan-500">→{pc(ev)}</span>}
+                  </div>
+                );
+              })}
+            </div>
           </div>
-        </Sec>
-      )}
+        )) : <div className="text-[9px] text-red-500">⚠ No dyad targets. Add characters to scene.</div>}
+      </S>
 
-      {/* 4. ToM Dyads */}
-      {dyads.length > 0 && (
-        <Sec title="Beliefs About Others ƒ(tom:dyad)">
-          <F>base = ƒ(initTom) → _ctx = ƒ(beliefBias × base) → effective = ƒ(ctx)</F>
-          {dyads.map(d => (
-            <div key={d.id} className="border border-slate-800/40 rounded p-1.5 bg-slate-950/30 mb-1.5">
-              <div className="font-bold text-slate-300 text-[9px] mb-0.5">→ {lbl(d.id)}</div>
-              {!d.hasAny && <div className="text-[8px] text-slate-700 italic">No tom:dyad atoms found for this pair</div>}
-              <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
-                {METRICS.map(mt => {
-                  const b = d.base[mt];
-                  const c = d.ctx[mt];
-                  const e = d.eff[mt];
-                  const isDanger = DANGER.has(mt);
-                  if (b < 0.01 && (c < 0) && (e < 0)) return null;
-                  return (
-                    <div key={mt} className="flex items-center gap-1">
-                      <span className={`w-16 text-right text-[9px] ${isDanger ? 'text-rose-500' : 'text-slate-500'}`}>{mt}</span>
-                      <span className="font-mono text-[9px]" style={{ color: isDanger ? (b > 0.4 ? '#ef4444' : '#64748b') : hue(b) }}>{pct(b)}</span>
-                      {c >= 0 && Math.abs(c - b) > 0.02 && <span className="text-[8px] text-yellow-600">→{pct(c)}</span>}
-                      {e >= 0 && Math.abs(e - (c >= 0 ? c : b)) > 0.02 && <span className="text-[8px] text-cyan-500">→{pct(e)}</span>}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          ))}
-        </Sec>
-      )}
-
-      {/* 5. Energy */}
       {energy.length > 0 && (
-        <Sec title="Energy Channels ƒ(ener)">
-          <F>raw = ƒ(ctx atoms) → felt = ƒ(raw × personality curve)</F>
-          {energy.map(ch => (
-            <div key={ch.name} className="flex items-center gap-1.5 mb-0.5">
-              <span className="w-16 text-right text-slate-400">{ch.name}</span>
-              <div className="flex-1 flex gap-0.5 h-2">
-                <div className="flex-1 bg-slate-800 rounded-sm overflow-hidden" title={`raw ${ch.raw.toFixed(2)}`}>
-                  <div className="h-full bg-amber-600/60 rounded-sm" style={{ width: `${pct(ch.raw)}%` }} />
-                </div>
-                <div className="flex-1 bg-slate-800 rounded-sm overflow-hidden" title={`felt ${ch.felt.toFixed(2)}`}>
-                  <div className="h-full bg-rose-500/60 rounded-sm" style={{ width: `${pct(ch.felt)}%` }} />
-                </div>
+        <S t="Energy ƒ(ener)">
+          <Fm>raw=ƒ(ctx) → felt=ƒ(raw × personality curve)</Fm>
+          {energy.map(c => (
+            <div key={c.ch} className="flex items-center gap-1 mb-0.5">
+              <span className="w-16 text-right text-slate-400">{c.ch}</span>
+              <div className="flex-1 flex gap-0.5 h-2 max-w-[90px]">
+                <div className="flex-1 bg-slate-800 rounded-sm overflow-hidden"><div className="h-full bg-amber-600/60" style={{ width: `${pc(c.raw)}%` }} /></div>
+                <div className="flex-1 bg-slate-800 rounded-sm overflow-hidden"><div className="h-full bg-rose-500/60" style={{ width: `${pc(c.felt)}%` }} /></div>
               </div>
-              <span className="text-[8px] text-slate-600 w-12">{ch.raw.toFixed(2)}/{ch.felt.toFixed(2)}</span>
+              <span className="text-[8px] text-slate-600 w-14">{c.raw.toFixed(2)}/{c.felt.toFixed(2)}</span>
             </div>
           ))}
-        </Sec>
+        </S>
       )}
 
-      {/* 6. What I Want */}
       {goals.length > 0 && (
-        <Sec title="What I Want ƒ(goal:active)">
-          <F>activation = ƒ(domain energy × driver weight × trait). Value differs by domain.</F>
-          {goals.map(g => (
-            <div key={g.id} className="mb-1">
-              <div className="flex items-center gap-1.5">
-                <span className="flex-1 truncate text-slate-300">{g.id}</span>
-                <Bar value={g.activation} color="#f59e0b" />
-                <span className="text-amber-400 w-6 text-right font-mono">{pct(g.activation)}</span>
-              </div>
-              <div className="text-[8px] text-slate-600 ml-1">{DOMAIN_VALUE[g.domain] || `domain: ${g.domain}`}</div>
-            </div>
-          ))}
-        </Sec>
+        <S t="What I Want ƒ(goal)">
+          <Fm>activation=ƒ(domain×driver×trait)</Fm>
+          {goals.map(g => <div key={g.id} className="mb-0.5"><div className="flex items-center gap-1"><span className="flex-1 truncate text-slate-300">{g.id}</span><Br v={g.a} c="#f59e0b" /><span className="text-amber-400 w-5 text-right font-mono">{pc(g.a)}</span></div><div className="text-[8px] text-slate-600 ml-1">{DVAL[g.d] || g.d}</div></div>)}
+        </S>
       )}
 
-      {/* 7. How I Get It */}
-      {desireActions.length > 0 && (
-        <Sec title="How I Get It ƒ(decision)">
-          <F>Q(a) = Σ E_g × Δg(a) − cost − 0.4|Q|(1−conf). Best = softmax(Q/T).</F>
-          {desireActions.map((a, i) => (
-            <div key={i} className={`border rounded p-1.5 mb-1 ${i === 0 ? 'border-emerald-700/40 bg-emerald-950/15' : 'border-slate-800/30 bg-slate-950/15'}`}>
+      {dActs.length > 0 && (
+        <S t="How I Get It ƒ(decision)">
+          <Fm>Q(a)=Σ E_g×Δg−cost−0.4|Q|(1−conf)</Fm>
+          {dActs.map((a, i) => (
+            <div key={i} className={`border rounded p-1 mb-1 ${i === 0 ? 'border-emerald-700/40 bg-emerald-950/15' : 'border-slate-800/30'}`}>
               <div className="flex items-center gap-1">
-                <span className={`font-bold ${i === 0 ? 'text-emerald-300' : 'text-slate-400'}`}>{i + 1}.</span>
+                <span className={i === 0 ? 'text-emerald-300 font-bold' : 'text-slate-400'}>{i + 1}.</span>
                 <span className={`flex-1 truncate ${i === 0 ? 'text-emerald-200' : 'text-slate-300'}`}>{a.label}</span>
-                {a.targetId && <span className="text-[8px] text-slate-600">→{lbl(a.targetId)}</span>}
+                {a.tid && <span className="text-[8px] text-slate-600">→{lb(a.tid)}</span>}
                 <span className="font-mono text-[9px] text-amber-400">Q={a.q.toFixed(3)}</span>
               </div>
-              <div className="flex gap-2 ml-4 text-[8px]">
-                <span className="text-slate-500">ƒ(kind)={a.kind}</span>
-                <span className="text-red-500/70">ƒ(cost)={a.cost.toFixed(2)}</span>
-                <span className="text-blue-500/70">ƒ(conf)={a.conf.toFixed(2)}</span>
-              </div>
-              {a.topGoals.length > 0 && (
-                <div className="ml-4 mt-0.5 flex flex-wrap gap-1">
-                  {a.topGoals.map(g => (
-                    <span key={g.goal} className={`text-[8px] px-1 rounded ${g.delta > 0 ? 'bg-emerald-900/30 text-emerald-400' : 'bg-red-900/30 text-red-400'}`}>
-                      ƒ(Δ{g.goal})={g.delta > 0 ? '+' : ''}{g.delta.toFixed(2)}
-                    </span>
-                  ))}
-                </div>
-              )}
+              {a.top.length > 0 && <div className="ml-3 flex flex-wrap gap-1 mt-0.5">{a.top.map(g => <span key={g.g} className={`text-[8px] px-1 rounded ${g.d > 0 ? 'bg-emerald-900/30 text-emerald-400' : 'bg-red-900/30 text-red-400'}`}>Δ{g.g}={g.d > 0 ? '+' : ''}{g.d.toFixed(2)}</span>)}</div>}
             </div>
           ))}
-        </Sec>
+        </S>
       )}
     </div>
   );
 };
 
-// ─── Micro-components ───
-const Sec: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
-  <div className="border border-slate-800/40 rounded bg-slate-950/40 p-2">
-    <div className="text-[9px] font-bold text-slate-500 uppercase tracking-wider mb-1">{title}</div>
-    {children}
-  </div>
-);
-
-const F: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-  <div className="text-[8px] text-cyan-700 font-mono bg-cyan-950/20 border border-cyan-900/20 rounded px-1.5 py-0.5 mb-1">{children}</div>
-);
-
-const Row: React.FC<{ label: string; value: number; color: string }> = ({ label, value, color }) => (
-  <div className="flex items-center gap-1.5">
-    <span className="text-slate-500 w-16 text-right text-[9px]">{label}</span>
-    <Bar value={value} color={color} />
-    <span className="text-slate-600 w-5 text-right font-mono text-[8px]">{pct(value)}</span>
-  </div>
-);
-
-const Bar: React.FC<{ value: number; color: string }> = ({ value, color }) => (
-  <div className="flex-1 h-1.5 bg-slate-800/80 rounded-full overflow-hidden max-w-[60px]">
-    <div className="h-full rounded-full" style={{ width: `${pct(value)}%`, backgroundColor: color }} />
-  </div>
-);
+const S: React.FC<{ t: string; children: React.ReactNode }> = ({ t, children }) => <div className="border border-slate-800/40 rounded bg-slate-950/40 p-2"><div className="text-[9px] font-bold text-slate-500 uppercase tracking-wider mb-1">{t}</div>{children}</div>;
+const Fm: React.FC<{ children: React.ReactNode }> = ({ children }) => <div className="text-[8px] text-cyan-700 font-mono bg-cyan-950/20 border border-cyan-900/20 rounded px-1.5 py-0.5 mb-1">{children}</div>;
+const Rw: React.FC<{ l: string; v: number; c: string }> = ({ l, v, c }) => <div className="flex items-center gap-1.5 mb-0.5"><span className="text-slate-500 w-16 text-right text-[9px]">{l}</span><Br v={v} c={c} /><span className="text-slate-600 w-5 text-right font-mono text-[8px]">{Math.round(Math.max(0, Math.min(1, v)) * 100)}</span></div>;
+const Br: React.FC<{ v: number; c: string }> = ({ v, c }) => <div className="flex-1 h-1.5 bg-slate-800/80 rounded-full overflow-hidden max-w-[60px]"><div className="h-full rounded-full" style={{ width: `${Math.round(Math.max(0, Math.min(1, v)) * 100)}%`, backgroundColor: c }} /></div>;
