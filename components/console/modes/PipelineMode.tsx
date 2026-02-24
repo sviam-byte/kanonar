@@ -1,5 +1,6 @@
 import React from 'react';
 import type { GoalSandboxVM } from '../../GoalSandbox/GoalSandbox';
+import { JsonBlock } from '../JsonBlock';
 
 /** Pipeline mode exposes raw pipeline payload for stage-by-stage debugging. */
 export const PipelineMode: React.FC<{ vm: GoalSandboxVM }> = ({ vm }) => {
@@ -11,15 +12,12 @@ export const PipelineMode: React.FC<{ vm: GoalSandboxVM }> = ({ vm }) => {
           MVP. Дальше: граф стадий, просмотр артефактов, трасса атомов (provenance).
         </div>
 
-        <div className="rounded border border-slate-800 bg-slate-950/40 p-3">
-          <div className="text-[10px] text-slate-500 uppercase tracking-widest mb-2">pipelineV1 (raw)</div>
-          <details>
-            <summary className="text-[11px] text-slate-300 cursor-pointer">open</summary>
-            <pre className="mt-2 text-[10px] font-mono whitespace-pre-wrap break-words text-slate-200/90">
-              {JSON.stringify(vm.pipelineV1, null, 2)}
-            </pre>
-          </details>
-        </div>
+        <JsonBlock
+          title="pipelineV1 (raw)"
+          value={vm.pipelineV1}
+          hint="Открывай только при необходимости — это может быть большой объект."
+          maxChars={200_000}
+        />
       </div>
     </div>
   );

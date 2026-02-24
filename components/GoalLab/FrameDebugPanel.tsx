@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { arr } from '../../lib/utils/arr';
+import { num } from '../../lib/features/scale';
 import { describeQuark } from '../../lib/context/codex/quarkRegistry';
 import { generateAtomSpecStubs } from '../../lib/context/catalog/generateMissingSpecs';
 import { AtomExplorer } from './AtomExplorer';
@@ -204,19 +205,19 @@ export function FrameDebugPanel({
                 <div className="space-y-3 font-mono text-xs">
                     <div className="flex justify-between">
                         <span className="text-canon-text-light">Threat:</span>
-                        <span className="text-red-400 font-bold">{mind.threat.toFixed(3)}</span>
+                        <span className="text-red-400 font-bold">{num(mind.threat, 0).toFixed(3)}</span>
                     </div>
                     <div className="flex justify-between">
                         <span className="text-canon-text-light">Pressure:</span>
-                        <span className="text-amber-400 font-bold">{mind.pressure.toFixed(3)}</span>
+                        <span className="text-amber-400 font-bold">{num(mind.pressure, 0).toFixed(3)}</span>
                     </div>
                     <div className="flex justify-between">
                         <span className="text-canon-text-light">Support:</span>
-                        <span className="text-green-400 font-bold">{mind.support.toFixed(3)}</span>
+                        <span className="text-green-400 font-bold">{num(mind.support, 0).toFixed(3)}</span>
                     </div>
                     <div className="flex justify-between">
                         <span className="text-canon-text-light">Crowd:</span>
-                        <span className="text-blue-400 font-bold">{mind.crowd.toFixed(3)}</span>
+                        <span className="text-blue-400 font-bold">{num(mind.crowd, 0).toFixed(3)}</span>
                     </div>
                 </div>
             ) : <div className="text-xs text-canon-text-light italic">No mind data.</div>}
