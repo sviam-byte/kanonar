@@ -46,13 +46,15 @@ export const OtherMindPanel: React.FC<Props> = ({ castRows, selfId, actorLabels 
       if (mag >= 0) tomAboutMe.push({ mt, v: mag });
     }
 
-    return { emos, goals: goals.slice(0, 6), ranked, tomAboutMe, atomCount: atoms.length };
+    const tomDyadCount = atoms.filter((a: any) => String(a?.id || '').startsWith(`tom:dyad:${oid}:`)).length;
+
+    return { emos, goals: goals.slice(0, 6), ranked, tomAboutMe, atomCount: atoms.length, tomDyadCount };
   }, [selected, selfId]);
 
   if (!others.length) return (
     <div className="text-[10px] p-2 space-y-2">
       <div className="text-slate-500 italic">No other characters modeled.</div>
-      <div className="text-[8px] text-slate-600">castRows requires: uiMode='console' or 'debug', or frontTab='metrics', or bottomTab='compare'.</div>
+      <div className="text-[8px] text-slate-600">castRows requires: uiMode='console'|'debug' or tabs using cast snapshots (metrics/compare/tom/debug).</div>
       <div className="text-[8px] text-slate-600">Add ≥2 participants + rebuild world.</div>
     </div>
   );
@@ -69,6 +71,7 @@ export const OtherMindPanel: React.FC<Props> = ({ castRows, selfId, actorLabels 
       {selected && data ? (
         <div className="space-y-2">
           <div className="text-[9px] text-slate-400">{lb(selected.id)} — {data.atomCount} atoms</div>
+          {data.tomDyadCount === 0 && <div className="text-[8px] text-red-500">⚠ No tom:dyad:{selected.id}:* atoms in this snapshot.</div>}
 
           {data.tomAboutMe.length > 0 && <S t={`${lb(selected.id)} thinks about ${lb(selfId)}`}>
             <Fm>Their tom:dyad:{selected.id}:{selfId}:* (what they believe about you)</Fm>

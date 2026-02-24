@@ -490,14 +490,16 @@ const RightPanel: React.FC = () => {
   const focusId = world.perspectiveId || world.selectedAgentId;
 
   // Ensure engine data required by diagnostics tabs is present.
+  // Keep deps narrow to avoid re-firing effect on unrelated context object changes.
   useEffect(() => {
     if ((tab === 'other' || tab === 'graph') && ctx.uiMode !== 'console' && ctx.uiMode !== 'debug') {
       ctx.setUiMode('console');
+      return;
     }
     if (tab === 'pomdp' && ctx.uiMode !== 'console' && ctx.uiMode !== 'easy') {
       ctx.setUiMode('console');
     }
-  }, [tab, ctx]);
+  }, [tab, ctx.uiMode, ctx.setUiMode]);
 
   const currentAtoms: ContextAtom[] = useMemo(() => {
     const a = (engine.snapshotV1 as any)?.atoms;

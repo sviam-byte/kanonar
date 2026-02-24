@@ -20,7 +20,7 @@ export const PomdpPanel: React.FC<Props> = ({ transitionSnapshot, decision }) =>
       <div className="text-slate-500 italic">POMDP lookahead not available.</div>
       <Fm>Enable: sceneControl.enablePredict = true</Fm>
       <div className="text-[8px] text-slate-600 space-y-0.5">
-        <div>Engine needs: pomdpPipeline = true (uiMode='console' or bottomTab='pomdp')</div>
+        <div>Engine needs: pomdpPipeline = true (uiMode='easy' | 'console' or bottomTab='pomdp')</div>
         <div>Requires ≥1 action candidate + feature vector z₀</div>
       </div>
     </div>
