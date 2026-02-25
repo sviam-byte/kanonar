@@ -907,9 +907,11 @@ export const GoalLabResults: React.FC<Props> = ({
 
         /**
          * Parse curve metadata from the emotion trace, if available.
+         * Use currentAtoms (tab-local atom snapshot) to avoid stale references
+         * when switching stages/tabs.
          */
         const curveParts = (key: string) => {
-          const a = atoms.find(x => x.id === `emo:${key}:${selfId}`) as any;
+          const a = currentAtoms.find(x => x.id === `emo:${key}:${selfId}`) as any;
           const tr = a?.meta?.trace || a?.trace;
           const parts = tr?.parts || {};
           const raw = typeof parts?.raw === 'number' ? parts.raw : null;
