@@ -10,7 +10,7 @@
  * - All optional/partial data is guarded to keep UI crash-safe.
  */
 
-import React, { Suspense, lazy, useMemo, useState } from 'react';
+import React, { Suspense, lazy, useMemo, useState, useEffect } from 'react';
 import { useGoalLab } from '../../contexts/GoalLabContext';
 import { allLocations } from '../../data/locations';
 import { allScenarioDefs } from '../../data/scenarios/index';
@@ -19,6 +19,10 @@ import { SCENE_PRESETS } from '../../lib/scene/presets';
 import type { ContextAtom } from '../../lib/context/v2/types';
 import { WorldModelPanel } from './WorldModelPanel';
 import { DecisionAnatomyPanel } from './DecisionAnatomyPanel';
+import { CurvesPanel } from './CurvesPanel';
+import { GraphEnergyPanel } from './GraphEnergyPanel';
+import { PomdpPanel } from './PomdpPanel';
+import { OtherMindPanel } from './OtherMindPanel';
 import { SceneMapPanel } from './SceneMapPanel';
 
 // ---------------------------------------------------------------------------
@@ -468,11 +472,15 @@ const CenterPane: React.FC<{ resultsProps: any }> = ({ resultsProps }) => {
 // Right panel with tabs
 // ---------------------------------------------------------------------------
 
-type RightTab = 'chain' | 'world' | 'decision';
+type RightTab = 'chain' | 'world' | 'decision' | 'curves' | 'graph' | 'pomdp' | 'other';
 const RIGHT_TABS: Array<{ key: RightTab; label: string }> = [
   { key: 'chain', label: 'Chain' },
-  { key: 'world', label: 'World Model' },
+  { key: 'world', label: 'World' },
   { key: 'decision', label: 'Action' },
+  { key: 'curves', label: 'Curves' },
+  { key: 'graph', label: 'Graph' },
+  { key: 'pomdp', label: 'POMDP' },
+  { key: 'other', label: 'Other' },
 ];
 
 const RightPanel: React.FC = () => {
@@ -481,20 +489,33 @@ const RightPanel: React.FC = () => {
   const [tab, setTab] = useState<RightTab>('chain');
   const focusId = world.perspectiveId || world.selectedAgentId;
 
+  // Ensure engine data required by diagnostics tabs is present.
+  // Keep deps narrow to avoid re-firing effect on unrelated context object changes.
+  useEffect(() => {
+    if ((tab === 'other' || tab === 'graph') && ctx.uiMode !== 'console' && ctx.uiMode !== 'debug') {
+      ctx.setUiMode('console');
+      return;
+    }
+    if (tab === 'pomdp' && ctx.uiMode !== 'console' && ctx.uiMode !== 'easy') {
+      ctx.setUiMode('console');
+    }
+  }, [tab, ctx.uiMode, ctx.setUiMode]);
+
   const currentAtoms: ContextAtom[] = useMemo(() => {
     const a = (engine.snapshotV1 as any)?.atoms;
     return Array.isArray(a) ? a : [];
   }, [engine.snapshotV1]);
 
+  const decision = (engine.snapshotV1 as any)?.decision;
+
   return (
     <aside className="w-[280px] shrink-0 border-l border-slate-800 bg-slate-950/50 flex flex-col min-h-0">
-      {/* Tab bar */}
-      <div className="flex border-b border-slate-800/60">
+      <div className="flex flex-wrap border-b border-slate-800/60">
         {RIGHT_TABS.map(t => (
           <button
             key={t.key}
             onClick={() => setTab(t.key)}
-            className={`flex-1 px-1 py-1.5 text-[9px] font-bold uppercase tracking-wider transition ${
+            className={`px-1.5 py-1.5 text-[8px] font-bold uppercase tracking-wider transition ${
               tab === t.key
                 ? 'text-cyan-400 bg-cyan-900/10 border-b-2 border-cyan-500'
                 : 'text-slate-600 hover:text-slate-400'
@@ -505,26 +526,14 @@ const RightPanel: React.FC = () => {
         ))}
       </div>
 
-      {/* Content */}
       <div className="flex-1 overflow-y-auto custom-scrollbar p-2">
         {tab === 'chain' && <CausalChain />}
-        {tab === 'world' && (
-          <WorldModelPanel
-            atoms={currentAtoms}
-            selfId={focusId}
-            actorLabels={actorLabels}
-            participantIds={world.participantIds}
-            decision={(engine.snapshotV1 as any)?.decision}
-          />
-        )}
-        {tab === 'decision' && (
-          <DecisionAnatomyPanel
-            decision={(engine.snapshotV1 as any)?.decision}
-            atoms={currentAtoms}
-            selfId={focusId}
-            actorLabels={actorLabels}
-          />
-        )}
+        {tab === 'world' && <WorldModelPanel atoms={currentAtoms} selfId={focusId} actorLabels={actorLabels} participantIds={world.participantIds} decision={decision} />}
+        {tab === 'decision' && <DecisionAnatomyPanel decision={decision} atoms={currentAtoms} selfId={focusId} actorLabels={actorLabels} />}
+        {tab === 'curves' && <CurvesPanel atoms={currentAtoms} selfId={focusId} world={world.worldState} />}
+        {tab === 'graph' && <GraphEnergyPanel goalPreview={engine.goalPreview} atoms={currentAtoms} selfId={focusId} />}
+        {tab === 'pomdp' && <PomdpPanel transitionSnapshot={decision?.transitionSnapshot} decision={decision} actorLabels={actorLabels} />}
+        {tab === 'other' && <OtherMindPanel castRows={engine.castRows} selfId={focusId} actorLabels={actorLabels} />}
       </div>
     </aside>
   );
@@ -603,7 +612,7 @@ export const GoalLabShell: React.FC = () => {
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
           <PanelToggle label="Setup" open={leftOpen} onClick={() => setLeftOpen(prev => !prev)} />
-          <PanelToggle label="Chain" open={rightOpen} onClick={() => setRightOpen(prev => !prev)} />
+          <PanelToggle label="Inspector" open={rightOpen} onClick={() => setRightOpen(prev => !prev)} />
         </div>
       </header>
 
