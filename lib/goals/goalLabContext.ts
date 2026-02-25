@@ -1730,12 +1730,7 @@ export function buildGoalLabContext(
   };
 
   (decision as any).transitionSnapshot = transitionSnapshot
-    ? {
-        enabled: true,
-        gamma: transitionSnapshot.gamma,
-        riskAversion: transitionSnapshot.riskAversion,
-        v0: transitionSnapshot.valueFn?.v0 ?? null,
-      }
+    ? transitionSnapshot
     : { enabled: false };
 
   if (forcedActionId) {
