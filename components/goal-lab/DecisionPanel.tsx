@@ -56,6 +56,7 @@ export const DecisionPanel: React.FC<Props> = ({ decision, selfId, castDecisions
   const bestId = isNew ? (decision?.best?.id || null) : (decision?.best?.p?.id || decision?.best?.id || null);
   const [showDetails, setShowDetails] = useState(false);
   const [sel, setSel] = useState(0);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   const current = ranked[sel] || null;
   const goalEnergy = useMemo(() => {
@@ -186,11 +187,31 @@ export const DecisionPanel: React.FC<Props> = ({ decision, selfId, castDecisions
   }, [castDecisions]);
 
   return (
-    <div className="h-full min-h-0 flex bg-canon-bg text-canon-text">
-      <div className="w-80 border-r border-canon-border overflow-auto custom-scrollbar flex-shrink-0">
-        <div className="p-3 border-b border-canon-border bg-canon-bg-light/30">
-          <div className="text-sm font-semibold">What I’ll do</div>
-          <div className="text-xs text-canon-text-light mt-1">Ranked actions</div>
+    <div className={isFullscreen ? 'fixed inset-0 z-[9999] bg-canon-bg overflow-hidden' : 'h-full min-h-0 flex bg-canon-bg text-canon-text'}>
+      {isFullscreen && (
+        <div className="absolute top-2 right-3 z-10">
+          <button
+            onClick={() => setIsFullscreen(false)}
+            className="px-3 py-1 text-[11px] font-bold border border-canon-border/60 rounded bg-red-900/30 text-red-300 hover:bg-red-900/60 transition-colors"
+          >
+            ✕ Close fullscreen
+          </button>
+        </div>
+      )}
+      <div className={isFullscreen ? 'h-full w-full flex bg-canon-bg text-canon-text' : 'contents'}>
+      <div className={`${isFullscreen ? 'w-[340px]' : 'w-80'} border-r border-canon-border overflow-auto custom-scrollbar flex-shrink-0`}>
+        <div className="p-3 border-b border-canon-border bg-canon-bg-light/30 flex items-center justify-between">
+          <div>
+            <div className="text-sm font-semibold">What I’ll do</div>
+            <div className="text-xs text-canon-text-light mt-1">Ranked actions</div>
+          </div>
+          <button
+            onClick={() => setIsFullscreen(f => !f)}
+            className="px-2 py-1 text-[10px] font-semibold border border-canon-border/60 rounded bg-canon-bg-light hover:bg-canon-bg-light/70 transition-colors"
+            title={isFullscreen ? 'Свернуть' : 'Открыть на весь экран'}
+          >
+            {isFullscreen ? '⊟' : '⊞'}
+          </button>
         </div>
         {(!traitUsedInTop || castSameBestWarning) && (
           <div className="p-3 border-b border-canon-border/60 bg-amber-900/10">
@@ -274,6 +295,60 @@ export const DecisionPanel: React.FC<Props> = ({ decision, selfId, castDecisions
               </div>
             </div>
 
+            {breakdown && (() => {
+              // Plain-language explanation for ranking diagnostics.
+              const topPositive = breakdown.rows.filter(r => r.contrib > 0.005).slice(0, 3);
+              const topNegative = breakdown.rows
+                .filter(r => r.contrib < -0.005)
+                .sort((a, b) => a.contrib - b.contrib)
+                .slice(0, 2);
+              const actionLabel = labelWithTarget(current);
+              const isBest = sel === 0;
+              const nextBest = ranked[sel === 0 ? 1 : 0];
+              const nextLabel = nextBest ? labelWithTarget(nextBest) : null;
+              const nextQ = nextBest ? (isNew ? Number(nextBest?.q ?? 0) : Number(nextBest?.score ?? 0)) : 0;
+              const thisQ = breakdown.q;
+              const margin = thisQ - nextQ;
+
+              return (
+                <div className="p-3 rounded bg-emerald-950/20 border border-emerald-800/30 text-xs space-y-2">
+                  <div className="font-bold text-emerald-300 uppercase tracking-wider text-[10px]">
+                    {isBest ? '✓ Почему выбрано это действие' : '✗ Почему НЕ выбрано'}
+                  </div>
+                  <div className="text-[12px] text-canon-text leading-relaxed">
+                    <span className="font-bold text-canon-accent">{actionLabel}</span>
+                    {isBest && topPositive.length > 0 && (
+                      <span> выбрано, потому что оно продвигает {topPositive.map((r, i) => (
+                        <span key={r.goalId}>
+                          {i > 0 && (i === topPositive.length - 1 ? ' и ' : ', ')}
+                          <span className="font-semibold text-emerald-400">{r.goalId}</span>
+                          <span className="text-canon-text-light"> (E×Δ={r.contrib > 0 ? '+' : ''}{r.contrib.toFixed(3)})</span>
+                        </span>
+                      ))}.</span>
+                    )}
+                    {topNegative.length > 0 && (
+                      <span> Минусы: {topNegative.map((r, i) => (
+                        <span key={r.goalId}>
+                          {i > 0 && ', '}
+                          <span className="text-red-400">{r.goalId}</span>
+                          <span className="text-canon-text-light"> ({r.contrib.toFixed(3)})</span>
+                        </span>
+                      ))}.</span>
+                    )}
+                    {breakdown.cost > 0.01 && (
+                      <span> Цена действия: <span className="text-orange-400">-{breakdown.cost.toFixed(3)}</span>.</span>
+                    )}
+                  </div>
+                  {isBest && nextLabel && (
+                    <div className="text-[11px] text-canon-text-light/80 border-t border-white/5 pt-1">
+                      Отрыв от <span className="font-mono">{nextLabel}</span>: <span className={`font-bold ${margin > 0.05 ? 'text-emerald-400' : margin > 0.01 ? 'text-amber-400' : 'text-red-400'}`}>{margin > 0 ? '+' : ''}{margin.toFixed(4)}</span>
+                      {margin < 0.02 && <span className="text-amber-300 ml-1">(⚠ почти неразличимы!)</span>}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
             {breakdown && (
               <div className="p-3 rounded bg-black/20 border border-canon-border/30 text-xs">
                 <div className="font-bold text-canon-text-light mb-2 uppercase tracking-wider">Q-value breakdown</div>
@@ -339,7 +414,7 @@ export const DecisionPanel: React.FC<Props> = ({ decision, selfId, castDecisions
                           <div className="font-mono text-[11px] text-canon-text-light">
                             Q={Number(w.q).toFixed(3)} Δ={Number(w.dq).toFixed(3)}
                           </div>
-                        </div>https://github.com/sviam-byte/kanonar/pull/143/conflict?name=components%252Fgoal-lab%252FGoalLabResults.tsx&ancestor_oid=b361a04c7d222b5aa7998c33fe335fc90127684b&base_oid=e7223ee5177e97d47c6cc9fc406974c348397fc4&head_oid=bef18de1b1e576c8cc4a20280909dee3c768f13e
+                        </div>
                         {w.diffs.length ? (
                           <div className="mt-2 space-y-1 font-mono text-[11px]">
                             {w.diffs.map((d) => (
@@ -415,6 +490,7 @@ export const DecisionPanel: React.FC<Props> = ({ decision, selfId, castDecisions
           </div>
         )}
       </div>
+    </div>
     </div>
   );
 };

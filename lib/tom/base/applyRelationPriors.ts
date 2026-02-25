@@ -187,9 +187,9 @@ export function applyRelationPriorsToDyads(
 
     // простые, но НЕ одинаковые и трактуемые сиды
     const trust0 = clamp01(0.15 + 0.65 * r.loyalty + 0.25 * r.closeness - 0.85 * r.hostility);
-    const threat0 = clamp01(0.10 + 0.90 * r.hostility + 0.25 * (1 - r.closeness));
+    const threat0 = clamp01(0.90 * r.hostility + 0.15 * (1 - r.closeness) * (1 - r.loyalty));
     const intim0 = clamp01(0.10 + 0.85 * r.closeness + 0.25 * r.loyalty - 0.80 * r.hostility);
-    const unc0 = clamp01(0.25 + 0.35 * (1 - r.closeness) + 0.25 * (1 - r.loyalty));
+    const unc0 = clamp01(0.15 + 0.35 * (1 - r.closeness) + 0.25 * (1 - r.loyalty));
     const align0 = clamp01(0.20 + 0.70 * r.loyalty + 0.20 * r.closeness - 0.70 * r.hostility);
     const resp0 = clamp01(0.10 + 0.85 * r.authority + 0.15 * r.loyalty);
     const dom0 = clamp01(0.10 + 0.90 * r.authority + 0.10 * r.hostility);
@@ -236,8 +236,9 @@ export function applyRelationPriorsToDyads(
       case 'threat':
       case 'conflict':
       case 'fear': {
-        floor = clamp01(0.65 * r.hostility + 0.15 * (1 - r.closeness) + 0.10 * (1 - r.loyalty));
-        cap = clamp01(0.25 + 0.75 * r.hostility + 0.25 * (1 - r.closeness));
+        // Only hostility drives threat floor; closeness + loyalty suppress it.
+        floor = clamp01(0.65 * r.hostility * (1 - 0.5 * r.closeness) * (1 - 0.3 * r.loyalty));
+        cap = clamp01(0.10 + 0.85 * r.hostility + 0.15 * (1 - r.closeness) * (1 - r.loyalty));
         break;
       }
       case 'intimacy':
@@ -269,7 +270,7 @@ export function applyRelationPriorsToDyads(
         break;
       }
       case 'uncertainty': {
-        floor = clamp01(0.10 + 0.35 * (1 - r.closeness) + 0.20 * (1 - r.loyalty));
+        floor = clamp01(0.05 + 0.35 * (1 - r.closeness) + 0.20 * (1 - r.loyalty));
         cap = 1;
         break;
       }
