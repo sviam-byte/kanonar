@@ -508,6 +508,71 @@ const RightPanel: React.FC = () => {
 
   const decision = (engine.snapshotV1 as any)?.decision;
 
+  // Extract FULL transitionSnapshot from pipelineV1 (S8/S9 artifacts).
+  // The old decision?.transitionSnapshot path may contain only lite summary fields.
+  const fullTransitionSnapshot = useMemo(() => {
+    const stages = (engine.pipelineV1 as any)?.stages;
+    if (Array.isArray(stages)) {
+      for (let i = stages.length - 1; i >= 0; i--) {
+        const ts = stages[i]?.artifacts?.transitionSnapshot;
+        if (ts?.perAction?.length) return ts;
+      }
+      for (let i = stages.length - 1; i >= 0; i--) {
+        const ds = stages[i]?.artifacts?.decisionSnapshot;
+        if (ds?.featureVector && ds?.lookahead?.ranked?.length) {
+          return {
+            enabled: true,
+            gamma: ds.lookahead.gamma ?? 0,
+            riskAversion: ds.lookahead.riskAversion ?? 0,
+            z0: ds.featureVector,
+            valueFn: { v0: ds.lookahead.v0 ?? 0, note: '' },
+            perAction: (ds.lookahead.ranked || []).map((r: any) => ({
+              actionId: r.actionId,
+              kind: r.kind || '',
+              qNow: r.qNow ?? 0,
+              qLookahead: r.qLookahead ?? 0,
+              delta: r.delta ?? 0,
+              v1: r.v1 ?? 0,
+              z1: {},
+              deltas: {},
+            })),
+            warnings: [],
+            flipCandidates: ds.linearApprox?.flipCandidates || [],
+            sensitivity: ds.linearApprox?.sensitivity || null,
+            sensitivityZ0: ds.linearApprox?.sensitivityZ0 || null,
+          };
+        }
+      }
+    }
+
+    const pomdpStages = (engine.pomdpPipelineV1 as any)?.stages;
+    if (Array.isArray(pomdpStages)) {
+      for (let i = pomdpStages.length - 1; i >= 0; i--) {
+        const ts = pomdpStages[i]?.artifacts?.transitionSnapshot;
+        if (ts?.perAction?.length) return ts;
+      }
+    }
+    return decision?.transitionSnapshot;
+  }, [engine.pipelineV1, engine.pomdpPipelineV1, decision]);
+
+  // Extract decision snapshot with full per-action breakdown from pipeline artifacts.
+  const pipelineDecision = useMemo(() => {
+    const stages = (engine.pipelineV1 as any)?.stages;
+    if (!Array.isArray(stages)) return decision;
+    for (let i = stages.length - 1; i >= 0; i--) {
+      const art = stages[i]?.artifacts;
+      if (art?.ranked?.length || art?.decisionSnapshot?.ranked?.length) {
+        return {
+          ...decision,
+          ranked: art.ranked || art.decisionSnapshot?.ranked || decision?.ranked || [],
+          transitionSnapshot: fullTransitionSnapshot,
+          _pipelineSource: true,
+        };
+      }
+    }
+    return decision;
+  }, [engine.pipelineV1, decision, fullTransitionSnapshot]);
+
   return (
     <aside className="w-[280px] shrink-0 border-l border-slate-800 bg-slate-950/50 flex flex-col min-h-0">
       <div className="flex flex-wrap border-b border-slate-800/60">
@@ -528,11 +593,11 @@ const RightPanel: React.FC = () => {
 
       <div className="flex-1 overflow-y-auto custom-scrollbar p-2">
         {tab === 'chain' && <CausalChain />}
-        {tab === 'world' && <WorldModelPanel atoms={currentAtoms} selfId={focusId} actorLabels={actorLabels} participantIds={world.participantIds} decision={decision} />}
-        {tab === 'decision' && <DecisionAnatomyPanel decision={decision} atoms={currentAtoms} selfId={focusId} actorLabels={actorLabels} />}
+        {tab === 'world' && <WorldModelPanel atoms={currentAtoms} selfId={focusId} actorLabels={actorLabels} participantIds={world.participantIds} decision={pipelineDecision} />}
+        {tab === 'decision' && <DecisionAnatomyPanel decision={pipelineDecision} atoms={currentAtoms} selfId={focusId} actorLabels={actorLabels} />}
         {tab === 'curves' && <CurvesPanel atoms={currentAtoms} selfId={focusId} world={world.worldState} />}
         {tab === 'graph' && <GraphEnergyPanel goalPreview={engine.goalPreview} atoms={currentAtoms} selfId={focusId} />}
-        {tab === 'pomdp' && <PomdpPanel transitionSnapshot={decision?.transitionSnapshot} decision={decision} actorLabels={actorLabels} />}
+        {tab === 'pomdp' && <PomdpPanel transitionSnapshot={fullTransitionSnapshot} decision={pipelineDecision} actorLabels={actorLabels} atoms={currentAtoms} selfId={focusId} />}
         {tab === 'other' && <OtherMindPanel castRows={engine.castRows} selfId={focusId} actorLabels={actorLabels} />}
       </div>
     </aside>
