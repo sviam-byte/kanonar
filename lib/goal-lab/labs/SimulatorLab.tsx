@@ -173,7 +173,7 @@ export const SimulatorLab: React.FC<Props> = ({ orchestratorRegistry, onPushToGo
   const [tickMs, setTickMs] = useState<number>(250);
   const [viewLocId, setViewLocId] = useState<string>(() => String(locations?.[0]?.entityId ?? ''));
   const [viewActorId, setViewActorId] = useState<string>(() => String(charactersAll?.[0]?.entityId ?? ''));
-  const [mapScale, setMapScale] = useState<number>(28);
+  const [mapScale, setMapScale] = useState<number>(16);
   const [followActor, setFollowActor] = useState<boolean>(true);
   const mapViewportRef = useRef<HTMLDivElement | null>(null);
 
@@ -283,6 +283,12 @@ export const SimulatorLab: React.FC<Props> = ({ orchestratorRegistry, onPushToGo
     const s = clamp(Math.min(sx, sy), 10, 60);
     setMapScale(s);
   }, [placesIndex, viewLocId]);
+
+  // Auto-fit map scale after mount and whenever visible location/map changes.
+  useEffect(() => {
+    const timer = setTimeout(() => fitMapScale(), 100);
+    return () => clearTimeout(timer);
+  }, [fitMapScale]);
 
   // --------- Helpers: validate setup ----------
   const setupProblems = useMemo(() => {
@@ -485,7 +491,7 @@ export const SimulatorLab: React.FC<Props> = ({ orchestratorRegistry, onPushToGo
   ];
 
   return (
-    <div className="h-screen bg-[#020617] text-slate-300 flex flex-col font-mono overflow-hidden p-1 gap-1">
+    <div className="h-full bg-[#020617] text-slate-300 flex flex-col font-mono overflow-hidden p-1 gap-1">
       {/* HEADER */}
       <header className="h-12 bg-slate-900/80 border border-slate-800 flex items-center justify-between px-6 shrink-0">
         <div className="flex items-center gap-4">
@@ -580,7 +586,7 @@ export const SimulatorLab: React.FC<Props> = ({ orchestratorRegistry, onPushToGo
 
       <div className="flex-1 grid grid-cols-12 gap-1 overflow-hidden">
         {/* LEFT: always-on map */}
-        <aside className="col-span-3 bg-[#020617] border border-slate-800 overflow-hidden flex flex-col">
+        <aside className="col-span-2 bg-[#020617] border border-slate-800 overflow-hidden flex flex-col">
           <div className="p-2 border-b border-slate-800 bg-slate-900/30 flex items-center gap-2">
             <div className="text-[10px] uppercase font-bold text-slate-500">Map</div>
             <button
@@ -715,7 +721,7 @@ export const SimulatorLab: React.FC<Props> = ({ orchestratorRegistry, onPushToGo
         </aside>
 
         {/* MAIN */}
-        <section className="col-span-5 bg-[#020617] border border-slate-800 overflow-hidden">
+        <section className="col-span-7 bg-[#020617] border border-slate-800 overflow-hidden">
             {mode === 'setup' ? (
               <div className="h-full flex flex-col overflow-hidden">
                 <div className="h-10 border-b border-slate-800 bg-slate-900/30 flex items-center px-4 gap-3">
@@ -748,8 +754,8 @@ export const SimulatorLab: React.FC<Props> = ({ orchestratorRegistry, onPushToGo
 
                 <div className="flex-1 overflow-hidden">
                   {setupStage === 'loc' && (
-                    <div className="h-full p-4 overflow-y-auto custom-scrollbar">
-                      <div className="grid grid-cols-3 gap-3">
+                    <div className="h-full p-3 overflow-y-auto custom-scrollbar">
+                      <div className="flex flex-wrap gap-2">
                         {locations.map((l: any) => {
                           const id = String(l.entityId);
                           const sel = draft.selectedLocIds.map(String).includes(id);
@@ -758,15 +764,15 @@ export const SimulatorLab: React.FC<Props> = ({ orchestratorRegistry, onPushToGo
                               key={id}
                               onClick={() => toggleLoc(id)}
                               className={cx(
-                                'text-left p-3 border rounded transition',
+                                'text-left px-3 py-2 border rounded transition min-w-[120px] max-w-[200px] flex-shrink-0',
                                 sel
                                   ? 'border-cyan-500/80 bg-cyan-500/10'
                                   : 'border-slate-800 bg-slate-900/30 hover:border-cyan-500/40'
                               )}
                             >
-                              <div className="text-[10px] text-slate-500">LOCATION_ID</div>
-                              <div className="text-sm font-bold text-white mt-1">{l.title ?? l.name ?? id}</div>
-                              <div className="text-[10px] mt-2 uppercase font-black text-cyan-300">
+                              <div className="text-[11px] font-bold text-white truncate" title={id}>{l.title ?? l.name ?? id}</div>
+                              <div className="text-[9px] text-slate-500 truncate mt-0.5">{id}</div>
+                              <div className="text-[9px] mt-1 uppercase font-black text-cyan-300">
                                 {sel ? 'Selected' : 'Select'}
                               </div>
                             </button>
@@ -1001,7 +1007,7 @@ export const SimulatorLab: React.FC<Props> = ({ orchestratorRegistry, onPushToGo
         </section>
 
         {/* RIGHT: Characters + History */}
-        <aside className="col-span-4 flex flex-col gap-1 overflow-hidden">
+        <aside className="col-span-3 flex flex-col gap-1 overflow-hidden">
           {/* Characters selection */}
           <div className="flex-1 bg-slate-900/20 border border-slate-800 flex flex-col overflow-hidden">
             <div className="p-3 bg-slate-900/40 border-b border-slate-800 flex items-center gap-2 text-[10px] font-bold text-slate-400 uppercase">

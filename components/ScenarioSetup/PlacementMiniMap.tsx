@@ -63,6 +63,14 @@ export function PlacementMiniMap({
   const [selectedActorId, setSelectedActorId] = useState<string>(() => String(actorIds?.[0] ?? ''));
   const [selectedPointId, setSelectedPointId] = useState<string | null>(null);
 
+  // Keep selected actor in sync when scenario setup updates actorIds after first render.
+  React.useEffect(() => {
+    if (!actorIds.length) return;
+    if (!selectedActorId || !actorIds.includes(selectedActorId)) {
+      setSelectedActorId(String(actorIds[0]));
+    }
+  }, [actorIds, selectedActorId]);
+
   const characters = Array.isArray(draft?.characters) ? draft.characters : [];
   const actorTitle = (id: string) =>
     characters.find((c: any) => String(c.id) === String(id))?.title ??
