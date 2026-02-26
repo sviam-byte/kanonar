@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { runGoalLabPipelineV1 } from '@/lib/goal-lab/pipeline/runPipelineV1';
 import { arr } from '@/lib/utils/arr';
 
-import { mockWorld } from './fixtures';
+import { mockAgent, mockWorld } from './fixtures';
 
 function stageAtoms(p: any, stage: string) {
   const st = arr(p?.stages).find((s: any) => String(s?.stage) === String(stage));
@@ -224,4 +224,22 @@ describe('Pipeline: Stage isolation invariants', () => {
     expect(s9b).toBeDefined();
     expect((s9a as any)?.artifacts?.transitionSnapshot).toEqual((s9b as any)?.artifacts?.transitionSnapshot);
   });
+
+  it('S5 emits physical threat and social standing artifacts for dyads', () => {
+    const p = runGoalLabPipelineV1({
+      world: mockWorld([mockAgent('A'), mockAgent('B')]),
+      agentId: 'A',
+      participantIds: ['A', 'B'],
+    });
+    const s5 = arr(p?.stages).find((s: any) => String(s?.stage) === 'S5');
+    expect(s5).toBeDefined();
+    expect((s5 as any)?.artifacts?.tomEnabled).toBe(true);
+    expect((s5 as any)?.artifacts?.physicalThreatCount).toBeGreaterThanOrEqual(1);
+    expect((s5 as any)?.artifacts?.socialStandingCount).toBeGreaterThanOrEqual(1);
+
+    const atoms = arr((s5 as any)?.atoms);
+    expect(atoms.some((a: any) => String(a?.id) === 'phys:threat:A:B')).toBe(true);
+    expect(atoms.some((a: any) => String(a?.id) === 'social:rank:diff:A:B')).toBe(true);
+  });
+
 });

@@ -122,6 +122,7 @@ export function buildActionCandidates(args: {
 
   for (const p of arr<Possibility>(args.possibilities)) {
     const key = keyFromPossibilityId(p.id);
+    const targetId = (p as any)?.targetId ?? null;
     const deltaGoals = buildDeltaGoals(
       args.atoms,
       args.selfId,
@@ -129,6 +130,69 @@ export function buildActionCandidates(args: {
       Number((p as any)?.magnitude ?? 0),
       goalEnergy
     );
+
+    // Target-specific ToM modulation:
+    // keeps action kind identical but differentiates expected value by target.
+    if (targetId && typeof targetId === 'string') {
+      const tomRead = (metric: string): number => {
+        const patterns = [
+          `tom:dyad:${args.selfId}:${targetId}:${metric}`,
+          `tom:effective:dyad:${args.selfId}:${targetId}:${metric}`,
+          `tom:ctx:dyad:${args.selfId}:${targetId}:${metric}`,
+        ];
+        for (const pat of patterns) {
+          const found = args.atoms.find(a => a?.id === pat);
+          if (found) return clamp01(Number((found as any)?.magnitude ?? 0));
+        }
+        return 0.5;
+      };
+
+      const trust = tomRead('trust');
+      const threat = tomRead('threat');
+      const intimacy = tomRead('intimacy');
+      const support = tomRead('support');
+      const alignment = tomRead('alignment');
+
+      // Physical threat estimate from derived dyad atoms.
+      const physThreat = (() => {
+        const a = args.atoms.find(a => a?.id === `phys:threat:${args.selfId}:${targetId}`);
+        return a ? clamp01(Number((a as any)?.magnitude ?? 0)) : 0.5;
+      })();
+
+      // Signed social-rank differential: positive means target is higher rank.
+      const socialStanding = (() => {
+        const a = args.atoms.find(a => a?.id === `social:rank:diff:${args.selfId}:${targetId}`);
+        return a ? Number((a as any)?.magnitude ?? 0) : 0;
+      })();
+
+      const isAggressive = /confront|attack|threaten|harm/.test(key);
+      const isCooperative = /help|cooperate|negotiate|npc|persuade|protect/.test(key);
+      const isAvoidant = /avoid|hide|escape|flee/.test(key);
+
+      for (const [goalId, baseDelta] of Object.entries(deltaGoals)) {
+        let mod = 1.0;
+
+        if (isAggressive) {
+          mod *= (1 - 0.4 * trust) * (1 - 0.3 * intimacy);
+          mod *= (1 + 0.5 * threat);
+          if (goalId === 'safety' || goalId === 'survival') {
+            mod *= (1 - 0.6 * physThreat);
+          }
+          if (goalId === 'status' || goalId === 'affiliation') {
+            mod *= (1 - 0.3 * Math.max(0, socialStanding));
+          }
+        } else if (isCooperative) {
+          mod *= (1 + 0.4 * trust) * (1 + 0.2 * alignment);
+          mod *= (1 - 0.3 * threat);
+          mod *= (1 + 0.2 * support);
+        } else if (isAvoidant) {
+          mod *= (1 + 0.5 * threat + 0.3 * physThreat);
+          mod *= (1 - 0.3 * trust - 0.2 * intimacy);
+        }
+
+        deltaGoals[goalId] = clamp11(baseDelta * mod);
+      }
+    }
 
     actions.push({
       id: String(p.id),

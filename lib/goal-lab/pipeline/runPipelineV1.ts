@@ -11,6 +11,8 @@ import { applyCharacterLens } from '../../context/lens/characterLens';
 
 import { applyRelationPriorsToDyads } from '../../tom/base/applyRelationPriors';
 import { deriveNonContextDyadAtoms } from '../../tom/base/deriveNonContextDyads';
+import { derivePhysicalThreatAtoms } from '../../context/sources/physicalThreatAtoms';
+import { deriveSocialStandingAtoms } from '../../context/sources/socialStandingAtoms';
 import { buildBeliefToMBias } from '../../tom/ctx/beliefBias';
 import { buildTomPolicyLayer } from '../../tom/policy/tomPolicy';
 
@@ -427,7 +429,7 @@ export function runGoalLabPipelineV1(input: {
     }
   });
 
-  // S5: ToM (priors/ctx/final + policy)
+  // S5: ToM (priors/ctx/final + policy) + physical/social dyad factors
   const enableToM = (input.sceneControl as any)?.enableToM !== false;
   if (enableToM) {
     const relPriors = applyRelationPriorsToDyads({ selfId, atoms });
@@ -435,9 +437,17 @@ export function runGoalLabPipelineV1(input: {
     const mS5a = mergeAtomsPreferNewer(atoms, relAtoms);
 
     const othersForTom = participantIds.filter(id => id && id !== selfId);
-    const nonCtx = deriveNonContextDyadAtoms({ selfId, otherIds: othersForTom, atoms: mS5a.atoms });
+
+    // Derived dyad modifiers that make threat and status target-specific.
+    const physAtoms = derivePhysicalThreatAtoms({ atoms: mS5a.atoms, selfId, otherIds: othersForTom }).map(normalizeAtom);
+    const mS5phys = mergeAtomsPreferNewer(mS5a.atoms, physAtoms);
+
+    const socialAtoms = deriveSocialStandingAtoms({ atoms: mS5phys.atoms, selfId, otherIds: othersForTom }).map(normalizeAtom);
+    const mS5social = mergeAtomsPreferNewer(mS5phys.atoms, socialAtoms);
+
+    const nonCtx = deriveNonContextDyadAtoms({ selfId, otherIds: othersForTom, atoms: mS5social.atoms });
     const nonCtxAtoms = arr((nonCtx as any)?.atoms).map(normalizeAtom);
-    const mS5x = mergeAtomsPreferNewer(mS5a.atoms, nonCtxAtoms);
+    const mS5x = mergeAtomsPreferNewer(mS5social.atoms, nonCtxAtoms);
 
     const beliefBias = buildBeliefToMBias({ selfId, atoms: mS5x.atoms });
     const beliefAtoms = arr((beliefBias as any)?.atoms).map(normalizeAtom);
@@ -448,8 +458,8 @@ export function runGoalLabPipelineV1(input: {
     const mS5c = mergeAtomsPreferNewer(mS5b.atoms, policyAtoms);
 
     const atomsS5 = mS5c.atoms;
-    const s5Added = uniqStrings([...mS5a.newIds, ...mS5x.newIds, ...mS5b.newIds, ...mS5c.newIds]);
-    const s5Overridden = uniqStrings([...mS5a.overriddenIds, ...mS5x.overriddenIds, ...mS5b.overriddenIds, ...mS5c.overriddenIds]);
+    const s5Added = uniqStrings([...mS5a.newIds, ...mS5phys.newIds, ...mS5social.newIds, ...mS5x.newIds, ...mS5b.newIds, ...mS5c.newIds]);
+    const s5Overridden = uniqStrings([...mS5a.overriddenIds, ...mS5phys.overriddenIds, ...mS5social.overriddenIds, ...mS5x.overriddenIds, ...mS5b.overriddenIds, ...mS5c.overriddenIds]);
     atoms = atomsS5;
     stages.push({
       stage: 'S5',
@@ -461,6 +471,8 @@ export function runGoalLabPipelineV1(input: {
       artifacts: {
         tomEnabled: true,
         relPriorsCount: relAtoms.length,
+        physicalThreatCount: physAtoms.length,
+        socialStandingCount: socialAtoms.length,
         nonContextDyadCount: nonCtxAtoms.length,
         beliefBiasCount: beliefAtoms.length,
         policyCount: policyAtoms.length,

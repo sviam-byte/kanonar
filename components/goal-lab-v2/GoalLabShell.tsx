@@ -487,6 +487,7 @@ const RightPanel: React.FC = () => {
   const ctx = useGoalLab();
   const { world, engine, actorLabels } = ctx;
   const [tab, setTab] = useState<RightTab>('chain');
+  const [rightPanelFullscreen, setRightPanelFullscreen] = useState(false);
   const focusId = world.perspectiveId || world.selectedAgentId;
 
   // Ensure engine data required by diagnostics tabs is present.
@@ -574,8 +575,18 @@ const RightPanel: React.FC = () => {
   }, [engine.pipelineV1, decision, fullTransitionSnapshot]);
 
   return (
-    <aside className="w-[280px] shrink-0 border-l border-slate-800 bg-slate-950/50 flex flex-col min-h-0">
+    <aside className={rightPanelFullscreen
+      ? 'fixed inset-0 z-[9999] bg-slate-950 flex flex-col overflow-hidden'
+      : 'w-[280px] shrink-0 border-l border-slate-800 bg-slate-950/50 flex flex-col min-h-0'
+    }>
       <div className="flex flex-wrap border-b border-slate-800/60">
+        <button
+          onClick={() => setRightPanelFullscreen(v => !v)}
+          className="px-1.5 py-1.5 text-[8px] font-bold uppercase tracking-wider transition text-amber-500 hover:text-amber-300"
+          title={rightPanelFullscreen ? 'Свернуть' : 'На весь экран'}
+        >
+          {rightPanelFullscreen ? '⊟' : '⊞'}
+        </button>
         {RIGHT_TABS.map(t => (
           <button
             key={t.key}

@@ -84,4 +84,64 @@ describe('decision hint compatibility', () => {
     expect(dg.wellbeing).toBeGreaterThan(0);
   });
 
+
+  it('modulates target-specific aggressive deltas using ToM + physical/social dyads', () => {
+    const selfId = 'A';
+    const confrontB: Possibility = {
+      id: 'aff:confront:A:B',
+      actorId: selfId,
+      targetId: 'B',
+      label: 'Confront B',
+      kind: 'aff',
+      magnitude: 0.4,
+      blockedBy: [],
+      confidence: 1,
+      trace: { usedAtomIds: [] },
+      source: 'rules',
+      meta: {},
+    } as any;
+    const confrontC: Possibility = {
+      id: 'aff:confront:A:C',
+      actorId: selfId,
+      targetId: 'C',
+      label: 'Confront C',
+      kind: 'aff',
+      magnitude: 0.4,
+      blockedBy: [],
+      confidence: 1,
+      trace: { usedAtomIds: [] },
+      source: 'rules',
+      meta: {},
+    } as any;
+
+    const atoms: ContextAtom[] = [
+      mkAtom(`util:activeGoal:${selfId}:safety`, 0.8),
+      mkAtom(`util:activeGoal:${selfId}:status`, 0.7),
+      mkAtom('util:hint:allow:safety:confront', 0.4),
+      mkAtom('util:hint:allow:status:confront', 0.4),
+
+      // Friend-like target B: high trust/intimacy + lower threat.
+      mkAtom('tom:dyad:A:B:trust', 0.9),
+      mkAtom('tom:dyad:A:B:intimacy', 0.8),
+      mkAtom('tom:dyad:A:B:threat', 0.2),
+      mkAtom('phys:threat:A:B', 0.2),
+      mkAtom('social:rank:diff:A:B', 0.6),
+
+      // Threat-like target C: low trust/intimacy + high threat.
+      mkAtom('tom:dyad:A:C:trust', 0.1),
+      mkAtom('tom:dyad:A:C:intimacy', 0.1),
+      mkAtom('tom:dyad:A:C:threat', 0.9),
+      mkAtom('phys:threat:A:C', 0.8),
+      mkAtom('social:rank:diff:A:C', -0.2),
+    ];
+
+    const res = buildActionCandidates({ selfId, atoms, possibilities: [confrontB, confrontC] });
+    const aB = res.actions.find(a => a.targetId === 'B');
+    const aC = res.actions.find(a => a.targetId === 'C');
+
+    expect(aB).toBeDefined();
+    expect(aC).toBeDefined();
+    expect((aB as any).deltaGoals.status).toBeLessThan((aC as any).deltaGoals.status);
+  });
+
 });
