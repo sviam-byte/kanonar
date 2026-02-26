@@ -602,6 +602,36 @@ const TalkSpec: ActionSpec = {
       c.stress = clamp01(c.stress + 0.015);
       const t = world.characters[otherId];
       if (t) (t as any).stress = clamp01(Number((t as any).stress ?? 0) + 0.06);
+    } else if (social === 'confront') {
+      // Confrontation is assertive pressure: trust goes down, respect can rise slightly.
+      bumpRelation(world, otherId, c.id, 'trust', -0.05);
+      bumpRelation(world, otherId, c.id, 'respect', +0.03);
+      bumpRelation(world, c.id, otherId, 'trust', -0.03);
+      c.stress = clamp01(c.stress + 0.02);
+      c.energy = clamp01(c.energy - 0.01);
+      const t = world.characters[otherId];
+      if (t) (t as any).stress = clamp01(Number((t as any).stress ?? 0) + 0.05);
+    } else if (social === 'help' || social === 'cooperate' || social === 'protect') {
+      // Cooperative acts improve trust and calm the local social state.
+      bumpRelation(world, otherId, c.id, 'trust', +0.06);
+      bumpRelation(world, c.id, otherId, 'trust', +0.03);
+      bumpRelation(world, otherId, c.id, 'respect', +0.02);
+      c.stress = clamp01(c.stress - 0.02);
+      c.energy = clamp01(c.energy - 0.02);
+      const t = world.characters[otherId];
+      if (t) (t as any).stress = clamp01(Number((t as any).stress ?? 0) - 0.03);
+    } else if (social === 'submit') {
+      // Submission signals deference and slightly increases counterpart respect.
+      bumpRelation(world, otherId, c.id, 'trust', +0.02);
+      bumpRelation(world, c.id, otherId, 'respect', +0.04);
+      c.stress = clamp01(c.stress - 0.01);
+    } else if (social === 'threaten') {
+      // Explicit threat is stronger than generic intimidation.
+      bumpRelation(world, otherId, c.id, 'trust', -0.12);
+      bumpRelation(world, otherId, c.id, 'respect', -0.04);
+      c.stress = clamp01(c.stress + 0.02);
+      const t = world.characters[otherId];
+      if (t) (t as any).stress = clamp01(Number((t as any).stress ?? 0) + 0.07);
     }
 
     notes.push(`${c.id} ${social} -> ${otherId}`);
@@ -618,11 +648,13 @@ const TalkSpec: ActionSpec = {
       targetId: otherId,
       act: social === 'request_access'
         ? 'ask'
-        : social === 'offer_resource'
+        : social === 'offer_resource' || social === 'help' || social === 'cooperate' || social === 'protect'
           ? 'promise'
-          : social === 'intimidate' || social === 'insult'
+          : social === 'intimidate' || social === 'insult' || social === 'threaten'
             ? 'threaten'
-            : 'inform',
+            : social === 'confront'
+              ? 'negotiate'
+              : 'inform',
       volume,
       topic: social,
       text: social === 'request_access'
@@ -633,6 +665,16 @@ const TalkSpec: ActionSpec = {
             ? 'tries to intimidate'
             : social === 'insult'
               ? 'insults'
+              : social === 'confront'
+                ? 'confronts'
+                : social === 'help' || social === 'cooperate'
+                  ? 'helps out'
+                  : social === 'protect'
+                    ? 'offers protection'
+                    : social === 'submit'
+                      ? 'defers'
+                      : social === 'threaten'
+                        ? 'threatens'
               : 'shares an update',
       atoms: mkSpeechAtoms('talk', c.id, otherId, { social, trust }),
     };
