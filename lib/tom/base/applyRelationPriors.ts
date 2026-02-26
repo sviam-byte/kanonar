@@ -224,6 +224,19 @@ export function applyRelationPriorsToDyads(
 
     const base = clamp01(d.magnitude ?? 0);
 
+    // Extra dyad priors from non-context sources.
+    // phys:threat reflects embodied danger (build/weapon/proximity),
+    // social:rank:diff reflects hierarchical asymmetry.
+    const physThreatAtom = [...atoms, ...out].find(a =>
+      typeof a.id === 'string' && a.id === `phys:threat:${selfId}:${otherId}`
+    );
+    const physThreat = physThreatAtom ? clamp01(Number(physThreatAtom.magnitude ?? 0)) : 0;
+
+    const rankDiffAtom = [...atoms, ...out].find(a =>
+      typeof a.id === 'string' && a.id === `social:rank:diff:${selfId}:${otherId}`
+    );
+    const rankDiff = rankDiffAtom ? Number(rankDiffAtom.magnitude ?? 0) : 0;
+
     let floor = 0;
     let cap = 1;
 
@@ -236,9 +249,16 @@ export function applyRelationPriorsToDyads(
       case 'threat':
       case 'conflict':
       case 'fear': {
-        // Only hostility drives threat floor; closeness + loyalty suppress it.
-        floor = clamp01(0.65 * r.hostility * (1 - 0.5 * r.closeness) * (1 - 0.3 * r.loyalty));
-        cap = clamp01(0.10 + 0.85 * r.hostility + 0.15 * (1 - r.closeness) * (1 - r.loyalty));
+        // Hostility drives threat baseline; embodied danger and rank asymmetry add pressure.
+        floor = clamp01(
+          0.65 * r.hostility * (1 - 0.5 * r.closeness) * (1 - 0.3 * r.loyalty)
+          + 0.20 * physThreat
+          + 0.10 * Math.max(0, rankDiff)
+        );
+        cap = clamp01(
+          0.10 + 0.85 * r.hostility + 0.15 * (1 - r.closeness) * (1 - r.loyalty)
+          + 0.15 * physThreat
+        );
         break;
       }
       case 'intimacy':

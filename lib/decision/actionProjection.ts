@@ -18,6 +18,14 @@ export const FEATURE_GOAL_PROJECTION_KEYS: Record<string, Partial<Record<Feature
   resource: { resourceAccess: 0.7, scarcity: -0.6 },
   autonomy: { escape: 0.5, cover: 0.3, visibility: -0.2 },
   wellbeing: { fatigue: -0.5, stress: -0.5, emotionValence: 0.4, socialTrust: 0.2 },
+  // Дополнительные goal-домены для большей разницы между действиями.
+  affiliation: { socialTrust: 0.7, emotionValence: 0.5, stress: -0.2 },
+  control: { threat: -0.4, escape: 0.3, visibility: 0.3, stress: -0.3 },
+  status: { visibility: 0.5, socialTrust: 0.3, emotionValence: 0.2 },
+  exploration: { escape: 0.3, resourceAccess: 0.3, visibility: 0.2, fatigue: -0.2 },
+  order: { threat: -0.3, stress: -0.4, socialTrust: 0.3 },
+  rest: { fatigue: -0.8, stress: -0.5, emotionValence: 0.2 },
+  wealth: { resourceAccess: 0.9, scarcity: -0.7 },
 };
 
 /**
@@ -33,10 +41,16 @@ const BASE_EFFECTS: Record<string, Partial<Record<FeatureKeyLite, number>>> = {
   negotiate: { threat: -0.03, stress: -0.02, socialTrust: +0.06, emotionValence: +0.03 },
   help: { stress: -0.03, fatigue: +0.03, socialTrust: +0.08, emotionValence: +0.05 },
   attack: { threat: -0.02, stress: +0.05, fatigue: +0.06, visibility: +0.08 },
+  confront: { threat: +0.04, stress: +0.04, socialTrust: -0.06, emotionValence: -0.03, visibility: +0.06 },
+  npc: { stress: -0.01, socialTrust: +0.03, emotionValence: +0.02 },
   loot: { resourceAccess: +0.08, scarcity: -0.04, threat: +0.03, fatigue: +0.04, socialTrust: -0.05 },
   betray: { socialTrust: -0.15, emotionValence: -0.08, stress: +0.04, threat: +0.06 },
   persuade: { socialTrust: +0.04, emotionValence: +0.02, stress: +0.01 },
   cooperate: { socialTrust: +0.10, emotionValence: +0.06, stress: -0.02, fatigue: +0.01 },
+  submit: { stress: -0.03, socialTrust: +0.02, emotionValence: -0.04, escape: -0.04 },
+  threaten: { threat: +0.06, stress: +0.05, socialTrust: -0.10, visibility: +0.08 },
+  observe: { threat: -0.02, stress: -0.01, visibility: -0.04 },
+  protect: { threat: -0.04, socialTrust: +0.06, emotionValence: +0.04, fatigue: +0.03 },
 };
 
 const PATTERN_MAP: Array<[RegExp, string]> = [
@@ -48,8 +62,14 @@ const PATTERN_MAP: Array<[RegExp, string]> = [
   [/talk|negot|ask|persuade/, 'negotiate'],
   [/help|assist|save|cooperate/, 'help'],
   [/attack|fight|shoot/, 'attack'],
+  [/confront|challenge|demand|accuse/, 'confront'],
+  [/npc|generic|default/, 'npc'],
   [/loot|take|steal/, 'loot'],
   [/betray/, 'betray'],
+  [/submit|comply|obey|surrender/, 'submit'],
+  [/threaten|intimidate/, 'threaten'],
+  [/observe|watch|scout|scan/, 'observe'],
+  [/protect|defend|guard|shield/, 'protect'],
 ];
 
 /**

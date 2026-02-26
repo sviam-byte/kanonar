@@ -59,6 +59,8 @@ Outputs:
 
 Outputs:
 - dyads / priors / tom-политики (зависит от реализации)
+- `phys:threat:<self>:<other>` (physical threat differential)
+- `social:rank:diff:<self>:<other>` (signed social standing differential)
 
 Notes:
 - стадия может быть отключена через `sceneControl.enableToM === false`
