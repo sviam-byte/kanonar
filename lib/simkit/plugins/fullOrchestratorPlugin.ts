@@ -240,20 +240,55 @@ export function makeFullOrchestratorPlugin(opts?: { T?: number }): SimPlugin {
         const kind = String(chosenMeta?.kind || chosen?.kind || '').trim();
         const targetId = chosenMeta?.targetId != null ? String(chosenMeta.targetId) : (chosen?.targetId ?? null);
 
-        const finalKind = [
-          'move',
-          'wait',
-          'talk',
-          'rest',
-          'observe',
-          'question_about',
-          'negotiate',
-          'inspect_feature',
-          'repair_feature',
-          'scavenge_feature',
-        ].includes(kind)
-          ? (kind as any)
+        // GoalLab can produce abstract intent kinds that are not directly executable by SimKit.
+        // Keep this table explicit so new GoalLab kinds do not silently degrade into wait.
+        const GOALLAB_TO_SIMKIT: Record<string, string> = {
+          // Direct SimKit-compatible kinds.
+          move: 'move',
+          move_xy: 'move_xy',
+          wait: 'wait',
+          talk: 'talk',
+          rest: 'rest',
+          observe: 'observe',
+          attack: 'attack',
+          question_about: 'question_about',
+          negotiate: 'negotiate',
+          inspect_feature: 'inspect_feature',
+          repair_feature: 'repair_feature',
+          scavenge_feature: 'scavenge_feature',
+          start_intent: 'start_intent',
+          continue_intent: 'continue_intent',
+          abort_intent: 'abort_intent',
+
+          // GoalLab abstract kinds bridged to concrete SimKit actions.
+          help: 'talk',
+          cooperate: 'talk',
+          protect: 'talk',
+          npc: 'talk',
+          confront: 'talk',
+          threaten: 'talk',
+          submit: 'talk',
+          harm: 'attack',
+          avoid: 'move',
+          flee: 'move',
+          escape: 'move',
+          hide: 'wait',
+          ask_info: 'question_about',
+          persuade: 'negotiate',
+        };
+
+        const mappedKind = GOALLAB_TO_SIMKIT[kind] || GOALLAB_TO_SIMKIT[kind.toLowerCase()] || null;
+        const SIMKIT_KINDS = new Set([
+          'move', 'move_xy', 'wait', 'talk', 'rest', 'observe', 'attack',
+          'question_about', 'negotiate', 'inspect_feature', 'repair_feature',
+          'scavenge_feature', 'start_intent', 'continue_intent', 'abort_intent',
+        ]);
+        const finalKind = mappedKind && SIMKIT_KINDS.has(mappedKind)
+          ? (mappedKind as any)
           : 'wait';
+
+        // Preserve semantic provenance for traceability across GoalLab → SimKit boundary.
+        const goalLabKind = kind;
 
         actions.push({
           id: `act:${finalKind}:${tickIndex}:${actorId}`,
@@ -261,7 +296,17 @@ export function makeFullOrchestratorPlugin(opts?: { T?: number }): SimPlugin {
           actorId,
           targetId: targetId != null ? String(targetId) : null,
           targetNodeId: chosenMeta?.targetNodeId ?? chosen?.targetNodeId ?? null,
-          meta: chosenMeta?.meta ?? null,
+          meta: {
+            ...(chosenMeta?.meta ?? null),
+            goalLabKind,
+            mappedFrom: kind,
+            aggressive: /confront|threaten|harm|attack/.test(kind),
+            cooperative: /help|cooperate|npc|protect/.test(kind),
+            // TalkSpec consumes action.meta.social, so bridge abstract GoalLab social kinds.
+            social: /confront|help|cooperate|protect|submit|threaten|intimidate|insult/.test(kind)
+              ? kind
+              : (chosenMeta?.meta?.social ?? 'inform'),
+          },
           payload: {
             policy: {
               T,
