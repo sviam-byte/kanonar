@@ -71,5 +71,49 @@ export const SCENE_PRESETS: Record<string, ScenePreset> = {
       }
     ],
     globalInjections: []
+  },
+
+  'pomdp_prototype': {
+    schemaVersion: 1,
+    presetId: 'pomdp_prototype',
+    title: 'POMDP Prototype',
+    description: 'Mid-range scene designed for POMDP lookahead testing. Moderate threat + social pressure.',
+    defaultMetrics: {
+      crowd: 0.30, hostility: 0.25, chaos: 0.20, urgency: 0.35,
+      scarcity: 0.20, loss: 0.15, novelty: 0.40, resourceAccess: 0.55
+    },
+    defaultNorms: {
+      publicExposure: 0.40, privacy: 0.50, surveillance: 0.35,
+      normPressure: 0.35, proceduralStrict: 0.30
+    },
+    entryPhaseId: 'observe',
+    phases: [
+      {
+        id: 'observe',
+        label: 'Observation',
+        injections: [
+          { id: 'scene:mode:pomdpProto', ns: 'scene', kind: 'scene_flag', magnitude: 1, label: 'POMDP prototype' },
+          { id: 'off:npc:info', ns: 'off', kind: 'offer', magnitude: 0.5, label: 'info available' },
+          { id: 'threat:ambient', ns: 'threat', kind: 'ambient', magnitude: 0.25, label: 'ambient threat' }
+        ],
+        transitions: [
+          {
+            to: 'escalate',
+            when: [{ atomId: 'threat:final', op: '>=', value: 0.6 }],
+            afterTicksInPhase: 0
+          }
+        ]
+      },
+      {
+        id: 'escalate',
+        label: 'Escalation',
+        injections: [
+          { id: 'threat:escalation', ns: 'threat', kind: 'escalation', magnitude: 0.6, label: 'threat escalated' },
+          { id: 'off:authority:intervention', ns: 'off', kind: 'offer', magnitude: 0.7, label: 'authority intervenes' }
+        ],
+        transitions: []
+      }
+    ],
+    globalInjections: []
   }
 };
