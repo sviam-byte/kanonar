@@ -1253,10 +1253,10 @@ export const GoalLabResults: React.FC<Props> = ({
     // Simulator uses SimKit; pass real producers to wire up orchestrator output.
     const SimulatorTab = () => <SimulatorLab orchestratorRegistry={defaultProducers} />;
     const explainStats = {
-        threat: Number(stats.threat) || 0,
-        pressure: Number(stats.pressure) || 0,
-        support: Number(stats.support) || 0,
-        crowd: Number(stats.crowd) || 0,
+        threat: Number(stats?.threat) || 0,
+        pressure: Number(stats?.pressure) || 0,
+        support: Number(stats?.support) || 0,
+        crowd: Number(stats?.crowd) || 0,
     };
 
     const fmt = (v: any) => (Number.isFinite(v) ? Number(v).toFixed(2) : '—');
