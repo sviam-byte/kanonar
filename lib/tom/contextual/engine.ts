@@ -428,14 +428,16 @@ export function computeContextualMind(inputs: ContextualMindInputs): ContextualM
     dyads: Object.fromEntries(
       reportDyads.map(d => [
         d.targetId,
-        {
-          trust: d.contextual.state.trust,
-          threat: d.contextual.state.threat,
-          support: d.contextual.state.support,
-          attachment: d.contextual.state.attachment,
-          dominance: d.contextual.state.dominance,
-          respect: d.contextual.state.respect,
-        },
+        d.contextual?.state
+          ? {
+              trust: d.contextual.state.trust,
+              threat: d.contextual.state.threat,
+              support: d.contextual.state.support,
+              attachment: d.contextual.state.attachment,
+              dominance: d.contextual.state.dominance,
+              respect: d.contextual.state.respect,
+            }
+          : { trust: 0.5, threat: 0.2, support: 0.5, attachment: 0.1, dominance: 0.5, respect: 0.5 },
       ])
     ),
   };

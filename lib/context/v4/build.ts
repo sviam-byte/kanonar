@@ -16,7 +16,7 @@ function clamp01(x: number) { return Math.max(0, Math.min(1, x)); }
 
 function syncWorldTomFromDyadReport(world: WorldState, selfId: string, otherId: string, report: TomDyadReport) {
   const tom: any = (world as any).tom;
-  if (!tom) return;
+  if (!tom || !report?.state) return;
 
   if (!tom[selfId]) tom[selfId] = {};
   if (!tom[selfId][otherId]) {
@@ -52,8 +52,8 @@ function syncWorldTomFromDyadReport(world: WorldState, selfId: string, otherId: 
   t.respect = clamp01(report.state.respect);
 
   // legacy: conflict == threat
-  t.conflict = clamp01(report.state.threat);
-  (t as any).threat = clamp01(report.state.threat);
+  t.conflict = clamp01(report.state?.threat ?? 0);
+  (t as any).threat = clamp01(report.state?.threat ?? 0);
 
   const da = report.dyadicAffect;
   entry.affect = {

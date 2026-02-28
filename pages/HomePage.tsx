@@ -9,11 +9,11 @@ const entryPoints = [
     { type: EntityType.Object, name: "Объекты", description: "Артефакты с онтологическим весом." },
     { type: EntityType.Concept, name: "Концепты", description: "Культурные и системные абстракции." },
     { type: "events", name: "Система Событий", description: "Управление потоком времени, социальными интеракциями и системными триггерами.", link: "/events" },
-    // Legacy GoalLab entry point remains default for backward compatibility.
-    { type: "goal-lab", name: "GoalLab", description: "Лаборатория контекста, оркестратора и симулятора.", link: "/goal-lab" },
-    // GoalLab v2 is exposed explicitly for gradual migration and parity checks.
-    { type: "goal-lab-v2", name: "GoalLab v2", description: "Новая версия GoalLab (shell/context/hooks) для тестирования и поэтапного перехода.", link: "/goal-lab-v2" },
+    { type: "goal-lab-v2", name: "GoalLab", description: "Лаборатория контекста: pipeline, POMDP, граф целей, анализ решений.", link: "/goal-lab-v2" },
+    { type: "simulation-hub", name: "Симуляция", description: "Оркестратор сценариев: SimKit, запуск тиков, каталог готовых симуляций.", link: "/simulation-hub" },
     { type: EntityType.Protocol, name: "Протоколы", description: "Правила, связывающие реальность." },
+    // Legacy GoalLab kept for backward compatibility — hidden from main grid.
+    // { type: "goal-lab", name: "GoalLab (legacy)", description: "Старая версия.", link: "/goal-lab" },
 ]
 
 export const HomePage: React.FC = () => {

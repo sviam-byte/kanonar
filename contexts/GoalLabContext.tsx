@@ -108,6 +108,7 @@ export const GoalLabProvider: React.FC<{
   const [atomOverridesLayer, setAtomOverridesLayer] = useState<AtomOverrideLayer>({ rules: [], label: 'default' });
   const [injectedEvents, setInjectedEventsRaw] = useState<any[]>([]);
   const setInjectedEvents = useCallback((updater: (prev: any[]) => any[]) => setInjectedEventsRaw(updater), []);
+  // enablePredict defaults to false — toggled on via UI. POMDP panel shows prototype when off.
   const [sceneControl, setSceneControl] = useState<any>({ presetId: 'safe_hub' });
   const [decisionNonce, setDecisionNonce] = useState(0);
   const bumpDecisionNonce = useCallback(() => setDecisionNonce(n => n + 1), []);
