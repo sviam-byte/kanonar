@@ -629,8 +629,36 @@ export const GoalLabResults: React.FC<Props> = ({
 }) => {
   const [selectedGoalId, setSelectedGoalId] = useState<string | null>(null);
   const [isPreviewOpen, setPreviewOpen] = useState(false);
-  const [activeTabKey, setActiveTabKey] = useState<string>('explain');
+  const [activeTabKey, setActiveTabKey] = useState<string>('overview');
   const [selectedAtomId, setSelectedAtomId] = useState<string | null>(null);
+  const [devMode, setDevMode] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('goalLab.devMode') === '1';
+    } catch {
+      return false;
+    }
+  });
+
+  // Persist dev-mode toggle between sessions for quicker diagnostics workflow.
+  useEffect(() => {
+    try {
+      localStorage.setItem('goalLab.devMode', devMode ? '1' : '0');
+    } catch {}
+  }, [devMode]);
+
+  // Tabs used mostly for diagnostics: hide for non-dev users.
+  const DEV_ONLY_KEYS = new Set([
+    'atoms', 'pipeline', 'validator', 'propagation', 'cast',
+    'mind', 'coverage', 'possibilities', 'access', 'diff',
+    'debug', 'orchestrator', 'simulator', 'tests', 'value', 'context-lens',
+  ]);
+
+  // Ensure active tab stays valid when dev mode is turned off.
+  useEffect(() => {
+    if (!devMode && DEV_ONLY_KEYS.has(activeTabKey)) {
+      setActiveTabKey('overview');
+    }
+  }, [devMode, activeTabKey]);
 
   // One-click navigation: from any diagnostics link jump into Atoms tab and focus atom.
   const jumpToAtomId = (id: string | null) => {
@@ -1442,44 +1470,80 @@ export const GoalLabResults: React.FC<Props> = ({
         );
     };
 
-    const TAB_REGISTRY: Array<{ key: string; label: string; render: () => React.ReactNode }> = [
+    // ── Tab architecture ─────────────────────────────────────────────
+    // `TAB_REGISTRY` is the flat key->renderer map used by content.
+    // `TAB_GROUPS` controls visual grouping and dropdown composition.
+    type TabEntry = { key: string; label: string; render: () => React.ReactNode; devOnly?: boolean };
+    type TabGroup = {
+      /** Group title in top tab bar. */
+      label: string;
+      /** Single-tab key; null means this group is a dropdown. */
+      key: string | null;
+      /** Hide when dev mode is disabled. */
+      devOnly?: boolean;
+      /** Child tab keys for dropdown groups. */
+      children?: string[];
+      /** Draw visual separator after group. */
+      sep?: boolean;
+    };
+
+    const TAB_REGISTRY: TabEntry[] = [
+      // User-facing tabs.
+      { key: 'overview', label: 'Overview', render: () => <OverviewTab /> },
       { key: 'explain', label: 'Explain', render: () => <ExplainTab /> },
       { key: 'analysis', label: 'Analysis', render: () => <AnalysisTab /> },
-      { key: 'atoms', label: 'Atoms', render: () => <AtomsTab /> },
-      { key: 'pipeline', label: 'Pipeline', render: () => <PipelineTab /> },
-      { key: 'pipeline-flow', label: 'Pipeline Flow', render: () => <PipelineFlowTab /> },
-      { key: 'validator', label: 'Validator', render: () => <ValidatorTab /> },
-      { key: 'propagation', label: 'Propagation', render: () => <PropagationTab /> },
-      { key: 'cast', label: 'Cast', render: () => <CastTab /> },
+      { key: 'emotions', label: 'Emotions', render: () => <EmotionsTab /> },
+      { key: 'emotion-explain', label: 'EmotionExplain', render: () => <EmotionExplainTab /> },
       { key: 'threat', label: 'Threat', render: () => <ThreatTab /> },
       { key: 'tom', label: 'ToM', render: () => <ToMTab /> },
-      { key: 'mind', label: 'CtxMind', render: () => <MindTab /> },
-      { key: 'emotions', label: 'Emotions', render: () => <EmotionsTab /> },
-      { key: 'coverage', label: 'Coverage', render: () => <CoverageTab /> },
-      { key: 'possibilities', label: 'Possibilities', render: () => <PossibilitiesTab /> },
       { key: 'decision', label: 'Decision', render: () => <DecisionTab /> },
       { key: 'decision-graph', label: 'Decision Graph', render: () => <DecisionGraphTab /> },
-      { key: 'goal-graph', label: 'Goal Graph', render: () => (
-        <GoalActionGraphView
-          atoms={currentAtoms}
-          decision={decision}
-          selfId={focusSelfId ?? ''}
-          onJumpToAtomId={jumpToAtomId}
-        />
-      )},
-      { key: 'access', label: 'Access', render: () => <AccessTab /> },
-      { key: 'diff', label: 'Diff', render: () => <DiffTab /> },
-      { key: 'emotion-explain', label: 'EmotionExplain', render: () => <EmotionExplainTab /> },
-      { key: 'debug', label: 'Debug', render: () => <DebugTab /> },
-      { key: 'orchestrator', label: 'Orchestrator', render: () => <OrchestratorTab /> },
-      { key: 'simulator', label: 'Simulation', render: () => <SimulatorTab /> },
+      {
+        key: 'goal-graph', label: 'Goal Graph', render: () => (
+          <GoalActionGraphView atoms={currentAtoms} decision={decision} selfId={focusSelfId ?? ''} onJumpToAtomId={jumpToAtomId} />
+        ),
+      },
       { key: 'tuning', label: 'Tuning', render: () => <TuningTab /> },
-      { key: 'tests', label: 'Tests', render: () => <GoalLabTestsPanel selfId={focusId || ''} actorLabels={actorLabels as any} /> },
-      { key: 'context-lens', label: 'Context Lens', render: () => <ContextLensTab /> },
-      { key: 'overview', label: 'Overview', render: () => <OverviewTab /> },
       { key: 'story', label: 'Story', render: () => <StoryModeTab /> },
-      { key: 'value', label: 'Value', render: () => <ValueTab /> },
+
+      // Dev-focused tabs.
+      { key: 'atoms', label: 'Atoms', render: () => <AtomsTab />, devOnly: true },
+      { key: 'context-lens', label: 'Context Lens', render: () => <ContextLensTab />, devOnly: true },
+      { key: 'diff', label: 'Diff', render: () => <DiffTab />, devOnly: true },
+      { key: 'coverage', label: 'Coverage', render: () => <CoverageTab />, devOnly: true },
+      { key: 'validator', label: 'Validator', render: () => <ValidatorTab />, devOnly: true },
+      { key: 'pipeline', label: 'Pipeline', render: () => <PipelineTab />, devOnly: true },
+      { key: 'pipeline-flow', label: 'Pipeline Flow', render: () => <PipelineFlowTab />, devOnly: true },
+      { key: 'propagation', label: 'Propagation', render: () => <PropagationTab />, devOnly: true },
+      { key: 'cast', label: 'Cast', render: () => <CastTab />, devOnly: true },
+      { key: 'mind', label: 'CtxMind', render: () => <MindTab />, devOnly: true },
+      { key: 'possibilities', label: 'Possibilities', render: () => <PossibilitiesTab />, devOnly: true },
+      { key: 'access', label: 'Access', render: () => <AccessTab />, devOnly: true },
+      { key: 'debug', label: 'Debug', render: () => <DebugTab />, devOnly: true },
+      { key: 'orchestrator', label: 'Orchestrator', render: () => <OrchestratorTab />, devOnly: true },
+      { key: 'simulator', label: 'Simulation', render: () => <SimulatorTab />, devOnly: true },
+      { key: 'tests', label: 'Tests', render: () => <GoalLabTestsPanel selfId={focusId || ''} actorLabels={actorLabels as any} />, devOnly: true },
+      { key: 'value', label: 'Value', render: () => <ValueTab />, devOnly: true },
     ];
+
+    const TAB_GROUPS: TabGroup[] = [
+      { label: 'Overview', key: 'overview' },
+      { label: 'Emotions', key: null, children: ['emotions', 'emotion-explain'] },
+      { label: 'World', key: null, children: ['threat', 'tom'] },
+      { label: 'Decision', key: null, children: ['decision', 'decision-graph', 'goal-graph'] },
+      { label: 'Analysis', key: 'analysis' },
+      { label: 'Tuning', key: 'tuning' },
+      { label: 'Story', key: 'story', sep: true },
+
+      { label: 'Atoms', key: null, children: ['atoms', 'context-lens', 'diff', 'coverage', 'validator'], devOnly: true },
+      { label: 'Pipeline', key: null, children: ['pipeline', 'pipeline-flow', 'propagation'], devOnly: true },
+      { label: 'Agents', key: null, children: ['cast', 'mind', 'possibilities', 'access'], devOnly: true },
+      { label: 'Labs', key: null, children: ['orchestrator', 'simulator', 'tests', 'value'], devOnly: true },
+      { label: 'Debug', key: 'debug', devOnly: true },
+      { label: 'Explain', key: 'explain', devOnly: true },
+    ];
+
+    const visibleGroups = TAB_GROUPS.filter(group => !group.devOnly || devMode);
 
     const renderContent = () => {
     const activeEntry = TAB_REGISTRY.find(t => t.key === activeTabKey) || TAB_REGISTRY[0];
@@ -1606,15 +1670,88 @@ export const GoalLabResults: React.FC<Props> = ({
                 </div>
 
                 <div className="flex-1 flex flex-col overflow-hidden bg-canon-bg">
-                    <div className="border-b border-canon-border flex-shrink-0 flex items-center justify-between gap-2 px-2">
-                        <div className="flex overflow-x-auto custom-scrollbar no-scrollbar">
-                            {TAB_REGISTRY.map(({ key, label }) => (
-                                <button key={key} onClick={() => setActiveTabKey(key)} className={`px-4 py-2 text-sm font-medium transition-colors whitespace-nowrap ${activeTabKey === key ? 'border-b-2 border-canon-accent text-canon-accent' : 'text-canon-text-light hover:text-white'}`}>
-                                {label}
-                                </button>
-                            ))}
+                    <div className="border-b border-canon-border flex-shrink-0 flex items-center justify-between gap-2 px-1">
+                        <div className="flex items-center overflow-x-auto custom-scrollbar no-scrollbar">
+                            {visibleGroups.map((group, groupIndex) => {
+                              if (group.key) {
+                                const isActive = activeTabKey === group.key;
+                                return (
+                                  <React.Fragment key={group.key}>
+                                    <button
+                                      onClick={() => setActiveTabKey(group.key || activeTabKey)}
+                                      className={`px-3 py-2 text-[11px] font-medium transition-colors whitespace-nowrap ${
+                                        isActive
+                                          ? 'border-b-2 border-canon-accent text-canon-accent'
+                                          : group.devOnly
+                                            ? 'text-canon-text-light/50 hover:text-canon-text-light'
+                                            : 'text-canon-text-light hover:text-white'
+                                      }`}
+                                    >
+                                      {group.label}
+                                    </button>
+                                    {group.sep && <span key={`sep-${groupIndex}`} className="mx-1 text-canon-border/40 select-none">│</span>}
+                                  </React.Fragment>
+                                );
+                              }
+
+                              const childEntries = (group.children || [])
+                                .map(key => TAB_REGISTRY.find(tab => tab.key === key))
+                                .filter(Boolean) as TabEntry[];
+                              const isGroupActive = childEntries.some(child => child.key === activeTabKey);
+                              const activeChild = childEntries.find(child => child.key === activeTabKey);
+
+                              return (
+                                <React.Fragment key={group.label}>
+                                  <span className="relative group">
+                                    <button
+                                      onClick={() => setActiveTabKey(childEntries[0]?.key || activeTabKey)}
+                                      className={`px-3 py-2 text-[11px] font-medium transition-colors whitespace-nowrap flex items-center gap-1 ${
+                                        isGroupActive
+                                          ? 'border-b-2 border-canon-accent text-canon-accent'
+                                          : group.devOnly
+                                            ? 'text-canon-text-light/50 hover:text-canon-text-light'
+                                            : 'text-canon-text-light hover:text-white'
+                                      }`}
+                                    >
+                                      {group.label}
+                                      {activeChild && activeChild.key !== childEntries[0]?.key && (
+                                        <span className="text-[9px] opacity-60">: {activeChild.label}</span>
+                                      )}
+                                      <span className="text-[8px] opacity-40">▾</span>
+                                    </button>
+                                    <div className="hidden group-hover:block absolute left-0 top-full z-50 bg-canon-bg border border-canon-border rounded shadow-lg min-w-[140px] py-1">
+                                      {childEntries.map(child => (
+                                        <button
+                                          key={child.key}
+                                          onClick={() => setActiveTabKey(child.key)}
+                                          className={`w-full text-left px-3 py-1.5 text-[11px] transition-colors ${
+                                            child.key === activeTabKey
+                                              ? 'text-canon-accent bg-canon-accent/10'
+                                              : 'text-canon-text-light hover:bg-canon-bg-light/30 hover:text-white'
+                                          }`}
+                                        >
+                                          {child.label}
+                                        </button>
+                                      ))}
+                                    </div>
+                                  </span>
+                                  {group.sep && <span key={`sep-${groupIndex}`} className="mx-1 text-canon-border/40 select-none">│</span>}
+                                </React.Fragment>
+                              );
+                            })}
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 shrink-0">
+                            <button
+                              onClick={() => setDevMode(mode => !mode)}
+                              className={`px-2 py-1 text-[10px] font-bold rounded border transition-colors ${
+                                devMode
+                                  ? 'bg-amber-500/20 border-amber-500/50 text-amber-300'
+                                  : 'bg-canon-bg-light border-canon-border/40 text-canon-text-light/60 hover:text-canon-text-light'
+                              }`}
+                              title={devMode ? 'Hide dev tabs' : 'Show dev tabs (Pipeline, Atoms, Debug, Labs…)'}
+                            >
+                              {devMode ? '🔧 Dev' : '🔧'}
+                            </button>
                             {pipelineV1 && (
                                 <button
                                     onClick={async () => {
