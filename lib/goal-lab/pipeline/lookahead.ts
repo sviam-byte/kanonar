@@ -441,6 +441,11 @@ export function buildTransitionSnapshot(args: {
   goalEnergy?: Record<string, number>;
   /** Set true to compute sensitivityZ0 (expensive: ~110 valueFnSubjective calls). */
   enableSensitivityZ0?: boolean;
+  /** Observation model: which agents are visible and with what noise. */
+  observationLite?: {
+    visibleAgentIds: string[];
+    noiseSigma: number;
+  };
 }): TransitionSnapshotLite {
   const warnings: string[] = [];
 
@@ -483,6 +488,19 @@ export function buildTransitionSnapshot(args: {
       const d = dp + da + dn;
       (deltas as any)[key] = d;
       z1[key] = clamp01(z1[key] + d);
+    }
+
+    // Partial observability: social features derived from other agents get extra
+    // noise proportional to observation sigma. This makes social actions less
+    // certain when the agent can't see well.
+    if (args.observationLite && args.observationLite.noiseSigma > 0) {
+      const obsNoise = args.observationLite.noiseSigma;
+      const socialKeys: FeatureKey[] = ['socialTrust', 'emotionValence'];
+      for (const sk of socialKeys) {
+        const extraNoise = obsNoise * 0.3 * ((rng() + rng() + rng() + rng() - 2) * 0.5);
+        z1[sk] = clamp01(z1[sk] + extraNoise);
+        (deltas as any)[sk] = ((deltas as any)[sk] ?? 0) + extraNoise;
+      }
     }
 
     const v1 = valueFnSubjective(z1, ge);

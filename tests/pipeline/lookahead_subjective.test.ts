@@ -82,4 +82,33 @@ describe('lookahead subjective model', () => {
     expect(withZ0.sensitivityZ0).toBeDefined();
   });
 
+  it('adds deterministic observation-noise modulation when observationLite is provided', () => {
+    const baseArgs = {
+      selfId: 'A',
+      tick: 2,
+      seed: 321,
+      gamma: 1,
+      riskAversion: 0,
+      atoms: [],
+      goalEnergy: { social: 1 },
+      actions: [{ id: 'action:cooperate', kind: 'cooperate', qNow: 0 }],
+    };
+
+    const noNoise = buildTransitionSnapshot(baseArgs);
+    const withNoiseA = buildTransitionSnapshot({
+      ...baseArgs,
+      observationLite: { visibleAgentIds: [], noiseSigma: 0.3 },
+    });
+    const withNoiseB = buildTransitionSnapshot({
+      ...baseArgs,
+      observationLite: { visibleAgentIds: [], noiseSigma: 0.3 },
+    });
+
+    expect(withNoiseA.perAction[0]?.z1.socialTrust).toBeCloseTo(withNoiseB.perAction[0]?.z1.socialTrust ?? 0, 10);
+    expect(withNoiseA.perAction[0]?.z1.emotionValence).toBeCloseTo(withNoiseB.perAction[0]?.z1.emotionValence ?? 0, 10);
+    const deltaTrust = Math.abs((withNoiseA.perAction[0]?.z1.socialTrust ?? 0) - (noNoise.perAction[0]?.z1.socialTrust ?? 0));
+    const deltaVal = Math.abs((withNoiseA.perAction[0]?.z1.emotionValence ?? 0) - (noNoise.perAction[0]?.z1.emotionValence ?? 0));
+    expect(deltaTrust + deltaVal).toBeGreaterThan(0);
+  });
+
 });

@@ -24,6 +24,7 @@ import { atomizeContextMindMetrics } from '../../contextMind/atomizeMind';
 import { computeContextMindScoreboard } from '../../contextMind/scoreboard';
 
 import { deriveDriversAtoms } from '../../drivers/deriveDrivers';
+import { deriveContextPriorities } from '../../context/priorities/deriveContextPriorities';
 import { deriveGoalAtoms } from '../../goals/goalAtoms';
 import { derivePlanningGoalAtoms } from '../../goals/planningGoalAtoms';
 import { deriveGoalActionLinkAtoms } from '../../goals/goalActionLinksAtoms';
@@ -500,18 +501,24 @@ export function runGoalLabPipelineV1(input: {
   const drvAtoms = arr((drv as any)?.atoms).map(normalizeAtom);
   const mS6b = mergeAtomsPreferNewer(mS6a.atoms, drvAtoms);
 
-  const atomsS6 = mS6b.atoms;
-  const s6Added = uniqStrings([...mS6a.newIds, ...mS6b.newIds]);
-  const s6Overridden = uniqStrings([...mS6a.overriddenIds, ...mS6b.overriddenIds]);
+  // Personal context priorities are produced right after drivers so S7 goal ecology
+  // can modulate domain activation through explicit ctx:prio:* atoms.
+  const prio = deriveContextPriorities({ selfId, atoms: mS6b.atoms });
+  const prioAtoms = arr((prio as any)?.atoms).map(normalizeAtom);
+  const mS6c = mergeAtomsPreferNewer(mS6b.atoms, prioAtoms);
+
+  const atomsS6 = mS6c.atoms;
+  const s6Added = uniqStrings([...mS6a.newIds, ...mS6b.newIds, ...mS6c.newIds]);
+  const s6Overridden = uniqStrings([...mS6a.overriddenIds, ...mS6b.overriddenIds, ...mS6c.overriddenIds]);
   atoms = atomsS6;
   stages.push({
     stage: 'S6',
-    title: 'S6 Drivers (drv:*) / ContextMind',
+    title: 'S6 Drivers (drv:*) / ContextMind / Priorities',
     atoms,
     atomsAddedIds: s6Added,
     warnings: [],
     stats: { atomCount: atoms.length, addedCount: s6Added.length, ...stageStats(atoms) },
-    artifacts: { contextMind: scoreboard, drvCount: drvAtoms.length, overriddenIds: s6Overridden }
+    artifacts: { contextMind: scoreboard, drvCount: drvAtoms.length, prioCount: prioAtoms.length, overriddenIds: s6Overridden }
   });
 
   // S7: goals (ecology + active) + planning-goals
@@ -522,7 +529,7 @@ export function runGoalLabPipelineV1(input: {
   const planRes = derivePlanningGoalAtoms(selfId, mergeAtomsPreferNewer(atoms, goalAtoms).atoms as any, { topN: 5 });
   const planAtoms = arr((planRes as any)?.atoms).map(normalizeAtom);
 
-  const linkRes = deriveGoalActionLinkAtoms(selfId);
+  const linkRes = deriveGoalActionLinkAtoms(selfId, mergeAtomsPreferNewer(atoms, goalAtoms).atoms);
   const linkAtoms = arr((linkRes as any)?.atoms).map(normalizeAtom);
 
   const mS7a = mergeAtomsPreferNewer(atoms, goalAtoms);
@@ -656,8 +663,35 @@ export function runGoalLabPipelineV1(input: {
           })),
           goalEnergy,
           enableSensitivityZ0: true,
+          observationLite: observationLite ? {
+            visibleAgentIds: arr((observationLite as any)?.visibleAgents).map((a: any) => String(a?.id || '')).filter(Boolean),
+            noiseSigma: Number(input.observeLiteParams?.noiseSigma ?? 0),
+          } : undefined,
         })
       : null;
+
+    // POMDP feasibility feedback: dampen goalEnergy for goals that no top action
+    // can advance (all v1PerGoal deltas negative). This prevents the decision
+    // layer from chasing unachievable goals.
+    if (transitionSnapshot && Object.keys(goalEnergy).length > 0) {
+      const bestDeltaPerGoal: Record<string, number> = {};
+      for (const ev of (transitionSnapshot.perAction || []).slice(0, 5)) {
+        const v1pg = ev.v1PerGoal || {};
+        const v0pg = ev.v0PerGoal || {};
+        for (const [gid, v1Raw] of Object.entries(v1pg)) {
+          const v0 = Number(v0pg[gid] ?? 0);
+          const delta = Number(v1Raw) - v0;
+          bestDeltaPerGoal[gid] = Math.max(bestDeltaPerGoal[gid] ?? -Infinity, delta);
+        }
+      }
+      for (const [gid, bestDelta] of Object.entries(bestDeltaPerGoal)) {
+        if (bestDelta < -0.005 && goalEnergy[gid] !== undefined) {
+          // Damp: bestDelta=-0.5 → factor≈0; bestDelta=-0.01 → factor≈0.98
+          const factor = Math.max(0, Math.min(1, 1 + bestDelta * 2));
+          goalEnergy[gid] *= factor;
+        }
+      }
+    }
 
     // Optional: steer stochastic choice by lookahead Q while preserving ranked q reporting.
     const qSamplingOverrides = (useLookaheadForChoice && transitionSnapshot)

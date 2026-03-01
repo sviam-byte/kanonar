@@ -1378,7 +1378,8 @@ export function buildGoalLabContext(
     });
 
     const planRes = derivePlanningGoalAtoms(selfId, atomsAfterGoals, { topN: 5 });
-    const goalLinks = deriveGoalActionLinkAtoms(selfId);
+    // Feed fresh goal-domain atoms so link strengths stay contextual in this legacy pipeline too.
+    const goalLinks = deriveGoalActionLinkAtoms(selfId, atomsAfterGoals);
     const atomsAfterPlans = mergeKeepingOverrides(atomsAfterGoals, [...planRes.atoms, ...goalLinks.atoms]).merged;
     pushStage('S3f', 'S3f • planning goals + goal-action links', atomsAfterPlans, {
       meta: { planAtoms: planRes.atoms.length, goalLinks: goalLinks.atoms.length },
