@@ -2,14 +2,8 @@ import { ContextAtom } from '../context/v2/types';
 import { normalizeAtom } from '../context/v2/infer';
 import { getCtx, pickCtxId } from '../context/layers';
 import { getDyadMag } from '../tom/layers';
-
-const clamp01 = (x: number) => (Number.isFinite(x) ? Math.max(0, Math.min(1, x)) : 0);
-
-function getMag(atoms: ContextAtom[], id: string, fb = 0) {
-  const a = atoms.find(x => x?.id === id);
-  const m = (a as any)?.magnitude;
-  return (typeof m === 'number' && Number.isFinite(m)) ? m : fb;
-}
+import { getMag } from '../util/atoms';
+import { clamp01 } from '../util/math';
 
 function getGoalDomainMag(atoms: ContextAtom[], selfId: string, domain: string, fb = 0) {
   // Goal layer projects into util:* atoms in S7b; Action layer must not read goal:* directly.

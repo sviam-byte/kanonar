@@ -1,7 +1,7 @@
 import type { ContextAtom } from '../v2/types';
 import { normalizeAtom } from '../v2/infer';
-
-const clamp01 = (x: number) => (Number.isFinite(x) ? Math.max(0, Math.min(1, x)) : 0);
+import { hasAtom } from '../../util/atoms';
+import { clamp01 } from '../../util/math';
 
 function makeBaseId(outId: string): string {
   // Keep namespaces recognizable; produce a stable "base copy" id for tracing overrides.
@@ -9,10 +9,6 @@ function makeBaseId(outId: string): string {
   if (outId.startsWith('tom:dyad:')) return outId.replace(/^tom:dyad:/, 'tom:base:dyad:');
   if (outId.startsWith('tom:')) return outId.replace(/^tom:/, 'tom:base:');
   return `base:${outId}`;
-}
-
-function hasAtom(atoms: ContextAtom[], id: string): boolean {
-  return atoms.some(a => a && (a as any).id === id);
 }
 
 function ensureBaseCopy(atoms: ContextAtom[], out: ContextAtom[], outId: string, sourceNote: string): string {

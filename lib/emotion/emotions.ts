@@ -1,14 +1,7 @@
 import type { ContextAtom } from '../context/v2/types';
 import { normalizeAtom } from '../context/v2/infer';
-
-const clamp01 = (x: number) => (Number.isFinite(x) ? Math.max(0, Math.min(1, x)) : 0);
-const clamp11 = (x: number) => (Number.isFinite(x) ? Math.max(-1, Math.min(1, x)) : 0);
-
-function getMag(atoms: ContextAtom[], id: string, fb = 0) {
-  const a = atoms.find(x => x.id === id);
-  const m = (a as any)?.magnitude;
-  return (typeof m === 'number' && Number.isFinite(m)) ? m : fb;
-}
+import { getMag } from '../util/atoms';
+import { clamp01, clamp11 } from '../util/math';
 
 export function deriveEmotionAtoms(args: { selfId: string; atoms: ContextAtom[] }) {
   const { selfId, atoms } = args;

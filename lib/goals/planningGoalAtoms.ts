@@ -1,13 +1,8 @@
 import type { ContextAtom } from '../context/v2/types';
 import { normalizeAtom } from '../context/v2/infer';
+import { getMag } from '../util/atoms';
 import { clamp01 } from '../util/math';
 import { GOAL_DEFS } from './space';
-
-function getMag(atoms: ContextAtom[], id: string, fb = 0): number {
-  const a = atoms.find(x => (x as any)?.id === id) as any;
-  const v = Number(a?.magnitude);
-  return Number.isFinite(v) ? v : fb;
-}
 
 function uniq(ids: string[]) {
   return Array.from(new Set(ids.filter(Boolean)));

@@ -1,13 +1,7 @@
 import type { ContextAtom } from '../v2/types';
 import { normalizeAtom } from '../v2/infer';
-
-const clamp01 = (x: number) => (Number.isFinite(x) ? Math.max(0, Math.min(1, x)) : 0);
-
-function getMag(atoms: ContextAtom[], id: string, fb = 0): number {
-  const a = atoms.find((x) => String((x as any)?.id) === id) as any;
-  const m = Number(a?.magnitude);
-  return Number.isFinite(m) ? m : fb;
-}
+import { getMag } from '../../util/atoms';
+import { clamp01 } from '../../util/math';
 
 function uniq(xs: string[]): string[] {
   const out: string[] = [];

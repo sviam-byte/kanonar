@@ -2,21 +2,8 @@
 import { ContextAtom } from '../context/v2/types';
 import { normalizeAtom } from '../context/v2/infer';
 import { AccessDecision } from './types';
-
-function clamp01(x: number) {
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(0, Math.min(1, x));
-}
-
-function getMag(atoms: ContextAtom[], id: string, fallback = 0) {
-  const a = atoms.find(x => x.id === id);
-  const m = a?.magnitude;
-  return (typeof m === 'number' && Number.isFinite(m)) ? m : fallback;
-}
-
-function has(atoms: ContextAtom[], id: string) {
-  return atoms.some(a => a.id === id);
-}
+import { getMag, hasAtom } from '../util/atoms';
+import { clamp01 } from '../util/math';
 
 export function deriveAccess(atoms: ContextAtom[], selfId: string, locationId?: string): { decisions: AccessDecision[]; atoms: ContextAtom[] } {
   const outAtoms: ContextAtom[] = [];
@@ -40,11 +27,11 @@ export function deriveAccess(atoms: ContextAtom[], selfId: string, locationId?: 
   const used: string[] = [];
   
   if (locationId) {
-    if (has(atoms, `loc:${locationId}:access:public`)) used.push(`loc:${locationId}:access:public`);
-    if (has(atoms, `loc:${locationId}:access:requires_key`)) used.push(`loc:${locationId}:access:requires_key`);
-    if (has(atoms, `loc:${locationId}:access:requires_sec_key`)) used.push(`loc:${locationId}:access:requires_sec_key`);
-    if (has(atoms, `loc:${locationId}:access:requires_clearance_mid`)) used.push(`loc:${locationId}:access:requires_clearance_mid`);
-    if (has(atoms, `loc:${locationId}:access:requires_clearance_high`)) used.push(`loc:${locationId}:access:requires_clearance_high`);
+    if (hasAtom(atoms, `loc:${locationId}:access:public`)) used.push(`loc:${locationId}:access:public`);
+    if (hasAtom(atoms, `loc:${locationId}:access:requires_key`)) used.push(`loc:${locationId}:access:requires_key`);
+    if (hasAtom(atoms, `loc:${locationId}:access:requires_sec_key`)) used.push(`loc:${locationId}:access:requires_sec_key`);
+    if (hasAtom(atoms, `loc:${locationId}:access:requires_clearance_mid`)) used.push(`loc:${locationId}:access:requires_clearance_mid`);
+    if (hasAtom(atoms, `loc:${locationId}:access:requires_clearance_high`)) used.push(`loc:${locationId}:access:requires_clearance_high`);
   }
 
   // If publicLoc high -> easy access
@@ -97,7 +84,7 @@ export function deriveAccess(atoms: ContextAtom[], selfId: string, locationId?: 
     allowed: weaponAllowed,
     score: weaponScore,
     reason: weaponAllowed ? 'weapon use allowed' : 'weapon use blocked by capability or protocol',
-    usedAtomIds: [`cap:can_use_weapon:${selfId}`, 'con:protocol:noViolence'].filter(id => has(atoms, id))
+    usedAtomIds: [`cap:can_use_weapon:${selfId}`, 'con:protocol:noViolence'].filter(id => hasAtom(atoms, id))
   });
 
   outAtoms.push(normalizeAtom({
@@ -112,7 +99,7 @@ export function deriveAccess(atoms: ContextAtom[], selfId: string, locationId?: 
     tags: ['access', 'weapon', weaponAllowed ? 'allowed' : 'denied'],
     label: `weapon ${weaponAllowed ? 'allowed' : 'denied'} (${Math.round(weaponScore * 100)}%)`,
     trace: {
-      usedAtomIds: [`cap:can_use_weapon:${selfId}`, 'con:protocol:noViolence'].filter(id => has(atoms, id)),
+      usedAtomIds: [`cap:can_use_weapon:${selfId}`, 'con:protocol:noViolence'].filter(id => hasAtom(atoms, id)),
       notes: [weaponAllowed ? 'allowed' : 'denied'],
       parts: { canUseWeapon, noViolence, weaponScore }
     }
