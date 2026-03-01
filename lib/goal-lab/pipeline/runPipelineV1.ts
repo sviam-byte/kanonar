@@ -42,6 +42,7 @@ import { makeSimStep, type SimStep } from '../../core/simStep';
 import { observeLite, type ObserveLiteParams } from './observeLite';
 import { buildBeliefUpdateLiteSnapshot } from './beliefUpdateLite';
 import { buildTransitionSnapshot } from './lookahead';
+import { buildBeliefPersistAtoms, type BeliefPersistOutput } from './beliefPersist';
 
 export type GoalLabStageId = 'S0'|'S1'|'S2'|'S3'|'S4'|'S5'|'S6'|'S7'|'S8'|'S9';
 
@@ -68,6 +69,11 @@ export type GoalLabPipelineV1 = {
   step: SimStep;
   participantIds: string[];
   stages: GoalLabStageFrame[];
+  /**
+   * Belief atoms to persist for next tick's S0.
+   * Caller MUST write these to agent.memory.beliefAtoms.
+   */
+  beliefPersist: BeliefPersistOutput | null;
 };
 
 function uniqStrings(xs: string[]): string[] {
@@ -235,6 +241,7 @@ export function runGoalLabPipelineV1(input: {
 
   const stages: GoalLabStageFrame[] = [];
   let atoms: ContextAtom[] = [];
+  let beliefPersistResult: BeliefPersistOutput | null = null;
 
   // S0: canonical atoms (строго без ctx)
   const s0 = buildStage0Atoms({
@@ -956,6 +963,27 @@ export function runGoalLabPipelineV1(input: {
         }
       });
     }
+
+    // --- Belief persist: close the POMDP feedback loop ---
+    // Caller MUST write beliefPersistResult.beliefAtoms to agent.memory.beliefAtoms.
+    beliefPersistResult = buildBeliefPersistAtoms({
+      selfId,
+      tick,
+      chosenAction: bestOverridden ? {
+        id: String((bestOverridden as any)?.id || ''),
+        kind: String((bestOverridden as any)?.kind || ''),
+        targetId: (bestOverridden as any)?.targetId ?? null,
+        q: Number((bestOverridden as any)?.q ?? 0),
+      } : null,
+      goalEnergy,
+      transition: transitionSnapshot,
+      prevBeliefAtoms: arr((agent as any)?.memory?.beliefAtoms),
+    });
+
+    // Inject surprise atoms into the current frame for console visibility.
+    if (beliefPersistResult.surpriseAtoms.length) {
+      atoms = [...atoms, ...beliefPersistResult.surpriseAtoms];
+    }
   } catch (e: any) {
     stages.push({
       stage: 'S8',
@@ -974,5 +1002,5 @@ export function runGoalLabPipelineV1(input: {
     });
   }
 
-  return { schemaVersion: 1, selfId, tick, step, participantIds: participantIds.slice(), stages };
+  return { schemaVersion: 1, selfId, tick, step, participantIds: participantIds.slice(), stages, beliefPersist: beliefPersistResult };
 }

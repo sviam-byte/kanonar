@@ -84,3 +84,49 @@ export function actionEffectForKind(kindRaw: string): Partial<Record<FeatureKeyL
   }
   return {};
 }
+
+/**
+ * Action effect with context modulation.
+ *
+ * SINGLE SOURCE OF TRUTH for transition model.
+ * Used by both decision layer (deltaGoals fallback) and lookahead (POMDP-lite).
+ *
+ * If `z` is provided, base effects are scaled by environmental features:
+ * - hide: cover amplifies concealment, threat amplifies threat reduction
+ * - escape: escape routes amplify effectiveness, fatigue reduces it
+ * - attack: fatigue increases cost, threat increases payoff
+ * - negotiate: low trust reduces trust gain effectiveness
+ * - help: high trust → diminishing returns
+ */
+export function actionEffectWithContext(
+  kindRaw: string,
+  z?: Partial<Record<FeatureKeyLite, number>>,
+): Partial<Record<FeatureKeyLite, number>> {
+  const base = actionEffectForKind(kindRaw);
+  if (!z || Object.keys(base).length === 0) return base;
+
+  const out = { ...base };
+  const kind = String(kindRaw || '').toLowerCase();
+  const zz = z as Record<string, number>;
+  const c = (k: string) => {
+    const v = Number(zz[k] ?? 0);
+    return Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 0;
+  };
+
+  if (/hide/.test(kind)) {
+    out.cover = (out.cover ?? 0) * (0.6 + 0.8 * c('cover'));
+    out.threat = (out.threat ?? 0) * (0.6 + 0.6 * c('threat'));
+    out.visibility = (out.visibility ?? 0) * (0.6 + 0.6 * c('visibility'));
+  } else if (/escape|run|flee/.test(kind)) {
+    out.escape = (out.escape ?? 0) * (0.5 + 0.8 * c('escape')) * (1.1 - 0.3 * c('fatigue'));
+  } else if (/attack|fight|shoot/.test(kind)) {
+    out.fatigue = (out.fatigue ?? 0) * (0.7 + 0.6 * c('fatigue'));
+    out.threat = (out.threat ?? 0) * (0.5 + 0.8 * c('threat'));
+  } else if (/talk|negot|ask|persuade/.test(kind)) {
+    out.socialTrust = (out.socialTrust ?? 0) * (0.4 + 0.8 * c('socialTrust'));
+  } else if (/help|assist|save|cooperate/.test(kind)) {
+    out.socialTrust = (out.socialTrust ?? 0) * (1.2 - 0.4 * c('socialTrust'));
+  }
+
+  return out;
+}

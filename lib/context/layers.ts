@@ -1,4 +1,6 @@
 import type { ContextAtom } from './v2/types';
+import { AtomIndex } from '../util/AtomIndex';
+import { clamp01 } from '../util/math';
 
 export type Picked = {
   id: string | null;
@@ -12,15 +14,21 @@ function asNum(x: any): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-function clamp01(x: number): number {
-  if (!Number.isFinite(x)) return 0;
-  if (x < 0) return 0;
-  if (x > 1) return 1;
-  return x;
+// WeakMap cache: same atoms array reference → same AtomIndex.
+// This avoids rebuilding the map on every getCtx call within the same pipeline tick.
+const _indexCache = new WeakMap<readonly ContextAtom[], AtomIndex>();
+
+function ensureIndex(atoms: readonly ContextAtom[]): AtomIndex {
+  let idx = _indexCache.get(atoms);
+  if (!idx) {
+    idx = AtomIndex.from(atoms as ContextAtom[]);
+    _indexCache.set(atoms, idx);
+  }
+  return idx;
 }
 
 function findAtom(atoms: ContextAtom[], id: string): ContextAtom | null {
-  const a = atoms.find(x => (x as any)?.id === id) as any;
+  const a = ensureIndex(atoms).get(id) as any;
   return a || null;
 }
 
