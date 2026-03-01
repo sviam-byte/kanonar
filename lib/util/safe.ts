@@ -8,6 +8,4 @@ export function ema01(prev: number, target: number, beta: number): number {
   return Math.max(0, Math.min(1, v));
 }
 
-export function clamp01(x: number) {
-  return Math.max(0, Math.min(1, x));
-}
+export { clamp01 } from './math';
