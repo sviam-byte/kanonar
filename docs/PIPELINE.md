@@ -5,6 +5,7 @@
 ## Pipeline output envelope
 
 - `GoalLabPipelineV1.step`: явный снимок шага (tick/seed/events), чтобы фиксировать время и входные события.
+- `GoalLabPipelineV1.beliefPersist`: результат post-S9 персиста убеждений (`beliefAtoms`, `surpriseAtoms`, debug) для записи в `agent.memory.beliefAtoms` вызывающим слоем.
 
 ## Naming conventions (atoms)
 
@@ -128,6 +129,12 @@ Outputs:
   - `flipCandidates` use `sensitivityZ0` when available so UI answers “what to change now to flip decision”
   - risk penalty for lookahead value uses L1 uncertainty over feature deltas: `V_risk = clamp01(V* - riskAversion * 0.3 * Σ|Δz|)`
   - предупреждения по отсутствующим фичам
+
+- post-stage persist payload (`pipeline.beliefPersist`) с атомами:
+  - `belief:predicted:*` — прогноз фич после выбранного действия
+  - `belief:chosen:*` — выбранное действие и его Q
+  - `belief:feasibility:*` — feasibility по goal-доменам
+  - `belief:surprise:*` — рассогласование прогноза прошлого тика и фактического `z0` текущего тика (добавляются в текущий кадр для видимости)
 
 Determinism:
 - шум в lookahead должен быть детерминирован по `seed/tick/actionId`

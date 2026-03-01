@@ -1,6 +1,6 @@
 import type { Provenance } from './contracts';
 import { arr } from '../../utils/arr';
-import { FEATURE_GOAL_PROJECTION_KEYS } from '../../decision/actionProjection';
+import { FEATURE_GOAL_PROJECTION_KEYS, actionEffectWithContext } from '../../decision/actionProjection';
 
 function clamp01(x: number): number {
   if (!Number.isFinite(x)) return 0;
@@ -295,73 +295,12 @@ function passiveDelta(z: Record<FeatureKey, number>): Partial<Record<FeatureKey,
   };
 }
 
+/**
+ * Action effect delegate — uses single source of truth from actionProjection.ts.
+ * Previously this was a local duplicate table + context modulation.
+ */
 function actionEffect(kindRaw: string, z?: Record<FeatureKey, number>): Partial<Record<FeatureKey, number>> {
-  const kind = String(kindRaw || '').toLowerCase();
-
-  const byKind: Record<string, Partial<Record<FeatureKey, number>>> = {
-    hide: { threat: -0.08, visibility: -0.12, cover: +0.05, fatigue: +0.02 },
-    escape: { escape: +0.18, threat: +0.03, fatigue: +0.06, stress: +0.03 },
-    wait: { fatigue: -0.02, stress: -0.02, threat: +0.02 },
-    rest: { fatigue: -0.05, stress: -0.03 },
-    approach: { threat: +0.05, escape: -0.06, stress: +0.03 },
-    negotiate: { threat: -0.03, stress: -0.02, socialTrust: +0.06, emotionValence: +0.03 },
-    help: { stress: -0.03, fatigue: +0.03, socialTrust: +0.08, emotionValence: +0.05 },
-    attack: { threat: -0.02, stress: +0.05, fatigue: +0.06, visibility: +0.08 },
-    loot: { resourceAccess: +0.08, scarcity: -0.04, threat: +0.03, fatigue: +0.04, socialTrust: -0.05 },
-    betray: { socialTrust: -0.15, emotionValence: -0.08, stress: +0.04, threat: +0.06 },
-    persuade: { socialTrust: +0.04, emotionValence: +0.02, stress: +0.01 },
-    cooperate: { socialTrust: +0.10, emotionValence: +0.06, stress: -0.02, fatigue: +0.01 },
-  };
-
-  let base: Partial<Record<FeatureKey, number>> | undefined = byKind[kind];
-
-  if (!base) {
-    // Pattern fallbacks.
-    if (kind.includes('hide')) base = byKind.hide;
-    else if (kind.includes('escape') || kind.includes('run') || kind.includes('flee')) base = byKind.escape;
-    else if (kind.includes('wait') || kind.includes('idle')) base = byKind.wait;
-    else if (kind.includes('rest') || kind.includes('sleep')) base = byKind.rest;
-    else if (kind.includes('approach') || kind.includes('move')) base = byKind.approach;
-    else if (kind.includes('talk') || kind.includes('negot') || kind.includes('ask') || kind.includes('persuade')) base = byKind.negotiate;
-    else if (kind.includes('help') || kind.includes('assist') || kind.includes('save') || kind.includes('cooperate')) base = byKind.help;
-    else if (kind.includes('attack') || kind.includes('fight') || kind.includes('shoot')) base = byKind.attack;
-    else if (kind.includes('loot') || kind.includes('take') || kind.includes('steal')) base = byKind.loot;
-    else if (kind.includes('betray')) base = byKind.betray;
-  }
-
-  if (!base) return {};
-  if (!z) return base;
-
-  // Context modulation: scale base effect by relevant environmental features.
-  const out = { ...base };
-  const k = kind.includes('hide') ? 'hide'
-    : kind.includes('escape') ? 'escape'
-    : kind.includes('attack') ? 'attack'
-    : kind.includes('negot') || kind.includes('talk') ? 'negotiate'
-    : kind.includes('help') || kind.includes('cooperate') ? 'help'
-    : null;
-
-  if (k === 'hide') {
-    // Better cover → hiding is more effective; higher threat → more threat reduction.
-    out.cover = (out.cover ?? 0) * (0.6 + 0.8 * z.cover);
-    out.threat = (out.threat ?? 0) * (0.6 + 0.6 * z.threat);
-    out.visibility = (out.visibility ?? 0) * (0.6 + 0.6 * z.visibility);
-  } else if (k === 'escape') {
-    // Available escape routes → more effective; fatigue reduces effectiveness.
-    out.escape = (out.escape ?? 0) * (0.5 + 0.8 * z.escape) * (1.1 - 0.3 * z.fatigue);
-  } else if (k === 'attack') {
-    // Higher fatigue → more costly attack; higher threat → more payoff.
-    out.fatigue = (out.fatigue ?? 0) * (0.7 + 0.6 * z.fatigue);
-    out.threat = (out.threat ?? 0) * (0.5 + 0.8 * z.threat);
-  } else if (k === 'negotiate') {
-    // Low trust → negotiation less effective on trust gain.
-    out.socialTrust = (out.socialTrust ?? 0) * (0.4 + 0.8 * z.socialTrust);
-  } else if (k === 'help') {
-    // Already high trust → diminishing returns on trust gain.
-    out.socialTrust = (out.socialTrust ?? 0) * (1.2 - 0.4 * z.socialTrust);
-  }
-
-  return out;
+  return actionEffectWithContext(kindRaw, z as any);
 }
 
 function computeSensitivity(
@@ -429,6 +368,7 @@ function evalActionQLookahead(
   const v1Risk = clamp01(v1.v - Math.max(0, riskAversion) * 0.3 * totalAbs);
   return qNow + Math.max(0, gamma) * v1Risk;
 }
+
 
 export function buildTransitionSnapshot(args: {
   selfId: string;

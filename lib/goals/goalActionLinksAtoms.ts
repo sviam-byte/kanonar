@@ -2,6 +2,7 @@ import type { ContextAtom } from '../context/v2/types';
 import { normalizeAtom } from '../context/v2/infer';
 import { clamp01 } from '../util/math';
 import { GOAL_DEFS } from './space';
+import { mapGoalActionToPossibilityKeys } from './actionVocabularyBridge';
 
 /**
  * Map GOAL_DEFS domain strings to the goal ecology domain keys used by goalAtoms.
@@ -65,10 +66,13 @@ export function deriveGoalActionLinkAtoms(
       : [];
 
     for (const act of acts) {
-      const actionKey = String(act || '').trim();
-      if (!actionKey) continue;
+      const rawKey = String(act || '').trim();
+      if (!rawKey) continue;
 
-      out.push(normalizeAtom({
+      // Bridge: emit hints for both original GOAL_DEFS keys and possibility keys.
+      const allKeys = mapGoalActionToPossibilityKeys(rawKey);
+      for (const actionKey of allKeys) {
+        out.push(normalizeAtom({
         id: `goal:hint:allow:${goalId}:${actionKey}`,
         ns: 'goal' as any,
         kind: 'goal_action_link',
@@ -85,6 +89,7 @@ export function deriveGoalActionLinkAtoms(
           parts: { goalId, actionKey, avgActivation, ecoDomains },
         },
       } as any));
+      }
     }
   }
 

@@ -1,7 +1,20 @@
 import type { ContextAtom } from '../context/v2/types';
+import { AtomIndex } from '../util/AtomIndex';
+
+// WeakMap cache: same atoms array reference → same AtomIndex.
+const _indexCache = new WeakMap<readonly ContextAtom[], AtomIndex>();
+
+function ensureIndex(atoms: readonly ContextAtom[]): AtomIndex {
+  let idx = _indexCache.get(atoms);
+  if (!idx) {
+    idx = AtomIndex.from(atoms as ContextAtom[]);
+    _indexCache.set(atoms, idx);
+  }
+  return idx;
+}
 
 function findAtom(atoms: ContextAtom[], id: string): ContextAtom | undefined {
-  return atoms.find(a => String((a as any)?.id) === id);
+  return ensureIndex(atoms).get(id);
 }
 
 export function dyadBaseId(selfId: string, otherId: string, metric: string): string {
