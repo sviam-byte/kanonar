@@ -1,10 +1,7 @@
 
 import { ContextAtom } from '../context/v2/types';
-
-function clamp01(x: number) {
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(0, Math.min(1, x));
-}
+import { getMag } from '../util/atoms';
+import { clamp01 } from '../util/math';
 
 function clampNegPos1(x: number) {
   if (!Number.isFinite(x)) return 0;
@@ -14,12 +11,6 @@ function clampNegPos1(x: number) {
 // generic EMA integrator: x <- x + alpha*(target-x)
 function ema(x: number, target: number, alpha: number) {
   return x + alpha * (target - x);
-}
-
-function getMag(atoms: ContextAtom[], id: string, fallback = 0) {
-  const a = atoms.find((x) => x.id === id);
-  const m = a?.magnitude;
-  return typeof m === 'number' && Number.isFinite(m) ? m : fallback;
 }
 
 export type IntegratorTuning = {

@@ -1,8 +1,8 @@
 import type { ContextAtom } from '../context/v2/types';
 import { normalizeAtom } from '../context/v2/infer';
 import { getCtx, pickCtxId } from '../context/layers';
-
-const clamp01 = (x: number) => (Number.isFinite(x) ? Math.max(0, Math.min(1, x)) : 0);
+import { getMag } from '../util/atoms';
+import { clamp01 } from '../util/math';
 const lerp = (a: number, b: number, t: number) => a + (b - a) * clamp01(t);
 
 // smooth amplify/attenuate in [0,1] without harsh saturation
@@ -12,11 +12,6 @@ const amp01 = (x: number, k: number) => {
   return clamp01(1 - Math.pow(1 - xx, kk));
 };
 
-function getMag(atoms: ContextAtom[], id: string, fb = 0) {
-  const a = atoms.find(x => x.id === id);
-  const m = (a as any)?.magnitude;
-  return (typeof m === 'number' && Number.isFinite(m)) ? m : fb;
-}
 function firstIdByPrefix(atoms: ContextAtom[], prefix: string) {
   return atoms.find(a => typeof a?.id === 'string' && a.id.startsWith(prefix))?.id || null;
 }

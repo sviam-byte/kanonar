@@ -1,13 +1,7 @@
 import type { ContextAtom } from '../context/v2/types';
 import { getCtx } from '../context/layers';
-
-const clamp01 = (x: number) => (Number.isFinite(x) ? Math.max(0, Math.min(1, x)) : 0);
-
-function getMag(atoms: ContextAtom[], id: string, fb = 0) {
-  const a = atoms.find(x => String((x as any)?.id) === id) as any;
-  const m = a?.magnitude;
-  return typeof m === 'number' && Number.isFinite(m) ? m : fb;
-}
+import { getMag } from '../util/atoms';
+import { clamp01 } from '../util/math';
 
 /**
  * Compute snapshot.summary metrics from atoms for quick UI reads.

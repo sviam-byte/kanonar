@@ -1,14 +1,7 @@
 import type { ContextAtom } from '../v2/types';
 import { normalizeAtom } from '../v2/infer';
-
-const clamp01 = (x: number) => (Number.isFinite(x) ? Math.max(0, Math.min(1, x)) : 0);
-const clamp11 = (x: number) => (Number.isFinite(x) ? Math.max(-1, Math.min(1, x)) : 0);
-
-function getMag(atoms: ContextAtom[], id: string, fb = 0): number {
-  const a: any = atoms.find(x => x?.id === id);
-  const m = Number(a?.magnitude);
-  return Number.isFinite(m) ? m : fb;
-}
+import { getMag } from '../../util/atoms';
+import { clamp01, clamp11 } from '../../util/math';
 
 function mk(selfId: string, otherId: string, value: number, usedAtomIds: string[], parts: Record<string, number>): ContextAtom {
   return normalizeAtom({
