@@ -1,4 +1,5 @@
 import { CurvePreset, CurveSpec, normalizeCurveSpec } from '../utils/curves';
+import { clamp01 } from '../util/math';
 
 export type EnergyChannel =
   | 'threat'
@@ -40,10 +41,6 @@ const DEFAULT_PROFILE: AgentEnergyProfile = {
   },
 };
 
-function clamp01(x: number) {
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(0, Math.min(1, x));
-}
 
 /**
  * World/agent overrides support:

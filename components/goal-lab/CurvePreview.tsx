@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import { curve01, type CurvePreset } from '../../lib/utils/curves';
+import { clamp01 } from '../../lib/util/math';
 
 type Props = {
   preset: CurvePreset;
@@ -12,10 +13,6 @@ type Props = {
 /**
  * Clamp any numeric value into [0..1] to keep the preview stable.
  */
-function clamp01(v: number) {
-  if (!Number.isFinite(v)) return 0;
-  return Math.max(0, Math.min(1, v));
-}
 
 /**
  * Tiny curve preview widget with a highlighted (x, y) sample.

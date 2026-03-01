@@ -1,4 +1,5 @@
 import type { Edge, Node } from 'reactflow';
+import { clamp01 } from '../util/math';
 
 import type { AgentContextFrame } from '../context/frame/types';
 import type { ContextualGoalContribution, ContextualGoalScore } from '../context/v2/types';
@@ -37,10 +38,6 @@ const NODE_HEIGHT = 56;
 /**
  * Clamp any number to [0..1].
  */
-function clamp01(x: number) {
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(0, Math.min(1, x));
-}
 
 /**
  * Human-readable goal label fallback.

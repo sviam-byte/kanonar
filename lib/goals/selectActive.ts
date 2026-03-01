@@ -1,9 +1,6 @@
+import { clamp01 } from '../util/math';
 export type GoalCandidate = { id: string; score: number; lockIn?: number };
 
-function clamp01(x: number): number {
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(0, Math.min(1, x));
-}
 
 /**
  * Active-set selection with hysteresis.

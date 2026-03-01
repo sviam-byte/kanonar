@@ -3,6 +3,7 @@ import { WorldState, LocationId, LocationEntity } from '../../types';
 import type { Location } from '../location/types';
 import { hydrateLocation } from '../adapters/rich-location';
 import { validateLocation } from '../location/validate';
+import { clamp01 } from '../util/math';
 
 /**
  * Нормализованный контекст места "здесь и сейчас".
@@ -22,12 +23,6 @@ export interface LocationContext {
   escapeDifficulty: number;    // насколько трудно уйти/выйти
 }
 
-function clamp01(x: number): number {
-  if (Number.isNaN(x)) return 0;
-  if (x < 0) return 0;
-  if (x > 1) return 1;
-  return x;
-}
 
 function safeNum(x: unknown, fallback = 0): number {
   if (typeof x === 'number' && Number.isFinite(x)) return x;

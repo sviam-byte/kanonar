@@ -1,10 +1,7 @@
 import type { ContextAtom } from '../context/v2/types';
 import type { RelationshipEdge, RelationshipGraph, RelationTag } from './types';
 import { normalizeAtom } from '../context/v2/infer';
-function clamp01(x: number) {
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(0, Math.min(1, x));
-}
+import { clamp01 } from '../util/math';
 
 function mag(a?: any, fb = 0) {
   const m = a?.magnitude;

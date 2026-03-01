@@ -1,5 +1,6 @@
 import React from 'react';
 import type { NodeProps } from 'reactflow';
+import { clamp01 } from '../../lib/util/math';
 
 type BaseNodeData = {
   label: string;
@@ -27,10 +28,6 @@ function formatSmall(v?: number): string {
 /**
  * Clamp any numeric value into the [0..1] range.
  */
-function clamp01(x: number): number {
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(0, Math.min(1, x));
-}
 
 /**
  * Render energy/importance badges when values are available.

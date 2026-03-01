@@ -7,11 +7,8 @@ import { computeActionCost } from './costModel';
 import { gatePossibility } from './gating';
 import { arr } from '../utils/arr';
 import type { ActionOffer } from './types';
+import { clamp01 } from '../util/math';
 
-function clamp01(x: number) {
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(0, Math.min(1, x));
-}
 
 type CtxVec = {
   danger: number;

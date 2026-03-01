@@ -1,5 +1,6 @@
+import { clamp01 } from '../util/math';
 
-export function clamp01(x: number) { return x < 0 ? 0 : x > 1 ? 1 : x; }
+export { clamp01 };
 export function sum(a: number[]) { return a.reduce((p, c) => p + c, 0); }
 export function normalizeL1Safe(v: number[]) {
   const s = sum(v.map(x => Math.max(0, x)));

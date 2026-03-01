@@ -1,3 +1,4 @@
+import { clamp01, clamp11 } from '../util/math';
 export type GoalState = {
   tension: number;
   lockIn: number;
@@ -8,15 +9,7 @@ export type GoalState = {
   activationEMA: number;
 };
 
-function clamp01(x: number): number {
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(0, Math.min(1, x));
-}
 
-function clamp11(x: number): number {
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(-1, Math.min(1, x));
-}
 
 export function initGoalState(): GoalState {
   return { tension: 0.5, lockIn: 0, fatigue: 0, progress: 0, lastActiveTick: -1, activationEMA: 0 };

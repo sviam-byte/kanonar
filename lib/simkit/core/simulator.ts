@@ -10,10 +10,8 @@ import { normalizeAtom } from '../../context/v2/infer';
 import type { ContextAtom } from '../../context/v2/types';
 import { decideAcceptance } from './trust';
 import { rememberLastAction, scoreOfferSubjective } from './subjective';
+import { clamp01 } from '../../util/math';
 
-function clamp01(x: number) {
-  return Number.isFinite(x) ? Math.max(0, Math.min(1, x)) : 0;
-}
 
 function applyHazardPoints(world: SimWorld) {
   const points = Array.isArray((world.facts as any)?.hazardPoints) ? (world.facts as any).hazardPoints : [];

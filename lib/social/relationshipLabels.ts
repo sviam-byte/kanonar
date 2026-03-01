@@ -2,6 +2,7 @@
 // lib/social/relationshipLabels.ts
 import { CharacterEntity, WorldState } from '../../types';
 import { extractRelationalBioFeatures } from '../biography/features';
+import { clamp01 } from '../util/math';
 
 export type RelationshipLabel =
   | 'lover'
@@ -29,7 +30,6 @@ export type RelationshipResult = {
   why: string[];
 };
 
-function clamp01(x: number) { return Math.max(0, Math.min(1, x)); }
 
 export function deriveRelationshipLabel(world: WorldState, me: CharacterEntity, other: CharacterEntity): RelationshipResult {
   // 1) биография как самый стабильный слой

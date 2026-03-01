@@ -1,18 +1,80 @@
 
 import { WorldState, AgentContextFrame, NearbyAgentSummary, TomRelationView, ActiveOrder, ContextEventSummary, AgentState } from '../../../types';
 import { getTomView } from '../../tom/api';
-import { getLocationForAgent, indexLocationMapCells, getCellAt } from '../v3/mapIndex';
 import { TomPhysicalSelf, TomPhysicalOther } from '../frame/types';
 import { buildDyadReport, TomBuildInput } from '../../tom/v3/buildDyadReport';
 import { toLegacyTomRelationView } from '../../tom/v3/adapterLegacy';
 import { TomDyadReport } from '../../tom/v3/types';
+import { clamp01 } from '../../util/math';
 
 import { computeThreatStack, ThreatInputs } from '../../threat/threatStack';
 import { computeProximity, AgentLite } from '../../spatial/proximity';
 import { computeProprioFromBody, updateAffect as updateAffectNew, Appraisal } from '../../affect/affectEngine';
 import { listify } from '../../utils/listify';
 
-function clamp01(x: number) { return Math.max(0, Math.min(1, x)); }
+
+interface LocationMapCell {
+  x: number;
+  y: number;
+  walkable: boolean;
+  danger?: number;
+  cover?: number;
+  elevation?: number;
+}
+
+interface LocationWithMap {
+  map?: {
+    cells: LocationMapCell[];
+  };
+}
+
+function getCurrentLocation(world: WorldState): LocationWithMap | null {
+  const focusId = (world.scene as any)?.locationId as string | undefined;
+  if (focusId) {
+    const focus = (world.locations || []).find(
+      (l: any) => l.entityId === focusId && l.map && Array.isArray(l.map.cells),
+    ) as any;
+    if (focus) return focus as LocationWithMap;
+  }
+
+  const loc = (world.locations || []).find(
+    (l: any) => l && l.map && Array.isArray(l.map.cells),
+  ) as any;
+  if (!loc) return null;
+  return loc as LocationWithMap;
+}
+
+function getLocationForAgent(world: WorldState, agent: AgentState): LocationWithMap | null {
+  const locId = (agent as any).locationId as string | undefined;
+  if (locId) {
+    const loc = (world.locations || []).find(
+      (l: any) => l.entityId === locId && l.map && Array.isArray(l.map.cells),
+    ) as any;
+    if (loc) return loc as LocationWithMap;
+  }
+  return getCurrentLocation(world);
+}
+
+function indexLocationMapCells(loc: LocationWithMap): Map<string, LocationMapCell> {
+  const map = new Map<string, LocationMapCell>();
+  const cells = loc.map?.cells ?? [];
+  for (const cell of cells as any[]) {
+    if (!cell) continue;
+    if (!Number.isFinite(cell.x) || !Number.isFinite(cell.y)) continue;
+    map.set(`${cell.x},${cell.y}`, cell);
+  }
+  return map;
+}
+
+function getCellAt(
+  cells: Map<string, LocationMapCell>,
+  x?: number | null,
+  y?: number | null,
+): LocationMapCell | null {
+  if (x == null || y == null) return null;
+  return cells.get(`${x},${y}`) ?? null;
+}
+
 
 function syncWorldTomFromDyadReport(world: WorldState, selfId: string, otherId: string, report: TomDyadReport) {
   const tom: any = (world as any).tom;

@@ -1,9 +1,6 @@
 import { LocationMap } from '../../types';
+import { clamp01 } from '../util/math';
 
-function clamp01(x: number) {
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(0, Math.min(1, x));
-}
 function cellKey(x: number, y: number) { return `${x},${y}`; }
 
 /**

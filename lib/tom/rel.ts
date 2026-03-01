@@ -1,11 +1,8 @@
 // lib/tom/rel.ts
 
 import type { WorldState, AgentState, Relationship } from '../../types';
+import { clamp01 } from '../util/math';
 
-function clamp01(x: number) {
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(0, Math.min(1, x));
-}
 
 type TomLikeEntry = {
   traits?: {

@@ -1,4 +1,5 @@
 import type { Edge, Node } from 'reactflow';
+import { clamp01 } from '../util/math';
 
 import { curve01, type CurvePreset } from '../utils/curves';
 import { spreadEnergy } from './energySpread';
@@ -18,10 +19,6 @@ export type DecisionGraphEnergyParams = {
 
 export type GraphResult = { nodes: Node[]; edges: Edge[] };
 
-function clamp01(x: number): number {
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(0, Math.min(1, x));
-}
 
 function formatSigned2(v: number): string {
   const x = Number(v);

@@ -15,15 +15,12 @@ import type { ContextAtom } from '../../context/v2/types';
 import type { Possibility } from '../../possibilities/catalog';
 import { decideAction } from '../../decision/decide';
 import { buildActionCandidates } from '../../decision/actionCandidateUtils';
+import { clamp01 } from '../../util/math';
 
 function arr<T>(x: any): T[] {
   return Array.isArray(x) ? x : [];
 }
 
-function clamp01(x: number) {
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(0, Math.min(1, x));
-}
 
 function toDomainEvents(snapshot: SimSnapshot): any[] {
   return arr<any>((snapshot as any)?.events).map((e: any) => {

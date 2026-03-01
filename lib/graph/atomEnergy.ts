@@ -2,6 +2,7 @@ import type { ContextAtom } from '../context/v2/types';
 import type { EnergyChannel } from '../agents/energyProfiles';
 import type { AtomGraph } from './atomGraph';
 import type { SignalField } from '../goals/signalField';
+import { clamp01 } from '../util/math';
 
 export type AtomEnergyAttribution = Array<{ atomId: string; amount: number }>;
 
@@ -28,10 +29,6 @@ export type AtomEnergyResult = {
   >;
 };
 
-function clamp01(x: number): number {
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(0, Math.min(1, x));
-}
 
 function atomWeight(a: ContextAtom): number {
   const m = Number((a as any)?.magnitude ?? 0);

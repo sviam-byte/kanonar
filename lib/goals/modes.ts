@@ -1,4 +1,5 @@
 import type { EnergyChannel } from '../agents/energyProfiles';
+import { clamp01 } from '../util/math';
 
 export type GoalMode = 'threat_mode' | 'social_mode' | 'explore_mode' | 'resource_mode' | 'care_mode';
 
@@ -6,10 +7,6 @@ export type FeltField = Record<EnergyChannel, number>;
 
 export type ModeWeights = Record<GoalMode, number>;
 
-function clamp01(x: number): number {
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(0, Math.min(1, x));
-}
 
 function softmax(scores: Record<string, number>, temperature = 1): Record<string, number> {
   const T = Math.max(1e-6, Number(temperature) || 1);

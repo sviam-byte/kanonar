@@ -2,8 +2,8 @@
 import { AgentState } from '../../../types';
 import { EvidencePiece } from '../../evidence/extract';
 import { getTomView, patchTomView } from '../api';
+import { clamp01 } from '../../util/math';
 
-function clamp01(x: number) { return Math.max(0, Math.min(1, x)); }
 
 export function applyEvidenceToTomBase(args: {
     agent: AgentState,

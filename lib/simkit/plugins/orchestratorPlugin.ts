@@ -13,15 +13,12 @@ import { decideAction } from '../../decision/decide';
 import { buildActionCandidates } from '../../decision/actionCandidateUtils';
 import { keyFromPossibilityId } from '../actions/fromPossibility';
 import { toSimAction } from '../actions/fromActionCandidate';
+import { clamp01 } from '../../util/math';
 
 // -----------------------------
 // small utils
 // -----------------------------
 
-function clamp01(x: number) {
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(0, Math.min(1, x));
-}
 
 // Read actor filter from world.facts['sim:actors'] (array or comma-separated string).
 function readActorFilter(world: any): string[] | null {

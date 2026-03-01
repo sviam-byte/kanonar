@@ -1,6 +1,7 @@
 
 // lib/context/epistemic/perceptionProfile.ts
 
+export { clamp01 } from '../../util/math';
 export type PerceptionProfile = {
   sightRange: number;        // grid cells
   hearingRange: number;
@@ -19,10 +20,6 @@ export function defaultPerceptionProfile(): PerceptionProfile {
   };
 }
 
-export function clamp01(x: number) {
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(0, Math.min(1, x));
-}
 
 // Unified score for observation quality (0..1)
 export function computeInfoAdequacy(args: {
