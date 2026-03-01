@@ -18,6 +18,7 @@ import {
   VectorAxisId,
   PersonalEvent
 } from '../types'; 
+export { clamp01 } from './util/math';
 
 // --- CONFIGURATION ---
 export const BIO_FEATURES = [
@@ -66,9 +67,6 @@ export const DEFAULT_BIOGRAPHY_PARAMS: BiographyAggregationParams = {
   globalScale: 0.15, 
 };
 
-export function clamp01(x: number): number {
-  return Math.min(1, Math.max(0, x));
-}
 
 export function timeDecay(age: number, lambda: number): number {
   if (age <= 0) return 1;

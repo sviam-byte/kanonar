@@ -57,6 +57,7 @@ import { buildFullDebugDump } from '../../lib/debug/buildFullDebugDump';
 import { allScenarioDefs } from '../../data/scenarios/index';
 import { useAccess } from '../../contexts/AccessContext';
 import { filterCharactersForActiveModule } from '../../lib/modules/visibility';
+import { clamp01 } from '../../lib/util/math';
 
 // Pipeline Imports
 import type { ScenePreset } from '../../data/presets/scenes';
@@ -73,10 +74,6 @@ import { arr } from '../../lib/utils/arr';
 import { getCanonicalAtomsFromSnapshot } from '../../lib/goal-lab/atoms/canonical';
 import type { CurvePreset } from '../../lib/utils/curves';
 
-function clamp01(x: number) {
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(0, Math.min(1, x));
-}
 
 /**
  * Collect trait identifiers from the agent across known data shapes.

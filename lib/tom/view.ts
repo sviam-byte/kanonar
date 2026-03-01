@@ -1,9 +1,7 @@
 // lib/tom/view.ts
 import { WorldState, TomRelView, AgentState } from '../../types';
+import { clamp01 } from '../util/math';
 
-function clamp01(x: number) {
-    return Math.max(0, Math.min(1, x));
-}
 
 export function getTomView(world: WorldState, observerId: string, targetId: string): TomRelView {
     const entry = world.tom?.[observerId]?.[targetId];

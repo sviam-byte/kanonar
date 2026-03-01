@@ -1,6 +1,7 @@
 
 // lib/context/catalog/atomCatalog.ts
 import type { AtomNamespace, AtomOrigin, ContextAtom } from '../v2/types';
+import { clamp01 } from '../../util/math';
 
 export type AtomSpec = {
   idPrefix?: string;        // e.g., "rel:label:" or "ctx:"
@@ -37,10 +38,6 @@ export function clamp(x: number, min: number, max: number) {
   return Math.max(min, Math.min(max, x));
 }
 
-function clamp01(x: number) {
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(0, Math.min(1, x));
-}
 
 // MVP Catalog
 export const ATOM_CATALOG: AtomSpec[] = [

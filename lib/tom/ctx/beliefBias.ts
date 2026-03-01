@@ -3,6 +3,7 @@ import { ContextAtom } from '../../context/v2/types';
 import { normalizeAtom } from '../../context/v2/infer';
 import { getCtx, pickCtxId } from '../../context/layers';
 import { getDyadMag } from '../layers';
+import { clamp01 } from '../../util/math';
 
 function unpackAtomsAndSelfId(
   arg1: ContextAtom[] | { atoms?: unknown; selfId?: unknown } | null | undefined,
@@ -27,10 +28,6 @@ function unpackAtomsAndSelfId(
   return { atoms: [] as ContextAtom[], selfId: String(arg2 ?? '') };
 }
 
-function clamp01(x: number) {
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(0, Math.min(1, x));
-}
 
 function getMag(atoms: ContextAtom[], id: string, fallback = 0) {
   const a = atoms.find(x => x.id === id);

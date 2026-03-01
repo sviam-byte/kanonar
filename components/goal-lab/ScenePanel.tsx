@@ -1,6 +1,7 @@
 
 import React from 'react';
 import { arr } from '../../lib/utils/arr';
+import { clamp01 } from '../../lib/util/math';
 
 type SceneControl = {
   presetId: string;
@@ -17,7 +18,6 @@ type Props = {
   onChange: (next: SceneControl) => void;
 };
 
-function clamp01(x: number) { return Math.max(0, Math.min(1, x)); }
 
 export const ScenePanel: React.FC<Props> = ({ control, presets, onChange }) => {
   const preset = presets.find(p => (p.id ?? p.presetId) === control.presetId) || presets[0];

@@ -1,4 +1,5 @@
 import { curve01, curve01Param, type CurvePreset, type CurveSpec } from '../utils/curves';
+import { clamp01 } from '../util/math';
 
 // -----------------------------
 // V2: multi-channel spread (optional)
@@ -83,10 +84,6 @@ export type SpreadEnergyOutput = {
 /**
  * Clamp any number into the [0..1] range.
  */
-function clamp01(x: number): number {
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(0, Math.min(1, x));
-}
 
 /**
  * Provide a stable, bounded temperature for the softmax.

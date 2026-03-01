@@ -1,4 +1,5 @@
 import type { ContextAtom } from './v2/types';
+import { clamp01 } from '../util/math';
 
 export type Picked = {
   id: string | null;
@@ -12,12 +13,6 @@ function asNum(x: any): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-function clamp01(x: number): number {
-  if (!Number.isFinite(x)) return 0;
-  if (x < 0) return 0;
-  if (x > 1) return 1;
-  return x;
-}
 
 function findAtom(atoms: ContextAtom[], id: string): ContextAtom | null {
   const a = atoms.find(x => (x as any)?.id === id) as any;

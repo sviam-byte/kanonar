@@ -2,15 +2,12 @@
 import type { AtomNamespace, ContextAtom } from '../v2/types';
 import { normalizeAtom } from '../v2/infer';
 import { gateOK } from '../gates/atomGates';
+import { clamp01 } from '../../util/math';
 
 const SOCIAL_GATE = {
   anyPrefix: ['obs:nearby:', 'tom:dyad:', 'tom:effective:dyad:', 'rel:tag:', 'rel:state:', 'rel:base:']
 };
 
-function clamp01(x: number) {
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(0, Math.min(1, x));
-}
 
 function getMag(atoms: ContextAtom[], id: string, fb = 0) {
   const a = atoms.find(x => x.id === id);

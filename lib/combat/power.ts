@@ -1,9 +1,6 @@
 import type { CharacterEntity } from '../../types';
+import { clamp01 } from '../util/math';
 
-function clamp01(x: number) {
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(0, Math.min(1, x));
-}
 
 function num01(x: any, fb: number) {
   const v = Number(x);

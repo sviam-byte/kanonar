@@ -1,14 +1,11 @@
 
 // lib/contextMind/scoreboard.ts
 import { ContextAtom } from '../context/v2/types';
+import { clamp01 } from '../util/math';
 
 const SOC_SUPPORT_PREFIX = 'soc:support:';
 const SOC_THREAT_PREFIX  = 'soc:threat:';
 
-function clamp01(x: number) {
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(0, Math.min(1, x));
-}
 
 function maxMag(atoms: ContextAtom[], pred: (a: ContextAtom) => boolean) {
   let m = 0;

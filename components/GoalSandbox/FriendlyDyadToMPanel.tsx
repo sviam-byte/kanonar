@@ -3,11 +3,8 @@ import type { GoalLabSnapshotV1 } from '../../lib/goal-lab/snapshotTypes';
 import type { ContextAtom } from '../../lib/context/v2/types';
 import { getDyadMag } from '../../lib/tom/layers';
 import { metricHelp, metricLabel } from '../../lib/ui/metricLexicon';
+import { clamp01 } from '../../lib/util/math';
 
-function clamp01(x: number) {
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(0, Math.min(1, x));
-}
 
 function fmtPct(x: number) {
   return `${Math.round(clamp01(x) * 100)}`;

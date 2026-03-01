@@ -3,16 +3,9 @@ import type { Possibility } from '../possibilities/catalog';
 import { arr } from '../utils/arr';
 import { actionEffectForKind, FEATURE_GOAL_PROJECTION_KEYS } from './actionProjection';
 import { ActionCandidate } from './actionCandidate';
+import { clamp01, clamp11 } from '../util/math';
 
-function clamp01(x: number) {
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(0, Math.min(1, x));
-}
 
-function clamp11(x: number) {
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(-1, Math.min(1, x));
-}
 
 function getMagById(atoms: ContextAtom[], id: string, fb = 0): number {
   for (const a of atoms) {

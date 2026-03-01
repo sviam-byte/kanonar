@@ -7,6 +7,7 @@ import {
   RegulationState,
   PhysiologyState,
 } from '../types';
+import { clamp01 } from './util/math';
 
 export interface PhysiologyEnv {
   physicalLoad: number;   // 0..1
@@ -15,9 +16,6 @@ export interface PhysiologyEnv {
   ambientTemp: number;    // °C
 }
 
-function clamp01(x: number): number {
-  return x < 0 ? 0 : x > 1 ? 1 : x;
-}
 
 // BodyHormonal helper to compute hormonal state
 interface HormonalInputs {

@@ -4,11 +4,8 @@ import { normalizeAtom } from '../v2/infer';
 import { Possibility } from './types';
 import { computeActionCost } from '../../cost/model';
 import { getCtx, pickCtxId } from '../layers';
+import { clamp01 } from '../../util/math';
 
-function clamp01(x: number) {
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(0, Math.min(1, x));
-}
 
 function getMag(atoms: ContextAtom[], id: string, fallback = 0) {
   const a = atoms.find(x => x.id === id);

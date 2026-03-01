@@ -1,3 +1,4 @@
+import { clamp01 } from '../lib/util/math';
 /**
  * useGoalLabEngine — computation pipeline for GoalLab.
  *
@@ -100,10 +101,6 @@ export type GoalLabVM = {
   onChangeManualAtoms: (atoms: any[]) => void;
 };
 
-function clamp01(x: number) {
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(0, Math.min(1, x));
-}
 
 function collectLocationTags(location: LocationEntity | null | undefined): string[] {
   if (!location) return [];

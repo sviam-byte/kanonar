@@ -6,6 +6,7 @@ import { relations as STATIC_RELATIONS } from '../data/relations';
 import { EntityType } from '../enums';
 import type { CharacterEntity } from '../types';
 import { ThinkingSimilarityPanel } from '../components/ThinkingSimilarityPanel';
+import { safe01 as clamp01 } from '../lib/util/math';
 
 type EdgeRow = {
   a: string;
@@ -22,11 +23,6 @@ type EdgeRow = {
   bioVector?: Record<string, number>;
 };
 
-function clamp01(x: unknown, fallback = 0) {
-  const n = Number(x);
-  if (!Number.isFinite(n)) return fallback;
-  return Math.max(0, Math.min(1, n));
-}
 
 function clampSigned(x: unknown, fallback = 0) {
   const n = Number(x);

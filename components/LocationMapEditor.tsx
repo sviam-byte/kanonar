@@ -2,6 +2,7 @@
 import React, { useMemo, useState } from 'react';
 import { LocationMap, LocationMapCell, LocationMapExit } from '../types';
 import { LocationVectorMap } from './locations/LocationVectorMap';
+import { clamp01 } from '../lib/util/math';
 
 type Brush =
   | 'walkable'
@@ -23,10 +24,6 @@ interface Props {
   cellSize?: number;
 }
 
-function clamp01(x: number) {
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(0, Math.min(1, x));
-}
 
 export const LocationMapEditor: React.FC<Props> = ({ map, onChange, cellSize = 16 }) => {
   // allow parent to pass brush via map.__editor (см PATCH 2)

@@ -1,6 +1,7 @@
 import type { ContextAtom } from '../context/v2/types';
 import { normalizeAtom } from '../context/v2/infer';
 import { getCtx } from '../context/layers';
+import { clamp01 } from '../util/math';
 
 function getAtomValue(atoms: ContextAtom[], idPrefix: string): number | null {
   // ищем по префиксу (в твоём коде ctx часто содержит selfId в id)
@@ -19,12 +20,6 @@ function pickAnyId(atoms: ContextAtom[], idPrefix: string): string | null {
   return null;
 }
 
-function clamp01(x: number) {
-  if (Number.isNaN(x)) return 0;
-  if (x < 0) return 0;
-  if (x > 1) return 1;
-  return x;
-}
 
 export function deriveDriversAtoms(input: {
   selfId: string;

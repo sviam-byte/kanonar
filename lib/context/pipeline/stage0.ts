@@ -2,6 +2,7 @@
 // lib/context/pipeline/stage0.ts
 import type { ContextAtom } from '../v2/types';
 import { normalizeAtom } from '../v2/infer';
+import { clamp01 } from '../../util/math';
 // Removed: import { atomizeObservations } from '../epistemic/atomizeObs';
 import { extractObservationAtoms } from '../sources/observationAtoms';
 import { mergeEpistemicAtoms, EpistemicLayer } from '../epistemic/mergeEpistemic';
@@ -68,10 +69,6 @@ export type Stage0Output = {
   obsAtoms: ContextAtom[];
 };
 
-function clamp01(x: number) {
-    if (!Number.isFinite(x)) return 0;
-    return Math.max(0, Math.min(1, x));
-}
 
 // Atomize stable profile signals (life goals / domain weights)
 function buildLifeGoalAtoms(self: AgentState): ContextAtom[] {

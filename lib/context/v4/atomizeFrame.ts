@@ -10,13 +10,8 @@ import { deriveRelationshipLabel } from '../../social/relationshipLabels';
 import { extractLocationAtoms } from '../sources/locationAtoms';
 import { computeCombatPower01, advantageSigmoid } from '../../combat/power';
 import { safeNum } from '../../util/safe';
+import { clamp01 } from '../../util/math';
 
-function clamp01(x: number): number {
-  if (Number.isNaN(x)) return 0;
-  if (x < 0) return 0;
-  if (x > 1) return 1;
-  return x;
-}
 
 function mkId(parts: (string | number | null | undefined)[]) {
   return parts.filter(Boolean).join(':');

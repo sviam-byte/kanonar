@@ -3,14 +3,12 @@
 import { AgentContextFrame, TomRelationView } from '../../types';
 import { BodyState, SelfBodyModel, PerceivedBodyState, BodyAwarenessParams } from '../../types';
 import { gaussian } from '../util/gaussian';
+import { clamp01 } from '../util/math';
 
 function clamp(x: number, min: number, max: number): number {
   return Math.min(Math.max(x, min), max);
 }
 
-function clamp01(x: number): number {
-  return clamp(x, 0, 1);
-}
 
 function randomGaussian(mean: number, stdDev: number): number {
   return mean + gaussian() * stdDev;

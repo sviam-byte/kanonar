@@ -18,6 +18,7 @@ import { computeCoverageReport } from '../goal-lab/coverage/computeCoverage';
 import { normalizeAffectState } from '../affect/normalize';
 import { atomizeAffect } from '../affect/atomize';
 import { synthesizeAffectFromMind } from '../affect/synthesizeFromMind';
+import { clamp01 } from '../util/math';
 
 // New Imports for Pipeline
 import { buildStage0Atoms } from '../context/pipeline/stage0';
@@ -105,10 +106,6 @@ function writeEnergyState(selfId: string, next: Record<string, number>) {
   __ENERGY_STATE__.set(selfId, next);
 }
 
-function clamp01(x: number) {
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(0, Math.min(1, x));
-}
 
 function clamp(x: number, min: number, max: number) {
   if (!Number.isFinite(x)) return min;

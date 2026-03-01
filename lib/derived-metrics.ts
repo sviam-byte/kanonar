@@ -1,13 +1,11 @@
 
 import { EntityParams, DerivedMetrics, GoalEcology, CharacterState } from '../types';
+import { clamp01 } from './util/math';
 
 const sigmoid = (x: number): number => 1 / (1 + Math.exp(-x));
 
 const getParam = (p: EntityParams, key: string, defaultValue: number = 0.5): number => p[key] ?? defaultValue;
 
-function clamp01(x: number): number {
-  return x < 0 ? 0 : x > 1 ? 1 : x;
-}
 
 export function calculateDerivedMetrics(
     p: EntityParams,

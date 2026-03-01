@@ -3,11 +3,8 @@ import { Possibility } from './catalog';
 import { ContextAtom } from '../context/v2/types';
 import { normalizeAtom } from '../context/v2/infer';
 import { arr } from '../utils/arr';
+import { clamp01 } from '../util/math';
 
-function clamp01(x: number) {
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(0, Math.min(1, x));
-}
 
 // Defensive: sometimes a "registry" object was passed instead of a list.
 export function atomizePossibilities(poss: Possibility[] | any): ContextAtom[] {

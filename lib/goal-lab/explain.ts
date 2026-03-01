@@ -1,11 +1,7 @@
 // lib/goal-lab/explain.ts
 import type { ContextSnapshot } from '../context/v2/types';
+import { safe01 as clamp01 } from '../util/math';
 
-function clamp01(x: any) {
-  const v = Number(x);
-  if (!Number.isFinite(v)) return 0;
-  return Math.max(0, Math.min(1, v));
-}
 
 function topMetric(snapshot: any, key: string) {
   const metrics = snapshot?.contextMind?.metrics || [];

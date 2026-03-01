@@ -4,12 +4,10 @@
 import React, { useMemo, useState } from 'react';
 import type { LocationMap } from '../../types';
 import { LocationVectorMap } from '../locations/LocationVectorMap';
+import { clamp01 } from '../../lib/util/math';
 
 type Mode = 'place_actor' | 'add_danger' | 'add_safe' | 'select';
 
-function clamp01(x: number) {
-  return Number.isFinite(x) ? Math.max(0, Math.min(1, x)) : 0;
-}
 
 let __idCounter = 0;
 function makeId(prefix: string) {

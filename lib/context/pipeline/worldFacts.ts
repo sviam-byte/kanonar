@@ -2,11 +2,8 @@
 import { normalizeAtom } from '../v2/infer';
 import { curve01, CurvePreset } from '../../utils/curves';
 import type { ContextAtom } from '../v2/types';
+import { clamp01 } from '../../util/math';
 
-function clamp01(x: number) {
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(0, Math.min(1, x));
-}
 
 function num(x: any, fallback = 0) {
   const v = Number(x);

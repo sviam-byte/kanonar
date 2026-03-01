@@ -4,11 +4,8 @@
 import type { LocationEntity, CharacterEntity } from '../../../types';
 import type { SimWorld } from '../core/types';
 import { importLocationFromGoalLab } from '../locations/goallabImport';
+import { clamp01 } from '../../util/math';
 
-function clamp01(x: number) {
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(0, Math.min(1, x));
-}
 
 function num(x: any, fb: number) {
   const v = Number(x);

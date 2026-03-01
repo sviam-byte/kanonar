@@ -1,4 +1,5 @@
 import React, { Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { clamp01 } from '../../lib/util/math';
 
 // Keep 3D deps out of the initial bundle.
 const ForceGraph3D = React.lazy(() => import('react-force-graph-3d'));
@@ -73,11 +74,6 @@ class Graph3DErrorBoundary extends React.Component<
   }
 }
 
-function clamp01(x: number): number {
-  const v = Number(x);
-  if (!Number.isFinite(v)) return 0;
-  return Math.max(0, Math.min(1, v));
-}
 
 function inferKindFromReactFlowType(t?: string): Decision3DNodeKind {
   const s = String(t || '').toLowerCase();

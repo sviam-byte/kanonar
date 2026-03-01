@@ -1,15 +1,12 @@
 import React, { useMemo, useState } from 'react';
 import ReactFlow, { Background, Controls, type Edge, type Node } from 'reactflow';
 import 'reactflow/dist/style.css';
+import { clamp01 } from '../../lib/util/math';
 
 import type { ContextAtom } from '../../lib/context/v2/types';
 import { arr } from '../../lib/utils/arr';
 import { layoutWithDagre } from '../../lib/graph/layout';
 
-function clamp01(x: number) {
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(0, Math.min(1, x));
-}
 
 function fmt2(x: any) {
   const n = Number(x);

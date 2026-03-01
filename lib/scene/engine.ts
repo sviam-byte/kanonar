@@ -2,11 +2,8 @@
 import { SceneInstance, ScenePreset, SceneMetrics, SceneNorms } from './types';
 import { SCENE_PRESETS } from './presets';
 import { ContextAtom } from '../context/v2/types';
+import { clamp01 } from '../util/math';
 
-function clamp01(x: number) {
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(0, Math.min(1, x));
-}
 
 function stableHashInt32(s: string): number {
   let h = 2166136261;

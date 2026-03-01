@@ -7,12 +7,8 @@ import { interpretThinking } from '../lib/metrics/thinkingInterpret';
 import { cosineDistance, vectorStats } from '../lib/metrics/thinkingVector';
 import { cognitionVector } from '../lib/metrics/cognitionVector';
 import { topDeltas } from '../lib/metrics/vectorExplain';
+import { safe01 } from '../lib/util/math';
 
-function clamp01(x: unknown, fallback = 0.5) {
-  const n = Number(x);
-  if (!Number.isFinite(n)) return fallback;
-  return Math.max(0, Math.min(1, n));
-}
 
 type Item = {
   c: CharacterEntity;

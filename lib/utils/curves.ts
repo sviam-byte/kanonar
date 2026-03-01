@@ -1,5 +1,6 @@
 // lib/utils/curves.ts
 
+import { clamp01 } from '../util/math';
 export type CurvePreset =
   | 'linear'
   | 'smoothstep'
@@ -22,10 +23,6 @@ export type CurveSpec =
   | { type: 'linear' }
   | { type: 'sqrt' };
 
-function clamp01(x: number) {
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(0, Math.min(1, x));
-}
 
 /** Apply a non-linear response curve to x in [0,1]. */
 export function curve01(x: number, preset: CurvePreset): number {

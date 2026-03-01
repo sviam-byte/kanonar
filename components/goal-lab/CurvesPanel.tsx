@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import { curve01, CurvePreset } from '../../lib/utils/curves';
+import { clamp01 } from '../../lib/util/math';
 
 type Props = {
   seed: string;
@@ -11,10 +12,6 @@ type Props = {
   onApply: () => void;
 };
 
-function clamp01(x: number) {
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(0, Math.min(1, x));
-}
 
 function buildPath(points: Array<{ x: number; y: number }>, w: number, h: number, pad: number) {
   const innerW = w - pad * 2;

@@ -1,8 +1,6 @@
 import React, { useMemo } from 'react';
+import { clamp01 } from '../lib/util/math';
 
-function clamp01(x: number) {
-  return Math.max(0, Math.min(1, x));
-}
 
 function getMapImage(loc: any): string | null {
   const img = loc?.map?.image ?? loc?.image ?? loc?.mapImage ?? null;

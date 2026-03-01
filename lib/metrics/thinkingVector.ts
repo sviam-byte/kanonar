@@ -1,4 +1,5 @@
 import type { ActivityCaps, ThinkingAxisA, ThinkingAxisB, ThinkingAxisC, ThinkingAxisD, ThinkingProfile } from '../../types';
+import { safe01 as clamp01 } from '../util/math';
 
 const AX_A: ThinkingAxisA[] = ['enactive', 'imagery', 'verbal', 'formal'];
 const AX_B: ThinkingAxisB[] = ['deductive', 'inductive', 'abductive', 'causal', 'bayesian'];
@@ -22,11 +23,6 @@ const CAPS_KEYS: (keyof ActivityCaps)[] = [
   'existential',
 ];
 
-function clamp01(x: unknown, fallback = 0) {
-  const n = Number(x);
-  if (!Number.isFinite(n)) return fallback;
-  return Math.max(0, Math.min(1, n));
-}
 
 function l2norm(v: number[]) {
   let s = 0;

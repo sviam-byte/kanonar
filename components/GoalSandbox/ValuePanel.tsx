@@ -1,14 +1,11 @@
 import React, { useMemo } from 'react';
+import { clamp01 } from '../../lib/util/math';
 
 function safeNum(x: any, fb = 0): number {
   const n = Number(x);
   return Number.isFinite(n) ? n : fb;
 }
 
-function clamp01(x: number): number {
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(0, Math.min(1, x));
-}
 
 function fmt(x: any, digits = 3): string {
   const n = Number(x);
