@@ -1,18 +1,20 @@
 import type { ContextAtom } from '../context/v2/types';
 import type { Possibility } from '../possibilities/catalog';
 import { arr } from '../utils/arr';
+import { clamp01, clamp11 } from '../util/math';
 import { actionEffectForKind, FEATURE_GOAL_PROJECTION_KEYS } from './actionProjection';
 import { ActionCandidate } from './actionCandidate';
 
-function clamp01(x: number) {
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(0, Math.min(1, x));
+function getMagById(atoms: ContextAtom[], id: string, fb = 0): number {
+  for (const a of atoms) {
+    if ((a as any)?.id === id) {
+      const m = Number((a as any)?.magnitude);
+      return Number.isFinite(m) ? m : fb;
+    }
+  }
+  return fb;
 }
 
-function clamp11(x: number) {
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(-1, Math.min(1, x));
-}
 
 function getMagById(atoms: ContextAtom[], id: string, fb = 0): number {
   for (const a of atoms) {

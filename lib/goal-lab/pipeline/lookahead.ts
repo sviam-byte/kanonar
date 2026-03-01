@@ -1,11 +1,7 @@
 import type { Provenance } from './contracts';
 import { arr } from '../../utils/arr';
+import { clamp01 } from '../../util/math';
 import { FEATURE_GOAL_PROJECTION_KEYS } from '../../decision/actionProjection';
-
-function clamp01(x: number): number {
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(0, Math.min(1, x));
-}
 
 function mulberry32(seed: number) {
   let t = seed >>> 0;
