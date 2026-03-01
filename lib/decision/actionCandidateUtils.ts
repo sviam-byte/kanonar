@@ -14,6 +14,17 @@ function clamp11(x: number) {
   return Math.max(-1, Math.min(1, x));
 }
 
+function getMagById(atoms: ContextAtom[], id: string, fb = 0): number {
+  for (const a of atoms) {
+    if ((a as any)?.id === id) {
+      const m = Number((a as any)?.magnitude);
+      return Number.isFinite(m) ? m : fb;
+    }
+  }
+  return fb;
+}
+
+
 function keyFromPossibilityId(id: string): string {
   const parts = String(id || '').split(':');
   return parts[1] || parts[0] || '';
@@ -88,6 +99,35 @@ function buildDeltaGoals(
 
       // Scale projection to typical Δg range and clamp to stable bounds.
       if (Math.abs(dot) > 1e-6) out[goalId] = clamp11(dot * 4);
+    }
+  }
+
+  // Context modulation: scale fallback deltas by situational relevance.
+  // This only fires for fallback paths (hint atoms take precedence above).
+  if (Object.keys(out).length > 0) {
+    const danger = getMagById(atoms, `ctx:danger:${selfId}`, 0);
+    const fatigue = getMagById(atoms, `body:fatigue:${selfId}`, getMagById(atoms, `cap:fatigue:${selfId}`, 0));
+
+    for (const [goalId, delta] of Object.entries(out)) {
+      const d = Number(delta);
+      if (!Number.isFinite(d) || Math.abs(d) < 1e-6) continue;
+
+      let mod = 1.0;
+      // Safety/survival actions more effective when danger is present
+      if ((goalId === 'safety' || goalId === 'survival') && d > 0) {
+        mod = 0.6 + 0.8 * danger; // range: 0.6 (no danger) to 1.4 (max danger)
+      }
+      // Social goals suppressed under high danger (triage behavior)
+      if ((goalId === 'affiliation' || goalId === 'status') && danger > 0.5) {
+        mod = clamp01(1.3 - 0.6 * danger); // 1.0 at danger=0.5, 0.7 at danger=1.0
+      }
+      // Physical actions penalized by fatigue
+      if (d > 0 && fatigue > 0.4) {
+        const fatMod = clamp01(1.1 - 0.3 * fatigue); // 0.8 at fatigue=1.0
+        mod *= fatMod;
+      }
+
+      out[goalId] = clamp11(d * mod);
     }
   }
 

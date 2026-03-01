@@ -66,15 +66,19 @@ Notes:
 - стадия может быть отключена через `sceneControl.enableToM === false`
 - при отключении стадия не добавляет атомы и пишет артефакт `tomEnabled: false`
 
-## S6 — Drivers / ContextMind
+## S6 — Drivers / ContextMind / Priorities
 
 Outputs:
 - `drv:*`
+- `ctx:prio:*`
+
+Notes:
+- `ctx:prio:*` derives personal attention weights used by S7 goal ecology and contextual goal→action links.
 
 ## S7 — Goals + Planning
 
 Inputs:
-- `ctx:final:*`, `drv:*`, релевантные мемы/релэйшены
+- `ctx:final:*`, `ctx:prio:*`, `drv:*`, релевантные мемы/релэйшены
 
 Outputs:
 - `goal:*`
@@ -94,6 +98,7 @@ Outputs:
 - `action:*`
   - canonical ranking/reporting: `Q_raw(a)=Σ_g E_g*Δg(a) − cost(a)`, then confidence is applied as additive risk penalty `Q=Q_raw−k·|Q_raw|·(1−conf)`
   - optional sampling override path (`sceneControl.useLookaheadForChoice`) may use lookahead logits **only for stochastic choice**, without mutating reported/ranked canonical `Q`
+  - when S9 lookahead is enabled, S8 may damp per-goal `goalEnergy[g]` before `decideAction` if top lookahead actions show consistently negative feasibility (`max_a ΔV_g(a) < -0.01`)
 - if no possibility rules fire, S8 must still receive a fallback cognitive option `cog:wait:<selfId>` to avoid hard deadlocks in action selection
 - violent affordances (e.g., `off:attack:*`) are target-specific and gated by explicit threat + protocol; without threat or concrete target they must not be emitted
 - decision hints are consumed from `util:hint:allow:*`; legacy `goal:hint:allow:*` may be accepted only as compatibility fallback
@@ -112,6 +117,7 @@ Inputs:
 - `sceneControl.enablePredict`, `sceneControl.lookaheadGamma`, `sceneControl.lookaheadRiskAversion`
 - optional `goalEnergy` weights from S8 for subjective `V*(z, goalEnergy)`; empty/missing goalEnergy must fallback to legacy `V(z)`
 - action effects are context-modulated: `Δz_action = actionEffect(kind, z0)` to preserve scenario sensitivity
+- optional observation envelope from S0 (`observationLite.visibleAgentIds`, `noiseSigma`) can inject deterministic extra uncertainty into social-affective features (`socialTrust`, `emotionValence`)
 
 Outputs:
 - артефакт `transitionSnapshot`:
