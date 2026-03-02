@@ -11,7 +11,7 @@ import { selectMode } from './modes';
 import { selectActiveGoalsWithHysteresis } from './selectActive';
 import { initGoalState, updateGoalState, type GoalState } from './goalState';
 import { computeDomainProgressDeltasFromAtoms } from './outcomes';
-import { FC } from '../config/formulaConfig';
+import { FC, DOMAIN_MODE_PROJECTION } from '../config/formulaConfig';
 
 type GoalDomain =
   | 'safety'
@@ -67,7 +67,7 @@ function getPrio(atoms: ContextAtom[], selfId: string, axis: string, def = 0.5):
 function amplifyByPrio(x: number, prio: number): number {
   // prio in [0..1]. 0.5 -> k=1 (no change). Higher prio amplifies deviation from 0.5.
   const p = clamp01(prio);
-  const k = 0.6 + 0.8 * p; // 0.6..1.4
+  const k = FC.goal.amplifyByPrio.kBase + FC.goal.amplifyByPrio.kScale * p;
   return clamp01(0.5 + (x - 0.5) * k);
 }
 
@@ -332,7 +332,7 @@ export function deriveGoalAtoms(selfId: string, atoms: ContextAtom[], opts?: { t
   {
     const { socialWeight, drvWeight, baseWeight, lifeWeight } = FC.goal.status;
     const base = clamp01(socialWeight * clamp01(publicW + normW) + drvWeight * (Number.isFinite(drvStatus) ? drvStatus : 0));
-    const v = clamp01(baseWeight * base + lifeWeight * lifeWealth);
+    const v = clamp01(baseWeight * base + lifeWeight * lifeStatus);
     ecology.push({
       domain: 'status',
       v,
@@ -347,7 +347,7 @@ export function deriveGoalAtoms(selfId: string, atoms: ContextAtom[], opts?: { t
         prioNorm,
         normPressureLayer: normP.layer,
         drvStatus: Number.isFinite(drvStatus) ? drvStatus : null,
-        lifeWealth,
+        lifeStatus,
         base
       }
     });
@@ -433,14 +433,15 @@ export function deriveGoalAtoms(selfId: string, atoms: ContextAtom[], opts?: { t
   }
 
   // FeltField (raw-ish) from current context; used for mode gating.
+  const ff = FC.goal.feltField;
   const feltField = {
     threat: dangerW,
     uncertainty: uncW,
     norm: normW,
-    attachment: clamp01(1 - dangerW) * 0.7 + clamp01(1 - uncW) * 0.3,
+    attachment: clamp01(1 - dangerW) * ff.attachment_antiDanger + clamp01(1 - uncW) * ff.attachment_antiUncertainty,
     resource: clamp01(fatigue),
-    status: clamp01(0.5 * publicW + 0.5 * normW),
-    curiosity: clamp01(0.6 * uncW + 0.4 * (1 - dangerW)),
+    status: clamp01(ff.status_public * publicW + ff.status_norm * normW),
+    curiosity: clamp01(ff.curiosity_unc * uncW + ff.curiosity_antiDanger * (1 - dangerW)),
     base: 0.5,
   } as any;
 
@@ -448,18 +449,14 @@ export function deriveGoalAtoms(selfId: string, atoms: ContextAtom[], opts?: { t
 
   // Mode gating: bias domains based on mode mixture (Mixture-of-Experts).
   const W = modeSel.weights;
-  const domainBias = (d: GoalDomain) => {
-    switch (d) {
-      case 'safety': return 1.0 * W.threat_mode + 0.25 * W.resource_mode;
-      case 'control': return 0.35 * W.threat_mode + 0.25 * W.resource_mode + 0.15 * W.social_mode;
-      case 'affiliation': return 0.25 * W.social_mode + 0.85 * W.care_mode;
-      case 'status': return 0.95 * W.social_mode;
-      case 'exploration': return 1.0 * W.explore_mode;
-      case 'order': return 0.25 * W.social_mode + 0.25 * W.resource_mode + 0.20 * W.threat_mode;
-      case 'rest': return 0.85 * W.resource_mode;
-      case 'wealth': return 0.55 * W.resource_mode + 0.15 * W.social_mode;
-      default: return 0.2;
+  const domainBias = (d: GoalDomain): number => {
+    const proj = DOMAIN_MODE_PROJECTION[d];
+    if (!proj) return 0.2;
+    let sum = 0;
+    for (const mode of Object.keys(proj)) {
+      sum += (proj[mode] ?? 0) * ((W as any)[mode] ?? 0);
     }
+    return sum;
   };
 
   // Read previous state (GoalLab memory).
@@ -472,8 +469,8 @@ export function deriveGoalAtoms(selfId: string, atoms: ContextAtom[], opts?: { t
   for (const e of ecology) {
     const bias = clamp01(domainBias(e.domain));
     const st = prevStates[e.domain] || initGoalState();
-    const boost = clamp01(0.7 + 0.6 * bias);
-    const antiFatigue = clamp01(1 - 0.35 * st.fatigue);
+    const boost = clamp01(FC.goal.modeBias.boostBase + FC.goal.modeBias.boostScale * bias);
+    const antiFatigue = clamp01(1 - FC.goal.antiFatiguePenalty * st.fatigue);
     e.v = clamp01(e.v * boost * antiFatigue);
     (e.parts as any).mode = modeSel.mode;
     (e.parts as any).modeWeights = W;
