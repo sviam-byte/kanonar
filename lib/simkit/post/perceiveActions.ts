@@ -2,14 +2,10 @@
 // POST phase v0: build observed action atoms from tick events and persist per-agent memory.
 
 import type { SimEvent, SimWorld } from '../core/types';
+import { clamp01 } from '../../util/math';
 
 function arr<T>(x: any): T[] {
   return Array.isArray(x) ? x : [];
-}
-
-function clamp01(x: number) {
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(0, Math.min(1, x));
 }
 
 export type BeliefAtom = {

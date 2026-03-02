@@ -1,3 +1,4 @@
+import { clamp01 } from '../util/math';
 
 // lib/tom/second_order.ts
 
@@ -21,11 +22,6 @@ export interface TomOrderLayer {
   align: number;            // \in [0,1]
   dominance: number;        // \in [0,1]
   uncertainty: number;      // \in [0,1]
-}
-
-function clamp01(x: any): number {
-    const v = typeof x === "number" && isFinite(x) ? x : 0;
-    return v < 0 ? 0 : v > 1 ? 1 : v;
 }
 
 function sigmoid(x: number): number {

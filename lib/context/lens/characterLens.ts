@@ -1,6 +1,6 @@
 import type { ContextAtom } from '../v2/types';
 import { normalizeAtom } from '../v2/infer';
-import { hasAtom } from '../../util/atoms';
+import { getMag, hasAtom } from '../../util/atoms';
 import { clamp01 } from '../../util/math';
 
 function makeBaseId(outId: string): string {
@@ -52,12 +52,6 @@ function sanitizeUsedAtomIds(outId: string, usedAtomIds: unknown): string[] {
     out.push(x);
   }
   return out;
-}
-
-function getMag(atoms: ContextAtom[], id: string, fb = 0) {
-  const a = atoms.find(x => x.id === id);
-  const m = (a as any)?.magnitude;
-  return (typeof m === 'number' && Number.isFinite(m)) ? m : fb;
 }
 
 function mkDerived(id: string, selfId: string, magnitude: number, usedAtomIds: string[], parts: any, tags: string[]) {

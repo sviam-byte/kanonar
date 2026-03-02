@@ -3,18 +3,13 @@ import { normalizeAtom } from '../context/v2/infer';
 import { arr } from '../utils/arr';
 import { ActionCandidate } from './actionCandidate';
 import { scoreAction } from './scoreAction';
+import { clamp01 } from '../util/math';
 
 export type DecisionResult = {
   best: ActionCandidate | null;
   ranked: Array<{ action: ActionCandidate; q: number }>;
   atoms: ContextAtom[];
 };
-
-function clamp01(x: number) {
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(0, Math.min(1, x));
-}
-
 
 function samplingQForAction(
   actionId: string,

@@ -2,11 +2,7 @@
 import { RelationshipGraph } from './types';
 import { ContextAtom } from '../context/v2/types';
 import { normalizeAtom } from '../context/v2/infer';
-
-function clamp01(x: number) {
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(0, Math.min(1, x));
-}
+import { clamp01 } from '../util/math';
 
 function uniq(xs: string[]) {
   return Array.from(new Set((Array.isArray(xs) ? xs : []).map(String).filter(Boolean)));

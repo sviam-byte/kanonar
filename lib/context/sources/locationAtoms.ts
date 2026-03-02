@@ -2,13 +2,9 @@
 import type { ContextAtom } from '../v2/types';
 import { normalizeAtom } from '../v2/infer';
 import { LocationEntity, LocationMap, LocationMapCell } from '../../../types';
+import { clamp01 } from '../../util/math';
 
 type AnyLocation = LocationEntity;
-
-function clamp01(x: number) {
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(0, Math.min(1, x));
-}
 
 // Normalize any value to 0..1
 function norm01(x: any, fb = 0) {

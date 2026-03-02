@@ -7,6 +7,7 @@ import { ContextAtom } from '../../context/v2/types';
 import { normalizeAtom } from '../../context/v2/infer';
 import { getCtx, pickCtxId } from '../../context/layers';
 import { clamp01, entropy01, invLogit, logit, sigmoid, softmax } from './decisionMath';
+import { getMag } from '../../util/atoms';
 
 function unpackAtomsAndSelfId(
   arg1: ContextAtom[] | { atoms?: unknown; selfId?: unknown } | null | undefined,
@@ -29,12 +30,6 @@ function unpackAtomsAndSelfId(
   }
 
   return { atoms: [] as ContextAtom[], selfId: String(arg2 ?? '') };
-}
-
-function getMag(atoms: ContextAtom[], id: string, fb = 0) {
-  const a = atoms.find(x => x.id === id);
-  const m = (a as any)?.magnitude;
-  return (typeof m === 'number' && Number.isFinite(m)) ? m : fb;
 }
 
 function dyadEffId(selfId: string, otherId: string, metric: string) {

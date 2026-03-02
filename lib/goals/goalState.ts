@@ -1,3 +1,5 @@
+import { clamp01 } from '../util/math';
+import { FC } from '../config/formulaConfig';
 export type GoalState = {
   tension: number;
   lockIn: number;
@@ -7,11 +9,6 @@ export type GoalState = {
   /** Exponential moving average of activation (goal score) to reduce flicker. */
   activationEMA: number;
 };
-
-function clamp01(x: number): number {
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(0, Math.min(1, x));
-}
 
 function clamp11(x: number): number {
   if (!Number.isFinite(x)) return 0;
@@ -45,14 +42,16 @@ export function updateGoalState(
   const act = activationEMA;
 
   // lockIn
-  const lockUp = isActive ? 0.22 + 0.18 * act : 0;
-  const lockDown = isActive ? 0 : 0.10;
-  const lockIn = clamp01(p.lockIn * 0.85 + lockUp - lockDown);
+  const lk = FC.goalState.lock;
+  const lockUp = isActive ? lk.upBase + lk.upActivation * act : 0;
+  const lockDown = isActive ? 0 : lk.downInactive;
+  const lockIn = clamp01(p.lockIn * lk.inertia + lockUp - lockDown);
 
   // fatigue
-  const fatUp = isActive ? 0.12 + 0.10 * act : 0;
-  const fatDown = isActive ? 0 : 0.04;
-  const fatigue = clamp01(p.fatigue * 0.92 + fatUp - fatDown);
+  const ft = FC.goalState.fatigue;
+  const fatUp = isActive ? ft.upBase + ft.upActivation * act : 0;
+  const fatDown = isActive ? ft.downActive : ft.downInactive;
+  const fatigue = clamp01(p.fatigue * ft.inertia + fatUp - fatDown);
 
   // tension: treat low activation while active as unmet need
   const tenUp = isActive ? 0.10 + 0.25 * (1 - act) : 0;

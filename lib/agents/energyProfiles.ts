@@ -1,3 +1,4 @@
+import { clamp01 } from '../util/math';
 import { CurvePreset, CurveSpec, normalizeCurveSpec } from '../utils/curves';
 
 export type EnergyChannel =
@@ -39,11 +40,6 @@ const DEFAULT_PROFILE: AgentEnergyProfile = {
     base: 0.6,
   },
 };
-
-function clamp01(x: number) {
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(0, Math.min(1, x));
-}
 
 /**
  * World/agent overrides support:

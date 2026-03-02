@@ -2,17 +2,8 @@
 import { ActionCost, ActionId, CostVector } from './types';
 import { ContextAtom } from '../context/v2/types';
 import { normalizeAtom } from '../context/v2/infer';
-
-function clamp01(x: number) {
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(0, Math.min(1, x));
-}
-
-function getMag(atoms: ContextAtom[], id: string, fallback = 0) {
-  const a = atoms.find(x => x.id === id);
-  const m = a?.magnitude;
-  return (typeof m === 'number' && Number.isFinite(m)) ? m : fallback;
-}
+import { clamp01 } from '../util/math';
+import { getMag } from '../util/atoms';
 
 function getCtxMag(atoms: ContextAtom[], selfId: string, axis: string, fallback = 0) {
   return getMag(atoms, `ctx:${axis}:${selfId}`, getMag(atoms, `ctx:${axis}`, fallback));

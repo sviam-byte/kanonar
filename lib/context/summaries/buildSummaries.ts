@@ -1,15 +1,11 @@
 // lib/context/summaries/buildSummaries.ts
 import type { ContextAtom } from '../v2/types';
 import { normalizeAtom } from '../v2/infer';
+import { clamp01 } from '../../util/math';
 
 type SummaryResult = {
   atoms: ContextAtom[];
 };
-
-function clamp01(x: number) {
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(0, Math.min(1, x));
-}
 
 function pickTop(atoms: ContextAtom[], filter: (a: ContextAtom) => boolean, n: number) {
   return atoms

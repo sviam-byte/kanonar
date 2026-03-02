@@ -7,6 +7,7 @@ import { describeGoal } from '../goals/goalCatalog';
 import { GOAL_DEFS, actionGoalMap } from '../goals/space';
 import { arr } from '../utils/arr';
 import { layoutWithDagre } from './layout';
+import { clamp01 } from '../util/math';
 
 type DecisionGraphParams = {
   frame?: AgentContextFrame | null;
@@ -37,11 +38,6 @@ const NODE_HEIGHT = 56;
 /**
  * Clamp any number to [0..1].
  */
-function clamp01(x: number) {
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(0, Math.min(1, x));
-}
-
 /**
  * Human-readable goal label fallback.
  */

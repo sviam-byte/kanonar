@@ -1,6 +1,7 @@
 import type { ContextAtom } from './types';
 import { getCtx, sanitizeUsed } from '../layers';
 import { normalizeAtom } from './infer';
+import { getMag } from '../../util/atoms';
 
 const clamp01 = (x: number) => (Number.isFinite(x) ? Math.max(0, Math.min(1, x)) : 0);
 const lerp = (a: number, b: number, t: number) => a + (b - a) * clamp01(t);
@@ -11,12 +12,6 @@ const amp01 = (x: number, k: number) => {
   const kk = Number.isFinite(k) ? Math.max(0, k) : 1;
   return clamp01(1 - Math.pow(1 - xx, kk));
 };
-
-function getMag(atoms: ContextAtom[], id: string, fb = 0) {
-  const a = atoms.find(x => String((x as any)?.id) === id) as any;
-  const m = a?.magnitude;
-  return typeof m === 'number' && Number.isFinite(m) ? m : fb;
-}
 
 /**
  * Apply a character lens to context axes and materialize ctx:final:* + lens:gain:*.

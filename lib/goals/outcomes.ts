@@ -1,5 +1,6 @@
 import type { ContextAtom } from '../context/v2/types';
 import type { WorldEvent } from '../events/types';
+import { clamp01 } from '../util/math';
 
 type GoalDomain =
   | 'safety'
@@ -10,11 +11,6 @@ type GoalDomain =
   | 'order'
   | 'rest'
   | 'wealth';
-
-function clamp01(x: number): number {
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(0, Math.min(1, x));
-}
 
 function clamp11(x: number): number {
   if (!Number.isFinite(x)) return 0;

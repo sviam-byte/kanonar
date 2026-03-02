@@ -1,4 +1,4 @@
-import { materializeStageAtoms } from '../../components/goal-lab/materializePipeline';
+import { materializeStageAtoms } from '../goal-lab/materializePipeline';
 import type { ContextAtom } from '../context/v2/types';
 import { getCanonicalAtomsFromSnapshot } from '../goal-lab/atoms/canonical';
 

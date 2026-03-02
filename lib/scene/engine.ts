@@ -2,11 +2,8 @@
 import { SceneInstance, ScenePreset, SceneMetrics, SceneNorms } from './types';
 import { SCENE_PRESETS } from './presets';
 import { ContextAtom } from '../context/v2/types';
-
-function clamp01(x: number) {
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(0, Math.min(1, x));
-}
+import { clamp01 } from '../util/math';
+import { getMag } from '../util/atoms';
 
 function stableHashInt32(s: string): number {
   let h = 2166136261;
@@ -36,12 +33,6 @@ function compare(op: string, a: number, b: number) {
   if (op === '<=') return a <= b;
   if (op === '<') return a < b;
   return false;
-}
-
-function getMag(atoms: ContextAtom[], id: string, fallback = 0) {
-  const a = atoms.find(x => x.id === id);
-  const m = a?.magnitude;
-  return (typeof m === 'number' && Number.isFinite(m)) ? m : fallback;
 }
 
 export function createSceneInstance(args: {

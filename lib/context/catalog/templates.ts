@@ -2,6 +2,7 @@
 // lib/context/catalog/templates.ts
 import type { ContextAtom } from '../v2/types';
 import { normalizeAtom } from '../v2/infer';
+import { clamp01 } from '../../util/math';
 
 export type AtomTemplateId =
   | 'ctx_axis'
@@ -23,11 +24,6 @@ export type AtomTemplate = {
     defaultValue?: any;
   }>;
 };
-
-function clamp01(x: number) {
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(0, Math.min(1, x));
-}
 
 export const ATOM_TEMPLATES: AtomTemplate[] = [
   {

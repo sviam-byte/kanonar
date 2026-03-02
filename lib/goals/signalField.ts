@@ -1,5 +1,6 @@
 import type { ContextAtom } from '../context/v2/types';
 import type { EnergyChannel } from '../agents/energyProfiles';
+import { clamp01 } from '../util/math';
 
 export type SignalChannel = {
   sources: ContextAtom[];
@@ -79,11 +80,6 @@ const CAP_TO_CHANNEL: Record<string, ChannelMap> = {
   thirst: { resource: 0.75 },
   pain: { resource: 0.35, threat: 0.15 },
 };
-
-function clamp01(x: number): number {
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(0, Math.min(1, x));
-}
 
 function wAtom(a: any): number {
   const m = Number(a?.magnitude ?? 0);

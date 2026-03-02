@@ -7,11 +7,8 @@ import { computeActionCost } from './costModel';
 import { gatePossibility } from './gating';
 import { arr } from '../utils/arr';
 import type { ActionOffer } from './types';
-
-function clamp01(x: number) {
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(0, Math.min(1, x));
-}
+import { clamp01 } from '../util/math';
+import { FC } from '../config/formulaConfig';
 
 type CtxVec = {
   danger: number;
@@ -416,7 +413,8 @@ export function scorePossibility(args: {
   energyParts.energyBonus = energyBonus;
 
   // Mix with base utility (keep conservative to avoid goal dominance).
-  const mixedUtility = clamp01(0.74 * raw + 0.20 * goalUtility + 0.06 * clamp01(0.5 + energyBonus));
+  const mix = FC.decision.utilityMix;
+  const mixedUtility = clamp01(mix.raw * raw + mix.goal * goalUtility + mix.energy * clamp01(0.5 + energyBonus));
 
   // Контекстный key-mod (после базовых весов, чтобы реально влиять на итог).
   // NOTE: ctxVec already computed above for hard-gates.

@@ -17,11 +17,7 @@
 import type { ContextAtom } from '../../context/v2/types';
 import type { TransitionSnapshotLite, FeatureKey } from './lookahead';
 import { normalizeAtom } from '../../context/v2/infer';
-
-function clamp01(x: number): number {
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(0, Math.min(1, x));
-}
+import { clamp01 } from '../../util/math';
 
 export type BeliefPersistInput = {
   selfId: string;

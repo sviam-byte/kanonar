@@ -3,6 +3,7 @@
 
 import type { SimWorld } from './types';
 import { getChar, getLoc } from './world';
+import { clamp01 } from '../../util/math';
 
 export type SpatialConfig = {
   // Map-space units (same coordinate system as location.map / nav nodes).
@@ -26,10 +27,6 @@ export const DEFAULT_SPATIAL_CONFIG: SpatialConfig = {
   moveMaxStep: 70,
   whisperMinPrivacy: 0.35,
 };
-
-function clamp01(x: number): number {
-  return Number.isFinite(x) ? Math.max(0, Math.min(1, x)) : 0;
-}
 
 // Read spatial config from world facts, with fallbacks to defaults.
 export function getSpatialConfig(world: SimWorld): SpatialConfig {

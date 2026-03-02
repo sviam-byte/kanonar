@@ -2,23 +2,17 @@
 // Профиль персонажа: векторный отпечаток, структурная диагностика, стресс-профиль.
 // Здесь только агрегаты из уже посчитанных метрик / латентов, без тяжёлых вычислений.
 
-import type { 
-    CharacterDossier, 
-    VectorFingerprint, 
-    TomStructuralDiagnosis, 
-    TomStressProfile, 
+import type {
+    CharacterDossier,
+    VectorFingerprint,
+    TomStructuralDiagnosis,
+    TomStressProfile,
     ProfileSummary,
     VectorAxis
 } from "./noncontextTom";
+import { clamp01 } from '../util/math';
 
 export type { ProfileSummary };
-
-function clamp01(x: number | undefined | null): number {
-  if (x == null || Number.isNaN(x)) return 0.5;
-  if (x < 0) return 0;
-  if (x > 1) return 1;
-  return x;
-}
 
 // Безопасно достать число из nested-структур с дефолтом 0.5.
 function getNum(root: any, path: string[], fallback = 0.5): number {

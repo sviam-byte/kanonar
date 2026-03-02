@@ -11,6 +11,7 @@ import { selectMode } from './modes';
 import { selectActiveGoalsWithHysteresis } from './selectActive';
 import { initGoalState, updateGoalState, type GoalState } from './goalState';
 import { computeDomainProgressDeltasFromAtoms } from './outcomes';
+import { FC } from '../config/formulaConfig';
 
 type GoalDomain =
   | 'safety'
@@ -237,6 +238,8 @@ export function deriveGoalAtoms(selfId: string, atoms: ContextAtom[], opts?: { t
   const prioUnc = getPrio(atoms, selfId, 'uncertainty', 0.5);
   const prioScarcity = getPrio(atoms, selfId, 'scarcity', 0.5);
   const fatigue = getAny(atoms, [`cap:fatigue:${selfId}`, `world:body:fatigue:${selfId}`], 0);
+  // care signal for mode gating: prefer explicit emotion/trait features, default neutral 0.5.
+  const careSignal = getAny(atoms, [`emo:care:${selfId}`, `feat:char:${selfId}:trait.care`], 0.5);
 
   // Very light “life weights” (optional). If absent -> 0.5 neutral.
   const lifeSafety = getAny(atoms, [`goal:lifeDomain:safety:${selfId}`], 0.5);
@@ -244,6 +247,7 @@ export function deriveGoalAtoms(selfId: string, atoms: ContextAtom[], opts?: { t
   const lifeStatus = getAny(atoms, [`goal:lifeDomain:status:${selfId}`], 0.5);
   const lifeExplore = getAny(atoms, [`goal:lifeDomain:exploration:${selfId}`], 0.5);
   const lifeOrder = getAny(atoms, [`goal:lifeDomain:order:${selfId}`], 0.5);
+  const lifeWealth = getAny(atoms, [`goal:lifeDomain:wealth:${selfId}`], 0.5);
 
   const usedCommon = [
     danger.id || '',
@@ -269,8 +273,9 @@ export function deriveGoalAtoms(selfId: string, atoms: ContextAtom[], opts?: { t
 
   // Safety: threat + drvSafety (if exists) blended with lifeSafety.
   {
-    const base = clamp01(0.60 * dangerW + 0.40 * (Number.isFinite(drvSafety) ? drvSafety : 0));
-    const v = clamp01(0.55 * base + 0.45 * lifeSafety);
+    const { ctxWeight, drvWeight, baseWeight, lifeWeight } = FC.goal.safety;
+    const base = clamp01(ctxWeight * dangerW + drvWeight * (Number.isFinite(drvSafety) ? drvSafety : 0));
+    const v = clamp01(baseWeight * base + lifeWeight * lifeSafety);
     ecology.push({
       domain: 'safety',
       v,
@@ -290,8 +295,9 @@ export function deriveGoalAtoms(selfId: string, atoms: ContextAtom[], opts?: { t
   // Control: (1-control) + drvControl
   {
     const lack = clamp01(1 - controlW);
-    const base = clamp01(0.60 * lack + 0.40 * (Number.isFinite(drvControl) ? drvControl : 0));
-    const v = clamp01(0.55 * base + 0.45 * lifeOrder);
+    const { ctxWeight, drvWeight, baseWeight, lifeWeight } = FC.goal.control;
+    const base = clamp01(ctxWeight * lack + drvWeight * (Number.isFinite(drvControl) ? drvControl : 0));
+    const v = clamp01(baseWeight * base + lifeWeight * lifeOrder);
     ecology.push({
       domain: 'control',
       v,
@@ -311,8 +317,9 @@ export function deriveGoalAtoms(selfId: string, atoms: ContextAtom[], opts?: { t
 
   // Affiliation: drvAff + inverse public/hostility proxies (soft)
   {
-    const base = clamp01(0.55 * (Number.isFinite(drvAff) ? drvAff : 0) + 0.45 * (1 - danger.magnitude));
-    const v = clamp01(0.55 * base + 0.45 * lifeAff);
+    const { drvWeight, antiDangerWeight, baseWeight, lifeWeight } = FC.goal.affiliation;
+    const base = clamp01(drvWeight * (Number.isFinite(drvAff) ? drvAff : 0) + antiDangerWeight * (1 - danger.magnitude));
+    const v = clamp01(baseWeight * base + lifeWeight * lifeAff);
     ecology.push({
       domain: 'affiliation',
       v,
@@ -323,8 +330,9 @@ export function deriveGoalAtoms(selfId: string, atoms: ContextAtom[], opts?: { t
 
   // Status: norm/public + drvStatus
   {
-    const base = clamp01(0.55 * clamp01(publicW + normW) + 0.45 * (Number.isFinite(drvStatus) ? drvStatus : 0));
-    const v = clamp01(0.55 * base + 0.45 * lifeStatus);
+    const { socialWeight, drvWeight, baseWeight, lifeWeight } = FC.goal.status;
+    const base = clamp01(socialWeight * clamp01(publicW + normW) + drvWeight * (Number.isFinite(drvStatus) ? drvStatus : 0));
+    const v = clamp01(baseWeight * base + lifeWeight * lifeWealth);
     ecology.push({
       domain: 'status',
       v,
@@ -339,7 +347,7 @@ export function deriveGoalAtoms(selfId: string, atoms: ContextAtom[], opts?: { t
         prioNorm,
         normPressureLayer: normP.layer,
         drvStatus: Number.isFinite(drvStatus) ? drvStatus : null,
-        lifeStatus,
+        lifeWealth,
         base
       }
     });
@@ -347,8 +355,9 @@ export function deriveGoalAtoms(selfId: string, atoms: ContextAtom[], opts?: { t
 
   // Exploration: uncertainty + drvCur + lifeExplore
   {
-    const base = clamp01(0.55 * uncW + 0.45 * (Number.isFinite(drvCur) ? drvCur : 0));
-    const v = clamp01(0.55 * base + 0.45 * lifeExplore);
+    const { uncertaintyWeight, drvWeight, baseWeight, lifeWeight } = FC.goal.exploration;
+    const base = clamp01(uncertaintyWeight * uncW + drvWeight * (Number.isFinite(drvCur) ? drvCur : 0));
+    const v = clamp01(baseWeight * base + lifeWeight * lifeExplore);
     ecology.push({
       domain: 'exploration',
       v,
@@ -367,7 +376,8 @@ export function deriveGoalAtoms(selfId: string, atoms: ContextAtom[], opts?: { t
 
   // Order: (1-chaos proxy) + lifeOrder (we reuse ctxControl as a proxy for order)
   {
-    const base = clamp01(0.60 * controlW + 0.40 * lifeOrder);
+    const { ctxWeight, lifeWeight } = FC.goal.order;
+    const base = clamp01(ctxWeight * controlW + lifeWeight * lifeOrder);
     const v = clamp01(base);
     ecology.push({
       domain: 'order',
@@ -379,7 +389,8 @@ export function deriveGoalAtoms(selfId: string, atoms: ContextAtom[], opts?: { t
 
   // Rest: fatigue + drvRest
   {
-    const base = clamp01(0.60 * fatigue + 0.40 * (Number.isFinite(drvRest) ? drvRest : 0));
+    const { fatigueWeight, drvWeight } = FC.goal.rest;
+    const base = clamp01(fatigueWeight * fatigue + drvWeight * (Number.isFinite(drvRest) ? drvRest : 0));
     const v = clamp01(base);
     ecology.push({
       domain: 'rest',
@@ -394,8 +405,9 @@ export function deriveGoalAtoms(selfId: string, atoms: ContextAtom[], opts?: { t
     const scarcityW = amplifyByPrio(scarcity.magnitude, prioScarcity);
     const access = clamp01(1 - scarcityW);
     const statusDrive = Number.isFinite(drvStatus) ? clamp01(drvStatus) : clamp01(publicW);
-    const base = clamp01(0.65 * scarcityW + 0.35 * statusDrive);
-    const v = clamp01(0.70 * base + 0.30 * lifeStatus);
+    const { scarcityWeight, statusDriveWeight, baseWeight, lifeWeight } = FC.goal.wealth;
+    const base = clamp01(scarcityWeight * scarcityW + statusDriveWeight * statusDrive);
+    const v = clamp01(baseWeight * base + lifeWeight * lifeWealth);
     ecology.push({
       domain: 'wealth',
       v,
@@ -404,7 +416,7 @@ export function deriveGoalAtoms(selfId: string, atoms: ContextAtom[], opts?: { t
         scarcity.id || '',
         `ctx:prio:scarcity:${selfId}`,
         Number.isFinite(drvStatus) ? `drv:statusNeed:${selfId}` : `ctx:final:publicness:${selfId}`,
-        `goal:lifeDomain:status:${selfId}`,
+        `goal:lifeDomain:wealth:${selfId}`,
       ].filter(Boolean),
       parts: {
         scarcity: scarcity.magnitude,
@@ -413,7 +425,7 @@ export function deriveGoalAtoms(selfId: string, atoms: ContextAtom[], opts?: { t
         scarcityLayer: scarcity.layer,
         access,
         statusDrive,
-        lifeStatus,
+        lifeWealth,
         base,
         note: 'proxy wealth = f(scarcity,status); add econ quarks to replace'
       }
@@ -432,7 +444,7 @@ export function deriveGoalAtoms(selfId: string, atoms: ContextAtom[], opts?: { t
     base: 0.5,
   } as any;
 
-  const modeSel = selectMode(feltField as any);
+  const modeSel = selectMode(feltField as any, { careSignal });
 
   // Mode gating: bias domains based on mode mixture (Mixture-of-Experts).
   const W = modeSel.weights;
@@ -566,7 +578,8 @@ export function deriveGoalAtoms(selfId: string, atoms: ContextAtom[], opts?: { t
       // Squash signed raw score to 0..1 (0.5 = neutral).
       // raw > 0 => supports domain; raw < 0 => suppresses domain.
       const energyScore = 0.5 + 0.5 * Math.tanh(raw);
-      const blended = clamp01(0.60 * e.v + 0.40 * energyScore);
+      const { ecologyWeight, energyWeight } = FC.goal.energyBlend;
+      const blended = clamp01(ecologyWeight * e.v + energyWeight * energyScore);
       e.v = blended;
       (e.parts as any).energy = {
         score: energyScore,
@@ -590,11 +603,14 @@ export function deriveGoalAtoms(selfId: string, atoms: ContextAtom[], opts?: { t
   // “flicker” and make behavior more stable across ticks.
   for (const e of ecology) {
     const st = prevStates[e.domain] || initGoalState();
-    const alpha = clamp01(0.65 + 0.25 * (st.lockIn ?? 0));
+    const { alphaBase, lockInBoost, shockThreshold, shockAlphaScale, shockAlphaMin } = FC.goal.hysteresis;
+    const baseAlpha = clamp01(alphaBase + lockInBoost * (st.lockIn ?? 0));
     const before = clamp01(e.v);
+    const delta = Math.abs(before - (st.activationEMA ?? 0));
+    const alpha = delta > shockThreshold ? Math.max(shockAlphaMin, baseAlpha * shockAlphaScale) : baseAlpha;
     const after = clamp01(alpha * (st.activationEMA ?? 0) + (1 - alpha) * before);
     e.v = after;
-    (e.parts as any).activationHysteresis = { alpha, before, prevEMA: st.activationEMA ?? 0, after };
+    (e.parts as any).activationHysteresis = { alpha, baseAlpha, shockThreshold, delta, before, prevEMA: st.activationEMA ?? 0, after };
   }
 
   const modeAtom = mkModeAtom(selfId, modeSel.mode, W, usedCommon, { feltField, logits: modeSel.logits });
@@ -611,17 +627,24 @@ export function deriveGoalAtoms(selfId: string, atoms: ContextAtom[], opts?: { t
   // domain-energy atoms (goal:domain:*), so downstream (util.../action) sees the
   // suppressed field while the pick itself remains based on the pre-inhibition
   // candidate scores.
-  const inhibitionGamma = 0.25;
+  const defaultGamma = FC.inhibition.gamma;
+  const domainGamma: Partial<Record<GoalDomain, number>> = {
+    safety: 0.5,
+    exploration: 0.5,
+    status: 0.1,
+    rest: 0.1,
+  };
   const winnerEnergies = activeDomains
     .map((d) => ecology.find((x) => x.domain === d)?.v ?? 0)
     .filter((v) => Number.isFinite(v));
   const winnerAvg = winnerEnergies.length ? winnerEnergies.reduce((a, b) => a + b, 0) / winnerEnergies.length : 0;
-  __debug.competition = { activeDomains, inhibitionGamma, winnerAvg, topN, pick: pick.debug };
+  __debug.competition = { activeDomains, defaultGamma, domainGamma, winnerAvg, topN, pick: pick.debug };
   const inhibitedGoalAtoms: ContextAtom[] = [];
   if (winnerAvg > 0) {
     for (const e of ecology) {
       if (activeDomains.includes(e.domain)) continue;
-      const v2 = clamp01(e.v - inhibitionGamma * winnerAvg);
+      const gamma = domainGamma[e.domain] ?? defaultGamma;
+      const v2 = clamp01(e.v - gamma * winnerAvg);
       if (Math.abs(v2 - e.v) < 1e-6) continue;
       inhibitedGoalAtoms.push(
         mkGoalAtom(
@@ -633,7 +656,7 @@ export function deriveGoalAtoms(selfId: string, atoms: ContextAtom[], opts?: { t
             ...(e.parts || {}),
             competition: {
               inhibitedBy: activeDomains,
-              gamma: inhibitionGamma,
+              gamma,
               winnerAvg,
               before: e.v,
               after: v2,

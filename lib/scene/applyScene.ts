@@ -2,11 +2,7 @@
 import { SceneAtomInjection, SceneInstance, SceneMetrics, SceneNorms } from './types';
 import { ContextAtom } from '../context/v2/types';
 import { normalizeAtom } from '../context/v2/infer';
-
-function clamp01(x: number) {
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(0, Math.min(1, x));
-}
+import { clamp01 } from '../util/math';
 
 function getTicksInPhase(scene: SceneInstance) {
   return Math.max(0, (scene.tick ?? 0) - (scene.phaseEnteredAtTick ?? 0));

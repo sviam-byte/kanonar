@@ -5,12 +5,7 @@ let __worldEventCounter = 0;
 // This helper normalizes any of them into a conservative WorldEvent[].
 
 import type { DomainEvent, WorldEvent } from '../../types';
-
-function clamp01(x: any, fb = 0) {
-  const n = Number(x);
-  if (!Number.isFinite(n)) return fb;
-  return Math.max(0, Math.min(1, n));
-}
+import { clamp01 } from '../util/math';
 
 function pickKindFromDomainEvent(ev: DomainEvent): string {
   const tags = Array.isArray(ev.tags) ? ev.tags.map(String) : [];

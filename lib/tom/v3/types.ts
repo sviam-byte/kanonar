@@ -1,3 +1,5 @@
+import { clamp01 } from '../../util/math';
+export { clamp01 };
 
 export type AgentId = string;
 export type AtomSource = "tom";
@@ -153,9 +155,3 @@ export interface TomDyadReport {
 }
 
 // Utility
-export function clamp01(x: number): number {
-  if (!Number.isFinite(x)) return 0;
-  if (x < 0) return 0;
-  if (x > 1) return 1;
-  return x;
-}
