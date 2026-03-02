@@ -14,6 +14,7 @@ import { extractTargetCandidates } from '../goals/targeting';
 import { getRelationshipFromTom } from '../tom/rel';
 import { ensureAcquaintance, gateMetricsByAcquaintance } from '../social/acquaintance';
 import { getDyadMag } from '../tom/layers';
+import { clamp01 } from '../util/math';
 
 // Type for standardized metrics input including flattened psych/latent/field states
 interface MetricInput {
@@ -116,11 +117,6 @@ interface MetricInput {
     
     // Modes
     ImpulseShare: number;
-}
-
-function clamp01(x: number) {
-    if (!Number.isFinite(x)) return 0;
-    return Math.max(0, Math.min(1, x));
 }
 
 function domainToCategory(domain?: string, layer?: string): GoalCategoryId {

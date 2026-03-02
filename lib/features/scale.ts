@@ -1,10 +1,7 @@
+import { clamp01 } from '../util/math';
+export { clamp01 };
 
 // lib/features/scale.ts
-
-export function clamp01(x: number) {
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(0, Math.min(1, x));
-}
 
 // map [a..b] to [0..1]
 export function mapRange01(x: number, a: number, b: number) {

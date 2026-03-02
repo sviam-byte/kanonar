@@ -3,11 +3,7 @@
 import { ATOM_CATALOG } from './atomCatalog';
 import type { ContextAtom } from '../v2/types';
 import { normalizeAtom } from '../v2/infer';
-
-function clamp01(x: number) {
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(0, Math.min(1, x));
-}
+import { clamp01 } from '../../util/math';
 
 export type CatalogTemplate = {
   key: string; // stable key (e.g. "ctx:*")

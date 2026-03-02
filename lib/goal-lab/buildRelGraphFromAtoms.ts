@@ -1,3 +1,4 @@
+import { clamp01 } from '../util/math';
 import type { ContextAtom } from '../context/v2/types';
 
 type RelEdge = {
@@ -24,12 +25,6 @@ type RelGraph = {
   schemaVersion: number;
   edges: RelEdge[];
 };
-
-function clamp01(x: unknown, fallback = 0) {
-  const n = Number(x);
-  if (!Number.isFinite(n)) return fallback;
-  return Math.max(0, Math.min(1, n));
-}
 
 function uniq(xs: string[]) {
   return Array.from(new Set((Array.isArray(xs) ? xs : []).map(String).filter(Boolean)));

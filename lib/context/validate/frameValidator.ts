@@ -5,19 +5,10 @@ import { matchAtomSpec, clamp } from '../catalog/atomCatalog';
 import { inferAtomNamespace, inferAtomOrigin } from '../v2/infer';
 import { getAtomStrictMode } from '../catalog/strictMode';
 import { findBeliefDivergences } from './beliefDivergence';
+import { getMag } from '../../util/atoms';
 
 function isNum(x: any): x is number {
   return typeof x === 'number' && Number.isFinite(x);
-}
-
-function getMag(atoms: ContextAtom[], idOrPrefix: string) {
-  // exact
-  const exact = atoms.find(x => x.id === idOrPrefix);
-  if (exact) return isNum(exact.magnitude) ? exact.magnitude : NaN;
-  // prefix fallback
-  const pref = atoms.find(x => x.id.startsWith(idOrPrefix));
-  if (pref) return isNum(pref.magnitude) ? pref.magnitude : NaN;
-  return NaN;
 }
 
 export function validateAtoms(atoms: ContextAtom[], opts?: { autofix?: boolean }): ValidationReport {

@@ -6,6 +6,7 @@ import { getArchetypeBehaviorProfile, computeEffectiveBehaviorProfile, NormKind 
 import { METRIC_NAMES } from './metrics';
 import { cosSim } from '../math/core';
 import { BiographyLatent } from '../biography/lifeGoalsEngine';
+import { clamp01 } from '../util/math';
 
 // --- Types & Constants ---
 const MU_KIND: Record<string, 'primary' | 'shadow'> = {
@@ -23,10 +24,6 @@ for(const arch of allArchetypes) {
 }
 
 // --- Math Helpers ---
-function clamp01(x: number): number {
-  return x < 0 ? 0 : x > 1 ? 1 : x;
-}
-
 const sigmoid = (x: number): number => 1 / (1 + Math.exp(-x));
 
 const ARCH_KEYS = Object.keys(METRIC_NAMES);

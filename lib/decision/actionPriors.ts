@@ -4,6 +4,7 @@ import { getCtx, pickCtxId } from '../context/layers';
 import { getDyadMag } from '../tom/layers';
 import { getMag } from '../util/atoms';
 import { clamp01 } from '../util/math';
+import { FC } from '../config/formulaConfig';
 
 function getGoalDomainMag(atoms: ContextAtom[], selfId: string, domain: string, fb = 0) {
   // Goal layer projects into util:* atoms in S7b; Action layer must not read goal:* directly.
@@ -99,14 +100,17 @@ export function deriveActionPriors(args: {
     ].filter(id => atoms.some(a => a?.id === id));
 
     // base
-    let escape = clamp01(0.20 + 0.55 * danger + 0.20 * threatFinal + 0.15 * time - 0.25 * protocol);
-    let hide = clamp01(0.15 + 0.45 * danger + 0.25 * surv + 0.10 * pub);
-    let wait = clamp01(0.30 + 0.25 * (1 - danger) + 0.15 * (1 - time) - 0.20 * threatFinal);
+    const esc = FC.priors.escape;
+    let escape = clamp01(esc.base + esc.dangerW * danger + esc.threatW * threatFinal + esc.timeW * time - esc.protocolPenalty * protocol);
+    const hd = FC.priors.hide;
+    let hide = clamp01(hd.base + hd.dangerW * danger + hd.survW * surv + hd.pubW * pub);
+    const wt = FC.priors.wait;
+    let wait = clamp01(wt.base + wt.safeW * (1 - danger) + wt.relaxW * (1 - time) - wt.threatPenalty * threatFinal);
 
     // goal ecology modulation (small)
-    escape = clamp01(escape + 0.18 * gSafety + 0.10 * gControl - 0.10 * gAff);
-    hide = clamp01(hide + 0.16 * gSafety + 0.06 * gOrder - 0.06 * gStatus);
-    wait = clamp01(wait + 0.10 * gOrder - 0.08 * gExplore);
+    escape = clamp01(escape + esc.gSafety * gSafety + esc.gControl * gControl - esc.gAffPenalty * gAff);
+    hide = clamp01(hide + hd.gSafety * gSafety + hd.gOrder * gOrder - hd.gStatusPenalty * gStatus);
+    wait = clamp01(wait + wt.gOrder * gOrder - wt.gExplorePenalty * gExplore);
 
     out.push(
       mk(selfId, selfId, 'escape', escape, selfUsed, { danger, threatFinal, time, protocol, gSafety, gControl, gAff }),
@@ -163,25 +167,30 @@ export function deriveActionPriors(args: {
 
     // База: помочь / навредить / запросить инфо / избегать / конфронтировать
     // Важно: норм/публичность/наблюдение сдвигают в сторону “безопасных” действий.
-    const socialRisk = clamp01(0.45 * pub + 0.35 * surv + 0.20 * norm);
+    const sr = FC.priors.socialRisk;
+    const socialRisk = clamp01(sr.pub * pub + sr.surv * surv + sr.norm * norm);
 
+    const hp = FC.priors.help;
     let help = clamp01(
-      0.50 * trust + 0.18 * clos + 0.18 * oblig + 0.10 * tomTrust + 0.18 * tomIntimacy - 0.30 * tomThreat
-    ) * clamp01(1 - 0.45 * danger);
+      hp.trust * trust + hp.closeness * clos + hp.obligation * oblig
+      + hp.tomTrust * tomTrust + hp.tomIntimacy * tomIntimacy - hp.tomThreatPenalty * tomThreat
+    ) * clamp01(1 - hp.dangerDampen * danger);
     // affiliation/order -> more help; safety -> less help towards perceived threat.
-    help = clamp01(help * (1 + 0.25 * gAff + 0.10 * gOrder) * (1 - 0.20 * gSafety * tomThreat));
+    help = clamp01(help * (1 + hp.gAff * gAff + hp.gOrder * gOrder) * (1 - hp.gSafetyThreatPenalty * gSafety * tomThreat));
 
+    const hm = FC.priors.harm;
     let harm = clamp01(
-      0.70 * host + 0.25 * tomThreat - 0.20 * trust
-    ) * clamp01(1 - 0.60 * socialRisk);
+      hm.hostility * host + hm.tomThreat * tomThreat - hm.trustPenalty * trust
+    ) * clamp01(1 - hm.socialRiskDampen * socialRisk);
     // order/affiliation/safety reduce harm.
-    harm = clamp01(harm * (1 - 0.35 * gOrder) * (1 - 0.25 * gAff) * (1 - 0.20 * gSafety));
+    harm = clamp01(harm * (1 - hm.gOrderPenalty * gOrder) * (1 - hm.gAffPenalty * gAff) * (1 - hm.gSafetyPenalty * gSafety));
 
+    const ai = FC.priors.askInfo;
     let askInfo = clamp01(
-      0.35 + 0.25 * (1 - tomTrust) + 0.25 * (1 - clos) + 0.15 * respe
-    ) * clamp01(1 - 0.25 * danger);
+      ai.base + ai.distrust * (1 - tomTrust) + ai.distance * (1 - clos) + ai.respect * respe
+    ) * clamp01(1 - ai.dangerDampen * danger);
     // exploration/control increase info-seeking; safety slightly increases cautionary info-seeking.
-    askInfo = clamp01(askInfo * (1 + 0.20 * gExplore + 0.15 * gControl + 0.10 * gSafety));
+    askInfo = clamp01(askInfo * (1 + ai.gExplore * gExplore + ai.gControl * gControl + ai.gSafety * gSafety));
 
     // Avoid should not spike just because "danger is high".
     // It should spike because THIS other is dangerous/hostile or recently harmed self.

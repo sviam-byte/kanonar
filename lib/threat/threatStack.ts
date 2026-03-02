@@ -1,5 +1,6 @@
 // lib/threat/threatStack.ts
 import { ContextAtom } from '../context/v2/types';
+import { getMag } from '../util/atoms';
 
 export type Clamp01 = (x: number) => number;
 export const clamp01: Clamp01 = (x) => (x < 0 ? 0 : x > 1 ? 1 : x);
@@ -43,12 +44,6 @@ export type ThreatBreakdown = {
   why: string[];
   traceAtoms?: ContextAtom[];
 };
-
-function getMag(atoms: any[], id: string, fallback = 0) {
-  const a = atoms.find(x => x.id === id);
-  const m = a?.magnitude;
-  return (typeof m === 'number' && Number.isFinite(m)) ? m : fallback;
-}
 
 function getFeat(atoms: any[], key: string, fallback = 0) {
   const a = atoms.find(x => x.id === key);

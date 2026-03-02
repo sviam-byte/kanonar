@@ -1,16 +1,12 @@
 import { RelationEdge, RelationMemory, RelationTag, RelationshipGraph, RelationshipEdge } from './types';
 import { buildRelationshipGraphFromAgent } from './extractors';
+import { clamp01 } from '../util/math';
 
 type SnapshotLike = {
   tick?: number;
   agents?: any[];
   entities?: any[];
 };
-
-function clamp01(x: number) {
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(0, Math.min(1, x));
-}
 
 function clampSigned(x: number) {
   if (!Number.isFinite(x)) return 0;

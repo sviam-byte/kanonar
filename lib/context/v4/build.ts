@@ -11,8 +11,7 @@ import { computeThreatStack, ThreatInputs } from '../../threat/threatStack';
 import { computeProximity, AgentLite } from '../../spatial/proximity';
 import { computeProprioFromBody, updateAffect as updateAffectNew, Appraisal } from '../../affect/affectEngine';
 import { listify } from '../../utils/listify';
-
-function clamp01(x: number) { return Math.max(0, Math.min(1, x)); }
+import { clamp01 } from '../../util/math';
 
 function syncWorldTomFromDyadReport(world: WorldState, selfId: string, otherId: string, report: TomDyadReport) {
   const tom: any = (world as any).tom;

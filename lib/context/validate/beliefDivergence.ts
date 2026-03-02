@@ -1,6 +1,7 @@
 
 // lib/context/validate/beliefDivergence.ts
 import type { ContextAtom } from '../v2/types';
+import { getMag } from '../../util/atoms';
 
 export type Divergence = {
   worldId: string;
@@ -9,13 +10,6 @@ export type Divergence = {
   beliefMagnitude: number;
   delta: number;
 };
-
-function getMag(atoms: ContextAtom[], id: string): number | null {
-  const a = atoms.find(x => x.id === id);
-  const m = a?.magnitude;
-  if (typeof m !== 'number' || !Number.isFinite(m)) return null;
-  return m;
-}
 
 export function findBeliefDivergences(atoms: ContextAtom[], opts?: { minDelta?: number }) {
   const minDelta = opts?.minDelta ?? 0.35;

@@ -2,11 +2,7 @@ import { RelationMemory } from './types';
 import { ContextAtom } from '../context/v2/types';
 import { normalizeAtom } from '../context/v2/infer';
 import { arr } from '../utils/arr';
-
-function clamp01(x: number) {
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(0, Math.min(1, x));
-}
+import { clamp01 } from '../util/math';
 
 function signedToUnit(x: number) {
   const n = Number(x);

@@ -1,9 +1,7 @@
-// lib/tom/policy/decisionMath.ts
+import { clamp01 } from '../../util/math';
+export { clamp01 };
 
-export function clamp01(x: number) {
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(0, Math.min(1, x));
-}
+// lib/tom/policy/decisionMath.ts
 
 export function sigmoid(x: number) {
   // stable sigmoid

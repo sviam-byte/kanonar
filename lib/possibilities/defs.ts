@@ -1,4 +1,6 @@
+import { clamp01 } from '../util/math';
 import { Possibility, PossibilityDef } from './catalog';
+import { getMag } from '../util/atoms';
 
 function arr<T>(x: any): T[] {
   return Array.isArray(x) ? x : [];
@@ -6,17 +8,6 @@ function arr<T>(x: any): T[] {
 
 function uniq(xs: string[]): string[] {
   return Array.from(new Set(xs.filter(Boolean)));
-}
-
-function clamp01(x: number): number {
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(0, Math.min(1, x));
-}
-
-function getMag(atoms: any[], id: string, fb = 0): number {
-  const a = arr<any>(atoms).find(x => x?.id === id);
-  const m = (a as any)?.magnitude;
-  return (typeof m === 'number' && Number.isFinite(m)) ? m : fb;
 }
 
 // Extract otherIds from multiple sources:

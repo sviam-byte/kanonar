@@ -76,6 +76,8 @@ import { curve01Param } from '../utils/curves';
 import { getAgentChannelCurve, getAgentChannelInertia, type EnergyChannel } from '../agents/energyProfiles';
 import { buildSignalField } from './signalField';
 import { propagateAtomEnergy } from '../graph/atomEnergy';
+import { clamp01 } from '../util/math';
+import { getMag } from '../util/atoms';
 
 export interface GoalLabContextResult {
   agent: AgentState;
@@ -105,20 +107,9 @@ function writeEnergyState(selfId: string, next: Record<string, number>) {
   __ENERGY_STATE__.set(selfId, next);
 }
 
-function clamp01(x: number) {
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(0, Math.min(1, x));
-}
-
 function clamp(x: number, min: number, max: number) {
   if (!Number.isFinite(x)) return min;
   return Math.max(min, Math.min(max, x));
-}
-
-function getMag(atoms: ContextAtom[], id: string, fb = 0): number {
-  const a = atoms.find((x) => String((x as any)?.id) === id) as any;
-  const m = Number(a?.magnitude);
-  return Number.isFinite(m) ? m : fb;
 }
 
 function mergeContextTuning(base?: ContextTuning | null, next?: ContextTuning | null): ContextTuning | null {

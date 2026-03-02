@@ -2,6 +2,7 @@
 import React, { useMemo, useState } from 'react';
 import { LocationMap, LocationMapCell, LocationMapExit } from '../types';
 import { LocationVectorMap } from './locations/LocationVectorMap';
+import { clamp01 } from '../lib/util/math';
 
 type Brush =
   | 'walkable'
@@ -21,11 +22,6 @@ interface Props {
   map: LocationMap;
   onChange: (map: LocationMap) => void;
   cellSize?: number;
-}
-
-function clamp01(x: number) {
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(0, Math.min(1, x));
 }
 
 export const LocationMapEditor: React.FC<Props> = ({ map, onChange, cellSize = 16 }) => {

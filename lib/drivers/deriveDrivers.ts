@@ -1,15 +1,8 @@
 import type { ContextAtom } from '../context/v2/types';
 import { normalizeAtom } from '../context/v2/infer';
 import { getCtx } from '../context/layers';
-
-function getAtomValue(atoms: ContextAtom[], idPrefix: string): number | null {
-  // ищем по префиксу (в твоём коде ctx часто содержит selfId в id)
-  for (const a of atoms) {
-    const id = String((a as any)?.id || '');
-    if (id.startsWith(idPrefix)) return Number((a as any)?.magnitude ?? 0);
-  }
-  return null;
-}
+import { clamp01 } from '../util/math';
+import { getMag } from '../util/atoms';
 
 function pickAnyId(atoms: ContextAtom[], idPrefix: string): string | null {
   for (const a of atoms) {
@@ -17,13 +10,6 @@ function pickAnyId(atoms: ContextAtom[], idPrefix: string): string | null {
     if (id.startsWith(idPrefix)) return id;
   }
   return null;
-}
-
-function clamp01(x: number) {
-  if (Number.isNaN(x)) return 0;
-  if (x < 0) return 0;
-  if (x > 1) return 1;
-  return x;
 }
 
 export function deriveDriversAtoms(input: {
@@ -49,10 +35,10 @@ export function deriveDriversAtoms(input: {
   const norm = normP.magnitude;
   const uncertainty = unc.magnitude;
 
-  const fear = emoFearId ? getAtomValue(atoms, emoFearId) ?? 0 : 0;
-  const shame = emoShameId ? getAtomValue(atoms, emoShameId) ?? 0 : 0;
-  const care = emoCareId ? getAtomValue(atoms, emoCareId) ?? 0 : 0;
-  const anger = emoAngerId ? getAtomValue(atoms, emoAngerId) ?? 0 : 0;
+  const fear = emoFearId ? getMag(atoms, emoFearId) ?? 0 : 0;
+  const shame = emoShameId ? getMag(atoms, emoShameId) ?? 0 : 0;
+  const care = emoCareId ? getMag(atoms, emoCareId) ?? 0 : 0;
+  const anger = emoAngerId ? getMag(atoms, emoAngerId) ?? 0 : 0;
 
   // Минимальные “физические” формулы. Потом заменишь на твои молекулы.
   const safetyNeed = clamp01(0.6 * threat + 0.4 * fear);

@@ -5,12 +5,7 @@ import { normalizeAtom } from '../v2/infer';
 import { clamp01 } from './perceptionProfile';
 import { hash32, mulberry32 } from './deterministicRng';
 import { getCtx, pickCtxId } from '../layers';
-
-function getMag(atoms: ContextAtom[], id: string, fallback = 0) {
-  const a = atoms.find(x => x.id === id);
-  const m = a?.magnitude;
-  return (typeof m === 'number' && Number.isFinite(m)) ? m : fallback;
-}
+import { getMag } from '../../util/atoms';
 
 // MVP: generates 1-2 belief distortions ("rumors") if uncertainty is high
 // - belief:norm:surveillance (paranoid about observation)

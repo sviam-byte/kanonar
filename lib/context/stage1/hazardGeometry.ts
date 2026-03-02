@@ -14,18 +14,10 @@ import type { ContextAtom } from '../v2/types';
 import { normalizeAtom } from '../v2/infer';
 import { ensureMapCells } from '../../world/ensureMapCells';
 import { gateOK } from '../gates/atomGates';
+import { clamp01 } from '../../util/math';
+import { getMag } from '../../util/atoms';
 
 const HAZ_GATE = { anyPrefix: ['world:map:hazard:', 'world:env:hazard:', 'hazard:'] };
-
-function clamp01(x: number) {
-  return Math.max(0, Math.min(1, x));
-}
-
-function getMag(atoms: ContextAtom[], id: string, fallback = 0) {
-  const a = atoms.find(x => x.id === id);
-  const m = a?.magnitude;
-  return typeof m === 'number' && Number.isFinite(m) ? m : fallback;
-}
 
 function getTarget(atoms: ContextAtom[], id: string): string | undefined {
   const a = atoms.find(x => x.id === id);

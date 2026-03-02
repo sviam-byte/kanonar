@@ -22,11 +22,7 @@ import { computeConcreteGoals } from '../../life-goals/v4-engine';
 import { makeZeroGoalLogits } from '../../life-goals/psych-to-goals';
 import { computeBioLogitsV3 } from '../../life-goals/life-from-biography';
 import { curve01, CurvePreset } from '../../utils/curves';
-
-function clamp01(x: number) {
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(0, Math.min(1, x));
-}
+import { clamp01 } from '../../util/math';
 
 function getAtomMag(atoms: any[] | undefined, id: string, fb = 0): number {
   const arr = Array.isArray(atoms) ? atoms : [];

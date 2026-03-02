@@ -1,3 +1,4 @@
+import { clamp01 } from '../util/math';
 import type { ActivityCaps, ThinkingAxisA, ThinkingAxisB, ThinkingAxisC, ThinkingAxisD, ThinkingProfile } from '../../types';
 
 const AX_A: ThinkingAxisA[] = ['enactive', 'imagery', 'verbal', 'formal'];
@@ -21,12 +22,6 @@ const CAPS_KEYS: (keyof ActivityCaps)[] = [
   'normative',
   'existential',
 ];
-
-function clamp01(x: unknown, fallback = 0) {
-  const n = Number(x);
-  if (!Number.isFinite(n)) return fallback;
-  return Math.max(0, Math.min(1, n));
-}
 
 function l2norm(v: number[]) {
   let s = 0;

@@ -1,3 +1,5 @@
+import { clamp01 } from '../../util/math';
+export { clamp01 };
 
 // lib/context/epistemic/perceptionProfile.ts
 
@@ -17,11 +19,6 @@ export function defaultPerceptionProfile(): PerceptionProfile {
     focus: 0.6,
     panicPenalty: 0.4,
   };
-}
-
-export function clamp01(x: number) {
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(0, Math.min(1, x));
 }
 
 // Unified score for observation quality (0..1)

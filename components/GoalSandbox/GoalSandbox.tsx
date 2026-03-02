@@ -52,7 +52,7 @@ import { runGoalLabPipelineV1 } from '../../lib/goal-lab/pipeline/runPipelineV1'
 import { EasyModePanel } from '../goal-lab/EasyModePanel';
 import { adaptPipelineV1ToContract } from '../../lib/goal-lab/pipeline/adaptV1ToContract';
 import { buildGoalLabSceneDumpV2, downloadJson } from '../../lib/goal-lab/sceneDump';
-import { materializeStageAtoms } from '../goal-lab/materializePipeline';
+import { materializeStageAtoms } from '../../lib/goal-lab/materializePipeline';
 import { buildFullDebugDump } from '../../lib/debug/buildFullDebugDump';
 import { allScenarioDefs } from '../../data/scenarios/index';
 import { useAccess } from '../../contexts/AccessContext';
@@ -72,11 +72,7 @@ import { lintActionsAndLocations } from '../../lib/linter/actionsAndLocations';
 import { arr } from '../../lib/utils/arr';
 import { getCanonicalAtomsFromSnapshot } from '../../lib/goal-lab/atoms/canonical';
 import type { CurvePreset } from '../../lib/utils/curves';
-
-function clamp01(x: number) {
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(0, Math.min(1, x));
-}
+import { clamp01 } from '../../lib/util/math';
 
 /**
  * Collect trait identifiers from the agent across known data shapes.

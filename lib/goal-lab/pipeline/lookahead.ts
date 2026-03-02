@@ -1,11 +1,8 @@
 import type { Provenance } from './contracts';
 import { arr } from '../../utils/arr';
 import { FEATURE_GOAL_PROJECTION_KEYS, actionEffectWithContext } from '../../decision/actionProjection';
-
-function clamp01(x: number): number {
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(0, Math.min(1, x));
-}
+import { clamp01 } from '../../util/math';
+import { FC } from '../../config/formulaConfig';
 
 function mulberry32(seed: number) {
   let t = seed >>> 0;
@@ -217,7 +214,8 @@ function valueFnDefault(z: Record<FeatureKey, number>): { v: number; note: strin
   const stealth = clamp01(0.6 * z.cover + 0.4 * (1 - z.visibility));
   const wellbeing = clamp01(1 - 0.55 * z.fatigue - 0.45 * z.stress);
 
-  const v = 0.33 * safety + 0.20 * resource + 0.22 * progress + 0.12 * stealth + 0.13 * wellbeing;
+  const vw = FC.lookahead.value;
+  const v = vw.safety * safety + vw.resource * resource + vw.progress * progress + vw.stealth * stealth + vw.wellbeing * wellbeing;
 
   return {
     v: clamp01(v),
@@ -290,7 +288,7 @@ function passiveDelta(z: Record<FeatureKey, number>): Partial<Record<FeatureKey,
   return {
     fatigue: 0.01 + 0.02 * z.threat,
     stress: 0.01 + 0.02 * z.scarcity + 0.01 * z.threat,
-    socialTrust: -0.005,
+    socialTrust: FC.lookahead.passiveDrift.socialTrust,
     emotionValence: -0.01 * z.stress - 0.005 * z.threat,
   };
 }

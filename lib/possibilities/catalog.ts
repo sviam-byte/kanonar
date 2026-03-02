@@ -1,3 +1,4 @@
+import { clamp01 } from '../util/math';
 import { ContextAtom } from '../context/v2/types';
 
 export type PossibilityKind = 'aff' | 'con' | 'off' | 'exit' | 'cog';
@@ -35,11 +36,6 @@ export type Helpers = {
   findPrefix: (prefix: string) => ContextAtom[];
   clamp01: (x: number) => number;
 };
-
-function clamp01(x: number) {
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(0, Math.min(1, x));
-}
 
 function arr<T>(x: any): T[] {
   return Array.isArray(x) ? x : [];

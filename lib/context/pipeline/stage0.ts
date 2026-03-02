@@ -28,6 +28,7 @@ import { atomizeFeatures } from '../../features/atomize';
 import { extractLocationAtoms } from '../sources/locationAtoms';
 import { extractTomDyadAtoms } from '../sources/tomDyadAtoms';
 import { deriveRelStateAtoms } from '../../relations/deriveState';
+import { clamp01 } from '../../util/math';
 
 export type Stage0Input = {
   world: WorldState;
@@ -67,11 +68,6 @@ export type Stage0Output = {
   provenance: Map<string, EpistemicLayer>;
   obsAtoms: ContextAtom[];
 };
-
-function clamp01(x: number) {
-    if (!Number.isFinite(x)) return 0;
-    return Math.max(0, Math.min(1, x));
-}
 
 // Atomize stable profile signals (life goals / domain weights)
 function buildLifeGoalAtoms(self: AgentState): ContextAtom[] {

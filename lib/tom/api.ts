@@ -6,10 +6,7 @@ import { DomainEvent } from '../../types';
 import { ContextualGoalScore } from '../context/v2/types';
 import { updateTomGoals, GoalObservation } from "./update.goals";
 import { updateTomTraits, TraitObservation } from "./update.traits";
-
-function clamp01(x: number): number {
-  return Math.max(0, Math.min(1, x));
-}
+import { clamp01 } from '../util/math';
 
 function ensureTom(world: WorldState): TomState {
   if (!(world as any).tom || !(world as any).tom.views) {

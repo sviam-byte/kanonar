@@ -1,25 +1,16 @@
 
 // lib/contextMind/scoreboard.ts
 import { ContextAtom } from '../context/v2/types';
+import { clamp01 } from '../util/math';
+import { getMag } from '../util/atoms';
 
 const SOC_SUPPORT_PREFIX = 'soc:support:';
 const SOC_THREAT_PREFIX  = 'soc:threat:';
-
-function clamp01(x: number) {
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(0, Math.min(1, x));
-}
 
 function maxMag(atoms: ContextAtom[], pred: (a: ContextAtom) => boolean) {
   let m = 0;
   for (const a of atoms) if (pred(a)) m = Math.max(m, clamp01((a as any).magnitude ?? 0));
   return m;
-}
-
-function getMag(atoms: ContextAtom[], id: string, fb = 0) {
-  const a = atoms.find(x => x.id === id);
-  const m = (a as any)?.magnitude;
-  return (typeof m === 'number' && Number.isFinite(m)) ? m : fb;
 }
 
 function firstByPrefix(atoms: ContextAtom[], prefix: string): string | null {
