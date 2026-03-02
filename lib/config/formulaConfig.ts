@@ -1,24 +1,21 @@
 /**
  * lib/config/formulaConfig.ts
  *
- * Named coefficients registry — replaces 150+ magic numbers in goalAtoms.ts,
- * actionPriors.ts, modes.ts, lookahead.ts, etc.
- *
- * ALL VALUES are identical to current hardcoded ones. This is a pure rename.
+ * Named coefficients registry. Single source of truth for all tunable parameters
+ * across GoalLab, decision layer, action priors, POMDP lookahead.
  *
  * USAGE:
  *   import { FC } from '../config/formulaConfig';
- *   const base = clamp01(FC.goal.safety.ctxWeight * dangerW + FC.goal.safety.drvWeight * drvSafety);
  */
 
 // ─── Goal Ecology Domain Weights ───────────────────────────────────────────
 
 export const GOAL_FORMULA = {
   safety: {
-    ctxWeight: 0.80,      // dangerW contribution to base
-    drvWeight: 0.20,      // drv:safetyNeed contribution to base
-    baseWeight: 0.55,     // base contribution to final v
-    lifeWeight: 0.45,     // lifeSafety contribution to final v
+    ctxWeight: 0.80,
+    drvWeight: 0.20,
+    baseWeight: 0.55,
+    lifeWeight: 0.45,
   },
   control: {
     ctxWeight: 0.60,
@@ -33,7 +30,7 @@ export const GOAL_FORMULA = {
     lifeWeight: 0.45,
   },
   status: {
-    socialWeight: 0.55,   // clamp01(publicW + normW)
+    socialWeight: 0.55,
     drvWeight: 0.45,
     baseWeight: 0.55,
     lifeWeight: 0.45,
@@ -73,7 +70,37 @@ export const GOAL_FORMULA = {
     boostBase: 0.7,
     boostScale: 0.6,
   },
+  /** Anti-fatigue multiplier: score *= 1 - antiFatiguePenalty * fatigue */
+  antiFatiguePenalty: 0.35,
+  /** feltField composition (from ctx signals before mode gating) */
+  feltField: {
+    attachment_antiDanger: 0.7,
+    attachment_antiUncertainty: 0.3,
+    status_public: 0.5,
+    status_norm: 0.5,
+    curiosity_unc: 0.6,
+    curiosity_antiDanger: 0.4,
+  },
+  /** amplifyByPrio: k = kBase + kScale * prio */
+  amplifyByPrio: {
+    kBase: 0.6,
+    kScale: 0.8,
+  },
 } as const;
+
+// ─── Domain ↔ Mode Projection Matrix ──────────────────────────────────────
+// domainBias(d) = Σ_m projection[d][m] * W[m]
+
+export const DOMAIN_MODE_PROJECTION: Record<string, Record<string, number>> = {
+  safety:      { threat_mode: 1.00, resource_mode: 0.25 },
+  control:     { threat_mode: 0.35, resource_mode: 0.25, social_mode: 0.15 },
+  affiliation: { social_mode: 0.25, care_mode: 0.85 },
+  status:      { social_mode: 0.95 },
+  exploration: { explore_mode: 1.00 },
+  order:       { social_mode: 0.25, resource_mode: 0.25, threat_mode: 0.20 },
+  rest:        { resource_mode: 0.85 },
+  wealth:      { resource_mode: 0.55, social_mode: 0.15 },
+};
 
 // ─── Mode Gating (MoE) ───────────────────────────────────────────────────
 
@@ -89,11 +116,11 @@ export const MODE_FORMULA = {
     affiliation: { social_mode: 0.25, care_mode: 0.85 },
   },
   logits: {
-    threat: { threat: 1.25, uncertainty: 0.35, norm: 0.15, curiosityPenalty: 0.35 },
-    social: { norm: 0.95, status: 0.85, attachment: 0.25, threatPenalty: 0.25 },
-    explore: { curiosity: 1.15, uncertainty: 0.45, threatPenalty: 0.85, normPenalty: 0.25 },
+    threat:   { threat: 1.25, uncertainty: 0.35, norm: 0.15, curiosityPenalty: 0.35 },
+    social:   { norm: 0.95, status: 0.85, attachment: 0.25, threatPenalty: 0.25 },
+    explore:  { curiosity: 1.15, uncertainty: 0.45, threatPenalty: 0.85, normPenalty: 0.25 },
     resource: { resource: 1.2, threat: 0.25, uncertainty: 0.15, curiosityPenalty: 0.25 },
-    care: { attachment: 1.25, threatPenalty: 0.35, normPenalty: 0.15, careSignal: 0.4 },
+    care:     { attachment: 1.25, threatPenalty: 0.35, normPenalty: 0.15, careSignal: 0.4 },
   },
   temperature: 0.8,
 } as const;
@@ -134,32 +161,91 @@ export const PRIORS_FORMULA = {
     dangerDampen: 0.25,
     gExplore: 0.20, gControl: 0.15, gSafety: 0.10,
   },
+  avoid: {
+    base: 0.10,
+    tomThreat: 0.55, hostility: 0.25, recentHarm: 0.35, danger: 0.05,
+    trustPenalty: 0.30, tomIntimacyPenalty: 0.45,
+    closenessPenalty: 0.15, obligationPenalty: 0.25,
+    socialRiskPenalty: 0.10,
+    gSafety: 0.20, gAffPenalty: 0.12,
+  },
+  confront: {
+    base: 0.20,
+    hostility: 0.50, antiSocialRisk: 0.25, respect: 0.15,
+    dangerPenalty: 0.35,
+    gControl: 0.18, gStatus: 0.12, gSafetyPenalty: 0.15, gOrderPenalty: 0.10,
+  },
   socialRisk: { pub: 0.45, surv: 0.35, norm: 0.20 },
-  confront: { tomThreat: 0.55, hostility: 0.25, recentHarm: 0.35, danger: 0.05 },
 } as const;
 
 // ─── Competitive Inhibition ───────────────────────────────────────────────
 
 export const INHIBITION = {
   gamma: 0.25,
+  /** Domain-specific gamma overrides (winner suppresses loser) */
+  domainGamma: {
+    safety: 0.5,
+    exploration: 0.5,
+    status: 0.1,
+    rest: 0.1,
+  } as Record<string, number>,
 } as const;
 
-// ─── Lookahead / POMDP-lite ──────────────────────────────────────────────
+// ─── Decision Layer (score.ts) ────────────────────────────────────────────
 
-export const LOOKAHEAD = {
-  value: {
-    safety: 0.33, resource: 0.20, progress: 0.22,
-    stealth: 0.12, wellbeing: 0.13,
+export const DECISION = {
+  utilityMix: {
+    raw: 0.55,
+    goal: 0.30,
+    energy: 0.15,
   },
-  resourceMix: { access: 0.6, antiScarcity: 0.4 },
-  wellbeingMix: { fatigue: 0.55, stress: 0.45 },
-  stealthMix: { cover: 0.6, antiVis: 0.4 },
-  gamma: 0.9,
-  riskAversion: 1.0,
-  passiveDrift: {
-    socialTrust: -0.002,
+  planBoostWeight: 0.65,
+  energyBonusScale: 0.25,
+
+  /** Context key modifiers: action-type × context → multiplier */
+  contextMod: {
+    wait:    { dangerPenalty: 0.55, uncPenalty: 0.35 },
+    rest:    { dangerPenalty: 0.65 },
+    work:    { dangerPenalty: 0.65, uncPenalty: 0.25 },
+    observe: { uncBonus: 0.55, dangerBonus: 0.25 },
+    move:    { dangerBonus: 0.45 },
+    social:  { uncInfoBonus: 0.55, uncTalkBonus: 0.25, survPenalty: 0.55, crowdPenalty: 0.35, privacyPenalty: 0.45 },
+    bounds:  { min: 0.55, max: 1.65 },
+  },
+
+  /** Trait modulation weights by action family */
+  traits: {
+    defensive:  { safety: 0.25, paranoia: 0.22, powerDrivePenalty: 0.18 },
+    social:     { care: 0.22, paranoiaPenalty: 0.22, safetyPenalty: 0.12, autonomy: 0.10 },
+    epistemic:  { truthNeed: 0.28, autonomy: 0.12, paranoiaPenalty: 0.12 },
+    help:       { care: 0.35, safetyPenalty: 0.10, paranoiaPenalty: 0.10 },
+    aggressive: { powerDrive: 0.30, autonomy: 0.10, orderPenalty: 0.25, normSensPenalty: 0.20, carePenalty: 0.15 },
+    passive:    { order: 0.18, safety: 0.12, autonomyPenalty: 0.10 },
+  },
+
+  /** Emotion-based preference weights */
+  emotionPref: {
+    escape:  { fear: 0.25, threat: 0.10 },
+    hide:    { fear: 0.20 },
+    talk:    { shame: 0.10, fearPenalty: 0.10, hazardPenalty: 0.20, recentHarmPenalty: 0.30, recentHelpBonus: 0.18 },
+    attack:  { anger: 0.20, resolve: 0.10, shamePenalty: 0.25, enemyHazardPenalty: 0.25, hazardPenalty: 0.10, recentHarmBonus: 0.22, recentHelpPenalty: 0.12 },
+    help:    { care: 0.20, fearPenalty: 0.10, allyHazardPenalty: 0.35, hazardPenalty: 0.15, recentHarmPenalty: 0.25, recentHelpBonus: 0.20 },
+    monologue: { uncertainty: 0.15, shame: 0.05, threatPenalty: 0.10 },
+    protocol: { talkBonus: 0.15, attackPenalty: 0.40 },
+  },
+
+  /** Energy domain mapping: domain → channel weights for energyDelta */
+  energyMap: {
+    safety:      { threat: 0.60, uncertainty: 0.30 },
+    affiliation: { attachment: 0.55, threatPenalty: 0.15 },
+    status:      { status: 0.45, normPenalty: 0.10 },
+    exploration: { curiosity: 0.55, threatPenalty: 0.25, uncertaintyPenalty: 0.15 },
+    control:     { antiUncertainty: 0.35, norm: 0.20 },
+    rest:        { antiResource: 0.65, threatPenalty: 0.10 },
   },
 } as const;
+
+// ─── Goal State Dynamics ──────────────────────────────────────────────────
 
 export const GOAL_STATE = {
   lock: {
@@ -175,13 +261,51 @@ export const GOAL_STATE = {
     downInactive: 0.04,
     inertia: 0.92,
   },
+  tension: {
+    upBase: 0.10,
+    upAntiActivation: 0.25,
+    downActive: 0.02,
+    downInactive: 0.08,
+    inertia: 0.85,
+  },
+  progress: {
+    inertia: 0.97,
+    completionThreshold: 0.99,
+    completionTensionScale: 0.25,
+    completionLockInScale: 0.80,
+    completionFatigueScale: 0.75,
+  },
+  activationEMA: {
+    /** Duplicated from hysteresis for goalState internal use */
+    alphaBase: 0.65,
+    lockInBoost: 0.25,
+  },
 } as const;
 
-export const DECISION = {
-  utilityMix: {
-    raw: 0.55,
-    goal: 0.30,
-    energy: 0.15,
+// ─── Lookahead / POMDP-lite ──────────────────────────────────────────────
+
+export const LOOKAHEAD = {
+  value: {
+    safety: 0.33, resource: 0.20, progress: 0.22,
+    stealth: 0.12, wellbeing: 0.13,
+  },
+  resourceMix:  { access: 0.6, antiScarcity: 0.4 },
+  wellbeingMix: { fatigue: 0.55, stress: 0.45 },
+  stealthMix:   { cover: 0.6, antiVis: 0.4 },
+  gamma: 0.9,
+  riskAversion: 1.0,
+  riskUncertaintyScale: 0.3,
+  passiveDrift: {
+    fatigueBase: 0.01, fatigueThreat: 0.02,
+    stressBase: 0.01, stressScarcity: 0.02, stressThreat: 0.01,
+    socialTrust: -0.002,
+    emotionValenceStress: -0.01, emotionValenceThreat: -0.005,
+  },
+  observation: {
+    socialNoiseScale: 0.3,
+  },
+  noise: {
+    scale: 0.02,
   },
 } as const;
 
@@ -189,12 +313,13 @@ export const DECISION = {
 
 export const FC = {
   goal: GOAL_FORMULA,
+  domainModeProjection: DOMAIN_MODE_PROJECTION,
   mode: MODE_FORMULA,
   priors: PRIORS_FORMULA,
   inhibition: INHIBITION,
-  lookahead: LOOKAHEAD,
-  goalState: GOAL_STATE,
   decision: DECISION,
+  goalState: GOAL_STATE,
+  lookahead: LOOKAHEAD,
 } as const;
 
 export type FormulaConfig = typeof FC;
