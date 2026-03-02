@@ -197,26 +197,28 @@ export function deriveActionPriors(args: {
     const recentHarmId = `soc:recentHarmBy:${otherId}:${selfId}`;
     const recentHarm = clamp01(getMag(atoms, recentHarmId, 0));
 
+    const av = FC.priors.avoid;
     let avoid = clamp01(
-      0.10
-      + 0.55 * tomThreat
-      + 0.25 * host
-      + 0.35 * recentHarm
-      + 0.05 * danger
-      - 0.30 * trust
-      - 0.45 * tomIntimacy
-      - 0.15 * clos
-      - 0.25 * oblig
-      - 0.10 * socialRisk
+      av.base
+      + av.tomThreat * tomThreat
+      + av.hostility * host
+      + av.recentHarm * recentHarm
+      + av.danger * danger
+      - av.trustPenalty * trust
+      - av.tomIntimacyPenalty * tomIntimacy
+      - av.closenessPenalty * clos
+      - av.obligationPenalty * oblig
+      - av.socialRiskPenalty * socialRisk
     );
     // safety increases avoidance; affiliation decreases avoidance.
-    avoid = clamp01(avoid + 0.20 * gSafety - 0.12 * gAff);
+    avoid = clamp01(avoid + av.gSafety * gSafety - av.gAffPenalty * gAff);
 
+    const cf = FC.priors.confront;
     let confront = clamp01(
-      0.20 + 0.50 * host + 0.25 * (1 - socialRisk) + 0.15 * respe - 0.35 * danger
+      cf.base + cf.hostility * host + cf.antiSocialRisk * (1 - socialRisk) + cf.respect * respe - cf.dangerPenalty * danger
     );
     // control/status increase confrontation; safety/order reduce it.
-    confront = clamp01(confront + 0.18 * gControl + 0.12 * gStatus - 0.15 * gSafety - 0.10 * gOrder);
+    confront = clamp01(confront + cf.gControl * gControl + cf.gStatus * gStatus - cf.gSafetyPenalty * gSafety - cf.gOrderPenalty * gOrder);
 
     const used = [
       ...(dangerP.id ? [dangerP.id] : pickCtxId('danger', selfId)),

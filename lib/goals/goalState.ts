@@ -37,7 +37,8 @@ export function updateGoalState(
   const isActive = Boolean(opts.active);
 
   // Activation hysteresis (EMA): more lockIn => more inertia.
-  const alpha = clamp01(0.65 + 0.25 * (p.lockIn ?? 0));
+  const ae = FC.goalState.activationEMA;
+  const alpha = clamp01(ae.alphaBase + ae.lockInBoost * (p.lockIn ?? 0));
   const activationEMA = clamp01(alpha * (p.activationEMA ?? 0) + (1 - alpha) * actRaw);
   const act = activationEMA;
 
@@ -54,23 +55,25 @@ export function updateGoalState(
   const fatigue = clamp01(p.fatigue * ft.inertia + fatUp - fatDown);
 
   // tension: treat low activation while active as unmet need
-  const tenUp = isActive ? 0.10 + 0.25 * (1 - act) : 0;
-  const tenDown = isActive ? 0.02 * act : 0.08;
-  const tension = clamp01(p.tension * 0.85 + tenUp - tenDown);
+  const tn = FC.goalState.tension;
+  const tenUp = isActive ? tn.upBase + tn.upAntiActivation * (1 - act) : 0;
+  const tenDown = isActive ? tn.downActive * act : tn.downInactive;
+  const tension = clamp01(p.tension * tn.inertia + tenUp - tenDown);
 
   // progress: can be fed from outcome atoms (signed delta: success +, setback -)
+  const pr = FC.goalState.progress;
   const dProg = clamp11(opts.progressDelta ?? 0);
-  let progress = clamp01(p.progress * 0.97 + dProg);
+  let progress = clamp01(p.progress * pr.inertia + dProg);
 
   // If progress reaches completion, release tension and slightly reduce sticky/fatigue.
   let nextTension = tension;
   let nextLockIn = lockIn;
   let nextFatigue = fatigue;
-  if (progress >= 0.99 && dProg > 0) {
+  if (progress >= pr.completionThreshold && dProg > 0) {
     progress = 1;
-    nextTension = clamp01(nextTension * 0.25);
-    nextLockIn = clamp01(nextLockIn * 0.8);
-    nextFatigue = clamp01(nextFatigue * 0.75);
+    nextTension = clamp01(nextTension * pr.completionTensionScale);
+    nextLockIn = clamp01(nextLockIn * pr.completionLockInScale);
+    nextFatigue = clamp01(nextFatigue * pr.completionFatigueScale);
   }
 
   return {

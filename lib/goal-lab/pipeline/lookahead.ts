@@ -209,17 +209,20 @@ export function buildFeatureVectorFromAtoms(args: {
 function valueFnDefault(z: Record<FeatureKey, number>): { v: number; note: string } {
   // MVP V(z): interpretable mixture.
   const safety = clamp01(1 - z.threat);
-  const resource = clamp01(0.6 * z.resourceAccess + 0.4 * (1 - z.scarcity));
+  const rm = FC.lookahead.resourceMix;
+  const resource = clamp01(rm.access * z.resourceAccess + rm.antiScarcity * (1 - z.scarcity));
   const progress = clamp01(z.escape);
-  const stealth = clamp01(0.6 * z.cover + 0.4 * (1 - z.visibility));
-  const wellbeing = clamp01(1 - 0.55 * z.fatigue - 0.45 * z.stress);
+  const sm = FC.lookahead.stealthMix;
+  const stealth = clamp01(sm.cover * z.cover + sm.antiVis * (1 - z.visibility));
+  const wm = FC.lookahead.wellbeingMix;
+  const wellbeing = clamp01(1 - wm.fatigue * z.fatigue - wm.stress * z.stress);
 
   const vw = FC.lookahead.value;
   const v = vw.safety * safety + vw.resource * resource + vw.progress * progress + vw.stealth * stealth + vw.wellbeing * wellbeing;
 
   return {
     v: clamp01(v),
-    note: 'V = 0.33*safety + 0.20*resource + 0.22*progress + 0.12*stealth + 0.13*wellbeing; all terms are 0..1',
+    note: `V = ${vw.safety.toFixed(2)}*safety + ${vw.resource.toFixed(2)}*resource + ${vw.progress.toFixed(2)}*progress + ${vw.stealth.toFixed(2)}*stealth + ${vw.wellbeing.toFixed(2)}*wellbeing; all terms are 0..1`,
   };
 }
 
@@ -285,11 +288,12 @@ function valueFnSubjective(
 
 function passiveDelta(z: Record<FeatureKey, number>): Partial<Record<FeatureKey, number>> {
   // Minimal drift: fatigue/stress creep when threat/scarcity are high.
+  const pd = FC.lookahead.passiveDrift;
   return {
-    fatigue: 0.01 + 0.02 * z.threat,
-    stress: 0.01 + 0.02 * z.scarcity + 0.01 * z.threat,
-    socialTrust: FC.lookahead.passiveDrift.socialTrust,
-    emotionValence: -0.01 * z.stress - 0.005 * z.threat,
+    fatigue: pd.fatigueBase + pd.fatigueThreat * z.threat,
+    stress: pd.stressBase + pd.stressScarcity * z.scarcity + pd.stressThreat * z.threat,
+    socialTrust: pd.socialTrust,
+    emotionValence: pd.emotionValenceStress * z.stress + pd.emotionValenceThreat * z.threat,
   };
 }
 
@@ -409,7 +413,7 @@ export function buildTransitionSnapshot(args: {
     const dzAct = actionEffect(kind, z0.z);
 
     // Small gaussian-ish noise via sum of uniforms.
-    const noiseScale = 0.02;
+    const noiseScale = FC.lookahead.noise.scale;
     const noise = () => {
       const u = rng() + rng() + rng() + rng();
       const n = (u - 2) * 0.5; // approx N(0,1)
@@ -435,7 +439,7 @@ export function buildTransitionSnapshot(args: {
       const obsNoise = args.observationLite.noiseSigma;
       const socialKeys: FeatureKey[] = ['socialTrust', 'emotionValence'];
       for (const sk of socialKeys) {
-        const extraNoise = obsNoise * 0.3 * ((rng() + rng() + rng() + rng() - 2) * 0.5);
+        const extraNoise = obsNoise * FC.lookahead.observation.socialNoiseScale * ((rng() + rng() + rng() + rng() - 2) * 0.5);
         z1[sk] = clamp01(z1[sk] + extraNoise);
         (deltas as any)[sk] = ((deltas as any)[sk] ?? 0) + extraNoise;
       }
@@ -447,7 +451,7 @@ export function buildTransitionSnapshot(args: {
     // Coefficient 0.3 (lower than old 0.5) because multi-goal projection already
     // makes Q more accurate, so we don't need as aggressive penalization.
     const uncertainty = Object.values(deltas).reduce((s, x) => s + Math.abs(Number(x ?? 0)), 0);
-    const v1Risk = clamp01(v1.v - Math.max(0, args.riskAversion) * 0.3 * uncertainty);
+    const v1Risk = clamp01(v1.v - Math.max(0, args.riskAversion) * FC.lookahead.riskUncertaintyScale * uncertainty);
 
     const qLookahead = qNow + Math.max(0, Number(args.gamma)) * v1Risk;
     const delta = qLookahead - qNow;
