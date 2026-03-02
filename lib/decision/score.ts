@@ -67,43 +67,38 @@ function keyFromPossibilityId(id: string): string {
 }
 
 function contextKeyMod(k: string, ctx: CtxVec): number {
-  // Возвращает мультипликативный модификатор ~ [0.55 .. 1.65]
-  // Идея: контекст должен реально "переключать" режимы, а не слегка шевелить.
+  // Возвращает мультипликативный модификатор для action key на основе контекста.
   const D = ctx.danger;
   const U = ctx.uncertainty;
   const S = ctx.surveillance;
   const C = ctx.crowd;
   const P = ctx.privacy;
+  const cm = FC.decision.contextMod;
 
-  // базовый режим
   let m = 1.0;
 
   if (k === 'wait') {
-    // ждать хуже при опасности/неопределенности
-    m *= (1 - 0.55 * D) * (1 - 0.35 * U);
+    m *= (1 - cm.wait.dangerPenalty * D) * (1 - cm.wait.uncPenalty * U);
   }
   if (k === 'rest' || k === 'work' || k === 'inspect_feature' || k === 'repair_feature' || k === 'scavenge_feature') {
-    // отдых/работа плохо при опасности; работа плохо при высокой неопределенности
     const isWorklike = k === 'work' || k === 'repair_feature' || k === 'scavenge_feature';
-    m *= (1 - 0.65 * D) * (isWorklike ? (1 - 0.25 * U) : 1);
+    m *= (1 - cm.rest.dangerPenalty * D) * (isWorklike ? (1 - cm.work.uncPenalty * U) : 1);
   }
   if (k === 'observe') {
-    // наблюдать хорошо при опасности/неопределенности
-    m *= (1 + 0.55 * U + 0.25 * D);
+    m *= (1 + cm.observe.uncBonus * U + cm.observe.dangerBonus * D);
   }
   if (k === 'move') {
-    // двигаться (перемещение/перестройка позиции) хорошо при опасности
-    m *= (1 + 0.45 * D);
+    m *= (1 + cm.move.dangerBonus * D);
   }
   if (k === 'talk' || k === 'ask_info' || k === 'question_about' || k === 'negotiate') {
-    // социальные действия: лучше при неопределенности, хуже при надзоре/толпе/низкой приватности
-    const infoBonus = (k === 'ask_info' || k === 'question_about') ? 0.55 * U : 0.25 * U;
-    const socialPenalty = 0.55 * S + 0.35 * C + 0.45 * (1 - P);
+    const infoBonus = (k === 'ask_info' || k === 'question_about') ? cm.social.uncInfoBonus * U : cm.social.uncTalkBonus * U;
+    const socialPenalty = cm.social.survPenalty * S + cm.social.crowdPenalty * C + cm.social.privacyPenalty * (1 - P);
     m *= (1 + infoBonus) * (1 - socialPenalty);
   }
 
-  return clamp01(Math.max(0.55, Math.min(1.65, m)));
+  return clamp01(Math.max(cm.bounds.min, Math.min(cm.bounds.max, m)));
 }
+
 
 function get(atoms: ContextAtom[], id: string, fb = 0) {
   const a = atoms.find(x => x.id === id);
@@ -140,14 +135,14 @@ function actionDomainHintWeight(p: Possibility, domain: string): number {
 
 function getActiveGoalDomains(atoms: ContextAtom[], selfId: string) {
   // Goal layer projects into util:* atoms in S7b; Action layer must not read goal:* directly.
-  // deriveGoalAtoms emits goal:active:<domain>:<selfId> (then projected to util:active:...).
+  // Goal state is projected to util-layer ids consumed by decision stage: util:active:<domain>:<selfId>.
   const prefix = 'util:active:';
   const res: Array<{ id: string; domain: string; mag: number }> = [];
   for (const a of atoms) {
     const id = String((a as any)?.id || '');
     if (!id.startsWith(prefix)) continue;
     const parts = id.split(':');
-    // goal:active:<domain>:<selfId>
+    // util:active:<domain>:<selfId>
     const domain = parts[2] || '';
     const sid = parts[3] || '';
     if (!domain || sid !== selfId) continue;
@@ -157,7 +152,7 @@ function getActiveGoalDomains(atoms: ContextAtom[], selfId: string) {
 }
 
 function getPlanGoalSupport(atoms: ContextAtom[], selfId: string, actionKey: string) {
-  // Plan goals:
+  // Plan-goal links in util layer:
   // - util:activeGoal:<selfId>:<goalId> magnitude = activation
   // - util:hint:allow:<goalId>:<actionKey> magnitude = 1
   const activePrefix = `util:activeGoal:${selfId}:`;
@@ -166,7 +161,7 @@ function getPlanGoalSupport(atoms: ContextAtom[], selfId: string, actionKey: str
   for (const a of atoms) {
     const id = String((a as any)?.id || '');
     if (!id.startsWith(allowPrefix)) continue;
-    // goal:hint:allow:<goalId>:<actionKey>
+    // util:hint:allow:<goalId>:<actionKey>
     const parts = id.split(':');
     const gid = parts[3] || '';
     const ak = parts[4] || '';
@@ -290,75 +285,78 @@ export function scorePossibility(args: {
   const prefParts: Record<string, number> = {};
 
   // ---- trait modulation by action family ----
+  const tr = FC.decision.traits;
+
   // Make the same context produce different choices for different characters.
   if (String(p.id).startsWith('exit:escape') || String(p.id).startsWith('aff:hide') || String(p.id).startsWith('aff:avoid')) {
-    const dv = 0.25 * trSafety + 0.22 * trParanoia - 0.18 * trPowerDrive;
+    const dv = tr.defensive.safety * trSafety + tr.defensive.paranoia * trParanoia - tr.defensive.powerDrivePenalty * trPowerDrive;
     pref += dv;
     prefParts.traits_defensive = dv;
   }
   if (String(p.id).startsWith('aff:talk') || String(p.id).startsWith('aff:share_secret')) {
-    const dv = 0.22 * trCare - 0.22 * trParanoia - 0.12 * trSafety + 0.10 * trAutonomy;
+    const dv = tr.social.care * trCare - tr.social.paranoiaPenalty * trParanoia - tr.social.safetyPenalty * trSafety + tr.social.autonomy * trAutonomy;
     pref += dv;
     prefParts.traits_social = dv;
   }
   if (String(p.id).startsWith('aff:ask_info') || String(p.id).startsWith('cog:investigate') || String(p.id).startsWith('cog:probe')) {
-    const dv = 0.28 * trTruthNeed + 0.12 * trAutonomy - 0.12 * trParanoia;
+    const dv = tr.epistemic.truthNeed * trTruthNeed + tr.epistemic.autonomy * trAutonomy - tr.epistemic.paranoiaPenalty * trParanoia;
     pref += dv;
     prefParts.traits_epistemic = dv;
   }
   if (String(p.id).startsWith('off:help') || String(p.id).startsWith('aff:help')) {
-    const dv = 0.35 * trCare - 0.10 * trSafety - 0.10 * trParanoia;
+    const dv = tr.help.care * trCare - tr.help.safetyPenalty * trSafety - tr.help.paranoiaPenalty * trParanoia;
     pref += dv;
     prefParts.traits_help = dv;
   }
   if (String(p.id).startsWith('aff:attack') || String(p.id).startsWith('aff:confront') || String(p.id).startsWith('aff:threaten')) {
-    const dv = 0.30 * trPowerDrive + 0.10 * trAutonomy - 0.25 * trOrder - 0.20 * trNormSens - 0.15 * trCare;
+    const dv = tr.aggressive.powerDrive * trPowerDrive + tr.aggressive.autonomy * trAutonomy - tr.aggressive.orderPenalty * trOrder - tr.aggressive.normSensPenalty * trNormSens - tr.aggressive.carePenalty * trCare;
     pref += dv;
     prefParts.traits_aggressive = dv;
   }
   if (String(p.id).startsWith('cog:wait') || String(p.id).startsWith('aff:rest')) {
-    const dv = 0.18 * trOrder + 0.12 * trSafety - 0.10 * trAutonomy;
+    const dv = tr.passive.order * trOrder + tr.passive.safety * trSafety - tr.passive.autonomyPenalty * trAutonomy;
     pref += dv;
     prefParts.traits_passive = dv;
   }
-  if (p.id.startsWith('exit:escape')) pref += 0.25 * fear + 0.10 * threatFinal;
-  if (p.id.startsWith('aff:hide'))   pref += 0.20 * fear;
+  const ep = FC.decision.emotionPref;
+  if (p.id.startsWith('exit:escape')) pref += ep.escape.fear * fear + ep.escape.threat * threatFinal;
+  if (p.id.startsWith('aff:hide'))   pref += ep.hide.fear * fear;
   if (p.id.startsWith('aff:talk')) {
-    pref += 0.10 * shame - 0.10 * fear - 0.20 * hazardBetween;
-    prefParts.hazardBetween = -0.20 * hazardBetween;
+    pref += ep.talk.shame * shame - ep.talk.fearPenalty * fear - ep.talk.hazardPenalty * hazardBetween;
+    prefParts.hazardBetween = -ep.talk.hazardPenalty * hazardBetween;
     // If target recently harmed me, talking is less attractive; if helped — more attractive.
-    pref += -0.30 * recentHarmByTarget + 0.18 * recentHelpByTarget;
-    prefParts.recentHarmByTarget = -0.30 * recentHarmByTarget;
-    prefParts.recentHelpByTarget = 0.18 * recentHelpByTarget;
+    pref += -ep.talk.recentHarmPenalty * recentHarmByTarget + ep.talk.recentHelpBonus * recentHelpByTarget;
+    prefParts.recentHarmByTarget = -ep.talk.recentHarmPenalty * recentHarmByTarget;
+    prefParts.recentHelpByTarget = ep.talk.recentHelpBonus * recentHelpByTarget;
   }
   if (p.id.startsWith('aff:attack')) {
-    pref += 0.20 * anger + 0.10 * resolve - 0.25 * shame - 0.25 * enemyHazardBetween - 0.10 * hazardBetween;
-    prefParts.enemyHazardBetween = -0.25 * enemyHazardBetween;
-    prefParts.hazardBetween = (prefParts.hazardBetween ?? 0) + -0.10 * hazardBetween;
+    pref += ep.attack.anger * anger + ep.attack.resolve * resolve - ep.attack.shamePenalty * shame - ep.attack.enemyHazardPenalty * enemyHazardBetween - ep.attack.hazardPenalty * hazardBetween;
+    prefParts.enemyHazardBetween = -ep.attack.enemyHazardPenalty * enemyHazardBetween;
+    prefParts.hazardBetween = (prefParts.hazardBetween ?? 0) + -ep.attack.hazardPenalty * hazardBetween;
     // Retaliation signal (bounded later by protocol).
-    pref += 0.22 * recentHarmByTarget - 0.12 * recentHelpByTarget;
-    prefParts.recentHarmByTarget = (prefParts.recentHarmByTarget ?? 0) + 0.22 * recentHarmByTarget;
-    prefParts.recentHelpByTarget = (prefParts.recentHelpByTarget ?? 0) + -0.12 * recentHelpByTarget;
+    pref += ep.attack.recentHarmBonus * recentHarmByTarget - ep.attack.recentHelpPenalty * recentHelpByTarget;
+    prefParts.recentHarmByTarget = (prefParts.recentHarmByTarget ?? 0) + ep.attack.recentHarmBonus * recentHarmByTarget;
+    prefParts.recentHelpByTarget = (prefParts.recentHelpByTarget ?? 0) + -ep.attack.recentHelpPenalty * recentHelpByTarget;
   }
   if (p.id.startsWith('off:help')) {
-    pref += 0.20 * care - 0.10 * fear - 0.35 * allyHazardBetween - 0.15 * hazardBetween;
-    prefParts.allyHazardBetween = -0.35 * allyHazardBetween;
-    prefParts.hazardBetween = (prefParts.hazardBetween ?? 0) + -0.15 * hazardBetween;
+    pref += ep.help.care * care - ep.help.fearPenalty * fear - ep.help.allyHazardPenalty * allyHazardBetween - ep.help.hazardPenalty * hazardBetween;
+    prefParts.allyHazardBetween = -ep.help.allyHazardPenalty * allyHazardBetween;
+    prefParts.hazardBetween = (prefParts.hazardBetween ?? 0) + -ep.help.hazardPenalty * hazardBetween;
     // Helping someone who harmed me is harder.
-    pref += -0.25 * recentHarmByTarget + 0.20 * recentHelpByTarget;
-    prefParts.recentHarmByTarget = (prefParts.recentHarmByTarget ?? 0) + -0.25 * recentHarmByTarget;
-    prefParts.recentHelpByTarget = (prefParts.recentHelpByTarget ?? 0) + 0.20 * recentHelpByTarget;
+    pref += -ep.help.recentHarmPenalty * recentHarmByTarget + ep.help.recentHelpBonus * recentHelpByTarget;
+    prefParts.recentHarmByTarget = (prefParts.recentHarmByTarget ?? 0) + -ep.help.recentHarmPenalty * recentHarmByTarget;
+    prefParts.recentHelpByTarget = (prefParts.recentHelpByTarget ?? 0) + ep.help.recentHelpBonus * recentHelpByTarget;
   }
   if (p.id.startsWith('cog:monologue')) {
     const unc = clamp01(get(atoms, `ctx:uncertainty:${selfId}`, 0));
-    pref += 0.15 * unc + 0.05 * shame - 0.10 * threatFinal;
-    prefParts.uncertainty = 0.15 * unc;
+    pref += ep.monologue.uncertainty * unc + ep.monologue.shame * shame - ep.monologue.threatPenalty * threatFinal;
+    prefParts.uncertainty = ep.monologue.uncertainty * unc;
   }
 
   // Protocol: if strict, prefer talk over attack
   const protocol = get(atoms, `ctx:proceduralStrict:${selfId}`, get(atoms, `norm:proceduralStrict:${selfId}`, 0));
-  if (p.id.startsWith('aff:talk')) pref += 0.15 * protocol;
-  if (p.id.startsWith('aff:attack')) pref += -0.40 * protocol;
+  if (p.id.startsWith('aff:talk')) pref += ep.protocol.talkBonus * protocol;
+  if (p.id.startsWith('aff:attack')) pref += -ep.protocol.attackPenalty * protocol;
 
   const availability = clamp01(p.magnitude);
   const raw = clamp01(availability * (1 - cost) + pref);
@@ -379,7 +377,7 @@ export function scorePossibility(args: {
   }
   // 2) Plan-goal support: active plan goals that explicitly allow this action.
   const plan = getPlanGoalSupport(atoms, selfId, actionKey);
-  const planBoost = 0.65 * plan.support; // bounded; weight chosen to matter but not dominate.
+  const planBoost = FC.decision.planBoostWeight * plan.support; // bounded; weight chosen to matter but not dominate.
 
   const goalUtilityRaw = goalDomainBoost + planBoost;
   const goalUtility = clamp01(0.5 + 0.5 * Math.tanh(goalUtilityRaw)); // squashing to [0..1]
@@ -390,25 +388,26 @@ export function scorePossibility(args: {
   const domain = actionDomainHint(p.id) || actionDomainHint(actionKey) || null;
   let energyDelta = 0;
   const energyParts: any = { domain, enerVec };
+  const em = FC.decision.energyMap;
 
   if (domain === 'safety') {
     // safety actions should reduce threat/uncertainty; more urgent if those are high.
-    energyDelta = 0.60 * enerVec.threat + 0.30 * enerVec.uncertainty;
+    energyDelta = em.safety.threat * enerVec.threat + em.safety.uncertainty * enerVec.uncertainty;
   } else if (domain === 'affiliation') {
-    energyDelta = 0.55 * enerVec.attachment - 0.15 * enerVec.threat;
+    energyDelta = em.affiliation.attachment * enerVec.attachment - em.affiliation.threatPenalty * enerVec.threat;
   } else if (domain === 'status') {
-    energyDelta = 0.45 * enerVec.status - 0.10 * enerVec.norm;
+    energyDelta = em.status.status * enerVec.status - em.status.normPenalty * enerVec.norm;
   } else if (domain === 'exploration') {
-    energyDelta = 0.55 * enerVec.curiosity - 0.25 * enerVec.threat - 0.15 * enerVec.uncertainty;
+    energyDelta = em.exploration.curiosity * enerVec.curiosity - em.exploration.threatPenalty * enerVec.threat - em.exploration.uncertaintyPenalty * enerVec.uncertainty;
   } else if (domain === 'order' || domain === 'control') {
-    energyDelta = 0.35 * (1 - enerVec.uncertainty) + 0.20 * enerVec.norm;
+    energyDelta = em.control.antiUncertainty * (1 - enerVec.uncertainty) + em.control.norm * enerVec.norm;
   } else if (domain === 'rest') {
-    energyDelta = 0.65 * (1 - enerVec.resource) - 0.10 * enerVec.threat;
+    energyDelta = em.rest.antiResource * (1 - enerVec.resource) - em.rest.threatPenalty * enerVec.threat;
   } else {
     energyDelta = 0;
   }
   // squash to a bounded bonus [-0.25..0.25]
-  const energyBonus = 0.25 * Math.tanh(energyDelta);
+  const energyBonus = FC.decision.energyBonusScale * Math.tanh(energyDelta);
   energyParts.energyDelta = energyDelta;
   energyParts.energyBonus = energyBonus;
 
