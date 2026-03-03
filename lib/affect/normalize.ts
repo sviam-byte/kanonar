@@ -1,12 +1,9 @@
 
 import { AffectState } from '../emotions/types';
+import { clamp01 } from '../util/math';
 
 export type AnyObj = Record<string, any>;
-export const clamp01 = (x: any, fb = 0) => {
-  const v = Number(x);
-  if (!Number.isFinite(v)) return fb;
-  return Math.max(0, Math.min(1, v));
-};
+export { clamp01 } from '../util/math';
 
 const ensureObj = (x: any): AnyObj => (x && typeof x === "object" ? x : {});
 

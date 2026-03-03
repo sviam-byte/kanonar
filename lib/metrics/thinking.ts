@@ -8,8 +8,7 @@ import type {
   ThinkingAxisD,
   ThinkingProfile,
 } from '../../types';
-
-const clamp01 = (x: number) => (Number.isFinite(x) ? Math.max(0, Math.min(1, x)) : 0);
+import { clamp01 } from '../util/math';
 
 function normalizeDict<T extends string>(m: Record<T, number>): Record<T, number> {
   const ks = Object.keys(m) as T[];

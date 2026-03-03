@@ -1,8 +1,8 @@
 // lib/affect/synthesizeFromMind.ts
 import type { AffectState } from '../emotions/types';
+import { clamp01 } from '../util/math';
 
 const num = (v: any, d = 0) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
-const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
 const clamp11 = (x: number) => Math.max(-1, Math.min(1, x));
 
 /**

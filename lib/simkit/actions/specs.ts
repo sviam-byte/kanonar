@@ -11,8 +11,8 @@ import type { ActionKind, ActionOffer, SimAction, SimEvent, SimWorld, SpeechEven
 import { getChar, getLoc } from '../core/world';
 import { distSameLocation, getCharXY, getSpatialConfig } from '../core/spatial';
 import { getDyadTrust } from '../core/trust';
+import { clamp01 } from '../../util/math';
 
-const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
 const clamp = (x: number, a: number, b: number) => Math.max(a, Math.min(b, x));
 
 export type Atomicity = 'single' | 'intent';

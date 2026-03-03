@@ -3,26 +3,22 @@
 import { RelationshipEdge, RelationshipGraph, RelationTag } from './types';
 import { clamp01 } from '../util/math';
 
-function uniq<T>(arr: T[]) {
-  return Array.from(new Set(arr));
-}
-
 function edgeKey(a: string, b: string) {
   return `${a}→${b}`;
 }
 
 function mergeEdges(base: RelationshipEdge[], add: RelationshipEdge[]) {
   const map = new Map<string, RelationshipEdge>();
-  for (const e of base) map.set(edgeKey(e.a, e.b), { ...e, tags: uniq(e.tags) });
+  for (const e of base) map.set(edgeKey(e.a, e.b), { ...e, tags: Array.from(new Set(e.tags)) });
   for (const e of add) {
     const k = edgeKey(e.a, e.b);
     const prev = map.get(k);
     if (!prev) {
-      map.set(k, { ...e, tags: uniq(e.tags), strength: clamp01(e.strength) });
+      map.set(k, { ...e, tags: Array.from(new Set(e.tags)), strength: clamp01(e.strength) });
     } else {
       map.set(k, {
         ...prev,
-        tags: uniq([...(prev.tags || []), ...(e.tags || [])]),
+        tags: Array.from(new Set([...(prev.tags || []), ...(e.tags || [])])),
         strength: clamp01(Math.max(prev.strength ?? 0, e.strength ?? 0)),
         trustPrior: e.trustPrior ?? prev.trustPrior,
         threatPrior: e.threatPrior ?? prev.threatPrior,
@@ -70,7 +66,7 @@ function inferTagsFromLegacy(src: any): RelationTag[] {
     if (t.includes('protected')) tags.push('protected');
     if (t.includes('protector') || t.includes('caretaker')) tags.push('protector');
   }
-  return uniq(tags);
+  return Array.from(new Set(tags));
 }
 
 function legacyEdgeStrength(src: any): number {

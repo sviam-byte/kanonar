@@ -119,6 +119,11 @@ npm run prune:stubs
    - присылать **только git diff**
    - не делать форматирование “заодно”
 
+6) FormulaConfig:
+   - Все числовые коэффициенты в pipeline (S0…S9) должны быть в `lib/config/formulaConfig.ts`
+   - Локальные `const RISK_COEFF = 0.4` запрещены
+   - При добавлении нового коэффициента: добавить в FC + использовать `FC.section.param`
+
 ## Debug routine (standard)
 
 Когда “непонятно почему так решило”:

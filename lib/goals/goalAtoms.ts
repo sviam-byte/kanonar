@@ -12,6 +12,7 @@ import { selectActiveGoalsWithHysteresis } from './selectActive';
 import { initGoalState, updateGoalState, type GoalState } from './goalState';
 import { computeDomainProgressDeltasFromAtoms } from './outcomes';
 import { FC, DOMAIN_MODE_PROJECTION } from '../config/formulaConfig';
+import type { GoalTuningConfig, GoalCategoryId } from '../../types';
 
 type GoalDomain =
   | 'safety'
@@ -24,6 +25,43 @@ type GoalDomain =
   | 'wealth';
 
 type DomainChannelWeights = Record<GoalDomain, Record<EnergyChannel, number>>;
+
+/** Map pipeline domain → GoalCategoryId for tuning lookup. */
+const DOMAIN_TO_CATEGORY: Record<GoalDomain, GoalCategoryId> = {
+  safety: 'survival',
+  control: 'control',
+  affiliation: 'social',
+  status: 'social',
+  exploration: 'learn',
+  order: 'control',
+  rest: 'rest',
+  wealth: 'other',
+};
+
+/**
+ * Apply GoalTuningConfig to a domain score in logit space.
+ * slope=1, bias=0 keeps identity transform.
+ */
+function applyGoalTuning(domain: GoalDomain, score01: number, tuning?: GoalTuningConfig | null): number {
+  if (!tuning) return score01;
+
+  // Hard veto wins regardless of the curve parameters.
+  if (tuning.veto?.[domain]) return 0;
+
+  // Resolution priority: goal-level > category-level > global-level.
+  const goalLevel = tuning.goals?.[domain];
+  const catLevel = tuning.categories?.[DOMAIN_TO_CATEGORY[domain]];
+  const globalLevel = tuning.global;
+
+  const slope = goalLevel?.slope ?? catLevel?.slope ?? globalLevel?.slope ?? 1;
+  const bias = goalLevel?.bias ?? catLevel?.bias ?? globalLevel?.bias ?? 0;
+  if (slope === 1 && bias === 0) return score01;
+
+  const p = Math.max(1e-6, Math.min(1 - 1e-6, score01));
+  const logit = Math.log(p / (1 - p));
+  const adjusted = logit * slope + bias;
+  return clamp01(1 / (1 + Math.exp(-adjusted)));
+}
 
 // Conservative default mapping: which energy channels should “feed” which goals.
 // Values are weights (not required to sum to 1).
@@ -208,8 +246,9 @@ function mkGoalStateAtom(selfId: string, domain: GoalDomain, st: GoalState, used
  * Derive goal ecology atoms from existing atoms.
  * Safe: if drv:* are missing, falls back to ctx/emotions (still deterministic).
  */
-export function deriveGoalAtoms(selfId: string, atoms: ContextAtom[], opts?: { topN?: number }) {
+export function deriveGoalAtoms(selfId: string, atoms: ContextAtom[], opts?: { topN?: number; goalTuning?: GoalTuningConfig | null }) {
   const topN = Math.max(1, Math.min(5, Number(opts?.topN ?? 3)));
+  const goalTuning = opts?.goalTuning ?? null;
 
   // Debug payload for GoalLab (used by pipeline viewers; safe to ignore).
   const __debug: any = { selfId };
@@ -590,6 +629,20 @@ export function deriveGoalAtoms(selfId: string, atoms: ContextAtom[], opts?: { t
         uncertainty: (energy.attributionByChannel as any)?.uncertainty?.[goalId] ?? [],
       };
     }
+  }
+
+  // ── Per-agent goal tuning (slope/bias/veto) ──
+  // Applied after energy refinement and before hysteresis smoothing.
+  for (const e of ecology) {
+    const before = e.v;
+    e.v = applyGoalTuning(e.domain, e.v, goalTuning);
+    (e.parts as any).goalTuning = {
+      applied: e.v !== before,
+      before,
+      after: e.v,
+      domain: e.domain,
+      category: DOMAIN_TO_CATEGORY[e.domain],
+    };
   }
 
   // ------------------------------------------------------------

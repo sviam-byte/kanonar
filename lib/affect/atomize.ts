@@ -2,10 +2,9 @@
 import type { AffectState } from '../emotions/types';
 import type { ContextAtom } from '../context/v2/types';
 import { normalizeAtom } from '../context/v2/infer';
+import { clamp01 } from '../util/math';
 
 const num = (v: any, d = 0) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
-const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
-
 /**
  * Materialize affect into canonical context atoms.
  * These atoms are the bridge between GoalLab UI affect knobs and downstream ToM/threat/goals explanations.

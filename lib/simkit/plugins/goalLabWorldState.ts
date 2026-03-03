@@ -5,10 +5,7 @@ import type { SimWorld, SimSnapshot } from '../core/types';
 import { EntityType, type WorldState } from '../../../types';
 import { makeAgentRNG, setGlobalRunSeed } from '../../core/noise';
 import { clamp01 } from '../../util/math';
-
-function arr<T>(x: any): T[] {
-  return Array.isArray(x) ? x : [];
-}
+import { arr } from '../../utils/arr';
 
 function toDomainEvents(snapshot: SimSnapshot): any[] {
   // Map SimEvent -> DomainEvent (minimal, tolerant).

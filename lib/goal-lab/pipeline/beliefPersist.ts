@@ -168,8 +168,9 @@ export function buildBeliefPersistAtoms(input: BeliefPersistInput): BeliefPersis
     }
   }
 
+  // Persist surprise atoms with belief state so next tick S0 can feed S6 drivers.
   return {
-    beliefAtoms,
+    beliefAtoms: [...beliefAtoms, ...surpriseAtoms],
     surpriseAtoms,
     debug: {
       predictedFeatureCount: beliefAtoms.filter(a => (a as any)?.kind === 'belief_predicted_feature').length,

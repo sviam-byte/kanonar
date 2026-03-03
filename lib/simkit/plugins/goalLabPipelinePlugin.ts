@@ -5,12 +5,9 @@ import type { SimPlugin } from '../core/simulator';
 import type { SimWorld, SimSnapshot } from '../core/types';
 import { runGoalLabPipelineV1 } from '../../goal-lab/pipeline/runPipelineV1';
 import { buildWorldStateFromSim } from './goalLabWorldState';
+import { arr } from '../../utils/arr';
 
 export { buildWorldStateFromSim } from './goalLabWorldState';
-
-function arr<T>(x: any): T[] {
-  return Array.isArray(x) ? x : [];
-}
 
 export function pickAgentId(world: SimWorld): string | null {
   const ids = Object.keys(world.characters || {}).sort();

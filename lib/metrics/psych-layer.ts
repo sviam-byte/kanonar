@@ -19,8 +19,8 @@ import { computeExposureTraces, computeWorldview } from '../biography/exposure';
 import { getNestedValue } from '../param-utils';
 import { computeSelfArchetypeVector } from '../archetypes/system';
 import { computeThinkingAndActivityCaps } from './thinking';
+import { clamp01 } from '../util/math';
 
-const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
 const get = (c: CharacterEntity, key: string, def: number = 0.5) => getNestedValue(c.vector_base, key) ?? def;
 export function computeDistortionProfile(c: CharacterEntity, w: Worldview, b: BiographyLatent): DistortionProfile {
     // Traits

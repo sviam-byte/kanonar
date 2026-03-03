@@ -1,12 +1,7 @@
 // lib/contextMind/atomizeMind.ts
 import type { ContextAtom } from '../context/v2/types';
 import { normalizeAtom } from '../context/v2/infer';
-
-const clamp01 = (x: any) => {
-  const v = Number(x);
-  if (!Number.isFinite(v)) return 0;
-  return Math.max(0, Math.min(1, v));
-};
+import { clamp01 } from '../util/math';
 
 /**
  * Materialize scoreboard metrics into canonical atoms so they can be:

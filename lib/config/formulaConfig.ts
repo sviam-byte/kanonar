@@ -8,6 +8,47 @@
  *   import { FC } from '../config/formulaConfig';
  */
 
+// ─── Drivers (S6 deriveDrivers) ───────────────────────────────────────────
+
+export const DRIVERS_FORMULA = {
+  safetyNeed: {
+    threatW: 0.60,
+    fearW: 0.40,
+  },
+  controlNeed: {
+    antiControlW: 0.70,
+    uncertaintyW: 0.30,
+  },
+  statusNeed: {
+    shameW: 0.50,
+    publicnessW: 0.25,
+    normW: 0.25,
+  },
+  affiliationNeed: {
+    careW: 0.70,
+    antiThreatW: 0.30,
+  },
+  resolveNeed: {
+    angerW: 0.50,
+    threatW: 0.50,
+  },
+  /** Surprise feedback: how much belief:surprise:* atoms amplify needs. */
+  surpriseFeedback: {
+    /** Maximum total surprise boost across all features. */
+    maxBoost: 0.25,
+    /** Per-feature routing: which surprise amplifies which need. */
+    routing: {
+      threat: { safetyNeed: 0.6, controlNeed: 0.3 },
+      socialTrust: { affiliationNeed: 0.5, statusNeed: 0.2 },
+      emotionValence: { affiliationNeed: 0.3 },
+      resourceAccess: { controlNeed: 0.2 },
+      scarcity: { controlNeed: 0.3 },
+      fatigue: { safetyNeed: 0.1 },
+      stress: { safetyNeed: 0.2, controlNeed: 0.2 },
+    } as Record<string, Record<string, number>>,
+  },
+} as const;
+
 // ─── Goal Ecology Domain Weights ───────────────────────────────────────────
 
 export const GOAL_FORMULA = {
@@ -245,6 +286,50 @@ export const DECISION = {
   },
 } as const;
 
+// ─── Action Scoring (scoreAction.ts) ──────────────────────────────────────
+
+export const ACTION_SCORING = {
+  /** Risk penalty coefficient for confidence < 1. */
+  riskCoeff: 0.4,
+} as const;
+
+// ─── Target-Specific ToM Modulation (actionCandidateUtils.ts) ─────────────
+
+export const TOM_MODULATION = {
+  aggressive: {
+    trustPenalty: 0.4,
+    intimacyPenalty: 0.3,
+    threatBonus: 0.5,
+    physThreatSafetyPenalty: 0.6,
+    socialStandingStatusPenalty: 0.3,
+  },
+  cooperative: {
+    trustBonus: 0.4,
+    alignmentBonus: 0.2,
+    threatPenalty: 0.3,
+    supportBonus: 0.2,
+  },
+  avoidant: {
+    threatBonus: 0.5,
+    physThreatBonus: 0.3,
+    trustPenalty: 0.3,
+    intimacyPenalty: 0.2,
+  },
+  contextual: {
+    /** danger-based delta scaling for safety/survival goals. */
+    dangerBaseScale: 0.6,
+    dangerSlopeScale: 0.8,
+    /** Affiliation/status dampening above danger threshold. */
+    affStatusDampenThreshold: 0.5,
+    affStatusDampenBase: 1.3,
+    affStatusDampenSlope: 0.6,
+    /** Fatigue penalty on positive deltas. */
+    fatigueThreshold: 0.4,
+    fatigueBase: 1.1,
+    fatigueSlope: 0.3,
+  },
+} as const;
+
 // ─── Goal State Dynamics ──────────────────────────────────────────────────
 
 export const GOAL_STATE = {
@@ -312,12 +397,15 @@ export const LOOKAHEAD = {
 // ─── Shorthand ────────────────────────────────────────────────────────────
 
 export const FC = {
+  drivers: DRIVERS_FORMULA,
   goal: GOAL_FORMULA,
   domainModeProjection: DOMAIN_MODE_PROJECTION,
   mode: MODE_FORMULA,
   priors: PRIORS_FORMULA,
   inhibition: INHIBITION,
   decision: DECISION,
+  actionScoring: ACTION_SCORING,
+  tomMod: TOM_MODULATION,
   goalState: GOAL_STATE,
   lookahead: LOOKAHEAD,
 } as const;

@@ -20,6 +20,7 @@ import { LocationVectorMap } from '../../../components/locations/LocationVectorM
 import { EntityType } from '../../../enums';
 import { getEntitiesByType, getAllCharactersWithRuntime } from '../../../data';
 import { useSandbox } from '../../../contexts/SandboxContext';
+import { uniq } from '../../util/collections';
 
 function jsonDownload(filename: string, data: any) {
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -55,10 +56,6 @@ type SetupDraft = {
 
 function cx(...xs: Array<string | false | null | undefined>) {
   return xs.filter(Boolean).join(' ');
-}
-
-function uniq(xs: string[]) {
-  return Array.from(new Set(xs));
 }
 
 function pad4(n: number) {

@@ -2,18 +2,7 @@ import type { ContextAtom } from '../v2/types';
 import { normalizeAtom } from '../v2/infer';
 import { getMag } from '../../util/atoms';
 import { clamp01 } from '../../util/math';
-
-function uniq(xs: string[]): string[] {
-  const out: string[] = [];
-  const seen = new Set<string>();
-  for (const x of xs) {
-    if (!x) continue;
-    if (seen.has(x)) continue;
-    seen.add(x);
-    out.push(x);
-  }
-  return out;
-}
+import { uniq } from '../../util/collections';
 
 function mkPrio(selfId: string, axis: string, v: number, usedAtomIds: string[], parts: any) {
   const id = `ctx:prio:${axis}:${selfId}`;

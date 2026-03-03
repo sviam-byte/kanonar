@@ -7,10 +7,9 @@ import { getArchetypeMetricValues } from '../archetypes/system';
 import { getNestedValue } from '../param-utils';
 import { ARCHETYPE_STEREOTYPES } from '../archetypes/stereotypes';
 import { getGlobalRunSeed, hashString32 } from "../core/noise";
+import { clamp01 } from '../util/math';
 
 type Negotiator = CharacterEntity | EssenceEntity;
-const clamp01 = (x: number): number => Math.max(0, Math.min(1, x));
-
 export function createPerceivedCharacter(observer: CharacterEntity, observerMetrics: FullCharacterMetrics, target: CharacterEntity): CharacterEntity {
     // Start with a base clone
     const perceivedTarget = JSON.parse(JSON.stringify(target));
