@@ -16,10 +16,7 @@ import type { Possibility } from '../../possibilities/catalog';
 import { decideAction } from '../../decision/decide';
 import { buildActionCandidates } from '../../decision/actionCandidateUtils';
 import { clamp01 } from '../../util/math';
-
-function arr<T>(x: any): T[] {
-  return Array.isArray(x) ? x : [];
-}
+import { arr } from '../../utils/arr';
 
 function toDomainEvents(snapshot: SimSnapshot): any[] {
   return arr<any>((snapshot as any)?.events).map((e: any) => {

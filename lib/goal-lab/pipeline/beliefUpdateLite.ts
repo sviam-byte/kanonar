@@ -1,6 +1,7 @@
 import type { AgentState, WorldState } from '../../../types';
 import type { ContextAtom } from '../../context/v2/types';
 import { arr } from '../../utils/arr';
+import { uniq } from '../../util/collections';
 
 export type BeliefUpdateLiteParams = {
   /** Limit the number of ids included in the snapshot to keep exports sane. */
@@ -35,19 +36,6 @@ export type BeliefUpdateLiteSnapshot = {
 
   notes: string[];
 };
-
-function uniq(xs: string[], max: number): string[] {
-  const out: string[] = [];
-  const seen = new Set<string>();
-  for (const x of xs) {
-    if (!x) continue;
-    if (seen.has(x)) continue;
-    seen.add(x);
-    out.push(x);
-    if (out.length >= max) break;
-  }
-  return out;
-}
 
 function slice0(xs: string[], max: number): string[] {
   return xs.length > max ? xs.slice(0, max) : xs;
@@ -111,8 +99,8 @@ export function buildBeliefUpdateLiteSnapshot(input: {
 
   // Fallback: if no belief-prefixed ids exist, treat explicit prior ids as the belief set.
   const posteriorBeliefAtomIds = posteriorBelief.length
-    ? uniq(posteriorBelief, maxIds)
-    : uniq(input.priorBeliefAtomIds.filter((id) => mergedIds.has(id)), maxIds);
+    ? uniq(posteriorBelief).slice(0, maxIds)
+    : uniq(input.priorBeliefAtomIds.filter((id) => mergedIds.has(id))).slice(0, maxIds);
   if (!posteriorBelief.length) {
     notes.push('No belief:* atoms detected in merged S0; posteriorBeliefAtomIds derived from priorBeliefAtomIds ∩ mergedAtomsS0.');
   }
@@ -138,15 +126,15 @@ export function buildBeliefUpdateLiteSnapshot(input: {
     selfId: input.selfId,
     tick: input.tick,
     inputs: {
-      obsAtomIds: slice0(uniq(input.obsAtomIds, maxIds), maxIds),
-      priorBeliefAtomIds: slice0(uniq(input.priorBeliefAtomIds, maxIds), maxIds),
-      overrideAtomIds: slice0(uniq(input.overrideAtomIds, maxIds), maxIds),
+      obsAtomIds: slice0(uniq(input.obsAtomIds).slice(0, maxIds), maxIds),
+      priorBeliefAtomIds: slice0(uniq(input.priorBeliefAtomIds).slice(0, maxIds), maxIds),
+      overrideAtomIds: slice0(uniq(input.overrideAtomIds).slice(0, maxIds), maxIds),
       eventsCount: Number(input.eventsCount ?? 0),
     },
     outputs: {
       posteriorBeliefAtomIds: slice0(posteriorBeliefAtomIds, maxIds),
-      addedBeliefAtomIds: slice0(uniq(added, maxIds), maxIds),
-      droppedBeliefAtomIds: slice0(uniq(dropped, maxIds), maxIds),
+      addedBeliefAtomIds: slice0(uniq(added).slice(0, maxIds), maxIds),
+      droppedBeliefAtomIds: slice0(uniq(dropped).slice(0, maxIds), maxIds),
     },
     params: {
       anxiety,

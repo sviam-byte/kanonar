@@ -4,10 +4,9 @@
 import { CharacterEntity, ToMV2DashboardMetrics, V42Metrics, ToMDashboardMetrics } from '../types';
 import { calculateLatentsAndQuickStates } from './metrics/latentsQuick'; // Needed to get quickStates for phys
 import { flattenObject } from './param-utils';
+import { clamp01 } from './util/math';
 
 const sigmoid = (x: number): number => 1 / (1 + Math.exp(-x));
-const clamp01 = (x: number): number => Math.max(0, Math.min(1, x));
-
 const getParam = (obj: any, key: string, defaultValue: number = 0.5): number => {
     if (!key || typeof key !== 'string') return defaultValue;
     const path = key.split('.');

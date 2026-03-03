@@ -1,5 +1,6 @@
 import type { GoalLabPipelineV1 } from '../pipeline/runPipelineV1';
 import type { ContextAtom } from '../../context/v2/types';
+import { uniq } from '../../util/collections';
 
 type Opts = {
   maxAtoms?: number;
@@ -30,12 +31,6 @@ function atomLine(a: ContextAtom): string {
   const mag = fmt2((a as any).magnitude ?? 0);
   const conf = fmt2((a as any).confidence ?? 1);
   return `- \`${id}\`  ns=\`${ns}\` origin=\`${origin}\` mag=${mag} conf=${conf}`;
-}
-
-function uniq(xs: string[]): string[] {
-  const s = new Set<string>();
-  for (const x of xs) if (x) s.add(x);
-  return [...s];
 }
 
 export function generateGoalLabReportMarkdown(r: GoalLabPipelineV1, opts: Opts = {}): string {

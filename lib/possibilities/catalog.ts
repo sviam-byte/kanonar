@@ -1,5 +1,6 @@
 import { clamp01 } from '../util/math';
 import { ContextAtom } from '../context/v2/types';
+import { arr } from '../utils/arr';
 
 export type PossibilityKind = 'aff' | 'con' | 'off' | 'exit' | 'cog';
 
@@ -36,10 +37,6 @@ export type Helpers = {
   findPrefix: (prefix: string) => ContextAtom[];
   clamp01: (x: number) => number;
 };
-
-function arr<T>(x: any): T[] {
-  return Array.isArray(x) ? x : [];
-}
 
 /**
  * Build helpers defensively so UI doesn't crash on malformed atoms inputs.

@@ -1,10 +1,7 @@
 import { ContextAtom } from '../context/v2/types';
 import { DEFAULT_POSSIBILITY_DEFS } from './defs';
 import { makeHelpers, Possibility, PossibilityDef, PossibilityBuildResult } from './catalog';
-
-function arr<T>(x: any): T[] {
-  return Array.isArray(x) ? x : [];
-}
+import { arr } from '../utils/arr';
 
 export function derivePossibilitiesRegistry(args: {
   selfId: string;

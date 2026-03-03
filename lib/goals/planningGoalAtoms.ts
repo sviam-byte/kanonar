@@ -3,10 +3,7 @@ import { normalizeAtom } from '../context/v2/infer';
 import { getMag } from '../util/atoms';
 import { clamp01 } from '../util/math';
 import { GOAL_DEFS } from './space';
-
-function uniq(ids: string[]) {
-  return Array.from(new Set(ids.filter(Boolean)));
-}
+import { uniq } from '../util/collections';
 
 /**
  * Маппинг доменов GOAL_DEFS (survival/control/...) -> домены goal:domain:* (safety/control/affiliation/...).

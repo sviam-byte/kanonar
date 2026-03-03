@@ -4,10 +4,7 @@
 import type { SimPlugin } from '../core/simulator';
 import type { SimEvent } from '../core/types';
 import { buildBeliefAtomsForTick, persistBeliefAtomsToFacts, persistDecayingMemoryToFacts } from '../post/perceiveActions';
-
-function arr<T>(x: any): T[] {
-  return Array.isArray(x) ? x : [];
-}
+import { arr } from '../../utils/arr';
 
 export function makePerceptionMemoryPlugin(): SimPlugin {
   return {

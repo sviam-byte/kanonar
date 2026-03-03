@@ -3,10 +3,7 @@
 
 import type { SimEvent, SimWorld } from '../core/types';
 import { clamp01 } from '../../util/math';
-
-function arr<T>(x: any): T[] {
-  return Array.isArray(x) ? x : [];
-}
+import { arr } from '../../utils/arr';
 
 export type BeliefAtom = {
   id: string;

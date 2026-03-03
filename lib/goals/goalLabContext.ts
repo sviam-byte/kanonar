@@ -78,6 +78,7 @@ import { buildSignalField } from './signalField';
 import { propagateAtomEnergy } from '../graph/atomEnergy';
 import { clamp01 } from '../util/math';
 import { getMag } from '../util/atoms';
+import { uniq } from '../util/collections';
 
 export interface GoalLabContextResult {
   agent: AgentState;
@@ -185,18 +186,6 @@ function buildAutoContextTuning(selfId: string, atoms: ContextAtom[]): ContextTu
       legitimacy: weightToMul(legitimacyW),
     },
   };
-}
-
-function uniq(xs: string[]): string[] {
-  const out: string[] = [];
-  const seen = new Set<string>();
-  for (const x of xs) {
-    if (!x) continue;
-    if (seen.has(x)) continue;
-    seen.add(x);
-    out.push(x);
-  }
-  return out;
 }
 
 function mkEnerAtom(

@@ -1,4 +1,5 @@
 import traitsLibrary from '../../data/traits_library.json';
+import { clamp01 } from '../util/math';
 
 export type TraitMatrixScalar = {
   /** multiplicative factor */
@@ -16,8 +17,6 @@ export type TraitMatrixEntry = {
 export type TraitMatrix = Record<string, TraitMatrixEntry>;
 
 const LIB: TraitMatrix = traitsLibrary as unknown as TraitMatrix;
-
-const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
 
 export type TraitLogitBreakdown = {
   traitId: string;

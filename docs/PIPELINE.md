@@ -75,6 +75,25 @@ Outputs:
 
 Notes:
 - `ctx:prio:*` derives personal attention weights used by S7 goal ecology and contextual goal→action links.
+- S6 также читает `belief:surprise:*` (если есть в persisted belief) и добавляет ограниченный буст к `drv:*` по конфигу `FC.drivers.surpriseFeedback`; вклад пишется в trace.parts.surpriseBoost.
+
+
+### S6 additions (v27+)
+
+- Driver formulas centralized in `lib/config/formulaConfig.ts` → `DRIVERS_FORMULA`.
+- **Surprise feedback (POMDP loop):** S6 reads `belief:surprise:*` atoms from
+  the previous tick (persisted via `beliefPersist`). High surprise on a feature
+  amplifies the corresponding need via configurable routing table
+  (`FC.drivers.surpriseFeedback.routing`). Maximum total boost is capped at
+  `FC.drivers.surpriseFeedback.maxBoost` (default 0.25).
+  
+  This closes the POMDP feedback loop: S9 predicts features → beliefPersist
+  saves predictions → next tick S0 loads them → S9 computes surprise →
+  beliefPersist saves surprise → next tick S6 reads surprise → amplified needs.
+
+Dependencies:
+- `belief:surprise:*` atoms (ns: 'belief', persisted in beliefPersist output)
+- `FC.drivers.surpriseFeedback` config section
 
 ## S7 — Goals + Planning
 
@@ -89,6 +108,19 @@ Outputs:
 
 Forbidden:
 - goal derivation НЕ должна читать `ctx:*` без `:final:` (кроме явно документированного fallback)
+
+
+### S7 additions (v27+)
+
+- **Per-agent GoalTuningConfig:** `agent.goalTuning` (type: `GoalTuningConfig`
+  from `types.ts`) is now threaded into `deriveGoalAtoms`. If present:
+  - `goalTuning.veto[domain]` → domain score forced to 0
+  - `goalTuning.goals[domain].slope/bias` → logit-space modulation
+  - `goalTuning.categories[cat].slope/bias` → category-level fallback
+  - `goalTuning.global.slope/bias` → global fallback
+  
+  Applied AFTER energy refinement, BEFORE activation hysteresis.
+  Default: no tuning applied (identity transform).
 
 ## S8 — Decision / Actions
 
@@ -134,7 +166,7 @@ Outputs:
   - `belief:predicted:*` — прогноз фич после выбранного действия
   - `belief:chosen:*` — выбранное действие и его Q
   - `belief:feasibility:*` — feasibility по goal-доменам
-  - `belief:surprise:*` — рассогласование прогноза прошлого тика и фактического `z0` текущего тика (добавляются в текущий кадр для видимости)
+  - `belief:surprise:*` — рассогласование прогноза прошлого тика и фактического `z0` текущего тика (добавляются в текущий кадр и persist-ятся в `beliefPersist.beliefAtoms` для следующего тика)
 
 Determinism:
 - шум в lookahead должен быть детерминирован по `seed/tick/actionId`

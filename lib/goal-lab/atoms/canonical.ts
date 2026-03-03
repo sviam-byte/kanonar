@@ -1,9 +1,6 @@
 import type { GoalLabSnapshotV1 } from '../snapshotTypes';
 import type { ContextAtom } from '../../context/v2/types';
-
-function arr<T>(x: any): T[] {
-  return Array.isArray(x) ? x : [];
-}
+import { arr } from '../../utils/arr';
 
 export type CanonicalAtomsResult = {
   stageId: string;

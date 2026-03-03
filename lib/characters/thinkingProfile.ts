@@ -6,6 +6,7 @@ import type {
   ThinkingAxisC,
   ThinkingAxisD,
 } from '../../types';
+import { clamp01 } from '../util/math';
 
 type CharacterEntityLike = {
   vector_base?: Record<string, any>;
@@ -13,7 +14,6 @@ type CharacterEntityLike = {
   competencies?: Record<string, any>;
 };
 
-const clamp01 = (x: number) => (Number.isFinite(x) ? Math.max(0, Math.min(1, x)) : 0);
 const num = (x: unknown, fallback = 0) => {
   const value = Number(x);
   return Number.isFinite(value) ? value : fallback;

@@ -3,10 +3,7 @@ import { RelationshipGraph } from './types';
 import { ContextAtom } from '../context/v2/types';
 import { normalizeAtom } from '../context/v2/infer';
 import { clamp01 } from '../util/math';
-
-function uniq(xs: string[]) {
-  return Array.from(new Set((Array.isArray(xs) ? xs : []).map(String).filter(Boolean)));
-}
+import { uniq } from '../util/collections';
 
 function signedToUnit(x: number) {
   // map [-1..+1] → [0..1]

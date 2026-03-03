@@ -37,6 +37,7 @@ import { decideAction } from '../../decision/decide';
 import { scoreAction } from '../../decision/scoreAction';
 import { buildActionCandidates } from '../../decision/actionCandidateUtils';
 import { arr } from '../../utils/arr';
+import { uniq as uniqStrings } from '../../util/collections';
 import { buildIntentPreview } from './intentPreview';
 import { makeSimStep, type SimStep } from '../../core/simStep';
 import { observeLite, type ObserveLiteParams } from './observeLite';
@@ -75,18 +76,6 @@ export type GoalLabPipelineV1 = {
    */
   beliefPersist: BeliefPersistOutput | null;
 };
-
-function uniqStrings(xs: string[]): string[] {
-  const out: string[] = [];
-  const seen = new Set<string>();
-  for (const x of xs) {
-    if (!x) continue;
-    if (seen.has(x)) continue;
-    seen.add(x);
-    out.push(x);
-  }
-  return out;
-}
 
 function computeAdded(prev: ContextAtom[], next: ContextAtom[]): string[] {
   const p = indexById(prev);
@@ -530,7 +519,8 @@ export function runGoalLabPipelineV1(input: {
 
   // S7: goals (ecology + active) + planning-goals
   // Safe: uses only existing atoms; if drv/life are missing it falls back to ctx.
-  const goalRes = deriveGoalAtoms(selfId, atoms as any, { topN: 3 });
+  const goalTuning = (agent as any)?.goalTuning ?? null;
+  const goalRes = deriveGoalAtoms(selfId, atoms as any, { topN: 3, goalTuning });
   const goalAtoms = arr((goalRes as any)?.atoms).map(normalizeAtom);
 
   const planRes = derivePlanningGoalAtoms(selfId, mergeAtomsPreferNewer(atoms, goalAtoms).atoms as any, { topN: 5 });

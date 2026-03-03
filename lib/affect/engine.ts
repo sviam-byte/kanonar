@@ -2,9 +2,9 @@ import { AffectState, EmotionAppraisal, EmotionAtom, EmotionId, AppraisalTrace }
 import { AgentState, WorldState } from '../types';
 import { AgentContextFrame } from '../context/frame/types';
 import { normalizeAffectState } from '../affect/normalize';
+import { clamp01 } from '../util/math';
 
 // Local helpers
-const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
 const clamp11 = (x: number) => Math.max(-1, Math.min(1, x));
 const mix = (a: number, b: number, t: number) => a * (1 - t) + b * t;
 

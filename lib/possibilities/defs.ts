@@ -1,14 +1,8 @@
 import { clamp01 } from '../util/math';
 import { Possibility, PossibilityDef } from './catalog';
 import { getMag } from '../util/atoms';
-
-function arr<T>(x: any): T[] {
-  return Array.isArray(x) ? x : [];
-}
-
-function uniq(xs: string[]): string[] {
-  return Array.from(new Set(xs.filter(Boolean)));
-}
+import { arr } from '../utils/arr';
+import { uniq } from '../util/collections';
 
 // Extract otherIds from multiple sources:
 // - rel:final / rel:state / rel:base

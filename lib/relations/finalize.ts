@@ -2,6 +2,7 @@ import type { ContextAtom } from '../context/v2/types';
 import type { RelationshipEdge, RelationshipGraph, RelationTag } from './types';
 import { normalizeAtom } from '../context/v2/infer';
 import { clamp01 } from '../util/math';
+import { uniq } from '../util/collections';
 function mag(a?: any, fb = 0) {
   const m = a?.magnitude;
   return (typeof m === 'number' && Number.isFinite(m)) ? m : fb;
@@ -65,10 +66,6 @@ export function deriveRelFinalAtoms(args: {
   }
 
   return { atoms: out };
-}
-
-function uniq(xs: string[]) {
-  return Array.from(new Set((Array.isArray(xs) ? xs : []).map(String).filter(Boolean)));
 }
 
 function inferTrustPrior(tags: RelationTag[]) {

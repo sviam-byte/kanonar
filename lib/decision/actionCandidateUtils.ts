@@ -5,6 +5,7 @@ import { actionEffectForKind, FEATURE_GOAL_PROJECTION_KEYS } from './actionProje
 import { ActionCandidate } from './actionCandidate';
 import { getMagById } from '../util/atoms';
 import { clamp01, clamp11 } from '../util/math';
+import { FC } from '../config/formulaConfig';
 
 
 function keyFromPossibilityId(id: string): string {
@@ -90,6 +91,7 @@ function buildDeltaGoals(
     const danger = getMagById(atoms, `ctx:danger:${selfId}`, 0);
     const fatigue = getMagById(atoms, `body:fatigue:${selfId}`, getMagById(atoms, `cap:fatigue:${selfId}`, 0));
 
+    const CM = FC.tomMod.contextual;
     for (const [goalId, delta] of Object.entries(out)) {
       const d = Number(delta);
       if (!Number.isFinite(d) || Math.abs(d) < 1e-6) continue;
@@ -97,15 +99,15 @@ function buildDeltaGoals(
       let mod = 1.0;
       // Safety/survival actions more effective when danger is present
       if ((goalId === 'safety' || goalId === 'survival') && d > 0) {
-        mod = 0.6 + 0.8 * danger; // range: 0.6 (no danger) to 1.4 (max danger)
+        mod = CM.dangerBaseScale + CM.dangerSlopeScale * danger;
       }
       // Social goals suppressed under high danger (triage behavior)
-      if ((goalId === 'affiliation' || goalId === 'status') && danger > 0.5) {
-        mod = clamp01(1.3 - 0.6 * danger); // 1.0 at danger=0.5, 0.7 at danger=1.0
+      if ((goalId === 'affiliation' || goalId === 'status') && danger > CM.affStatusDampenThreshold) {
+        mod = clamp01(CM.affStatusDampenBase - CM.affStatusDampenSlope * danger);
       }
       // Physical actions penalized by fatigue
-      if (d > 0 && fatigue > 0.4) {
-        const fatMod = clamp01(1.1 - 0.3 * fatigue); // 0.8 at fatigue=1.0
+      if (d > 0 && fatigue > CM.fatigueThreshold) {
+        const fatMod = clamp01(CM.fatigueBase - CM.fatigueSlope * fatigue);
         mod *= fatMod;
       }
 
@@ -187,6 +189,10 @@ export function buildActionCandidates(args: {
         return a ? Number((a as any)?.magnitude ?? 0) : 0;
       })();
 
+      const AGG = FC.tomMod.aggressive;
+      const COOP = FC.tomMod.cooperative;
+      const AVO = FC.tomMod.avoidant;
+
       const isAggressive = /confront|attack|threaten|harm/.test(key);
       const isCooperative = /help|cooperate|negotiate|npc|persuade|protect/.test(key);
       const isAvoidant = /avoid|hide|escape|flee/.test(key);
@@ -195,21 +201,21 @@ export function buildActionCandidates(args: {
         let mod = 1.0;
 
         if (isAggressive) {
-          mod *= (1 - 0.4 * trust) * (1 - 0.3 * intimacy);
-          mod *= (1 + 0.5 * threat);
+          mod *= (1 - AGG.trustPenalty * trust) * (1 - AGG.intimacyPenalty * intimacy);
+          mod *= (1 + AGG.threatBonus * threat);
           if (goalId === 'safety' || goalId === 'survival') {
-            mod *= (1 - 0.6 * physThreat);
+            mod *= (1 - AGG.physThreatSafetyPenalty * physThreat);
           }
           if (goalId === 'status' || goalId === 'affiliation') {
-            mod *= (1 - 0.3 * Math.max(0, socialStanding));
+            mod *= (1 - AGG.socialStandingStatusPenalty * Math.max(0, socialStanding));
           }
         } else if (isCooperative) {
-          mod *= (1 + 0.4 * trust) * (1 + 0.2 * alignment);
-          mod *= (1 - 0.3 * threat);
-          mod *= (1 + 0.2 * support);
+          mod *= (1 + COOP.trustBonus * trust) * (1 + COOP.alignmentBonus * alignment);
+          mod *= (1 - COOP.threatPenalty * threat);
+          mod *= (1 + COOP.supportBonus * support);
         } else if (isAvoidant) {
-          mod *= (1 + 0.5 * threat + 0.3 * physThreat);
-          mod *= (1 - 0.3 * trust - 0.2 * intimacy);
+          mod *= (1 + AVO.threatBonus * threat + AVO.physThreatBonus * physThreat);
+          mod *= (1 - AVO.trustPenalty * trust - AVO.intimacyPenalty * intimacy);
         }
 
         deltaGoals[goalId] = clamp11(baseDelta * mod);

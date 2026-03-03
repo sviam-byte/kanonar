@@ -1,9 +1,5 @@
 import type { CognitionProfile } from '../../types';
-
-const clamp01 = (x: unknown, fallback = 0) => {
-  const n = Number(x);
-  return Number.isFinite(n) ? Math.max(0, Math.min(1, n)) : fallback;
-};
+import { clamp01, safe01 } from '../util/math';
 
 function l2(v: number[]) {
   let s = 0;
@@ -40,30 +36,30 @@ export function cognitionVector(cog?: CognitionProfile, opts?: { normalize?: boo
   const v: number[] = [];
 
   // A/B/C/D distributions (thinking axes).
-  v.push(clamp01(th.representation.enactive), clamp01(th.representation.imagery), clamp01(th.representation.verbal), clamp01(th.representation.formal));
-  v.push(clamp01(th.inference.deductive), clamp01(th.inference.inductive), clamp01(th.inference.abductive), clamp01(th.inference.causal), clamp01(th.inference.bayesian));
-  v.push(clamp01(th.control.intuitive), clamp01(th.control.analytic), clamp01(th.control.metacognitive));
-  v.push(clamp01(th.function.understanding), clamp01(th.function.planning), clamp01(th.function.critical), clamp01(th.function.creative), clamp01(th.function.normative), clamp01(th.function.social));
-  v.push(clamp01(th.metacognitiveGain));
+  v.push(safe01(th.representation.enactive), safe01(th.representation.imagery), safe01(th.representation.verbal), safe01(th.representation.formal));
+  v.push(safe01(th.inference.deductive), safe01(th.inference.inductive), safe01(th.inference.abductive), safe01(th.inference.causal), safe01(th.inference.bayesian));
+  v.push(safe01(th.control.intuitive), safe01(th.control.analytic), safe01(th.control.metacognitive));
+  v.push(safe01(th.function.understanding), safe01(th.function.planning), safe01(th.function.critical), safe01(th.function.creative), safe01(th.function.normative), safe01(th.function.social));
+  v.push(safe01(th.metacognitiveGain));
 
   // Scalars (E–H + R1–R3).
-  for (const k of SCALAR_KEYS) v.push(clamp01((s as any)?.[k], 0.5));
+  for (const k of SCALAR_KEYS) v.push(safe01((s as any)?.[k], 0.5));
 
   // Policy signals.
-  for (const k of POLICY_KEYS) v.push(clamp01((p as any)?.[k], 0.5));
+  for (const k of POLICY_KEYS) v.push(safe01((p as any)?.[k], 0.5));
 
   // Key caps (subset to keep signal dense).
   v.push(
-    clamp01(caps.operations),
-    clamp01(caps.actions),
-    clamp01(caps.activity),
-    clamp01(caps.reactive),
-    clamp01(caps.proactive),
-    clamp01(caps.regulatory),
-    clamp01(caps.reflective),
-    clamp01(caps.communicative),
-    clamp01(caps.constructor),
-    clamp01(caps.creative)
+    safe01(caps.operations),
+    safe01(caps.actions),
+    safe01(caps.activity),
+    safe01(caps.reactive),
+    safe01(caps.proactive),
+    safe01(caps.regulatory),
+    safe01(caps.reflective),
+    safe01(caps.communicative),
+    safe01(caps.constructor),
+    safe01(caps.creative)
   );
 
   if (opts?.normalize !== false) {

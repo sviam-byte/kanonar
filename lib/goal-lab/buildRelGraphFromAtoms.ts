@@ -1,5 +1,6 @@
 import { clamp01 } from '../util/math';
 import type { ContextAtom } from '../context/v2/types';
+import { uniq } from '../util/collections';
 
 type RelEdge = {
   a: string;
@@ -25,10 +26,6 @@ type RelGraph = {
   schemaVersion: number;
   edges: RelEdge[];
 };
-
-function uniq(xs: string[]) {
-  return Array.from(new Set((Array.isArray(xs) ? xs : []).map(String).filter(Boolean)));
-}
 
 function pickUpdatedAtTick(atom: ContextAtom): number | undefined {
   const metaTick = (atom as any)?.meta?.updatedAtTick;
