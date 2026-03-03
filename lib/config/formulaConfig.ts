@@ -32,6 +32,49 @@ export const DRIVERS_FORMULA = {
     angerW: 0.50,
     threatW: 0.50,
   },
+  /**
+   * Response curves: nonlinear mapping applied AFTER the linear weighted sum.
+   *
+   * Each need's raw value (linear sum, [0,1]) passes through a CurveSpec.
+   * Default: linear (identity). Override per-agent via agent.driverCurves.
+   */
+  curves: {
+    safetyNeed:      { type: 'linear' },
+    controlNeed:     { type: 'linear' },
+    statusNeed:      { type: 'linear' },
+    affiliationNeed: { type: 'linear' },
+    resolveNeed:     { type: 'linear' },
+  } as Record<string, import('../utils/curves').CurveSpec>,
+  /**
+   * Lateral inhibition between needs after curve shaping.
+   * Example: high safetyNeed suppresses exploration/status.
+   */
+  inhibition: {
+    threshold: 0.3,
+    maxSuppression: 0.60,
+    matrix: {
+      safetyNeed:      { exploration: 0.35, statusNeed: 0.20, affiliationNeed: 0.10 },
+      controlNeed:     { exploration: 0.25 },
+      resolveNeed:     { affiliationNeed: 0.30, statusNeed: 0.15 },
+      affiliationNeed: { resolveNeed: 0.25 },
+      statusNeed:      { safetyNeed: 0.10 },
+    } as Record<string, Record<string, number>>,
+  },
+  /**
+   * Temporal accumulation (EMA) over driver pressure across ticks.
+   * pressure[t] = alpha*pressure[t-1] + (1-alpha)*instant
+   * final = blend*pressure + (1-blend)*instant
+   */
+  accumulation: {
+    alpha: {
+      safetyNeed: 0.55,
+      controlNeed: 0.50,
+      statusNeed: 0.60,
+      affiliationNeed: 0.65,
+      resolveNeed: 0.45,
+    } as Record<string, number>,
+    blend: 0.35,
+  },
   /** Surprise feedback: how much belief:surprise:* atoms amplify needs. */
   surpriseFeedback: {
     /** Maximum total surprise boost across all features. */

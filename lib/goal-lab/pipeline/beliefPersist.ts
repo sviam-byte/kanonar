@@ -31,6 +31,8 @@ export type BeliefPersistInput = {
   goalEnergy: Record<string, number>;
   transition: TransitionSnapshotLite | null;
   prevBeliefAtoms?: ContextAtom[];
+  /** Driver pressure values (final drv:* magnitudes) to persist for next tick accumulation. */
+  driverPressure?: Record<string, number>;
 };
 
 export type BeliefPersistOutput = {
@@ -46,7 +48,7 @@ export type BeliefPersistOutput = {
 };
 
 export function buildBeliefPersistAtoms(input: BeliefPersistInput): BeliefPersistOutput {
-  const { selfId, tick, chosenAction, goalEnergy, transition, prevBeliefAtoms } = input;
+  const { selfId, tick, chosenAction, goalEnergy, transition, prevBeliefAtoms, driverPressure } = input;
   const beliefAtoms: ContextAtom[] = [];
   const surpriseAtoms: ContextAtom[] = [];
 
@@ -165,6 +167,32 @@ export function buildBeliefPersistAtoms(input: BeliefPersistInput): BeliefPersis
           },
         } as any));
       }
+    }
+  }
+
+
+  // 5) Persist driver pressure for S6 temporal accumulation in the next tick.
+  if (driverPressure) {
+    for (const [driverKey, value] of Object.entries(driverPressure)) {
+      const pressure = clamp01(Number(value));
+      beliefAtoms.push(normalizeAtom({
+        id: `belief:pressure:${driverKey}:${selfId}`,
+        ns: 'belief' as any,
+        kind: 'belief_driver_pressure',
+        origin: 'derived',
+        source: 'beliefPersist',
+        subject: selfId,
+        magnitude: pressure,
+        confidence: 0.9,
+        tags: ['belief', 'pressure', driverKey],
+        label: `pressure.${driverKey}:${Math.round(pressure * 100)}%`,
+        meta: { tick, driverKey, pressure },
+        trace: {
+          usedAtomIds: [],
+          notes: ['persisted S6 driver pressure for temporal accumulation'],
+          parts: { tick, driverKey, pressure },
+        },
+      } as any));
     }
   }
 
