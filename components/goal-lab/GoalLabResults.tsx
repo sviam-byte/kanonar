@@ -632,6 +632,8 @@ export const GoalLabResults: React.FC<Props> = ({
   const [isPreviewOpen, setPreviewOpen] = useState(false);
   const [activeTabKey, setActiveTabKey] = useState<string>('overview');
   const [selectedAtomId, setSelectedAtomId] = useState<string | null>(null);
+  /** Ring buffer of recent snapshots for DriverExplainPanel sparklines. */
+  const [tickHistory, setTickHistory] = useState<Array<{ tick: number; atoms: any[] }>>([]);
   const [devMode, setDevMode] = useState<boolean>(() => {
     try {
       return localStorage.getItem('goalLab.devMode') === '1';
@@ -820,6 +822,23 @@ export const GoalLabResults: React.FC<Props> = ({
         return Array.isArray(a) ? a : [];
     })();
 
+
+
+  // Keep a bounded tick history for S6 driver sparklines/explainability.
+  useEffect(() => {
+    const rawTick = (snapshotV1 as any)?.tick;
+    const tick = Number(rawTick);
+    const atomsForHistory = Array.isArray((snapshotV1 as any)?.atoms) ? (snapshotV1 as any).atoms : null;
+    if (!Number.isFinite(tick) || !atomsForHistory) return;
+
+    setTickHistory(prev => {
+      // Avoid duplicates when parent re-renders with the same snapshot/tick.
+      if (prev.length && prev[prev.length - 1]?.tick === tick) return prev;
+      const next = [...prev, { tick, atoms: atomsForHistory }];
+      if (next.length > 20) next.shift();
+      return next;
+    });
+  }, [snapshotV1]);
     const topAtoms = [...currentAtoms]
         .sort((a, b) => (b.magnitude ?? 0) - (a.magnitude ?? 0))
         .slice(0, 12);
@@ -1095,7 +1114,7 @@ export const GoalLabResults: React.FC<Props> = ({
       const selfId = (snapshotV1 as any)?.selfId || (context as any)?.agentId;
       return (
         <div className="absolute inset-0 overflow-y-auto custom-scrollbar p-4 pb-20">
-          <DriverExplainPanel selfId={selfId} atoms={currentAtoms as any} />
+          <DriverExplainPanel selfId={selfId} atoms={currentAtoms as any} history={tickHistory} />
         </div>
       );
     };

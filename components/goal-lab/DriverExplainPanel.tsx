@@ -16,7 +16,7 @@ import React, { useMemo, useState } from 'react';
 import { curve01Param, type CurveSpec } from '../../lib/utils/curves';
 import { clamp01 } from '../../lib/util/math';
 
-type AtomLike = { id?: string; magnitude?: number; trace?: { parts?: any } };
+type AtomLike = { id?: string; magnitude?: number; trace?: { parts?: Record<string, unknown> } };
 
 type Props = {
   selfId: string;
@@ -42,14 +42,14 @@ const DRIVER_COLORS: Record<string, string> = {
 };
 
 function getDriverAtoms(atoms: AtomLike[], selfId: string) {
-  const out: Record<string, { magnitude: number; parts: any }> = {};
+  const out: Record<string, { magnitude: number; parts: Record<string, any> }> = {};
   for (const a of atoms) {
     const id = String(a?.id || '');
     if (!id.startsWith('drv:') || !id.endsWith(`:${selfId}`)) continue;
     const key = id.split(':')[1];
     out[key] = {
       magnitude: clamp01(Number(a?.magnitude ?? 0)),
-      parts: a?.trace?.parts ?? {},
+      parts: (a?.trace?.parts as Record<string, any>) ?? {},
     };
   }
   return out;
@@ -79,14 +79,18 @@ const CurveChart: React.FC<{
       pts.push(`${toX(x).toFixed(1)},${toY(y).toFixed(1)}`);
     }
     return pts.join(' ');
-  }, [effectiveSpec, iW, iH]);
+  }, [effectiveSpec, iH, iW]);
 
   return (
     <svg width={width} height={height} className="bg-black/30 rounded">
+      {/* Grid */}
       <line x1={pad} y1={toY(0.5)} x2={width - pad} y2={toY(0.5)} stroke="#334155" strokeWidth={0.5} strokeDasharray="2,2" />
       <line x1={toX(0.5)} y1={pad} x2={toX(0.5)} y2={height - pad} stroke="#334155" strokeWidth={0.5} strokeDasharray="2,2" />
+      {/* Curve */}
       <polyline points={points} fill="none" stroke={color} strokeWidth={1.5} opacity={0.7} />
+      {/* Current point */}
       <circle cx={toX(rawValue)} cy={toY(shapedValue)} r={3} fill={color} />
+      {/* Projection lines */}
       <line x1={toX(rawValue)} y1={toY(0)} x2={toX(rawValue)} y2={toY(shapedValue)} stroke={color} strokeWidth={0.5} strokeDasharray="1,2" opacity={0.5} />
       <line x1={toX(0)} y1={toY(shapedValue)} x2={toX(rawValue)} y2={toY(shapedValue)} stroke={color} strokeWidth={0.5} strokeDasharray="1,2" opacity={0.5} />
     </svg>
@@ -125,11 +129,13 @@ const Sparkline: React.FC<{
   const pad = 2;
   const iW = width - pad * 2;
   const iH = height - pad * 2;
-  const pts = values.map((v, i) => {
-    const x = pad + (i / (values.length - 1)) * iW;
-    const y = pad + (1 - clamp01(v)) * iH;
-    return `${x.toFixed(1)},${y.toFixed(1)}`;
-  }).join(' ');
+  const pts = values
+    .map((v, i) => {
+      const x = pad + (i / (values.length - 1)) * iW;
+      const y = pad + (1 - clamp01(v)) * iH;
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    })
+    .join(' ');
 
   return (
     <svg width={width} height={height} className="inline-block">
@@ -160,6 +166,7 @@ export const DriverExplainPanel: React.FC<Props> = ({ selfId, atoms, history }) 
   return (
     <div className="space-y-1 font-mono text-xs">
       <div className="text-slate-400 text-[10px] uppercase tracking-widest mb-2">S6 Drivers — {selfId}</div>
+
       {driverKeys.map((key) => {
         const d = drivers[key];
         if (!d) return null;
@@ -169,33 +176,52 @@ export const DriverExplainPanel: React.FC<Props> = ({ selfId, atoms, history }) 
         const isExpanded = expanded === key;
 
         return (
-          <div key={key} className="border border-slate-800 rounded p-2 hover:border-slate-600 cursor-pointer" onClick={() => setExpanded(isExpanded ? null : key)}>
+          <div
+            key={key}
+            className="border border-slate-800 rounded p-2 hover:border-slate-600 cursor-pointer"
+            onClick={() => setExpanded(isExpanded ? null : key)}
+          >
+            {/* Header row */}
             <div className="flex items-center gap-2">
               <div className="w-2 h-2 rounded-full" style={{ backgroundColor: color }} />
               <div className="text-slate-300 w-28">{label}</div>
+              {/* Main bar */}
               <div className="flex-1 h-3 bg-slate-900 rounded overflow-hidden relative">
+                {/* Raw linear (dim) */}
                 {p.rawLinear != null && (
                   <div className="absolute inset-y-0 left-0 opacity-20 rounded" style={{ width: `${Math.round(clamp01(p.rawLinear) * 100)}%`, backgroundColor: color }} />
                 )}
+                {/* Final (bright) */}
                 <div className="absolute inset-y-0 left-0 rounded" style={{ width: `${Math.round(d.magnitude * 100)}%`, backgroundColor: color, opacity: 0.8 }} />
               </div>
               <div className="w-10 text-right tabular-nums text-slate-200">{Math.round(d.magnitude * 100)}%</div>
+              {/* Sparkline */}
               {historyMap[key] && <Sparkline values={historyMap[key]} color={color} />}
             </div>
 
+            {/* Expanded detail */}
             {isExpanded && (
               <div className="mt-2 ml-4 space-y-2 text-[10px] text-slate-400">
+                {/* Layer breakdown */}
                 <div className="grid grid-cols-2 gap-2">
                   <div>
                     <div className="text-slate-500 mb-1">Кривая отклика</div>
                     <CurveChart spec={p.curveSpec} rawValue={clamp01(p.rawLinear ?? d.magnitude)} shapedValue={clamp01(p.shaped ?? d.magnitude)} color={color} />
                     <div className="mt-1">raw: {(p.rawLinear ?? 0).toFixed(2)} → shaped: {(p.shaped ?? d.magnitude).toFixed(2)}</div>
+                    {p.curveSpec && (p.curveSpec as CurveSpec).type !== 'linear' && (
+                      <div className="text-slate-500">
+                        {(p.curveSpec as any).type}
+                        {(p.curveSpec as any).center != null && ` center=${(p.curveSpec as any).center}`}
+                        {(p.curveSpec as any).slope != null && ` slope=${(p.curveSpec as any).slope}`}
+                        {(p.curveSpec as any).k != null && ` k=${(p.curveSpec as any).k}`}
+                      </div>
+                    )}
                   </div>
 
                   <div>
                     <div className="text-slate-500 mb-1">Подавление</div>
-                    <InhibitionView trace={p.inhibition} />
-                    {p.postInhibition != null && <div className="mt-1">после: {p.postInhibition.toFixed(2)}</div>}
+                    <InhibitionView trace={p.inhibition as any} />
+                    {p.postInhibition != null && <div className="mt-1">после: {Number(p.postInhibition).toFixed(2)}</div>}
                   </div>
                 </div>
 
@@ -204,9 +230,9 @@ export const DriverExplainPanel: React.FC<Props> = ({ selfId, atoms, history }) 
                     <div className="text-slate-500 mb-1">Накопление (EMA)</div>
                     {p.accumulation ? (
                       <>
-                        <div>prev: {p.accumulation.prevPressure?.toFixed(2) ?? '?'}</div>
-                        <div>alpha: {p.accumulation.alpha?.toFixed(2) ?? '?'}</div>
-                        <div>blended: {p.accumulation.blended?.toFixed(2) ?? '?'}</div>
+                        <div>prev: {(p.accumulation as any).prevPressure?.toFixed(2) ?? '?'}</div>
+                        <div>alpha: {(p.accumulation as any).alpha?.toFixed(2) ?? '?'}</div>
+                        <div>blended: {(p.accumulation as any).blended?.toFixed(2) ?? '?'}</div>
                       </>
                     ) : (
                       <span className="text-slate-600">нет данных</span>
@@ -215,14 +241,31 @@ export const DriverExplainPanel: React.FC<Props> = ({ selfId, atoms, history }) 
 
                   <div>
                     <div className="text-slate-500 mb-1">Surprise boost</div>
-                    <div>+{((p.surpriseBoost ?? 0) * 100).toFixed(0)}%</div>
+                    <div>+{((Number(p.surpriseBoost ?? 0)) * 100).toFixed(0)}%</div>
                   </div>
+                </div>
+
+                {/* Input signals */}
+                <div className="text-slate-600 border-t border-slate-800 pt-1 mt-1">
+                  Входы:{' '}
+                  {Object.entries(p)
+                    .filter(([k]) => !['rawLinear', 'curveSpec', 'shaped', 'inhibition', 'postInhibition', 'accumulation', 'surpriseBoost'].includes(k))
+                    .map(([k, v]) => `${k}=${typeof v === 'number' ? v.toFixed(2) : JSON.stringify(v)}`)
+                    .join(', ')}
                 </div>
               </div>
             )}
           </div>
         );
       })}
+
+      {/* Legend */}
+      <div className="text-[9px] text-slate-600 mt-2 flex gap-3">
+        <span>■ тусклый = raw linear</span>
+        <span>■ яркий = final</span>
+        <span>↗ = history</span>
+        <span>клик = детали</span>
+      </div>
     </div>
   );
 };
