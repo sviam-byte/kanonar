@@ -1257,6 +1257,12 @@ export interface AgentState extends CharacterEntity {
      *  - veto disables a goal by forcing its logit to a large negative value
      */
     goalTuning?: GoalTuningConfig;
+    /** Per-agent driver response curves. Overrides FC.drivers.curves. */
+    driverCurves?: Partial<Record<string, import('./lib/utils/curves').CurveSpec>>;
+    /** Per-agent cross-inhibition matrix overrides (source -> target -> weight). */
+    inhibitionOverrides?: Record<string, Record<string, number>>;
+    /** Per-agent accumulation inertia overrides (driverKey -> alpha). */
+    driverInertia?: Partial<Record<string, number>>;
     contextGoals?: any[]; // AgentGoalState[] | ContextGoal[]
     actionProfile?: AgentActionProfile;
     psych?: AgentPsychState;

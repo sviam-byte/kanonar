@@ -95,6 +95,27 @@ Dependencies:
 - `belief:surprise:*` atoms (ns: 'belief', persisted in beliefPersist output)
 - `FC.drivers.surpriseFeedback` config section
 
+### S6 additions (v29+ driver physics)
+
+Driver derivation now uses a 5-step chain:
+`raw linear -> curve shaping -> cross-inhibition -> temporal accumulation -> surprise boost -> clamp01`.
+
+New knobs (all in `FC.drivers`):
+- `curves`: per-driver `CurveSpec` (default linear identity; agent override: `agent.driverCurves`)
+- `inhibition`: lateral suppression matrix (`threshold`, `maxSuppression`, `matrix`; agent override: `agent.inhibitionOverrides`)
+- `accumulation`: EMA pressure memory (`alpha`, `blend`; agent override: `agent.driverInertia`)
+
+Persistence link:
+- `beliefPersist` now stores `belief:pressure:<driverKey>:<selfId>` atoms from current `drv:*` magnitudes.
+- Next tick S6 reads these atoms to compute accumulation pressure before surprise boost.
+
+Trace contract:
+- each `drv:*` atom writes intermediate values in `trace.parts`:
+  - `rawLinear`, `curveSpec`, `shaped`
+  - `inhibition`, `postInhibition`
+  - `accumulation`
+  - `surpriseBoost`
+
 ## S7 — Goals + Planning
 
 Inputs:

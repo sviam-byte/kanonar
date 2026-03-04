@@ -34,6 +34,7 @@ import { AtomInspector } from './AtomInspector';
 import { EmotionExplainPanel } from './EmotionExplainPanel';
 import { PipelinePanel } from './PipelinePanel';
 import { GoalEnergyHistoryPanel } from './GoalEnergyHistoryPanel';
+import { DriverExplainPanel } from './DriverExplainPanel';
 import { CurvePreview } from './CurvePreview';
 import type { CurvePreset } from '../../lib/utils/curves';
 import { materializeStageAtoms } from './materializePipeline';
@@ -631,6 +632,8 @@ export const GoalLabResults: React.FC<Props> = ({
   const [isPreviewOpen, setPreviewOpen] = useState(false);
   const [activeTabKey, setActiveTabKey] = useState<string>('overview');
   const [selectedAtomId, setSelectedAtomId] = useState<string | null>(null);
+  /** Ring buffer of recent snapshots for DriverExplainPanel sparklines. */
+  const [tickHistory, setTickHistory] = useState<Array<{ tick: number; atoms: any[] }>>([]);
   const [devMode, setDevMode] = useState<boolean>(() => {
     try {
       return localStorage.getItem('goalLab.devMode') === '1';
@@ -819,6 +822,23 @@ export const GoalLabResults: React.FC<Props> = ({
         return Array.isArray(a) ? a : [];
     })();
 
+
+
+  // Keep a bounded tick history for S6 driver sparklines/explainability.
+  useEffect(() => {
+    const rawTick = (snapshotV1 as any)?.tick;
+    const tick = Number(rawTick);
+    const atomsForHistory = Array.isArray((snapshotV1 as any)?.atoms) ? (snapshotV1 as any).atoms : null;
+    if (!Number.isFinite(tick) || !atomsForHistory) return;
+
+    setTickHistory(prev => {
+      // Avoid duplicates when parent re-renders with the same snapshot/tick.
+      if (prev.length && prev[prev.length - 1]?.tick === tick) return prev;
+      const next = [...prev, { tick, atoms: atomsForHistory }];
+      if (next.length > 20) next.shift();
+      return next;
+    });
+  }, [snapshotV1]);
     const topAtoms = [...currentAtoms]
         .sort((a, b) => (b.magnitude ?? 0) - (a.magnitude ?? 0))
         .slice(0, 12);
@@ -1085,6 +1105,16 @@ export const GoalLabResults: React.FC<Props> = ({
             manualAtoms={manualAtoms ?? []}
             onChangeManualAtoms={onChangeManualAtoms}
           />
+        </div>
+      );
+    };
+
+
+    const DriverExplainTab = () => {
+      const selfId = (snapshotV1 as any)?.selfId || (context as any)?.agentId;
+      return (
+        <div className="absolute inset-0 overflow-y-auto custom-scrollbar p-4 pb-20">
+          <DriverExplainPanel selfId={selfId} atoms={currentAtoms as any} history={tickHistory} />
         </div>
       );
     };
@@ -1494,6 +1524,7 @@ export const GoalLabResults: React.FC<Props> = ({
       { key: 'analysis', label: 'Analysis', render: () => <AnalysisTab /> },
       { key: 'emotions', label: 'Emotions', render: () => <EmotionsTab /> },
       { key: 'emotion-explain', label: 'EmotionExplain', render: () => <EmotionExplainTab /> },
+      { key: 'driver-explain', label: 'DriverExplain', render: () => <DriverExplainTab /> },
       { key: 'threat', label: 'Threat', render: () => <ThreatTab /> },
       { key: 'tom', label: 'ToM', render: () => <ToMTab /> },
       { key: 'decision', label: 'Decision', render: () => <DecisionTab /> },
@@ -1528,7 +1559,7 @@ export const GoalLabResults: React.FC<Props> = ({
 
     const TAB_GROUPS: TabGroup[] = [
       { label: 'Overview', key: 'overview' },
-      { label: 'Emotions', key: null, children: ['emotions', 'emotion-explain'] },
+      { label: 'Emotions', key: null, children: ['emotions', 'emotion-explain', 'driver-explain'] },
       { label: 'World', key: null, children: ['threat', 'tom'] },
       { label: 'Decision', key: null, children: ['decision', 'decision-graph', 'goal-graph'] },
       { label: 'Analysis', key: 'analysis' },

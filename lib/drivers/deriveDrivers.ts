@@ -4,6 +4,7 @@ import { getCtx } from '../context/layers';
 import { clamp01 } from '../util/math';
 import { getMag } from '../util/atoms';
 import { FC } from '../config/formulaConfig';
+import { curve01Param, type CurveSpec } from '../utils/curves';
 
 function pickAnyId(atoms: ContextAtom[], idPrefix: string): string | null {
   for (const a of atoms) {
@@ -16,6 +17,12 @@ function pickAnyId(atoms: ContextAtom[], idPrefix: string): string | null {
 export function deriveDriversAtoms(input: {
   selfId: string;
   atoms: ContextAtom[];
+  /** Per-agent curve overrides. Merged over FC.drivers.curves. */
+  driverCurves?: Partial<Record<string, CurveSpec>>;
+  /** Per-agent inhibition matrix overrides (source -> target -> weight). */
+  inhibitionOverrides?: Record<string, Record<string, number>>;
+  /** Per-agent accumulation inertia overrides (driverKey -> alpha). */
+  driverInertia?: Partial<Record<string, number>>;
 }): { atoms: ContextAtom[] } {
   const { selfId, atoms } = input;
 
@@ -49,6 +56,77 @@ export function deriveDriversAtoms(input: {
   const affiliationNeed = clamp01(D.affiliationNeed.careW * care + D.affiliationNeed.antiThreatW * (1 - threat));
   const resolveNeed = clamp01(D.resolveNeed.angerW * anger + D.resolveNeed.threatW * threat);
 
+  // Phase transition: apply nonlinear response curves after linear composition.
+  const defaultCurves = D.curves ?? {};
+  const overrideCurves = input.driverCurves ?? {};
+  const getCurve = (key: string): CurveSpec =>
+    overrideCurves[key] ?? defaultCurves[key] ?? { type: 'linear' };
+
+  const rawNeeds = { safetyNeed, controlNeed, statusNeed, affiliationNeed, resolveNeed };
+  const shaped: Record<string, number> = {
+    safetyNeed: curve01Param(safetyNeed, getCurve('safetyNeed')),
+    controlNeed: curve01Param(controlNeed, getCurve('controlNeed')),
+    statusNeed: curve01Param(statusNeed, getCurve('statusNeed')),
+    affiliationNeed: curve01Param(affiliationNeed, getCurve('affiliationNeed')),
+    resolveNeed: curve01Param(resolveNeed, getCurve('resolveNeed')),
+  };
+
+  // Cross-inhibition: lateral suppression between needs after shaping.
+  const INH = D.inhibition ?? { threshold: 0.3, maxSuppression: 0.6, matrix: {} };
+  const driverKeys = ['safetyNeed', 'controlNeed', 'statusNeed', 'affiliationNeed', 'resolveNeed'] as const;
+
+  const inhMatrix: Record<string, Record<string, number>> = { ...((INH as any).matrix ?? {}) };
+  const agentInh = input.inhibitionOverrides;
+  if (agentInh) {
+    for (const [src, targets] of Object.entries(agentInh)) {
+      inhMatrix[src] = { ...(inhMatrix[src] ?? {}), ...(targets as Record<string, number>) };
+    }
+  }
+
+  const inhibited: Record<string, number> = {};
+  const inhibitionTrace: Record<string, { suppression: number; sources: Record<string, number> }> = {};
+
+  for (const target of driverKeys) {
+    let totalSuppression = 0;
+    const sources: Record<string, number> = {};
+    for (const source of driverKeys) {
+      if (source === target) continue;
+      const excess = Math.max(0, (shaped[source] ?? 0) - INH.threshold);
+      if (excess <= 0) continue;
+      const weight = (inhMatrix[source] ?? {})[target] ?? 0;
+      if (weight <= 0) continue;
+      const contribution = excess * weight;
+      totalSuppression += contribution;
+      sources[source] = contribution;
+    }
+    totalSuppression = Math.min(INH.maxSuppression, totalSuppression);
+    inhibited[target] = clamp01((shaped[target] ?? 0) * (1 - totalSuppression));
+    inhibitionTrace[target] = { suppression: totalSuppression, sources };
+  }
+
+  // Temporal accumulation: keep pressure memory in belief:pressure:* atoms.
+  const ACC = D.accumulation ?? { alpha: {}, blend: 0 };
+  const blend = clamp01((ACC as any).blend ?? 0);
+  const agentInertia = input.driverInertia ?? {};
+
+  const accumulated: Record<string, number> = {};
+  const accTrace: Record<string, { prevPressure: number; alpha: number; instant: number; blended: number }> = {};
+  for (const key of driverKeys) {
+    const instant = inhibited[key] ?? 0;
+    const prevAtomId = `belief:pressure:${key}:${selfId}`;
+    let prevPressure = 0;
+    for (const a of atoms) {
+      if (String((a as any)?.id) === prevAtomId) {
+        prevPressure = clamp01(Number((a as any)?.magnitude ?? 0));
+        break;
+      }
+    }
+    const alpha = clamp01((agentInertia as any)[key] ?? ((ACC as any).alpha ?? {})[key] ?? 0.5);
+    const pressure = clamp01(alpha * prevPressure + (1 - alpha) * instant);
+    accumulated[key] = clamp01(blend * pressure + (1 - blend) * instant);
+    accTrace[key] = { prevPressure, alpha, instant, blended: accumulated[key] };
+  }
+
   // Surprise feedback closes the belief loop: prediction error in S0 can shape S6 needs.
   const SF = D.surpriseFeedback;
   const surpriseBoosts: Record<string, number> = {
@@ -75,11 +153,11 @@ export function deriveDriversAtoms(input: {
   }
 
   const cap = SF.maxBoost;
-  const safetyNeedFinal = clamp01(safetyNeed + Math.min(cap, surpriseBoosts.safetyNeed ?? 0));
-  const controlNeedFinal = clamp01(controlNeed + Math.min(cap, surpriseBoosts.controlNeed ?? 0));
-  const statusNeedFinal = clamp01(statusNeed + Math.min(cap, surpriseBoosts.statusNeed ?? 0));
-  const affiliationNeedFinal = clamp01(affiliationNeed + Math.min(cap, surpriseBoosts.affiliationNeed ?? 0));
-  const resolveNeedFinal = clamp01(resolveNeed + Math.min(cap, surpriseBoosts.resolveNeed ?? 0));
+  const safetyNeedFinal = clamp01((accumulated.safetyNeed ?? 0) + Math.min(cap, surpriseBoosts.safetyNeed ?? 0));
+  const controlNeedFinal = clamp01((accumulated.controlNeed ?? 0) + Math.min(cap, surpriseBoosts.controlNeed ?? 0));
+  const statusNeedFinal = clamp01((accumulated.statusNeed ?? 0) + Math.min(cap, surpriseBoosts.statusNeed ?? 0));
+  const affiliationNeedFinal = clamp01((accumulated.affiliationNeed ?? 0) + Math.min(cap, surpriseBoosts.affiliationNeed ?? 0));
+  const resolveNeedFinal = clamp01((accumulated.resolveNeed ?? 0) + Math.min(cap, surpriseBoosts.resolveNeed ?? 0));
 
   const out: ContextAtom[] = [];
   const mk = (id: string, magnitude: number, used: string[], parts: any, label: string) =>
@@ -100,35 +178,80 @@ export function deriveDriversAtoms(input: {
     `drv:safetyNeed:${selfId}`,
     safetyNeedFinal,
     [danger.id || '', emoFearId || ''],
-    { threat, threatLayer: danger.layer, fear, surpriseBoost: surpriseBoosts.safetyNeed ?? 0 },
+    {
+      threat, threatLayer: danger.layer, fear,
+      rawLinear: rawNeeds.safetyNeed,
+      curveSpec: getCurve('safetyNeed'),
+      shaped: shaped.safetyNeed,
+      inhibition: inhibitionTrace.safetyNeed,
+      postInhibition: inhibited.safetyNeed,
+      accumulation: accTrace.safetyNeed,
+      surpriseBoost: surpriseBoosts.safetyNeed ?? 0,
+    },
     'Safety need'
   ));
   out.push(mk(
     `drv:controlNeed:${selfId}`,
     controlNeedFinal,
     [controlCtx.id || '', unc.id || ''],
-    { control, controlLayer: controlCtx.layer, uncertainty, uncertaintyLayer: unc.layer, surpriseBoost: surpriseBoosts.controlNeed ?? 0 },
+    {
+      control, controlLayer: controlCtx.layer, uncertainty, uncertaintyLayer: unc.layer,
+      rawLinear: rawNeeds.controlNeed,
+      curveSpec: getCurve('controlNeed'),
+      shaped: shaped.controlNeed,
+      inhibition: inhibitionTrace.controlNeed,
+      postInhibition: inhibited.controlNeed,
+      accumulation: accTrace.controlNeed,
+      surpriseBoost: surpriseBoosts.controlNeed ?? 0,
+    },
     'Control need'
   ));
   out.push(mk(
     `drv:statusNeed:${selfId}`,
     statusNeedFinal,
     [emoShameId || '', publicness.id || '', normP.id || ''],
-    { shame, publicness: pub, publicnessLayer: publicness.layer, normPressure: norm, normPressureLayer: normP.layer, surpriseBoost: surpriseBoosts.statusNeed ?? 0 },
+    {
+      shame, publicness: pub, publicnessLayer: publicness.layer, normPressure: norm, normPressureLayer: normP.layer,
+      rawLinear: rawNeeds.statusNeed,
+      curveSpec: getCurve('statusNeed'),
+      shaped: shaped.statusNeed,
+      inhibition: inhibitionTrace.statusNeed,
+      postInhibition: inhibited.statusNeed,
+      accumulation: accTrace.statusNeed,
+      surpriseBoost: surpriseBoosts.statusNeed ?? 0,
+    },
     'Status need'
   ));
   out.push(mk(
     `drv:affiliationNeed:${selfId}`,
     affiliationNeedFinal,
     [emoCareId || '', danger.id || ''],
-    { care, threat, threatLayer: danger.layer, surpriseBoost: surpriseBoosts.affiliationNeed ?? 0 },
+    {
+      care, threat, threatLayer: danger.layer,
+      rawLinear: rawNeeds.affiliationNeed,
+      curveSpec: getCurve('affiliationNeed'),
+      shaped: shaped.affiliationNeed,
+      inhibition: inhibitionTrace.affiliationNeed,
+      postInhibition: inhibited.affiliationNeed,
+      accumulation: accTrace.affiliationNeed,
+      surpriseBoost: surpriseBoosts.affiliationNeed ?? 0,
+    },
     'Affiliation need'
   ));
   out.push(mk(
     `drv:resolveNeed:${selfId}`,
     resolveNeedFinal,
     [emoAngerId || '', danger.id || ''],
-    { anger, threat, threatLayer: danger.layer, surpriseBoost: surpriseBoosts.resolveNeed ?? 0 },
+    {
+      anger, threat, threatLayer: danger.layer,
+      rawLinear: rawNeeds.resolveNeed,
+      curveSpec: getCurve('resolveNeed'),
+      shaped: shaped.resolveNeed,
+      inhibition: inhibitionTrace.resolveNeed,
+      postInhibition: inhibited.resolveNeed,
+      accumulation: accTrace.resolveNeed,
+      surpriseBoost: surpriseBoosts.resolveNeed ?? 0,
+    },
     'Resolve need'
   ));
 

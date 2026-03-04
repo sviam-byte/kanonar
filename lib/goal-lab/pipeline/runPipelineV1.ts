@@ -38,6 +38,7 @@ import { scoreAction } from '../../decision/scoreAction';
 import { buildActionCandidates } from '../../decision/actionCandidateUtils';
 import { arr } from '../../utils/arr';
 import { uniq as uniqStrings } from '../../util/collections';
+import { clamp01 } from '../../util/math';
 import { buildIntentPreview } from './intentPreview';
 import { makeSimStep, type SimStep } from '../../core/simStep';
 import { observeLite, type ObserveLiteParams } from './observeLite';
@@ -493,7 +494,16 @@ export function runGoalLabPipelineV1(input: {
   const mindAtoms = arr(atomizeContextMindMetrics({ selfId, metrics: scoreboard as any, atoms })).map(normalizeAtom);
   const mS6a = mergeAtomsPreferNewer(atoms, mindAtoms);
 
-  const drv = deriveDriversAtoms({ selfId, atoms: mS6a.atoms });
+  const driverCurves = (agent as any)?.driverCurves;
+  const inhibitionOverrides = (agent as any)?.inhibitionOverrides;
+  const driverInertia = (agent as any)?.driverInertia;
+  const drv = deriveDriversAtoms({
+    selfId,
+    atoms: mS6a.atoms,
+    ...(driverCurves ? { driverCurves } : {}),
+    ...(inhibitionOverrides ? { inhibitionOverrides } : {}),
+    ...(driverInertia ? { driverInertia } : {}),
+  });
   const drvAtoms = arr((drv as any)?.atoms).map(normalizeAtom);
   const mS6b = mergeAtomsPreferNewer(mS6a.atoms, drvAtoms);
 
@@ -956,6 +966,13 @@ export function runGoalLabPipelineV1(input: {
 
     // --- Belief persist: close the POMDP feedback loop ---
     // Caller MUST write beliefPersistResult.beliefAtoms to agent.memory.beliefAtoms.
+    const driverPressure: Record<string, number> = {};
+    for (const a of drvAtoms) {
+      const id = String((a as any)?.id || '');
+      const m = id.match(/^drv:(\w+):/);
+      if (m) driverPressure[m[1]] = clamp01(Number((a as any)?.magnitude ?? 0));
+    }
+
     beliefPersistResult = buildBeliefPersistAtoms({
       selfId,
       tick,
@@ -968,6 +985,7 @@ export function runGoalLabPipelineV1(input: {
       goalEnergy,
       transition: transitionSnapshot,
       prevBeliefAtoms: arr((agent as any)?.memory?.beliefAtoms),
+      driverPressure,
     });
 
     // Inject surprise atoms into the current frame for console visibility.
