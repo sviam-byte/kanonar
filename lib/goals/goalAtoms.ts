@@ -258,6 +258,7 @@ export function deriveGoalAtoms(selfId: string, atoms: ContextAtom[], opts?: { t
   const drvControl = getAny(atoms, [`drv:controlNeed:${selfId}`, `drv:control:${selfId}`], NaN);
   const drvAff = getAny(atoms, [`drv:affiliationNeed:${selfId}`, `drv:affiliation:${selfId}`], NaN);
   const drvStatus = getAny(atoms, [`drv:statusNeed:${selfId}`, `drv:status:${selfId}`], NaN);
+  const drvResolve = getAny(atoms, [`drv:resolveNeed:${selfId}`, `drv:resolve:${selfId}`], NaN);
   const drvRest = getAny(atoms, [`drv:restNeed:${selfId}`, `drv:rest:${selfId}`], NaN);
   const drvCur = getAny(atoms, [`drv:curiosityNeed:${selfId}`, `drv:curiosity:${selfId}`], NaN);
 
@@ -310,37 +311,47 @@ export function deriveGoalAtoms(selfId: string, atoms: ContextAtom[], opts?: { t
 
   const ecology: { domain: GoalDomain; v: number; used: string[]; parts: any }[] = [];
 
-  // Safety: threat + drvSafety (if exists) blended with lifeSafety.
+  // Safety: threat + drvSafety, dampened by resolve (fight > flight).
   {
     const { ctxWeight, drvWeight, baseWeight, lifeWeight } = FC.goal.safety;
     const base = clamp01(ctxWeight * dangerW + drvWeight * (Number.isFinite(drvSafety) ? drvSafety : 0));
-    const v = clamp01(baseWeight * base + lifeWeight * lifeSafety);
+    const resolveVal = Number.isFinite(drvResolve) ? clamp01(drvResolve) : 0;
+    const resolveMod = FC.goal.resolveModulation ?? { safetyDampen: 0, controlBoost: 0 };
+    const dampened = clamp01(base * (1 - resolveMod.safetyDampen * resolveVal));
+    const v = clamp01(baseWeight * dampened + lifeWeight * lifeSafety);
     ecology.push({
       domain: 'safety',
       v,
-      used: [...usedCommon, `drv:safetyNeed:${selfId}`, `goal:lifeDomain:safety:${selfId}`],
+      used: [...usedCommon, `drv:safetyNeed:${selfId}`, `drv:resolveNeed:${selfId}`, `goal:lifeDomain:safety:${selfId}`],
       parts: {
         danger: danger.magnitude,
         dangerW,
         prioDanger,
         dangerLayer: danger.layer,
         drvSafety: Number.isFinite(drvSafety) ? drvSafety : null,
+        drvResolve: Number.isFinite(drvResolve) ? drvResolve : null,
+        resolveVal,
+        resolveDampen: resolveMod.safetyDampen * resolveVal,
         lifeSafety,
-        base
+        baseBeforeResolve: base,
+        base: dampened
       }
     });
   }
 
-  // Control: (1-control) + drvControl
+  // Control: (1-control) + drvControl, boosted by resolve (assertiveness).
   {
     const lack = clamp01(1 - controlW);
     const { ctxWeight, drvWeight, baseWeight, lifeWeight } = FC.goal.control;
     const base = clamp01(ctxWeight * lack + drvWeight * (Number.isFinite(drvControl) ? drvControl : 0));
-    const v = clamp01(baseWeight * base + lifeWeight * lifeOrder);
+    const resolveVal = Number.isFinite(drvResolve) ? clamp01(drvResolve) : 0;
+    const resolveMod = FC.goal.resolveModulation ?? { safetyDampen: 0, controlBoost: 0 };
+    const boosted = clamp01(base + resolveMod.controlBoost * resolveVal);
+    const v = clamp01(baseWeight * boosted + lifeWeight * lifeOrder);
     ecology.push({
       domain: 'control',
       v,
-      used: [...usedCommon, `drv:controlNeed:${selfId}`, `goal:lifeDomain:order:${selfId}`],
+      used: [...usedCommon, `drv:controlNeed:${selfId}`, `drv:resolveNeed:${selfId}`, `goal:lifeDomain:order:${selfId}`],
       parts: {
         lackControl: lack,
         control: controlCtx.magnitude,
@@ -348,8 +359,12 @@ export function deriveGoalAtoms(selfId: string, atoms: ContextAtom[], opts?: { t
         prioControl,
         controlLayer: controlCtx.layer,
         drvControl: Number.isFinite(drvControl) ? drvControl : null,
+        drvResolve: Number.isFinite(drvResolve) ? drvResolve : null,
+        resolveVal,
+        resolveBoost: resolveMod.controlBoost * resolveVal,
         lifeOrder,
-        base
+        baseBeforeResolve: base,
+        base: boosted
       }
     });
   }

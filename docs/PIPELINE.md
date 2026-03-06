@@ -100,9 +100,14 @@ Dependencies:
 Driver derivation now uses a 5-step chain:
 `raw linear -> curve shaping -> cross-inhibition -> temporal accumulation -> surprise boost -> clamp01`.
 
+S6 emits seven drivers: `safetyNeed`, `controlNeed`, `statusNeed`, `affiliationNeed`,
+`resolveNeed`, `restNeed`, `curiosityNeed`. `restNeed` and `curiosityNeed` are NaN-safe and
+default to 0 when fatigue/stress or uncertainty/fear inputs are missing.
+
 New knobs (all in `FC.drivers`):
 - `curves`: per-driver `CurveSpec` (default linear identity; agent override: `agent.driverCurves`)
-- `inhibition`: lateral suppression matrix (`threshold`, `maxSuppression`, `matrix`; agent override: `agent.inhibitionOverrides`)
+- `inhibition`: lateral suppression matrix (`threshold`, `maxSuppression`, `matrix`; agent override: `agent.inhibitionOverrides`).
+  Important mapping: curiosity suppression uses `curiosityNeed` key (not `exploration`).
 - `accumulation`: EMA pressure memory (`alpha`, `blend`; agent override: `agent.driverInertia`)
 
 Persistence link:
@@ -142,6 +147,15 @@ Forbidden:
   
   Applied AFTER energy refinement, BEFORE activation hysteresis.
   Default: no tuning applied (identity transform).
+
+
+### S7 additions (v30+ resolve bridge)
+
+- `drv:resolveNeed:*` now modulates S7 domain scores:
+  - safety dampening: `safety *= (1 - FC.goal.resolveModulation.safetyDampen * resolve)`
+  - control boost: `control += FC.goal.resolveModulation.controlBoost * resolve`
+- Modulation is traced in goal parts (`baseBeforeResolve`, `resolveDampen` / `resolveBoost`).
+- Defaults are conservative to preserve legacy behavior when resolve is low.
 
 ## S8 — Decision / Actions
 

@@ -48,6 +48,16 @@ export function deriveDriversAtoms(input: {
   const care = emoCareId ? getMag(atoms, emoCareId) ?? 0 : 0;
   const anger = emoAngerId ? getMag(atoms, emoAngerId) ?? 0 : 0;
 
+  // Body signals for restNeed with NaN-safe fallbacks.
+  const fatigueId = pickAnyId(atoms, `body:fatigue:${selfId}`)
+    || pickAnyId(atoms, `cap:fatigue:${selfId}`)
+    || pickAnyId(atoms, `world:body:fatigue:${selfId}`);
+  const stressId = pickAnyId(atoms, `body:stress:${selfId}`)
+    || pickAnyId(atoms, `cap:stress:${selfId}`);
+
+  const fatigue = fatigueId ? getMag(atoms, fatigueId) ?? 0 : 0;
+  const stress = stressId ? getMag(atoms, stressId) ?? 0 : 0;
+
   // Driver formulas are now config-backed to avoid hardcoded drift across modules.
   const D = FC.drivers;
   const safetyNeed = clamp01(D.safetyNeed.threatW * threat + D.safetyNeed.fearW * fear);
@@ -55,6 +65,12 @@ export function deriveDriversAtoms(input: {
   const statusNeed = clamp01(D.statusNeed.shameW * shame + D.statusNeed.publicnessW * pub + D.statusNeed.normW * norm);
   const affiliationNeed = clamp01(D.affiliationNeed.careW * care + D.affiliationNeed.antiThreatW * (1 - threat));
   const resolveNeed = clamp01(D.resolveNeed.angerW * anger + D.resolveNeed.threatW * threat);
+  const restNeed = clamp01(D.restNeed.fatigueW * fatigue + D.restNeed.stressW * stress);
+  const curiosityNeed = clamp01(
+    D.curiosityNeed.uncertaintyW * uncertainty
+    + D.curiosityNeed.antiThreatW * (1 - threat)
+    + D.curiosityNeed.antiFearW * (1 - fear)
+  );
 
   // Phase transition: apply nonlinear response curves after linear composition.
   const defaultCurves = D.curves ?? {};
@@ -62,18 +78,20 @@ export function deriveDriversAtoms(input: {
   const getCurve = (key: string): CurveSpec =>
     overrideCurves[key] ?? defaultCurves[key] ?? { type: 'linear' };
 
-  const rawNeeds = { safetyNeed, controlNeed, statusNeed, affiliationNeed, resolveNeed };
+  const rawNeeds = { safetyNeed, controlNeed, statusNeed, affiliationNeed, resolveNeed, restNeed, curiosityNeed };
   const shaped: Record<string, number> = {
     safetyNeed: curve01Param(safetyNeed, getCurve('safetyNeed')),
     controlNeed: curve01Param(controlNeed, getCurve('controlNeed')),
     statusNeed: curve01Param(statusNeed, getCurve('statusNeed')),
     affiliationNeed: curve01Param(affiliationNeed, getCurve('affiliationNeed')),
     resolveNeed: curve01Param(resolveNeed, getCurve('resolveNeed')),
+    restNeed: curve01Param(restNeed, getCurve('restNeed')),
+    curiosityNeed: curve01Param(curiosityNeed, getCurve('curiosityNeed')),
   };
 
   // Cross-inhibition: lateral suppression between needs after shaping.
   const INH = D.inhibition ?? { threshold: 0.3, maxSuppression: 0.6, matrix: {} };
-  const driverKeys = ['safetyNeed', 'controlNeed', 'statusNeed', 'affiliationNeed', 'resolveNeed'] as const;
+  const driverKeys = ['safetyNeed', 'controlNeed', 'statusNeed', 'affiliationNeed', 'resolveNeed', 'restNeed', 'curiosityNeed'] as const;
 
   const inhMatrix: Record<string, Record<string, number>> = { ...((INH as any).matrix ?? {}) };
   const agentInh = input.inhibitionOverrides;
@@ -135,6 +153,8 @@ export function deriveDriversAtoms(input: {
     statusNeed: 0,
     affiliationNeed: 0,
     resolveNeed: 0,
+    restNeed: 0,
+    curiosityNeed: 0,
   };
 
   for (const a of atoms) {
@@ -158,6 +178,8 @@ export function deriveDriversAtoms(input: {
   const statusNeedFinal = clamp01((accumulated.statusNeed ?? 0) + Math.min(cap, surpriseBoosts.statusNeed ?? 0));
   const affiliationNeedFinal = clamp01((accumulated.affiliationNeed ?? 0) + Math.min(cap, surpriseBoosts.affiliationNeed ?? 0));
   const resolveNeedFinal = clamp01((accumulated.resolveNeed ?? 0) + Math.min(cap, surpriseBoosts.resolveNeed ?? 0));
+  const restNeedFinal = clamp01((accumulated.restNeed ?? 0) + Math.min(cap, surpriseBoosts.restNeed ?? 0));
+  const curiosityNeedFinal = clamp01((accumulated.curiosityNeed ?? 0) + Math.min(cap, surpriseBoosts.curiosityNeed ?? 0));
 
   const out: ContextAtom[] = [];
   const mk = (id: string, magnitude: number, used: string[], parts: any, label: string) =>
@@ -253,6 +275,38 @@ export function deriveDriversAtoms(input: {
       surpriseBoost: surpriseBoosts.resolveNeed ?? 0,
     },
     'Resolve need'
+  ));
+  out.push(mk(
+    `drv:restNeed:${selfId}`,
+    restNeedFinal,
+    [fatigueId || '', stressId || ''],
+    {
+      fatigue, stress,
+      rawLinear: rawNeeds.restNeed,
+      curveSpec: getCurve('restNeed'),
+      shaped: shaped.restNeed,
+      inhibition: inhibitionTrace.restNeed,
+      postInhibition: inhibited.restNeed,
+      accumulation: accTrace.restNeed,
+      surpriseBoost: surpriseBoosts.restNeed ?? 0,
+    },
+    'Rest need'
+  ));
+  out.push(mk(
+    `drv:curiosityNeed:${selfId}`,
+    curiosityNeedFinal,
+    [unc.id || '', danger.id || '', emoFearId || ''],
+    {
+      uncertainty, threat, fear,
+      rawLinear: rawNeeds.curiosityNeed,
+      curveSpec: getCurve('curiosityNeed'),
+      shaped: shaped.curiosityNeed,
+      inhibition: inhibitionTrace.curiosityNeed,
+      postInhibition: inhibited.curiosityNeed,
+      accumulation: accTrace.curiosityNeed,
+      surpriseBoost: surpriseBoosts.curiosityNeed ?? 0,
+    },
+    'Curiosity need'
   ));
 
   return { atoms: out };

@@ -1,11 +1,8 @@
 import React, { useMemo } from 'react';
 import type { ContextAtom } from '../../lib/context/v2/types';
 import { arr } from '../../lib/utils/arr';
+import { clamp01 } from '../../lib/util/math';
 
-function clamp01(x: number) {
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(0, Math.min(1, x));
-}
 
 function getMag(atoms: ContextAtom[], id: string): number | null {
   const a = atoms.find(x => String((x as any)?.id || '') === id) as any;

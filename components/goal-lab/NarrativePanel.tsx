@@ -3,11 +3,8 @@ import { arr } from '../../lib/utils/arr';
 
 import type { AffectState } from '../../types';
 import type { ContextualMindReport } from '../../lib/tom/contextual/types';
+import { clamp01 } from '../../lib/util/math';
 
-function clamp01(x: number) {
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(0, Math.min(1, x));
-}
 
 function fmt2(x: any) {
   const v = Number(x);

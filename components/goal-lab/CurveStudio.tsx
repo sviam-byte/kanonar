@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { curve01, CurvePreset } from '../../lib/utils/curves';
+import { clamp01 } from '../../lib/util/math';
 
 type AtomLike = { id?: string; magnitude?: number; m?: number };
 
@@ -9,10 +10,6 @@ type Props = {
   preset: CurvePreset;
 };
 
-function clamp01(x: number) {
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(0, Math.min(1, x));
-}
 
 function getAtomMag(atoms: AtomLike[], id: string, fb = 0): number {
   const a = (atoms || []).find((x) => String((x as any)?.id) === id) as any;

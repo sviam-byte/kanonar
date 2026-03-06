@@ -31,6 +31,8 @@ const DRIVER_LABELS: Record<string, string> = {
   statusNeed: 'Статус',
   affiliationNeed: 'Привязанность',
   resolveNeed: 'Решимость',
+  restNeed: 'Отдых',
+  curiosityNeed: 'Любопытство',
 };
 
 const DRIVER_COLORS: Record<string, string> = {
@@ -39,6 +41,8 @@ const DRIVER_COLORS: Record<string, string> = {
   statusNeed: '#f59e0b',
   affiliationNeed: '#10b981',
   resolveNeed: '#8b5cf6',
+  restNeed: '#06b6d4',
+  curiosityNeed: '#f97316',
 };
 
 function getDriverAtoms(atoms: AtomLike[], selfId: string) {
@@ -149,7 +153,7 @@ export const DriverExplainPanel: React.FC<Props> = ({ selfId, atoms, history }) 
   const drivers = useMemo(() => getDriverAtoms(atoms, selfId), [atoms, selfId]);
   const [expanded, setExpanded] = useState<string | null>(null);
 
-  const driverKeys = ['safetyNeed', 'controlNeed', 'statusNeed', 'affiliationNeed', 'resolveNeed'];
+  const driverKeys = ['safetyNeed', 'controlNeed', 'statusNeed', 'affiliationNeed', 'resolveNeed', 'restNeed', 'curiosityNeed'];
 
   const historyMap = useMemo(() => {
     if (!history?.length) return {} as Record<string, number[]>;
@@ -244,6 +248,12 @@ export const DriverExplainPanel: React.FC<Props> = ({ selfId, atoms, history }) 
                     <div>+{((Number(p.surpriseBoost ?? 0)) * 100).toFixed(0)}%</div>
                   </div>
                 </div>
+
+                {key === 'resolveNeed' && (
+                  <div className="text-[9px] text-amber-500/60 border-t border-slate-800 pt-1 mt-1">
+                    ⚡ Модулирует: Безопасность ↓{Math.round(clamp01(Number(p.shaped ?? 0)) * 25)}%, Контроль ↑{(clamp01(Number(p.shaped ?? 0)) * 0.12).toFixed(2)}
+                  </div>
+                )}
 
                 {/* Input signals */}
                 <div className="text-slate-600 border-t border-slate-800 pt-1 mt-1">

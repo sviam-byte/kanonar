@@ -1,13 +1,9 @@
 import React, { useMemo, useState } from 'react';
+import { clamp01 } from '../../lib/util/math';
 
 function safeNum(x: any, fallback = 0): number {
   const n = Number(x);
   return Number.isFinite(n) ? n : fallback;
-}
-
-function clamp01(x: number): number {
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(0, Math.min(1, x));
 }
 
 function prettyGoalId(goalId: string): { label: string; domain?: string; selfId?: string } {
