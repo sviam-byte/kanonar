@@ -5,6 +5,7 @@ import 'reactflow/dist/style.css';
 import type { ContextAtom } from '../../lib/context/v2/types';
 import { arr } from '../../lib/utils/arr';
 import { layoutWithDagre } from '../../lib/graph/layout';
+import { clamp01 } from '../../lib/util/math';
 
 type Props = {
   atom: ContextAtom;
@@ -14,10 +15,6 @@ type Props = {
   onJumpToAtomId?: (id: string) => void;
 };
 
-function clamp01(x: number) {
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(0, Math.min(1, x));
-}
 
 function nsColor(ns: string) {
   if (ns === 'ctx') return 'rgba(250,204,21,0.10)';

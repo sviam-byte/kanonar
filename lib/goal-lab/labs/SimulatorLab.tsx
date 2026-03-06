@@ -86,6 +86,7 @@ function clamp(n: number, a: number, b: number) {
   return Math.max(a, Math.min(b, n));
 }
 
+// Keep local helper: unlike lib/utils/arr, this wraps single T into [T] for editor ergonomics.
 function arr<T>(value: T | T[] | null | undefined): T[] {
   if (Array.isArray(value)) return value;
   if (value === null || value === undefined) return [];

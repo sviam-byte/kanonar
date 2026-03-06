@@ -1,5 +1,6 @@
 import React from 'react';
 import { BaseEdge, EdgeLabelRenderer, getBezierPath, type EdgeProps } from 'reactflow';
+import { clamp01 } from '../../lib/util/math';
 
 type EnergyEdgeData = {
   /** raw weight (can be negative) */
@@ -23,11 +24,6 @@ type EnergyEdgeData = {
  * Clamp any number into the [0..1] range.
  * This keeps UI styling stable even if inputs are noisy.
  */
-function clamp01(x: number): number {
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(0, Math.min(1, x));
-}
-
 /**
  * Custom edge that renders a colored path, an optional label,
  * and an animated "energy" dot flowing along the edge.

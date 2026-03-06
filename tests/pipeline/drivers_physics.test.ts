@@ -44,7 +44,7 @@ describe('S6 driver physics', () => {
     const safety = result.atoms.find((a) => a.id === `drv:safetyNeed:${selfId}`)!;
     const parts = (safety as any).trace?.parts ?? {};
 
-    expect(result.atoms.length).toBe(5);
+    expect(result.atoms.length).toBe(7);
     expect(parts.rawLinear).toBeCloseTo(0.4, 4);
     expect(parts.shaped).toBeCloseTo(parts.rawLinear, 4);
     expect(parts.inhibition).toBeDefined();

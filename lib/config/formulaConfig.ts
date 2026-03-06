@@ -32,6 +32,15 @@ export const DRIVERS_FORMULA = {
     angerW: 0.50,
     threatW: 0.50,
   },
+  restNeed: {
+    fatigueW: 0.60,
+    stressW: 0.40,
+  },
+  curiosityNeed: {
+    uncertaintyW: 0.50,
+    antiThreatW: 0.30,
+    antiFearW: 0.20,
+  },
   /**
    * Response curves: nonlinear mapping applied AFTER the linear weighted sum.
    *
@@ -44,6 +53,8 @@ export const DRIVERS_FORMULA = {
     statusNeed:      { type: 'linear' },
     affiliationNeed: { type: 'linear' },
     resolveNeed:     { type: 'linear' },
+    restNeed:        { type: 'linear' },
+    curiosityNeed:   { type: 'linear' },
   } as Record<string, import('../utils/curves').CurveSpec>,
   /**
    * Lateral inhibition between needs after curve shaping.
@@ -53,11 +64,13 @@ export const DRIVERS_FORMULA = {
     threshold: 0.3,
     maxSuppression: 0.60,
     matrix: {
-      safetyNeed:      { exploration: 0.35, statusNeed: 0.20, affiliationNeed: 0.10 },
-      controlNeed:     { exploration: 0.25 },
+      safetyNeed:      { curiosityNeed: 0.35, statusNeed: 0.20, affiliationNeed: 0.10 },
+      controlNeed:     { curiosityNeed: 0.25 },
       resolveNeed:     { affiliationNeed: 0.30, statusNeed: 0.15 },
       affiliationNeed: { resolveNeed: 0.25 },
       statusNeed:      { safetyNeed: 0.10 },
+      // Tired agents should reduce confrontational and novelty-seeking behavior.
+      restNeed:        { resolveNeed: 0.20, curiosityNeed: 0.30 },
     } as Record<string, Record<string, number>>,
   },
   /**
@@ -72,6 +85,8 @@ export const DRIVERS_FORMULA = {
       statusNeed: 0.60,
       affiliationNeed: 0.65,
       resolveNeed: 0.45,
+      restNeed: 0.70,
+      curiosityNeed: 0.35,
     } as Record<string, number>,
     blend: 0.35,
   },
@@ -86,8 +101,8 @@ export const DRIVERS_FORMULA = {
       emotionValence: { affiliationNeed: 0.3 },
       resourceAccess: { controlNeed: 0.2 },
       scarcity: { controlNeed: 0.3 },
-      fatigue: { safetyNeed: 0.1 },
-      stress: { safetyNeed: 0.2, controlNeed: 0.2 },
+      fatigue: { safetyNeed: 0.1, restNeed: 0.4 },
+      stress: { safetyNeed: 0.2, controlNeed: 0.2, restNeed: 0.3 },
     } as Record<string, Record<string, number>>,
   },
 } as const;
@@ -138,6 +153,14 @@ export const GOAL_FORMULA = {
     statusDriveWeight: 0.35,
     baseWeight: 0.70,
     lifeWeight: 0.30,
+  },
+  /**
+   * Resolve modulation: adjust S7 domain scores when resolveNeed is high.
+   * safety is multiplicatively dampened, control is additively boosted.
+   */
+  resolveModulation: {
+    safetyDampen: 0.25,
+    controlBoost: 0.12,
   },
   energyBlend: {
     ecologyWeight: 0.60,
