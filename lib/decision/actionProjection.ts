@@ -50,6 +50,10 @@ const BASE_EFFECTS: Record<string, Partial<Record<FeatureKeyLite, number>>> = {
   submit: { stress: -0.03, socialTrust: +0.02, emotionValence: -0.04, escape: -0.04 },
   threaten: { threat: +0.06, stress: +0.05, socialTrust: -0.10, visibility: +0.08 },
   observe: { threat: -0.02, stress: -0.01, visibility: -0.04 },
+  // Cognitive actions are intentionally low-magnitude but non-zero to keep
+  // reflective behaviors viable in ambiguous or socially sensitive contexts.
+  monologue: { stress: -0.04, fatigue: +0.01 },
+  verify: { stress: +0.01, socialTrust: +0.03 },
   protect: { threat: -0.04, socialTrust: +0.06, emotionValence: +0.04, fatigue: +0.03 },
 };
 
@@ -69,6 +73,8 @@ const PATTERN_MAP: Array<[RegExp, string]> = [
   [/submit|comply|obey|surrender/, 'submit'],
   [/threaten|intimidate/, 'threaten'],
   [/observe|watch|scout|scan/, 'observe'],
+  [/monologue|self.talk|think|reflect|plan/, 'monologue'],
+  [/verify|check|confirm|validate/, 'verify'],
   [/protect|defend|guard|shield/, 'protect'],
 ];
 

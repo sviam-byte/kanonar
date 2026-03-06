@@ -501,8 +501,52 @@ export function deriveGoalAtoms(selfId: string, atoms: ContextAtom[], opts?: { t
 
   const modeSel = selectMode(feltField as any, { careSignal });
 
+  // Surprise mode override: strong prediction error triggers a 1-tick startle mode.
+  const SMO = FC.goal.surpriseModeOverride;
+  let effectiveWeights = modeSel.weights;
+  let surpriseOverrideMode: string | null = null;
+  let maxSurprise = 0;
+  let maxFeature = '';
+
+  if (SMO) {
+    for (const a of atoms) {
+      const id = String((a as any)?.id || '');
+      if (!id.startsWith('belief:surprise:') || !id.endsWith(`:${selfId}`)) continue;
+      const feature = id.split(':')[2] || '';
+      const mag = clamp01(Number((a as any)?.magnitude ?? 0));
+      if (mag > maxSurprise) {
+        maxSurprise = mag;
+        maxFeature = feature;
+      }
+    }
+
+    if (maxSurprise >= SMO.threshold && maxFeature) {
+      const targetMode = (SMO.featureToMode as Record<string, string>)[maxFeature];
+      if (targetMode && targetMode in modeSel.weights) {
+        surpriseOverrideMode = targetMode;
+        const mix = clamp01(SMO.overrideMix ?? 0.75);
+        const overrideWeights = { ...modeSel.weights } as Record<string, number>;
+        for (const m of Object.keys(overrideWeights)) {
+          if (m === targetMode) {
+            overrideWeights[m] = clamp01(mix + (1 - mix) * (overrideWeights[m] ?? 0));
+          } else {
+            overrideWeights[m] = clamp01((1 - mix) * (overrideWeights[m] ?? 0));
+          }
+        }
+        effectiveWeights = overrideWeights as typeof modeSel.weights;
+      }
+    }
+  }
+
+  __debug.surpriseOverride = surpriseOverrideMode
+    ? { mode: surpriseOverrideMode, maxSurprise, maxFeature }
+    : null;
+
+  // Effective mode for this tick (may be overridden by surprise startle response).
+  const effectiveMode = surpriseOverrideMode ?? modeSel.mode;
+
   // Mode gating: bias domains based on mode mixture (Mixture-of-Experts).
-  const W = modeSel.weights;
+  const W = effectiveWeights;
   const domainBias = (d: GoalDomain): number => {
     const proj = DOMAIN_MODE_PROJECTION[d];
     if (!proj) return 0.2;
@@ -519,18 +563,22 @@ export function deriveGoalAtoms(selfId: string, atoms: ContextAtom[], opts?: { t
   const tick = inferTickFromPrevState(prevStates);
   __debug.tick = tick;
 
-  // Apply bias + mild anti-fatigue to each domain.
+  // Apply bias + anti-fatigue + anti-saturation to each domain.
   for (const e of ecology) {
     const bias = clamp01(domainBias(e.domain));
     const st = prevStates[e.domain] || initGoalState();
     const boost = clamp01(FC.goal.modeBias.boostBase + FC.goal.modeBias.boostScale * bias);
     const antiFatigue = clamp01(1 - FC.goal.antiFatiguePenalty * st.fatigue);
-    e.v = clamp01(e.v * boost * antiFatigue);
-    (e.parts as any).mode = modeSel.mode;
+    const antiSaturation = clamp01(1 - FC.goal.saturationPenalty * (st.saturation ?? 0));
+    e.v = clamp01(e.v * boost * antiFatigue * antiSaturation);
+    (e.parts as any).mode = effectiveMode;
     (e.parts as any).modeWeights = W;
     (e.parts as any).bias = bias;
     (e.parts as any).boost = boost;
     (e.parts as any).antiFatigue = antiFatigue;
+    (e.parts as any).saturation = st.saturation ?? 0;
+    (e.parts as any).antiSaturation = antiSaturation;
+    (e.parts as any).surpriseOverride = surpriseOverrideMode;
     (e.parts as any).prevState = st;
   }
 
@@ -678,7 +726,11 @@ export function deriveGoalAtoms(selfId: string, atoms: ContextAtom[], opts?: { t
     (e.parts as any).activationHysteresis = { alpha, baseAlpha, shockThreshold, delta, before, prevEMA: st.activationEMA ?? 0, after };
   }
 
-  const modeAtom = mkModeAtom(selfId, modeSel.mode, W, usedCommon, { feltField, logits: modeSel.logits });
+  const modeAtom = mkModeAtom(selfId, effectiveMode, W, usedCommon, {
+    feltField,
+    logits: modeSel.logits,
+    surpriseOverride: __debug.surpriseOverride,
+  });
 
   const goalAtoms = ecology.map(e => mkGoalAtom(selfId, e.domain, e.v, [...e.used, modeAtom.id], e.parts));
 
@@ -734,7 +786,7 @@ export function deriveGoalAtoms(selfId: string, atoms: ContextAtom[], opts?: { t
 
   const active = activeDomains.map((d) => {
     const e = ecology.find((x) => x.domain === d)!;
-    return mkActiveGoal(selfId, d, e.v, [`goal:domain:${d}:${selfId}`, modeAtom.id], { fromDomain: d, score: e.v, mode: modeSel.mode, pick: pick.debug });
+    return mkActiveGoal(selfId, d, e.v, [`goal:domain:${d}:${selfId}`, modeAtom.id], { fromDomain: d, score: e.v, mode: effectiveMode, pick: pick.debug });
   });
 
   // Update & emit goal-state atoms (tension/lockIn/fatigue/progress).
@@ -752,7 +804,7 @@ export function deriveGoalAtoms(selfId: string, atoms: ContextAtom[], opts?: { t
     const st = updateGoalState(prev, { active: isActive, activation: isActive ? e.v : 0, tick, progressDelta });
     nextStates[e.domain] = st;
     stateAtoms.push(
-      mkGoalStateAtom(selfId, e.domain, st, [`goal:domain:${e.domain}:${selfId}`, modeAtom.id], { activation: e.v, active: isActive, tick, mode: modeSel.mode, progressDelta })
+      mkGoalStateAtom(selfId, e.domain, st, [`goal:domain:${e.domain}:${selfId}`, modeAtom.id], { activation: e.v, active: isActive, tick, mode: effectiveMode, progressDelta })
     );
   }
 

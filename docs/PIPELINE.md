@@ -152,6 +152,21 @@ Forbidden:
 ### S7 additions (v30+ resolve bridge)
 
 - `drv:resolveNeed:*` now modulates S7 domain scores:
+
+
+### S7 additions (v31+ saturation + surprise startle)
+
+- `GoalState` now includes `saturation` (separate from `fatigue`).
+  - saturation grows under sustained active focus and decays quickly when inactive
+  - domain score dampening now uses both factors:
+    - `antiFatigue = 1 - FC.goal.antiFatiguePenalty * fatigue`
+    - `antiSaturation = 1 - FC.goal.saturationPenalty * saturation`
+- S7 can apply a 1-tick **surprise mode override** before mode gating:
+  - reads `belief:surprise:*:<selfId>` atoms
+  - when max surprise ≥ `FC.goal.surpriseModeOverride.threshold`, blends mode
+    weights toward `featureToMode[feature]` with `overrideMix`
+  - override is traced in debug/parts (`surpriseOverride`) for interpretability
+
   - safety dampening: `safety *= (1 - FC.goal.resolveModulation.safetyDampen * resolve)`
   - control boost: `control += FC.goal.resolveModulation.controlBoost * resolve`
 - Modulation is traced in goal parts (`baseBeforeResolve`, `resolveDampen` / `resolveBoost`).
