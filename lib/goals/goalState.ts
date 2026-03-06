@@ -8,6 +8,8 @@ export type GoalState = {
   lastActiveTick: number;
   /** Exponential moving average of activation (goal score) to reduce flicker. */
   activationEMA: number;
+  /** Sustained dominance counter: grows when active with high activation. */
+  saturation: number;
 };
 
 function clamp11(x: number): number {
@@ -16,7 +18,7 @@ function clamp11(x: number): number {
 }
 
 export function initGoalState(): GoalState {
-  return { tension: 0.5, lockIn: 0, fatigue: 0, progress: 0, lastActiveTick: -1, activationEMA: 0 };
+  return { tension: 0.5, lockIn: 0, fatigue: 0, progress: 0, lastActiveTick: -1, activationEMA: 0, saturation: 0 };
 }
 
 /**
@@ -54,6 +56,12 @@ export function updateGoalState(
   const fatDown = isActive ? ft.downActive : ft.downInactive;
   const fatigue = clamp01(p.fatigue * ft.inertia + fatUp - fatDown);
 
+  // Saturation: grows under sustained active focus and decays quickly when inactive.
+  const sat = FC.goalState.saturation;
+  const satUp = isActive ? sat.upBase + sat.upActivation * act : 0;
+  const satDown = isActive ? sat.downActive : sat.downInactive;
+  const saturation = clamp01((p.saturation ?? 0) * sat.inertia + satUp - satDown);
+
   // tension: treat low activation while active as unmet need
   const tn = FC.goalState.tension;
   const tenUp = isActive ? tn.upBase + tn.upAntiActivation * (1 - act) : 0;
@@ -83,5 +91,6 @@ export function updateGoalState(
     progress,
     lastActiveTick: isActive ? opts.tick : p.lastActiveTick,
     activationEMA,
+    saturation,
   };
 }

@@ -179,6 +179,23 @@ export const GOAL_FORMULA = {
   },
   /** Anti-fatigue multiplier: score *= 1 - antiFatiguePenalty * fatigue */
   antiFatiguePenalty: 0.35,
+  /** Saturation penalty: score *= 1 - saturationPenalty * saturation */
+  saturationPenalty: 0.45,
+  /**
+   * Surprise mode override: if surprise on a feature exceeds threshold,
+   * force mode switch for 1 tick (startle response).
+   */
+  surpriseModeOverride: {
+    threshold: 0.45,
+    overrideMix: 0.75,
+    featureToMode: {
+      threat: 'threat_mode',
+      socialTrust: 'social_mode',
+      emotionValence: 'care_mode',
+      resourceAccess: 'resource_mode',
+      scarcity: 'resource_mode',
+    } as Record<string, string>,
+  },
   /** feltField composition (from ctx signals before mode gating) */
   feltField: {
     attachment_antiDanger: 0.7,
@@ -430,6 +447,18 @@ export const GOAL_STATE = {
     /** Duplicated from hysteresis for goalState internal use */
     alphaBase: 0.65,
     lockInBoost: 0.25,
+  },
+  saturation: {
+    /** Base growth per active tick. */
+    upBase: 0.04,
+    /** Additional growth proportional to current activation. */
+    upActivation: 0.06,
+    /** Small decay while still active to avoid runaway. */
+    downActive: 0.01,
+    /** Fast recovery when the goal leaves the active set. */
+    downInactive: 0.15,
+    /** Persistence of saturation memory. */
+    inertia: 0.95,
   },
 } as const;
 
