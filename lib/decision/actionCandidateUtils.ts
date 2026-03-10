@@ -236,5 +236,52 @@ export function buildActionCandidates(args: {
     });
   }
 
+
+  // ── Repetition penalty: read belief:chosen:* from previous tick ──
+  const REP = FC.decision.repetition;
+  if (REP) {
+    // Find previous chosen action from persisted belief atoms.
+    let prevKind = '';
+    let prevTargetId = '';
+    let prevTick = -1;
+
+    for (const a of args.atoms) {
+      const id = String((a as any)?.id || '');
+      if (!id.startsWith('belief:chosen:') || !id.endsWith(`:${args.selfId}`)) continue;
+      const meta = (a as any)?.meta;
+      if (meta && typeof meta === 'object') {
+        prevKind = String(meta.kind || '');
+        prevTargetId = String(meta.targetId || '');
+        prevTick = Number(meta.tick ?? -1);
+      }
+    }
+
+    if (prevKind) {
+      // Estimate tick gap (conservative: if unknown, assume 1).
+      // Current tick is not available here, so we use a heuristic:
+      // if belief:chosen atom exists, it's from the immediately previous tick.
+      const tickGap = prevTick >= 0 ? 1 : 1;
+      const decayFactor = Math.pow(1 - REP.decayPerTick, tickGap);
+
+      for (const action of actions) {
+        const kindMatch = keyFromPossibilityId(action.id) === prevKind || action.kind === prevKind;
+        const targetMatch = kindMatch && action.targetId === prevTargetId && Boolean(prevTargetId);
+
+        if (kindMatch) {
+          // Apply penalty as a negative delta to ALL goals (reduces Q uniformly).
+          const penalty = (REP.sameKindPenalty + (targetMatch ? REP.sameTargetPenalty : 0)) * decayFactor;
+          // Spread penalty across active goals.
+          const activeGoals = Object.keys(action.deltaGoals);
+          if (activeGoals.length > 0) {
+            const perGoal = penalty / activeGoals.length;
+            for (const g of activeGoals) {
+              action.deltaGoals[g] = clamp11(action.deltaGoals[g] - perGoal);
+            }
+          }
+        }
+      }
+    }
+  }
+
   return { actions, goalEnergy };
 }

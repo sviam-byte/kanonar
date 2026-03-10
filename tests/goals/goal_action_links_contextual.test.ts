@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { ContextAtom } from '@/lib/context/v2/types';
 import { deriveGoalActionLinkAtoms } from '@/lib/goals/goalActionLinksAtoms';
 import { GOAL_DEFS } from '@/lib/goals/space';
+import { mapGoalActionToPossibilityKeys } from '@/lib/goals/actionVocabularyBridge';
 
 function mapDomainToEcology(domain: string): string | null {
   const d = String(domain || '');
@@ -69,4 +70,19 @@ describe('deriveGoalActionLinkAtoms', () => {
     expect(Array.isArray(highAtom?.trace?.usedAtomIds)).toBe(true);
     expect(highAtom?.trace?.usedAtomIds?.length ?? 0).toBeGreaterThan(0);
   });
+
+  it('observe maps to observe_area and observe_target', () => {
+    const keys = mapGoalActionToPossibilityKeys('observe');
+    expect(keys).toContain('observe_area');
+    expect(keys).toContain('observe_target');
+  });
+
+
+  it('bridge has direct mappings for new possibility keys', () => {
+    expect(mapGoalActionToPossibilityKeys('deceive')).toContain('deceive');
+    expect(mapGoalActionToPossibilityKeys('submit')).toContain('submit');
+    expect(mapGoalActionToPossibilityKeys('loot')).toContain('loot');
+    expect(mapGoalActionToPossibilityKeys('betray')).toContain('betray');
+  });
+
 });

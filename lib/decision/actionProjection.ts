@@ -40,7 +40,8 @@ const BASE_EFFECTS: Record<string, Partial<Record<FeatureKeyLite, number>>> = {
   approach: { threat: +0.05, escape: -0.06, stress: +0.03 },
   negotiate: { threat: -0.03, stress: -0.02, socialTrust: +0.06, emotionValence: +0.03 },
   help: { stress: -0.03, fatigue: +0.03, socialTrust: +0.08, emotionValence: +0.05 },
-  attack: { threat: -0.02, stress: +0.05, fatigue: +0.06, visibility: +0.08 },
+  // Aggressive actions should explicitly include social trust penalty for comparability.
+  attack: { threat: -0.02, stress: +0.05, fatigue: +0.06, visibility: +0.08, socialTrust: -0.05 },
   confront: { threat: +0.04, stress: +0.04, socialTrust: -0.06, emotionValence: -0.03, visibility: +0.06 },
   npc: { stress: -0.01, socialTrust: +0.03, emotionValence: +0.02 },
   loot: { resourceAccess: +0.08, scarcity: -0.04, threat: +0.03, fatigue: +0.04, socialTrust: -0.05 },
@@ -55,6 +56,35 @@ const BASE_EFFECTS: Record<string, Partial<Record<FeatureKeyLite, number>>> = {
   monologue: { stress: -0.04, fatigue: +0.01 },
   verify: { stress: +0.01, socialTrust: +0.03 },
   protect: { threat: -0.04, socialTrust: +0.06, emotionValence: +0.04, fatigue: +0.03 },
+  // ── Social actions (from possibilities/defs.ts) ──
+  talk: { socialTrust: +0.03, emotionValence: +0.02, stress: -0.01 },
+  ask_info: { socialTrust: +0.02, stress: +0.01, emotionValence: +0.01 },
+  comfort: { emotionValence: +0.06, socialTrust: +0.05, stress: -0.04 },
+  apologize: { socialTrust: +0.04, emotionValence: +0.03, stress: -0.02, visibility: +0.02 },
+  praise: { socialTrust: +0.06, emotionValence: +0.04 },
+  accuse: { socialTrust: -0.08, stress: +0.04, emotionValence: -0.04, visibility: +0.06 },
+  command: { socialTrust: -0.02, stress: +0.02, visibility: +0.06 },
+  signal: { socialTrust: +0.02, visibility: +0.02 },
+  share: { socialTrust: +0.04, emotionValence: +0.02, resourceAccess: +0.02 },
+  share_resource: { socialTrust: +0.05, scarcity: -0.03, resourceAccess: +0.04 },
+  // ── Targeted social actions ──
+  guard: { threat: -0.06, socialTrust: +0.04, fatigue: +0.04, cover: +0.03 },
+  escort: { threat: -0.04, socialTrust: +0.04, fatigue: +0.04, escape: +0.06 },
+  treat: { fatigue: +0.03, socialTrust: +0.06, emotionValence: +0.04, stress: -0.02 },
+  call_backup: { threat: -0.06, stress: +0.02, fatigue: +0.02 },
+  // ── Cognitive / investigative ──
+  investigate: { stress: +0.02, visibility: -0.04, socialTrust: +0.01 },
+  observe_area: { threat: -0.02, stress: -0.01, visibility: -0.03 },
+  observe_target: { stress: +0.01, visibility: -0.02, socialTrust: -0.01 },
+  self_talk: { stress: -0.03, fatigue: +0.01 },
+  // ── Trade / negotiation variants ──
+  propose_trade: { resourceAccess: +0.05, scarcity: -0.04, socialTrust: +0.03 },
+  trade: { resourceAccess: +0.05, scarcity: -0.04, socialTrust: +0.03 },
+  // ── Conflict de-escalation ──
+  avoid: { threat: -0.04, socialTrust: -0.03, escape: +0.06, stress: -0.02 },
+  // ── Missing from possibilities but in GOAL_DEFS/bridge ──
+  deceive: { socialTrust: -0.10, emotionValence: -0.03, stress: +0.03, visibility: -0.04 },
+  recruit: { socialTrust: +0.06, emotionValence: +0.03, visibility: +0.04 },
 };
 
 const PATTERN_MAP: Array<[RegExp, string]> = [
@@ -76,6 +106,23 @@ const PATTERN_MAP: Array<[RegExp, string]> = [
   [/monologue|self.talk|think|reflect|plan/, 'monologue'],
   [/verify|check|confirm|validate/, 'verify'],
   [/protect|defend|guard|shield/, 'protect'],
+  [/comfort|reassure|console|calm/, 'comfort'],
+  [/praise|compliment|flatter/, 'praise'],
+  [/apologize|sorry|atone/, 'apologize'],
+  [/command|order|instruct|direct/, 'command'],
+  [/accuse|blame|denounce/, 'accuse'],
+  [/signal|gesture|beckon|wave/, 'signal'],
+  [/share|give|distribute|donate/, 'share'],
+  [/guard|sentry|watch_over|patrol/, 'guard'],
+  [/escort|accompany|lead_to/, 'escort'],
+  [/treat|heal|bandage|medic/, 'treat'],
+  [/call_backup|radio|summon|alert/, 'call_backup'],
+  [/investigate|search|probe|examine/, 'investigate'],
+  [/trade|barter|exchange|swap/, 'trade'],
+  [/avoid|evade|dodge|sidestep/, 'avoid'],
+  [/deceive|lie|mislead|bluff/, 'deceive'],
+  [/recruit|enlist|rally|mobilize/, 'recruit'],
+  [/ask|inquire|question|query/, 'ask_info'],
 ];
 
 /**

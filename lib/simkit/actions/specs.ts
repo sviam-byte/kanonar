@@ -12,6 +12,7 @@ import { getChar, getLoc } from '../core/world';
 import { distSameLocation, getCharXY, getSpatialConfig } from '../core/spatial';
 import { getDyadTrust } from '../core/trust';
 import { clamp01 } from '../../util/math';
+import { buildGenericSocialSpec } from './genericSocialSpec';
 
 const clamp = (x: number, a: number, b: number) => Math.max(a, Math.min(b, x));
 
@@ -1493,8 +1494,23 @@ export function enumerateActionOffers(world: SimWorld): ActionOffer[] {
     || a.kind.localeCompare(b.kind));
 }
 
+/** Resolved spec cache for generic social actions (avoids rebuilding each tick). */
+const _genericCache = new Map<string, ActionSpec>();
+
+function resolveSpec(kind: string): ActionSpec | null {
+  const builtin = ACTION_SPECS[kind as ActionKind];
+  if (builtin) return builtin;
+
+  let cached = _genericCache.get(kind);
+  if (!cached) {
+    cached = buildGenericSocialSpec(kind);
+    _genericCache.set(kind, cached);
+  }
+  return cached;
+}
+
 export function applyActionViaSpec(world: SimWorld, action: SimAction) {
-  const spec = ACTION_SPECS[action.kind];
+  const spec = resolveSpec(String(action.kind));
   if (!spec) throw new Error(`No ActionSpec for kind=${String(action.kind)}`);
   return spec.apply({ world, action });
 }

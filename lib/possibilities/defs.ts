@@ -3,6 +3,7 @@ import { Possibility, PossibilityDef } from './catalog';
 import { getMag } from '../util/atoms';
 import { arr } from '../utils/arr';
 import { uniq } from '../util/collections';
+import { FC } from '../config/formulaConfig';
 
 // Extract otherIds from multiple sources:
 // - rel:final / rel:state / rel:base
@@ -191,9 +192,10 @@ export const DEFAULT_POSSIBILITY_DEFS: PossibilityDef[] = [
         helpers.findPrefix(`env_visibility`)[0]?.id;
 
       const vis = visibilityAtom ? helpers.get(visibilityAtom, 0.5) : 0.5;
-      const magnitude = helpers.clamp01(0.7 * cover + 0.3 * (1 - vis));
+      const W = (FC as any).possibilityWeights?.hide ?? { cover: 0.70, antiVis: 0.30, priorBlend: 0.55 };
+      const magnitude = helpers.clamp01(W.cover * cover + W.antiVis * (1 - vis));
       const { id: pId, v: priorHide } = getPrior(atoms || [], selfId, selfId, 'hide', 0.45);
-      const mag = helpers.clamp01(magnitude * (0.55 + 0.45 * priorHide));
+      const mag = helpers.clamp01(magnitude * (W.priorBlend + (1 - W.priorBlend) * priorHide));
 
       return mkSelf({
         kind: 'aff',
@@ -226,10 +228,11 @@ export const DEFAULT_POSSIBILITY_DEFS: PossibilityDef[] = [
       const esc = escapeAtom ? helpers.get(escapeAtom, 0) : 0;
       if (exits < 0.05 && esc < 0.05) return null;
 
-      const magnitude = helpers.clamp01(0.5 * exits + 0.5 * esc);
+      const W = (FC as any).possibilityWeights?.escape ?? { exits: 0.50, esc: 0.50, priorBlend: 0.55 };
+      const magnitude = helpers.clamp01(W.exits * exits + W.esc * esc);
       const { id: pId, v: priorEscape } = getPrior(atoms || [], selfId, selfId, 'escape', 0.45);
       // keep map affordance primary, but let desire-to-escape matter
-      const mag = helpers.clamp01(magnitude * (0.55 + 0.45 * priorEscape));
+      const mag = helpers.clamp01(magnitude * (W.priorBlend + (1 - W.priorBlend) * priorEscape));
       return mkSelf({
         kind: 'exit',
         selfId,
@@ -253,10 +256,11 @@ export const DEFAULT_POSSIBILITY_DEFS: PossibilityDef[] = [
         helpers.findPrefix(`ctx:timePressure:${selfId}`)[0]?.id ||
         helpers.findPrefix(`ctx:timePressure`)[0]?.id;
       const p = pressureAtom ? helpers.get(pressureAtom, 0) : 0;
-      const magnitude = clamp01(0.45 - 0.35 * p);
+      const W = (FC as any).possibilityWeights?.wait ?? { antiPressure: 0.45, pressureScale: 0.35, priorBlend: 0.65 };
+      const magnitude = clamp01(W.antiPressure - W.pressureScale * p);
       if (magnitude < 0.05) return null;
       const { id: pId, v: priorWait } = getPrior(atoms || [], selfId, selfId, 'wait', 0.35);
-      const mag = helpers.clamp01(magnitude * (0.65 + 0.35 * priorWait));
+      const mag = helpers.clamp01(magnitude * (W.priorBlend + (1 - W.priorBlend) * priorWait));
 
       return mkSelf({
         kind: 'cog',
@@ -288,8 +292,9 @@ export const DEFAULT_POSSIBILITY_DEFS: PossibilityDef[] = [
       const fatigue = fatigueAtom ? helpers.get(fatigueAtom, 0) : 0;
       const threat = threatAtom ? helpers.get(threatAtom, 0) : 0;
 
-      const magnitude = clamp01(0.8 * fatigue + 0.2 * (1 - threat));
-      if (magnitude < 0.12) return null;
+      const W = (FC as any).possibilityWeights?.rest ?? { fatigue: 0.80, antiThreat: 0.20, threshold: 0.12 };
+      const magnitude = clamp01(W.fatigue * fatigue + W.antiThreat * (1 - threat));
+      if (magnitude < W.threshold) return null;
 
       return mkSelf({
         kind: 'aff',
@@ -314,8 +319,9 @@ export const DEFAULT_POSSIBILITY_DEFS: PossibilityDef[] = [
         helpers.findPrefix(`ctx:uncertainty`)[0]?.id;
 
       const unc = uncAtom ? helpers.get(uncAtom, 0) : 0;
-      const magnitude = clamp01(0.15 + 0.75 * unc);
-      if (magnitude < 0.12) return null;
+      const W = (FC as any).possibilityWeights?.observe_area ?? { base: 0.15, uncScale: 0.75, threshold: 0.12 };
+      const magnitude = clamp01(W.base + W.uncScale * unc);
+      if (magnitude < W.threshold) return null;
 
       return mkSelf({
         kind: 'cog',
@@ -343,8 +349,9 @@ export const DEFAULT_POSSIBILITY_DEFS: PossibilityDef[] = [
       const uncertainty = uncAtom ? helpers.get(uncAtom, 0) : 0;
       const privacy = privacyAtom ? helpers.get(privacyAtom, 0) : 0;
 
-      const magnitude = helpers.clamp01(0.75 * uncertainty + 0.25 * privacy);
-      if (magnitude < 0.15) return null;
+      const W = (FC as any).possibilityWeights?.self_talk ?? { uncertainty: 0.75, privacy: 0.25, threshold: 0.15 };
+      const magnitude = helpers.clamp01(W.uncertainty * uncertainty + W.privacy * privacy);
+      if (magnitude < W.threshold) return null;
 
       return mkSelf({
         kind: 'cog',
@@ -378,7 +385,8 @@ export const DEFAULT_POSSIBILITY_DEFS: PossibilityDef[] = [
         helpers.findPrefix(`ctx:threat:${selfId}`)[0]?.id ||
         helpers.findPrefix(`ctx:threat`)[0]?.id;
       const threat = threatAtom ? helpers.get(threatAtom, 0) : 0;
-      if (threat < 0.25) return null;
+      const W = (FC as any).possibilityWeights?.attack ?? { threat: 0.65, near: 0.20, host: 0.15, threatThreshold: 0.25 };
+      if (threat < W.threatThreshold) return null;
 
       const others = inferOtherIds(selfId, atoms || []);
       if (!others.length) return null;
@@ -389,7 +397,7 @@ export const DEFAULT_POSSIBILITY_DEFS: PossibilityDef[] = [
         const hostId = `rel:state:${selfId}:${otherId}:hostility`;
         const host = getMag(atoms || [], hostId, 0);
 
-        const magnitude = clamp01(0.65 * threat + 0.2 * near + 0.15 * host);
+        const magnitude = clamp01(W.threat * threat + W.near * near + W.host * host);
         if (magnitude < 0.1) return null;
 
         return mkTargeted({
@@ -426,7 +434,8 @@ export const DEFAULT_POSSIBILITY_DEFS: PossibilityDef[] = [
         const { id: pId, v } = getPrior(atoms, selfId, otherId, 'ask_info', 0.35);
         const trustId = `rel:state:${selfId}:${otherId}:trust`;
         const trust = getMag(atoms, trustId, 0.5);
-        const magnitude = clamp01(0.55 * v + 0.45 * trust);
+        const W = (FC as any).possibilityWeights?.talk ?? { prior: 0.55, trust: 0.45 };
+        const magnitude = clamp01(W.prior * v + W.trust * trust);
 
         const used = uniq(usedIfPresent(atoms, [pId || '', trustId]));
         return mkTargeted({
@@ -512,7 +521,8 @@ export const DEFAULT_POSSIBILITY_DEFS: PossibilityDef[] = [
         const { id: pId, v } = getPrior(atoms, selfId, otherId, 'comfort', 0.3);
         const closId = `rel:state:${selfId}:${otherId}:closeness`;
         const clos = getMag(atoms, closId, 0.2);
-        const magnitude = clamp01(0.60 * v + 0.40 * clos);
+        const W = (FC as any).possibilityWeights?.comfort ?? { prior: 0.60, closeness: 0.40 };
+        const magnitude = clamp01(W.prior * v + W.closeness * clos);
 
         const used = uniq(usedIfPresent(atoms, [pId || '', closId]));
         return mkTargeted({
@@ -543,7 +553,8 @@ export const DEFAULT_POSSIBILITY_DEFS: PossibilityDef[] = [
         const { id: pId, v } = getPrior(atoms, selfId, otherId, 'help', 0.35);
         const oblId = `rel:state:${selfId}:${otherId}:obligation`;
         const obl = getMag(atoms, oblId, 0.0);
-        const magnitude = clamp01(0.70 * v + 0.30 * obl);
+        const W = (FC as any).possibilityWeights?.help ?? { prior: 0.70, obligation: 0.30 };
+        const magnitude = clamp01(W.prior * v + W.obligation * obl);
 
         return mkTargeted({
           kind: 'aff',
@@ -577,7 +588,8 @@ export const DEFAULT_POSSIBILITY_DEFS: PossibilityDef[] = [
         const trustId = `rel:state:${selfId}:${otherId}:trust`;
         const trust = getMag(atoms, trustId, 0.5);
 
-        const magnitude = clamp01((0.55 * v + 0.45 * trust) * (1 - 0.6 * scarcity));
+        const W = (FC as any).possibilityWeights?.share_resource ?? { prior: 0.55, trust: 0.45, scarcityDampen: 0.60 };
+        const magnitude = clamp01((W.prior * v + W.trust * trust) * (1 - W.scarcityDampen * scarcity));
         const used = uniq(usedIfPresent(atoms, [pId || '', trustId, scarcityAtom || '']));
 
         return mkTargeted({
@@ -613,7 +625,8 @@ export const DEFAULT_POSSIBILITY_DEFS: PossibilityDef[] = [
         const respectId = `rel:state:${selfId}:${otherId}:respect`;
         const respect = getMag(atoms, respectId, 0.0);
 
-        const magnitude = clamp01(0.65 * v + 0.20 * respect + 0.15 * isFormal);
+        const W = (FC as any).possibilityWeights?.negotiate ?? { prior: 0.65, respect: 0.20, formal: 0.15 };
+        const magnitude = clamp01(W.prior * v + W.respect * respect + W.formal * isFormal);
         const used = uniq(usedIfPresent(atoms, [pId || '', respectId, formalAtom || '']));
 
         return mkTargeted({
@@ -649,7 +662,8 @@ export const DEFAULT_POSSIBILITY_DEFS: PossibilityDef[] = [
         const trustId = `rel:state:${selfId}:${otherId}:trust`;
         const trust = getMag(atoms, trustId, 0.5);
 
-        const magnitude = clamp01((0.55 * v + 0.45 * trust) * (0.6 + 0.6 * scarcity));
+        const W = (FC as any).possibilityWeights?.propose_trade ?? { prior: 0.55, trust: 0.45, scarcityBoost: 0.60 };
+        const magnitude = clamp01((W.prior * v + W.trust * trust) * (0.6 + W.scarcityBoost * scarcity));
         const used = uniq(usedIfPresent(atoms, [pId || '', trustId, scarcityAtom || '']));
 
         return mkTargeted({
@@ -682,7 +696,8 @@ export const DEFAULT_POSSIBILITY_DEFS: PossibilityDef[] = [
         const hostId = `rel:state:${selfId}:${otherId}:hostility`;
         const host = getMag(atoms, hostId, 0);
 
-        const magnitude = clamp01(0.55 * v + 0.45 * host);
+        const W = (FC as any).possibilityWeights?.apologize ?? { prior: 0.55, hostility: 0.45 };
+        const magnitude = clamp01(W.prior * v + W.hostility * host);
         return mkTargeted({
           kind: 'aff',
           selfId,
@@ -713,7 +728,8 @@ export const DEFAULT_POSSIBILITY_DEFS: PossibilityDef[] = [
         const respectId = `rel:state:${selfId}:${otherId}:respect`;
         const respect = getMag(atoms, respectId, 0);
 
-        const magnitude = clamp01(0.65 * v + 0.35 * respect);
+        const W = (FC as any).possibilityWeights?.praise ?? { prior: 0.65, respect: 0.35 };
+        const magnitude = clamp01(W.prior * v + W.respect * respect);
         return mkTargeted({
           kind: 'aff',
           selfId,
@@ -747,7 +763,8 @@ export const DEFAULT_POSSIBILITY_DEFS: PossibilityDef[] = [
         const threatId = `tom:dyad:${selfId}:${otherId}:threat`;
         const threat = getMag(atoms, threatId, getMag(atoms, `rel:state:${selfId}:${otherId}:hostility`, 0));
 
-        const magnitude = clamp01(0.50 * v + 0.30 * threat + 0.20 * evidence);
+        const W = (FC as any).possibilityWeights?.accuse ?? { prior: 0.50, threat: 0.30, evidence: 0.20 };
+        const magnitude = clamp01(W.prior * v + W.threat * threat + W.evidence * evidence);
         const used = uniq(usedIfPresent(atoms, [pId || '', threatId, evidenceAtom || '']));
 
         return mkTargeted({
@@ -780,7 +797,8 @@ export const DEFAULT_POSSIBILITY_DEFS: PossibilityDef[] = [
         const hostId = `rel:state:${selfId}:${otherId}:hostility`;
         const host = getMag(atoms, hostId, 0.0);
 
-        const magnitude = clamp01(0.65 * v + 0.35 * host);
+        const W = (FC as any).possibilityWeights?.threaten ?? { prior: 0.65, hostility: 0.35 };
+        const magnitude = clamp01(W.prior * v + W.hostility * host);
         return mkTargeted({
           kind: 'aff',
           selfId,
@@ -810,7 +828,8 @@ export const DEFAULT_POSSIBILITY_DEFS: PossibilityDef[] = [
         const { id: pId, v } = getPrior(atoms, selfId, otherId, 'confront', 0.25);
         const host = helpers.get(`rel:final:${selfId}:${otherId}:hostility`, helpers.get(`rel:state:${selfId}:${otherId}:hostility`, 0.1));
         const threat = helpers.get(`tom:effective:dyad:${selfId}:${otherId}:threat`, 0.2);
-        const magnitude = helpers.clamp01(0.30 * v + 0.35 * host + 0.35 * threat);
+        const W = (FC as any).possibilityWeights?.confront ?? { prior: 0.30, hostility: 0.35, threat: 0.35 };
+        const magnitude = helpers.clamp01(W.prior * v + W.hostility * host + W.threat * threat);
 
         return mkTargeted({
           kind: 'aff',
@@ -876,7 +895,8 @@ export const DEFAULT_POSSIBILITY_DEFS: PossibilityDef[] = [
         const respectId = `rel:state:${selfId}:${otherId}:respect`;
         const respect = getMag(atoms, respectId, 0);
 
-        const magnitude = clamp01(0.50 * v + 0.30 * authority + 0.20 * respect);
+        const W = (FC as any).possibilityWeights?.command ?? { prior: 0.50, authority: 0.30, respect: 0.20 };
+        const magnitude = clamp01(W.prior * v + W.authority * authority + W.respect * respect);
         const used = uniq(usedIfPresent(atoms, [pId || '', authorityAtom || '', respectId]));
 
         return mkTargeted({
@@ -909,7 +929,8 @@ export const DEFAULT_POSSIBILITY_DEFS: PossibilityDef[] = [
 
       return others.map(otherId => {
         const { id: pId, v } = getPrior(atoms, selfId, otherId, 'call_backup', 0.15);
-        const magnitude = clamp01(0.55 * v + 0.45 * threat);
+        const W = (FC as any).possibilityWeights?.call_backup ?? { prior: 0.55, threat: 0.45 };
+        const magnitude = clamp01(W.prior * v + W.threat * threat);
         const used = uniq(usedIfPresent(atoms, [pId || '', threatAtom || '']));
 
         return mkTargeted({
@@ -973,7 +994,8 @@ export const DEFAULT_POSSIBILITY_DEFS: PossibilityDef[] = [
         const closId = `rel:state:${selfId}:${otherId}:closeness`;
         const clos = getMag(atoms, closId, 0.2);
 
-        const magnitude = clamp01(0.45 * v + 0.35 * clos + 0.20 * threat);
+        const W = (FC as any).possibilityWeights?.guard ?? { prior: 0.45, closeness: 0.35, threat: 0.20 };
+        const magnitude = clamp01(W.prior * v + W.closeness * clos + W.threat * threat);
         const used = uniq(usedIfPresent(atoms, [pId || '', closId, threatAtom || '']));
 
         return mkTargeted({
@@ -1009,7 +1031,8 @@ export const DEFAULT_POSSIBILITY_DEFS: PossibilityDef[] = [
         const trustId = `rel:state:${selfId}:${otherId}:trust`;
         const trust = getMag(atoms, trustId, 0.5);
 
-        const magnitude = clamp01(0.50 * v + 0.25 * trust + 0.25 * danger);
+        const W = (FC as any).possibilityWeights?.escort ?? { prior: 0.50, trust: 0.25, danger: 0.25 };
+        const magnitude = clamp01(W.prior * v + W.trust * trust + W.danger * danger);
         const used = uniq(usedIfPresent(atoms, [pId || '', trustId, dangerAtom || '']));
 
         return mkTargeted({
@@ -1046,7 +1069,8 @@ export const DEFAULT_POSSIBILITY_DEFS: PossibilityDef[] = [
         const woundId = `body:wounded:${otherId}`;
         const wounded = getMag(atoms, woundId, 0);
 
-        const magnitude = clamp01((0.55 * v + 0.45 * wounded) * (0.5 + 0.5 * supplies));
+        const W = (FC as any).possibilityWeights?.treat ?? { prior: 0.55, wounded: 0.45, suppliesScale: 0.50 };
+        const magnitude = clamp01((W.prior * v + W.wounded * wounded) * (0.5 + W.suppliesScale * supplies));
         const used = uniq(usedIfPresent(atoms, [pId || '', woundId, suppliesAtom || '']));
 
         return mkTargeted({
@@ -1080,7 +1104,8 @@ export const DEFAULT_POSSIBILITY_DEFS: PossibilityDef[] = [
 
       return others.map(otherId => {
         const { id: pId, v } = getPrior(atoms, selfId, otherId, 'investigate', 0.25);
-        const magnitude = clamp01(0.55 * v + 0.45 * uncertainty);
+        const W = (FC as any).possibilityWeights?.investigate ?? { prior: 0.55, uncertainty: 0.45 };
+        const magnitude = clamp01(W.prior * v + W.uncertainty * uncertainty);
         const used = uniq(usedIfPresent(atoms, [pId || '', uncAtom || '']));
 
         return mkTargeted({
@@ -1116,7 +1141,8 @@ export const DEFAULT_POSSIBILITY_DEFS: PossibilityDef[] = [
 
       return others.map(otherId => {
         const { id: pId, v } = getPrior(atoms, selfId, otherId, 'observe', 0.2);
-        const magnitude = clamp01(0.60 * v + 0.40 * vis);
+        const W = (FC as any).possibilityWeights?.observe_target ?? { prior: 0.60, visibility: 0.40 };
+        const magnitude = clamp01(W.prior * v + W.visibility * vis);
         const used = uniq(usedIfPresent(atoms, [pId || '', visibilityAtom || '']));
 
         return mkTargeted({
@@ -1132,6 +1158,158 @@ export const DEFAULT_POSSIBILITY_DEFS: PossibilityDef[] = [
           parts: { prior: v, visibility: vis }
         });
       });
+    }
+  },
+
+
+  // ---- DECEPTION ----
+  {
+    key: 'deceive',
+    kind: 'aff',
+    label: 'Deceive / mislead',
+    build: ({ selfId, atoms, helpers }) => {
+      const noDeceive = proto(helpers, 'noDeception');
+      const others = inferOtherIds(selfId, atoms);
+      if (!others.length) return null;
+
+      return others.map(otherId => {
+        const { id: pId, v } = getPrior(atoms, selfId, otherId, 'deceive', 0.15);
+        const trustId = `rel:state:${selfId}:${otherId}:trust`;
+        const trust = getMag(atoms, trustId, 0.5);
+        // Deception is easier on trusting targets.
+        const W = (FC as any).possibilityWeights?.deceive ?? { prior: 0.50, trust: 0.50 };
+        const magnitude = clamp01(W.prior * v + W.trust * trust);
+        const used = uniq(usedIfPresent(atoms, [pId || '', trustId]));
+
+        return mkTargeted({
+          kind: 'aff',
+          selfId,
+          otherId,
+          key: 'deceive',
+          label: 'Deceive',
+          magnitude,
+          blockedBy: noDeceive ? [noDeceive] : undefined,
+          usedAtomIds: used,
+          notes: ['prior.deceive + target.trust => deceive'],
+          parts: { prior: v, trust },
+        });
+      });
+    }
+  },
+
+  // ---- COMPLIANCE ----
+  {
+    key: 'submit',
+    kind: 'aff',
+    label: 'Submit / comply',
+    build: ({ selfId, atoms, helpers }) => {
+      const others = inferOtherIds(selfId, atoms);
+      if (!others.length) return null;
+
+      const threatAtom = helpers.findPrefix(`ctx:threat:${selfId}`)[0]?.id;
+      const threat = threatAtom ? helpers.get(threatAtom, 0) : 0;
+
+      return others.map(otherId => {
+        const { id: pId, v } = getPrior(atoms, selfId, otherId, 'submit', 0.15);
+        const respectId = `rel:state:${selfId}:${otherId}:respect`;
+        const respect = getMag(atoms, respectId, 0);
+        const hostId = `rel:state:${selfId}:${otherId}:hostility`;
+        const host = getMag(atoms, hostId, 0);
+
+        // Submit scales with respect for target and external threat.
+        const W = (FC as any).possibilityWeights?.submit
+          ?? { prior: 0.40, respect: 0.30, threat: 0.20, hostility: 0.10 };
+        const magnitude = clamp01(W.prior * v + W.respect * respect + W.threat * threat + W.hostility * host);
+        const used = uniq(usedIfPresent(atoms, [pId || '', respectId, hostId, threatAtom || '']));
+
+        return mkTargeted({
+          kind: 'aff',
+          selfId,
+          otherId,
+          key: 'submit',
+          label: 'Submit',
+          magnitude,
+          usedAtomIds: used,
+          notes: ['prior.submit + respect + threat => submit'],
+          parts: { prior: v, respect, threat, hostility: host },
+        });
+      });
+    }
+  },
+
+  // ---- LOOTING ----
+  {
+    key: 'loot',
+    kind: 'aff',
+    label: 'Loot / scavenge',
+    build: ({ selfId, helpers }) => {
+      const noLoot = proto(helpers, 'noLooting');
+
+      const scarcityAtom = helpers.findPrefix(`ctx:scarcity:${selfId}`)[0]?.id;
+      const scarcity = scarcityAtom ? helpers.get(scarcityAtom, 0) : 0;
+
+      const survAtom = helpers.findPrefix(`ctx:surveillance:${selfId}`)[0]?.id;
+      const surv = survAtom ? helpers.get(survAtom, 0) : 0;
+
+      // Looting is driven by scarcity and dampened by surveillance.
+      const W = (FC as any).possibilityWeights?.loot ?? { scarcity: 0.60, survDampen: 0.50, threshold: 0.10 };
+      const magnitude = clamp01(W.scarcity * scarcity * (1 - W.survDampen * surv));
+      if (magnitude < W.threshold) return null;
+
+      return mkSelf({
+        kind: 'aff',
+        selfId,
+        key: 'loot',
+        label: 'Loot',
+        magnitude,
+        blockedBy: noLoot ? [noLoot] : undefined,
+        usedAtomIds: [scarcityAtom, survAtom].filter(Boolean) as any,
+        notes: ['scarcity - surveillance => loot'],
+        parts: { scarcity, surveillance: surv },
+      });
+    }
+  },
+
+  // ---- BETRAY (high-cost social action) ----
+  {
+    key: 'betray',
+    kind: 'aff',
+    label: 'Betray',
+    build: ({ selfId, atoms, helpers }) => {
+      const noBetray = proto(helpers, 'noBetray');
+      const others = inferOtherIds(selfId, atoms);
+      if (!others.length) return null;
+
+      return others
+        .map(otherId => {
+          const { id: pId, v } = getPrior(atoms, selfId, otherId, 'betray', 0.05);
+          const trustId = `rel:state:${selfId}:${otherId}:trust`;
+          const trust = getMag(atoms, trustId, 0.5);
+          const hostId = `rel:state:${selfId}:${otherId}:hostility`;
+          const host = getMag(atoms, hostId, 0);
+
+          // Betrayal requires both motive (hostility) and opportunity (existing trust).
+          const W = (FC as any).possibilityWeights?.betray
+            ?? { prior: 0.35, hostility: 0.35, trust: 0.30, threshold: 0.15 };
+          const magnitude = clamp01(W.prior * v + W.hostility * host + W.trust * trust);
+          if (magnitude < W.threshold) return null;
+
+          const used = uniq(usedIfPresent(atoms, [pId || '', trustId, hostId]));
+          return mkTargeted({
+            kind: 'aff',
+            selfId,
+            otherId,
+            key: 'betray',
+            label: 'Betray',
+            magnitude,
+            blockedBy: noBetray ? [noBetray] : undefined,
+            usedAtomIds: used,
+            notes: ['prior.betray + hostility + trust(opportunity) => betray'],
+            parts: { prior: v, hostility: host, trust },
+            meta: { cost: 0.08 },
+          });
+        })
+        .filter(Boolean) as any;
     }
   },
 

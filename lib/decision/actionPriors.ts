@@ -119,6 +119,15 @@ export function deriveActionPriors(args: {
     );
   }
 
+  // Cache character traits once per derive call to keep priors deterministic and cheap.
+  const traitCache: Record<string, number> = {};
+  const getTrait = (name: string, fb: number) => {
+    if (name in traitCache) return traitCache[name];
+    const v = clamp01(getMag(atoms, `feat:char:${selfId}:trait.${name}`, fb));
+    traitCache[name] = v;
+    return v;
+  };
+
   function getEffectiveOrDyad(otherId: string, metric: string, fb = 0): { id: string; mag: number } {
     const effId = `tom:effective:dyad:${selfId}:${otherId}:${metric}`;
     const eff = atoms.find(a => a.id === effId) as any;
@@ -249,6 +258,7 @@ export function deriveActionPriors(args: {
       tomIntimacyId,
     ].filter(id => atoms.some(a => a?.id === id));
 
+
     out.push(
       mk(selfId, otherId, 'help', help, used, { trust, clos, oblig, tomTrust, tomIntimacy, tomThreat, danger, dangerLayer: dangerP.layer, gAff, gOrder, gSafety }),
       mk(selfId, otherId, 'harm', harm, used, { host, tomThreat, trust, socialRisk, gOrder, gAff, gSafety }),
@@ -256,6 +266,43 @@ export function deriveActionPriors(args: {
       mk(selfId, otherId, 'avoid', avoid, used, { tomThreat, host, recentHarm, trust, tomIntimacy, clos, oblig, danger, dangerLayer: dangerP.layer, socialRisk, gSafety, gAff }),
       mk(selfId, otherId, 'confront', confront, used, { host, socialRisk, respe, danger, dangerLayer: dangerP.layer, gControl, gStatus, gSafety, gOrder }),
     );
+
+    // ── Personality-driven social priors ──
+    // Reads character traits and maps them to action tendencies via PERSONALITY_ACTION_MAP.
+    {
+      const PAM = (FC as any).personalityActionMap;
+      if (PAM && typeof PAM === 'object') {
+        for (const [act, spec] of Object.entries(PAM) as [string, { base: number; traits: Record<string, number> }][]) {
+          let v = spec.base;
+          for (const [traitName, weight] of Object.entries(spec.traits)) {
+            v += getTrait(traitName, 0.5) * weight;
+          }
+
+          // Context modulation: social risk dampens aggressive priors.
+          const isAggressive = /command|threaten|accuse/.test(act);
+          if (isAggressive) {
+            v *= clamp01(1 - 0.3 * socialRisk);
+          }
+
+          // Dyadic modulation: trust/hostility tilts social actions.
+          const isProsocial = /comfort|praise|apologize|share|treat|guard|escort/.test(act);
+          if (isProsocial) {
+            v = v * (0.7 + 0.3 * trust) * (1 - 0.2 * host);
+          }
+
+          out.push(
+            mk(selfId, otherId, act, clamp01(v), used, {
+              personalityDriven: true,
+              base: spec.base,
+              traits: spec.traits,
+              trust,
+              host,
+              socialRisk,
+            })
+          );
+        }
+      }
+    }
   }
 
   return out;
