@@ -62,8 +62,8 @@ export function toSimActionFromPossibility(p: Possibility, tickIndex: number, ac
     ask_info: 'question_about',
   };
 
-  const kind = kindMap[k];
-  if (!kind) return null;
+  // Any possibility key is valid — generic social spec handles unknown kinds.
+  const kind = kindMap[k] || k;
 
   return {
     id: `act:${kind}:${tickIndex}:${actorId}:poss:${k}`,

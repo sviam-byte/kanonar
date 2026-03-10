@@ -10,6 +10,7 @@
 
 import type { ActionKind, ActionOffer, SimAction, SimWorld } from '../core/types';
 import { ACTION_SPECS } from './specs';
+import { buildGenericSocialSpec } from './genericSocialSpec';
 
 export type ValidationResult = {
   allowed: boolean;
@@ -40,14 +41,10 @@ function mkWait(world: SimWorld, actorId: string): SimAction {
 }
 
 export function validateActionStrict(world: SimWorld, a: SimAction): ValidationResult {
-  const spec = ACTION_SPECS[a.kind as ActionKind];
+  let spec = ACTION_SPECS[a.kind as ActionKind];
   if (!spec) {
-    return {
-      allowed: false,
-      singleTick: true,
-      reasons: [`v1:no-spec:${String(a.kind)}`],
-      fallbackAction: mkWait(world, a.actorId),
-    };
+    // Pipeline-generated social actions get a generic spec instead of hard fail.
+    spec = buildGenericSocialSpec(String(a.kind));
   }
 
   const baseOffer = toOffer(a);

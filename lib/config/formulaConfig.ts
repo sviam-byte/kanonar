@@ -302,6 +302,81 @@ export const PRIORS_FORMULA = {
   socialRisk: { pub: 0.45, surv: 0.35, norm: 0.20 },
 } as const;
 
+
+// ─── Personality-Driven Action Priors ─────────────────────────────────────
+// Maps character traits to base action tendency offsets.
+// prior(act) = basePrior + Σ (traitValue * weight)
+// Applied in deriveActionPriors for social actions beyond the core 5.
+
+export const PERSONALITY_ACTION_MAP: Record<string, {
+  base: number;
+  traits: Record<string, number>;
+}> = {
+  // ── Prosocial ──
+  comfort: { base: 0.25, traits: { care: 0.35, sensitivity: 0.15, normSensitivity: 0.10 } },
+  praise: { base: 0.20, traits: { care: 0.25, normSensitivity: 0.20 } },
+  apologize: { base: 0.15, traits: { normSensitivity: 0.30, sensitivity: 0.15, care: 0.10 } },
+  share_resource: { base: 0.20, traits: { care: 0.30, normSensitivity: 0.10 } },
+  treat: { base: 0.15, traits: { care: 0.40, sensitivity: 0.10 } },
+  guard: { base: 0.20, traits: { safety: 0.25, care: 0.20, powerDrive: 0.10 } },
+  escort: { base: 0.20, traits: { care: 0.25, safety: 0.15 } },
+  // ── Assertive ──
+  command: { base: 0.15, traits: { powerDrive: 0.40, normSensitivity: -0.15 } },
+  threaten: { base: 0.10, traits: { powerDrive: 0.30, hpaReactivity: 0.15, care: -0.20 } },
+  accuse: { base: 0.10, traits: { powerDrive: 0.20, normSensitivity: 0.20, care: -0.15 } },
+  // ── Investigative ──
+  investigate: { base: 0.25, traits: { ambiguityTolerance: -0.15, experience: 0.15 } },
+  observe_target: { base: 0.20, traits: { paranoia: 0.20, sensitivity: 0.10 } },
+  verify: { base: 0.20, traits: { paranoia: 0.15, ambiguityTolerance: -0.20 } },
+  // ── Communicative ──
+  talk: { base: 0.35, traits: { care: 0.10, sensitivity: 0.10, normSensitivity: 0.05 } },
+  negotiate: { base: 0.25, traits: { powerDrive: 0.10, normSensitivity: 0.15, experience: 0.10 } },
+  signal: { base: 0.20, traits: { experience: 0.15, safety: 0.10 } },
+  call_backup: { base: 0.15, traits: { safety: 0.25, hpaReactivity: 0.15 } },
+  // ── Trade ──
+  propose_trade: { base: 0.20, traits: { normSensitivity: 0.10, experience: 0.15 } },
+} as const;
+
+// ─── Possibility Weights (defs.ts magic numbers) ────────────────────────
+// Each possibility builder reads weights from here instead of hardcoding.
+// Format: { <key>: { <inputName>: weight, ... } }
+
+export const POSSIBILITY_WEIGHTS = {
+  hide: { cover: 0.70, antiVis: 0.30, priorBlend: 0.55 },
+  escape: { exits: 0.50, esc: 0.50, priorBlend: 0.55 },
+  wait: { antiPressure: 0.45, pressureScale: 0.35, priorBlend: 0.65 },
+  rest: { fatigue: 0.80, antiThreat: 0.20, threshold: 0.12 },
+  observe_area: { base: 0.15, uncScale: 0.75, threshold: 0.12 },
+  self_talk: { uncertainty: 0.75, privacy: 0.25, threshold: 0.15 },
+  attack: { threat: 0.65, near: 0.20, host: 0.15, threatThreshold: 0.25 },
+  talk: { prior: 0.55, trust: 0.45 },
+  ask_info: { prior: 1.0 },
+  verify: { prior: 1.0 },
+  comfort: { prior: 0.60, closeness: 0.40 },
+  help: { prior: 0.70, obligation: 0.30 },
+  share_resource: { prior: 0.55, trust: 0.45, scarcityDampen: 0.60 },
+  negotiate: { prior: 0.65, respect: 0.20, formal: 0.15 },
+  propose_trade: { prior: 0.55, trust: 0.45, scarcityBoost: 0.60 },
+  apologize: { prior: 0.55, hostility: 0.45 },
+  praise: { prior: 0.65, respect: 0.35 },
+  accuse: { prior: 0.50, threat: 0.30, evidence: 0.20 },
+  threaten: { prior: 0.65, hostility: 0.35 },
+  confront: { prior: 0.30, hostility: 0.35, threat: 0.35 },
+  avoid: { prior: 1.0 },
+  command: { prior: 0.50, authority: 0.30, respect: 0.20 },
+  call_backup: { prior: 0.55, threat: 0.45 },
+  signal: { prior: 1.0 },
+  guard: { prior: 0.45, closeness: 0.35, threat: 0.20 },
+  escort: { prior: 0.50, trust: 0.25, danger: 0.25 },
+  treat: { prior: 0.55, wounded: 0.45, suppliesScale: 0.50 },
+  investigate: { prior: 0.55, uncertainty: 0.45 },
+  observe_target: { prior: 0.60, visibility: 0.40 },
+  deceive: { prior: 0.50, trust: 0.50 },
+  submit: { prior: 0.40, respect: 0.30, threat: 0.20, hostility: 0.10 },
+  loot: { scarcity: 0.60, survDampen: 0.50, threshold: 0.10 },
+  betray: { prior: 0.35, hostility: 0.35, trust: 0.30, threshold: 0.15 },
+} as const;
+
 // ─── Competitive Inhibition ───────────────────────────────────────────────
 
 export const INHIBITION = {
@@ -325,6 +400,16 @@ export const DECISION = {
   },
   planBoostWeight: 0.65,
   energyBonusScale: 0.25,
+
+  /** Repetition penalty: discourages repeating the same action kind consecutively. */
+  repetition: {
+    /** Penalty applied to Q when action kind matches previous tick. */
+    sameKindPenalty: 0.12,
+    /** Additional penalty when both kind AND target match. */
+    sameTargetPenalty: 0.08,
+    /** Decay factor per tick gap (0 = no decay, 1 = full decay after 1 tick). */
+    decayPerTick: 0.5,
+  },
 
   /** Context key modifiers: action-type × context → multiplier */
   contextMod: {
@@ -497,6 +582,8 @@ export const FC = {
   domainModeProjection: DOMAIN_MODE_PROJECTION,
   mode: MODE_FORMULA,
   priors: PRIORS_FORMULA,
+  personalityActionMap: PERSONALITY_ACTION_MAP,
+  possibilityWeights: POSSIBILITY_WEIGHTS,
   inhibition: INHIBITION,
   decision: DECISION,
   actionScoring: ACTION_SCORING,

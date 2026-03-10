@@ -56,7 +56,10 @@ const GOAL_TO_POSSIBILITY: Record<string, string[]> = {
 
   // Social manipulation
   persuade: ['negotiate', 'talk'],
-  deceive: ['talk'],
+  deceive: ['talk', 'deceive'],
+  betray: ['betray'],
+  loot: ['loot'],
+  submit: ['submit'],
   intimidate: ['threaten'],
   sow_dissent: ['talk', 'accuse'],
   blame_other: ['accuse'],
@@ -64,6 +67,15 @@ const GOAL_TO_POSSIBILITY: Record<string, string[]> = {
   maintain_cohesion: ['talk', 'comfort'],
   hoard: ['share_resource'],
   meditate: ['rest', 'self_talk'],
+
+  // Identity-mapped keys that need possibility-specific variants.
+  // Without these, GOAL_DEFS `observe` generates hint atoms for 'observe',
+  // but the actual possibility keys are 'observe_area' and 'observe_target'.
+  observe: ['observe_area', 'observe_target'],
+  attack: ['attack'],
+  hide: ['hide'],
+  rest: ['rest'],
+  wait: ['wait'],
 };
 
 /**

@@ -71,7 +71,7 @@ export type SimWorld = {
   events: SimEvent[];
 };
 
-export type ActionKind =
+export type ActionKindBuiltin =
   | 'move'
   | 'move_xy'
   | 'wait'
@@ -87,6 +87,13 @@ export type ActionKind =
   | 'start_intent'
   | 'continue_intent'
   | 'abort_intent';
+
+/**
+ * ActionKind includes builtins + any string for pipeline-generated social actions
+ * (comfort, guard, escort, treat, accuse, praise, etc.).
+ * Generic social spec handles unknown kinds at runtime.
+ */
+export type ActionKind = ActionKindBuiltin | (string & {});
 
 // Intent scripts (fractal actions): staged transactions with per-tick and enter/exit effects.
 export type IntentStageKind = 'approach' | 'attach' | 'execute' | 'detach';
