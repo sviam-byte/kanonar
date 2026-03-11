@@ -9,34 +9,16 @@ import { toSimAction } from '../actions/fromActionCandidate';
 import { runGoalLabPipelineV1 } from '../../goal-lab/pipeline/runPipelineV1';
 import { buildWorldStateFromSim } from './goalLabWorldState';
 
-const ACTION_KINDS: ActionKind[] = [
-  'move',
-  'move_xy',
-  'wait',
-  'rest',
-  'talk',
-  'attack',
-  'observe',
-  'question_about',
-  'negotiate',
-  'inspect_feature',
-  'repair_feature',
-  'scavenge_feature',
-  'start_intent',
-  'continue_intent',
-  'abort_intent',
-];
-
 function resolveActionKind(best: any): ActionKind {
   const fromMeta = String(best?.meta?.sim?.kind || best?.meta?.kind || '').trim();
-  if ((ACTION_KINDS as string[]).includes(fromMeta)) return fromMeta as ActionKind;
+  if (fromMeta) return fromMeta as ActionKind;
 
   const rawId = String(best?.id || '');
   const parts = rawId.split(':');
   const key = parts.length >= 2 ? parts[1] : rawId;
-  if ((ACTION_KINDS as string[]).includes(key)) return key as ActionKind;
+  if (key) return key as ActionKind;
 
-  // Fallback: stay conservative and produce a safe no-op.
+  // Fallback: truly unknown payload, return safe no-op.
   return 'wait';
 }
 
