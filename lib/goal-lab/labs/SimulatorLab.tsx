@@ -9,6 +9,7 @@ import { buildExport } from '../../simkit/core/export';
 import { makeOrchestratorPlugin } from '../../simkit/plugins/orchestratorPlugin';
 import { makeGoalLabPipelinePlugin } from '../../simkit/plugins/goalLabPipelinePlugin';
 import { makeGoalLabDeciderPlugin } from '../../simkit/plugins/goalLabDeciderPlugin';
+import { makePerceptionMemoryPlugin } from '../../simkit/plugins/perceptionMemoryPlugin';
 import { makeSimWorldFromSelection } from '../../simkit/adapters/fromKanonarEntities';
 import { basicScenarioId, makeBasicWorld } from '../../simkit/scenarios/basicScenario';
 
@@ -335,14 +336,21 @@ export const SimulatorLab: React.FC<Props> = ({ orchestratorRegistry, onPushToGo
 
     const goalLabDeciderPlugin = makeGoalLabDeciderPlugin({ storePipeline: false });
     const pipelinePlugin = makeGoalLabPipelinePlugin();
+    const memoryPlugin = makePerceptionMemoryPlugin();
+
+    // v32 adapter fix: default to GoalLab decider for SimulatorLab sessions.
+    (world as any).facts = {
+      ...((world as any)?.facts || {}),
+      'sim:decider': 'goallab',
+    };
 
     const sim = new SimKitSimulator({
       scenarioId: basicScenarioId,
       seed: 1337,
       initialWorld: world ?? makeBasicWorld(),
       // Order matters: first decideActions() that returns actions wins.
-      // GoalLab decider is opt-in via world.facts['sim:decider'] = 'goallab'.
-      plugins: [goalLabDeciderPlugin, orchestratorPlugin, pipelinePlugin],
+      // Keep perception memory plugin enabled to persist observation atoms between ticks.
+      plugins: [goalLabDeciderPlugin, orchestratorPlugin, pipelinePlugin, memoryPlugin],
       maxRecords: 500,
     });
 

@@ -68,8 +68,58 @@ export function buildWorldStateFromSim(world: SimWorld, snapshot: SimSnapshot): 
       // Optional per-agent temperature knobs (GoalLab pipeline reads these).
       temperature: (world as any)?.facts?.decisionTemperature ?? 1.0,
       behavioralParams: { T0: (world as any)?.facts?.decisionTemperature ?? 1.0 },
+      // v32 adapter fix: preserve original CharacterEntity slices for feature extraction.
+      // Without passthrough, extractCharacterFeatures falls back to neutral defaults.
+      body: (c as any)?.entity?.body ?? {},
+      vector_base: (c as any)?.entity?.vector_base ?? {},
+      identity: (c as any)?.entity?.identity ?? {},
+      context: (c as any)?.entity?.context ?? {},
+      lifeGoals: (c as any)?.entity?.lifeGoals ?? {},
+      goalTuning: (c as any)?.entity?.goalTuning ?? null,
+      driverCurves: (c as any)?.entity?.driverCurves ?? null,
+      inhibitionOverrides: (c as any)?.entity?.inhibitionOverrides ?? null,
+      driverInertia: (c as any)?.entity?.driverInertia ?? null,
     } as any;
   });
+
+  // v32 adapter fix: map SimKit dyadic relations -> GoalLab rel:state atoms.
+  // We inject only atoms linked to current agent (from or to), so memory stays scoped.
+  const rels = (world.facts as any)?.relations;
+  if (rels && typeof rels === 'object') {
+    for (const agent of agents) {
+      const selfId = String((agent as any)?.entityId ?? '');
+      if (!selfId) continue;
+      const selfRels: any[] = [];
+
+      for (const [fromId, targets] of Object.entries(rels)) {
+        if (!targets || typeof targets !== 'object') continue;
+        for (const [toId, metrics] of Object.entries(targets as any)) {
+          if (!metrics || typeof metrics !== 'object') continue;
+          if (fromId !== selfId && toId !== selfId) continue;
+          for (const [metric, value] of Object.entries(metrics as any)) {
+            const v = Number(value);
+            if (!Number.isFinite(v)) continue;
+            selfRels.push({
+              id: `rel:state:${fromId}:${toId}:${metric}`,
+              ns: 'rel',
+              kind: 'rel_state',
+              origin: 'world',
+              source: 'simkit:facts.relations',
+              magnitude: clamp01(v),
+              confidence: 1,
+              tags: ['rel', 'state', metric],
+              label: `rel:${fromId}→${toId}:${metric}=${v.toFixed(2)}`,
+            });
+          }
+        }
+      }
+
+      if (selfRels.length) {
+        (agent as any).memory = (agent as any).memory || {};
+        (agent as any).memory.beliefAtoms = [...arr((agent as any)?.memory?.beliefAtoms), ...selfRels];
+      }
+    }
+  }
 
   const locations = locs.map((l: any) => {
     const entityId = String(l?.id);

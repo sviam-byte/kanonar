@@ -5,6 +5,7 @@ import type { SimPlugin } from '../core/simulator';
 import type { SimSnapshot, SimWorld } from '../core/types';
 import type { SimAction } from '../core/types';
 import { runGoalLabPipelineV1 } from '../../goal-lab/pipeline/runPipelineV1';
+import { arr } from '../../utils/arr';
 import { toSimAction } from '../actions/fromActionCandidate';
 import { buildWorldStateFromSim } from './goalLabPipelinePlugin';
 
@@ -53,9 +54,9 @@ export function makeGoalLabDeciderPlugin(opts?: { storePipeline?: boolean }): Si
   return {
     id: 'plugin:goalLabDecider',
     decideActions: ({ world, tickIndex }) => {
-      // Opt-in switch: by default SimKit uses orchestratorPlugin or heuristic offers.
-      // Enable GoalLab decisions by setting world.facts['sim:decider'] = 'goallab'.
-      if (String((world as any)?.facts?.['sim:decider'] ?? '') !== 'goallab') return null;
+      // v32: GoalLab decider is default when plugin is present.
+      // Set world.facts['sim:decider'] = 'heuristic' to explicitly disable it.
+      if (String((world as any)?.facts?.['sim:decider'] ?? '') === 'heuristic') return null;
 
       const snapshot = buildSnapshot(world, tickIndex);
       const worldState = buildWorldStateFromSim(world, snapshot);
@@ -75,6 +76,24 @@ export function makeGoalLabDeciderPlugin(opts?: { storePipeline?: boolean }): Si
           tickOverride: tickIndex,
         });
         if (!pipeline) continue;
+
+        // v32 adapter fix: persist pipeline belief updates into world memory for next tick.
+        // Required for repetition penalty, surprise feedback and pressure accumulation loops.
+        const bpAtoms = arr((pipeline as any)?.beliefPersist?.beliefAtoms);
+        if (bpAtoms.length) {
+          const memKey = `mem:beliefAtoms:${actorId}`;
+          const prev = arr((world.facts as any)?.[memKey]);
+          const byId = new Map<string, any>();
+          for (const a of prev) {
+            const id = String((a as any)?.id || '');
+            if (id) byId.set(id, a);
+          }
+          for (const a of bpAtoms) {
+            const id = String((a as any)?.id || '');
+            if (id) byId.set(id, a);
+          }
+          (world.facts as any)[memKey] = Array.from(byId.values());
+        }
 
         if (opts?.storePipeline) {
           (world as any).facts = {
