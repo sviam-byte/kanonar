@@ -44,6 +44,7 @@ describe('selectDecisionMode', () => {
     const r = selectDecisionMode(w, 'test-agent');
     expect(r.mode).toBe('deliberative');
     expect(r.gate.reactiveScore).toBeLessThan(0.45);
+    expect(r.gate.arousalSource).toBe('emo');
   });
 
   it('high arousal + low selfControl → reactive', () => {
@@ -81,5 +82,14 @@ describe('selectDecisionMode', () => {
     const w = makeWorld();
     const r = selectDecisionMode(w, 'nonexistent');
     expect(r.mode).toBe('deliberative');
+  });
+
+  it('uses quick fallback arousal when emo signal is missing', () => {
+    const w = makeWorld({ selfControl: 0.4 });
+    delete (w.facts as any)['emo:arousal:test-agent'];
+    (w.facts as any)['ctx:danger:test-agent'] = 0.8;
+    const r = selectDecisionMode(w, 'test-agent');
+    expect(r.gate.arousalSource).toBe('quick');
+    expect(r.gate.arousal).toBeGreaterThan(0.5);
   });
 });

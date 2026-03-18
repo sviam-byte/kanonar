@@ -104,6 +104,8 @@ export function makeGoalLabDeciderPlugin(opts?: { storePipeline?: boolean; enabl
           sceneControl.enablePredict = dm.lookaheadEnabled;
           sceneControl._degradedTopK = dm.topK;
           sceneControl._degradedTempMult = dm.temperatureMultiplier;
+          (worldState as any).decisionTemperature =
+            (Number((worldState as any).decisionTemperature) || 1.0) * dm.temperatureMultiplier;
         }
 
         const pipeline = runGoalLabPipelineV1({
@@ -139,6 +141,15 @@ export function makeGoalLabDeciderPlugin(opts?: { storePipeline?: boolean; enabl
             'sim:goalLab:lastPipeline': pipeline,
           };
         }
+
+        // Store per-agent summary for beat detection / diagnostics.
+        const s7 = (pipeline as any)?.stages?.find((s: any) => s?.stage === 'S7');
+        const modeLabel = s7?.artifacts?.goalLayerSnapshot?.mode?.label || '';
+        (world.facts as any)[`sim:pipeline:${actorId}`] = {
+          mode: modeLabel,
+          decisionMode: mode,
+          tick: tickIndex,
+        };
 
         const best = extractDecisionBest(pipeline);
         if (!best) continue;

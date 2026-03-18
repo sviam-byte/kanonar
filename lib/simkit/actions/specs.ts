@@ -13,6 +13,7 @@ import { distSameLocation, getCharXY, getSpatialConfig } from '../core/spatial';
 import { getDyadTrust } from '../core/trust';
 import { clamp01 } from '../../util/math';
 import { buildGenericSocialSpec } from './genericSocialSpec';
+import { recordTrail } from '../core/mapTypes';
 
 const clamp = (x: number, a: number, b: number) => Math.max(a, Math.min(b, x));
 
@@ -332,6 +333,7 @@ const MoveXYSpec: ActionSpec = {
     const y = cur.y + dy * t;
     // Only local reposition (no locId change).
     c.pos = { nodeId: null, x, y };
+    recordTrail(world.facts as any, c.id, world.tickIndex, c.locId, undefined, x, y);
     // energy cost scales with moved distance
     const moved = Number.isFinite(d) ? Math.min(d, maxStep) : 0;
     c.energy = clamp01(c.energy - clamp01(moved / maxStep) * 0.012);
@@ -405,6 +407,7 @@ const MoveSpec: ActionSpec = {
       const loc = getLoc(world, c.locId);
       const n = loc?.nav?.nodes?.find((x) => x.id === action.targetNodeId);
       c.pos = { nodeId: action.targetNodeId, x: n?.x, y: n?.y };
+      recordTrail(world.facts as any, c.id, world.tickIndex, c.locId, action.targetNodeId, n?.x, n?.y);
       c.energy = clamp01(c.energy - 0.01);
       notes.push(`${c.id} moves to node ${action.targetNodeId}`);
       events.push(mkActionEvent(world, 'action:move_local', {
@@ -432,6 +435,7 @@ const MoveSpec: ActionSpec = {
     }
 
     c.locId = to;
+    recordTrail(world.facts as any, c.id, world.tickIndex, c.locId, c.pos?.nodeId ?? undefined, c.pos?.x, c.pos?.y);
     c.energy = clamp01(c.energy - 0.03);
     notes.push(`${c.id} moves ${from} -> ${to}`);
     events.push(mkActionEvent(world, 'action:move', {

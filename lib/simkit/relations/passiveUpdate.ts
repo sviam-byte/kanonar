@@ -5,24 +5,9 @@
 import type { SimWorld, SimAction } from '../core/types';
 import { clamp01 } from '../../util/math';
 import { FCS } from '../../config/formulaConfigSim';
+import { readRelation, writeRelation } from './canonicalWrite';
 
 type RelEntry = { trust: number; threat: number; familiarity?: number };
-
-function getRelEntry(facts: any, from: string, to: string): RelEntry {
-  const r = facts?.relations?.[from]?.[to];
-  return {
-    trust: clamp01(Number(r?.trust ?? 0.5)),
-    threat: clamp01(Number(r?.threat ?? r?.threatPrior ?? 0.3)),
-    familiarity: clamp01(Number(r?.familiarity ?? 0)),
-  };
-}
-
-function setRelEntry(facts: any, from: string, to: string, entry: RelEntry) {
-  if (!facts.relations) facts.relations = {};
-  if (!facts.relations[from]) facts.relations[from] = {};
-  const prev = facts.relations[from][to] || {};
-  facts.relations[from][to] = { ...prev, ...entry };
-}
 
 function isCooperative(kind: string): boolean {
   const coop = new Set([
@@ -60,8 +45,8 @@ export function passiveRelationUpdate(world: SimWorld, actionsApplied: SimAction
         const a = agents[i];
         const b = agents[j];
 
-        const entryAB = getRelEntry(facts, a, b);
-        const entryBA = getRelEntry(facts, b, a);
+        const entryAB = readRelation(world, a, b) as RelEntry;
+        const entryBA = readRelation(world, b, a) as RelEntry;
 
         const aCoops = isCooperative(actionKind[a] ?? '');
         const bCoops = isCooperative(actionKind[b] ?? '');
@@ -77,8 +62,8 @@ export function passiveRelationUpdate(world: SimWorld, actionsApplied: SimAction
           entryBA.familiarity = clamp01((entryBA.familiarity ?? 0) + cfg.familiarityBonus);
         }
 
-        setRelEntry(facts, a, b, entryAB);
-        setRelEntry(facts, b, a, entryBA);
+        writeRelation(world, a, b, entryAB);
+        writeRelation(world, b, a, entryBA);
       }
     }
   }
@@ -91,12 +76,12 @@ export function passiveRelationUpdate(world: SimWorld, actionsApplied: SimAction
       const bLoc = String((world.characters[b] as any)?.locId ?? '');
       if (aLoc === bLoc) continue;
 
-      const entryAB = getRelEntry(facts, a, b);
-      const entryBA = getRelEntry(facts, b, a);
+      const entryAB = readRelation(world, a, b) as RelEntry;
+      const entryBA = readRelation(world, b, a) as RelEntry;
       entryAB.familiarity = clamp01((entryAB.familiarity ?? 0) - cfg.separationDecay);
       entryBA.familiarity = clamp01((entryBA.familiarity ?? 0) - cfg.separationDecay);
-      setRelEntry(facts, a, b, entryAB);
-      setRelEntry(facts, b, a, entryBA);
+      writeRelation(world, a, b, entryAB);
+      writeRelation(world, b, a, entryBA);
     }
   }
 }
@@ -124,15 +109,15 @@ export function indirectEvidenceUpdate(world: SimWorld, actionsApplied: SimActio
     const baseDelta = hostile ? -0.08 : 0.04;
 
     for (const aId of observers) {
-      const trustAC = getRelEntry(facts, aId, cId).trust;
+      const trustAC = (readRelation(world, aId, cId) as RelEntry).trust;
       const alignmentSign = trustAC > 0.5 ? 1 : trustAC < 0.4 ? -1 : 0;
       if (alignmentSign === 0) continue;
 
       const delta = baseDelta * alignmentSign * cfg.alignmentWeight;
 
-      const entryAB = getRelEntry(facts, aId, bId);
+      const entryAB = readRelation(world, aId, bId) as RelEntry;
       entryAB.trust = clamp01(entryAB.trust + delta * cfg.confidenceDiscount);
-      setRelEntry(facts, aId, bId, entryAB);
+      writeRelation(world, aId, bId, entryAB);
     }
   }
 }

@@ -13,6 +13,8 @@ import { makeGoalLabDeciderPlugin } from '../../lib/simkit/plugins/goalLabDecide
 import { makeGoalLabPipelinePlugin } from '../../lib/simkit/plugins/goalLabPipelinePlugin';
 import { makePerceptionMemoryPlugin } from '../../lib/simkit/plugins/perceptionMemoryPlugin';
 import { clamp01 } from '../../lib/util/math';
+import { MacroMap } from './MacroMap';
+import { DialoguePanel } from './DialoguePanel';
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
@@ -546,6 +548,7 @@ export const LiveSimulator: React.FC = () => {
   }, [snapshot]);
 
   const relations = useMemo(() => snapshot ? getRelations(snapshot as any) : [], [snapshot]);
+  const worldView = simRef.current?.world ?? null;
 
   // Pipeline data for selected agent.
   const selectedPipeline = useMemo(() => {
@@ -593,12 +596,29 @@ export const LiveSimulator: React.FC = () => {
 
       {/* Main layout */}
       <div style={{ display: 'flex', flex: 1, gap: 8, padding: '0 12px 12px', minHeight: 0 }}>
-        {/* Left: Narrative */}
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+        {/* Left: Map + Narrative + Dialogue */}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, gap: 8 }}>
+          {worldView && (
+            <MacroMap
+              world={worldView}
+              selectedAgentId={selectedAgentId}
+              selectedLocationId={selectedLocId}
+              onSelectAgent={setSelectedAgentId}
+              onSelectLocation={setSelectedLocId}
+              height={260}
+              width={700}
+            />
+          )}
           <div style={{ fontSize: 10, color: '#475569', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1, fontWeight: 600 }}>
             Нарратив
           </div>
           <NarrativeLog entries={narrative} />
+          <div style={{ fontSize: 10, color: '#475569', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1, fontWeight: 600 }}>
+            Диалоги
+          </div>
+          <div style={{ minHeight: 140, maxHeight: 220, border: '1px solid #1e293b', borderRadius: 8, background: '#020617', padding: 6 }}>
+            <DialoguePanel world={worldView as any} actorLabels={names} />
+          </div>
         </div>
 
         {/* Right: Agent cards + relations */}

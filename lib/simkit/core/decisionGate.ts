@@ -1,5 +1,5 @@
 // lib/simkit/core/decisionGate.ts
-// Dual-process gate: System 1 (reactive) / 1.5 (degraded) / 2 (deliberative).
+// Dual-process gate with quick-arousal fallback for ticks where pipeline hasn't run.
 
 import type { SimWorld, SimCharacter } from './types';
 import { clamp01 } from '../../util/math';
@@ -15,6 +15,7 @@ export type DecisionGateResult = {
     surprise: number;
     fatigue: number;
     reactiveScore: number;
+    arousalSource: 'emo' | 'quick';
   };
 };
 
@@ -45,14 +46,32 @@ function getMaxSurprise(facts: any, agentId: string): number {
 export function selectDecisionMode(world: SimWorld, agentId: string): DecisionGateResult {
   const char = world.characters[agentId];
   const cfg = FCS.dualProcess;
-  const zero = { arousal: 0, selfControl: 0.5, surprise: 0, fatigue: 0, reactiveScore: 0 };
-  if (!char) return { mode: 'deliberative', gate: zero };
+  const zero: DecisionGateResult = {
+    mode: 'deliberative',
+    gate: { arousal: 0, selfControl: 0.5, surprise: 0, fatigue: 0, reactiveScore: 0, arousalSource: 'quick' },
+  };
+  if (!char) return zero;
 
   const facts: any = world.facts || {};
-  const arousal = readFact(facts, `emo:arousal:${agentId}`, 0);
   const selfControl = getSelfControl(char);
   const surprise = getMaxSurprise(facts, agentId);
   const fatigue = clamp01(Number((char as any).fatigue ?? facts[`body:fatigue:${agentId}`] ?? 0));
+
+  // FIX A.1: Try pipeline emotion first; fall back to quick-arousal from raw signals.
+  const emoArousal = readFact(facts, `emo:arousal:${agentId}`, -1);
+  let arousal: number;
+  let arousalSource: 'emo' | 'quick';
+
+  if (emoArousal >= 0) {
+    arousal = emoArousal;
+    arousalSource = 'emo';
+  } else {
+    // Quick arousal from raw world signals (available even before first pipeline run).
+    const danger = readFact(facts, `ctx:danger:${agentId}`, 0);
+    const stress = clamp01(Number(char.stress ?? 0));
+    arousal = clamp01(Math.max(danger, stress, surprise) * 0.7);
+    arousalSource = 'quick';
+  }
 
   const reactiveScore = clamp01(arousal * (1 - selfControl) + cfg.surpriseWeight * surprise);
 
@@ -60,5 +79,5 @@ export function selectDecisionMode(world: SimWorld, agentId: string): DecisionGa
   if (reactiveScore >= cfg.reactiveThreshold) mode = 'reactive';
   else if (reactiveScore >= cfg.degradedThreshold || fatigue >= cfg.fatigueHabitualThreshold) mode = 'degraded';
 
-  return { mode, gate: { arousal, selfControl, surprise, fatigue, reactiveScore } };
+  return { mode, gate: { arousal, selfControl, surprise, fatigue, reactiveScore, arousalSource } };
 }

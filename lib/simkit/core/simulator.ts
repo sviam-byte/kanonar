@@ -14,6 +14,8 @@ import { clamp01 } from '../../util/math';
 import { passiveRelationUpdate, indirectEvidenceUpdate } from '../relations/passiveUpdate';
 import { generateNonverbalAtoms } from '../perception/nonverbalAtoms';
 import { detectBeats, computeTension, type NarrativeBeat } from '../narrative/beatDetector';
+import { resolveConflicts } from '../resolution/conflictDetector';
+import { expireDialogues } from '../dialogue/dialogueState';
 
 function applyHazardPoints(world: SimWorld) {
   const points = Array.isArray((world.facts as any)?.hazardPoints) ? (world.facts as any).hazardPoints : [];
@@ -245,8 +247,19 @@ export class SimKitSimulator {
 
     const actionsToApply = forced.length ? forced : (pluginDecided || []);
 
-    if (actionsToApply.length) {
-      for (const a of actionsToApply) {
+    // 1.5) Conflict resolution.
+    let conflictEvents: any[] = [];
+    let resolvedConflicts: any[] = [];
+    const conflictResult = resolveConflicts(this.world, actionsToApply, this.cfg.seed);
+    const actionsAfterConflict = conflictResult.filteredActions;
+    conflictEvents = conflictResult.events;
+    resolvedConflicts = conflictResult.resolved;
+    if (resolvedConflicts.length) {
+      notes.push(`conflicts: ${resolvedConflicts.map((r) => r.reason).join('; ')}`);
+    }
+
+    if (actionsAfterConflict.length) {
+      for (const a of actionsAfterConflict) {
         const vr = validateActionStrict(this.world, a);
         let actionToApply: SimAction | null = null;
 
@@ -325,6 +338,7 @@ export class SimKitSimulator {
 
     // 2) применяем события (включая те, что уже были в мире)
     const eventsNow = (this.world.events || []).slice();
+    if (conflictEvents.length) eventsNow.push(...conflictEvents);
     this.world.events = []; // consumed
     for (const e of eventsNow) {
       const r = applyEvent(this.world, e);
@@ -332,6 +346,7 @@ export class SimKitSimulator {
       eventsApplied.push(e);
       notes.push(...r.notes);
     }
+    expireDialogues(this.world);
 
     // 2.5) integrate inboxAtoms into agentAtoms with trust/compat gating.
     const inbox = (this.world.facts['inboxAtoms'] && typeof this.world.facts['inboxAtoms'] === 'object')
@@ -450,7 +465,9 @@ export class SimKitSimulator {
     const rec: SimTickRecord = {
       snapshot,
       trace,
-      plugins: {},
+      plugins: {
+        conflicts: resolvedConflicts,
+      },
     };
 
     // 5) plugins (например, оркестратор)
@@ -470,7 +487,7 @@ export class SimKitSimulator {
 
     // 5.7) Beat detection + tension curve
     const prev = this.records.length ? this.records[this.records.length - 1] : null;
-    const beats = detectBeats(rec, prev, this.world);
+    const beats = detectBeats(rec, prev, this.world, w0);
     if (beats.length) this.beats.push(...beats);
     this.tensionHistory.push(computeTension(this.world));
 
