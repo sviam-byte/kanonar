@@ -77,7 +77,15 @@ export function persistBeliefAtomsToFacts(world: SimWorld, beliefAtomsByAgentId:
   world.facts ||= {};
   const ids = Object.keys(world.characters || {}).sort();
   for (const id of ids) {
-    world.facts[`mem:beliefAtoms:${id}`] = arr(beliefAtomsByAgentId[id]);
+    // IMPORTANT: merge by atom id, not replace.
+    // goalLabDeciderPlugin writes belief:chosen/surprise/pressure atoms earlier in the tick.
+    // A full replace here would destroy the POMDP feedback loop.
+    const key = `mem:beliefAtoms:${id}`;
+    const prev = Array.isArray((world.facts as any)[key]) ? (world.facts as any)[key] as any[] : [];
+    const byId = new Map<string, any>();
+    for (const a of prev) { const aid = String((a as any)?.id || ''); if (aid) byId.set(aid, a); }
+    for (const a of arr(beliefAtomsByAgentId[id])) { const aid = String((a as any)?.id || ''); if (aid) byId.set(aid, a); }
+    (world.facts as any)[key] = Array.from(byId.values());
   }
 }
 
