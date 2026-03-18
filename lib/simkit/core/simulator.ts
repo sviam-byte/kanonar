@@ -11,6 +11,9 @@ import type { ContextAtom } from '../../context/v2/types';
 import { decideAcceptance } from './trust';
 import { rememberLastAction, scoreOfferSubjective } from './subjective';
 import { clamp01 } from '../../util/math';
+import { passiveRelationUpdate, indirectEvidenceUpdate } from '../relations/passiveUpdate';
+import { generateNonverbalAtoms } from '../perception/nonverbalAtoms';
+import { detectBeats, computeTension, type NarrativeBeat } from '../narrative/beatDetector';
 
 function applyHazardPoints(world: SimWorld) {
   const points = Array.isArray((world.facts as any)?.hazardPoints) ? (world.facts as any).hazardPoints : [];
@@ -147,6 +150,8 @@ export class SimKitSimulator {
 
   // внешняя очередь “принудительных” действий на следующий тик
   public forcedActions: SimAction[] = [];
+  public beats: NarrativeBeat[] = [];
+  public tensionHistory: number[] = [];
 
   constructor(cfg: SimulatorConfig) {
     this.cfg = cfg;
@@ -168,6 +173,8 @@ export class SimKitSimulator {
     for (let i = 0; i < ids.length; i++) ensureCharacterPos(this.world, ids[i], i);
     this.records = [];
     this.forcedActions = [];
+    this.beats = [];
+    this.tensionHistory = [];
   }
 
   /** Replace initial world (used by Scene Setup) and reset session. */
@@ -450,6 +457,22 @@ export class SimKitSimulator {
     for (const p of this.cfg.plugins || []) {
       p.afterSnapshot?.({ world: this.world, snapshot, record: rec });
     }
+
+    // 5.5) Passive relation dynamics
+    passiveRelationUpdate(this.world, actionsApplied);
+    indirectEvidenceUpdate(this.world, actionsApplied);
+
+    // 5.6) Generate nonverbal observation atoms
+    const nv = generateNonverbalAtoms(this.world);
+    if (nv.length) {
+      (this.world.facts as any)[`obs:nonverbal:${this.world.tickIndex}`] = nv;
+    }
+
+    // 5.7) Beat detection + tension curve
+    const prev = this.records.length ? this.records[this.records.length - 1] : null;
+    const beats = detectBeats(rec, prev, this.world);
+    if (beats.length) this.beats.push(...beats);
+    this.tensionHistory.push(computeTension(this.world));
 
     this.records.push(rec);
     if (this.cfg.maxRecords && this.records.length > this.cfg.maxRecords) {
