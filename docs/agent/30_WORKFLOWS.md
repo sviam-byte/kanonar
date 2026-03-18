@@ -36,3 +36,10 @@ Rules:
 2) Default values must be stable and documented.
 3) Add to trace/log output.
 4) Add tests that changing the knob changes behavior.
+
+## F) SimKit dual-process / narrative extensions
+When changing simulator-only cognition/perception dynamics:
+1) Keep simulator coefficients in `lib/config/formulaConfigSim.ts` (`FCS.*`), not in local constants.
+2) If decision routing changes (`deliberative`/`degraded`/`reactive`), ensure mode + gate payload are preserved in `action.meta`.
+3) Keep post-step updates deterministic and explicit: relation drift, nonverbal observations, beat detection, tension curve.
+4) Add/adjust focused tests in `tests/simkit/*` and run full `npm test` to catch cross-pipeline regressions.

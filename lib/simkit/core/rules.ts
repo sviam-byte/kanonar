@@ -4,7 +4,9 @@
 import type { SimWorld, SimAction, ActionOffer, SimEvent, SpeechEventV1 } from './types';
 import { getChar, getLoc } from './world';
 import { enumerateActionOffers, applyActionViaSpec } from '../actions/specs';
-import { canHear, distSameLocation, getSpatialConfig, privacyOf } from './spatial';
+import { distSameLocation, getSpatialConfig, privacyOf } from './spatial';
+import { routeSpeechEvent } from '../perception/speechFilter';
+import { recordDialogueEntry } from '../dialogue/dialogueState';
 
 const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
 
@@ -57,34 +59,13 @@ export function applyEvent(w: SimWorld, e: SimEvent): { world: SimWorld; notes: 
     const targetId = String(s?.targetId || '');
     const atoms = Array.isArray(s?.atoms) ? s?.atoms : [];
 
-    // Delivery policy:
-    // - whisper: only the explicit target can hear (if in range)
-    // - normal: target + local overhearers (reduced confidence)
-    // - shout: everyone in same location who can hear (reduced confidence)
-    const recipients: Array<{ id: string; overhear: boolean; confMul: number }> = [];
-
-    if (targetId && w.characters[targetId]) {
-      const heard = canHear(w, speakerId, targetId, volume);
-      if (heard) {
-        recipients.push({ id: targetId, overhear: false, confMul: 1.0 });
-      } else {
-        notes.push(`speech inaudible for target: ${speakerId} -> ${targetId}`);
-      }
-    }
-
-    // Overhear logic for same-location listeners.
-    for (const other of Object.values(w.characters)) {
-      if (other.id === speakerId) continue;
-      if (targetId && other.id === targetId) continue;
-      if (other.locId !== speaker.locId) continue;
-      if (volume === 'whisper') continue;
-
-      const heard = canHear(w, speakerId, other.id, volume);
-      if (!heard) continue;
-
-      const confMul = volume === 'shout' ? 0.55 : 0.7;
-      recipients.push({ id: other.id, overhear: true, confMul });
-    }
+    // Recipient routing with spatial + volume policy.
+    const recipients = routeSpeechEvent(w, e).map((r) => ({
+      id: r.agentId,
+      overhear: r.channel !== 'direct',
+      confMul: clamp01(r.confidence),
+      channel: r.channel,
+    }));
 
     if (!recipients.length) {
       notes.push(`speech dropped (no recipients): ${speakerId}`);
@@ -116,12 +97,32 @@ export function applyEvent(w: SimWorld, e: SimEvent): { world: SimWorld; notes: 
             speakerPrivacy,
             // Mark that the recipient overheard rather than being explicitly targeted.
             overhear: r.overhear,
+            channel: r.channel,
           },
         });
       }
       (inbox as any)[key] = arr;
     }
     w.facts['inboxAtoms'] = inbox as any;
+
+    // Structured dialogue trace for UI/debug.
+    recordDialogueEntry(w, {
+      tick: w.tickIndex,
+      speakerId,
+      targetId,
+      act: (s?.act as any) || 'inform',
+      intent: ((s as any)?._intent || 'truthful') as any,
+      volume,
+      topic: String(s?.topic || ''),
+      atoms: atoms as any,
+      text: String(s?.text || ''),
+      recipients: recipients.map((r) => ({
+        agentId: r.id,
+        channel: r.channel,
+        confidence: r.confMul,
+        accepted: true,
+      })),
+    });
 
     notes.push(
       `speech:v1 ${speakerId} -> ${targetId || '(broadcast)'} recips=${recipients.length} (${volume})`

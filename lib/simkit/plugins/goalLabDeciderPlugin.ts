@@ -8,6 +8,9 @@ import { runGoalLabPipelineV1 } from '../../goal-lab/pipeline/runPipelineV1';
 import { arr } from '../../utils/arr';
 import { toSimAction } from '../actions/fromActionCandidate';
 import { buildWorldStateFromSim } from './goalLabPipelinePlugin';
+import { selectDecisionMode, type DecisionMode } from '../core/decisionGate';
+import { reactiveDecision } from '../core/reactiveDecision';
+import { FCS } from '../../config/formulaConfigSim';
 
 function buildSnapshot(world: SimWorld, tickIndex: number): SimSnapshot {
   return {
@@ -50,10 +53,10 @@ function decorateAction(action: SimAction, best: any): SimAction {
   };
 }
 
-export function makeGoalLabDeciderPlugin(opts?: { storePipeline?: boolean }): SimPlugin {
+export function makeGoalLabDeciderPlugin(opts?: { storePipeline?: boolean; enableDualProcess?: boolean }): SimPlugin {
   return {
     id: 'plugin:goalLabDecider',
-    decideActions: ({ world, tickIndex }) => {
+    decideActions: ({ world, tickIndex, offers }) => {
       // v32: GoalLab decider is default when plugin is present.
       // Set world.facts['sim:decider'] = 'heuristic' to explicitly disable it.
       if (String((world as any)?.facts?.['sim:decider'] ?? '') === 'heuristic') return null;
@@ -69,11 +72,48 @@ export function makeGoalLabDeciderPlugin(opts?: { storePipeline?: boolean }): Si
       const actions: SimAction[] = [];
 
       for (const actorId of actorIds) {
+        const dualProcessEnabled = opts?.enableDualProcess !== false;
+        let mode: DecisionMode = 'deliberative';
+        let gateResult: any = null;
+        if (dualProcessEnabled) {
+          const dr = selectDecisionMode(world, actorId);
+          mode = dr.mode;
+          gateResult = dr.gate;
+        }
+
+        // System 1: reactive shortcut.
+        if (mode === 'reactive') {
+          const rr = reactiveDecision(world, actorId, offers, tickIndex);
+          if (rr.action) {
+            rr.action.meta = {
+              ...(rr.action.meta || {}),
+              decisionMode: 'reactive',
+              gate: gateResult,
+              reactiveReason: rr.reason,
+            };
+            actions.push(rr.action);
+          }
+          continue;
+        }
+
+        // System 1.5: degraded params.
+        const sceneControl: any = {};
+        if (mode === 'degraded') {
+          const dm = FCS.dualProcess.degradedModifiers;
+          sceneControl.enableToM = dm.tomEnabled;
+          sceneControl.enablePredict = dm.lookaheadEnabled;
+          sceneControl._degradedTopK = dm.topK;
+          sceneControl._degradedTempMult = dm.temperatureMultiplier;
+          (worldState as any).decisionTemperature =
+            (Number((worldState as any).decisionTemperature) || 1.0) * dm.temperatureMultiplier;
+        }
+
         const pipeline = runGoalLabPipelineV1({
           world: worldState as any,
           agentId: actorId,
           participantIds,
           tickOverride: tickIndex,
+          ...(mode === 'degraded' ? { sceneControl } : {}),
         });
         if (!pipeline) continue;
 
@@ -102,11 +142,24 @@ export function makeGoalLabDeciderPlugin(opts?: { storePipeline?: boolean }): Si
           };
         }
 
+        // Store per-agent summary for beat detection / diagnostics.
+        const s7 = (pipeline as any)?.stages?.find((s: any) => s?.stage === 'S7');
+        const modeLabel = s7?.artifacts?.goalLayerSnapshot?.mode?.label || '';
+        (world.facts as any)[`sim:pipeline:${actorId}`] = {
+          mode: modeLabel,
+          decisionMode: mode,
+          tick: tickIndex,
+        };
+
         const best = extractDecisionBest(pipeline);
         if (!best) continue;
 
         const action = toSimAction(best, tickIndex);
-        if (action) actions.push(decorateAction(action, best));
+        if (action) {
+          const decorated = decorateAction(action, best);
+          decorated.meta = { ...(decorated.meta || {}), decisionMode: mode, gate: gateResult };
+          actions.push(decorated);
+        }
       }
 
       return actions;
