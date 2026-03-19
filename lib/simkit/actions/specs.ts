@@ -14,6 +14,7 @@ import { getDyadTrust } from '../core/trust';
 import { clamp01 } from '../../util/math';
 import { buildGenericSocialSpec } from './genericSocialSpec';
 import { recordTrail } from '../core/mapTypes';
+import { RespondSpec } from './respondSpec';
 
 const clamp = (x: number, a: number, b: number) => Math.max(a, Math.min(b, x));
 
@@ -1456,6 +1457,7 @@ export const ACTION_SPECS: Record<ActionKind, ActionSpec> = {
   start_intent: StartIntentSpec,
   continue_intent: ContinueIntentSpec,
   abort_intent: AbortIntentSpec,
+  respond: RespondSpec,
 };
 
 export function enumerateActionOffers(world: SimWorld): ActionOffer[] {

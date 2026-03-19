@@ -12,9 +12,11 @@ import { makeSimWorldFromSelection } from '../../lib/simkit/adapters/fromKanonar
 import { makeGoalLabDeciderPlugin } from '../../lib/simkit/plugins/goalLabDeciderPlugin';
 import { makeGoalLabPipelinePlugin } from '../../lib/simkit/plugins/goalLabPipelinePlugin';
 import { makePerceptionMemoryPlugin } from '../../lib/simkit/plugins/perceptionMemoryPlugin';
+import { attachScenario, type ScenarioConfig } from '../../lib/simkit/core/simulatorScenario';
 import { clamp01 } from '../../lib/util/math';
 import { MacroMap } from './MacroMap';
 import { DialoguePanel } from './DialoguePanel';
+import { SetupPanel } from './SetupPanel';
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
@@ -135,102 +137,6 @@ const Bar: React.FC<{ value: number; color?: string; label?: string; maxWidth?: 
         <div style={{ width: w, height: '100%', background: color, borderRadius: 2, transition: 'width 0.3s ease' }} />
       </div>
       <span style={{ width: 32, textAlign: 'right', color: '#cbd5e1' }}>{(value * 100).toFixed(0)}%</span>
-    </div>
-  );
-};
-
-// ─── Setup Panel ───────────────────────────────────────────────────────────
-
-const SetupPanel: React.FC<{
-  characters: CharacterEntity[];
-  locations: LocationEntity[];
-  selectedCharIds: string[];
-  selectedLocId: string;
-  onToggleChar: (id: string) => void;
-  onSelectLoc: (id: string) => void;
-  onStart: () => void;
-}> = ({ characters, locations, selectedCharIds, selectedLocId, onToggleChar, onSelectLoc, onStart }) => {
-  const canStart = selectedCharIds.length >= 2 && selectedLocId;
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: 24, maxWidth: 700, margin: '40px auto' }}>
-      <h1 style={{ fontSize: 24, fontWeight: 700, color: '#e2e8f0', fontFamily: '"JetBrains Mono", monospace' }}>
-        Kanonar Simulator
-      </h1>
-      <p style={{ color: '#64748b', fontSize: 13 }}>
-        Выбери персонажей (мин. 2) и локацию. Жми «Запуск» и наблюдай.
-      </p>
-
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-        {/* Characters */}
-        <div>
-          <h3 style={{ fontSize: 13, fontWeight: 600, color: '#94a3b8', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 1 }}>
-            Персонажи ({selectedCharIds.length})
-          </h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 400, overflowY: 'auto' }}>
-            {characters.map((c) => {
-              const sel = selectedCharIds.includes(c.entityId);
-              return (
-                <label
-                  key={c.entityId}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px',
-                    borderRadius: 6, cursor: 'pointer', fontSize: 13,
-                    background: sel ? '#1e3a5f' : '#0f172a',
-                    border: sel ? '1px solid #3b82f6' : '1px solid #1e293b',
-                    color: sel ? '#e2e8f0' : '#64748b',
-                    transition: 'all 0.15s',
-                  }}
-                >
-                  <input type="checkbox" checked={sel} onChange={() => onToggleChar(c.entityId)} style={{ accentColor: '#3b82f6' }} />
-                  <span style={{ fontWeight: sel ? 600 : 400 }}>{c.title || c.entityId}</span>
-                </label>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Locations */}
-        <div>
-          <h3 style={{ fontSize: 13, fontWeight: 600, color: '#94a3b8', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 1 }}>
-            Локация
-          </h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            {locations.map((l) => {
-              const sel = selectedLocId === l.entityId;
-              return (
-                <label
-                  key={l.entityId}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px',
-                    borderRadius: 6, cursor: 'pointer', fontSize: 13,
-                    background: sel ? '#1e3a5f' : '#0f172a',
-                    border: sel ? '1px solid #3b82f6' : '1px solid #1e293b',
-                    color: sel ? '#e2e8f0' : '#64748b',
-                    transition: 'all 0.15s',
-                  }}
-                >
-                  <input type="radio" name="location" checked={sel} onChange={() => onSelectLoc(l.entityId)} style={{ accentColor: '#3b82f6' }} />
-                  <span style={{ fontWeight: sel ? 600 : 400 }}>{l.title || l.entityId}</span>
-                </label>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-
-      <button
-        onClick={onStart}
-        disabled={!canStart}
-        style={{
-          marginTop: 12, padding: '12px 32px', borderRadius: 8, border: 'none', cursor: canStart ? 'pointer' : 'not-allowed',
-          background: canStart ? '#3b82f6' : '#1e293b', color: canStart ? '#fff' : '#475569',
-          fontSize: 15, fontWeight: 700, fontFamily: '"JetBrains Mono", monospace',
-          transition: 'all 0.2s',
-        }}
-      >
-        ▶ Запуск
-      </button>
     </div>
   );
 };
@@ -415,11 +321,7 @@ export const LiveSimulator: React.FC = () => {
 
   // ─── Setup state ───
   const [phase, setPhase] = useState<'setup' | 'run'>('setup');
-  const [selectedCharIds, setSelectedCharIds] = useState<string[]>(() => {
-    const ids = allCharacters.slice(0, 3).map(c => c.entityId);
-    return ids;
-  });
-  const [selectedLocId, setSelectedLocId] = useState<string>(() => allLocations[0]?.entityId || '');
+  const [selectedLocationId, setSelectedLocationId] = useState('');
 
   // ─── Run state ───
   const simRef = useRef<SimKitSimulator | null>(null);
@@ -431,23 +333,33 @@ export const LiveSimulator: React.FC = () => {
   const [speed, setSpeed] = useState(400);
   const [selectedAgentId, setSelectedAgentId] = useState('');
   const runRef = useRef(false);
+  // Optional scenario-layer wiring (phases/triggers/degradation).
+  const scenarioConfig = useMemo<ScenarioConfig | null>(() => null, []);
 
   // ─── Callbacks ───
 
-  const toggleChar = useCallback((id: string) => {
-    setSelectedCharIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
-  }, []);
-
-  const handleStart = useCallback(() => {
-    const locations = allLocations.filter(l => l.entityId === selectedLocId);
-    const characters = allCharacters.filter(c => selectedCharIds.includes(c.entityId));
+  const handleStart = useCallback((config: {
+    selectedCharIds: string[];
+    selectedLocIds: string[];
+    placements: Record<string, string>;
+  }) => {
+    const locations = allLocations.filter(l => config.selectedLocIds.includes(l.entityId));
+    const characters = allCharacters.filter(c => config.selectedCharIds.includes(c.entityId));
     if (!locations.length || characters.length < 2) return;
 
+    // Guard placement map at integration boundary to avoid invalid location ids.
+    const defaultLocId = locations[0].entityId;
+    const locationSet = new Set(locations.map(l => l.entityId));
     const placements: Record<string, string> = {};
-    for (const c of characters) placements[c.entityId] = selectedLocId;
+    for (const c of characters) {
+      const requestedLoc = config.placements?.[c.entityId];
+      placements[c.entityId] = requestedLoc && locationSet.has(requestedLoc) ? requestedLoc : defaultLocId;
+    }
+
+    const seed = Date.now() % 100000;
 
     const world = makeSimWorldFromSelection({
-      seed: Date.now() % 100000,
+      seed,
       locations,
       characters,
       placements,
@@ -459,11 +371,12 @@ export const LiveSimulator: React.FC = () => {
 
     const sim = new SimKitSimulator({
       scenarioId: 'sim:live',
-      seed: Date.now() % 100000,
+      seed,
       initialWorld: world,
       plugins: [decider, pipeline, memory],
       maxRecords: 200,
     });
+    if (scenarioConfig) attachScenario(sim, scenarioConfig);
 
     simRef.current = sim;
     setTick(0);
@@ -471,8 +384,9 @@ export const LiveSimulator: React.FC = () => {
     setSnapshot(sim.world);
     setLastRecord(null);
     setSelectedAgentId(characters[0]?.entityId || '');
+    setSelectedLocationId(defaultLocId);
     setPhase('run');
-  }, [selectedCharIds, selectedLocId, allCharacters, allLocations]);
+  }, [allCharacters, allLocations, scenarioConfig]);
 
   const doStep = useCallback(() => {
     const sim = simRef.current;
@@ -570,10 +484,6 @@ export const LiveSimulator: React.FC = () => {
         <SetupPanel
           characters={allCharacters}
           locations={allLocations}
-          selectedCharIds={selectedCharIds}
-          selectedLocId={selectedLocId}
-          onToggleChar={toggleChar}
-          onSelectLoc={setSelectedLocId}
           onStart={handleStart}
         />
       </div>
@@ -602,9 +512,9 @@ export const LiveSimulator: React.FC = () => {
             <MacroMap
               world={worldView}
               selectedAgentId={selectedAgentId}
-              selectedLocationId={selectedLocId}
+              selectedLocationId={selectedLocationId}
               onSelectAgent={setSelectedAgentId}
-              onSelectLocation={setSelectedLocId}
+              onSelectLocation={setSelectedLocationId}
               height={260}
               width={700}
             />
