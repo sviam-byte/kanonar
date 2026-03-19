@@ -482,6 +482,18 @@ export class SimKitSimulator {
     // 5.6) Generate nonverbal observation atoms
     const nv = generateNonverbalAtoms(this.world);
     if (nv.length) {
+      const inbox = (this.world.facts['inboxAtoms'] && typeof this.world.facts['inboxAtoms'] === 'object')
+        ? this.world.facts['inboxAtoms']
+        : {};
+      for (const atom of nv) {
+        const toId = String((atom as any)?.meta?.to ?? '');
+        if (!toId || !this.world.characters[toId]) continue;
+        const arr = Array.isArray((inbox as any)[toId]) ? (inbox as any)[toId] : [];
+        arr.push(atom);
+        (inbox as any)[toId] = arr;
+      }
+      this.world.facts['inboxAtoms'] = inbox as any;
+      // Keep debug copy for diagnostics without losing operational delivery.
       (this.world.facts as any)[`obs:nonverbal:${this.world.tickIndex}`] = nv;
     }
 

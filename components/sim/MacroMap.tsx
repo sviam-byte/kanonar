@@ -1,7 +1,7 @@
 // components/sim/MacroMap.tsx
-// SVG macro map: location graph with characters, edge types, danger coloring.
+// SVG macro map: location graph + characters + optional click-to-move placement mode.
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useCallback } from 'react';
 import type { SimWorld, SimCharacter } from '../../lib/simkit/core/types';
 import { getMacroMapLayout, getTrail, type MacroMapLayout } from '../../lib/simkit/core/mapTypes';
 import { clamp01 } from '../../lib/util/math';
@@ -12,6 +12,8 @@ type Props = {
   selectedLocationId?: string;
   onSelectAgent?: (id: string) => void;
   onSelectLocation?: (id: string) => void;
+  /** Optional setup-mode interaction: click agent then location to reassign. */
+  onManualMove?: (agentId: string, toLocId: string) => void;
   width?: number;
   height?: number;
 };
@@ -50,9 +52,12 @@ export const MacroMap: React.FC<Props> = ({
   selectedLocationId,
   onSelectAgent,
   onSelectLocation,
+  onManualMove,
   width = 800,
   height = 500,
 }) => {
+  // Local selection state only for placement mode.
+  const [pendingMoveAgent, setPendingMoveAgent] = useState<string | null>(null);
   const locs = useMemo(() => Object.values(world.locations || {}), [world.locations]);
   const chars = useMemo(() => Object.values(world.characters || {}), [world.characters]);
   const locIds = useMemo(() => locs.map((l) => l.id).sort(), [locs]);
@@ -86,13 +91,30 @@ export const MacroMap: React.FC<Props> = ({
   }, [locs, layout]);
 
   const pos = layout.positions;
+  const handleLocationClick = useCallback((locId: string) => {
+    if (pendingMoveAgent && onManualMove) {
+      onManualMove(pendingMoveAgent, locId);
+      setPendingMoveAgent(null);
+      return;
+    }
+    onSelectLocation?.(locId);
+  }, [pendingMoveAgent, onManualMove, onSelectLocation]);
+
+  const handleAgentClick = useCallback((agentId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (onManualMove) {
+      setPendingMoveAgent((prev) => (prev === agentId ? null : agentId));
+    }
+    onSelectAgent?.(agentId);
+  }, [onManualMove, onSelectAgent]);
 
   return (
     <svg
       width={width}
       height={height}
       viewBox={`0 0 ${layout.width} ${layout.height}`}
-      style={{ background: '#0f172a', borderRadius: 8, fontFamily: '"JetBrains Mono", monospace' }}
+      style={{ background: '#0f172a', borderRadius: 8, fontFamily: '"JetBrains Mono", monospace', userSelect: 'none' }}
+      onClick={() => setPendingMoveAgent(null)}
     >
       {edges.map((e, i) => {
         const p1 = pos[e.from];
@@ -119,21 +141,33 @@ export const MacroMap: React.FC<Props> = ({
         const facts: any = world.facts || {};
         const danger = clamp01(Number(facts[`ctx:danger:${loc.id}`] ?? (loc.hazards as any)?.collapse ?? 0));
         const isSelected = loc.id === selectedLocationId;
-        const r = 32;
+        const isPendingTarget = !!pendingMoveAgent;
+        const agentCount = (charsByLoc[loc.id] || []).length;
+        const r = Math.max(28, 24 + agentCount * 3);
 
         return (
-          <g key={loc.id} onClick={() => onSelectLocation?.(loc.id)} style={{ cursor: 'pointer' }}>
+          <g
+            key={loc.id}
+            onClick={(e) => {
+              e.stopPropagation();
+              handleLocationClick(loc.id);
+            }}
+            style={{ cursor: isPendingTarget ? 'crosshair' : 'pointer' }}
+          >
             <circle
               cx={p.x}
               cy={p.y}
               r={r}
               fill={dangerColor(danger)}
-              stroke={isSelected ? '#38bdf8' : '#334155'}
-              strokeWidth={isSelected ? 3 : 1.5}
+              stroke={isPendingTarget ? '#fbbf24' : isSelected ? '#38bdf8' : '#334155'}
+              strokeWidth={isPendingTarget ? 2.5 : isSelected ? 3 : 1.5}
             />
             <text x={p.x} y={p.y - r - 6} textAnchor="middle" fill="#94a3b8" fontSize={10}>
               {loc.title || loc.name || loc.id}
             </text>
+            {agentCount > 0 && (
+              <text x={p.x + r + 4} y={p.y + 3} fill="#64748b" fontSize={9}>{agentCount}</text>
+            )}
             {danger > 0.3 && (
               <text x={p.x} y={p.y + 4} textAnchor="middle" fill="#fbbf24" fontSize={9} fontWeight={700}>
                 ⚠ {Math.round(danger * 100)}%
@@ -154,6 +188,7 @@ export const MacroMap: React.FC<Props> = ({
           const cy = p.y + cr * Math.sin(angle);
           const hue = stableHue(c.id);
           const isSelected = c.id === selectedAgentId;
+          const isPending = c.id === pendingMoveAgent;
 
           const trail = getTrail(world.facts as any, c.id);
           const trailPoints = trail
@@ -181,13 +216,10 @@ export const MacroMap: React.FC<Props> = ({
                 cx={cx}
                 cy={cy}
                 r={7}
-                fill={`hsl(${hue} 70% ${isSelected ? '65%' : '50%'})`}
-                stroke={isSelected ? '#fff' : 'none'}
-                strokeWidth={isSelected ? 2 : 0}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onSelectAgent?.(c.id);
-                }}
+                fill={`hsl(${hue} 70% ${isPending ? '80%' : isSelected ? '65%' : '50%'})`}
+                stroke={isPending ? '#fbbf24' : isSelected ? '#fff' : 'none'}
+                strokeWidth={isPending ? 2.5 : isSelected ? 2 : 0}
+                onClick={(e) => handleAgentClick(c.id, e)}
                 style={{ cursor: 'pointer' }}
               />
               <text x={cx} y={cy + 16} textAnchor="middle" fill="#cbd5e1" fontSize={8}>
@@ -197,6 +229,12 @@ export const MacroMap: React.FC<Props> = ({
           );
         });
       })}
+
+      {pendingMoveAgent && (
+        <text x={layout.width / 2} y={16} textAnchor="middle" fill="#fbbf24" fontSize={10} fontWeight={600}>
+          Кликни на локацию чтобы переместить {chars.find((c) => c.id === pendingMoveAgent)?.name || pendingMoveAgent}
+        </text>
+      )}
     </svg>
   );
 };
