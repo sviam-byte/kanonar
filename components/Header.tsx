@@ -112,14 +112,11 @@ export const Header: React.FC = () => {
 
             <NavDropdown 
                 label="Simulation" 
-                active={isGroupActive(['/social-simulator', '/runner', '/solver', '/scenarios', '/simulations'])}
+                active={isGroupActive(['/solver', '/scenarios'])}
                 colorClass="text-canon-accent"
             >
-                 <NavItem to="/social-simulator" label="Социальный Симулятор" active={isActive('/social-simulator')} />
                  <NavItem to="/scenarios" label="Сценарный Хаб" active={isActive('/scenarios')} />
                  <NavItem to="/solver" label="Решатель (Debug)" active={isActive('/solver')} />
-                 <NavItem to="/runner" label="Матричный Runner" active={isActive('/runner')} />
-                 <NavItem to="/simulations" label="Системные Модели" active={isActive('/simulations')} />
             </NavDropdown>
 
             <NavDropdown
@@ -136,7 +133,7 @@ export const Header: React.FC = () => {
 
             <NavDropdown 
                 label="Lab & Edit" 
-                active={isGroupActive(['/builder', '/character-lab', '/planning-lab', '/dialogue-lab', '/biography-lab', '/presets', '/goal-lab', '/goal-lab-console', '/simkit-lab', '/simulator', '/relations-lab', '/location-constructor'])}
+                active={isGroupActive(['/builder', '/character-lab', '/planning-lab', '/dialogue-lab', '/dialogue-lab-v2', '/compare', '/biography-lab', '/presets', '/goal-lab', '/goal-lab-console', '/simulator', '/relations-lab', '/location-constructor'])}
                 colorClass="text-green-400"
             >
                 <NavItem to="/builder" label="Конструктор Персонажа" active={isActive('/builder')} />
@@ -144,11 +141,12 @@ export const Header: React.FC = () => {
                 <NavItem to="/character-lab" label="Инспектор ToM (Dyad)" active={isActive('/character-lab')} />
                 <NavItem to="/goal-lab" label="Лаборатория Целей" active={isActive('/goal-lab')} />
                 <NavItem to="/goal-lab-console" label="Goal Lab Console" active={isActive('/goal-lab-console')} />
-                <NavItem to="/simkit-lab" label="SimKit Simulator" active={isActive('/simkit-lab')} />
                 <NavItem to="/simulator" label="▶ Live Sim" active={isActive('/simulator')} />
+                <NavItem to="/compare" label="⚖ Compare" active={isActive('/compare')} />
                 <NavItem to="/relations-lab" label="Relations Lab (Global)" active={isActive('/relations-lab')} />
                 <NavItem to="/planning-lab" label="Лаборатория Планирования" active={isActive('/planning-lab')} />
-                <NavItem to="/dialogue-lab" label="Лаборатория Диалога" active={isActive('/dialogue-lab')} />
+                <NavItem to="/dialogue-lab-v2" label="💬 Dialogue" active={isActive('/dialogue-lab-v2')} />
+                <NavItem to="/dialogue-lab" label="Dialogue v1 (legacy)" active={isActive('/dialogue-lab')} />
                 <NavItem to="/biography-lab" label="Лаборатория Биографии" active={isActive('/biography-lab')} />
                 <div className="border-t border-canon-border my-1"></div>
                 <NavItem to="/presets" label="Редактор Пресетов" active={isActive('/presets')} />

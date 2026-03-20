@@ -16,12 +16,8 @@ import { ScenariosPage } from './pages/ScenariosPage';
 import { PresetsPage } from './pages/PresetsPage';
 
 // Lazy loaded (heavy pages — only fetched when navigated to)
-const ComparePage = lazy(() => import('./pages/ComparePage').then(m => ({ default: m.ComparePage })));
-const EventsConstructorPage = lazy(() => import('./pages/EventsConstructorPage').then(m => ({ default: m.EventsConstructorPage })));
-const SimulationRunnerPage = lazy(() => import('./pages/SimulationRunnerPage').then(m => ({ default: m.SimulationRunnerPage })));
-const SimulationListPage = lazy(() => import('./pages/SimulationListPage').then(m => ({ default: m.SimulationListPage })));
+const ComparePage = lazy(() => import('./pages/ComparePage').then(m => ({ default: m.CompareSimPage })));
 const SolverPage = lazy(() => import('./pages/SolverPage').then(m => ({ default: m.SolverPage })));
-const RunnerPage = lazy(() => import('./pages/RunnerPage').then(m => ({ default: m.RunnerPage })));
 const ArchetypesPage = lazy(() => import('./pages/ArchetypesPage').then(m => ({ default: m.ArchetypesPage })));
 const SocialEventsListPage = lazy(() => import('./pages/SocialEventsListPage').then(m => ({ default: m.SocialEventsListPage })));
 const EventsPage = lazy(() => import('./pages/EventsPage').then(m => ({ default: m.EventsPage })));
@@ -33,15 +29,13 @@ const MassNetworkPage = lazy(() => import('./pages/MassNetworkPage').then(m => (
 const AccessModulePage = lazy(() => import('./pages/AccessModulePage').then(m => ({ default: m.AccessModulePage })));
 const PlanningLabPage = lazy(() => import('./pages/PlanningLabPage').then(m => ({ default: m.PlanningLabPage })));
 const DialogueLabPage = lazy(() => import('./pages/DialogueLabPage').then(m => ({ default: m.DialogueLabPage })));
+const DialogueLabV2Page = lazy(() => import('./pages/DialogueLabV2Page').then(m => ({ default: m.DialogueLabV2Page })));
 const BiographyLabPage = lazy(() => import('./pages/BiographyLabPage').then(m => ({ default: m.BiographyLabPage })));
 const NarrativePage = lazy(() => import('./pages/NarrativePage').then(m => ({ default: m.NarrativePage })));
 const RelationsLabPage = lazy(() => import('./pages/RelationsLabPage').then(m => ({ default: m.RelationsLabPage })));
-const SimKitLabPage = lazy(() => import('./pages/SimKitLabPage').then(m => ({ default: m.SimKitLabPage })));
 const LocationConstructorPage = lazy(() => import('./pages/LocationConstructorPage').then(m => ({ default: m.LocationConstructorPage })));
 const DiagnosticsPage = lazy(() => import('./pages/DiagnosticsPage').then(m => ({ default: m.DiagnosticsPage })));
 const SimulatorPage = lazy(() => import('./pages/SimulatorPage').then(m => ({ default: m.SimulatorPage })));
-
-const SimulationHubPage = lazy(() => import('./pages/SimulationHubPage').then(m => ({ default: m.SimulationHubPage })));
 // GoalLab legacy routes stay default for compatibility.
 // V2 is exposed on explicit /goal-lab-v2 routes until parity is confirmed.
 const GoalLabPage = lazy(() => import('./pages/GoalLabPage').then(m => ({ default: m.GoalLabPage })));
@@ -77,18 +71,13 @@ function App() {
                     <Route path="/linter" element={<LinterPage />} />
                     <Route path="/archetypes" element={<ArchetypesPage />} />
                     <Route path="/archetype-relations" element={<ArchetypeRelationsPage />} />
-                    <Route path="/compare/:entityId" element={<ComparePage />} />
+                    <Route path="/compare" element={<ComparePage />} />
                     <Route path="/scenarios" element={<ScenariosPage />} />
                     <Route path="/inspector" element={<SimulationInspectorPage />} />
-                    <Route path="/simulations" element={<SimulationListPage />} />
-                    <Route path="/simulations/:simId" element={<SimulationRunnerPage />} />
                     <Route path="/social-events" element={<SocialEventsListPage />} />
                     <Route path="/events" element={<EventsPage />} />
                     <Route path="/social_event" element={<SocialEventsListPage />} />
-                    <Route path="/social-simulator" element={<EventsConstructorPage />} />
                     <Route path="/solver" element={<SolverPage />} />
-                    <Route path="/runner" element={<RunnerPage />} />
-                    <Route path="/runner/:scenarioId" element={<RunnerPage />} />
                     <Route path="/builder" element={<CharacterBuilderPage />} />
                     <Route path="/presets" element={<PresetsPage />} />
                     <Route path="/character-lab" element={<CharacterLabPage />} />
@@ -96,14 +85,13 @@ function App() {
                     <Route path="/access" element={<AccessModulePage />} />
                     <Route path="/planning-lab" element={<PlanningLabPage />} />
                     <Route path="/dialogue-lab" element={<DialogueLabPage />} />
+                    <Route path="/dialogue-lab-v2" element={<DialogueLabV2Page />} />
                     <Route path="/goal-lab" element={<GoalLabPage />} />
                     <Route path="/goal-lab-console" element={<GoalLabConsolePage />} />
                     <Route path="/goal-lab-v2" element={<GoalLabPageV2 />} />
                     <Route path="/goal-lab-console-v2" element={<GoalLabConsolePageV2 />} />
                     <Route path="/console" element={<ConsolePage />} />
-                    <Route path="/simkit-lab" element={<SimKitLabPage />} />
                     <Route path="/simulator" element={<SimulatorPage />} />
-                    <Route path="/simulation-hub" element={<SimulationHubPage />} />
                     <Route path="/relations-lab" element={<RelationsLabPage />} />
                     <Route path="/biography-lab" element={<BiographyLabPage />} />
                     <Route path="/location-constructor" element={<LocationConstructorPage />} />

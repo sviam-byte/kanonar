@@ -15,6 +15,7 @@ import { clamp01 } from '../../util/math';
 import { buildGenericSocialSpec } from './genericSocialSpec';
 import { recordTrail } from '../core/mapTypes';
 import { RespondSpec } from './respondSpec';
+import { MoveCellSpec } from './moveCellSpec';
 
 const clamp = (x: number, a: number, b: number) => Math.max(a, Math.min(b, x));
 
@@ -1445,6 +1446,7 @@ export const ACTION_SPECS: Record<ActionKind, ActionSpec> = {
   wait: WaitSpec,
   rest: RestSpec,
   move: MoveSpec,
+  move_cell: MoveCellSpec,
   move_xy: MoveXYSpec,
   talk: TalkSpec,
   attack: AttackSpec,
