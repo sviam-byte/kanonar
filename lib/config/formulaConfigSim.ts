@@ -74,6 +74,18 @@ export const BEATS = {
   tensionWeights: { meanStress: 0.3, maxDanger: 0.3, goalConflict: 0.25, trustVolatility: 0.15 },
 } as const;
 
+export const BEHAVIOR_VARIETY = {
+  historyWindow: 10,
+  noveltyWindow: 5,
+  noveltyBonus: 0.03,
+  repetitionPenalties: {
+    streak2: 0.05,
+    streak3: 0.15,
+    streak4: 0.30,
+    streak5Plus: 0.50,
+  },
+} as const;
+
 export const FCS = {
   dualProcess: DUAL_PROCESS,
   relationDynamics: RELATION_DYNAMICS,
@@ -82,6 +94,7 @@ export const FCS = {
   physical: PHYSICAL,
   group: GROUP,
   beats: BEATS,
+  behaviorVariety: BEHAVIOR_VARIETY,
 } as const;
 
 export type FormulaConfigSim = typeof FCS;

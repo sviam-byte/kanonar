@@ -73,6 +73,7 @@ export type SimWorld = {
 
 export type ActionKindBuiltin =
   | 'move'
+  | 'move_cell'
   | 'move_xy'
   | 'wait'
   | 'rest'

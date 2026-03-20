@@ -15,6 +15,7 @@ import { recordDialogueEntry } from '../dialogue/dialogueState';
 import { scoreMovementOffers } from './moveScoring';
 import { enumerateResponseOffers } from '../dialogue/responseAction';
 import { decideSpeechContent } from '../dialogue/speechContent';
+import { applyRepetitionDamping, boostNovelActions, recordAction } from './repetitionDamper';
 
 const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
 
@@ -26,8 +27,10 @@ export function proposeActions(w: SimWorld): ActionOffer[] {
   for (const actorId of Object.keys(w.characters).sort()) {
     const actorOffers = offers.filter((o) => o.actorId === actorId);
     const otherOffers = offers.filter((o) => o.actorId !== actorId);
-    const scoredMoves = scoreMovementOffers(w, actorId, actorOffers);
-    offers = [...otherOffers, ...scoredMoves];
+    let nextActorOffers = scoreMovementOffers(w, actorId, actorOffers);
+    nextActorOffers = applyRepetitionDamping(w, nextActorOffers, actorId);
+    nextActorOffers = boostNovelActions(w, nextActorOffers, actorId);
+    offers = [...otherOffers, ...nextActorOffers];
   }
 
   // Inject respond offers for pending dialogue exchanges.
@@ -41,6 +44,7 @@ export function proposeActions(w: SimWorld): ActionOffer[] {
 
 export function applyAction(w: SimWorld, a: SimAction): { world: SimWorld; events: SimEvent[]; notes: string[] } {
   const { world, events, notes } = applyActionViaSpec(w, a);
+  recordAction(world.facts as any, a.actorId, a.kind, a.targetId ?? null, world.tickIndex);
 
   // Location hazards emit hazardPulse for downstream handling.
   const c = getChar(world, a.actorId);

@@ -21,6 +21,7 @@ import { DialoguePanel } from './DialoguePanel';
 import { SetupPanel } from './SetupPanel';
 import { AgentInspector } from './AgentInspector';
 import { LocationMapPanel } from './LocationMapPanel';
+import { TimelineChart } from './TimelineChart';
 
 // ─── Helpers ───────────────────────────────────────────────────────────
 
@@ -31,6 +32,7 @@ const ACTION_RU: Record<string, string> = {
   help: 'помогает', treat: 'лечит', guard: 'охраняет', attack: 'атакует',
   avoid: 'избегает', confront: 'конфронтирует с', threaten: 'угрожает',
   command: 'командует', respond: 'отвечает', move: 'идёт в',
+  move_cell: 'двигается',
   investigate: 'расследует', share_resource: 'делится',
   accuse: 'обвиняет', praise: 'хвалит', apologize: 'извиняется',
   submit: 'подчиняется', deceive: 'обманывает', self_talk: 'размышляет',
@@ -395,6 +397,17 @@ export const LiveSimulator: React.FC = () => {
               </div>
             )}
           </div>
+
+          <div style={{ fontSize: 9, color: '#475569', textTransform: 'uppercase', letterSpacing: 1, fontWeight: 600, flexShrink: 0 }}>
+            Таймлайн
+          </div>
+          <TimelineChart
+            sim={simRef.current}
+            selectedAgentId={selectedAgentId}
+            names={names}
+            height={100}
+            width={700}
+          />
 
           <div style={{ fontSize: 9, color: '#475569', textTransform: 'uppercase', letterSpacing: 1, fontWeight: 600, flexShrink: 0 }}>
             Нарратив
