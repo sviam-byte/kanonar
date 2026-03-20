@@ -1,6 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { ROUTES, withQuery } from '../lib/appRoutes';
 import { CharacterEntity, EntityType } from '../types';
 import { createInitialWorld } from '../lib/world/initializer';
 import { buildContextSnapshot } from '../lib/context/v2/builder';
@@ -107,7 +108,7 @@ export const MiniGoalSandbox: React.FC<Props> = ({ character }) => {
         if (leaderPresent) params.set('leader', 'true');
         if (woundedPresent) params.set('wounded', 'true');
         
-        navigate(`/goal-lab?${params.toString()}`);
+        navigate(withQuery(ROUTES.labs.goalLab, params));
     };
 
     return (

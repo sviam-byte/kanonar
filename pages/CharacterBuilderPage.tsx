@@ -1,6 +1,7 @@
 
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { ROUTES, withQuery } from '../lib/appRoutes';
 import { characterSchema } from '../data/character-schema';
 import { ParameterControl } from '../components/ParameterControl';
 import { encodeCharacterToSnippet, decodeSnippetToCharacter, defaultBody, defaultIdentity } from '../lib/character-snippet';
@@ -288,7 +289,7 @@ export const CharacterBuilderPage: React.FC = () => {
   const handleTestInSimulator = () => {
     const id = handleAddToSession();
     if (id) {
-        navigate(`/social-simulator?agentIds=${id}`);
+        navigate(withQuery(ROUTES.simulation.live, { agentIds: id }));
     }
   };
   

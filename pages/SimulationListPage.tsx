@@ -3,6 +3,7 @@ import React, { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { allSimulations } from '../data/simulations';
 import { useAccess } from '../contexts/AccessContext';
+import { ROUTES } from '../lib/appRoutes';
 
 export const SimulationListPage: React.FC = () => {
   const { activeModule, isRestricted } = useAccess();
@@ -29,13 +30,13 @@ export const SimulationListPage: React.FC = () => {
           Взаимодействуйте со сложными предиктивными моделями. Каждая симуляция представляет собой песочницу для тестирования сценариев.
         </p>
       </div>
-      
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 max-w-7xl mx-auto">
-        
+
         {/* Featured: Goal Sandbox */}
         {!isRestricted && (
-             <Link 
-                to="/goal-sandbox" 
+             <Link
+                to={ROUTES.labs.goalLab}
                 className="block p-6 bg-gradient-to-br from-canon-bg-light to-canon-bg border border-canon-accent/50 rounded-lg hover:border-canon-accent hover:shadow-[0_0_20px_rgba(0,170,255,0.15)] transition-all transform hover:-translate-y-1 relative group"
             >
                 <div className="absolute top-3 right-3 text-2xl opacity-50 group-hover:opacity-100 transition-opacity">🎯</div>
@@ -48,9 +49,9 @@ export const SimulationListPage: React.FC = () => {
         )}
 
         {simulations.map(sim => (
-             <Link 
-                key={sim.key} 
-                to={`/simulations/${sim.key}`} 
+             <Link
+                key={sim.key}
+                to={`/simulations/${sim.key}`}
                 className="block p-6 bg-canon-bg-light border border-canon-border rounded-lg hover:border-canon-accent hover:shadow-lg hover:shadow-canon-accent/10 transition-all transform hover:-translate-y-1"
             >
                 <h3 className="text-2xl font-bold text-canon-accent mb-2">{sim.title}</h3>
@@ -58,7 +59,7 @@ export const SimulationListPage: React.FC = () => {
                  <span className="inline-block mt-4 text-xs bg-canon-border px-2 py-1 rounded font-mono">mode: {sim.mode}</span>
             </Link>
         ))}
-        
+
         {simulations.length === 0 && isRestricted && (
             <div className="col-span-full text-center py-12 text-canon-text-light border border-dashed border-canon-border rounded-lg">
                 <p>Нет доступных симуляций для текущего модуля доступа.</p>
