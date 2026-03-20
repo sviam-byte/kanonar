@@ -3,6 +3,7 @@ import React, { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { allSimulations } from '../data/simulations';
 import { useAccess } from '../contexts/AccessContext';
+import { ROUTES } from '../lib/appRoutes';
 
 export const SimulationListPage: React.FC = () => {
   const { activeModule, isRestricted } = useAccess();
@@ -35,13 +36,13 @@ export const SimulationListPage: React.FC = () => {
         {/* Featured: Goal Sandbox */}
         {!isRestricted && (
              <Link 
-                to="/goal-sandbox" 
+                to={ROUTES.labs.goalLab} 
                 className="block p-6 bg-gradient-to-br from-canon-bg-light to-canon-bg border border-canon-accent/50 rounded-lg hover:border-canon-accent hover:shadow-[0_0_20px_rgba(0,170,255,0.15)] transition-all transform hover:-translate-y-1 relative group"
             >
                 <div className="absolute top-3 right-3 text-2xl opacity-50 group-hover:opacity-100 transition-opacity">🎯</div>
-                <h3 className="text-2xl font-bold text-canon-accent mb-2">Goal Engine v2</h3>
+                <h3 className="text-2xl font-bold text-canon-accent mb-2">Goal Lab</h3>
                 <p className="text-canon-text-light">
-                    Интерактивная песочница целеполагания. Тестируйте, как персонажи реагируют на давление, угрозы и приказы в реальном времени.
+                    Канонический вход в Goal Lab. Тестируйте, как персонажи реагируют на давление, угрозы и приказы без переходов в legacy-экраны.
                 </p>
                  <span className="inline-block mt-4 text-xs bg-canon-accent/10 text-canon-accent px-2 py-1 rounded font-mono border border-canon-accent/30">NEW: Interactive</span>
             </Link>
@@ -50,7 +51,7 @@ export const SimulationListPage: React.FC = () => {
         {simulations.map(sim => (
              <Link 
                 key={sim.key} 
-                to={`/simulations/${sim.key}`} 
+                to={`${ROUTES.simulation.catalog}/${sim.key}`} 
                 className="block p-6 bg-canon-bg-light border border-canon-border rounded-lg hover:border-canon-accent hover:shadow-lg hover:shadow-canon-accent/10 transition-all transform hover:-translate-y-1"
             >
                 <h3 className="text-2xl font-bold text-canon-accent mb-2">{sim.title}</h3>

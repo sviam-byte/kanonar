@@ -1,5 +1,6 @@
 import React from 'react';
 import { useParams, Link } from 'react-router-dom';
+import { ROUTES } from '../lib/appRoutes';
 import { allSimulations } from '../data/simulations';
 import { MapIncidentRunner } from '../components/simulations/MapIncidentRunner';
 import { LogisticsRunner } from '../components/simulations/LogisticsRunner';
@@ -24,7 +25,7 @@ export const SimulationRunnerPage: React.FC = () => {
         <div className="p-8 text-canon-red text-center">
             <h2 className="text-2xl font-bold mb-4">Simulation Not Found</h2>
             <p>The requested simulation '{simId}' does not exist.</p>
-            <Link to="/simulations" className="text-canon-accent hover:underline mt-4 inline-block">Return to Simulation List</Link>
+            <Link to={ROUTES.simulation.catalog} className="text-canon-accent hover:underline mt-4 inline-block">Return to Simulation List</Link>
         </div>
     );
   }

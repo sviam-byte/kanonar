@@ -2,6 +2,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { EntityType } from '../types';
+import { ROUTES } from '../lib/appRoutes';
 
 const entryPoints = [
     { type: EntityType.Character, name: "Персонажи", description: "Существа, формирующие повествование." },
@@ -9,8 +10,8 @@ const entryPoints = [
     { type: EntityType.Object, name: "Объекты", description: "Артефакты с онтологическим весом." },
     { type: EntityType.Concept, name: "Концепты", description: "Культурные и системные абстракции." },
     { type: "events", name: "Система Событий", description: "Управление потоком времени, социальными интеракциями и системными триггерами.", link: "/events" },
-    { type: "goal-lab-v2", name: "GoalLab", description: "Лаборатория контекста: pipeline, POMDP, граф целей, анализ решений.", link: "/goal-lab-v2" },
-    { type: "simulation-hub", name: "Симуляция", description: "Оркестратор сценариев: SimKit, запуск тиков, каталог готовых симуляций.", link: "/simulation-hub" },
+    { type: "goal-lab", name: "Goal Lab", description: "Канонический вход в лабораторию целей и контекста: pipeline, POMDP, граф решений и отладка без legacy-развилок.", link: ROUTES.labs.goalLab },
+    { type: "scenarios", name: "Симуляция", description: "Канонический вход в Live Sim, сценарный хаб, диагностику и пакетные прогоны.", link: ROUTES.simulation.hub },
     { type: EntityType.Protocol, name: "Протоколы", description: "Правила, связывающие реальность." },
     // Legacy GoalLab kept for backward compatibility — hidden from main grid.
     // { type: "goal-lab", name: "GoalLab (legacy)", description: "Старая версия.", link: "/goal-lab" },

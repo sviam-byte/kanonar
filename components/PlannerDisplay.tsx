@@ -7,6 +7,7 @@ import { TimelineChart } from './charts/TimelineChart';
 import { useCharacterCalculations } from '../hooks/useCharacterCalculations';
 import { useBranch } from '../contexts/BranchContext';
 import { useNavigate } from 'react-router-dom';
+import { ROUTES, withQuery } from '../lib/appRoutes';
 
 interface PlannerDisplayProps {
     character: CharacterEntity;
@@ -35,8 +36,8 @@ export const PlannerDisplay: React.FC<PlannerDisplayProps> = ({ character }) => 
     }, [goalEcology, character, eventAdjustedFlatParams]);
 
     const handleLaunchScenario = () => {
-        // Pre-selects the cave rescue scenario and the current agent in the social simulator
-        navigate(`/social-simulator?scenarioId=cave_rescue&agentIds=${character.entityId}`);
+        // Launches the canonical live simulator entry with preselected scenario + agent.
+        navigate(withQuery(ROUTES.simulation.live, { scenarioId: 'cave_rescue', agentIds: character.entityId }));
     };
 
     if (!goalEcology) {

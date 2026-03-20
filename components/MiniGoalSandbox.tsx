@@ -1,6 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { ROUTES, withQuery } from '../lib/appRoutes';
 import { CharacterEntity, EntityType } from '../types';
 import { createInitialWorld } from '../lib/world/initializer';
 import { buildContextSnapshot } from '../lib/context/v2/builder';
@@ -99,15 +100,14 @@ export const MiniGoalSandbox: React.FC<Props> = ({ character }) => {
     }, [character, stress, threat, leaderPresent, woundedPresent]);
 
     const handleOpenInLab = () => {
-        // Serialize state to URL params
-        const params = new URLSearchParams();
-        params.set('agentId', character.entityId);
-        params.set('stress', stress.toString());
-        params.set('threat', threat.toString());
-        if (leaderPresent) params.set('leader', 'true');
-        if (woundedPresent) params.set('wounded', 'true');
-        
-        navigate(`/goal-lab?${params.toString()}`);
+        // Serialize state to URL params and open canonical Goal Lab route.
+        navigate(withQuery(ROUTES.labs.goalLab, {
+            agentId: character.entityId,
+            stress,
+            threat,
+            leader: leaderPresent || undefined,
+            wounded: woundedPresent || undefined,
+        }));
     };
 
     return (

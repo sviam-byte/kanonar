@@ -3,6 +3,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { useAccess } from '../contexts/AccessContext';
+import { ROUTES } from '../lib/appRoutes';
 
 interface SimCardProps {
     title: string;
@@ -33,49 +34,49 @@ export const ScenariosPage: React.FC = () => {
         {
             title: "Социальный симулятор",
             description: "Интерактивная песочница для наблюдения за эмерджентным поведением группы агентов. Исследуйте формирование лидерства, распространение влияния и динамику отношений в реальном времени.",
-            link: "/social-simulator",
+            link: ROUTES.simulation.live,
             tags: ["ToM", "GIL", "Лидерство", "Динамика"],
         },
         {
             title: "Biography Lab",
             description: "Лаборатория Биографии. Исследуйте, как события прошлого формируют личность персонажа через модель биографического латента.",
-            link: "/biography-lab",
+            link: ROUTES.labs.biographyLab,
             tags: ["Math Model", "Identity", "Vectors"],
         },
         {
             title: "Planning Lab",
             description: "Лаборатория Планирования. Визуализация работы System 2: как агент строит цепочки действий для достижения целей и реагирует на препятствия.",
-            link: "/planning-lab",
+            link: ROUTES.labs.planningLab,
             tags: ["GOAP", "System 2", "Planner"],
         },
         {
             title: "Dialogue Lab",
             description: "Лаборатория Диалога. Тестирование обмена планами и информацией между агентами через контекстные атомы.",
-            link: "/dialogue-lab",
+            link: ROUTES.labs.dialogueLab,
             tags: ["Communication", "Shared Plans", "Context"],
         },
         {
             title: "Решатель (Solver)",
             description: "Пошаговая отладка и анализ принятия решений одного агента в заданном сценарии. Позволяет детально изучить внутреннюю логику, вклады параметров и выбор действий.",
-            link: "/solver",
+            link: ROUTES.simulation.solver,
             tags: ["Отладка", "Анализ", "Одиночный агент"],
         },
          {
             title: "Runner (Матрица)",
             description: "Пакетный запуск матрицы симуляций 'Персонаж x Стратегия x Сценарий' для агрегированного анализа и сравнения.",
-            link: "/runner",
+            link: ROUTES.simulation.runner,
             tags: ["Матричный анализ", "Сравнение"],
         },
         {
             title: "Симуляции Kanonar",
             description: "Набор предустановленных симуляций для различных системных моделей Kanonar, от логистики и эпидемиологии до сетевой динамики и переговоров.",
-            link: "/simulations",
+            link: ROUTES.simulation.catalog,
             tags: ["Системные модели", "Предиктивный анализ"],
         },
         {
             title: "Диагностический Слой",
             description: "Лаборатория для запуска персонажей через стандартные тест-сценарии и сбора подробных отчетов о поведении под нагрузкой.",
-            link: "/diagnostics",
+            link: ROUTES.simulation.diagnostics,
             tags: ["Тестирование", "Анализ", "Портрет поведения"],
         },
     ];
@@ -83,7 +84,7 @@ export const ScenariosPage: React.FC = () => {
     let toolsToShow = allTools;
     if (isRestricted && activeModule) {
         toolsToShow = allTools.filter(t => 
-            t.link !== '/solver' && t.link !== '/diagnostics' && t.link !== '/runner'
+            t.link !== ROUTES.simulation.solver && t.link !== ROUTES.simulation.diagnostics && t.link !== ROUTES.simulation.runner
         );
     }
 

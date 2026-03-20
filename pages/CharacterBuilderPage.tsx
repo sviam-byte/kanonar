@@ -13,6 +13,7 @@ import { setNestedValue, getNestedValue } from '../lib/param-utils';
 import { BodyEditor } from '../components/BodyEditor';
 import { applySexPreset } from '../lib/body.presets';
 import { BiographyAnalysis } from '../components/BiographyAnalysis';
+import { ROUTES, withQuery } from '../lib/appRoutes';
 
 const HelpBlock: React.FC<{ title: string, children: React.ReactNode }> = ({ title, children }) => (
     <div className="bg-canon-bg/50 p-3 rounded-md border-l-4 border-canon-accent/50 text-xs text-canon-text-light mb-4">
@@ -263,7 +264,7 @@ export const CharacterBuilderPage: React.FC = () => {
       const code = generateCode();
       if (code) {
           const character = decodeSnippetToCharacter(code);
-          navigate(`/character/preview`, { state: { character, snippet: code } });
+          navigate(`${ROUTES.entities.character}/preview`, { state: { character, snippet: code } });
       }
   };
 
@@ -288,7 +289,7 @@ export const CharacterBuilderPage: React.FC = () => {
   const handleTestInSimulator = () => {
     const id = handleAddToSession();
     if (id) {
-        navigate(`/social-simulator?agentIds=${id}`);
+        navigate(withQuery(ROUTES.simulation.live, { agentIds: id }));
     }
   };
   
