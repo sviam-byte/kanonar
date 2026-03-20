@@ -15,6 +15,7 @@ import { allSimulations } from '../data/simulations';
 import { getAllCharactersWithRuntime } from '../data';
 import { allLocations } from '../data/locations';
 import { useAccess } from '../contexts/AccessContext';
+import { ROUTES } from '../lib/appRoutes';
 
 const SimulatorLab = lazy(() =>
   import('../lib/goal-lab/labs/SimulatorLab').then(m => ({ default: m.SimulatorLab }))
@@ -83,10 +84,10 @@ export const SimulationHubPage: React.FC = () => {
         </button>
 
         <Link
-          to="/goal-lab-v2"
+          to={ROUTES.labs.goalLab}
           className="block p-6 bg-gradient-to-br from-slate-900 to-slate-800 border border-amber-700/30 rounded-lg hover:border-amber-500/60 hover:shadow-lg hover:shadow-amber-500/10 transition-all group"
         >
-          <div className="text-lg font-bold text-amber-400 mb-1 group-hover:text-amber-300">GoalLab v2</div>
+          <div className="text-lg font-bold text-amber-400 mb-1 group-hover:text-amber-300">Goal Lab</div>
           <p className="text-[11px] text-slate-400">Контекстная лаборатория: pipeline, POMDP, граф целей, анализ решений.</p>
         </Link>
       </div>
