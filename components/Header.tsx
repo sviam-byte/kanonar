@@ -1,6 +1,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import { ROUTES } from '../lib/appRoutes';
 import { useBranch } from '../contexts/BranchContext';
 import { useSandbox } from '../contexts/SandboxContext';
 import { useAccess } from '../contexts/AccessContext';
@@ -24,7 +25,7 @@ const NavDropdown: React.FC<{ label: string; active: boolean; colorClass?: strin
 
     return (
         <div className="relative" ref={ref}>
-            <button 
+            <button
                 onClick={() => setIsOpen(!isOpen)}
                 className={`flex items-center gap-1 hover:opacity-80 transition-opacity font-bold text-sm ${active ? 'opacity-100' : 'opacity-70'} ${colorClass}`}
             >
@@ -52,11 +53,11 @@ export const Header: React.FC = () => {
   const { branch, setBranch } = useBranch();
   const { isAdmin, loginAdmin, logoutAdmin } = useSandbox();
   const { activeModule, setActiveModule, isRestricted } = useAccess();
-  
+
   const location = useLocation();
   const isActive = (path: string) => location.pathname === path;
   const isGroupActive = (paths: string[]) => paths.some(p => location.pathname.startsWith(p));
-  const isHomeostasisActive = location.pathname === '/narrative' && location.hash === '#homeostasis';
+  const isHomeostasisActive = location.pathname === ROUTES.narrative.narrative && location.hash === '#homeostasis';
 
   const handleAdminToggle = () => {
       if (isAdmin) {
@@ -85,7 +86,7 @@ export const Header: React.FC = () => {
                  <span className="text-[10px] text-yellow-500 font-bold uppercase tracking-wider max-w-[100px] truncate">
                      {activeModule.label}
                  </span>
-                 <button 
+                 <button
                     onClick={(e) => { e.preventDefault(); setActiveModule(null); }}
                     className="text-[10px] text-canon-text-light hover:text-white"
                     title="Выйти из модуля"
@@ -95,28 +96,28 @@ export const Header: React.FC = () => {
              </div>
           )}
         </Link>
-        
+
         {/* Main Navigation Groups */}
         <nav className="flex flex-wrap items-center gap-3 md:gap-4 lg:gap-6">
-            
-            <NavDropdown 
-                label="Entities" 
+
+            <NavDropdown
+                label="Entities"
                 active={isGroupActive(['/character', '/object', '/concept'])}
                 colorClass="text-white"
             >
-                <NavItem to="/character" label="Персонажи" active={isActive('/character')} />
-                <NavItem to="/object" label="Объекты" active={isActive('/object')} />
-                <NavItem to="/concept" label="Концепты" active={isActive('/concept')} />
-                <NavItem to="/social-events" label="Соц. События (Log)" active={isActive('/social-events')} />
+                <NavItem to={ROUTES.entities.character} label="Персонажи" active={isActive(ROUTES.entities.character)} />
+                <NavItem to={ROUTES.entities.object} label="Объекты" active={isActive(ROUTES.entities.object)} />
+                <NavItem to={ROUTES.entities.concept} label="Концепты" active={isActive(ROUTES.entities.concept)} />
+                <NavItem to={ROUTES.entities.socialEvents} label="Соц. События (Log)" active={isActive(ROUTES.entities.socialEvents)} />
             </NavDropdown>
 
-            <NavDropdown 
-                label="Simulation" 
+            <NavDropdown
+                label="Simulation"
                 active={isGroupActive(['/solver', '/scenarios'])}
                 colorClass="text-canon-accent"
             >
-                 <NavItem to="/scenarios" label="Сценарный Хаб" active={isActive('/scenarios')} />
-                 <NavItem to="/solver" label="Решатель (Debug)" active={isActive('/solver')} />
+                 <NavItem to={ROUTES.simulation.hub} label="Сценарный Хаб" active={isActive(ROUTES.simulation.hub)} />
+                 <NavItem to={ROUTES.simulation.solver} label="Решатель (Debug)" active={isActive(ROUTES.simulation.solver)} />
             </NavDropdown>
 
             <NavDropdown
@@ -124,50 +125,61 @@ export const Header: React.FC = () => {
                 active={isGroupActive(['/archetypes', '/archetype-relations', '/mass', '/narrative'])}
                 colorClass="text-purple-400"
             >
-                <NavItem to="/narrative" label="Нарративный холст" active={isActive('/narrative')} />
-                <NavItem to={{ pathname: '/narrative', hash: '#homeostasis' }} label="Протокол гомеостаза" active={isHomeostasisActive} />
-                <NavItem to="/archetypes" label="Куб Архетипов" active={isActive('/archetypes')} />
-                <NavItem to="/archetype-relations" label="Граф Архетипов" active={isActive('/archetype-relations')} />
-                <NavItem to="/mass" label="Массовые Сети" active={isActive('/mass')} />
+                <NavItem to={ROUTES.narrative.narrative} label="Нарративный холст" active={isActive(ROUTES.narrative.narrative)} />
+                <NavItem to={{ pathname: ROUTES.narrative.narrative, hash: '#homeostasis' }} label="Протокол гомеостаза" active={isHomeostasisActive} />
+                <NavItem to={ROUTES.narrative.archetypes} label="Куб Архетипов" active={isActive(ROUTES.narrative.archetypes)} />
+                <NavItem to={ROUTES.narrative.archetypeRelations} label="Граф Архетипов" active={isActive(ROUTES.narrative.archetypeRelations)} />
+                <NavItem to={ROUTES.narrative.mass} label="Массовые Сети" active={isActive(ROUTES.narrative.mass)} />
             </NavDropdown>
 
-            <NavDropdown 
-                label="Lab & Edit" 
-                active={isGroupActive(['/builder', '/character-lab', '/planning-lab', '/dialogue-lab', '/dialogue-lab-v2', '/compare', '/biography-lab', '/presets', '/goal-lab', '/goal-lab-console', '/simulator', '/relations-lab', '/location-constructor'])}
+            <NavDropdown
+                label="Lab & Edit"
+                active={isGroupActive([
+                    ROUTES.labs.builder,
+                    ROUTES.labs.characterLab,
+                    ROUTES.labs.planningLab,
+                    ROUTES.labs.dialogueLab,
+                    ROUTES.labs.compare,
+                    ROUTES.labs.biographyLab,
+                    ROUTES.labs.presets,
+                    ROUTES.labs.goalLab,
+                    ROUTES.labs.goalLabConsole,
+                    ROUTES.simulation.live,
+                    ROUTES.labs.relationsLab,
+                    ROUTES.labs.locationConstructor,
+                ])}
                 colorClass="text-green-400"
             >
-                <NavItem to="/builder" label="Конструктор Персонажа" active={isActive('/builder')} />
-                <NavItem to="/location-constructor" label="Конструктор Локаций" active={isActive('/location-constructor')} />
-                <NavItem to="/character-lab" label="Инспектор ToM (Dyad)" active={isActive('/character-lab')} />
-                <NavItem to="/goal-lab" label="Лаборатория Целей" active={isActive('/goal-lab')} />
-                <NavItem to="/goal-lab-console" label="Goal Lab Console" active={isActive('/goal-lab-console')} />
-                <NavItem to="/simulator" label="▶ Live Sim" active={isActive('/simulator')} />
-                <NavItem to="/compare" label="⚖ Compare" active={isActive('/compare')} />
-                <NavItem to="/relations-lab" label="Relations Lab (Global)" active={isActive('/relations-lab')} />
-                <NavItem to="/planning-lab" label="Лаборатория Планирования" active={isActive('/planning-lab')} />
-                <NavItem to="/dialogue-lab-v2" label="💬 Dialogue" active={isActive('/dialogue-lab-v2')} />
-                <NavItem to="/dialogue-lab" label="Dialogue v1 (legacy)" active={isActive('/dialogue-lab')} />
-                <NavItem to="/biography-lab" label="Лаборатория Биографии" active={isActive('/biography-lab')} />
+                <NavItem to={ROUTES.labs.builder} label="Конструктор Персонажа" active={isActive(ROUTES.labs.builder)} />
+                <NavItem to={ROUTES.labs.locationConstructor} label="Конструктор Локаций" active={isActive(ROUTES.labs.locationConstructor)} />
+                <NavItem to={ROUTES.labs.characterLab} label="Инспектор ToM (Dyad)" active={isActive(ROUTES.labs.characterLab)} />
+                <NavItem to={ROUTES.labs.goalLab} label="Лаборатория Целей" active={isActive(ROUTES.labs.goalLab)} />
+                <NavItem to={ROUTES.simulation.live} label="▶ Live Sim" active={isActive(ROUTES.simulation.live)} />
+                <NavItem to={ROUTES.labs.compare} label="⚖ Compare" active={isActive(ROUTES.labs.compare)} />
+                <NavItem to={ROUTES.labs.relationsLab} label="Relations Lab (Global)" active={isActive(ROUTES.labs.relationsLab)} />
+                <NavItem to={ROUTES.labs.planningLab} label="Лаборатория Планирования" active={isActive(ROUTES.labs.planningLab)} />
+                <NavItem to={ROUTES.labs.dialogueLab} label="💬 Dialogue" active={isActive(ROUTES.labs.dialogueLab)} />
+                <NavItem to={ROUTES.labs.biographyLab} label="Лаборатория Биографии" active={isActive(ROUTES.labs.biographyLab)} />
                 <div className="border-t border-canon-border my-1"></div>
-                <NavItem to="/presets" label="Редактор Пресетов" active={isActive('/presets')} />
-                <NavItem to="/linter" label="Линтер & Справка" active={isActive('/linter')} />
+                <NavItem to={ROUTES.labs.presets} label="Редактор Пресетов" active={isActive(ROUTES.labs.presets)} />
+                <NavItem to={ROUTES.labs.linter} label="Линтер & Справка" active={isActive(ROUTES.labs.linter)} />
             </NavDropdown>
 
         </nav>
       </div>
-      
+
       <div className="flex flex-wrap items-center gap-3 md:gap-4 xl:self-auto">
-        <Link 
-            to="/inspector" 
+        <Link
+            to={ROUTES.inspector}
             className={`
                 flex items-center gap-2 px-3 py-1 rounded text-xs font-bold transition-all border
-                ${isActive('/inspector') 
-                    ? 'bg-canon-blue text-canon-bg border-canon-blue shadow-[0_0_10px_rgba(0,204,255,0.4)]' 
+                ${isActive('/inspector')
+                    ? 'bg-canon-blue text-canon-bg border-canon-blue shadow-[0_0_10px_rgba(0,204,255,0.4)]'
                     : 'bg-transparent text-canon-blue border-canon-blue/30 hover:border-canon-blue hover:bg-canon-blue/10'
                 }
             `}
         >
-            <span>👁</span> 
+            <span>👁</span>
             <span>INSPECTOR</span>
         </Link>
 
@@ -182,17 +194,17 @@ export const Header: React.FC = () => {
           <option value={Branch.PreRector}>Pre-Rector</option>
           <option value={Branch.PreBorders}>Pre-Borders</option>
         </select>
-        
-        <button 
+
+        <button
             onClick={handleAdminToggle}
             className={`text-sm transition-transform hover:scale-110 ${isAdmin ? 'text-red-500' : 'text-canon-text-light hover:text-canon-text'}`}
             title={isAdmin ? "Admin Mode Active" : "Admin Login"}
         >
             {isAdmin ? '🔓' : '🔒'}
         </button>
-        
+
         {!activeModule && (
-             <Link to="/access" className="text-xs text-canon-text-light hover:text-canon-accent font-mono" title="Ввести код доступа">
+             <Link to={ROUTES.access} className="text-xs text-canon-text-light hover:text-canon-accent font-mono" title="Ввести код доступа">
                  KEY
              </Link>
         )}
