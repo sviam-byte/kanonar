@@ -40,12 +40,16 @@ import { buildActionCandidates } from '../../decision/actionCandidateUtils';
 import { arr } from '../../utils/arr';
 import { uniq as uniqStrings } from '../../util/collections';
 import { clamp01 } from '../../util/math';
+import { getMag } from '../../util/atoms';
 import { buildIntentPreview } from './intentPreview';
 import { makeSimStep, type SimStep } from '../../core/simStep';
 import { observeLite, type ObserveLiteParams } from './observeLite';
 import { buildBeliefUpdateLiteSnapshot } from './beliefUpdateLite';
 import { buildTransitionSnapshot } from './lookahead';
 import { buildBeliefPersistAtoms, type BeliefPersistOutput } from './beliefPersist';
+import { buildGoalEvalContext } from './buildGoalEvalContext';
+import { deriveGoalPressuresV1 } from './deriveGoalPressuresV1';
+import type { AppraisalView, RecentEventView } from '../../goals/specs/evalTypes';
 
 export type GoalLabStageId = 'S0'|'S1'|'S2'|'S3'|'S4'|'S5'|'S6'|'S7'|'S8'|'S9';
 
@@ -247,6 +251,86 @@ function isCareKind(kind: string): boolean {
 
 function isSpeechishKind(kind: string): boolean {
   return /talk|inform|ask|question|promise|negotiate|accuse|apologize|praise|threaten|comfort/.test(String(kind || '').toLowerCase());
+}
+
+function inferPrimaryTargetId(selfId: string, events: any[]): string | undefined {
+  const stats = new Map<string, number>();
+  for (const ev of events) {
+    const t = ev?.targetId != null ? String(ev.targetId) : '';
+    if (!t || t === selfId) continue;
+    stats.set(t, (stats.get(t) ?? 0) + 1);
+  }
+  let best: string | undefined;
+  let bestCount = -1;
+  for (const [targetId, count] of stats.entries()) {
+    if (count > bestCount) {
+      best = targetId;
+      bestCount = count;
+    }
+  }
+  return best;
+}
+
+function collectGoalMetrics(args: {
+  selfId: string;
+  targetId?: string;
+  atoms: ContextAtom[];
+}): Record<string, number> {
+  const { selfId, targetId, atoms } = args;
+  const target = targetId ?? '';
+
+  return {
+    self_stress: clamp01(getMag(atoms, `feat:char:${selfId}:body.stress`, 0)),
+    self_fatigue: clamp01(getMag(atoms, `feat:char:${selfId}:body.fatigue`, 0)),
+    self_health: clamp01(getMag(atoms, `feat:char:${selfId}:body.health`, 1)),
+    target_stress: target ? clamp01(getMag(atoms, `feat:char:${target}:body.stress`, 0)) : 0,
+    target_fatigue: target ? clamp01(getMag(atoms, `feat:char:${target}:body.fatigue`, 0)) : 0,
+    target_health: target ? clamp01(getMag(atoms, `feat:char:${target}:body.health`, 1)) : 0,
+    trust: target ? clamp01(getMag(atoms, `rel:ctx:${selfId}:${target}:trust`, getMag(atoms, `rel:base:${selfId}:${target}:trust`, 0))) : 0,
+    closeness: target ? clamp01(getMag(atoms, `rel:ctx:${selfId}:${target}:closeness`, getMag(atoms, `rel:base:${selfId}:${target}:closeness`, 0))) : 0,
+    authority: target ? clamp01(getMag(atoms, `rel:ctx:${selfId}:${target}:authority`, getMag(atoms, `rel:base:${selfId}:${target}:authority`, 0))) : 0,
+    dependency: target ? clamp01(getMag(atoms, `rel:ctx:${selfId}:${target}:dependency`, getMag(atoms, `rel:base:${selfId}:${target}:dependency`, 0))) : 0,
+    distance: target ? Math.max(0, getMag(atoms, `map:distance:${selfId}:${target}`, Number.POSITIVE_INFINITY)) : Number.POSITIVE_INFINITY,
+    hazard: clamp01(getMag(atoms, `ctx:final:danger:${selfId}`, getMag(atoms, `threat:final:${selfId}`, 0))),
+    uncertainty: clamp01(getMag(atoms, `ctx:final:uncertainty:${selfId}`, getMag(atoms, `ctx:uncertainty:${selfId}`, 0))),
+    utility_of_target: target ? clamp01(getMag(atoms, `tom:trust:${selfId}:${target}`, getMag(atoms, `ctx:final:attachment:${selfId}`, 0))) : 0,
+  };
+}
+
+function collectGoalAppraisals(appraisedEvents: AppraisedEventLite[]): AppraisalView[] {
+  const out: AppraisalView[] = [];
+  for (const ev of appraisedEvents) {
+    out.push({ tag: 'danger_to_self', score: ev.appraisal.dangerToSelf, eventId: ev.eventId, targetId: ev.targetId });
+    out.push({ tag: 'target_distress', score: ev.appraisal.dangerToOther, eventId: ev.eventId, targetId: ev.targetId });
+    out.push({ tag: 'cooperation_risk', score: ev.appraisal.obligation, eventId: ev.eventId, targetId: ev.targetId });
+    out.push({ tag: 'information_gap', score: ev.appraisal.novelty, eventId: ev.eventId, targetId: ev.targetId });
+    if (isDangerKind(ev.kind)) {
+      out.push({ tag: 'target_as_threat', score: clamp01(ev.appraisal.dangerToSelf + 0.25), eventId: ev.eventId, targetId: ev.targetId });
+    }
+    if (/injury|wound|bleed|hurt|harm/.test(ev.kind)) {
+      out.push({ tag: 'target_injury', score: clamp01(ev.appraisal.dangerToOther + 0.2), eventId: ev.eventId, targetId: ev.targetId });
+    }
+  }
+  return out;
+}
+
+function collectRecentEventsForGoals(args: { tick: number; events: any[] }): RecentEventView[] {
+  return arr(args.events)
+    .map((ev): RecentEventView | null => {
+      const eventTickValue = eventTick(ev, args.tick);
+      const kind = String(ev?.kind ?? ev?.type ?? 'unknown');
+      if (!kind) return null;
+      return {
+        id: String(ev?.id ?? `${kind}:${eventTickValue}`),
+        kind,
+        age: Math.max(0, args.tick - eventTickValue),
+        salience: clamp01(Number(ev?.salience ?? ev?.magnitude ?? 0)),
+        actorId: ev?.actorId != null ? String(ev.actorId) : undefined,
+        targetId: ev?.targetId != null ? String(ev.targetId) : undefined,
+        observerMode: 'inferred',
+      };
+    })
+    .filter(Boolean) as RecentEventView[];
 }
 
 // Converts raw event stream into bounded appraisal-ready structures for S4/S8 debug + intent shaping.
@@ -760,6 +844,25 @@ export function runGoalLabPipelineV1(input: {
   const s7Overridden = uniqStrings([...mS7a.overriddenIds, ...mS7b.overriddenIds, ...mS7c.overriddenIds, ...mS7d.overriddenIds]);
   atoms = atomsS7;
 
+  // Canonical GoalSpecV1 pressure derivation is additive for now:
+  // we keep legacy goal atoms intact and expose new pressures as S7 artifacts.
+  const canonicalTargetId = inferPrimaryTargetId(selfId, step.events);
+  const goalEvalCtx = buildGoalEvalContext({
+    selfId,
+    targetId: canonicalTargetId,
+    tick,
+    metrics: collectGoalMetrics({ selfId, targetId: canonicalTargetId, atoms: atomsS7 }),
+    recentEvents: collectRecentEventsForGoals({ tick, events: step.events }),
+    appraisals: collectGoalAppraisals(appraisedEvents),
+    beliefs: arr((agent as any)?.memory?.beliefAtoms)
+      .map((a: any) => (typeof a?.id === 'string' ? a.id : null))
+      .filter(Boolean) as string[],
+    capabilities: [],
+    recentActionKinds: [],
+    cooldownReady: [],
+  });
+  const derivedGoalPressuresV1 = deriveGoalPressuresV1(goalEvalCtx);
+
   // Level 4.0b (F/G): explicit goal layer snapshot (domains/logits/goals/modes).
   const goalLayerSnapshot = buildGoalLayerSnapshot(selfId, atomsS7, goalRes as any, planRes as any);
   stages.push({
@@ -773,6 +876,13 @@ export function runGoalLabPipelineV1(input: {
       goalAtomsCount: goalAtoms.length,
       goalDebug: (goalRes as any)?.debug ?? null,
       goalLayerSnapshot,
+      derivedGoalPressuresV1,
+      goalEvalContextV1: {
+        targetId: goalEvalCtx.targetId ?? null,
+        metricKeys: Object.keys(goalEvalCtx.metrics).sort(),
+        appraisalsCount: goalEvalCtx.appraisals.length,
+        recentEventsCount: goalEvalCtx.recentEvents.length,
+      },
       planGoalAtomsCount: planAtoms.length,
       goalActionLinksCount: linkAtoms.length,
       utilAtomsCount: utilAtoms.length,
