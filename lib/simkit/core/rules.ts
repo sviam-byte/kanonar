@@ -85,14 +85,31 @@ export function applyEvent(w: SimWorld, e: SimEvent): { world: SimWorld; notes: 
     const volume = (s?.volume || 'normal') as 'whisper' | 'normal' | 'shout';
     const targetId = String(s?.targetId || '');
     let atoms = Array.isArray(s?.atoms) ? [...s.atoms] : [];
+    const facts: any = w.facts || {};
+    const pipelineSummary = facts[`sim:pipeline:${speakerId}`] || {};
+    const communicativeIntent = pipelineSummary?.communicativeIntent || null;
+    const runtimeTopic = String(s?.topic || communicativeIntent?.topic?.primary || '').trim() || undefined;
+
+    // If action emitted empty/context-only atoms, bootstrap message facts from pipeline intent.
+    if ((!atoms.length || atoms.every((a: any) => String(a?.id || '').startsWith('ctx:'))) && communicativeIntent?.topic?.facts?.length) {
+      atoms = communicativeIntent.topic.facts.map((fact: any, idx: number) => ({
+        id: `speech:${speakerId}:${targetId || 'broadcast'}:${idx}:${String(fact)}`,
+        magnitude: 0.7,
+        confidence: 0.75,
+        meta: {
+          from: speakerId,
+          topic: runtimeTopic,
+          intentKind: communicativeIntent?.kind,
+          triggerEventId: communicativeIntent?.triggerEventId || null,
+        },
+      }));
+    }
 
     // Decide speech intent/content before routing (if enough context available).
     let speechIntent: 'truthful' | 'selective' | 'deceptive' = 'truthful';
     if (atoms.length > 0 && targetId) {
       try {
-        const facts: any = w.facts || {};
         const goalScores: Record<string, number> = {};
-        const pipelineSummary = facts[`sim:pipeline:${speakerId}`];
         if (pipelineSummary?.goalScores) Object.assign(goalScores, pipelineSummary.goalScores);
 
         const contentResult = decideSpeechContent(w, {
@@ -146,7 +163,8 @@ export function applyEvent(w: SimWorld, e: SimEvent): { world: SimWorld; notes: 
             from: speakerId,
             volume,
             act: s?.act,
-            topic: s?.topic,
+            topic: runtimeTopic,
+            communicativeIntent,
             tickIndex: w.tickIndex,
             distance: Number.isFinite(distance) ? distance : null,
             speakerPrivacy,

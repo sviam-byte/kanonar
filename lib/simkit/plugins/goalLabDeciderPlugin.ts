@@ -326,11 +326,15 @@ function extractAgentTrace(pipeline: any, actorId: string, world: SimWorld, mode
     domain: d.domain,
     score: clamp01(Number(d.score01 ?? 0)),
   }));
+  const goalScores = Object.fromEntries(goals.map((g: any) => [String(g.domain), Number(g.score ?? 0)]));
   const activeGoals = arr(goalSnapshot?.activeDomains).map((d: any) => d.domain);
   const modeLabel = goalSnapshot?.mode?.label || '';
 
   // S8: ranked actions (top candidates)
   const s8 = stages.find((s: any) => s.stage === 'S8');
+  const appraisedEvents = arr((stages.find((s: any) => s.stage === 'S4') as any)?.artifacts?.appraisedEvents).slice(0, 8);
+  const communicativeIntent = (s8 as any)?.artifacts?.communicativeIntent ?? null;
+  const basedOnEvents = arr((s8 as any)?.artifacts?.basedOnEvents).map((x: any) => String(x)).filter(Boolean);
   const ranked = arr((s8 as any)?.artifacts?.ranked).slice(0, 10).map((r: any) => ({
     action: String(r?.action?.id || r?.id || ''),
     kind: String(r?.action?.kind || r?.kind || ''),
@@ -356,9 +360,13 @@ function extractAgentTrace(pipeline: any, actorId: string, world: SimWorld, mode
     emotions,
     drivers,
     goals,
+    goalScores,
     activeGoals,
     mode: modeLabel,
     relations,
+    appraisedEvents,
+    basedOnEvents,
+    communicativeIntent,
     ranked,
     best: best
       ? {
@@ -432,7 +440,13 @@ export function makeGoalLabDeciderPlugin(opts?: { storePipeline?: boolean; enabl
       if (String((world as any)?.facts?.['sim:decider'] ?? '') === 'heuristic') return null;
 
       const snapshot = buildSnapshot(world, tickIndex);
-      const worldState = buildWorldStateFromSim(world, snapshot);
+      const offersByAgent = offers.reduce((acc, offer) => {
+        const key = String((offer as any)?.actorId || '');
+        if (!key) return acc;
+        (acc[key] ||= []).push(offer);
+        return acc;
+      }, {} as Record<string, ActionOffer[]>);
+      const worldState = buildWorldStateFromSim(world, snapshot, { offersByAgent });
       const participantIds = Object.keys(world.characters || {}).sort();
       const actorFilter = readActorFilter(world);
       const actorIds = (actorFilter.length ? actorFilter : participantIds)
@@ -531,6 +545,10 @@ export function makeGoalLabDeciderPlugin(opts?: { storePipeline?: boolean; enabl
           mode: trace.mode,
           decisionMode: mode,
           tick: tickIndex,
+          goalScores: trace.goalScores || {},
+          appraisedEvents: trace.appraisedEvents || [],
+          basedOnEvents: trace.basedOnEvents || [],
+          communicativeIntent: trace.communicativeIntent || null,
         };
 
         const best = extractDecisionBest(pipeline);

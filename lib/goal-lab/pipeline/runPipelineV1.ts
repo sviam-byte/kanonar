@@ -203,6 +203,187 @@ function buildGoalLayerSnapshot(selfId: string, atomsAfterS7: ContextAtom[], goa
   };
 }
 
+type AppraisedEventLite = {
+  eventId: string;
+  tick: number;
+  kind: string;
+  actorId: string;
+  targetId?: string;
+  topic?: string;
+  appraisal: {
+    relevance: number;
+    dangerToSelf: number;
+    dangerToOther: number;
+    obligation: number;
+    affiliationPull: number;
+    novelty: number;
+  };
+  interpretation: {
+    summary: string;
+    topic: string[];
+    aboutWhom: string[];
+    actionBias: string[];
+  };
+};
+
+function eventLocId(ev: any): string | undefined {
+  const raw = ev?.locationId ?? ev?.context?.locationId ?? ev?.ctx?.locationId;
+  return raw != null && String(raw) ? String(raw) : undefined;
+}
+
+function eventTick(ev: any, fallbackTick: number): number {
+  const raw = ev?.tick ?? ev?.t ?? ev?.meta?.payload?.tick ?? ev?.meta?.payload?.tickIndex;
+  const n = Number(raw ?? fallbackTick);
+  return Number.isFinite(n) ? n : fallbackTick;
+}
+
+function isDangerKind(kind: string): boolean {
+  return /hazard|attack|threat|harm|hurt|blocked|betray/.test(String(kind || '').toLowerCase());
+}
+
+function isCareKind(kind: string): boolean {
+  return /help|comfort|heal|protect|save|escort|assist/.test(String(kind || '').toLowerCase());
+}
+
+function isSpeechishKind(kind: string): boolean {
+  return /talk|inform|ask|question|promise|negotiate|accuse|apologize|praise|threaten|comfort/.test(String(kind || '').toLowerCase());
+}
+
+// Converts raw event stream into bounded appraisal-ready structures for S4/S8 debug + intent shaping.
+function collectAppraisedEvents(args: {
+  selfId: string;
+  tick: number;
+  agent: any;
+  events: any[];
+}): AppraisedEventLite[] {
+  const { selfId, tick, agent } = args;
+  const selfLocId = String((agent as any)?.locationId || '');
+  const out: AppraisedEventLite[] = [];
+
+  for (const ev of arr<any>(args.events)) {
+    const actorId = String(ev?.actorId ?? '');
+    const targetId = ev?.targetId != null ? String(ev.targetId) : undefined;
+    const kind = String(ev?.kind ?? ev?.actionId ?? ev?.type ?? 'event');
+    const locId = eventLocId(ev);
+    const direct = actorId === selfId || targetId === selfId;
+    const colocated = !!selfLocId && !!locId && selfLocId === locId;
+    const witnessed = arr<string>(ev?.epistemics?.witnesses).map(String).includes(selfId);
+    const age = Math.max(0, tick - eventTick(ev, tick));
+    const freshness = clamp01(1 - age / 8);
+    const magnitude = clamp01(Number(ev?.magnitude ?? ev?.intensity ?? ev?.urgency ?? 0.5));
+
+    const relevance = clamp01(
+      magnitude * 0.45
+      + (direct ? 0.35 : 0)
+      + (witnessed ? 0.15 : 0)
+      + (!direct && colocated ? 0.1 : 0)
+      + freshness * 0.2
+    );
+    if (relevance < 0.15) continue;
+
+    const dangerToSelf = clamp01((targetId === selfId && isDangerKind(kind) ? 0.7 : 0) + (actorId === selfId && kind === 'hazard' ? 0.4 : 0) + magnitude * (isDangerKind(kind) ? 0.3 : 0));
+    const dangerToOther = clamp01((targetId && targetId !== selfId && isDangerKind(kind) ? 0.65 : 0) + magnitude * (isDangerKind(kind) ? 0.25 : 0));
+    const obligation = clamp01((targetId && targetId !== selfId ? 0.25 : 0) + (isCareKind(kind) ? 0.2 : 0) + (dangerToOther > 0 ? 0.35 : 0));
+    const affiliationPull = clamp01((targetId && targetId !== selfId ? 0.25 : 0) + (isCareKind(kind) ? 0.35 : 0) + (isSpeechishKind(kind) ? 0.15 : 0));
+    const novelty = freshness;
+
+    const topic = Array.from(new Set([
+      kind,
+      ev?.topic ? String(ev.topic) : '',
+      dangerToSelf > 0 || dangerToOther > 0 ? 'danger' : '',
+      obligation > 0.45 ? 'coordination' : '',
+    ].filter(Boolean)));
+
+    const actionBias = Array.from(new Set([
+      dangerToSelf > 0.45 ? 'move' : '',
+      dangerToOther > 0.45 ? 'warn' : '',
+      obligation > 0.45 ? 'assist' : '',
+      affiliationPull > 0.45 ? 'talk' : '',
+      isCareKind(kind) ? 'reassure' : '',
+    ].filter(Boolean)));
+
+    const aboutWhom = Array.from(new Set([actorId, targetId || ''].filter(Boolean)));
+    const summaryTarget = targetId ? `→${targetId}` : '';
+
+    out.push({
+      eventId: String(ev?.id || `${kind}:${actorId}:${targetId || 'none'}:${tick}`),
+      tick: eventTick(ev, tick),
+      kind,
+      actorId,
+      targetId,
+      topic: ev?.topic ? String(ev.topic) : undefined,
+      appraisal: {
+        relevance,
+        dangerToSelf,
+        dangerToOther,
+        obligation,
+        affiliationPull,
+        novelty,
+      },
+      interpretation: {
+        summary: `${kind}${summaryTarget}`,
+        topic,
+        aboutWhom,
+        actionBias,
+      },
+    });
+  }
+
+  return out.sort((a, b) => (b.appraisal.relevance + b.appraisal.dangerToSelf + b.appraisal.dangerToOther) - (a.appraisal.relevance + a.appraisal.dangerToSelf + a.appraisal.dangerToOther)).slice(0, 8);
+}
+
+function buildCommunicativeIntent(args: {
+  selfId: string;
+  best: any;
+  appraisedEvents: AppraisedEventLite[];
+}): any | null {
+  const bestKind = String(args.best?.kind || args.best?.action?.kind || '').toLowerCase();
+  if (!bestKind) return null;
+  const social = /talk|question_about|negotiate|comfort|guard|escort|treat|deceive|accuse|praise|apologize|share|signal|help/.test(bestKind);
+  if (!social) return null;
+
+  const anchor = args.appraisedEvents[0] || null;
+  const targetId = args.best?.targetId ?? args.best?.action?.targetId ?? anchor?.targetId ?? null;
+  let kind = 'inform';
+  let desiredEffect = 'share_information';
+  let tone = 'calm';
+
+  if (bestKind === 'comfort' || anchor?.appraisal?.dangerToOther > 0.45) {
+    kind = 'reassure';
+    desiredEffect = 'reduce_panic';
+    tone = 'soft';
+  } else if (/question_about/.test(bestKind)) {
+    kind = 'request_help';
+    desiredEffect = 'obtain_commitment';
+    tone = 'urgent';
+  } else if (/accuse/.test(bestKind)) {
+    kind = 'accuse';
+    desiredEffect = 'increase_compliance';
+    tone = 'cold';
+  } else if (/negotiate|share|signal|talk|help/.test(bestKind)) {
+    kind = anchor?.appraisal?.dangerToOther > 0.35 || anchor?.appraisal?.dangerToSelf > 0.35 ? 'warn' : 'inform';
+    desiredEffect = kind === 'warn' ? 'increase_compliance' : 'share_information';
+    tone = kind === 'warn' ? 'urgent' : 'calm';
+  }
+
+  return {
+    kind,
+    targetId,
+    triggerEventId: anchor?.eventId ?? null,
+    topic: {
+      primary: anchor?.topic || anchor?.kind || bestKind,
+      entities: anchor?.interpretation?.aboutWhom || (targetId ? [String(targetId)] : []),
+      facts: anchor?.interpretation?.topic || [bestKind],
+    },
+    desiredEffect,
+    stance: {
+      honesty: 'truthful',
+      emotionalTone: tone,
+      directness: kind === 'warn' || kind === 'accuse' ? 0.9 : 0.6,
+    },
+  };
+}
+
 export function runGoalLabPipelineV1(input: {
   world: WorldState;
   agentId: string;
@@ -415,6 +596,12 @@ export function runGoalLabPipelineV1(input: {
   const dy = deriveDyadicEmotionAtoms({ selfId, atoms: mS4b.atoms });
   const dyAtoms = arr((dy as any)?.atoms).map(normalizeAtom);
   const mS4c = mergeAtomsPreferNewer(mS4b.atoms, dyAtoms);
+  const appraisedEvents = collectAppraisedEvents({
+    selfId,
+    tick,
+    agent,
+    events: step.events,
+  });
 
   const atomsS4 = mS4c.atoms;
   const s4Added = uniqStrings([...mS4a.newIds, ...mS4b.newIds, ...mS4c.newIds]);
@@ -431,6 +618,7 @@ export function runGoalLabPipelineV1(input: {
       appCount: appAtoms.length,
       emoCount: emoAtoms.length,
       dyEmoCount: dyAtoms.length,
+      appraisedEvents,
       overriddenIds: s4Overridden,
     }
   });
@@ -818,6 +1006,11 @@ export function runGoalLabPipelineV1(input: {
     }
 
     const decisionWarnings = arr<string>((decision as any)?.warnings);
+    const communicativeIntent = buildCommunicativeIntent({
+      selfId,
+      best: bestOverridden,
+      appraisedEvents,
+    });
 
     // Level 4.5: explicit mode/stabilizer snapshots for console observability.
     const modesSnapshot = {
@@ -958,6 +1151,9 @@ export function runGoalLabPipelineV1(input: {
           s8Artifacts: { best: bestOverridden, ranked: rankedOverridden },
           horizonSteps: 5,
         }),
+        basedOnEvents: appraisedEvents.map((ev) => ev.eventId),
+        communicativeIntent,
+        appraisedEvents,
         overriddenIds: s8Overridden,
         priorsAtomIds: (priorsAtoms || []).map(a => String((a as any)?.id || '')),
         decisionAtomIds: decisionAtoms.map(a => String((a as any)?.id || '')),

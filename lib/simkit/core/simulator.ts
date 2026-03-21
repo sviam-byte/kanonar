@@ -44,6 +44,40 @@ function applyHazardPoints(world: SimWorld) {
   }
 }
 
+type RecentSimEvent = {
+  id: string;
+  type: string;
+  tick: number;
+  actorId?: string;
+  targetId?: string;
+  locationId?: string;
+  payload?: any;
+};
+
+// Keeps short rolling event history so next tick adapter can still see just-consumed events.
+function persistRecentEvents(world: SimWorld, eventsApplied: any[]) {
+  const facts: any = world.facts || (world.facts = {} as any);
+  const prev = Array.isArray(facts['sim:recentEvents']) ? facts['sim:recentEvents'] : [];
+  const next: RecentSimEvent[] = (Array.isArray(eventsApplied) ? eventsApplied : []).map((e: any) => {
+    const payload = (e && typeof e === 'object') ? (e.payload || {}) : {};
+    return {
+      id: String(e?.id || ''),
+      type: String(e?.type || 'event'),
+      tick: Number(payload?.tick ?? payload?.tickIndex ?? world.tickIndex ?? 0),
+      actorId: payload?.actorId != null ? String(payload.actorId) : undefined,
+      targetId: payload?.targetId != null ? String(payload.targetId) : undefined,
+      locationId: payload?.locationId != null
+        ? String(payload.locationId)
+        : (payload?.locId != null ? String(payload.locId) : undefined),
+      payload,
+    };
+  }).filter((e: RecentSimEvent) => e.id);
+
+  const keep = 64;
+  const merged = [...prev, ...next];
+  facts['sim:recentEvents'] = merged.slice(-keep);
+}
+
 function applyInputAxesSensors(world: SimWorld) {
   // Sensors: standardized 0..1 axes per actor, derived from location properties + local crowd.
   // Stored as world.facts['ctx:<axis>:<actorId>'] for easy reuse by subjective + GoalLab pipeline.
@@ -429,6 +463,8 @@ export class SimKitSimulator {
     // 3) строим снапшот
     // IMPORTANT: by now this.world.events has been consumed/reset.
     // We must pass the applied events explicitly for traceability.
+    // Persist bounded history before snapshot; otherwise next tick sees empty event list.
+    persistRecentEvents(this.world, eventsApplied as any[]);
     const snapshot = buildSnapshot(this.world, { events: eventsApplied });
 
     // 4) собираем trace deltas (минимально: по персонажам + фактам)
