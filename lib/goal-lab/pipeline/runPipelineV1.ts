@@ -31,6 +31,7 @@ import { deriveGoalActionLinkAtoms } from '../../goals/goalActionLinksAtoms';
 
 import { derivePossibilitiesRegistry } from '../../possibilities/derive';
 import { atomizePossibilities } from '../../possibilities/atomize';
+import type { Possibility } from '../../possibilities/catalog';
 import { deriveAccess } from '../../access/deriveAccess';
 import { deriveActionPriors } from '../../decision/actionPriors';
 import { decideAction } from '../../decision/decide';
@@ -213,6 +214,13 @@ export function runGoalLabPipelineV1(input: {
   mapMetrics?: any;
   tickOverride?: number;
   observeLiteParams?: ObserveLiteParams;
+  /**
+   * External possibilities injected by the caller (e.g. SimKit offers converted to
+   * Possibility objects). Merged with internally derived possibilities in S8.
+   * This allows GoalLab to score concrete spatial offers (move→loc:kitchen)
+   * alongside its own abstract possibilities (escape, hide, etc.).
+   */
+  externalPossibilities?: Possibility[];
 }): GoalLabPipelineV1 | null {
   const { world, agentId, participantIds } = input;
   const tick = Number(input.tickOverride ?? (world as any)?.tick ?? 0);
@@ -589,7 +597,14 @@ export function runGoalLabPipelineV1(input: {
   // IMPORTANT: keep this stage strictly typed + non-throwing.
   // A pipeline crash should never take down the UI.
   try {
-    const possList = derivePossibilitiesRegistry({ selfId, atoms });
+    const internalPoss = derivePossibilitiesRegistry({ selfId, atoms });
+    // Merge external possibilities (e.g. SimKit spatial offers) with internal ones.
+    // External possibilities carry concrete targetId/targetNodeId from SimKit enumeration,
+    // allowing GoalLab to score specific move destinations via goal-weighted Q(a).
+    // Dedup by id: internal wins on collision (they have richer trace/context).
+    const externalPoss = arr(input.externalPossibilities);
+    const internalIds = new Set(internalPoss.map((p) => p.id));
+    const possList = [...internalPoss, ...externalPoss.filter((p) => p?.id && !internalIds.has(p.id))];
     const possAtoms = arr(atomizePossibilities(possList)).map(normalizeAtom);
     const mS8a = mergeAtomsPreferNewer(atoms, possAtoms);
 
