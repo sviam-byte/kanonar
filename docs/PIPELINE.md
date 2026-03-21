@@ -55,6 +55,7 @@ Invariant:
 
 Outputs:
 - эмоции (как атомы/метрики)
+- `artifacts.appraisedEvents` — top-N (<=8) событий с compact appraisal (`relevance/danger/obligation/affiliation/novelty`) и интерпретацией (`topic/aboutWhom/actionBias`) для explainability и downstream S8 коммуникации.
 
 ## S5 — ToM
 
@@ -185,6 +186,9 @@ Outputs:
 - if no possibility rules fire, S8 must still receive a fallback cognitive option `cog:wait:<selfId>` to avoid hard deadlocks in action selection
 - violent affordances (e.g., `off:attack:*`) are target-specific and gated by explicit threat + protocol; without threat or concrete target they must not be emitted
 - decision hints are consumed from `util:hint:allow:*`; legacy `goal:hint:allow:*` may be accepted only as compatibility fallback
+- S8 artifacts now include communication bridge fields:
+  - `communicativeIntent` — структура намерения речи (`kind`, `targetId`, `topic`, `desiredEffect`, `stance`) для SimKit speech routing/content policy.
+  - `basedOnEvents` + `appraisedEvents` — event provenance for selected decision branch.
 
 Forbidden:
 - `action:*` НЕ должен зависеть от `goal:*` напрямую (только через `util:*`)
