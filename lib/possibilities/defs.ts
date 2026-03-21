@@ -75,6 +75,56 @@ function getPrior(atoms: any[], selfId: string, otherId: string, act: string, fb
   return { id: a ? id : null, v: clamp01(v) };
 }
 
+function getAnyMag(atoms: any[], ids: string[], fb = 0): number {
+  for (const id of ids) {
+    const v = getMag(atoms, id, NaN as any);
+    if (Number.isFinite(v)) return clamp01(Number(v));
+  }
+  return clamp01(fb);
+}
+
+function socialEventPressure(selfId: string, otherId: string, atoms: any[]): number {
+  const ids = [
+    `soc:recentHarmBy:${selfId}:${otherId}`,
+    `soc:recentHarmBy:${otherId}:${selfId}`,
+    `soc:recentHelpBy:${selfId}:${otherId}`,
+    `soc:recentHelpBy:${otherId}:${selfId}`,
+    `event:didToAny:${selfId}:attack`,
+    `event:didToAny:${selfId}:hazard`,
+    `event:didToAny:${selfId}:help`,
+    `event:didToAny:${otherId}:attack`,
+    `event:didToAny:${otherId}:hazard`,
+    `event:didToAny:${otherId}:help`,
+  ];
+  return Math.max(0, ...ids.map((id) => getMag(atoms, id, 0)));
+}
+
+// Social actions should be driven by observable pressure/distress, not trust/closeness alone.
+function socialDistress(selfId: string, otherId: string, atoms: any[]): {
+  selfStress: number;
+  otherStress: number;
+  otherPain: number;
+  pressure: number;
+} {
+  const selfStress = getAnyMag(atoms, [
+    `affect:stress:${selfId}`,
+    `feat:char:${selfId}:body.stress`,
+    `body:stress:${selfId}`,
+  ], 0);
+  const otherStress = getAnyMag(atoms, [
+    `affect:stress:${otherId}`,
+    `feat:char:${otherId}:body.stress`,
+    `body:stress:${otherId}`,
+  ], 0);
+  const otherPain = getAnyMag(atoms, [
+    `affect:pain:${otherId}`,
+    `feat:char:${otherId}:body.pain`,
+    `body:pain:${otherId}`,
+  ], 0);
+  const pressure = socialEventPressure(selfId, otherId, atoms);
+  return { selfStress, otherStress, otherPain, pressure };
+}
+
 function mk(p: Possibility): Possibility {
   return {
     ...p,
@@ -435,7 +485,12 @@ export const DEFAULT_POSSIBILITY_DEFS: PossibilityDef[] = [
         const trustId = `rel:state:${selfId}:${otherId}:trust`;
         const trust = getMag(atoms, trustId, 0.5);
         const W = (FC as any).possibilityWeights?.talk ?? { prior: 0.55, trust: 0.45 };
-        const magnitude = clamp01(W.prior * v + W.trust * trust);
+        const base = clamp01(W.prior * v + W.trust * trust);
+        const { selfStress, otherStress, pressure } = socialDistress(selfId, otherId, atoms);
+        const topicPressure = clamp01(Math.max(pressure, Math.abs(otherStress - selfStress) * 0.75, otherStress * 0.65));
+        const magnitude = topicPressure > 0.12
+          ? clamp01(base * (0.55 + 0.45 * topicPressure))
+          : clamp01(base * 0.18);
 
         const used = uniq(usedIfPresent(atoms, [pId || '', trustId]));
         return mkTargeted({
@@ -447,8 +502,8 @@ export const DEFAULT_POSSIBILITY_DEFS: PossibilityDef[] = [
           magnitude,
           blockedBy: noTalk ? [noTalk] : undefined,
           usedAtomIds: used,
-          notes: ['prior.ask_info + rel.trust => talk'],
-          parts: { priorAsk: v, trust }
+          notes: ['talk requires topic pressure: recent event or visible stress, not just trust'],
+          parts: { priorAsk: v, trust, selfStress, otherStress, pressure, topicPressure, base }
         });
       });
     }
@@ -522,7 +577,12 @@ export const DEFAULT_POSSIBILITY_DEFS: PossibilityDef[] = [
         const closId = `rel:state:${selfId}:${otherId}:closeness`;
         const clos = getMag(atoms, closId, 0.2);
         const W = (FC as any).possibilityWeights?.comfort ?? { prior: 0.60, closeness: 0.40 };
-        const magnitude = clamp01(W.prior * v + W.closeness * clos);
+        const base = clamp01(W.prior * v + W.closeness * clos);
+        const { otherStress, otherPain, pressure } = socialDistress(selfId, otherId, atoms);
+        const need = clamp01(Math.max(otherStress, otherPain, pressure));
+        const magnitude = need > 0.16
+          ? clamp01(base * (0.35 + 0.65 * need))
+          : clamp01(base * 0.05);
 
         const used = uniq(usedIfPresent(atoms, [pId || '', closId]));
         return mkTargeted({
@@ -534,8 +594,8 @@ export const DEFAULT_POSSIBILITY_DEFS: PossibilityDef[] = [
           magnitude,
           blockedBy: noTouch ? [noTouch] : undefined,
           usedAtomIds: used,
-          notes: ['prior.comfort + rel.closeness => comfort'],
-          parts: { priorComfort: v, clos }
+          notes: ['comfort requires visible distress / recent harm, not just closeness'],
+          parts: { priorComfort: v, clos, otherStress, otherPain, pressure, need, base }
         });
       });
     }

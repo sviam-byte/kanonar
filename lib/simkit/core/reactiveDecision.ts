@@ -126,7 +126,9 @@ export function reactiveDecision(
 
   // 5. Habitual: repeat last or wait
   const lastKind = getLastActionKind(facts, agentId);
-  if (lastKind) {
+  // Avoid blindly repeating social acts without fresh social signal/context.
+  const SOCIAL_HABIT_BLOCK = new Set(['talk', 'comfort', 'help', 'negotiate', 'question_about', 'respond']);
+  if (lastKind && !SOCIAL_HABIT_BLOCK.has(lastKind)) {
     const offer = findBestOffer(offers, agentId, [lastKind]);
     if (offer) {
       return { action: offerToAction(offer, tickIndex), reason: 'habitual: repeat last', emotion: 'none', emotionValue: 0 };

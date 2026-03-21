@@ -124,8 +124,8 @@ const GOALLAB_TO_SIMKIT: Record<string, string> = {
   escape: 'move', flee: 'move', avoid: 'move',
 
   // Abstract GoalLab kinds bridged to SimKit social/combat.
-  help: 'talk', cooperate: 'talk', protect: 'talk', npc: 'talk',
-  confront: 'talk', threaten: 'talk', submit: 'talk',
+  help: 'help', cooperate: 'cooperate', protect: 'protect', npc: 'npc',
+  confront: 'confront', threaten: 'threaten', submit: 'submit',
   hide: 'wait', harm: 'attack',
   ask_info: 'question_about', persuade: 'negotiate',
 
@@ -133,9 +133,9 @@ const GOALLAB_TO_SIMKIT: Record<string, string> = {
   comfort: 'comfort', guard: 'guard', escort: 'escort',
   treat: 'treat', investigate: 'investigate', deceive: 'deceive',
   accuse: 'accuse', praise: 'praise', apologize: 'apologize',
-  share: 'talk', trade: 'negotiate', signal: 'talk',
-  observe_target: 'observe', loot: 'scavenge_feature', betray: 'attack',
-  help_offer: 'talk', verify: 'talk', monologue: 'wait',
+  share: 'share', trade: 'trade', signal: 'signal',
+  observe_target: 'observe_target', loot: 'loot', betray: 'betray',
+  help_offer: 'help_offer', verify: 'verify', monologue: 'monologue',
   self_talk: 'wait',
 };
 

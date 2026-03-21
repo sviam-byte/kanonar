@@ -79,10 +79,10 @@ export const BEHAVIOR_VARIETY = {
   noveltyWindow: 5,
   noveltyBonus: 0.03,
   repetitionPenalties: {
-    streak2: 0.05,
-    streak3: 0.15,
-    streak4: 0.30,
-    streak5Plus: 0.50,
+    streak2: 0.12,
+    streak3: 0.30,
+    streak4: 0.55,
+    streak5Plus: 0.85,
   },
 } as const;
 
