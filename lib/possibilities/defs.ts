@@ -75,56 +75,6 @@ function getPrior(atoms: any[], selfId: string, otherId: string, act: string, fb
   return { id: a ? id : null, v: clamp01(v) };
 }
 
-function getAnyMag(atoms: any[], ids: string[], fb = 0): number {
-  for (const id of ids) {
-    const v = getMag(atoms, id, NaN as any);
-    if (Number.isFinite(v)) return clamp01(Number(v));
-  }
-  return clamp01(fb);
-}
-
-function socialEventPressure(selfId: string, otherId: string, atoms: any[]): number {
-  const ids = [
-    `soc:recentHarmBy:${selfId}:${otherId}`,
-    `soc:recentHarmBy:${otherId}:${selfId}`,
-    `soc:recentHelpBy:${selfId}:${otherId}`,
-    `soc:recentHelpBy:${otherId}:${selfId}`,
-    `event:didToAny:${selfId}:attack`,
-    `event:didToAny:${selfId}:hazard`,
-    `event:didToAny:${selfId}:help`,
-    `event:didToAny:${otherId}:attack`,
-    `event:didToAny:${otherId}:hazard`,
-    `event:didToAny:${otherId}:help`,
-  ];
-  return Math.max(0, ...ids.map((id) => getMag(atoms, id, 0)));
-}
-
-// Social actions should be driven by observable pressure/distress, not trust/closeness alone.
-function socialDistress(selfId: string, otherId: string, atoms: any[]): {
-  selfStress: number;
-  otherStress: number;
-  otherPain: number;
-  pressure: number;
-} {
-  const selfStress = getAnyMag(atoms, [
-    `affect:stress:${selfId}`,
-    `feat:char:${selfId}:body.stress`,
-    `body:stress:${selfId}`,
-  ], 0);
-  const otherStress = getAnyMag(atoms, [
-    `affect:stress:${otherId}`,
-    `feat:char:${otherId}:body.stress`,
-    `body:stress:${otherId}`,
-  ], 0);
-  const otherPain = getAnyMag(atoms, [
-    `affect:pain:${otherId}`,
-    `feat:char:${otherId}:body.pain`,
-    `body:pain:${otherId}`,
-  ], 0);
-  const pressure = socialEventPressure(selfId, otherId, atoms);
-  return { selfStress, otherStress, otherPain, pressure };
-}
-
 function mk(p: Possibility): Possibility {
   return {
     ...p,
@@ -216,6 +166,253 @@ function mkSelf(
     },
     meta: args.meta
   });
+}
+
+type SocialEventGateKind =
+  | 'talk'
+  | 'comfort'
+  | 'help'
+  | 'share'
+  | 'negotiate'
+  | 'trade'
+  | 'apologize'
+  | 'praise'
+  | 'accuse'
+  | 'threaten'
+  | 'confront'
+  | 'command'
+  | 'call_backup'
+  | 'signal';
+
+type SocialEventGate = {
+  gate: number;
+  topicPressure: number;
+  targetRelevance: number;
+  targetNeed: number;
+  distress: number;
+  conflict: number;
+  reciprocity: number;
+  instrumentalNeed: number;
+  authority: number;
+  scarcity: number;
+  evidence: number;
+  usedAtomIds: string[];
+  notes: string[];
+};
+
+// Event-first social gating: social actions need a current trigger (topic/need/conflict), not static relation only.
+function collectSocialEventGate(args: {
+  selfId: string;
+  otherId: string;
+  atoms: any[];
+  kind: SocialEventGateKind;
+}): SocialEventGate {
+  const { selfId, otherId, kind } = args;
+  const list = arr<any>(args.atoms);
+  const used = new Set<string>();
+  const notes = new Set<string>();
+
+  const take = (id: string, fb = 0) => {
+    const atom = list.find(a => String(a?.id || '') === id);
+    if (atom) used.add(id);
+    const raw = atom && Number.isFinite(Number(atom?.magnitude)) ? Number(atom.magnitude) : fb;
+    return clamp01(raw);
+  };
+
+  const takePrefixMax = (prefix: string) => {
+    let best = 0;
+    let bestId: string | null = null;
+    for (const a of list) {
+      const id = String(a?.id || '');
+      if (!id.startsWith(prefix)) continue;
+      const v = clamp01(Number(a?.magnitude ?? 0));
+      if (v > best) {
+        best = v;
+        bestId = id;
+      }
+    }
+    if (bestId) used.add(bestId);
+    return best;
+  };
+
+  const trust = take(`rel:state:${selfId}:${otherId}:trust`, 0);
+  const closeness = take(`rel:state:${selfId}:${otherId}:closeness`, 0);
+  const obligation = take(`rel:state:${selfId}:${otherId}:obligation`, 0);
+  const respect = take(`rel:state:${selfId}:${otherId}:respect`, 0);
+  const hostility = Math.max(
+    take(`rel:final:${selfId}:${otherId}:hostility`, 0),
+    take(`rel:state:${selfId}:${otherId}:hostility`, 0)
+  );
+  const threat = Math.max(
+    take(`tom:effective:dyad:${selfId}:${otherId}:threat`, 0),
+    take(`tom:dyad:${selfId}:${otherId}:threat`, 0),
+    hostility
+  );
+  const nearby = Math.max(
+    take(`obs:nearby:${selfId}:${otherId}`, 0),
+    take(`obs:nearby:${selfId}:${otherId}:closeness`, 0)
+  );
+
+  const evidence = Math.max(take(`ctx:evidence:${selfId}`, 0), take('ctx:evidence', 0));
+  const scarcity = Math.max(take(`ctx:scarcity:${selfId}`, 0), take('ctx:scarcity', 0));
+  const authority = Math.max(
+    take(`role:authority:${selfId}`, 0),
+    take(`ctx:authority:${selfId}`, 0),
+    take('ctx:authority', 0)
+  );
+
+  const nonverbalTense = takePrefixMax(`obs:nonverbal:${selfId}:${otherId}:tense`);
+  const nonverbalAfraid = takePrefixMax(`obs:nonverbal:${selfId}:${otherId}:afraid`);
+  const nonverbalAngry = takePrefixMax(`obs:nonverbal:${selfId}:${otherId}:angry`);
+
+  let topicPressure = 0;
+  let targetNeed = 0;
+  let distress = Math.max(nonverbalTense, nonverbalAfraid);
+  let conflict = Math.max(nonverbalAngry, hostility * 0.6);
+  let reciprocity = 0;
+  let selfCausedTrouble = 0;
+  let otherCausedTrouble = 0;
+  let otherDidGood = 0;
+
+  for (const a of list) {
+    const id = String(a?.id || '');
+    if (!id.startsWith('event:')) continue;
+    const ev = (a as any)?.meta?.event;
+    if (!ev || typeof ev !== 'object') continue;
+    const actorId = String((ev as any)?.actorId ?? '');
+    const targetId = String((ev as any)?.targetId ?? '');
+    const evKind = String((ev as any)?.kind ?? '').toLowerCase();
+    const mag = clamp01(Number((a as any)?.magnitude ?? (ev as any)?.magnitude ?? 0));
+    const involvesSelf = actorId === selfId || targetId === selfId;
+    const involvesOther = actorId === otherId || targetId === otherId;
+    if (!involvesSelf && !involvesOther) continue;
+    used.add(id);
+
+    const isHarm = /attack|harm|injur|threat|hazard|betray|insult|accus|deceiv/.test(evKind);
+    const isHelp = /help|assist|heal|protect|save|comfort|treat/.test(evKind);
+    const isSpeech = /speech|talk|ask|negot|command|signal/.test(evKind);
+    const isMove = /move|approach|escort/.test(evKind);
+
+    if (involvesOther) {
+      topicPressure = Math.max(topicPressure, mag);
+      if (isMove || isSpeech) {
+        topicPressure = Math.max(topicPressure, clamp01(mag * 0.8));
+      }
+    }
+    if (targetId === otherId && (isHarm || isHelp)) {
+      targetNeed = Math.max(targetNeed, mag);
+    }
+    if (targetId === otherId && isHarm) {
+      distress = Math.max(distress, mag);
+    }
+    if (actorId === otherId && targetId === selfId && isHarm) {
+      otherCausedTrouble = Math.max(otherCausedTrouble, mag);
+      conflict = Math.max(conflict, mag);
+    }
+    if (actorId === selfId && targetId === otherId && isHarm) {
+      selfCausedTrouble = Math.max(selfCausedTrouble, mag);
+    }
+    if (actorId === otherId && targetId === selfId && isHelp) {
+      otherDidGood = Math.max(otherDidGood, mag);
+      reciprocity = Math.max(reciprocity, mag);
+    }
+    if (actorId === selfId && targetId === otherId && isHelp) {
+      reciprocity = Math.max(reciprocity, mag * 0.7);
+    }
+  }
+
+  targetNeed = Math.max(targetNeed, distress, threat * 0.7);
+  const targetRelevance = clamp01(Math.max(
+    obligation,
+    closeness * 0.75 + trust * 0.15,
+    threat * 0.55,
+    respect * 0.45,
+    nearby * 0.35,
+  ));
+  const instrumentalNeed = clamp01(Math.max(
+    evidence,
+    scarcity,
+    authority,
+    obligation,
+    threat * 0.85,
+    otherDidGood * 0.7,
+    otherCausedTrouble * 0.8,
+  ));
+
+  let gate = 0;
+  switch (kind) {
+    case 'comfort':
+      gate = Math.min(Math.max(distress, targetNeed), Math.max(targetRelevance, obligation, trust));
+      if (gate > 0.01) notes.add('event-first comfort: target distress + relevance');
+      break;
+    case 'help':
+      gate = Math.max(
+        targetNeed * (0.55 + 0.45 * Math.max(obligation, trust)),
+        Math.min(topicPressure, Math.max(obligation, trust))
+      );
+      if (gate > 0.01) notes.add('event-first help: observed need + alliance/utility');
+      break;
+    case 'talk':
+      gate = Math.max(topicPressure, instrumentalNeed * 0.85);
+      if (gate > 0.01) notes.add('event-first talk: topic or instrumental need required');
+      break;
+    case 'share':
+    case 'trade':
+    case 'negotiate':
+      gate = Math.max(topicPressure, Math.max(scarcity, evidence, obligation) * 0.9, conflict * 0.75);
+      if (gate > 0.01) notes.add('event-first negotiation: open topic / scarcity / conflict');
+      break;
+    case 'apologize':
+      gate = Math.max(selfCausedTrouble, conflict * 0.55);
+      if (gate > 0.01) notes.add('event-first apology: I caused trouble or relation damaged');
+      break;
+    case 'praise':
+      gate = Math.max(otherDidGood, reciprocity * 0.85);
+      if (gate > 0.01) notes.add('event-first praise: positive contribution from target');
+      break;
+    case 'accuse':
+      gate = Math.max(otherCausedTrouble, evidence * 0.9, conflict * 0.85);
+      if (gate > 0.01) notes.add('event-first accuse: evidence / recent harm / conflict');
+      break;
+    case 'threaten':
+    case 'confront':
+      gate = Math.max(otherCausedTrouble, conflict, threat * 0.9);
+      if (gate > 0.01) notes.add('event-first confrontation: threat / recent trouble');
+      break;
+    case 'command':
+      gate = Math.max(topicPressure, authority * 0.85 + threat * 0.15, instrumentalNeed * 0.8);
+      if (gate > 0.01) notes.add('event-first command: authority + current task pressure');
+      break;
+    case 'call_backup':
+    case 'signal':
+      gate = Math.max(topicPressure, threat, evidence * 0.75);
+      if (gate > 0.01) notes.add('event-first coordination: threat/topic pressure');
+      break;
+    default:
+      gate = Math.max(topicPressure, targetNeed * 0.8, conflict * 0.8);
+      if (gate > 0.01) notes.add('event-first social gating');
+      break;
+  }
+
+  if (gate <= 0.12) {
+    notes.add('blocked: no recent event/topic/need strong enough');
+  }
+
+  return {
+    gate: clamp01(gate),
+    topicPressure: clamp01(topicPressure),
+    targetRelevance,
+    targetNeed: clamp01(targetNeed),
+    distress: clamp01(distress),
+    conflict: clamp01(conflict),
+    reciprocity: clamp01(reciprocity),
+    instrumentalNeed,
+    authority: clamp01(authority),
+    scarcity: clamp01(scarcity),
+    evidence: clamp01(evidence),
+    usedAtomIds: Array.from(used),
+    notes: Array.from(notes),
+  };
 }
 
 export const DEFAULT_POSSIBILITY_DEFS: PossibilityDef[] = [
@@ -485,14 +682,12 @@ export const DEFAULT_POSSIBILITY_DEFS: PossibilityDef[] = [
         const trustId = `rel:state:${selfId}:${otherId}:trust`;
         const trust = getMag(atoms, trustId, 0.5);
         const W = (FC as any).possibilityWeights?.talk ?? { prior: 0.55, trust: 0.45 };
+        const gate = collectSocialEventGate({ selfId, otherId, atoms, kind: 'talk' });
         const base = clamp01(W.prior * v + W.trust * trust);
-        const { selfStress, otherStress, pressure } = socialDistress(selfId, otherId, atoms);
-        const topicPressure = clamp01(Math.max(pressure, Math.abs(otherStress - selfStress) * 0.75, otherStress * 0.65));
-        const magnitude = topicPressure > 0.12
-          ? clamp01(base * (0.55 + 0.45 * topicPressure))
-          : clamp01(base * 0.18);
+        const magnitude = clamp01(base * gate.gate);
+        if (gate.gate <= 0.12 || magnitude < 0.08) return null;
 
-        const used = uniq(usedIfPresent(atoms, [pId || '', trustId]));
+        const used = uniq([...usedIfPresent(atoms, [pId || '', trustId]), ...gate.usedAtomIds]);
         return mkTargeted({
           kind: 'aff',
           selfId,
@@ -502,10 +697,10 @@ export const DEFAULT_POSSIBILITY_DEFS: PossibilityDef[] = [
           magnitude,
           blockedBy: noTalk ? [noTalk] : undefined,
           usedAtomIds: used,
-          notes: ['talk requires topic pressure: recent event or visible stress, not just trust'],
-          parts: { priorAsk: v, trust, selfStress, otherStress, pressure, topicPressure, base }
+          notes: ['event-first talk: topic or need required', ...gate.notes],
+          parts: { priorAsk: v, trust, topicPressure: gate.topicPressure, targetRelevance: gate.targetRelevance, instrumentalNeed: gate.instrumentalNeed, gate: gate.gate }
         });
-      });
+      }).filter(Boolean) as any;
     }
   },
 
@@ -520,7 +715,10 @@ export const DEFAULT_POSSIBILITY_DEFS: PossibilityDef[] = [
 
       return others.map(otherId => {
         const { id: pId, v } = getPrior(atoms, selfId, otherId, 'ask_info', 0.4);
-        const used = uniq(usedIfPresent(atoms, [pId || '']));
+        const gate = collectSocialEventGate({ selfId, otherId, atoms, kind: 'talk' });
+        const magnitude = clamp01(v * Math.max(gate.topicPressure, gate.instrumentalNeed));
+        if (gate.gate <= 0.12 || magnitude < 0.07) return null;
+        const used = uniq([...usedIfPresent(atoms, [pId || '']), ...gate.usedAtomIds]);
 
         return mkTargeted({
           kind: 'aff',
@@ -528,13 +726,13 @@ export const DEFAULT_POSSIBILITY_DEFS: PossibilityDef[] = [
           otherId,
           key: 'ask_info',
           label: 'Ask for information',
-          magnitude: v,
+          magnitude,
           blockedBy: noQuestions ? [noQuestions] : undefined,
           usedAtomIds: used,
-          notes: ['act prior => ask_info'],
-          parts: { prior: v }
+          notes: ['event-first ask_info: missing topic -> no question', ...gate.notes],
+          parts: { prior: v, topicPressure: gate.topicPressure, instrumentalNeed: gate.instrumentalNeed, gate: gate.gate }
         });
-      });
+      }).filter(Boolean) as any;
     }
   },
 
@@ -548,18 +746,21 @@ export const DEFAULT_POSSIBILITY_DEFS: PossibilityDef[] = [
 
       return others.map(otherId => {
         const { id: pId, v } = getPrior(atoms, selfId, otherId, 'verify', 0.25);
+        const gate = collectSocialEventGate({ selfId, otherId, atoms, kind: 'talk' });
+        const magnitude = clamp01(v * Math.max(gate.evidence, gate.topicPressure, gate.conflict));
+        if (magnitude < 0.06) return null;
         return mkTargeted({
           kind: 'cog',
           selfId,
           otherId,
           key: 'verify',
           label: 'Verify / fact-check',
-          magnitude: v,
-          usedAtomIds: uniq(usedIfPresent(atoms, [pId || ''])),
-          notes: ['act prior => verify'],
-          parts: { prior: v }
+          magnitude,
+          usedAtomIds: uniq([...usedIfPresent(atoms, [pId || '']), ...gate.usedAtomIds]),
+          notes: ['event-first verify: only when claim/conflict exists', ...gate.notes],
+          parts: { prior: v, evidence: gate.evidence, topicPressure: gate.topicPressure, conflict: gate.conflict }
         });
-      });
+      }).filter(Boolean) as any;
     }
   },
 
@@ -577,14 +778,12 @@ export const DEFAULT_POSSIBILITY_DEFS: PossibilityDef[] = [
         const closId = `rel:state:${selfId}:${otherId}:closeness`;
         const clos = getMag(atoms, closId, 0.2);
         const W = (FC as any).possibilityWeights?.comfort ?? { prior: 0.60, closeness: 0.40 };
+        const gate = collectSocialEventGate({ selfId, otherId, atoms, kind: 'comfort' });
         const base = clamp01(W.prior * v + W.closeness * clos);
-        const { otherStress, otherPain, pressure } = socialDistress(selfId, otherId, atoms);
-        const need = clamp01(Math.max(otherStress, otherPain, pressure));
-        const magnitude = need > 0.16
-          ? clamp01(base * (0.35 + 0.65 * need))
-          : clamp01(base * 0.05);
+        const magnitude = clamp01(base * gate.gate);
+        if (gate.gate <= 0.16 || gate.distress <= 0.12 || magnitude < 0.08) return null;
 
-        const used = uniq(usedIfPresent(atoms, [pId || '', closId]));
+        const used = uniq([...usedIfPresent(atoms, [pId || '', closId]), ...gate.usedAtomIds]);
         return mkTargeted({
           kind: 'aff',
           selfId,
@@ -594,10 +793,10 @@ export const DEFAULT_POSSIBILITY_DEFS: PossibilityDef[] = [
           magnitude,
           blockedBy: noTouch ? [noTouch] : undefined,
           usedAtomIds: used,
-          notes: ['comfort requires visible distress / recent harm, not just closeness'],
-          parts: { priorComfort: v, clos, otherStress, otherPain, pressure, need, base }
+          notes: ['event-first comfort: distress + relevance', ...gate.notes],
+          parts: { priorComfort: v, clos, distress: gate.distress, targetRelevance: gate.targetRelevance, gate: gate.gate }
         });
-      });
+      }).filter(Boolean) as any;
     }
   },
 
@@ -614,7 +813,10 @@ export const DEFAULT_POSSIBILITY_DEFS: PossibilityDef[] = [
         const oblId = `rel:state:${selfId}:${otherId}:obligation`;
         const obl = getMag(atoms, oblId, 0.0);
         const W = (FC as any).possibilityWeights?.help ?? { prior: 0.70, obligation: 0.30 };
-        const magnitude = clamp01(W.prior * v + W.obligation * obl);
+        const gate = collectSocialEventGate({ selfId, otherId, atoms, kind: 'help' });
+        const base = clamp01(W.prior * v + W.obligation * obl);
+        const magnitude = clamp01(base * gate.gate);
+        if (gate.gate <= 0.14 || magnitude < 0.08) return null;
 
         return mkTargeted({
           kind: 'aff',
@@ -623,11 +825,11 @@ export const DEFAULT_POSSIBILITY_DEFS: PossibilityDef[] = [
           key: 'help',
           label: 'Help',
           magnitude,
-          usedAtomIds: uniq(usedIfPresent(atoms, [pId || '', oblId])),
-          notes: ['prior.help + rel.obligation => help'],
-          parts: { priorHelp: v, obligation: obl }
+          usedAtomIds: uniq([...usedIfPresent(atoms, [pId || '', oblId]), ...gate.usedAtomIds]),
+          notes: ['event-first help: observed need + obligation', ...gate.notes],
+          parts: { priorHelp: v, obligation: obl, targetNeed: gate.targetNeed, gate: gate.gate }
         });
-      });
+      }).filter(Boolean) as any;
     }
   },
 
@@ -649,8 +851,11 @@ export const DEFAULT_POSSIBILITY_DEFS: PossibilityDef[] = [
         const trust = getMag(atoms, trustId, 0.5);
 
         const W = (FC as any).possibilityWeights?.share_resource ?? { prior: 0.55, trust: 0.45, scarcityDampen: 0.60 };
-        const magnitude = clamp01((W.prior * v + W.trust * trust) * (1 - W.scarcityDampen * scarcity));
-        const used = uniq(usedIfPresent(atoms, [pId || '', trustId, scarcityAtom || '']));
+        const gate = collectSocialEventGate({ selfId, otherId, atoms, kind: 'share' });
+        const base = clamp01((W.prior * v + W.trust * trust) * (1 - W.scarcityDampen * scarcity));
+        const magnitude = clamp01(base * gate.gate);
+        if (gate.gate <= 0.12 || magnitude < 0.07) return null;
+        const used = uniq([...usedIfPresent(atoms, [pId || '', trustId, scarcityAtom || '']), ...gate.usedAtomIds]);
 
         return mkTargeted({
           kind: 'aff',
@@ -661,10 +866,10 @@ export const DEFAULT_POSSIBILITY_DEFS: PossibilityDef[] = [
           magnitude,
           blockedBy: noShare ? [noShare] : undefined,
           usedAtomIds: used,
-          notes: ['prior.share + trust - scarcity => share'],
-          parts: { priorShare: v, trust, scarcity }
+          notes: ['event-first share: topic/need before generosity', ...gate.notes],
+          parts: { priorShare: v, trust, scarcity, gate: gate.gate }
         });
-      });
+      }).filter(Boolean) as any;
     }
   },
 
@@ -686,8 +891,11 @@ export const DEFAULT_POSSIBILITY_DEFS: PossibilityDef[] = [
         const respect = getMag(atoms, respectId, 0.0);
 
         const W = (FC as any).possibilityWeights?.negotiate ?? { prior: 0.65, respect: 0.20, formal: 0.15 };
-        const magnitude = clamp01(W.prior * v + W.respect * respect + W.formal * isFormal);
-        const used = uniq(usedIfPresent(atoms, [pId || '', respectId, formalAtom || '']));
+        const gate = collectSocialEventGate({ selfId, otherId, atoms, kind: 'negotiate' });
+        const base = clamp01(W.prior * v + W.respect * respect + W.formal * isFormal);
+        const magnitude = clamp01(base * gate.gate);
+        if (gate.gate <= 0.12 || magnitude < 0.07) return null;
+        const used = uniq([...usedIfPresent(atoms, [pId || '', respectId, formalAtom || '']), ...gate.usedAtomIds]);
 
         return mkTargeted({
           kind: 'aff',
@@ -698,10 +906,10 @@ export const DEFAULT_POSSIBILITY_DEFS: PossibilityDef[] = [
           magnitude,
           blockedBy: noDeal ? [noDeal] : undefined,
           usedAtomIds: used,
-          notes: ['prior.negotiate + respect + formal => negotiate'],
-          parts: { prior: v, respect, isFormal }
+          notes: ['event-first negotiate: open topic/conflict/task', ...gate.notes],
+          parts: { prior: v, respect, isFormal, topicPressure: gate.topicPressure, gate: gate.gate }
         });
-      });
+      }).filter(Boolean) as any;
     }
   },
 
@@ -723,8 +931,11 @@ export const DEFAULT_POSSIBILITY_DEFS: PossibilityDef[] = [
         const trust = getMag(atoms, trustId, 0.5);
 
         const W = (FC as any).possibilityWeights?.propose_trade ?? { prior: 0.55, trust: 0.45, scarcityBoost: 0.60 };
-        const magnitude = clamp01((W.prior * v + W.trust * trust) * (0.6 + W.scarcityBoost * scarcity));
-        const used = uniq(usedIfPresent(atoms, [pId || '', trustId, scarcityAtom || '']));
+        const gate = collectSocialEventGate({ selfId, otherId, atoms, kind: 'trade' });
+        const base = clamp01((W.prior * v + W.trust * trust) * (0.6 + W.scarcityBoost * scarcity));
+        const magnitude = clamp01(base * gate.gate);
+        if (gate.gate <= 0.12 || magnitude < 0.07) return null;
+        const used = uniq([...usedIfPresent(atoms, [pId || '', trustId, scarcityAtom || '']), ...gate.usedAtomIds]);
 
         return mkTargeted({
           kind: 'aff',
@@ -735,10 +946,10 @@ export const DEFAULT_POSSIBILITY_DEFS: PossibilityDef[] = [
           magnitude,
           blockedBy: noDeal ? [noDeal] : undefined,
           usedAtomIds: used,
-          notes: ['prior.trade + trust + scarcity => trade'],
-          parts: { prior: v, trust, scarcity }
+          notes: ['event-first trade: scarcity/topic before offer', ...gate.notes],
+          parts: { prior: v, trust, scarcity, gate: gate.gate }
         });
-      });
+      }).filter(Boolean) as any;
     }
   },
 
@@ -757,7 +968,10 @@ export const DEFAULT_POSSIBILITY_DEFS: PossibilityDef[] = [
         const host = getMag(atoms, hostId, 0);
 
         const W = (FC as any).possibilityWeights?.apologize ?? { prior: 0.55, hostility: 0.45 };
-        const magnitude = clamp01(W.prior * v + W.hostility * host);
+        const gate = collectSocialEventGate({ selfId, otherId, atoms, kind: 'apologize' });
+        const base = clamp01(W.prior * v + W.hostility * host);
+        const magnitude = clamp01(base * gate.gate);
+        if (gate.gate <= 0.12 || magnitude < 0.07) return null;
         return mkTargeted({
           kind: 'aff',
           selfId,
@@ -766,11 +980,11 @@ export const DEFAULT_POSSIBILITY_DEFS: PossibilityDef[] = [
           label: 'Apologize',
           magnitude,
           blockedBy: noApology ? [noApology] : undefined,
-          usedAtomIds: uniq(usedIfPresent(atoms, [pId || '', hostId])),
-          notes: ['prior.apologize + hostility => apologize'],
-          parts: { prior: v, hostility: host }
+          usedAtomIds: uniq([...usedIfPresent(atoms, [pId || '', hostId]), ...gate.usedAtomIds]),
+          notes: ['event-first apologize: only after trouble/damage', ...gate.notes],
+          parts: { prior: v, hostility: host, gate: gate.gate }
         });
-      });
+      }).filter(Boolean) as any;
     }
   },
 
@@ -789,7 +1003,10 @@ export const DEFAULT_POSSIBILITY_DEFS: PossibilityDef[] = [
         const respect = getMag(atoms, respectId, 0);
 
         const W = (FC as any).possibilityWeights?.praise ?? { prior: 0.65, respect: 0.35 };
-        const magnitude = clamp01(W.prior * v + W.respect * respect);
+        const gate = collectSocialEventGate({ selfId, otherId, atoms, kind: 'praise' });
+        const base = clamp01(W.prior * v + W.respect * respect);
+        const magnitude = clamp01(base * gate.gate);
+        if (gate.gate <= 0.12 || magnitude < 0.07) return null;
         return mkTargeted({
           kind: 'aff',
           selfId,
@@ -798,11 +1015,11 @@ export const DEFAULT_POSSIBILITY_DEFS: PossibilityDef[] = [
           label: 'Praise',
           magnitude,
           blockedBy: noPraise ? [noPraise] : undefined,
-          usedAtomIds: uniq(usedIfPresent(atoms, [pId || '', respectId])),
-          notes: ['prior.praise + respect => praise'],
-          parts: { prior: v, respect }
+          usedAtomIds: uniq([...usedIfPresent(atoms, [pId || '', respectId]), ...gate.usedAtomIds]),
+          notes: ['event-first praise: target earned it this scene', ...gate.notes],
+          parts: { prior: v, respect, reciprocity: gate.reciprocity, gate: gate.gate }
         });
-      });
+      }).filter(Boolean) as any;
     }
   },
 
@@ -824,8 +1041,11 @@ export const DEFAULT_POSSIBILITY_DEFS: PossibilityDef[] = [
         const threat = getMag(atoms, threatId, getMag(atoms, `rel:state:${selfId}:${otherId}:hostility`, 0));
 
         const W = (FC as any).possibilityWeights?.accuse ?? { prior: 0.50, threat: 0.30, evidence: 0.20 };
-        const magnitude = clamp01(W.prior * v + W.threat * threat + W.evidence * evidence);
-        const used = uniq(usedIfPresent(atoms, [pId || '', threatId, evidenceAtom || '']));
+        const gate = collectSocialEventGate({ selfId, otherId, atoms, kind: 'accuse' });
+        const base = clamp01(W.prior * v + W.threat * threat + W.evidence * evidence);
+        const magnitude = clamp01(base * gate.gate);
+        if (gate.gate <= 0.12 || magnitude < 0.07) return null;
+        const used = uniq([...usedIfPresent(atoms, [pId || '', threatId, evidenceAtom || '']), ...gate.usedAtomIds]);
 
         return mkTargeted({
           kind: 'aff',
@@ -836,10 +1056,10 @@ export const DEFAULT_POSSIBILITY_DEFS: PossibilityDef[] = [
           magnitude,
           blockedBy: noAccuse ? [noAccuse] : undefined,
           usedAtomIds: used,
-          notes: ['prior.accuse + threat + evidence => accuse'],
-          parts: { prior: v, threat, evidence }
+          notes: ['event-first accuse: evidence / recent harm / conflict', ...gate.notes],
+          parts: { prior: v, threat, evidence, conflict: gate.conflict, gate: gate.gate }
         });
-      });
+      }).filter(Boolean) as any;
     }
   },
 
@@ -858,7 +1078,10 @@ export const DEFAULT_POSSIBILITY_DEFS: PossibilityDef[] = [
         const host = getMag(atoms, hostId, 0.0);
 
         const W = (FC as any).possibilityWeights?.threaten ?? { prior: 0.65, hostility: 0.35 };
-        const magnitude = clamp01(W.prior * v + W.hostility * host);
+        const gate = collectSocialEventGate({ selfId, otherId, atoms, kind: 'threaten' });
+        const base = clamp01(W.prior * v + W.hostility * host);
+        const magnitude = clamp01(base * gate.gate);
+        if (gate.gate <= 0.12 || magnitude < 0.07) return null;
         return mkTargeted({
           kind: 'aff',
           selfId,
@@ -867,11 +1090,11 @@ export const DEFAULT_POSSIBILITY_DEFS: PossibilityDef[] = [
           label: 'Threaten',
           magnitude,
           blockedBy: noThreats ? [noThreats] : undefined,
-          usedAtomIds: uniq(usedIfPresent(atoms, [pId || '', hostId])),
-          notes: ['prior.confront + hostility => threaten'],
-          parts: { priorConfront: v, hostility: host }
+          usedAtomIds: uniq([...usedIfPresent(atoms, [pId || '', hostId]), ...gate.usedAtomIds]),
+          notes: ['event-first threaten: pressure only under real conflict', ...gate.notes],
+          parts: { priorConfront: v, hostility: host, conflict: gate.conflict, gate: gate.gate }
         });
-      });
+      }).filter(Boolean) as any;
     }
   },
 
@@ -889,7 +1112,10 @@ export const DEFAULT_POSSIBILITY_DEFS: PossibilityDef[] = [
         const host = helpers.get(`rel:final:${selfId}:${otherId}:hostility`, helpers.get(`rel:state:${selfId}:${otherId}:hostility`, 0.1));
         const threat = helpers.get(`tom:effective:dyad:${selfId}:${otherId}:threat`, 0.2);
         const W = (FC as any).possibilityWeights?.confront ?? { prior: 0.30, hostility: 0.35, threat: 0.35 };
-        const magnitude = helpers.clamp01(W.prior * v + W.hostility * host + W.threat * threat);
+        const gate = collectSocialEventGate({ selfId, otherId, atoms, kind: 'confront' });
+        const base = helpers.clamp01(W.prior * v + W.hostility * host + W.threat * threat);
+        const magnitude = helpers.clamp01(base * gate.gate);
+        if (gate.gate <= 0.12 || magnitude < 0.07) return null;
 
         return mkTargeted({
           kind: 'aff',
@@ -899,16 +1125,19 @@ export const DEFAULT_POSSIBILITY_DEFS: PossibilityDef[] = [
           label: 'Confront',
           magnitude,
           blockedBy: noThreats ? [noThreats] : undefined,
-          usedAtomIds: usedIfPresent(atoms, [
-            pId || '',
-            `rel:final:${selfId}:${otherId}:hostility`,
-            `rel:state:${selfId}:${otherId}:hostility`,
-            `tom:effective:dyad:${selfId}:${otherId}:threat`,
+          usedAtomIds: uniq([
+            ...usedIfPresent(atoms, [
+              pId || '',
+              `rel:final:${selfId}:${otherId}:hostility`,
+              `rel:state:${selfId}:${otherId}:hostility`,
+              `tom:effective:dyad:${selfId}:${otherId}:threat`,
+            ]),
+            ...gate.usedAtomIds,
           ]),
-          notes: ['confront scales with hostility and perceived threat'],
-          parts: { prior: v, hostility: host, threat }
+          notes: ['event-first confront: hostility needs a live trigger', ...gate.notes],
+          parts: { prior: v, hostility: host, threat, conflict: gate.conflict, gate: gate.gate }
         });
-      });
+      }).filter(Boolean) as any;
     }
   },
 
@@ -933,7 +1162,7 @@ export const DEFAULT_POSSIBILITY_DEFS: PossibilityDef[] = [
           notes: ['act prior => avoid'],
           parts: { prior: v }
         });
-      });
+      }).filter(Boolean) as any;
     }
   },
 
@@ -956,8 +1185,11 @@ export const DEFAULT_POSSIBILITY_DEFS: PossibilityDef[] = [
         const respect = getMag(atoms, respectId, 0);
 
         const W = (FC as any).possibilityWeights?.command ?? { prior: 0.50, authority: 0.30, respect: 0.20 };
-        const magnitude = clamp01(W.prior * v + W.authority * authority + W.respect * respect);
-        const used = uniq(usedIfPresent(atoms, [pId || '', authorityAtom || '', respectId]));
+        const gate = collectSocialEventGate({ selfId, otherId, atoms, kind: 'command' });
+        const base = clamp01(W.prior * v + W.authority * authority + W.respect * respect);
+        const magnitude = clamp01(base * gate.gate);
+        if (gate.gate <= 0.12 || magnitude < 0.07) return null;
+        const used = uniq([...usedIfPresent(atoms, [pId || '', authorityAtom || '', respectId]), ...gate.usedAtomIds]);
 
         return mkTargeted({
           kind: 'aff',
@@ -968,10 +1200,10 @@ export const DEFAULT_POSSIBILITY_DEFS: PossibilityDef[] = [
           magnitude,
           blockedBy: noCommand ? [noCommand] : undefined,
           usedAtomIds: used,
-          notes: ['prior.command + authority + respect => command'],
-          parts: { prior: v, authority, respect }
+          notes: ['event-first command: current pressure, not idle bossiness', ...gate.notes],
+          parts: { prior: v, authority, respect, topicPressure: gate.topicPressure, gate: gate.gate }
         });
-      });
+      }).filter(Boolean) as any;
     }
   },
 
@@ -990,8 +1222,11 @@ export const DEFAULT_POSSIBILITY_DEFS: PossibilityDef[] = [
       return others.map(otherId => {
         const { id: pId, v } = getPrior(atoms, selfId, otherId, 'call_backup', 0.15);
         const W = (FC as any).possibilityWeights?.call_backup ?? { prior: 0.55, threat: 0.45 };
-        const magnitude = clamp01(W.prior * v + W.threat * threat);
-        const used = uniq(usedIfPresent(atoms, [pId || '', threatAtom || '']));
+        const gate = collectSocialEventGate({ selfId, otherId, atoms, kind: 'call_backup' });
+        const base = clamp01(W.prior * v + W.threat * threat);
+        const magnitude = clamp01(base * gate.gate);
+        if (gate.gate <= 0.12 || magnitude < 0.07) return null;
+        const used = uniq([...usedIfPresent(atoms, [pId || '', threatAtom || '']), ...gate.usedAtomIds]);
 
         return mkTargeted({
           kind: 'aff',
@@ -1002,10 +1237,10 @@ export const DEFAULT_POSSIBILITY_DEFS: PossibilityDef[] = [
           magnitude,
           blockedBy: noRadio ? [noRadio] : undefined,
           usedAtomIds: used,
-          notes: ['prior.call_backup + threat => call_backup'],
-          parts: { prior: v, threat }
+          notes: ['event-first call_backup: only under pressure', ...gate.notes],
+          parts: { prior: v, threat, topicPressure: gate.topicPressure, gate: gate.gate }
         });
-      });
+      }).filter(Boolean) as any;
     }
   },
 
@@ -1020,19 +1255,22 @@ export const DEFAULT_POSSIBILITY_DEFS: PossibilityDef[] = [
 
       return others.map(otherId => {
         const { id: pId, v } = getPrior(atoms, selfId, otherId, 'signal', 0.2);
+        const gate = collectSocialEventGate({ selfId, otherId, atoms, kind: 'signal' });
+        const magnitude = clamp01(v * gate.gate);
+        if (gate.gate <= 0.12 || magnitude < 0.07) return null;
         return mkTargeted({
           kind: 'aff',
           selfId,
           otherId,
           key: 'signal',
           label: 'Signal',
-          magnitude: v,
+          magnitude,
           blockedBy: noComms ? [noComms] : undefined,
-          usedAtomIds: uniq(usedIfPresent(atoms, [pId || ''])),
-          notes: ['act prior => signal'],
-          parts: { prior: v }
+          usedAtomIds: uniq([...usedIfPresent(atoms, [pId || '']), ...gate.usedAtomIds]),
+          notes: ['event-first signal: current pressure/topic only', ...gate.notes],
+          parts: { prior: v, topicPressure: gate.topicPressure, gate: gate.gate }
         });
-      });
+      }).filter(Boolean) as any;
     }
   },
 

@@ -123,8 +123,10 @@ const GOALLAB_TO_SIMKIT: Record<string, string> = {
   // Abstract GoalLab kinds bridged to SimKit movement.
   escape: 'move', flee: 'move', avoid: 'move',
 
-  // Abstract GoalLab kinds bridged to SimKit social/combat.
-  help: 'help', cooperate: 'cooperate', protect: 'protect', npc: 'npc',
+  // Abstract GoalLab kinds bridged to concrete SimKit actions.
+  // Important: do not collapse rich social kinds into plain talk, otherwise
+  // event-grounded intent disappears in the final narrative.
+  help: 'help', cooperate: 'cooperate', protect: 'protect', npc: 'talk',
   confront: 'confront', threaten: 'threaten', submit: 'submit',
   hide: 'wait', harm: 'attack',
   ask_info: 'question_about', persuade: 'negotiate',
@@ -134,8 +136,9 @@ const GOALLAB_TO_SIMKIT: Record<string, string> = {
   treat: 'treat', investigate: 'investigate', deceive: 'deceive',
   accuse: 'accuse', praise: 'praise', apologize: 'apologize',
   share: 'share', trade: 'trade', signal: 'signal',
-  observe_target: 'observe_target', loot: 'loot', betray: 'betray',
-  help_offer: 'help_offer', verify: 'verify', monologue: 'monologue',
+  command: 'command', call_backup: 'call_backup',
+  observe_target: 'observe', loot: 'scavenge_feature', betray: 'attack',
+  help_offer: 'help', verify: 'verify', monologue: 'wait',
   self_talk: 'wait',
 };
 

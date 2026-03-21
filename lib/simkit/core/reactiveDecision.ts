@@ -47,6 +47,12 @@ function getLastActionKind(facts: any, actorId: string): string | null {
   return la?.kind ? String(la.kind) : null;
 }
 
+function isHabitSafeRepeat(kind: string | null): boolean {
+  if (!kind) return false;
+  // Do not loop on social actions without a fresh trigger.
+  return /^(wait|rest|observe|move|move_xy|move_cell|hide|escape|avoid|attack)$/.test(kind);
+}
+
 function findAllyInDanger(world: SimWorld, actorId: string): string | null {
   const facts: any = world.facts || {};
   const chars = Object.keys(world.characters || {}).sort();
@@ -126,12 +132,10 @@ export function reactiveDecision(
 
   // 5. Habitual: repeat last or wait
   const lastKind = getLastActionKind(facts, agentId);
-  // Avoid blindly repeating social acts without fresh social signal/context.
-  const SOCIAL_HABIT_BLOCK = new Set(['talk', 'comfort', 'help', 'negotiate', 'question_about', 'respond']);
-  if (lastKind && !SOCIAL_HABIT_BLOCK.has(lastKind)) {
-    const offer = findBestOffer(offers, agentId, [lastKind]);
+  if (isHabitSafeRepeat(lastKind)) {
+    const offer = findBestOffer(offers, agentId, [String(lastKind)]);
     if (offer) {
-      return { action: offerToAction(offer, tickIndex), reason: 'habitual: repeat last', emotion: 'none', emotionValue: 0 };
+      return { action: offerToAction(offer, tickIndex), reason: 'habitual: repeat last safe action', emotion: 'none', emotionValue: 0 };
     }
   }
 
