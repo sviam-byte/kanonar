@@ -130,6 +130,7 @@ Inputs:
 Outputs:
 - `goal:*`
 - `util:*` проекция (в конце S7)
+- `artifacts.derivedGoalPressuresV1` — новый канонический поток давления целей из `GoalSpecV1` registry (пока side-by-side с legacy goal atoms, без переключения decision layer).
 - `goal:state:*` и `goal:active:*` должны переноситься между тиками (memory), т.к. GoalLab хранит состояние через атомы, а не через in-memory кэш.
 - domain scores are smoothed with EMA (activation hysteresis) to reduce flicker.
 
