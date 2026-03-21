@@ -3,7 +3,7 @@
 // for UI inspection in world.facts['sim:trace:<agentId>'].
 
 import type { SimPlugin } from '../core/simulator';
-import type { SimSnapshot, SimWorld, SimAction } from '../core/types';
+import type { SimSnapshot, SimWorld, SimAction, ActionOffer } from '../core/types';
 import { runGoalLabPipelineV1 } from '../../goal-lab/pipeline/runPipelineV1';
 import { arr } from '../../utils/arr';
 import { toSimAction } from '../actions/fromActionCandidate';
@@ -12,6 +12,7 @@ import { selectDecisionMode, type DecisionMode } from '../core/decisionGate';
 import { reactiveDecision } from '../core/reactiveDecision';
 import { FCS } from '../../config/formulaConfigSim';
 import { clamp01 } from '../../util/math';
+import type { Possibility } from '../../possibilities/catalog';
 
 function buildSnapshot(world: SimWorld, tickIndex: number): SimSnapshot {
   return {
@@ -49,6 +50,219 @@ function decorateAction(action: SimAction, best: any): SimAction {
       cost: Number(best?.cost ?? 0),
     },
   };
+}
+
+// ── SimKit offers → GoalLab Possibilities bridge ──
+// Converts concrete spatial offers from SimKit's proposeActions() into Possibility
+// objects that GoalLab S8 can score alongside its own abstract possibilities.
+// This closes the gap: GoalLab decides *what* to do based on goals, and now also
+// sees *where* to move based on SimKit's spatial enumeration.
+
+const OFFER_KIND_TO_POSS_KIND: Record<string, 'aff' | 'con' | 'off' | 'exit' | 'cog'> = {
+  move: 'exit', move_xy: 'exit', move_cell: 'exit',
+  talk: 'aff', negotiate: 'aff', attack: 'con',
+  observe: 'cog', wait: 'cog', rest: 'cog',
+  question_about: 'aff', inspect_feature: 'cog',
+  repair_feature: 'off', scavenge_feature: 'off',
+};
+
+function offersToExternalPossibilities(
+  offers: ActionOffer[],
+  actorId: string,
+): Possibility[] {
+  const forActor = offers.filter(o => o.actorId === actorId && !o.blocked);
+  return forActor.map((o, idx) => {
+    const provenanceId = `sim:offer:${actorId}:${o.kind}:${String(o.targetId ?? (o as any).targetNodeId ?? 'self')}:${idx}`;
+    const targetStr = String(o.targetId ?? (o as any).targetNodeId ?? 'self');
+    return {
+      // Include stable per-tick index to avoid id collisions when multiple
+      // offers share kind+target (e.g., variants with different meta/score).
+      id: `sim:${o.kind}:${actorId}:${targetStr}:${idx}`,
+      kind: OFFER_KIND_TO_POSS_KIND[o.kind] || 'cog',
+      label: `${o.kind}${o.targetId ? `→${o.targetId}` : ''}`,
+      magnitude: clamp01(Number(o.score ?? 0.1)),
+      confidence: 1,
+      subjectId: actorId,
+      targetId: o.targetId ?? undefined,
+      // targetNodeId must be at top level for buildActionCandidates to propagate it.
+      targetNodeId: (o as any).targetNodeId ?? undefined,
+      meta: {
+        source: 'simkit:offer',
+        sim: {
+          kind: o.kind,
+          targetId: o.targetId ?? null,
+          targetNodeId: (o as any).targetNodeId ?? null,
+          score: o.score ?? 0,
+          ...(o.meta || {}),
+        },
+      },
+      trace: {
+        // External offers are not atoms; keep synthetic ids to preserve provenance.
+        usedAtomIds: [provenanceId],
+        notes: [`SimKit offer: ${o.kind}${o.targetId ? `→${o.targetId}` : ''}`],
+        parts: { offerScore: o.score ?? 0, provenanceId },
+      },
+    };
+  });
+}
+
+// ── GoalLab abstract kind → SimKit executable kind mapping ──
+// GoalLab S8 produces abstract intent kinds (escape, flee, help, confront, etc.)
+// that are not directly executable by SimKit. This table maps them to concrete
+// SimKit action kinds. When a kind maps to 'move', the grounding step below
+// picks the best available move offer from SimKit's enumeration.
+const GOALLAB_TO_SIMKIT: Record<string, string> = {
+  // Direct SimKit-compatible kinds (identity mapping).
+  move: 'move', move_xy: 'move_xy', move_cell: 'move_cell',
+  wait: 'wait', rest: 'rest', talk: 'talk', attack: 'attack',
+  observe: 'observe', question_about: 'question_about', negotiate: 'negotiate',
+  inspect_feature: 'inspect_feature', repair_feature: 'repair_feature',
+  scavenge_feature: 'scavenge_feature', start_intent: 'start_intent',
+  continue_intent: 'continue_intent', abort_intent: 'abort_intent',
+
+  // Abstract GoalLab kinds bridged to SimKit movement.
+  escape: 'move', flee: 'move', avoid: 'move',
+
+  // Abstract GoalLab kinds bridged to SimKit social/combat.
+  help: 'talk', cooperate: 'talk', protect: 'talk', npc: 'talk',
+  confront: 'talk', threaten: 'talk', submit: 'talk',
+  hide: 'wait', harm: 'attack',
+  ask_info: 'question_about', persuade: 'negotiate',
+
+  // Extended social kinds (handled by genericSocialSpec at validation).
+  comfort: 'comfort', guard: 'guard', escort: 'escort',
+  treat: 'treat', investigate: 'investigate', deceive: 'deceive',
+  accuse: 'accuse', praise: 'praise', apologize: 'apologize',
+  share: 'talk', trade: 'negotiate', signal: 'talk',
+  observe_target: 'observe', loot: 'scavenge_feature', betray: 'attack',
+  help_offer: 'talk', verify: 'talk', monologue: 'wait',
+  self_talk: 'wait',
+};
+
+/**
+ * Ground an abstract GoalLab decision into a concrete SimKit action.
+ *
+ * Three problems solved:
+ *   1) Kind mapping: GoalLab abstract kinds (escape, flee, help…) → SimKit builtin kinds.
+ *   2) Target resolution for move: GoalLab says "move" without targetId/targetNodeId;
+ *      we pick the best-scoring move offer from SimKit's spatial enumeration.
+ *   3) Target resolution for social: GoalLab says "talk" to someone not nearby;
+ *      we verify the target exists in offers, else pick the best available.
+ */
+function groundAbstractAction(
+  action: SimAction,
+  offers: ActionOffer[],
+  actorId: string,
+  goalLabKind: string,
+): SimAction {
+  const rawKind = String(action.kind || '');
+  const actionId = String(action.id || '');
+
+  // If GoalLab chose a sim:* possibility (injected from SimKit offers),
+  // it already carries concrete kind/targetId/targetNodeId. Extract them.
+  if (actionId.startsWith('sim:')) {
+    // The action.kind was set by buildActionCandidates from the possibility key,
+    // which is the SimKit offer kind (move, talk, etc.). The targetId comes from
+    // the possibility's targetId. We just need to ensure the SimKit payload is intact.
+    const mapped = GOALLAB_TO_SIMKIT[rawKind] || rawKind;
+    return {
+      ...action,
+      kind: mapped as any,
+      meta: {
+        ...(action.meta || {}),
+        goalLabKind,
+        groundedFrom: rawKind,
+        groundedVia: 'simOffer:direct',
+      },
+    };
+  }
+
+  const mapped = GOALLAB_TO_SIMKIT[rawKind] || GOALLAB_TO_SIMKIT[rawKind.toLowerCase()] || rawKind;
+
+  const isMovement = mapped === 'move' || mapped === 'move_xy' || mapped === 'move_cell';
+  const needsMoveTarget = isMovement && !action.targetId && !action.targetNodeId;
+
+  if (needsMoveTarget) {
+    // Pick the best available move offer for this actor from SimKit's enumeration.
+    const moveOffers = offers
+      .filter(o => o.actorId === actorId && (o.kind === 'move' || o.kind === 'move_xy' || o.kind === 'move_cell') && !o.blocked)
+      .sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+
+    if (moveOffers.length) {
+      const best = moveOffers[0];
+      return {
+        ...action,
+        kind: best.kind as any,
+        targetId: best.targetId ?? null,
+        targetNodeId: (best as any).targetNodeId ?? null,
+        meta: {
+          ...(action.meta || {}),
+          goalLabKind,
+          groundedFrom: rawKind,
+          groundedVia: 'moveOffer',
+        },
+      };
+    }
+
+    // No move offers available (stuck): fall back to wait.
+    return {
+      ...action,
+      kind: 'wait',
+      targetId: null,
+      targetNodeId: null,
+      meta: {
+        ...(action.meta || {}),
+        goalLabKind,
+        groundedFrom: rawKind,
+        groundedVia: 'noMoveOffers:fallbackWait',
+      },
+    };
+  }
+
+  // Non-movement abstract kinds: just remap the kind.
+  if (mapped !== rawKind) {
+    // For social actions with a targetId, verify target is reachable via offers.
+    const isSocial = /talk|negotiate|attack|question_about|observe/.test(mapped);
+    if (isSocial && action.targetId) {
+      const hasOffer = offers.some(
+        o => o.actorId === actorId && o.kind === mapped && String(o.targetId) === String(action.targetId) && !o.blocked
+      );
+      if (!hasOffer) {
+        // Target not reachable for this mapped kind — try to find any valid offer of that kind.
+        const fallbackOffer = offers.find(
+          o => o.actorId === actorId && o.kind === mapped && !o.blocked
+        );
+        if (fallbackOffer) {
+          return {
+            ...action,
+            kind: mapped as any,
+            targetId: fallbackOffer.targetId ?? null,
+            meta: {
+              ...(action.meta || {}),
+              goalLabKind,
+              groundedFrom: rawKind,
+              groundedVia: 'socialFallbackTarget',
+              originalTargetId: action.targetId,
+            },
+          };
+        }
+        // No offers for mapped kind at all — keep original kind, let validation handle it.
+      }
+    }
+
+    return {
+      ...action,
+      kind: mapped as any,
+      meta: {
+        ...(action.meta || {}),
+        goalLabKind,
+        groundedFrom: rawKind,
+        groundedVia: 'kindMap',
+      },
+    };
+  }
+
+  return action;
 }
 
 /**
@@ -279,11 +493,14 @@ export function makeGoalLabDeciderPlugin(opts?: { storePipeline?: boolean; enabl
           (worldState as any).decisionTemperature = (Number((worldState as any).decisionTemperature) || 1.0) * dm.temperatureMultiplier;
         }
 
+        const externalPossibilities = offersToExternalPossibilities(offers, actorId);
+
         const pipeline = runGoalLabPipelineV1({
           world: worldState as any,
           agentId: actorId,
           participantIds,
           tickOverride: tickIndex,
+          externalPossibilities,
           ...(mode === 'degraded' ? { sceneControl } : {}),
         });
         if (!pipeline) continue;
@@ -319,12 +536,13 @@ export function makeGoalLabDeciderPlugin(opts?: { storePipeline?: boolean; enabl
         const best = extractDecisionBest(pipeline);
         if (!best) continue;
 
-        const action = toSimAction(best, tickIndex);
-        if (action) {
-          const decorated = decorateAction(action, best);
-          decorated.meta = { ...(decorated.meta || {}), decisionMode: mode, gate: gateResult };
-          actions.push(decorated);
-        }
+        const rawAction = toSimAction(best, tickIndex);
+        if (!rawAction) continue;
+        const goalLabKind = String(best?.kind || rawAction.kind || '');
+        const action = groundAbstractAction(rawAction, offers, actorId, goalLabKind);
+        const decorated = decorateAction(action, best);
+        decorated.meta = { ...(decorated.meta || {}), decisionMode: mode, gate: gateResult };
+        actions.push(decorated);
       }
 
       return actions;

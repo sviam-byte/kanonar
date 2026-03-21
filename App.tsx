@@ -30,6 +30,7 @@ const AccessModulePage = lazy(() => import('./pages/AccessModulePage').then(m =>
 const PlanningLabPage = lazy(() => import('./pages/PlanningLabPage').then(m => ({ default: m.PlanningLabPage })));
 const DialogueLabPage = lazy(() => import('./pages/DialogueLabPage').then(m => ({ default: m.DialogueLabPage })));
 const DialogueLabV2Page = lazy(() => import('./pages/DialogueLabV2Page').then(m => ({ default: m.DialogueLabV2Page })));
+const DialogueLabV3Page = lazy(() => import('./pages/DialogueLabV3Page').then(m => ({ default: m.DialogueLabV3Page })));
 const BiographyLabPage = lazy(() => import('./pages/BiographyLabPage').then(m => ({ default: m.BiographyLabPage })));
 const NarrativePage = lazy(() => import('./pages/NarrativePage').then(m => ({ default: m.NarrativePage })));
 const RelationsLabPage = lazy(() => import('./pages/RelationsLabPage').then(m => ({ default: m.RelationsLabPage })));
@@ -86,6 +87,7 @@ function App() {
                     <Route path="/planning-lab" element={<PlanningLabPage />} />
                     <Route path="/dialogue-lab" element={<DialogueLabPage />} />
                     <Route path="/dialogue-lab-v2" element={<DialogueLabV2Page />} />
+                    <Route path="/dialogue-lab-v3" element={<DialogueLabV3Page />} />
                     <Route path="/goal-lab" element={<GoalLabPage />} />
                     <Route path="/goal-lab-console" element={<GoalLabConsolePage />} />
                     <Route path="/goal-lab-v2" element={<GoalLabPageV2 />} />
