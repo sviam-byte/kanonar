@@ -49,6 +49,7 @@ import { buildTransitionSnapshot } from './lookahead';
 import { buildBeliefPersistAtoms, type BeliefPersistOutput } from './beliefPersist';
 import { buildGoalEvalContext } from './buildGoalEvalContext';
 import { deriveGoalPressuresV1 } from './deriveGoalPressuresV1';
+import { projectGoalPressuresToAtoms } from '../../goals/specs/projectGoalPressuresToAtoms';
 import type { AppraisalView, RecentEventView } from '../../goals/specs/evalTypes';
 
 export type GoalLabStageId = 'S0'|'S1'|'S2'|'S3'|'S4'|'S5'|'S6'|'S7'|'S8'|'S9';
@@ -863,20 +864,32 @@ export function runGoalLabPipelineV1(input: {
   });
   const derivedGoalPressuresV1 = deriveGoalPressuresV1(goalEvalCtx);
 
+  // Transitional bridge:
+  // project canonical GoalSpecV1 pressures into normal goal-atoms so downstream
+  // layers can already "see" the new registry.
+  const derivedGoalAtomsV1 = projectGoalPressuresToAtoms(derivedGoalPressuresV1);
+  const mS7e = mergeAtomsPreferNewer(atoms, derivedGoalAtomsV1 as any);
+  atoms = mS7e.atoms;
+
+  const s7AddedFinal = uniqStrings([...s7Added, ...mS7e.newIds]);
+  const s7OverriddenFinal = uniqStrings([...s7Overridden, ...mS7e.overriddenIds]);
+
   // Level 4.0b (F/G): explicit goal layer snapshot (domains/logits/goals/modes).
-  const goalLayerSnapshot = buildGoalLayerSnapshot(selfId, atomsS7, goalRes as any, planRes as any);
+  const goalLayerSnapshot = buildGoalLayerSnapshot(selfId, atoms, goalRes as any, planRes as any);
   stages.push({
     stage: 'S7',
     title: 'S7 Goals (ecology + planning)',
     atoms,
-    atomsAddedIds: s7Added,
+    atomsAddedIds: s7AddedFinal,
     warnings: [],
-    stats: { atomCount: atoms.length, addedCount: s7Added.length, ...stageStats(atoms) },
+    stats: { atomCount: atoms.length, addedCount: s7AddedFinal.length, ...stageStats(atoms) },
     artifacts: {
       goalAtomsCount: goalAtoms.length,
       goalDebug: (goalRes as any)?.debug ?? null,
       goalLayerSnapshot,
       derivedGoalPressuresV1,
+      projectedGoalAtomsV1: derivedGoalAtomsV1.map((a) => a.id),
+      canonicalGoalTopV1: derivedGoalPressuresV1[0]?.goalId ?? null,
       goalEvalContextV1: {
         targetId: goalEvalCtx.targetId ?? null,
         metricKeys: Object.keys(goalEvalCtx.metrics).sort(),
@@ -887,7 +900,7 @@ export function runGoalLabPipelineV1(input: {
       goalActionLinksCount: linkAtoms.length,
       utilAtomsCount: utilAtoms.length,
       topPlanGoals: (planRes as any)?.top || [],
-      overriddenIds: s7Overridden
+      overriddenIds: s7OverriddenFinal,
     }
   });
 
