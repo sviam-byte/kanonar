@@ -1,10 +1,11 @@
 
 // /data/goals/space.ts
 import { CharacterGoalId, SocialActionId, CharacterGoalDef, GoalId, ActionGoalLink } from '../../types';
+import { buildLegacyGoalDefsFromSpecs } from './specs/helpers';
 
 export type { CharacterGoalId, SocialActionId, CharacterGoalDef, GoalId };
 
-export const GOAL_DEFS: Record<CharacterGoalId, CharacterGoalDef> = {
+export const GOAL_DEFS_LEGACY: Record<CharacterGoalId, CharacterGoalDef> = {
   follow_order: {
     id: "follow_order",
     label_ru: "выполнить приказ",
@@ -738,4 +739,22 @@ export const actionGoalMap: Record<SocialActionId, ActionGoalLink[]> = {
       { goalId: "complete_mission", match: 0.4 },
       { goalId: "fulfill_role", match: 0.9 },
   ]
+};
+
+/**
+ * Transitional compatibility facade.
+ *
+ * Canonical source of goal semantics is now GoalSpecV1 registry
+ * (`lib/goals/specs/registry.ts`), while this file remains as a legacy bridge for
+ * older consumers.
+ *
+ * Merge order is intentional:
+ * - generated defs from canonical specs come first;
+ * - hand-written legacy defs override on ID collisions for migration safety.
+ */
+const GOAL_DEFS_FROM_SPECS = buildLegacyGoalDefsFromSpecs();
+
+export const GOAL_DEFS: Record<CharacterGoalId, CharacterGoalDef> = {
+  ...GOAL_DEFS_FROM_SPECS,
+  ...GOAL_DEFS_LEGACY,
 };
