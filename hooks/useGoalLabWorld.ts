@@ -19,11 +19,8 @@ import type { DyadConfigForA } from '../lib/tom/dyad-metrics';
 
 type Positions = Record<string, { x: number; y: number }>;
 
-function positionsEqual(a: Positions, b: Positions): boolean {
-  const ka = Object.keys(a);
-  const kb = Object.keys(b);
-  if (ka.length !== kb.length) return false;
-  return ka.every(k => a[k]?.x === b[k]?.x && a[k]?.y === b[k]?.y);
+function isFinitePos(p: any): p is { x: number; y: number } {
+  return Number.isFinite(Number(p?.x)) && Number.isFinite(Number(p?.y));
 }
 
 function cloneWorld(w: WorldState): WorldState {
@@ -52,6 +49,14 @@ export interface SimSettings {
   decisionCurvePreset: string;
 }
 
+export interface PlacementStatus {
+  isComplete: boolean;
+  total: number;
+  placedIds: string[];
+  missingIds: string[];
+  stackedIds: string[];
+}
+
 export interface GoalLabWorldHandle {
   allCharacters: CharacterEntity[];
   worldState: WorldState | null;
@@ -67,6 +72,7 @@ export interface GoalLabWorldHandle {
   activeMap: LocationMap;
   nearbyActors: LocalActorRef[];
   actorPositions: Positions;
+  placementStatus: PlacementStatus;
   runtimeError: string | null;
   fatalError: string | null;
   setSelectedAgentId: (id: string) => void;
@@ -165,7 +171,20 @@ export function useGoalLabWorld(config: GoalLabWorldConfig): GoalLabWorldHandle 
   const refreshWorldDerived = useCallback((prev: WorldState, nextAgents: AgentState[]) => {
     const defaultLocId = getActiveLocationId();
     const agentIds = nextAgents.map(a => a.entityId);
-    const agentsWithLoc = nextAgents.map(a => ({ ...(a as any), locationId: actorLocationOverridesRef.current[a.entityId] || defaultLocId, position: actorPositionsRef.current[a.entityId] || (a as any).position || { x: 5, y: 5 } } as AgentState));
+    const agentsWithLoc = nextAgents.map(a => {
+      const explicitPos = actorPositionsRef.current[a.entityId];
+      const existingPos = (a as any).position;
+      const position =
+        isFinitePos(explicitPos) ? explicitPos
+        : isFinitePos(existingPos) ? existingPos
+        : undefined;
+
+      return {
+        ...(a as any),
+        locationId: actorLocationOverridesRef.current[a.entityId] || defaultLocId,
+        ...(position ? { position } : {}),
+      } as AgentState;
+    });
     const initialRelations = ensureCompleteInitialRelations(agentIds, (prev as any).initialRelations);
     const worldBase: WorldState = { ...(prev as any), agents: agentsWithLoc, initialRelations };
     const roleMap = assignRoles(worldBase.agents, worldBase.scenario, worldBase);
@@ -234,20 +253,67 @@ export function useGoalLabWorld(config: GoalLabWorldConfig): GoalLabWorldHandle 
 
   const importWorld = useCallback((w: WorldState) => {
     setWorldSource('imported');
-    setWorldState(normalizeWorldShape(w));
+    const norm = normalizeWorldShape(w);
+    const importedPositions: Positions = {};
+    for (const a of arr((norm as any)?.agents)) {
+      const p = (a as any)?.position;
+      if (isFinitePos(p)) importedPositions[String((a as any).entityId)] = { x: Number(p.x), y: Number(p.y) };
+    }
+    setActorPositions(importedPositions);
+    setWorldState(norm);
   }, []);
 
   const nearbyActors = useMemo<LocalActorRef[]>(() => {
     const ids = Array.from(sceneParticipants).filter(id => id !== selectedAgentId);
-    const mePos = (worldState?.agents.find(a => a.entityId === selectedAgentId) as any)?.position || actorPositions[selectedAgentId] || { x: 0, y: 0 };
+    const mePosRaw =
+      (worldState?.agents.find(a => a.entityId === selectedAgentId) as any)?.position
+      || actorPositions[selectedAgentId]
+      || null;
+    const mePos = isFinitePos(mePosRaw) ? mePosRaw : null;
     return ids.map(id => {
       const char = allCharacters.find(c => c.entityId === id); if (!char) return null;
-      const agentPos = (worldState?.agents.find(a => a.entityId === id) as any)?.position || actorPositions[id] || { x: 6, y: 6 };
-      const dist = Math.hypot(mePos.x - agentPos.x, mePos.y - agentPos.y);
+      const agentPosRaw =
+        (worldState?.agents.find(a => a.entityId === id) as any)?.position
+        || actorPositions[id]
+        || null;
+      const agentPos = isFinitePos(agentPosRaw) ? agentPosRaw : null;
+      const dist = mePos && agentPos
+        ? Math.hypot(mePos.x - agentPos.x, mePos.y - agentPos.y)
+        : Number.POSITIVE_INFINITY;
       const roleFromWorld = (worldState?.agents.find(a => a.entityId === id) as any)?.effectiveRole;
       return { id, label: char.title, kind: 'neutral', role: roleFromWorld || (char as any).roles?.global?.[0] || 'observer', distance: dist, threatLevel: 0 } as LocalActorRef;
     }).filter(Boolean) as LocalActorRef[];
   }, [sceneParticipants, selectedAgentId, allCharacters, worldState, actorPositions]);
+
+  const placementStatus = useMemo<PlacementStatus>(() => {
+    const placedIds = participantIds.filter((id) => {
+      const inWorld = (worldState?.agents.find(a => a.entityId === id) as any)?.position;
+      const inLocal = actorPositions[id];
+      return isFinitePos(inWorld) || isFinitePos(inLocal);
+    });
+    const missingIds = participantIds.filter((id) => !placedIds.includes(id));
+
+    const byCell = new Map<string, string[]>();
+    for (const id of placedIds) {
+      const worldAgent = worldState?.agents.find(a => a.entityId === id) as any;
+      const p = isFinitePos(worldAgent?.position) ? worldAgent.position : actorPositions[id];
+      if (!isFinitePos(p)) continue;
+      const key = `${p.x}:${p.y}`;
+      byCell.set(key, [...(byCell.get(key) || []), id]);
+    }
+
+    const stackedIds = Array.from(byCell.values())
+      .filter((xs) => xs.length > 1)
+      .flat();
+
+    return {
+      isComplete: participantIds.length > 0 && missingIds.length === 0,
+      total: participantIds.length,
+      placedIds,
+      missingIds,
+      stackedIds,
+    };
+  }, [participantIds, actorPositions, worldState]);
 
   useEffect(() => {
     if (!allCharacters.length) return;
@@ -279,14 +345,12 @@ export function useGoalLabWorld(config: GoalLabWorldConfig): GoalLabWorldHandle 
         if (!m) return loc as any;
         try { return { ...(loc as any), map: ensureMapCells(m) } as any; } catch { return loc as any; }
       });
-      const nextPositions = { ...actorPositionsRef.current };
-      w.agents.forEach((a, i) => {
-        if (actorPositionsRef.current[a.entityId]) {
-          (a as any).position = actorPositionsRef.current[a.entityId];
-        } else {
-          const pos = { x: 5 + (i % 3) * 2, y: 5 + Math.floor(i / 3) * 2 };
-          (a as any).position = pos;
-          nextPositions[a.entityId] = pos;
+      w.agents.forEach((a) => {
+        const explicitPos = actorPositionsRef.current[a.entityId];
+        if (isFinitePos(explicitPos)) {
+          (a as any).position = explicitPos;
+        } else if (!isFinitePos((a as any).position)) {
+          delete (a as any).position;
         }
       });
       const locId = getActiveLocationId();
@@ -297,7 +361,6 @@ export function useGoalLabWorld(config: GoalLabWorldConfig): GoalLabWorldHandle 
       w.agents = w.agents.map(a => ({ ...(a as any), effectiveRole: (roleMap as any)[a.entityId] } as AgentState));
       w.tom = initTomForCharacters(w.agents as any, w as any, runtimeDyadConfigs || undefined) as any;
       (w as any).gilParams = constructGil(w.agents as any) as any;
-      setActorPositions(prev => positionsEqual(prev, nextPositions) ? prev : nextPositions);
       setWorldState(w);
       baselineWorldRef.current = cloneWorld(w);
       setFatalError(null);
@@ -311,7 +374,7 @@ export function useGoalLabWorld(config: GoalLabWorldConfig): GoalLabWorldHandle 
     allCharacters, worldState, worldSource, sceneParticipants, selectedAgentId,
     perspectiveAgentId, perspectiveId, participantIds, activeScenarioId,
     selectedLocationId, locationMode, activeMap, nearbyActors,
-    actorPositions, runtimeError, fatalError,
+    actorPositions, placementStatus, runtimeError, fatalError,
     setSelectedAgentId, setPerspectiveAgentId, setActiveScenarioId,
     setSelectedLocationId, setLocationMode, addParticipant, removeParticipant,
     setSceneParticipants, setAgentLocation, setAgentPosition, moveAllToLocation,
