@@ -1,84 +1,34 @@
 import type { Condition } from '../../ontology/conditions';
-import type { AppraisalView, GoalEvalContext, RecentEventView } from '../../goals/specs/evalTypes';
 
-export type IntentFamily =
-  | 'movement'
-  | 'communication'
-  | 'care'
-  | 'epistemic'
-  | 'conflict'
-  | 'self_regulation'
-  | 'coordination';
-
-export type IntentPriorityRule =
-  | {
-      kind: 'constant';
-      value: number;
-    }
-  | {
-      kind: 'weighted_metric';
-      metric: string;
-      weight: number;
-      clamp?: [number, number];
-    }
-  | {
-      kind: 'weighted_appraisal';
-      tag: string;
-      weight: number;
-      clamp?: [number, number];
-    }
-  | {
-      kind: 'weighted_goal';
-      goalId: string;
-      weight: number;
-      clamp?: [number, number];
-    };
-
+/**
+ * Layer F: canonical intent descriptor.
+ * Intent defines *what* move to make, independent from concrete action schema.
+ */
 export interface IntentSpecV1 {
   id: string;
-  family: IntentFamily;
-
   label: string;
   description: string;
-
-  targeting:
-    | 'self'
-    | 'other'
-    | 'optional_other'
-    | 'group'
-    | 'location';
-
-  sourceGoals: string[];
-
-  preconditions: Condition[];
-  blockers: Condition[];
-
-  priorityBase: number;
-  priorityRules: IntentPriorityRule[];
-
-  groundingHints?: string[];
-
-  dialogueAct?: string;
-  desiredEffect?: string;
-
+  allowedGoalIds: string[];
+  arisesFrom?: Condition[];
+  blockers?: Condition[];
+  scoreBase: number;
+  scoreModifiers: Array<
+    | { kind: 'weighted_metric'; metric: string; weight: number; clamp?: [number, number] }
+    | { kind: 'weighted_appraisal'; tag: string; weight: number; clamp?: [number, number] }
+  >;
   tags?: string[];
-}
-
-export interface IntentEvalContext extends GoalEvalContext {
-  recentEvents: RecentEventView[];
-  appraisals: AppraisalView[];
-  goalPressures: Record<string, number>;
 }
 
 export interface DerivedIntentCandidateV1 {
   intentId: string;
-  family: IntentFamily;
   score: number;
-  sourceGoalIds: string[];
-  targetId?: string;
+  active: boolean;
+  label: string;
+  goalContribs: Array<{ goalId: string; pressure: number; contribution: number }>;
   reasons: string[];
-  groundingHints: string[];
-  dialogueAct?: string;
-  desiredEffect?: string;
-  tags?: string[];
+  trace: {
+    usedAtomIds: string[];
+    notes: string[];
+    parts: Record<string, unknown>;
+  };
 }

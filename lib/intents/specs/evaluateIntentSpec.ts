@@ -1,95 +1,60 @@
-import { clamp01 } from '../../util/math';
+import { FC } from '../../config/formulaConfig';
+import type { GoalEvalContext } from '../../goals/specs/evalTypes';
 import { evaluateCondition } from '../../goals/specs/evaluateCondition';
-import type { DerivedIntentCandidateV1, IntentEvalContext, IntentPriorityRule, IntentSpecV1 } from './types';
+import type { DerivedGoalPressure } from '../../goal-lab/pipeline/deriveGoalPressuresV1';
+import type { DerivedIntentCandidateV1, IntentSpecV1 } from './types';
 
-function clampMaybe(x: number, clamp?: [number, number]): number {
-  if (!clamp) return x;
-  return Math.max(clamp[0], Math.min(clamp[1], x));
+function clampRange(value: number, clamp?: [number, number]): number {
+  if (!clamp) return value;
+  return Math.max(clamp[0], Math.min(clamp[1], value));
 }
 
-function evalPriorityRule(rule: IntentPriorityRule, ctx: IntentEvalContext): number {
-  switch (rule.kind) {
-    case 'constant':
-      return rule.value;
+export function evaluateIntentSpec(spec: IntentSpecV1, ctx: GoalEvalContext, goalPressures: DerivedGoalPressure[]): DerivedIntentCandidateV1 {
+  const reasons: string[] = [];
 
-    case 'weighted_metric': {
-      const raw = (ctx.metrics[rule.metric] ?? 0) * rule.weight;
-      return clampMaybe(raw, rule.clamp);
-    }
-
-    case 'weighted_appraisal': {
-      const best = ctx.appraisals
-        .filter((a) => a.tag === rule.tag)
-        .reduce((m, a) => Math.max(m, a.score), 0);
-      const raw = best * rule.weight;
-      return clampMaybe(raw, rule.clamp);
-    }
-
-    case 'weighted_goal': {
-      const raw = (ctx.goalPressures[rule.goalId] ?? 0) * rule.weight;
-      return clampMaybe(raw, rule.clamp);
-    }
-
-    default:
-      return 0;
-  }
-}
-
-export interface IntentEvalResult {
-  active: boolean;
-  candidate: DerivedIntentCandidateV1 | null;
-}
-
-export function evaluateIntentSpec(
-  spec: IntentSpecV1,
-  ctx: IntentEvalContext,
-): IntentEvalResult {
-  const sourceGoalIds = spec.sourceGoals.filter((goalId) => (ctx.goalPressures[goalId] ?? 0) > 0);
-  if (sourceGoalIds.length === 0) {
-    return { active: false, candidate: null };
+  const arisesOk = !spec.arisesFrom?.length || spec.arisesFrom.some((c) => evaluateCondition(c, ctx));
+  if (!arisesOk) {
+    return { intentId: spec.id, label: spec.label, score: 0, active: false, goalContribs: [], reasons: ['no_trigger'], trace: { usedAtomIds: [], notes: ['intent inactive'], parts: {} } };
   }
 
-  const preconditionsOk = spec.preconditions.every((c) => evaluateCondition(c, ctx));
-  if (!preconditionsOk) {
-    return { active: false, candidate: null };
-  }
-
-  const blocked = spec.blockers.some((c) => evaluateCondition(c, ctx));
+  const blocked = spec.blockers?.some((c) => evaluateCondition(c, ctx)) ?? false;
   if (blocked) {
-    return { active: false, candidate: null };
+    return { intentId: spec.id, label: spec.label, score: 0, active: false, goalContribs: [], reasons: ['blocked'], trace: { usedAtomIds: [], notes: ['intent blocked'], parts: {} } };
   }
 
-  let score = spec.priorityBase;
-  for (const rule of spec.priorityRules) {
-    score += evalPriorityRule(rule, ctx);
+  let score = spec.scoreBase;
+  for (const m of spec.scoreModifiers) {
+    if (m.kind === 'weighted_metric') {
+      score += clampRange(Number(ctx.metrics[m.metric] ?? 0) * m.weight, m.clamp);
+    } else {
+      const best = ctx.appraisals.filter((a) => a.tag === m.tag).reduce((acc, a) => Math.max(acc, Number(a.score ?? 0)), 0);
+      score += clampRange(best * m.weight, m.clamp);
+    }
   }
 
-  // Small stabilizer: intent score should reflect source goal support.
-  const strongestGoal = sourceGoalIds.reduce((m, goalId) => Math.max(m, ctx.goalPressures[goalId] ?? 0), 0);
-  score += clamp01(strongestGoal) * 0.15;
+  const goalContribs = goalPressures
+    .filter((g) => spec.allowedGoalIds.includes(g.goalId))
+    .map((g) => ({
+      goalId: g.goalId,
+      pressure: Number(g.pressure ?? 0),
+      contribution: Number(g.pressure ?? 0) * FC.intentSchema.intent.goalPressureWeight,
+    }));
 
-  score = Math.max(0, score);
+  for (const g of goalContribs) score += g.contribution;
 
-  if (score <= 0) {
-    return { active: false, candidate: null };
-  }
+  reasons.push('triggered', 'modifiers_applied', 'goal_pressure_bridge');
 
   return {
-    active: true,
-    candidate: {
-      intentId: spec.id,
-      family: spec.family,
-      score,
-      sourceGoalIds,
-      targetId: spec.targeting === 'other' || spec.targeting === 'optional_other' ? ctx.targetId : undefined,
-      reasons: [
-        ...sourceGoalIds.map((goalId) => `goal:${goalId}`),
-        'preconditions_ok',
-      ],
-      groundingHints: [...(spec.groundingHints ?? [])],
-      dialogueAct: spec.dialogueAct,
-      desiredEffect: spec.desiredEffect,
-      tags: [...(spec.tags ?? [])],
+    intentId: spec.id,
+    label: spec.label,
+    score: Math.max(0, score),
+    active: score > 0,
+    goalContribs,
+    reasons,
+    trace: {
+      usedAtomIds: [],
+      notes: ['Derived via IntentSpecV1'],
+      parts: { scoreBase: spec.scoreBase, goalContribs },
     },
   };
 }

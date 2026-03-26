@@ -76,12 +76,6 @@ function getAgentPos(world: any, agentId: string) {
   const a = (world?.agents || []).find((z: any) => z.entityId === agentId);
   if (a && Number.isFinite(a.position?.x) && Number.isFinite(a.position?.y)) return { x: a.position.x, y: a.position.y };
   if (a && Number.isFinite(a.x) && Number.isFinite(a.y)) return { x: a.x, y: a.y };
-  
-  // Last resort fallback: Random-ish stable position based on ID if world exists
-  if (a) {
-      const seed = agentId.charCodeAt(0) + agentId.charCodeAt(agentId.length-1);
-      return { x: 5 + (seed % 5), y: 5 + (seed % 3) };
-  }
   return null;
 }
 
@@ -94,7 +88,6 @@ export function extractObservationAtoms(args: {
   const { world, selfId, location } = args;
 
   const selfPos = getAgentPos(world, selfId);
-  // If no position -> still can do coarse “same location => weak obs”
   const visibility = getLocProp01(location, 'visibility', 0.6);
   const noise = getLocProp01(location, 'noise', 0.3);
   const crowd = getLocState01(location, 'crowd_level', 0);
@@ -113,16 +106,12 @@ export function extractObservationAtoms(args: {
     if (otherId === selfId) continue;
 
     const otherPos = getAgentPos(world, otherId);
+    // No honest spatial observation without positions for both actors.
+    if (!selfPos || !otherPos) continue;
 
-    let dist = 999;
-    if (selfPos && otherPos) {
-      const dx = selfPos.x - otherPos.x;
-      const dy = selfPos.y - otherPos.y;
-      dist = Math.sqrt(dx * dx + dy * dy);
-    } else {
-      // no positions => treat as medium distance
-      dist = 6;
-    }
+    const dx = selfPos.x - otherPos.x;
+    const dy = selfPos.y - otherPos.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
 
     const close = closenessFromDist(dist, r0); // 0..1
     const los = losProxy({ visibility, crowd, dist, maxSight }); // 0..1
@@ -166,7 +155,7 @@ export function extractObservationAtoms(args: {
   }
 
   // Global info adequacy in this tick (0..1)
-  // If no others, it's still determined by environment visibility/crowd/noise.
+  // If no positioned others, this remains an environment-only estimate.
   const envQuality = clamp01(0.55 * visibility + 0.25 * (1 - noise) + 0.20 * (1 - crowd));
   const socialQuality = infoAdequacyCount ? clamp01(infoAdequacyAccum / infoAdequacyCount) : envQuality;
   const infoAdequacy = clamp01(0.7 * envQuality + 0.3 * socialQuality);

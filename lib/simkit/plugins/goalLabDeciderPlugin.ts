@@ -544,6 +544,8 @@ export function makeGoalLabDeciderPlugin(opts?: { storePipeline?: boolean; enabl
 
         const trace = extractAgentTrace(pipeline, actorId, world, mode, gateResult);
         (world.facts as any)[`sim:trace:${actorId}`] = trace;
+        const s8Stage = (pipeline as any)?.stages?.find((s: any) => s?.stage === 'S8');
+        (world.facts as any)[`sim:grounded:${actorId}`] = arr((s8Stage as any)?.artifacts?.groundedSchemasV1).slice(0, 5);
         (world.facts as any)[`sim:pipeline:${actorId}`] = {
           mode: trace.mode,
           decisionMode: mode,

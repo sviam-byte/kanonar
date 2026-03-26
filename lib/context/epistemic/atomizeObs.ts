@@ -67,6 +67,9 @@ export function atomizeObservations(world: WorldState, agent: AgentState, input:
   } as any));
 
   // 2. Observations of others ("Who is nearby?")
+  // IMPORTANT:
+  // No spatial fallback is injected here.
+  // If self or other has no valid position, pairwise nearby/los atoms are not created.
   const others = world.agents || [];
   
   // If we have positions, calc distance-based observations

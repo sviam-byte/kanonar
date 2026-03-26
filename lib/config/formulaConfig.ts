@@ -212,6 +212,21 @@ export const GOAL_FORMULA = {
   },
 } as const;
 
+// ─── Intent / Action Schema bridge (S7.5 → S8) ───────────────────────────
+// Additive scoring between canonical GoalSpecV1 pressures and executable actions.
+export const INTENT_SCHEMA_FORMULA = {
+  intent: {
+    goalPressureWeight: 0.5,
+  },
+  schema: {
+    intentScoreWeight: 0.4,
+  },
+  grounding: {
+    schemaScoreWeight: 0.7,
+    offerScoreWeight: 0.3,
+  },
+} as const;
+
 // ─── Domain ↔ Mode Projection Matrix ──────────────────────────────────────
 // domainBias(d) = Σ_m projection[d][m] * W[m]
 
@@ -579,6 +594,7 @@ export const LOOKAHEAD = {
 export const FC = {
   drivers: DRIVERS_FORMULA,
   goal: GOAL_FORMULA,
+  intentSchema: INTENT_SCHEMA_FORMULA,
   domainModeProjection: DOMAIN_MODE_PROJECTION,
   mode: MODE_FORMULA,
   priors: PRIORS_FORMULA,
