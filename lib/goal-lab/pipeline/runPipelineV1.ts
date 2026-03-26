@@ -51,6 +51,10 @@ import { buildGoalEvalContext } from './buildGoalEvalContext';
 import { deriveGoalPressuresV1 } from './deriveGoalPressuresV1';
 import { projectGoalPressuresToAtoms } from '../../goals/specs/projectGoalPressuresToAtoms';
 import type { AppraisalView, RecentEventView } from '../../goals/specs/evalTypes';
+import { deriveIntentCandidatesV1 } from '../../intents/specs/deriveIntentCandidatesV1';
+import { projectIntentCandidatesToAtoms } from '../../intents/specs/projectIntentCandidatesToAtoms';
+import { deriveActionSchemaCandidatesV1 } from '../../actions/specs/evaluateActionSchema';
+import { groundSchemasToOffers } from '../../simkit/plugins/groundSchemasToOffers';
 
 export type GoalLabStageId = 'S0'|'S1'|'S2'|'S3'|'S4'|'S5'|'S6'|'S7'|'S8'|'S9';
 
@@ -869,10 +873,17 @@ export function runGoalLabPipelineV1(input: {
   // layers can already "see" the new registry.
   const derivedGoalAtomsV1 = projectGoalPressuresToAtoms(derivedGoalPressuresV1);
   const mS7e = mergeAtomsPreferNewer(atoms, derivedGoalAtomsV1 as any);
-  atoms = mS7e.atoms;
+  // Layer F/G bridge (additive): derive intent candidates and action schemas from
+  // canonical GoalSpecV1 pressures. These artifacts are currently observational and
+  // do not replace legacy S8 choice logic.
+  const intentCandidatesV1 = deriveIntentCandidatesV1(goalEvalCtx, derivedGoalPressuresV1);
+  const intentAtomsV1 = projectIntentCandidatesToAtoms(intentCandidatesV1);
+  const mS7f = mergeAtomsPreferNewer(mS7e.atoms, intentAtomsV1 as any);
+  const actionSchemaCandidatesV1 = deriveActionSchemaCandidatesV1(intentCandidatesV1);
+  atoms = mS7f.atoms;
 
-  const s7AddedFinal = uniqStrings([...s7Added, ...mS7e.newIds]);
-  const s7OverriddenFinal = uniqStrings([...s7Overridden, ...mS7e.overriddenIds]);
+  const s7AddedFinal = uniqStrings([...s7Added, ...mS7e.newIds, ...mS7f.newIds]);
+  const s7OverriddenFinal = uniqStrings([...s7Overridden, ...mS7e.overriddenIds, ...mS7f.overriddenIds]);
 
   // Level 4.0b (F/G): explicit goal layer snapshot (domains/logits/goals/modes).
   const goalLayerSnapshot = buildGoalLayerSnapshot(selfId, atoms, goalRes as any, planRes as any);
@@ -889,6 +900,9 @@ export function runGoalLabPipelineV1(input: {
       goalLayerSnapshot,
       derivedGoalPressuresV1,
       projectedGoalAtomsV1: derivedGoalAtomsV1.map((a) => a.id),
+      intentCandidatesV1: intentCandidatesV1.slice(0, 10),
+      projectedIntentAtomsV1: intentAtomsV1.map((a) => a.id),
+      actionSchemaCandidatesV1: actionSchemaCandidatesV1.slice(0, 10),
       canonicalGoalTopV1: derivedGoalPressuresV1[0]?.goalId ?? null,
       goalEvalContextV1: {
         targetId: goalEvalCtx.targetId ?? null,
@@ -916,6 +930,14 @@ export function runGoalLabPipelineV1(input: {
     const externalPoss = arr(input.externalPossibilities);
     const internalIds = new Set(internalPoss.map((p) => p.id));
     const possList = [...internalPoss, ...externalPoss.filter((p) => p?.id && !internalIds.has(p.id))];
+    const externalOffersLike = externalPoss.map((p: any) => ({
+      actorId: selfId,
+      kind: String((p as any)?.meta?.sim?.kind ?? ''),
+      targetId: (p as any)?.targetId ?? null,
+      targetNodeId: (p as any)?.targetNodeId ?? null,
+      score: Number((p as any)?.meta?.sim?.score ?? 0),
+      blocked: false,
+    }));
     const possAtoms = arr(atomizePossibilities(possList)).map(normalizeAtom);
     const mS8a = mergeAtomsPreferNewer(atoms, possAtoms);
 
@@ -1129,6 +1151,7 @@ export function runGoalLabPipelineV1(input: {
     }
 
     const decisionWarnings = arr<string>((decision as any)?.warnings);
+    const groundedSchemasV1 = groundSchemasToOffers(actionSchemaCandidatesV1, externalOffersLike as any, selfId).slice(0, 10);
     const communicativeIntent = buildCommunicativeIntent({
       selfId,
       best: bestOverridden,
@@ -1172,6 +1195,7 @@ export function runGoalLabPipelineV1(input: {
         accessDecisions: (accessPack as any)?.decisions || [],
         ranked: rankedOverridden.slice(0, 10),
         best: bestOverridden,
+        groundedSchemasV1,
         decisionSnapshot: {
           selfId,
           temperature,

@@ -174,6 +174,14 @@ Forbidden:
 - Modulation is traced in goal parts (`baseBeforeResolve`, `resolveDampen` / `resolveBoost`).
 - Defaults are conservative to preserve legacy behavior when resolve is low.
 
+### S7 additions (v32+ intent/schema bridge)
+
+- Added additive **Layer F/G** derivation from GoalSpecV1 pressures:
+  - `artifacts.intentCandidatesV1` — ranked intent candidates (what to do).
+  - `artifacts.projectedIntentAtomsV1` — projected `intent:v1:*` atoms for UI/debug.
+  - `artifacts.actionSchemaCandidatesV1` — ranked action schemas (how to execute).
+- Bridge is observational in v32: legacy S8 chooser remains unchanged.
+
 ## S8 — Decision / Actions
 
 Inputs:
@@ -190,6 +198,10 @@ Outputs:
 - S8 artifacts now include communication bridge fields:
   - `communicativeIntent` — структура намерения речи (`kind`, `targetId`, `topic`, `desiredEffect`, `stance`) для SimKit speech routing/content policy.
   - `basedOnEvents` + `appraisedEvents` — event provenance for selected decision branch.
+- S8 artifacts include `groundedSchemasV1`:
+  - schema candidates are matched against concrete SimKit offers,
+  - score formula: `schemaScore * 0.7 + offerScore * 0.3`,
+  - grounding is trace/export only (does not override `best`).
 
 Forbidden:
 - `action:*` НЕ должен зависеть от `goal:*` напрямую (только через `util:*`)
