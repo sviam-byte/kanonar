@@ -53,10 +53,9 @@ import { deriveIntentCandidatesV1 } from './deriveIntentCandidatesV1';
 import { projectGoalPressuresToAtoms } from '../../goals/specs/projectGoalPressuresToAtoms';
 import { projectIntentCandidatesToAtoms } from '../../intents/specs/projectIntentCandidatesToAtoms';
 import type { AppraisalView, RecentEventView } from '../../goals/specs/evalTypes';
-import { deriveIntentCandidatesV1 } from '../../intents/specs/deriveIntentCandidatesV1';
-import { projectIntentCandidatesToAtoms } from '../../intents/specs/projectIntentCandidatesToAtoms';
 import { deriveActionSchemaCandidatesV1 } from '../../actions/specs/evaluateActionSchema';
 import { groundSchemasToOffers } from '../../simkit/plugins/groundSchemasToOffers';
+import { validatePlacement, type PlacementValidationResult } from '../../simkit/placement/validatePlacement';
 
 export type GoalLabStageId = 'S0'|'S1'|'S2'|'S3'|'S4'|'S5'|'S6'|'S7'|'S8'|'S9';
 
@@ -513,6 +512,36 @@ export function runGoalLabPipelineV1(input: {
   let atoms: ContextAtom[] = [];
   let beliefPersistResult: BeliefPersistOutput | null = null;
 
+  // ── Placement validation gate ──
+  // Hard principle: scene is invalid until all characters are placed.
+  const placementValidation: PlacementValidationResult = (() => {
+    try {
+      // Build a minimal SimWorld-like shape for validation.
+      const simWorldLike: any = {
+        characters: {},
+        locations: {},
+      };
+      const agents = arr((world as any)?.agents);
+      for (const a of agents) {
+        if (!a?.entityId) continue;
+        simWorldLike.characters[a.entityId] = {
+          id: a.entityId,
+          locId: a.locationId ?? '',
+          pos: a.pos ?? { nodeId: null, x: null, y: null },
+        };
+      }
+      const locs = arr((world as any)?.locations ?? (world as any)?.worldLocations);
+      for (const l of locs) {
+        const id = l?.entityId ?? l?.id;
+        if (!id) continue;
+        simWorldLike.locations[id] = l;
+      }
+      return validatePlacement(simWorldLike);
+    } catch {
+      return { isComplete: false, unplacedActors: [], invalidActors: [], warnings: ['validation_error'], allPositioned: false, spatialReady: false };
+    }
+  })();
+
   // S0: canonical atoms (строго без ctx)
   const s0 = buildStage0Atoms({
     world,
@@ -588,6 +617,8 @@ export function runGoalLabPipelineV1(input: {
         eventsCount: arr(step.events).length,
         params: { maxIds: 800 },
       }),
+      placementValidation,
+      placementComplete: placementValidation.isComplete,
     }
   });
 
@@ -881,7 +912,7 @@ export function runGoalLabPipelineV1(input: {
   const intentCandidatesV1 = deriveIntentCandidatesV1(goalEvalCtx, derivedGoalPressuresV1);
   const intentAtomsV1 = projectIntentCandidatesToAtoms(intentCandidatesV1);
   const mS7f = mergeAtomsPreferNewer(mS7e.atoms, intentAtomsV1 as any);
-  const actionSchemaCandidatesV1 = deriveActionSchemaCandidatesV1(intentCandidatesV1);
+  const actionSchemaCandidatesV1 = deriveActionSchemaCandidatesV1(intentCandidatesV1, goalEvalCtx);
   atoms = mS7f.atoms;
 
   const s7AddedFinal = uniqStrings([...s7Added, ...mS7e.newIds, ...mS7f.newIds]);
@@ -905,6 +936,10 @@ export function runGoalLabPipelineV1(input: {
       intentCandidatesV1: intentCandidatesV1.slice(0, 10),
       projectedIntentAtomsV1: intentAtomsV1.map((a) => a.id),
       actionSchemaCandidatesV1: actionSchemaCandidatesV1.slice(0, 10),
+      topIntentFamily: intentCandidatesV1[0]?.family ?? null,
+      topSchemaFamily: actionSchemaCandidatesV1[0]?.family ?? null,
+      topSchemaNarrative: actionSchemaCandidatesV1[0]?.narrativeLabel ?? null,
+      topSchemaDialogueHook: actionSchemaCandidatesV1[0]?.dialogueHook ?? null,
       canonicalGoalTopV1: derivedGoalPressuresV1[0]?.goalId ?? null,
       goalEvalContextV1: {
         targetId: goalEvalCtx.targetId ?? null,
@@ -1154,36 +1189,47 @@ export function runGoalLabPipelineV1(input: {
 
     const decisionWarnings = arr<string>((decision as any)?.warnings);
     const groundedSchemasV1 = groundSchemasToOffers(actionSchemaCandidatesV1, externalOffersLike as any, selfId).slice(0, 10);
-    const communicativeIntent = buildCommunicativeIntent({
-      selfId,
-      best: bestOverridden,
-      appraisedEvents,
-    });
-
-    const communicativeIntent =
-      communicativeIntentLegacy
-      ?? (
-        topDerivedIntentV1 && topDerivedIntentV1.family === 'communication'
-          ? {
-              kind: topDerivedIntentV1.dialogueAct ?? 'inform',
-              targetId: topDerivedIntentV1.targetId ?? null,
-              triggerEventId: appraisedEvents[0]?.eventId ?? null,
-              topic: {
-                primary: appraisedEvents[0]?.topic || appraisedEvents[0]?.kind || topDerivedIntentV1.intentId,
-                entities:
-                  appraisedEvents[0]?.interpretation?.aboutWhom
-                  || (topDerivedIntentV1.targetId ? [String(topDerivedIntentV1.targetId)] : []),
-                facts: appraisedEvents[0]?.interpretation?.topic || [topDerivedIntentV1.intentId],
-              },
-              desiredEffect: topDerivedIntentV1.desiredEffect ?? 'share_information',
-              stance: {
-                honesty: 'truthful',
-                emotionalTone: topDerivedIntentV1.dialogueAct === 'warn' ? 'urgent' : 'calm',
-                directness: topDerivedIntentV1.dialogueAct === 'warn' ? 0.9 : 0.6,
-              },
-            }
-          : null
+    const communicativeIntent = (() => {
+      // Prefer schema-layer communicative intent over legacy heuristic.
+      const topCommSchema = actionSchemaCandidatesV1.find(
+        (s) => s.dialogueHook && s.score > 0,
       );
+      if (topCommSchema?.dialogueHook) {
+        const sourceIntent = intentCandidatesV1.find(
+          (i) => i.intentId === topCommSchema.intentId,
+        );
+        const anchor = appraisedEvents[0] || null;
+        return {
+          kind: topCommSchema.dialogueHook.act,
+          targetId: topCommSchema.targetId ?? bestOverridden?.targetId ?? null,
+          triggerEventId: anchor?.eventId ?? null,
+          topic: {
+            primary: anchor?.topic || anchor?.kind || topCommSchema.schemaId,
+            entities: anchor?.interpretation?.aboutWhom || [],
+            facts: anchor?.interpretation?.topic || [topCommSchema.schemaId],
+          },
+          desiredEffect: topCommSchema.dialogueHook.desiredEffect,
+          stance: {
+            honesty: 'truthful',
+            emotionalTone: topCommSchema.dialogueHook.act === 'warn' ? 'urgent'
+              : topCommSchema.dialogueHook.act === 'command' ? 'firm' : 'calm',
+            directness: topCommSchema.dialogueHook.act === 'command'
+              || topCommSchema.dialogueHook.act === 'accuse' ? 0.9 : 0.6,
+          },
+          _source: 'schemaLayer',
+          _schemaId: topCommSchema.schemaId,
+          _intentId: topCommSchema.intentId,
+          _narrativeLabel: topCommSchema.narrativeLabel,
+          _sourceGoalIds: sourceIntent?.goalContribs?.map((g) => g.goalId) ?? [],
+        };
+      }
+      // Fallback: legacy heuristic.
+      return buildCommunicativeIntent({
+        selfId,
+        best: bestOverridden,
+        appraisedEvents,
+      });
+    })();
 
     // Level 4.5: explicit mode/stabilizer snapshots for console observability.
     const modesSnapshot = {
@@ -1213,10 +1259,10 @@ export function runGoalLabPipelineV1(input: {
     stages.push({
       stage: 'S8',
       title: 'S8 Decision / actions',
-      atoms: atomsS8Final,
-      atomsAddedIds: s8AddedFinal,
+      atoms: atomsS8,
+      atomsAddedIds: s8Added,
       warnings: actionReadsGoalViolations.map(v => `INVARIANT: action reads goal:* (${v})`),
-      stats: { atomCount: atomsS8Final.length, addedCount: s8AddedFinal.length, ...stageStats(atomsS8Final) },
+      stats: { atomCount: atomsS8.length, addedCount: s8Added.length, ...stageStats(atomsS8) },
       artifacts: {
         // Keep artifacts light: export is dominated by atoms; store only top scoring + access decisions.
         accessDecisions: (accessPack as any)?.decisions || [],
@@ -1321,17 +1367,27 @@ export function runGoalLabPipelineV1(input: {
         stabilizersSnapshot,
         intentPreview: buildIntentPreview({
           selfId,
-          atoms: atomsS8Final,
+          atoms: atomsS8,
           s8Artifacts: { best: bestOverridden, ranked: rankedOverridden },
           horizonSteps: 5,
         }),
-        derivedIntentCandidatesV1,
-        projectedIntentAtomsV1: derivedIntentAtomsV1.map((a) => a.id),
-        canonicalIntentTopV1: topDerivedIntentV1?.intentId ?? null,
+        derivedIntentCandidatesV1: intentCandidatesV1.slice(0, 10),
+        projectedIntentAtomsV1: intentAtomsV1.map((a) => a.id),
+        canonicalIntentTopV1: intentCandidatesV1[0]?.intentId ?? null,
         basedOnEvents: appraisedEvents.map((ev) => ev.eventId),
         communicativeIntent,
+        schemaGroundedCommunicativeIntent: communicativeIntent?._source === 'schemaLayer'
+          ? {
+              source: 'schemaLayer',
+              schemaId: communicativeIntent._schemaId,
+              intentId: communicativeIntent._intentId,
+              narrativeLabel: communicativeIntent._narrativeLabel,
+              act: communicativeIntent.kind,
+              desiredEffect: communicativeIntent.desiredEffect,
+            }
+          : { source: 'legacy' },
         appraisedEvents,
-        overriddenIds: s8OverriddenFinal,
+        overriddenIds: s8Overridden,
         priorsAtomIds: (priorsAtoms || []).map(a => String((a as any)?.id || '')),
         decisionAtomIds: decisionAtoms.map(a => String((a as any)?.id || '')),
       }

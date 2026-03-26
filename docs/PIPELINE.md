@@ -20,6 +20,8 @@
 
 Outputs:
 - `world:*`, `obs:*`, `mem:*`, `rel:*`, `life:*`
+- `artifacts.placementValidation` — итог проверки размещения персонажей до запуска S0…S8.
+- `artifacts.placementComplete` — краткий флаг `placementValidation.isComplete`.
 
 Forbidden:
 - любые `ctx:*`
@@ -182,6 +184,15 @@ Forbidden:
   - `artifacts.actionSchemaCandidatesV1` — ranked action schemas (how to execute).
 - Bridge is observational in v32: legacy S8 chooser remains unchanged.
 
+### S7 additions (v33+ intent/schema enrichment)
+
+- `deriveActionSchemaCandidatesV1` получает `goalEvalCtx` для оценки preconditions/blockers схем.
+- Добавлены summary-артефакты для explainability/UI:
+  - `topIntentFamily`
+  - `topSchemaFamily`
+  - `topSchemaNarrative`
+  - `topSchemaDialogueHook`
+
 ## S8 — Decision / Actions
 
 Inputs:
@@ -202,6 +213,10 @@ Outputs:
   - schema candidates are matched against concrete SimKit offers,
   - score formula: `schemaScore * 0.7 + offerScore * 0.3`,
   - grounding is trace/export only (does not override `best`).
+- Коммуникативный bridge теперь schema-aware:
+  - при наличии `actionSchemaCandidatesV1[*].dialogueHook` используется schema-layer источник,
+  - fallback остаётся legacy `buildCommunicativeIntent`.
+- S8 artifacts содержат `schemaGroundedCommunicativeIntent` с источником (`schemaLayer|legacy`) и деталями schema/intent для трассировки.
 
 Forbidden:
 - `action:*` НЕ должен зависеть от `goal:*` напрямую (только через `util:*`)

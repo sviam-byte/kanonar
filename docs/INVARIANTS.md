@@ -3,6 +3,7 @@
 ## Namespace / stage invariants
 
 - S0: запрещены `ctx:*`
+- S0: до запуска downstream стадий должна быть выполнена валидация размещения (`placementValidation`); невалидная сцена должна быть явно помечена в артефактах/фактах.
 - S2: разрешены `ctx:*`, запрещены `ctx:final:*`
 - S3: обязаны появиться `ctx:final:*`
 - S7: goal derivation использует `ctx:final:*`, не `ctx:*` (без final)
@@ -11,6 +12,11 @@
 ## Goal ↔ Action isolation
 
 Единственный мост между goal-уровнем и decision/action — `util:*` проекция.
+
+## Intent/Schema traceability invariants
+
+- Кандидаты Layer F/Layer G обязаны сохранять explainability-поля (`family`, `goalContribs`, `dialogueHook`/`desiredEffect`, `trace.parts`).
+- Schema→dialogue bridge в S8 должен явно указывать источник (`schemaLayer` или `legacy`) в артефактах.
 
 ## Trace invariants
 

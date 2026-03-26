@@ -13,6 +13,7 @@ import { reactiveDecision } from '../core/reactiveDecision';
 import { FCS } from '../../config/formulaConfigSim';
 import { clamp01 } from '../../util/math';
 import type { Possibility } from '../../possibilities/catalog';
+import { validatePlacement } from '../placement/validatePlacement';
 
 function buildSnapshot(world: SimWorld, tickIndex: number): SimSnapshot {
   return {
@@ -332,6 +333,27 @@ function extractAgentTrace(pipeline: any, actorId: string, world: SimWorld, mode
   const goalScores = Object.fromEntries(goals.map((g: any) => [String(g.domain), Number(g.score ?? 0)]));
   const activeGoals = arr(goalSnapshot?.activeDomains).map((d: any) => d.domain);
   const modeLabel = goalSnapshot?.mode?.label || '';
+  // S7.5: enriched intent + action schema trace.
+  const s7artifacts = (s7 as any)?.artifacts ?? {};
+  const intentCandidates = arr(s7artifacts.intentCandidatesV1).slice(0, 6).map((c: any) => ({
+    intentId: String(c?.intentId || ''),
+    family: String(c?.family || ''),
+    score: Number(c?.score ?? 0),
+    sourceGoalIds: arr(c?.goalContribs).map((g: any) => String(g?.goalId || '')).filter(Boolean),
+    dialogueAct: c?.dialogueAct ?? null,
+    desiredEffect: c?.desiredEffect ?? null,
+    groundingHints: arr(c?.groundingHints).map(String),
+  }));
+  const schemaCandidates = arr(s7artifacts.actionSchemaCandidatesV1).slice(0, 8).map((c: any) => ({
+    schemaId: String(c?.schemaId || ''),
+    intentId: String(c?.intentId || ''),
+    family: String(c?.family || ''),
+    score: Number(c?.score ?? 0),
+    narrativeLabel: String(c?.narrativeLabel || ''),
+    requiredOfferKinds: arr(c?.requiredOfferKinds).map(String),
+    dialogueHook: c?.dialogueHook ?? null,
+    cost: Number(c?.cost ?? 0),
+  }));
 
   // S8: ranked actions (top candidates)
   const s8 = stages.find((s: any) => s.stage === 'S8');
@@ -377,9 +399,16 @@ function extractAgentTrace(pipeline: any, actorId: string, world: SimWorld, mode
           targetId: best.targetId,
           q: best.q,
           goalContribs: best.goalContribs,
-          explanation: buildExplanation(best, ranked, drivers, emotions, modeLabel, mode),
+          explanation: buildExplanation(best, ranked, drivers, emotions, modeLabel, mode, {
+            topIntent: intentCandidates[0] || null,
+            topSchema: schemaCandidates[0] || null,
+          }),
         }
       : null,
+    intentCandidates,
+    schemaCandidates,
+    topIntent: intentCandidates[0] || null,
+    topSchema: schemaCandidates[0] || null,
   };
 }
 
@@ -391,6 +420,7 @@ function buildExplanation(
   emotions: Record<string, number>,
   _mode: string,
   decisionMode: DecisionMode,
+  trace?: any,
 ): string[] {
   const lines: string[] = [];
 
@@ -400,6 +430,21 @@ function buildExplanation(
   }
   if (decisionMode === 'degraded') {
     lines.push('⚠ Ослабленное обдумывание (усталость/стресс)');
+  }
+  // Intent/schema narrative.
+  if (best && typeof best === 'object') {
+    if (trace?.topIntent?.intentId) {
+      lines.push(`🎯 Намерение: ${trace.topIntent.intentId} [${trace.topIntent.family}]`);
+      if (trace.topIntent.sourceGoalIds?.length) {
+        lines.push(`  ← из целей: ${trace.topIntent.sourceGoalIds.join(', ')}`);
+      }
+      if (trace.topIntent.dialogueAct) {
+        lines.push(`  💬 речевой акт: ${trace.topIntent.dialogueAct}`);
+      }
+    }
+    if (trace?.topSchema?.schemaId) {
+      lines.push(`📋 ${trace.topSchema.narrativeLabel || trace.topSchema.schemaId}`);
+    }
   }
 
   const topGoalContrib = Object.entries(best.goalContribs || {})
@@ -457,8 +502,46 @@ export function makeGoalLabDeciderPlugin(opts?: { storePipeline?: boolean; enabl
         .sort();
 
       const actions: SimAction[] = [];
+      // Placement gate: skip deliberative pipeline if characters not placed.
+      const placementResult = validatePlacement(world);
+      if (!placementResult.isComplete) {
+        (world.facts as any)['sim:placementValidation'] = placementResult;
+        // Still allow reactive decisions, but skip full GoalLab pipeline.
+        // The UI can read sim:placementValidation to show \"scene invalid\" state.
+      }
 
       for (const actorId of actorIds) {
+        if (!placementResult.isComplete) {
+          const rr = reactiveDecision(world, actorId, offers, tickIndex);
+          (world.facts as any)[`sim:trace:${actorId}`] = {
+            tick: tickIndex,
+            actorId,
+            decisionMode: 'reactive',
+            gate: { reason: 'placement_incomplete', placementResult },
+            emotions: {},
+            drivers: {},
+            goals: [],
+            activeGoals: [],
+            mode: '',
+            relations: {},
+            ranked: [],
+            best: rr.action
+              ? {
+                  kind: rr.action.kind,
+                  targetId: rr.action.targetId,
+                  q: 0,
+                  goalContribs: {},
+                  explanation: ['⚠ Делиберативный pipeline пропущен: placement incomplete', `Эмоция: ${rr.emotion} (${(rr.emotionValue * 100).toFixed(0)}%)`],
+                }
+              : null,
+          };
+          if (rr.action) {
+            rr.action.meta = { ...(rr.action.meta || {}), decisionMode: 'reactive', reactiveReason: 'placement_incomplete' };
+            actions.push(rr.action);
+          }
+          continue;
+        }
+
         const dualProcessEnabled = opts?.enableDualProcess !== false;
         let mode: DecisionMode = 'deliberative';
         let gateResult: any = null;
@@ -543,6 +626,17 @@ export function makeGoalLabDeciderPlugin(opts?: { storePipeline?: boolean; enabl
         }
 
         const trace = extractAgentTrace(pipeline, actorId, world, mode, gateResult);
+        if (trace?.best?.explanation) {
+          trace.best.explanation = buildExplanation(
+            trace.best,
+            trace.ranked || [],
+            trace.drivers || {},
+            trace.emotions || {},
+            trace.mode || '',
+            mode,
+            trace,
+          );
+        }
         (world.facts as any)[`sim:trace:${actorId}`] = trace;
         const s8Stage = (pipeline as any)?.stages?.find((s: any) => s?.stage === 'S8');
         (world.facts as any)[`sim:grounded:${actorId}`] = arr((s8Stage as any)?.artifacts?.groundedSchemasV1).slice(0, 5);
@@ -555,6 +649,10 @@ export function makeGoalLabDeciderPlugin(opts?: { storePipeline?: boolean; enabl
           basedOnEvents: trace.basedOnEvents || [],
           communicativeIntent: trace.communicativeIntent || null,
         };
+        // Store placement validation for UI consumption.
+        if (placementResult) {
+          (world.facts as any)['sim:placementValidation'] = placementResult;
+        }
 
         const best = extractDecisionBest(pipeline);
         if (!best) continue;
