@@ -49,6 +49,9 @@ import { buildTransitionSnapshot } from './lookahead';
 import { buildBeliefPersistAtoms, type BeliefPersistOutput } from './beliefPersist';
 import { buildGoalEvalContext } from './buildGoalEvalContext';
 import { deriveGoalPressuresV1 } from './deriveGoalPressuresV1';
+import { deriveIntentCandidatesV1 } from './deriveIntentCandidatesV1';
+import { projectGoalPressuresToAtoms } from '../../goals/specs/projectGoalPressuresToAtoms';
+import { projectIntentCandidatesToAtoms } from '../../intents/specs/projectIntentCandidatesToAtoms';
 import type { AppraisalView, RecentEventView } from '../../goals/specs/evalTypes';
 
 export type GoalLabStageId = 'S0'|'S1'|'S2'|'S3'|'S4'|'S5'|'S6'|'S7'|'S8'|'S9';
@@ -863,20 +866,32 @@ export function runGoalLabPipelineV1(input: {
   });
   const derivedGoalPressuresV1 = deriveGoalPressuresV1(goalEvalCtx);
 
+  // Transitional bridge:
+  // project canonical GoalSpecV1 pressures into normal goal-atoms so downstream
+  // layers can already "see" the new registry.
+  const derivedGoalAtomsV1 = projectGoalPressuresToAtoms(derivedGoalPressuresV1);
+  const mS7e = mergeAtomsPreferNewer(atoms, derivedGoalAtomsV1 as any);
+  atoms = mS7e.atoms;
+
+  const s7AddedFinal = uniqStrings([...s7Added, ...mS7e.newIds]);
+  const s7OverriddenFinal = uniqStrings([...s7Overridden, ...mS7e.overriddenIds]);
+
   // Level 4.0b (F/G): explicit goal layer snapshot (domains/logits/goals/modes).
-  const goalLayerSnapshot = buildGoalLayerSnapshot(selfId, atomsS7, goalRes as any, planRes as any);
+  const goalLayerSnapshot = buildGoalLayerSnapshot(selfId, atoms, goalRes as any, planRes as any);
   stages.push({
     stage: 'S7',
     title: 'S7 Goals (ecology + planning)',
     atoms,
-    atomsAddedIds: s7Added,
+    atomsAddedIds: s7AddedFinal,
     warnings: [],
-    stats: { atomCount: atoms.length, addedCount: s7Added.length, ...stageStats(atoms) },
+    stats: { atomCount: atoms.length, addedCount: s7AddedFinal.length, ...stageStats(atoms) },
     artifacts: {
       goalAtomsCount: goalAtoms.length,
       goalDebug: (goalRes as any)?.debug ?? null,
       goalLayerSnapshot,
       derivedGoalPressuresV1,
+      projectedGoalAtomsV1: derivedGoalAtomsV1.map((a) => a.id),
+      canonicalGoalTopV1: derivedGoalPressuresV1[0]?.goalId ?? null,
       goalEvalContextV1: {
         targetId: goalEvalCtx.targetId ?? null,
         metricKeys: Object.keys(goalEvalCtx.metrics).sort(),
@@ -887,7 +902,7 @@ export function runGoalLabPipelineV1(input: {
       goalActionLinksCount: linkAtoms.length,
       utilAtomsCount: utilAtoms.length,
       topPlanGoals: (planRes as any)?.top || [],
-      overriddenIds: s7Overridden
+      overriddenIds: s7OverriddenFinal,
     }
   });
 
@@ -1116,11 +1131,47 @@ export function runGoalLabPipelineV1(input: {
     }
 
     const decisionWarnings = arr<string>((decision as any)?.warnings);
-    const communicativeIntent = buildCommunicativeIntent({
+
+    const derivedIntentCandidatesV1 = deriveIntentCandidatesV1(goalEvalCtx, derivedGoalPressuresV1);
+    const derivedIntentAtomsV1 = projectIntentCandidatesToAtoms(derivedIntentCandidatesV1);
+    const mS8e = mergeAtomsPreferNewer(atomsS8, derivedIntentAtomsV1 as any);
+    const atomsS8Final = mS8e.atoms;
+    const s8AddedFinal = uniqStrings([...s8Added, ...mS8e.newIds]);
+    const s8OverriddenFinal = uniqStrings([...s8Overridden, ...mS8e.overriddenIds]);
+    atoms = atomsS8Final;
+
+    const topDerivedIntentV1 = derivedIntentCandidatesV1[0] || null;
+
+    const communicativeIntentLegacy = buildCommunicativeIntent({
       selfId,
       best: bestOverridden,
       appraisedEvents,
     });
+
+    const communicativeIntent =
+      communicativeIntentLegacy
+      ?? (
+        topDerivedIntentV1 && topDerivedIntentV1.family === 'communication'
+          ? {
+              kind: topDerivedIntentV1.dialogueAct ?? 'inform',
+              targetId: topDerivedIntentV1.targetId ?? null,
+              triggerEventId: appraisedEvents[0]?.eventId ?? null,
+              topic: {
+                primary: appraisedEvents[0]?.topic || appraisedEvents[0]?.kind || topDerivedIntentV1.intentId,
+                entities:
+                  appraisedEvents[0]?.interpretation?.aboutWhom
+                  || (topDerivedIntentV1.targetId ? [String(topDerivedIntentV1.targetId)] : []),
+                facts: appraisedEvents[0]?.interpretation?.topic || [topDerivedIntentV1.intentId],
+              },
+              desiredEffect: topDerivedIntentV1.desiredEffect ?? 'share_information',
+              stance: {
+                honesty: 'truthful',
+                emotionalTone: topDerivedIntentV1.dialogueAct === 'warn' ? 'urgent' : 'calm',
+                directness: topDerivedIntentV1.dialogueAct === 'warn' ? 0.9 : 0.6,
+              },
+            }
+          : null
+      );
 
     // Level 4.5: explicit mode/stabilizer snapshots for console observability.
     const modesSnapshot = {
@@ -1150,10 +1201,10 @@ export function runGoalLabPipelineV1(input: {
     stages.push({
       stage: 'S8',
       title: 'S8 Decision / actions',
-      atoms,
-      atomsAddedIds: s8Added,
+      atoms: atomsS8Final,
+      atomsAddedIds: s8AddedFinal,
       warnings: actionReadsGoalViolations.map(v => `INVARIANT: action reads goal:* (${v})`),
-      stats: { atomCount: atoms.length, addedCount: s8Added.length, ...stageStats(atoms) },
+      stats: { atomCount: atomsS8Final.length, addedCount: s8AddedFinal.length, ...stageStats(atomsS8Final) },
       artifacts: {
         // Keep artifacts light: export is dominated by atoms; store only top scoring + access decisions.
         accessDecisions: (accessPack as any)?.decisions || [],
@@ -1257,14 +1308,17 @@ export function runGoalLabPipelineV1(input: {
         stabilizersSnapshot,
         intentPreview: buildIntentPreview({
           selfId,
-          atoms: atomsS8,
+          atoms: atomsS8Final,
           s8Artifacts: { best: bestOverridden, ranked: rankedOverridden },
           horizonSteps: 5,
         }),
+        derivedIntentCandidatesV1,
+        projectedIntentAtomsV1: derivedIntentAtomsV1.map((a) => a.id),
+        canonicalIntentTopV1: topDerivedIntentV1?.intentId ?? null,
         basedOnEvents: appraisedEvents.map((ev) => ev.eventId),
         communicativeIntent,
         appraisedEvents,
-        overriddenIds: s8Overridden,
+        overriddenIds: s8OverriddenFinal,
         priorsAtomIds: (priorsAtoms || []).map(a => String((a as any)?.id || '')),
         decisionAtomIds: decisionAtoms.map(a => String((a as any)?.id || '')),
       }
