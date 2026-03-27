@@ -77,12 +77,14 @@ export function evaluateCondition(condition: Condition, ctx: GoalEvalContext): b
       return Boolean(ctx.targetId);
 
     case 'target_reachable': {
-      const distance = Number(ctx.metrics.distance ?? Number.POSITIVE_INFINITY);
+      const distance = Number(ctx.metrics.distance ?? 0);
+      // distance=0 means colocated or unknown — treat as reachable
       return distance <= (condition.maxDistance ?? Number.POSITIVE_INFINITY);
     }
 
     case 'target_communicable': {
-      const distance = Number(ctx.metrics.distance ?? Number.POSITIVE_INFINITY);
+      const distance = Number(ctx.metrics.distance ?? 0);
+      // distance=0 means colocated or unknown — treat as communicable
       return distance <= (condition.maxDistance ?? 2);
     }
 

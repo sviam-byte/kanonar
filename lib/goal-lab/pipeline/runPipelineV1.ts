@@ -49,7 +49,7 @@ import { buildTransitionSnapshot } from './lookahead';
 import { buildBeliefPersistAtoms, type BeliefPersistOutput } from './beliefPersist';
 import { buildGoalEvalContext } from './buildGoalEvalContext';
 import { deriveGoalPressuresV1 } from './deriveGoalPressuresV1';
-import { deriveIntentCandidatesV1 } from './deriveIntentCandidatesV1';
+import { deriveIntentCandidatesV1 } from '../../intents/specs/deriveIntentCandidatesV1';
 import { projectGoalPressuresToAtoms } from '../../goals/specs/projectGoalPressuresToAtoms';
 import { projectIntentCandidatesToAtoms } from '../../intents/specs/projectIntentCandidatesToAtoms';
 import type { AppraisalView, RecentEventView } from '../../goals/specs/evalTypes';
@@ -296,7 +296,7 @@ function collectGoalMetrics(args: {
     closeness: target ? clamp01(getMag(atoms, `rel:ctx:${selfId}:${target}:closeness`, getMag(atoms, `rel:base:${selfId}:${target}:closeness`, 0))) : 0,
     authority: target ? clamp01(getMag(atoms, `rel:ctx:${selfId}:${target}:authority`, getMag(atoms, `rel:base:${selfId}:${target}:authority`, 0))) : 0,
     dependency: target ? clamp01(getMag(atoms, `rel:ctx:${selfId}:${target}:dependency`, getMag(atoms, `rel:base:${selfId}:${target}:dependency`, 0))) : 0,
-    distance: target ? Math.max(0, getMag(atoms, `map:distance:${selfId}:${target}`, Number.POSITIVE_INFINITY)) : Number.POSITIVE_INFINITY,
+    distance: target ? Math.max(0, getMag(atoms, `map:distance:${selfId}:${target}`, 0)) : 0,
     hazard: clamp01(getMag(atoms, `ctx:final:danger:${selfId}`, getMag(atoms, `threat:final:${selfId}`, 0))),
     uncertainty: clamp01(getMag(atoms, `ctx:final:uncertainty:${selfId}`, getMag(atoms, `ctx:uncertainty:${selfId}`, 0))),
     utility_of_target: target ? clamp01(getMag(atoms, `tom:trust:${selfId}:${target}`, getMag(atoms, `ctx:final:attachment:${selfId}`, 0))) : 0,
@@ -809,7 +809,7 @@ export function runGoalLabPipelineV1(input: {
 
   // S6: drivers bridge (canonical drv:* atoms)
   const scoreboard = computeContextMindScoreboard({ selfId, atoms });
-  const mindAtoms = arr(atomizeContextMindMetrics({ selfId, metrics: scoreboard as any, atoms })).map(normalizeAtom);
+  const mindAtoms = arr(atomizeContextMindMetrics(selfId, scoreboard as any)).map(normalizeAtom);
   const mS6a = mergeAtomsPreferNewer(atoms, mindAtoms);
 
   const driverCurves = (agent as any)?.driverCurves;

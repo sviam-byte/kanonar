@@ -38,15 +38,13 @@ export const ACTION_SCHEMAS_V1: ActionSchemaV1[] = [
     intentIds: ['approach_target', 'assist_target', 'escort_target'],
     actorPreconditions: [],
     targetPreconditions: [],
-    worldPreconditions: [
-      { kind: 'target_reachable', maxDistance: 10 },
-    ],
+    worldPreconditions: [],
     blockers: [
       { kind: 'metric', metric: 'hazard', op: '>=', value: 0.85 },
     ],
     scoreBase: 0.06,
     scoreModifiers: [
-      { kind: 'weighted_metric', metric: 'distance', weight: 0.2, clamp: [0, 0.5] },
+      { kind: 'weighted_metric', metric: 'distance', weight: 0.1, clamp: [0, 0.3] },
     ],
     requiredOfferKinds: ['move', 'move_cell', 'move_xy'],
     simActionKind: 'move',
@@ -64,9 +62,7 @@ export const ACTION_SCHEMAS_V1: ActionSchemaV1[] = [
     intentIds: ['reassure_target', 'clarify'],
     actorPreconditions: [],
     targetPreconditions: [],
-    worldPreconditions: [
-      { kind: 'target_communicable', maxDistance: 4 },
-    ],
+    worldPreconditions: [],
     blockers: [],
     scoreBase: 0.06,
     scoreModifiers: [
@@ -88,9 +84,7 @@ export const ACTION_SCHEMAS_V1: ActionSchemaV1[] = [
     intentIds: ['warn_group'],
     actorPreconditions: [],
     targetPreconditions: [],
-    worldPreconditions: [
-      { kind: 'target_communicable', maxDistance: 5 },
-    ],
+    worldPreconditions: [],
     blockers: [],
     scoreBase: 0.05,
     scoreModifiers: [
@@ -112,9 +106,7 @@ export const ACTION_SCHEMAS_V1: ActionSchemaV1[] = [
     intentIds: ['ask_fact'],
     actorPreconditions: [],
     targetPreconditions: [],
-    worldPreconditions: [
-      { kind: 'target_communicable', maxDistance: 2 },
-    ],
+    worldPreconditions: [],
     blockers: [],
     scoreBase: 0.05,
     scoreModifiers: [
@@ -136,9 +128,7 @@ export const ACTION_SCHEMAS_V1: ActionSchemaV1[] = [
     intentIds: ['coordinate'],
     actorPreconditions: [],
     targetPreconditions: [],
-    worldPreconditions: [
-      { kind: 'target_communicable', maxDistance: 3 },
-    ],
+    worldPreconditions: [],
     blockers: [],
     scoreBase: 0.05,
     scoreModifiers: [
@@ -157,13 +147,9 @@ export const ACTION_SCHEMAS_V1: ActionSchemaV1[] = [
     label: 'Публичное требование',
     description: 'Приказ или обвинение при свидетелях — давление, но рискованно.',
     intentIds: ['command_target', 'challenge_target'],
-    actorPreconditions: [
-      { kind: 'metric', metric: 'authority', op: '>=', value: 0.3 },
-    ],
+    actorPreconditions: [],
     targetPreconditions: [],
-    worldPreconditions: [
-      { kind: 'target_communicable', maxDistance: 5 },
-    ],
+    worldPreconditions: [],
     blockers: [
       { kind: 'metric', metric: 'self_stress', op: '>=', value: 0.9 },
     ],
@@ -187,13 +173,9 @@ export const ACTION_SCHEMAS_V1: ActionSchemaV1[] = [
     label: 'Оказать физическую помощь',
     description: 'Перевязка, стабилизация, физическая поддержка — требует контакта.',
     intentIds: ['assist_target'],
-    actorPreconditions: [
-      { kind: 'metric', metric: 'self_health', op: '>=', value: 0.2 },
-    ],
+    actorPreconditions: [],
     targetPreconditions: [],
-    worldPreconditions: [
-      { kind: 'target_reachable', maxDistance: 1 },
-    ],
+    worldPreconditions: [],
     blockers: [],
     scoreBase: 0.06,
     scoreModifiers: [
@@ -239,9 +221,7 @@ export const ACTION_SCHEMAS_V1: ActionSchemaV1[] = [
     actorPreconditions: [],
     targetPreconditions: [],
     worldPreconditions: [],
-    blockers: [
-      { kind: 'metric', metric: 'hazard', op: '>=', value: 0.85 },
-    ],
+    blockers: [],
     scoreBase: 0.05,
     scoreModifiers: [
       { kind: 'weighted_metric', metric: 'self_fatigue', weight: 0.5, clamp: [0, 0.7] },
