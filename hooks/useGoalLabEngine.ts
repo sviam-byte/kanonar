@@ -31,6 +31,7 @@ import { normalizeAtom } from '../lib/context/v2/infer';
 import { eventRegistry } from '../data/events-registry';
 import { arr } from '../lib/utils/arr';
 import { useDebouncedValueWithFlush } from './useDebouncedValue';
+import { buildPlacementValidationForWorldState } from '../lib/goal-lab/placement/buildPlacementValidationForWorldState';
 
 import type { GoalLabWorldHandle } from './useGoalLabWorld';
 
@@ -284,6 +285,25 @@ export function useGoalLabEngine(
 
   const [pipelineStageId, setPipelineStageId] = useState<string>('S5');
   const [error, setError] = useState<string | null>(null);
+  const placementValidation = useMemo(
+    () => buildPlacementValidationForWorldState(worldState),
+    [worldState],
+  );
+  const placementBlocked = !!placementValidation && !placementValidation.isComplete;
+  const placementError = useMemo(() => {
+    if (!placementValidation || placementValidation.isComplete) return null;
+    const parts: string[] = ['Scene invalid: placement incomplete.'];
+    if (placementValidation.unplacedActors.length) {
+      parts.push(`unplaced=${placementValidation.unplacedActors.join(', ')}`);
+    }
+    if (placementValidation.invalidActors.length) {
+      parts.push(`invalid=${placementValidation.invalidActors.join(', ')}`);
+    }
+    if (placementValidation.warnings.length) {
+      parts.push(`warnings=${placementValidation.warnings.join(', ')}`);
+    }
+    return parts.join(' ');
+  }, [placementValidation]);
 
   const labLocationCtx = useMemo(() => {
     const location = getSelectedLocationEntity();
@@ -295,7 +315,7 @@ export function useGoalLabEngine(
   const devValidateAtoms = typeof import.meta !== 'undefined' && (import.meta as any).env?.DEV;
 
   const glCtx = useMemo(() => {
-    if (!worldState || !perspectiveId) return null;
+    if (!worldState || !perspectiveId || placementBlocked) return null;
     const { location, axes } = labLocationCtx;
     const autoAxisAtoms = buildManualContextAxisAtoms(perspectiveId, axes);
     const merged = mergeManualAtoms(arr(manualAtoms), autoAxisAtoms);
@@ -319,7 +339,7 @@ export function useGoalLabEngine(
       return null;
     }
   }, [worldState, perspectiveId, labLocationCtx, manualAtoms, selectedEventIds, activeMap,
-    atomOverridesLayer, injectedEvents, sceneControl, affectOverrides, decisionNonce, participantIds, devValidateAtoms]);
+    atomOverridesLayer, injectedEvents, sceneControl, affectOverrides, decisionNonce, participantIds, devValidateAtoms, placementBlocked]);
 
   const computed = useMemo(() => {
     if (!glCtx || !worldState) return { goals: [], locationScores: [], tomScores: [], situation: null, goalPreview: null, contextualMind: null, snapshot: null, frame: null };
@@ -389,7 +409,7 @@ export function useGoalLabEngine(
   }, [snapshotV1, resolvedStageId]);
 
   const buildCastRow = useCallback((agentId: string) => {
-    if (!worldState) return null;
+    if (!worldState || placementBlocked) return null;
     const char = world.allCharacters?.find?.((c: any) => c.entityId === agentId);
     try {
       const res = buildGoalLabContext(worldState, agentId, {
@@ -406,7 +426,7 @@ export function useGoalLabEngine(
     } catch {
       return { id: agentId, label: (char as any)?.title || agentId, snapshot: null };
     }
-  }, [worldState, participantIds, selectedEventIds, getSelectedLocationEntity, manualAtoms, activeMap, atomOverridesLayer, injectedEvents, sceneControl, affectOverrides, decisionNonce]);
+  }, [worldState, participantIds, selectedEventIds, getSelectedLocationEntity, manualAtoms, activeMap, atomOverridesLayer, injectedEvents, sceneControl, affectOverrides, decisionNonce, placementBlocked]);
 
   const castRows = useMemo(() => {
     if (!needs.castRows || !worldState) return [];
@@ -418,7 +438,7 @@ export function useGoalLabEngine(
   const [debouncedWorld] = useDebouncedValueWithFlush(worldState, debounceMs);
 
   const pomdpPipelineV1 = useMemo(() => {
-    if (!needs.pomdpPipeline || !debouncedWorld) return null;
+    if (!needs.pomdpPipeline || !debouncedWorld || placementBlocked) return null;
     const agentId = perspectiveId || selectedAgentId || '';
     if (!agentId) return null;
     try {
@@ -431,7 +451,7 @@ export function useGoalLabEngine(
         observeLiteParams,
       });
     } catch (e) { console.error('[useGoalLabEngine] POMDP pipeline failed', e); return null; }
-  }, [needs.pomdpPipeline, debouncedWorld, perspectiveId, selectedAgentId, participantIds, manualAtoms, injectedEvents, sceneControl, observeLiteParams]);
+  }, [needs.pomdpPipeline, debouncedWorld, perspectiveId, selectedAgentId, participantIds, manualAtoms, injectedEvents, sceneControl, observeLiteParams, placementBlocked]);
 
   const pomdpRun = useMemo(() => adaptPipelineV1ToContract(pomdpPipelineV1 as any), [pomdpPipelineV1]);
 
@@ -477,6 +497,6 @@ export function useGoalLabEngine(
     pipelineStageId: resolvedStageId, setPipelineStageId, pipelineStageOptions,
     passportAtoms, canonicalAtoms,
     castRows, pomdpPipelineV1, pomdpRun, atomDiff, sceneDump, downloadScene,
-    error, vm,
+    error: placementError || error, vm,
   };
 }

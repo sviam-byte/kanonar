@@ -16,6 +16,8 @@ import { constructGil } from '../lib/gil/apply';
 import { allLocations } from '../data/locations';
 import { arr } from '../lib/utils/arr';
 import type { DyadConfigForA } from '../lib/tom/dyad-metrics';
+import type { AutoPlacementMode } from '../lib/simkit/placement/types';
+import { autoPlaceWorldState } from '../lib/goal-lab/placement/autoPlaceWorldState';
 
 type Positions = Record<string, { x: number; y: number }>;
 
@@ -86,6 +88,8 @@ export interface GoalLabWorldHandle {
   setAgentLocation: (agentId: string, locationId: string) => void;
   setAgentPosition: (agentId: string, pos: { x: number; y: number }) => void;
   moveAllToLocation: (locationId: string) => void;
+  autoPlaceParticipants: (mode?: AutoPlacementMode) => void;
+  clearPlacements: () => void;
   updateAgentVitals: (agentId: string, patch: { hp?: number; fatigue?: number; stress?: number }) => void;
   forceRebuild: () => void;
   importWorld: (w: WorldState) => void;
@@ -127,6 +131,22 @@ export function useGoalLabWorld(config: GoalLabWorldConfig): GoalLabWorldHandle 
   useEffect(() => { actorLocationOverridesRef.current = actorLocationOverrides; }, [actorLocationOverrides]);
   const [runtimeDyadConfigs] = useState<Record<string, DyadConfigForA> | null>(null);
   const baselineWorldRef = useRef<WorldState | null>(null);
+
+  /** Clear explicit actor placement both in local UI cache and in world agents. */
+  const clearPlacements = useCallback(() => {
+    setActorPositions({});
+    setWorldState(prev => {
+      if (!prev) return prev;
+      return {
+        ...(prev as any),
+        agents: arr((prev as any).agents).map((a: any) => {
+          const next = { ...a };
+          delete next.position;
+          return next;
+        }),
+      } as any;
+    });
+  }, []);
 
   const participantIds = useMemo(() => {
     const ids = Array.from(sceneParticipants);
@@ -206,6 +226,18 @@ export function useGoalLabWorld(config: GoalLabWorldConfig): GoalLabWorldHandle 
 
   const forceRebuild = useCallback(() => setRebuildNonce(n => n + 1), []);
   const applySimSettings = useCallback(() => { setWorldSource('derived'); forceRebuild(); }, [forceRebuild]);
+
+  // When map context changes, old grid coordinates are semantically stale.
+  // We only reset placement data (warning-only awareness elsewhere).
+  const didMountPlacementReset = useRef(false);
+  useEffect(() => {
+    if (!didMountPlacementReset.current) {
+      didMountPlacementReset.current = true;
+      return;
+    }
+    clearPlacements();
+  }, [selectedLocationId, locationMode, clearPlacements]);
+
   const addParticipant = useCallback((id: string) => {
     if (!id || !allCharacters.some(c => c.entityId === id)) return;
     setWorldSource('derived');
@@ -217,13 +249,29 @@ export function useGoalLabWorld(config: GoalLabWorldConfig): GoalLabWorldHandle 
     if (!id || id === selectedAgentId) return;
     setWorldSource('derived');
     setSceneParticipants(prev => { const next = new Set(prev); next.delete(id); return next; });
+    setActorPositions(prev => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
     forceRebuild();
   }, [selectedAgentId, forceRebuild]);
 
   const setAgentLocation = useCallback((agentId: string, locationId: string) => {
     const aid = String(agentId).trim(); const lid = String(locationId).trim(); if (!aid) return;
     setActorLocationOverrides(prev => ({ ...prev, [aid]: lid }));
-    patchAgents(a => String(a?.entityId) === aid ? { ...a, locationId: lid } : a);
+    // Position on the old map should be dropped when actor is moved to another location.
+    setActorPositions(prev => {
+      const next = { ...prev };
+      delete next[aid];
+      return next;
+    });
+    patchAgents(a => {
+      if (String(a?.entityId) !== aid) return a;
+      const next = { ...a, locationId: lid };
+      delete (next as any).position;
+      return next;
+    });
   }, [patchAgents]);
 
   const setAgentPosition = useCallback((agentId: string, pos: { x: number; y: number }) => {
@@ -236,8 +284,31 @@ export function useGoalLabWorld(config: GoalLabWorldConfig): GoalLabWorldHandle 
     const lid = String(locationId).trim(); if (!lid) return;
     const ids = participantIds.map(String);
     setActorLocationOverrides(prev => { const next = { ...prev }; for (const id of ids) next[id] = lid; return next; });
-    patchAgents(a => ids.includes(String(a?.entityId)) ? { ...a, locationId: lid } : a);
+    setActorPositions(prev => {
+      const next = { ...prev };
+      for (const id of ids) delete next[id];
+      return next;
+    });
+    patchAgents(a => {
+      if (!ids.includes(String(a?.entityId))) return a;
+      const next = { ...a, locationId: lid };
+      delete (next as any).position;
+      return next;
+    });
   }, [participantIds, patchAgents]);
+
+  /** Apply deterministic auto-placement preset to current scene participants. */
+  const autoPlaceParticipants = useCallback((mode: AutoPlacementMode = 'clustered') => {
+    if (!worldState) return;
+    const placements = autoPlaceWorldState(worldState, mode, Number(Date.now() % 100000));
+    const ids = Object.keys(placements);
+    if (!ids.length) return;
+    setActorPositions(prev => ({ ...prev, ...placements }));
+    patchAgents(a => {
+      const p = placements[String(a?.entityId)];
+      return p ? { ...a, position: p } : a;
+    });
+  }, [worldState, patchAgents]);
 
   const updateAgentVitals = useCallback((agentId: string, patch: { hp?: number; fatigue?: number; stress?: number }) => {
     const aid = String(agentId).trim(); if (!aid) return;
@@ -378,6 +449,7 @@ export function useGoalLabWorld(config: GoalLabWorldConfig): GoalLabWorldHandle 
     setSelectedAgentId, setPerspectiveAgentId, setActiveScenarioId,
     setSelectedLocationId, setLocationMode, addParticipant, removeParticipant,
     setSceneParticipants, setAgentLocation, setAgentPosition, moveAllToLocation,
+    autoPlaceParticipants, clearPlacements,
     updateAgentVitals, forceRebuild, importWorld,
     simSettings, setSimSettings, applySimSettings,
     baselineWorldRef, getSelectedLocationEntity,
