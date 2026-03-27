@@ -589,7 +589,14 @@ export function runGoalLabPipelineV1(input: {
     title: 'S0 Canonicalization (world/obs/mem/override)',
     atoms,
     atomsAddedIds: atoms.map(a => String((a as any).id)).filter(Boolean),
-    warnings: [],
+    warnings: placementValidation.isComplete
+      ? []
+      : [
+          'placement_incomplete',
+          ...arr(placementValidation.unplacedActors).map((id: string) => `unplaced:${id}`),
+          ...arr(placementValidation.invalidActors).map((id: string) => `invalid:${id}`),
+          ...arr(placementValidation.warnings).map((w: string) => `warn:${w}`),
+        ],
     stats: { atomCount: atoms.length, addedCount: atoms.length, ...stageStats(atoms) },
     artifacts: {
       obsAtomsCount: arr((s0 as any)?.obsAtoms).length,
@@ -621,6 +628,19 @@ export function runGoalLabPipelineV1(input: {
       placementComplete: placementValidation.isComplete,
     }
   });
+
+  // Hard gate: even direct pipeline calls must not proceed with incomplete placement.
+  if (!placementValidation.isComplete) {
+    return {
+      schemaVersion: 1,
+      selfId,
+      tick,
+      step,
+      participantIds: participantIds.slice(),
+      stages,
+      beliefPersist: null,
+    };
+  }
 
   // S1: Normalize -> Quarks (минимально)
   const quarks = computeQuarks(atoms);
