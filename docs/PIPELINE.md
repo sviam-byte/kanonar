@@ -193,6 +193,15 @@ Forbidden:
   - `topSchemaNarrative`
   - `topSchemaDialogueHook`
 
+### S7 additions (v34+ deadlock hotfix)
+
+- Layer F intent derivation is now sourced from canonical module `lib/intents/specs/deriveIntentCandidatesV1.ts` (pipeline-local stale copy removed).
+- If all intents are filtered out, Layer F injects deterministic fallback candidate `pause` with minimal score `0.01`.
+- Design intent: avoid empty candidate sets that could stall S8 decision stage in calm/sparse scenes.
+
+Compatibility note:
+- This is an availability safeguard, not a hard policy switch. Ranking still depends on score modifiers/goal pressure; fallback is only used when no active intents survive filtering.
+
 ## S8 — Decision / Actions
 
 Inputs:
