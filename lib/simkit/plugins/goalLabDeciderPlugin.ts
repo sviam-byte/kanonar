@@ -53,6 +53,20 @@ function decorateAction(action: SimAction, best: any): SimAction {
   };
 }
 
+/**
+ * Returns a deterministic per-actor sequence number for the current tick.
+ * Stored in world.facts so repeated calls in one tick produce stable unique ids
+ * without relying on wall-clock time.
+ */
+function nextIntentSeq(world: SimWorld, actorId: string): number {
+  const tick = Number(world.tickIndex ?? 0);
+  const key = `sim:intentSeq:${actorId}:${tick}`;
+  const cur = Number((world.facts as any)?.[key] ?? 0);
+  const next = Number.isFinite(cur) ? cur + 1 : 1;
+  (world.facts as any)[key] = next;
+  return next;
+}
+
 // ── SimKit offers → GoalLab Possibilities bridge ──
 // Converts concrete spatial offers from SimKit's proposeActions() into Possibility
 // objects that GoalLab S8 can score alongside its own abstract possibilities.
@@ -289,7 +303,10 @@ function groundAbstractAction(
     const social = String((action as any).meta?.social ?? 'inform');
     const volume = String((action as any).meta?.volume ?? 'normal');
     const topic = (action as any).meta?.topic ?? null;
-    const intentId = `intent:${actorId}:${action.kind}:${social}:${Date.now()}`;
+    // Deterministic id for reproducible seeded runs.
+    // We append a per-tick seq so repeated wraps in one tick remain unique.
+    const intentSeq = nextIntentSeq(world, actorId);
+    const intentId = `intent:${actorId}:${action.kind}:${social}:${world.tickIndex}:${intentSeq}`;
     const scriptId = action.kind === 'question_about'
       ? `dialog:${social}:${topic ?? 'topic'}`
       : `dialog:${social}`;
@@ -749,6 +766,33 @@ export function makeGoalLabDeciderPlugin(opts?: { storePipeline?: boolean; enabl
         const rawAction = toSimAction(best, tickIndex);
         if (!rawAction) continue;
         const goalLabKind = String(best?.kind || rawAction.kind || '');
+
+        // ── Intent lifecycle guard ──────────────────────────────────────────
+        // If the actor already has an active intent, force continue/abort/wait
+        // and suppress new non-intent actions to avoid start_intent loops.
+        const activeIntent = world.facts[`intent:${actorId}`];
+        if (activeIntent) {
+          const isIntentAction = /^(continue_intent|abort_intent|wait)$/.test(rawAction.kind);
+          if (!isIntentAction) {
+            actions.push({
+              id: `act:continue_intent:${tickIndex}:${actorId}:forced`,
+              kind: 'continue_intent' as any,
+              actorId,
+              targetId: (activeIntent as any)?.intent?.originalAction?.targetId ?? null,
+              meta: {
+                decisionMode: mode,
+                gate: gateResult,
+                goalLabKind,
+                groundedFrom: rawAction.kind,
+                groundedVia: 'intentGuard:forceContinue',
+                suppressedAction: rawAction.kind,
+                activeIntentId: (activeIntent as any)?.id ?? null,
+                activeIntentScriptId: (activeIntent as any)?.scriptId ?? null,
+              },
+            });
+            continue;
+          }
+        }
         const action = groundAbstractAction(rawAction, offers, actorId, goalLabKind, world);
         const decorated = decorateAction(action, best);
         decorated.meta = { ...(decorated.meta || {}), decisionMode: mode, gate: gateResult };

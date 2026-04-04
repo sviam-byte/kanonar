@@ -1210,6 +1210,21 @@ const StartIntentSpec: ActionSpec = {
     const events: SimEvent[] = [];
     const c = getChar(world, action.actorId);
 
+    // Defense-in-depth: do not overwrite an existing active intent.
+    // The decider plugin should avoid this, but tests or direct callers
+    // may still issue start_intent while an intent is active.
+    const existingIntent = world.facts[`intent:${c.id}`];
+    if (existingIntent && typeof existingIntent === 'object') {
+      notes.push(`${c.id} start_intent blocked: active intent already exists (${(existingIntent as any).id})`);
+      events.push(mkActionEvent(world, 'action:start_intent', {
+        actorId: c.id,
+        ok: false,
+        reason: 'active_intent_exists',
+        existingIntentId: (existingIntent as any).id,
+      }));
+      return { world, events, notes };
+    }
+
     const payload = action.payload && typeof action.payload === 'object' ? action.payload : {};
     const intent = payload.intent || null;
     const intentId = String(payload.intentId || `intent:${c.id}:${world.tickIndex}`);
