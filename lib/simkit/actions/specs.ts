@@ -648,7 +648,36 @@ const TalkSpec: ActionSpec = {
       locationId: c.locId,
       social,
     }));
-    // Прототип: "разговор" как сигнал, который можно превратить в atoms в GoalLab.
+    // ── Build speech event with rich Russian text ──
+    // Pull communicativeIntent from pipeline trace if available.
+    const pipelineData = (world.facts as any)?.[`sim:pipeline:${c.id}`];
+    const ci = pipelineData?.communicativeIntent;
+    const ciTopic = ci?.topic?.primary || '';
+    const ciFacts = Array.isArray(ci?.topic?.facts) ? ci.topic.facts : [];
+
+    const SPEECH_TEXT_RU: Record<string, string> = {
+      inform: 'делится информацией',
+      offer_resource: 'предлагает ресурсы',
+      request_access: 'просит доступ',
+      intimidate: 'пытается запугать',
+      insult: 'оскорбляет',
+      confront: 'выясняет отношения',
+      help: 'предлагает помощь',
+      cooperate: 'предлагает сотрудничество',
+      protect: 'обещает защиту',
+      submit: 'уступает',
+      threaten: 'угрожает',
+    };
+
+    let speechText = SPEECH_TEXT_RU[social] || 'обращается';
+    // Enrich with communicativeIntent topic/facts.
+    if (ciTopic) {
+      speechText += ` (тема: ${ciTopic})`;
+    }
+    if (ciFacts.length) {
+      speechText += ': ' + ciFacts.slice(0, 3).join('; ');
+    }
+
     const speech: SpeechEventV1 = {
       schema: 'SpeechEventV1',
       actorId: c.id,
@@ -663,26 +692,8 @@ const TalkSpec: ActionSpec = {
               ? 'negotiate'
               : 'inform',
       volume,
-      topic: social,
-      text: social === 'request_access'
-        ? 'requests access'
-        : social === 'offer_resource'
-          ? 'offers help'
-          : social === 'intimidate'
-            ? 'tries to intimidate'
-            : social === 'insult'
-              ? 'insults'
-              : social === 'confront'
-                ? 'confronts'
-                : social === 'help' || social === 'cooperate'
-                  ? 'helps out'
-                  : social === 'protect'
-                    ? 'offers protection'
-                    : social === 'submit'
-                      ? 'defers'
-                      : social === 'threaten'
-                        ? 'threatens'
-              : 'shares an update',
+      topic: ciTopic || social,
+      text: speechText,
       atoms: mkSpeechAtoms('talk', c.id, otherId, { social, trust }),
     };
     events.push(mkActionEvent(world, 'speech:v1', speech));
