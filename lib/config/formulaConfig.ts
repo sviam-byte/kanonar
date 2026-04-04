@@ -473,6 +473,7 @@ export const DECISION = {
 
 export const ACTION_SCORING = {
   /** Risk penalty coefficient for confidence < 1. */
+  /** Used in action scorer as a smooth penalty term; keep in config for auditability. */
   riskCoeff: 0.4,
 } as const;
 
