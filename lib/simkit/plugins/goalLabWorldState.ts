@@ -207,6 +207,62 @@ function deriveDriverInertia(entity: any): Record<string, number> | null {
   };
 }
 
+/** Personality-dependent goal tuning (slope/bias/veto per domain). */
+function deriveGoalTuning(entity: any): Record<string, any> | null {
+  const vb = entity?.vector_base;
+  if (!vb || typeof vb !== 'object') return null;
+
+  const n = (key: string, fb = 0.5) => {
+    const v = Number(vb[key]);
+    return Number.isFinite(v) ? clamp01(v) : fb;
+  };
+
+  // Goal-level slope/bias: values > 1 slope amplify, < 1 dampen.
+  // Bias shifts the logit center: positive makes the goal activate at lower
+  // raw scores, negative makes it harder to activate.
+  const goals: Record<string, { slope: number; bias: number }> = {};
+
+  // Safety: cautious agents amplify, pain-tolerant / brave ones dampen.
+  const safetySens = n('D_HPA_reactivity') + n('A_Safety_Care') - n('D_pain_tolerance');
+  goals.safety = { slope: 1 + 0.4 * (safetySens - 0.5), bias: 0.3 * (safetySens - 0.5) };
+
+  // Affiliation: high care/loyalty → amplifies; low empathy → dampens.
+  const affSens = 0.5 * n('A_Care_Compassion') + 0.3 * n('C_coalition_loyalty') + 0.2 * n('C_dominance_empathy');
+  goals.affiliation = { slope: 1 + 0.5 * (affSens - 0.5), bias: 0.25 * (affSens - 0.5) };
+
+  // Status: high power drive + reputation sensitivity → amplified.
+  const statusSens = 0.5 * n('A_Power_Sovereignty') + 0.35 * n('C_reputation_sensitivity') + 0.15 * (1 - n('C_dominance_empathy'));
+  goals.status = { slope: 1 + 0.4 * (statusSens - 0.5), bias: 0.2 * (statusSens - 0.5) };
+
+  // Exploration: high truth-seeking + ambiguity tolerance → amplified.
+  const exploreSens = 0.4 * n('A_Knowledge_Truth') + 0.35 * n('B_tolerance_ambiguity') + 0.25 * n('B_exploration_rate');
+  goals.exploration = { slope: 1 + 0.5 * (exploreSens - 0.5), bias: 0.3 * (exploreSens - 0.5) };
+
+  // Order: high formalism + tradition → amplified; high autonomy → dampened.
+  const orderSens = 0.4 * n('A_Legitimacy_Procedure') + 0.35 * n('A_Tradition_Continuity') + 0.25 * (1 - n('A_Liberty_Autonomy'));
+  goals.order = { slope: 1 + 0.35 * (orderSens - 0.5), bias: 0.15 * (orderSens - 0.5) };
+
+  // Rest: low stamina → rest activates earlier.
+  const restSens = 1 - n('D_stamina_reserve');
+  goals.rest = { slope: 1 + 0.3 * (restSens - 0.5), bias: 0.2 * (restSens - 0.5) };
+
+  // Wealth: high discount rate (short-term focus) → resource goals amplified.
+  const wealthSens = 0.5 * n('B_discount_rate') + 0.3 * n('A_Power_Sovereignty') + 0.2 * (1 - n('A_Care_Compassion'));
+  goals.wealth = { slope: 1 + 0.3 * (wealthSens - 0.5), bias: 0.15 * (wealthSens - 0.5) };
+
+  // Control: high power drive + low ambiguity tolerance → amplified.
+  const controlSens = 0.45 * n('A_Power_Sovereignty') + 0.35 * (1 - n('B_tolerance_ambiguity')) + 0.2 * n('A_Legitimacy_Procedure');
+  goals.control = { slope: 1 + 0.4 * (controlSens - 0.5), bias: 0.2 * (controlSens - 0.5) };
+
+  // Check if all tunings are near-neutral; skip allocation if so.
+  const hasSignificant = Object.values(goals).some(
+    g => Math.abs(g.slope - 1) > 0.05 || Math.abs(g.bias) > 0.03
+  );
+  if (!hasSignificant) return null;
+
+  return { goals };
+}
+
 function toWitnessIds(world: SimWorld, payload: any): string[] {
   const explicit = arr<string>(payload?.witnessIds).map(String).filter(Boolean);
   if (explicit.length) return Array.from(new Set(explicit));
@@ -378,7 +434,7 @@ export function buildWorldStateFromSim(world: SimWorld, snapshot: SimSnapshot, o
       identity: (c as any)?.entity?.identity ?? {},
       context: (c as any)?.entity?.context ?? {},
       lifeGoals: deriveLifeGoals((c as any)?.entity),
-      goalTuning: (c as any)?.entity?.goalTuning ?? null,
+      goalTuning: (c as any)?.entity?.goalTuning ?? deriveGoalTuning((c as any)?.entity),
       driverCurves: (c as any)?.entity?.driverCurves ?? deriveDriverCurves((c as any)?.entity),
       inhibitionOverrides: (c as any)?.entity?.inhibitionOverrides ?? deriveInhibitionOverrides((c as any)?.entity),
       driverInertia: (c as any)?.entity?.driverInertia ?? deriveDriverInertia((c as any)?.entity),
