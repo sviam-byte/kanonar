@@ -94,6 +94,8 @@ function describeAction(a: SimAction, names: Record<string, string>, world?: Sim
     const origKind = original?.kind || '';
     const origVerb = ACTION_RU[origKind] || origKind;
 
+    // Keep stage labels explicit for UI traceability:
+    // user should see the transaction phase, not a generic "continue".
     const stageRu: Record<string, string> = {
       approach: 'подходит к', attach: 'обращается к',
       execute: 'говорит с', detach: 'завершает',
@@ -162,6 +164,8 @@ type NarrativeEntry = { tick: number; lines: string[]; highlight?: boolean; beat
 const NarrativeLog: React.FC<{ entries: NarrativeEntry[] }> = ({ entries }) => {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
+    // Auto-scroll keeps newest causal chain visible while running.
+    // This is intentionally smooth to preserve readability in live mode.
     ref.current?.scrollTo({ top: ref.current.scrollHeight, behavior: 'smooth' });
   }, [entries.length]);
 
@@ -202,6 +206,7 @@ const AgentListItem: React.FC<{
   names: Record<string, string>;
   onClick: () => void;
 }> = ({ char, world, selected, names, onClick }) => {
+  // Read-only render view: no mutation here to keep debug list deterministic.
   const trace = (world.facts as any)?.[`sim:trace:${char.id}`];
   const action = trace?.best;
   const modeIcon = trace?.decisionMode === 'reactive' ? '⚡' : trace?.decisionMode === 'degraded' ? '⚠' : '';

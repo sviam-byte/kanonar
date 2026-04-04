@@ -85,6 +85,8 @@ function offersToExternalPossibilities(
   offers: ActionOffer[],
   actorId: string,
 ): Possibility[] {
+  // Deterministic ordering is inherited from offers array (already sorted upstream).
+  // We keep explicit idx in IDs so same kind+target variants remain uniquely traceable.
   const forActor = offers.filter(o => o.actorId === actorId && !o.blocked);
   return forActor.map((o, idx) => {
     const provenanceId = `sim:offer:${actorId}:${o.kind}:${String(o.targetId ?? (o as any).targetNodeId ?? 'self')}:${idx}`;
@@ -208,6 +210,7 @@ function groundAbstractAction(
 
   const mapped = GOALLAB_TO_SIMKIT[rawKind] || GOALLAB_TO_SIMKIT[rawKind.toLowerCase()] || rawKind;
 
+  // Movement needs concrete spatial grounding (location/node/payload) before apply.
   const isMovement = mapped === 'move' || mapped === 'move_xy' || mapped === 'move_cell';
   const needsMoveTarget = isMovement && !action.targetId && !action.targetNodeId;
 

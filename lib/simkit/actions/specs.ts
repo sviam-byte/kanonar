@@ -1088,6 +1088,8 @@ function sanitizeIntentStage(x: any): IntentStageV1 | null {
 }
 
 function sanitizeIntentScript(x: any): IntentScriptV1 | null {
+  // Boundary sanitizer: anything persisted in world.facts must stay JSON-safe.
+  // If script is malformed we return null and runtime falls back to timer mode.
   if (!x || typeof x !== 'object') return null;
   if (!Array.isArray(x.stages) || x.stages.length === 0) return null;
   const stages = x.stages.map(sanitizeIntentStage).filter(Boolean) as IntentStageV1[];
@@ -1242,6 +1244,7 @@ const StartIntentSpec: ActionSpec = {
     const remainingTicks = Math.max(1, Number(payload.remainingTicks ?? 2));
 
     // CRITICAL: sanitize at the boundary (facts must be JSON-friendly).
+    // This protects snapshot serialization, replay, and UI inspectors.
     const rawScript = (payload as any).intentScript;
     const safeIntentScript = sanitizeIntentScript(rawScript);
 
@@ -1316,7 +1319,8 @@ const ContinueIntentSpec: ActionSpec = {
     }
 
     // -----------------------------------------------------------------------
-    // v1 staged scripts.
+    // v1 staged scripts (preferred path):
+    // explicit transactional stages with deterministic progression.
     // -----------------------------------------------------------------------
     const script: IntentScriptV1 | null =
       (cur as any).intentScript && typeof (cur as any).intentScript === 'object' ? ((cur as any).intentScript as any) : null;
@@ -1448,7 +1452,7 @@ const ContinueIntentSpec: ActionSpec = {
     }
 
     // -----------------------------------------------------------------------
-    // v0 fallback: timer-based intent.
+    // v0 fallback: timer-based intent (compat for old payloads/tests).
     // -----------------------------------------------------------------------
     const remainingBefore = Math.max(0, Number((cur as any).remainingTicks ?? 0));
     const remainingAfter = Math.max(0, remainingBefore - 1);

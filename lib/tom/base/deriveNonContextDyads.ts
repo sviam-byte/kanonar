@@ -81,7 +81,8 @@ export function deriveNonContextDyadAtoms(args: {
       }
     }
 
-    // "Угроза" как функция враждебности + недоверия (простая, но стабильная).
+    // "Угроза" как функция враждебности + недоверия.
+    // Keep linear + bounded form for interpretability in trace.
     const threat = clamp01(0.70 * host + 0.30 * (1 - trust));
 
     const used = [idTrust, idHost, idClos, idResp, idObl, ...episodicUsed]
