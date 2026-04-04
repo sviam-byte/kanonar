@@ -36,20 +36,27 @@ const ACTION_RU: Record<string, string> = {
   investigate: 'расследует', share_resource: 'делится',
   accuse: 'обвиняет', praise: 'хвалит', apologize: 'извиняется',
   submit: 'подчиняется', deceive: 'обманывает', self_talk: 'размышляет',
-  // tactical
   retreat: 'отступает', rally: 'собирает группу', suppress: 'подавляет',
   patrol: 'патрулирует', cover_fire: 'прикрывает', take_cover: 'укрывается',
   hold_position: 'удерживает позицию',
-  // social-emotional
   confide: 'доверяется', encourage: 'подбадривает', warn: 'предупреждает',
   plead: 'умоляет', challenge: 'бросает вызов',
   mourn: 'скорбит', celebrate: 'празднует',
-  // existing but unlabeled
   escort: 'сопровождает', signal: 'подаёт сигнал', call_backup: 'зовёт подкрепление',
   loot: 'мародёрствует', betray: 'предаёт', recruit: 'вербует',
   cooperate: 'сотрудничает с', protect: 'защищает',
   propose_trade: 'предлагает сделку', verify: 'проверяет',
   observe_target: 'наблюдает за', monologue: 'рассуждает вслух',
+  question_about: 'расспрашивает',
+};
+
+const SOCIAL_RU: Record<string, string> = {
+  inform: 'делится информацией', offer_resource: 'предлагает помощь',
+  request_access: 'просит доступ', intimidate: 'давит',
+  insult: 'оскорбляет', confront: 'противостоит',
+  help: 'помогает', cooperate: 'предлагает сотрудничество',
+  protect: 'обещает защиту', submit: 'уступает',
+  threaten: 'угрожает',
 };
 
 function nameMap(world: SimWorld): Record<string, string> {
@@ -58,16 +65,97 @@ function nameMap(world: SimWorld): Record<string, string> {
   return m;
 }
 
-function describeAction(a: SimAction, names: Record<string, string>): string {
+function describeAction(a: SimAction, names: Record<string, string>, world?: SimWorld): string {
   const actor = names[a.actorId] || a.actorId;
-  const verb = ACTION_RU[a.kind] || a.kind;
   const target = a.targetId ? (names[a.targetId] || a.targetId) : '';
   const mode = (a.meta as any)?.decisionMode;
   const prefix = mode === 'reactive' ? '⚡ ' : mode === 'degraded' ? '⚠ ' : '';
-  return target ? `${prefix}${actor} ${verb} ${target}` : `${prefix}${actor} ${verb}`;
+
+  // ── Intent actions: show what the intent is ABOUT, not raw kind ──
+  if (a.kind === 'start_intent') {
+    const original = (a.payload as any)?.intent?.originalAction;
+    const origKind = original?.kind || '';
+    const social = original?.meta?.social || '';
+    const socialRu = SOCIAL_RU[social] || social;
+    const origVerb = ACTION_RU[origKind] || origKind;
+    const reason = getTopReason(a, world);
+    const what = socialRu
+      ? `${actor} начинает: ${origVerb} ${target} (${socialRu})`
+      : `${actor} начинает: ${origVerb} ${target}`;
+    return reason ? `${prefix}${what} — ${reason}` : `${prefix}${what}`;
+  }
+
+  if (a.kind === 'continue_intent') {
+    const suppressed = (a.meta as any)?.suppressedAction;
+    const intentData = world?.facts?.[`intent:${a.actorId}`] as any;
+    const original = intentData?.intent?.originalAction;
+    const stageIdx = intentData?.stageIndex ?? '?';
+    const stageKind = intentData?.intentScript?.stages?.[stageIdx]?.kind || '';
+    const origKind = original?.kind || '';
+    const origVerb = ACTION_RU[origKind] || origKind;
+
+    const stageRu: Record<string, string> = {
+      approach: 'подходит к', attach: 'обращается к',
+      execute: 'говорит с', detach: 'завершает',
+    };
+    const stageLabel = stageRu[stageKind] || stageKind;
+    const base = target
+      ? `${actor} ${stageLabel} ${target}`
+      : `${actor} продолжает: ${origVerb}`;
+    if (suppressed) {
+      return `${prefix}${base} (хотел ${ACTION_RU[suppressed] || suppressed})`;
+    }
+    return `${prefix}${base}`;
+  }
+
+  const verb = ACTION_RU[a.kind] || a.kind;
+  const reason = getTopReason(a, world);
+  const base = target ? `${prefix}${actor} ${verb} ${target}` : `${prefix}${actor} ${verb}`;
+  return reason ? `${base} — ${reason}` : base;
 }
 
-// ─── Narrative Log ────────────────────────────────────────────────────
+function getTopReason(a: SimAction, world?: SimWorld): string {
+  if (!world) return '';
+  const trace = (world.facts as any)?.[`sim:trace:${a.actorId}`];
+  if (!trace) return '';
+
+  const drivers: Record<string, number> = trace.drivers || {};
+  const topDriver = Object.entries(drivers)
+    .filter(([, v]) => typeof v === 'number' && v > 0.2)
+    .sort((x, y) => y[1] - x[1])[0];
+
+  const goals: Array<{ domain: string; score: number }> = trace.activeGoals || trace.goals || [];
+  const topGoal = goals.length ? goals[0] : null;
+
+  const DRIVER_RU: Record<string, string> = {
+    safetyNeed: 'безопасность', controlNeed: 'контроль',
+    statusNeed: 'статус', affiliationNeed: 'привязанность',
+    resolveNeed: 'решимость', restNeed: 'усталость',
+    curiosityNeed: 'любопытство',
+  };
+  const GOAL_RU: Record<string, string> = {
+    safety: 'безопасность', control: 'контроль', affiliation: 'связи',
+    status: 'статус', exploration: 'исследование', order: 'порядок',
+    rest: 'отдых', wealth: 'ресурсы',
+  };
+
+  const parts: string[] = [];
+  if (topGoal) {
+    const goalName = GOAL_RU[topGoal.domain] || topGoal.domain;
+    parts.push(`цель: ${goalName}`);
+  }
+  if (topDriver) {
+    const drvName = DRIVER_RU[topDriver[0]] || topDriver[0];
+    parts.push(`${drvName} ${Math.round(topDriver[1] * 100)}%`);
+  }
+
+  const ci = trace.communicativeIntent;
+  if (ci?.topic?.primary) {
+    parts.push(`тема: ${ci.topic.primary}`);
+  }
+
+  return parts.join(', ');
+}
 
 type NarrativeEntry = { tick: number; lines: string[]; highlight?: boolean; beats?: string[] };
 
@@ -107,8 +195,6 @@ const NarrativeLog: React.FC<{ entries: NarrativeEntry[] }> = ({ entries }) => {
   );
 };
 
-// ─── Agent List (compact, for selection) ──────────────────────────────
-
 const AgentListItem: React.FC<{
   char: SimCharacter;
   world: SimWorld;
@@ -147,17 +233,32 @@ const AgentListItem: React.FC<{
       <span style={{ flex: 1, fontWeight: selected ? 700 : 400, color: selected ? '#e2e8f0' : '#94a3b8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
         {modeIcon} {char.name || char.id}
       </span>
-      {action && (
-        <span style={{ color: '#64748b', fontSize: 9, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 100 }}>
-          {ACTION_RU[action.kind] || action.kind}
-          {action.targetId ? `→${(names[action.targetId] || action.targetId).slice(0, 6)}` : ''}
-        </span>
-      )}
+      {action && (() => {
+        let label = ACTION_RU[action.kind] || action.kind;
+        const tgt = action.targetId ? `→${(names[action.targetId] || action.targetId).slice(0, 6)}` : '';
+
+        const intentData = (world.facts as any)?.[`intent:${char.id}`];
+        if (intentData?.intent?.originalAction) {
+          const orig = intentData.intent.originalAction;
+          const origLabel = ACTION_RU[orig.kind] || orig.kind;
+          const social = orig.meta?.social;
+          label = social ? `${origLabel} (${SOCIAL_RU[social] || social})` : origLabel;
+        }
+
+        const explanation = Array.isArray(trace?.best?.explanation) ? trace.best.explanation[0] : '';
+        const explShort = explanation ? explanation.replace(/^[⚡⚠🎯📋]\s*/, '').slice(0, 30) : '';
+
+        return (
+          <span style={{ color: '#64748b', fontSize: 9, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 140 }}
+            title={explanation || undefined}
+          >
+            {label}{tgt}{explShort ? ` · ${explShort}` : ''}
+          </span>
+        );
+      })()}
     </div>
   );
 };
-
-// ─── Controls ─────────────────────────────────────────────────────────
 
 const ControlsBar: React.FC<{
   tick: number;
@@ -208,10 +309,6 @@ const btnStyle = (enabled: boolean): React.CSSProperties => ({
   fontFamily: '"JetBrains Mono", monospace',
 });
 
-// ═══════════════════════════════════════════════════════════════════════
-// MAIN
-// ═══════════════════════════════════════════════════════════════════════
-
 export const LiveSimulator: React.FC = () => {
   const allCharacters = useMemo(() => getAllCharactersWithRuntime() as CharacterEntity[], []);
   const allLocations = useMemo(() => getEntitiesByType(EntityType.Location) as LocationEntity[], []);
@@ -227,7 +324,6 @@ export const LiveSimulator: React.FC = () => {
   const [selectedLocationId, setSelectedLocationId] = useState('');
   const runRef = useRef(false);
 
-  // ─── Start ───
   const handleStart = useCallback((config: {
     selectedCharIds: string[];
     selectedLocIds: string[];
@@ -274,7 +370,6 @@ export const LiveSimulator: React.FC = () => {
     setPhase('run');
   }, [allCharacters, allLocations]);
 
-  // ─── Step ───
   const doStep = useCallback(() => {
     const sim = simRef.current;
     if (!sim) return;
@@ -282,13 +377,62 @@ export const LiveSimulator: React.FC = () => {
     const names = nameMap(sim.world);
     const actions = record.trace.actionsApplied || [];
 
-    const lines = actions.map((a) => describeAction(a, names));
+    const lines = actions.map((a: any) => describeAction(a, names, sim.world));
+
+    const allEvents = [
+      ...((record as any).trace?.eventsApplied || []),
+      ...(sim.world.events || []),
+    ];
+    const seenSpeech = new Set<string>();
+    for (const ev of allEvents) {
+      if (!ev || String(ev.type) !== 'speech:v1') continue;
+      const p = (ev as any).payload || ev;
+      const from = String(p.actorId || '');
+      const to = String(p.targetId || '');
+      const dedup = `${from}:${to}:${record.trace.tickIndex}`;
+      if (seenSpeech.has(dedup) || !from) continue;
+      seenSpeech.add(dedup);
+
+      const fromName = names[from] || from;
+      const toName = to ? (names[to] || to) : '';
+      const text = String(p.text || '');
+      const act = String(p.act || 'inform');
+      const topic = String(p.topic || '');
+      const intent = (p as any).intent || '';
+
+      const ACT_RU: Record<string, string> = {
+        inform: 'сообщает', ask: 'спрашивает', promise: 'обещает',
+        threaten: 'угрожает', negotiate: 'предлагает', order: 'приказывает',
+        plead: 'просит', warn: 'предупреждает', confide: 'доверяет',
+      };
+      const actLabel = ACT_RU[act] || act;
+      const topicLabel = topic && topic !== act ? ` [${topic}]` : '';
+      const intentSuffix = intent === 'deceptive' ? ' ⚠️ ложь' : intent === 'selective' ? ' ◐ выборочно' : '';
+
+      if (toName) {
+        lines.push(`  💬 ${fromName} ${actLabel} ${toName}${topicLabel}: "${text}"${intentSuffix}`);
+      } else {
+        lines.push(`  💬 ${fromName} ${actLabel}${topicLabel}: "${text}"${intentSuffix}`);
+      }
+    }
+
+    for (const ev of allEvents) {
+      if (!ev) continue;
+      const type = String((ev as any).type || '');
+      if (type !== 'action:intent_complete') continue;
+      const p = (ev as any).payload || ev;
+      const actorName = names[String(p.actorId || '')] || String(p.actorId || '');
+      const scriptId = String(p.scriptId || '');
+      if (scriptId) {
+        lines.push(`  ✓ ${actorName} завершил: ${scriptId.replace(/^dialog:/, '')}`);
+      }
+    }
+
     if (!lines.length) lines.push('(ничего не произошло)');
 
-    // Beats from this tick.
     const tickBeats = (sim as any).beats?.filter((b: any) => b.tick === record.trace.tickIndex) || [];
     const beatLines = tickBeats.map((b: any) => String(b.summary || b.kind || 'beat'));
-    const highlight = tickBeats.length > 0 || actions.some((a) => (a.meta as any)?.decisionMode === 'reactive');
+    const highlight = tickBeats.length > 0 || actions.some((a: any) => (a.meta as any)?.decisionMode === 'reactive');
 
     setTick(sim.world.tickIndex);
     setSnapshot({ ...sim.world } as any);
@@ -326,7 +470,6 @@ export const LiveSimulator: React.FC = () => {
     return () => clearInterval(id);
   }, [running, speed, doStep]);
 
-  // ─── Derived ───
   const worldView = simRef.current?.world ?? null;
   const names = useMemo(() => (worldView ? nameMap(worldView) : {}), [worldView, tick]);
   const characters = useMemo(() => {
@@ -335,7 +478,6 @@ export const LiveSimulator: React.FC = () => {
   }, [worldView, tick]);
   const tension = Number((simRef.current as any)?.tensionHistory?.slice?.(-1)?.[0] ?? 0);
 
-  // ─── Setup ───
   if (phase === 'setup') {
     return (
       <div style={{ background: '#020617', minHeight: '100vh', color: '#e2e8f0' }}>
@@ -344,7 +486,6 @@ export const LiveSimulator: React.FC = () => {
     );
   }
 
-  // ─── Run ───
   return (
     <div style={{
       background: '#020617',
