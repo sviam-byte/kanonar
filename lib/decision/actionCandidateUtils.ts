@@ -48,6 +48,8 @@ function buildDeltaGoals(
 ): Record<string, number> {
   const out: Record<string, number> = {};
   // Backward-compatible hint reader: accept both util:* and goal:* sources.
+  // NOTE: goal:* is legacy-only fallback; primary source stays util:* to preserve
+  // Goal/Action isolation (see AGENTS hard rule).
   const allowPrefixA = `util:hint:allow:`;
   const allowPrefixB = `goal:hint:allow:`;
 
@@ -162,11 +164,13 @@ export function buildActionCandidates(args: {
     // deltas so the GoalLab scorer sees the tactical signal.
     const offerDeltas: Record<string, number> | undefined =
       (p as any)?.meta?.sim?.deltaGoals;
-    if (offerDeltas && typeof offerDeltas === 'object') {
+  if (offerDeltas && typeof offerDeltas === 'object') {
       // Weight: offer deltas are additive on top of projection, with a
       // mixing weight. Pure offer deltas are ~0.1-0.3 range, projection
       // deltas are similar, so 0.6 offer / 0.4 projection keeps projection
       // as tiebreaker while letting spatial detail dominate.
+      // Keep this as local constant because it is SimKit-offer bridge-specific
+      // blending, not a global pipeline coefficient.
       const OFFER_W = 0.6;
       const PROJ_W = 1 - OFFER_W;
       const allKeys = new Set([...Object.keys(deltaGoals), ...Object.keys(offerDeltas)]);
@@ -181,6 +185,7 @@ export function buildActionCandidates(args: {
     // keeps action kind identical but differentiates expected value by target.
     if (targetId && typeof targetId === 'string') {
       const tomRead = (metric: string): number => {
+        // Ordered by strongest/most-contextual signal first.
         const patterns = [
           `tom:dyad:${args.selfId}:${targetId}:${metric}`,
           `tom:effective:dyad:${args.selfId}:${targetId}:${metric}`,
