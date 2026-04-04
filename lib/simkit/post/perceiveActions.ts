@@ -147,3 +147,151 @@ export function persistDecayingMemoryToFacts(
     (world.facts as any)[key] = next;
   }
 }
+
+export type EpisodicEntry = {
+  tick: number;
+  kind: string;
+  actorId: string;
+  targetId: string;
+  magnitude: number;
+  details?: any;
+};
+
+const EPISODIC_MAX = 30;
+const EPISODIC_SIGNIFICANCE_THRESHOLD = 0.12;
+
+/**
+ * Tracks high-salience social/combat events and trust shifts in per-agent
+ * episodic stores under `mem:episodic:<agentId>`.
+ */
+export function updateEpisodicMemory(
+  world: SimWorld,
+  eventsApplied: SimEvent[],
+  prevRelations?: Record<string, Record<string, any>> | null
+) {
+  const facts: any = world.facts || {};
+  const tick = world.tickIndex;
+
+  for (const observerId of Object.keys(world.characters || {}).sort()) {
+    const observer = world.characters[observerId];
+    const obsLoc = String((observer as any)?.locId || '');
+    const key = `mem:episodic:${observerId}`;
+    const store: EpisodicEntry[] = Array.isArray(facts[key]) ? [...facts[key]] : [];
+
+    const curRels = facts.relations?.[observerId] ?? {};
+    const prevRels = prevRelations?.[observerId] ?? {};
+    for (const otherId of Object.keys(world.characters || {})) {
+      if (otherId === observerId) continue;
+      const other = world.characters[otherId];
+      if (String((other as any)?.locId || '') !== obsLoc) continue;
+
+      const curTrust = Number(curRels[otherId]?.trust ?? 0.5);
+      const prevTrust = Number(prevRels[otherId]?.trust ?? curTrust);
+      const trustDelta = curTrust - prevTrust;
+
+      if (trustDelta < -EPISODIC_SIGNIFICANCE_THRESHOLD) {
+        store.push({
+          tick,
+          kind: 'trust_drop',
+          actorId: otherId,
+          targetId: observerId,
+          magnitude: clamp01(Math.abs(trustDelta) * 3),
+          details: { prevTrust, curTrust, delta: trustDelta },
+        });
+      }
+      if (trustDelta > EPISODIC_SIGNIFICANCE_THRESHOLD * 1.5) {
+        store.push({
+          tick,
+          kind: 'trust_gain',
+          actorId: otherId,
+          targetId: observerId,
+          magnitude: clamp01(trustDelta * 2),
+          details: { prevTrust, curTrust, delta: trustDelta },
+        });
+      }
+    }
+
+    for (const e of arr<SimEvent>(eventsApplied)) {
+      const p = (e as any)?.payload || {};
+      const locId = String(p.locationId ?? p.locId ?? '');
+      if (locId !== obsLoc) continue;
+
+      const actorId = String(p.actorId ?? '');
+      const targetId = String(p.targetId ?? '');
+      const type = String((e as any)?.type || '');
+      const isTarget = targetId === observerId;
+      const isWitness = actorId !== observerId && targetId !== observerId;
+
+      if (type === 'action:attack' && (isTarget || isWitness)) {
+        store.push({
+          tick,
+          kind: 'attack',
+          actorId,
+          targetId,
+          magnitude: clamp01(Number(p.damage ?? 0.08) * 5),
+        });
+      }
+      if ((type === 'action:betray' || type === 'action:deceive') && (isTarget || isWitness)) {
+        store.push({ tick, kind: 'betrayal', actorId, targetId, magnitude: 0.8 });
+      }
+      if ((type === 'action:help' || type === 'action:treat' || type === 'action:comfort') && isTarget) {
+        store.push({ tick, kind: 'help', actorId, targetId, magnitude: 0.4 });
+      }
+    }
+
+    if (store.length > EPISODIC_MAX) {
+      store.sort((a, b) => b.magnitude - a.magnitude || b.tick - a.tick);
+      store.length = EPISODIC_MAX;
+    }
+
+    facts[key] = store;
+  }
+}
+
+/**
+ * Emits memory atoms derived from episodic entries relevant to co-present
+ * agents so GoalLab can reuse salient history in current decisions.
+ */
+export function buildEpisodicAtomsForAgent(world: SimWorld, selfId: string): BeliefAtom[] {
+  const facts: any = world.facts || {};
+  const store: EpisodicEntry[] = Array.isArray(facts[`mem:episodic:${selfId}`]) ? facts[`mem:episodic:${selfId}`] : [];
+  if (!store.length) return [];
+
+  const selfLoc = String((world.characters[selfId] as any)?.locId ?? '');
+  const tick = world.tickIndex;
+  const out: BeliefAtom[] = [];
+
+  const coPresent = new Set<string>();
+  for (const c of Object.values(world.characters || {})) {
+    if (c.id !== selfId && String((c as any)?.locId ?? '') === selfLoc) coPresent.add(c.id);
+  }
+
+  for (const otherId of coPresent) {
+    const relevant = store.filter((e) => e.actorId === otherId || e.targetId === otherId);
+    for (const entry of relevant) {
+      const age = Math.max(1, tick - entry.tick);
+      const decayedMag = clamp01(entry.magnitude * Math.pow(0.97, age));
+      if (decayedMag < 0.05) continue;
+
+      out.push({
+        id: `mem:episodic:${selfId}:${otherId}:${entry.kind}:${entry.tick}`,
+        ns: 'memory',
+        kind: 'episodic',
+        origin: 'derived',
+        source: 'episodicMemory',
+        subject: selfId,
+        magnitude: decayedMag,
+        confidence: clamp01(0.9 * Math.pow(0.99, age)),
+        tags: ['memory', 'episodic', entry.kind, otherId],
+        label: `episodic:${entry.kind}:${otherId}(t-${age})`,
+        trace: {
+          usedAtomIds: [],
+          notes: [`episodic ${entry.kind} by/to ${otherId} at tick ${entry.tick}, age=${age}`],
+          parts: { ...entry, age, decayedMag },
+        },
+      });
+    }
+  }
+
+  return out;
+}

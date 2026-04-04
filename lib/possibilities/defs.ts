@@ -1632,5 +1632,253 @@ export const DEFAULT_POSSIBILITY_DEFS: PossibilityDef[] = [
         trace: { usedAtomIds: [], notes: ['from scene/offers'], parts: { offerAtomId: help } }
       });
     }
+  },
+
+  // ---- RETREAT ----
+  {
+    key: 'retreat',
+    kind: 'exit' as any,
+    label: 'Retreat / fall back',
+    build: ({ selfId, atoms, helpers }) => {
+      const health = getMag(atoms, `feat:char:${selfId}:body.health`, getMag(atoms, `cap:health:${selfId}`, 1));
+      const stress = getMag(atoms, `feat:char:${selfId}:body.stress`, getMag(atoms, `cap:stress:${selfId}`, 0));
+      const threat = helpers.findPrefix(`ctx:danger:${selfId}`)[0];
+      const threatVal = threat ? helpers.get(threat.id, 0) : 0;
+      if (health > 0.40 && stress < 0.70 && threatVal < 0.4) return null;
+
+      const magnitude = clamp01(0.3 * (1 - health) + 0.3 * stress + 0.4 * threatVal);
+      return mkSelf({
+        kind: 'exit' as any, selfId, key: 'retreat', label: 'Retreat',
+        magnitude, usedAtomIds: [threat?.id || ''],
+        notes: ['health/stress/threat → retreat'], parts: { health, stress, threat: threatVal }
+      });
+    }
+  },
+
+  // ---- RALLY ----
+  {
+    key: 'rally',
+    kind: 'aff' as any,
+    label: 'Rally / regroup',
+    build: ({ selfId, atoms, helpers }) => {
+      const others = inferOtherIds(selfId, atoms);
+      const allies = others.filter(id => getMag(atoms, `rel:state:${selfId}:${id}:trust`, 0.5) > 0.55);
+      if (allies.length < 2) return null;
+      const threat = helpers.findPrefix(`ctx:danger:${selfId}`)[0];
+      const threatVal = threat ? helpers.get(threat.id, 0) : 0;
+      if (threatVal < 0.2) return null;
+
+      const magnitude = clamp01(0.3 + 0.3 * threatVal + 0.1 * Math.min(allies.length, 4) / 4);
+      return mkSelf({
+        kind: 'aff' as any, selfId, key: 'rally', label: 'Rally',
+        magnitude, usedAtomIds: [threat?.id || ''],
+        notes: ['allies + threat → rally'], parts: { allyCount: allies.length, threat: threatVal }
+      });
+    }
+  },
+
+  // ---- SUPPRESS ----
+  {
+    key: 'suppress',
+    kind: 'off' as any,
+    label: 'Suppress / pin down',
+    build: ({ selfId, atoms, helpers }) => {
+      const others = inferOtherIds(selfId, atoms);
+      const threat = helpers.findPrefix(`ctx:danger:${selfId}`)[0];
+      const threatVal = threat ? helpers.get(threat.id, 0) : 0;
+      if (threatVal < 0.3) return null;
+
+      return others.map(otherId => {
+        const host = getMag(atoms, `rel:state:${selfId}:${otherId}:hostility`, 0);
+        const threatToMe = getMag(atoms, `rel:state:${selfId}:${otherId}:threat`, 0.3);
+        if (threatToMe < 0.4 && host < 0.3) return null;
+        const magnitude = clamp01(0.25 * host + 0.35 * threatToMe + 0.20 * threatVal);
+        return mkTargeted({
+          kind: 'off' as any, selfId, otherId, key: 'suppress', label: 'Suppress',
+          magnitude, usedAtomIds: [threat?.id || ''],
+          notes: ['hostile target + threat → suppress'], parts: { hostility: host, threatToMe, threat: threatVal }
+        });
+      }).filter(Boolean) as any[];
+    }
+  },
+
+  // ---- PATROL ----
+  {
+    key: 'patrol',
+    kind: 'cog' as any,
+    label: 'Patrol area',
+    build: ({ selfId, helpers }) => {
+      const unc = helpers.findPrefix(`ctx:uncertainty:${selfId}`)[0];
+      const uncVal = unc ? helpers.get(unc.id, 0.5) : 0.5;
+      const threat = helpers.findPrefix(`ctx:danger:${selfId}`)[0];
+      const threatVal = threat ? helpers.get(threat.id, 0) : 0;
+      if (uncVal < 0.3 || threatVal > 0.7) return null;
+
+      const magnitude = clamp01(0.4 * uncVal + 0.2 * (1 - threatVal));
+      return mkSelf({
+        kind: 'cog' as any, selfId, key: 'patrol', label: 'Patrol',
+        magnitude, usedAtomIds: [unc?.id || '', threat?.id || ''],
+        notes: ['uncertainty + moderate threat → patrol'], parts: { uncertainty: uncVal, threat: threatVal }
+      });
+    }
+  },
+
+  // ---- COVER FIRE ----
+  {
+    key: 'cover_fire',
+    kind: 'aff' as any,
+    label: 'Cover fire for ally',
+    build: ({ selfId, atoms, helpers }) => {
+      const others = inferOtherIds(selfId, atoms);
+      const threat = helpers.findPrefix(`ctx:danger:${selfId}`)[0];
+      const threatVal = threat ? helpers.get(threat.id, 0) : 0;
+      if (threatVal < 0.3) return null;
+
+      return others.map(otherId => {
+        const trust = getMag(atoms, `rel:state:${selfId}:${otherId}:trust`, 0.5);
+        if (trust < 0.55) return null;
+        const magnitude = clamp01(0.3 * trust + 0.3 * threatVal);
+        return mkTargeted({
+          kind: 'aff' as any, selfId, otherId, key: 'cover_fire', label: 'Cover fire',
+          magnitude, usedAtomIds: [threat?.id || ''],
+          notes: ['trusted ally + threat → cover fire'], parts: { trust, threat: threatVal }
+        });
+      }).filter(Boolean) as any[];
+    }
+  },
+
+  // ---- TAKE COVER ----
+  {
+    key: 'take_cover',
+    kind: 'aff' as any,
+    label: 'Take cover',
+    build: ({ selfId, helpers }) => {
+      const threat = helpers.findPrefix(`ctx:danger:${selfId}`)[0];
+      const threatVal = threat ? helpers.get(threat.id, 0) : 0;
+      const cover = helpers.findPrefix(`ctx:cover:${selfId}`)[0]?.id || helpers.findPrefix(`world:map:cover:${selfId}`)[0]?.id;
+      const coverVal = cover ? helpers.get(cover, 0) : 0;
+      if (threatVal < 0.25 || coverVal > 0.6) return null;
+
+      const magnitude = clamp01(0.5 * threatVal + 0.3 * (1 - coverVal));
+      return mkSelf({
+        kind: 'aff' as any, selfId, key: 'take_cover', label: 'Take cover',
+        magnitude, usedAtomIds: [threat?.id || '', cover || ''],
+        notes: ['threat + low cover → take cover'], parts: { threat: threatVal, cover: coverVal }
+      });
+    }
+  },
+
+  // ---- CONFIDE ----
+  {
+    key: 'confide',
+    kind: 'aff' as any,
+    label: 'Confide / share personal',
+    build: ({ selfId, atoms }) => {
+      const others = inferOtherIds(selfId, atoms);
+      const stress = getMag(atoms, `feat:char:${selfId}:body.stress`, 0);
+      return others.map(otherId => {
+        const trust = getMag(atoms, `rel:state:${selfId}:${otherId}:trust`, 0.5);
+        const closeness = getMag(atoms, `rel:state:${selfId}:${otherId}:closeness`, 0.2);
+        if (trust < 0.6 || stress < 0.2) return null;
+        const magnitude = clamp01(0.35 * trust + 0.25 * closeness + 0.25 * stress);
+        return mkTargeted({
+          kind: 'aff' as any, selfId, otherId, key: 'confide', label: 'Confide',
+          magnitude, usedAtomIds: [],
+          notes: ['trust + stress → confide'], parts: { trust, closeness, stress }
+        });
+      }).filter(Boolean) as any[];
+    }
+  },
+
+  // ---- ENCOURAGE ----
+  {
+    key: 'encourage',
+    kind: 'aff' as any,
+    label: 'Encourage / motivate',
+    build: ({ selfId, atoms }) => {
+      const others = inferOtherIds(selfId, atoms);
+      return others.map(otherId => {
+        const trust = getMag(atoms, `rel:state:${selfId}:${otherId}:trust`, 0.5);
+        const targetStress = getMag(atoms, `feat:char:${otherId}:body.stress`, 0.3);
+        const targetHealth = getMag(atoms, `feat:char:${otherId}:body.health`, 1);
+        if (trust < 0.45 || (targetStress < 0.3 && targetHealth > 0.7)) return null;
+
+        const { id: pId, v } = getPrior(atoms, selfId, otherId, 'encourage', 0.25);
+        const magnitude = clamp01(0.30 * v + 0.35 * targetStress + 0.20 * (1 - targetHealth) + 0.15 * trust);
+        return mkTargeted({
+          kind: 'aff' as any, selfId, otherId, key: 'encourage', label: 'Encourage',
+          magnitude, usedAtomIds: [pId || ''],
+          notes: ['target distressed + trust → encourage'], parts: { prior: v, targetStress, targetHealth, trust }
+        });
+      }).filter(Boolean) as any[];
+    }
+  },
+
+  // ---- WARN ----
+  {
+    key: 'warn',
+    kind: 'aff' as any,
+    label: 'Warn about danger',
+    build: ({ selfId, atoms, helpers }) => {
+      const threat = helpers.findPrefix(`ctx:danger:${selfId}`)[0];
+      const threatVal = threat ? helpers.get(threat.id, 0) : 0;
+      if (threatVal < 0.3) return null;
+
+      const others = inferOtherIds(selfId, atoms);
+      return others.map(otherId => {
+        const trust = getMag(atoms, `rel:state:${selfId}:${otherId}:trust`, 0.5);
+        if (trust < 0.35) return null;
+        const magnitude = clamp01(0.4 * threatVal + 0.3 * trust);
+        return mkTargeted({
+          kind: 'aff' as any, selfId, otherId, key: 'warn', label: 'Warn',
+          magnitude, usedAtomIds: [threat?.id || ''],
+          notes: ['threat + trust → warn'], parts: { threat: threatVal, trust }
+        });
+      }).filter(Boolean) as any[];
+    }
+  },
+
+  // ---- PLEAD ----
+  {
+    key: 'plead',
+    kind: 'aff' as any,
+    label: 'Plead / beg for help',
+    build: ({ selfId, atoms }) => {
+      const health = getMag(atoms, `feat:char:${selfId}:body.health`, 1);
+      const stress = getMag(atoms, `feat:char:${selfId}:body.stress`, 0);
+      if (health > 0.35 && stress < 0.7) return null;
+
+      const others = inferOtherIds(selfId, atoms);
+      return others.map(otherId => {
+        const magnitude = clamp01(0.4 * (1 - health) + 0.3 * stress);
+        return mkTargeted({
+          kind: 'aff' as any, selfId, otherId, key: 'plead', label: 'Plead',
+          magnitude, usedAtomIds: [],
+          notes: ['desperate state → plead'], parts: { health, stress }
+        });
+      }) as any[];
+    }
+  },
+
+  // ---- CHALLENGE ----
+  {
+    key: 'challenge',
+    kind: 'con' as any,
+    label: 'Challenge authority',
+    build: ({ selfId, atoms }) => {
+      const others = inferOtherIds(selfId, atoms);
+      return others.map(otherId => {
+        const { id: pId, v } = getPrior(atoms, selfId, otherId, 'challenge', 0.15);
+        const trust = getMag(atoms, `rel:state:${selfId}:${otherId}:trust`, 0.5);
+        const dominance = getMag(atoms, `tom:dyad:${selfId}:${otherId}:dominance`, 0.5);
+        if (dominance < 0.55 || trust > 0.75) return null;
+        const magnitude = clamp01(0.35 * v + 0.35 * (dominance - 0.5) + 0.15 * (1 - trust));
+        return mkTargeted({
+          kind: 'con' as any, selfId, otherId, key: 'challenge', label: 'Challenge',
+          magnitude, usedAtomIds: [pId || ''],
+          notes: ['target dominance + low trust → challenge'], parts: { prior: v, dominance, trust }
+        });
+      }).filter(Boolean) as any[];
+    }
   }
 ];

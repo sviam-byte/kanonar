@@ -38,11 +38,17 @@ export function extractCharacterFeatures(args: { character: any; selfId: string 
   set('trait.decisionTemperature', clamp01(num(vb['B_decision_temperature'], 0.5)), 'character.vector_base.B_decision_temperature');
   set('trait.discountRate', clamp01(num(vb['B_discount_rate'], 0.5)), 'character.vector_base.B_discount_rate');
 
-  set('trait.care', clamp01(num(vb['A_Care_Compassion'], 0.5)), 'character.vector_base.A_Care_Compassion');
+  set('trait.care', clamp01(num(
+    vb['A_Care_Compassion'] ?? (
+      // Backward-compatible fallback for datasets that only have Safety/Power axes.
+      vb['A_Safety_Care'] !== undefined || vb['A_Power_Sovereignty'] !== undefined
+        ? 0.6 * num(vb['A_Safety_Care'], 0.5) + 0.4 * (1 - num(vb['A_Power_Sovereignty'], 0.5))
+        : 0.5
+    ), 0.5)), 'character.vector_base.A_Care_Compassion|derived(Safety,Power)');
   set('trait.safety', clamp01(num(vb['A_Safety_Care'], 0.5)), 'character.vector_base.A_Safety_Care');
   set('trait.powerDrive', clamp01(num(vb['A_Power_Sovereignty'], 0.5)), 'character.vector_base.A_Power_Sovereignty');
-  set('trait.formalism', clamp01(num(vb['A_Procedure_Formalism'], 0.5)), 'character.vector_base.A_Procedure_Formalism');
-  set('trait.order', clamp01(num(vb['A_Tradition_Order'], 0.5)), 'character.vector_base.A_Tradition_Order');
+  set('trait.formalism', clamp01(num(vb['A_Procedure_Formalism'] ?? vb['A_Legitimacy_Procedure'], 0.5)), 'character.vector_base.A_Procedure_Formalism|A_Legitimacy_Procedure');
+  set('trait.order', clamp01(num(vb['A_Tradition_Order'] ?? vb['A_Tradition_Continuity'], 0.5)), 'character.vector_base.A_Tradition_Order|A_Tradition_Continuity');
   set('trait.autonomy', clamp01(num(vb['A_Liberty_Autonomy'], 0.5)), 'character.vector_base.A_Liberty_Autonomy');
   set('trait.truthNeed', clamp01(num(vb['A_Knowledge_Truth'], 0.5)), 'character.vector_base.A_Knowledge_Truth');
   set('trait.normSensitivity', clamp01(0.5 * values['trait.formalism'] + 0.5 * values['trait.order']), 'derived(trait.formalism,trait.order)');

@@ -9,7 +9,7 @@
 
 import type { ActionKind, ActionOffer, SimAction, SimEvent, SimWorld, SpeechEventV1 } from '../core/types';
 import { getChar, getLoc } from '../core/world';
-import { distSameLocation, getCharXY, getSpatialConfig } from '../core/spatial';
+import { distSameLocation, getCellCover, getCellElevation, getCharXY, getSpatialConfig, hasLineOfSight } from '../core/spatial';
 import { getDyadTrust } from '../core/trust';
 import { clamp01 } from '../../util/math';
 import { buildGenericSocialSpec } from './genericSocialSpec';
@@ -701,7 +701,13 @@ const AttackSpec: ActionSpec = {
       if (other.locId !== c.locId) continue;
       const d = distSameLocation(world, c.id, other.id);
       if (!Number.isFinite(d) || d > cfg.attackRange) continue;
-      out.push({ kind: 'attack', actorId, targetId: other.id, score: 0.08 });
+      // Spatial sanity: no attacks through blocked line-of-sight.
+      let los = true;
+      try { los = hasLineOfSight(world, c.id, other.id); } catch { /* no grid map => open */ }
+      if (!los) continue;
+      // Hidden targets are harder to detect and therefore less likely to be chosen.
+      const isHidden = Boolean((world.facts as any)?.[`ctx:hidden:${other.id}`]);
+      out.push({ kind: 'attack', actorId, targetId: other.id, score: isHidden ? 0.03 : 0.08 });
     }
     return out;
   },
@@ -751,13 +757,64 @@ const AttackSpec: ActionSpec = {
       return { world, events, notes };
     }
 
-    // Minimal combat: stress spike + small health delta.
+    // LoS gate at apply time (enumerate may be stale relative to world update).
+    let losBlocked = false;
+    try { losBlocked = !hasLineOfSight(world, c.id, targetId); } catch { /* no grid map => open */ }
+    if (losBlocked) {
+      notes.push(`${c.id} attack blocked (no line of sight to ${targetId})`);
+      events.push(mkActionEvent(world, 'action:attack', { actorId: c.id, targetId, ok: false, reason: 'no_los', locationId: c.locId }));
+      return { world, events, notes };
+    }
+
+    // Cover and distance-aware damage model (still deterministic and lightweight).
+    let targetCover = 0;
+    try { targetCover = getCellCover(world, targetId); } catch { /* no grid map => 0 */ }
+    const coverReduction = targetCover * 0.6;
+    const rangeFactor = Number.isFinite(d)
+      ? clamp01(1 - (d / Math.max(1, cfg.attackRange)) * 0.4)
+      : 1.0;
+    const baseDamage = 0.08;
+
+    // Elevation advantage: high ground improves offense, low ground penalizes it.
+    let elevFactor = 1.0;
+    try {
+      const attackerElev = getCellElevation(world, c.id);
+      const targetElev = getCellElevation(world, targetId);
+      const elevDiff = attackerElev - targetElev;
+      if (elevDiff > 0) elevFactor = 1.0 + 0.12 * Math.min(elevDiff, 3);
+      if (elevDiff < 0) elevFactor = 1.0 - 0.08 * Math.min(-elevDiff, 3);
+    } catch {
+      // no elevation data -> neutral multiplier
+    }
+
+    const targetHidden = Boolean((world.facts as any)?.[`ctx:hidden:${targetId}`]);
+    const hiddenPenalty = targetHidden ? 0.5 : 1.0;
+
+    const guardedBy = (world.facts as any)?.[`ctx:guardedBy:${targetId}`];
+    const guardTick = Number((world.facts as any)?.[`ctx:guardedBy:${targetId}:tick`] ?? -10);
+    const guardActive = Boolean(guardedBy) && (world.tickIndex - guardTick) <= 2;
+    const guardReduction = guardActive ? 0.30 : 0;
+
+    const damage = clamp01(baseDamage * rangeFactor * (1 - coverReduction) * elevFactor * hiddenPenalty * (1 - guardReduction));
+
+    // Minimal combat: stress spike + scaled health delta.
     c.stress = clamp01(c.stress + 0.03);
     c.energy = clamp01(c.energy - 0.02);
-    t.health = clamp01(t.health - 0.08);
+    t.health = clamp01(t.health - damage);
     t.stress = clamp01(t.stress + 0.06);
-    notes.push(`${c.id} attacks ${targetId}`);
-    events.push(mkActionEvent(world, 'action:attack', { actorId: c.id, targetId, ok: true, locationId: c.locId }));
+    notes.push(`${c.id} attacks ${targetId} (dmg=${damage.toFixed(3)}, cover=${targetCover.toFixed(2)}, elev=${elevFactor.toFixed(2)}, range=${Number.isFinite(d) ? d.toFixed(0) : '?'}${targetHidden ? ' HIDDEN' : ''}${guardActive ? ` GUARDED by ${guardedBy}` : ''})`);
+    events.push(mkActionEvent(world, 'action:attack', {
+      actorId: c.id,
+      targetId,
+      ok: true,
+      damage,
+      cover: targetCover,
+      distance: d,
+      elevation: elevFactor,
+      hidden: targetHidden,
+      guarded: guardActive,
+      locationId: c.locId,
+    }));
     return { world, events, notes };
   },
 };

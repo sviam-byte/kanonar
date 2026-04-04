@@ -222,9 +222,68 @@ export function makeSimWorldFromSelection(args: {
     seed,
     facts: {
       hazardPoints: Array.isArray(hazardPoints) ? hazardPoints : [],
+      relations: buildInitialRelations(characters),
     },
     events: [],
     locations: locMap,
     characters: chMap,
   };
+}
+
+/**
+ * Initializes dyadic relations with conservative defaults derived from
+ * faction alignment and explicit relation roles from character payloads.
+ */
+function buildInitialRelations(characters: CharacterEntity[]): Record<string, Record<string, any>> {
+  const rels: Record<string, Record<string, any>> = {};
+
+  const getFaction = (ch: CharacterEntity): string =>
+    String((ch as any)?.context?.faction ?? 'unknown').toLowerCase();
+
+  const getExplicitRelations = (ch: CharacterEntity): Array<{ other_id: string; role: string }> => {
+    const raw = (ch as any)?.roles?.relations ?? (ch as any)?.identity?.relations ?? [];
+    return Array.isArray(raw) ? raw : [];
+  };
+
+  for (const a of characters) {
+    rels[a.entityId] = rels[a.entityId] || {};
+    const aFaction = getFaction(a);
+    const aExplicit = getExplicitRelations(a);
+
+    for (const b of characters) {
+      if (a.entityId === b.entityId) continue;
+      rels[a.entityId][b.entityId] = rels[a.entityId][b.entityId] || {};
+      const entry = rels[a.entityId][b.entityId];
+      const bFaction = getFaction(b);
+
+      if (aFaction === bFaction && aFaction !== 'unknown' && aFaction !== 'independent') {
+        entry.trust = Math.max(entry.trust ?? 0, 0.60);
+        entry.familiarity = Math.max(entry.familiarity ?? 0, 0.30);
+      } else if (aFaction !== 'unknown' && bFaction !== 'unknown' && aFaction !== 'independent' && bFaction !== 'independent') {
+        entry.trust = entry.trust ?? 0.42;
+      } else {
+        entry.trust = entry.trust ?? 0.50;
+      }
+
+      for (const rel of aExplicit) {
+        if (rel.other_id !== b.entityId) continue;
+        const role = String(rel.role ?? '').toLowerCase();
+        if (role === 'ward_of' || role === 'caretaker_of' || role === 'kin') {
+          entry.trust = Math.max(entry.trust ?? 0, 0.80);
+          entry.familiarity = Math.max(entry.familiarity ?? 0, 0.70);
+        } else if (role === 'ally' || role === 'ally_of') {
+          entry.trust = Math.max(entry.trust ?? 0, 0.70);
+          entry.familiarity = Math.max(entry.familiarity ?? 0, 0.40);
+        } else if (role === 'rival' || role === 'rival_of' || role === 'enemy') {
+          entry.trust = Math.min(entry.trust ?? 1, 0.25);
+          entry.threat = Math.max(entry.threat ?? 0, 0.40);
+        } else if (role === 'subordinate_of') {
+          entry.trust = Math.max(entry.trust ?? 0, 0.60);
+          entry.familiarity = Math.max(entry.familiarity ?? 0, 0.35);
+        }
+      }
+    }
+  }
+
+  return rels;
 }

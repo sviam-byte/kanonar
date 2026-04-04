@@ -141,6 +141,16 @@ const GOALLAB_TO_SIMKIT: Record<string, string> = {
   observe_target: 'observe', loot: 'scavenge_feature', betray: 'attack',
   help_offer: 'help', verify: 'verify', monologue: 'wait',
   self_talk: 'wait',
+
+  // Tactical actions (handled by genericSocialSpec).
+  retreat: 'retreat', rally: 'rally', suppress: 'suppress',
+  patrol: 'patrol', cover_fire: 'cover_fire', take_cover: 'take_cover',
+  hold_position: 'wait',
+
+  // Social-emotional actions (handled by genericSocialSpec).
+  confide: 'confide', encourage: 'encourage', warn: 'warn',
+  plead: 'plead', challenge: 'challenge',
+  mourn: 'wait', celebrate: 'wait',
 };
 
 /**
@@ -591,6 +601,11 @@ export function makeGoalLabDeciderPlugin(opts?: { storePipeline?: boolean; enabl
           sceneControl._degradedTopK = dm.topK;
           sceneControl._degradedTempMult = dm.temperatureMultiplier;
           (worldState as any).decisionTemperature = (Number((worldState as any).decisionTemperature) || 1.0) * dm.temperatureMultiplier;
+        } else {
+          // Deliberative mode: explicitly keep prediction loop on.
+          // This guarantees generation of belief:predicted / belief:surprise atoms
+          // and preserves S9→beliefPersist→S6/S7 feedback behavior.
+          sceneControl.enablePredict = true;
         }
 
         const externalPossibilities = offersToExternalPossibilities(offers, actorId);
@@ -601,7 +616,7 @@ export function makeGoalLabDeciderPlugin(opts?: { storePipeline?: boolean; enabl
           participantIds,
           tickOverride: tickIndex,
           externalPossibilities,
-          ...(mode === 'degraded' ? { sceneControl } : {}),
+          sceneControl,
         });
         if (!pipeline) continue;
 
