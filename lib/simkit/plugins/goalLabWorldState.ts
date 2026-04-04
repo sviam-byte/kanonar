@@ -325,6 +325,7 @@ function adaptSimEvent(world: SimWorld, snapshot: SimSnapshot, e: any): AdaptedD
     },
     epistemics: witnessIds.length ? { witnesses: witnessIds } : undefined,
     meta: {
+      // Keep raw payload for forensic UI/debug; downstream pipeline uses normalized fields.
       simEventId: e?.id,
       simType: e?.type,
       payload: p,
