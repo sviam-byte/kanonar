@@ -3,10 +3,13 @@
 
 import type { SimPlugin } from '../core/simulator';
 import type { SimEvent } from '../core/types';
-import { buildBeliefAtomsForTick, persistBeliefAtomsToFacts, persistDecayingMemoryToFacts } from '../post/perceiveActions';
+import { buildBeliefAtomsForTick, persistBeliefAtomsToFacts, persistDecayingMemoryToFacts, updateEpisodicMemory } from '../post/perceiveActions';
 import { arr } from '../../utils/arr';
 
 export function makePerceptionMemoryPlugin(): SimPlugin {
+  // Snapshot for trust-delta-based episodic updates.
+  let prevRelationsSnapshot: Record<string, Record<string, any>> | null = null;
+
   return {
     id: 'plugin:perceptionMemory',
     afterSnapshot: ({ world, record }) => {
@@ -19,6 +22,18 @@ export function makePerceptionMemoryPlugin(): SimPlugin {
           forgetBelow: 0.12,
           maxFacts: 600,
         });
+        updateEpisodicMemory(world, eventsApplied, prevRelationsSnapshot);
+
+        const curRels = (world.facts as any)?.relations;
+        if (curRels && typeof curRels === 'object') {
+          prevRelationsSnapshot = {};
+          for (const [a, targets] of Object.entries(curRels)) {
+            prevRelationsSnapshot[a] = {};
+            for (const [b, entry] of Object.entries(targets as any)) {
+              prevRelationsSnapshot[a][b] = { ...(entry as any) };
+            }
+          }
+        }
 
         record.plugins ||= {};
         record.plugins.perceptionMemory = {

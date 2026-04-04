@@ -1018,11 +1018,16 @@ export function runGoalLabPipelineV1(input: {
     });
 
     const rng = (agent as any)?.rngChannels?.decide;
-    const temperature =
-      (world as any)?.decisionTemperature ??
-      (agent as any)?.behavioralParams?.T0 ??
-      (agent as any)?.temperature ??
-      1.0;
+    // Prefer per-agent trait-derived temperature when available.
+    // trait.decisionTemperature atom is normalized [0..1], so scale to practical
+    // softmax range and clamp a non-zero floor for numerical stability.
+    const agentTempAtom = getMag(atoms, `feat:char:${selfId}:trait.decisionTemperature`, -1);
+    const temperature = agentTempAtom >= 0
+      ? Math.max(0.05, agentTempAtom * 2.5)
+      : (world as any)?.decisionTemperature ??
+        (agent as any)?.behavioralParams?.T0 ??
+        (agent as any)?.temperature ??
+        1.0;
 
     const enablePredict = (input.sceneControl as any)?.enablePredict === true;
     const useLookaheadForChoice = (input.sceneControl as any)?.useLookaheadForChoice === true;

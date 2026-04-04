@@ -61,105 +61,12 @@ function nearest(from: CellRef, points: CellRef[]): CellRef | null {
   return best;
 }
 
-function stepToward(from: CellRef, to: CellRef, cells: Array<{ x: number; y: number; walkable?: boolean }>, mapW: number): CellRef {
-  const dx = Math.sign(to.x - from.x);
-  const dy = Math.sign(to.y - from.y);
-  if (dx !== 0 && isWalkable(cells, from.x + dx, from.y, mapW)) return { x: from.x + dx, y: from.y };
-  if (dy !== 0 && isWalkable(cells, from.x, from.y + dy, mapW)) return { x: from.x, y: from.y + dy };
-  if (dx !== 0 && dy !== 0 && isWalkable(cells, from.x + dx, from.y + dy, mapW)) return { x: from.x + dx, y: from.y + dy };
-  return from;
-}
-
-function stepAway(from: CellRef, threat: CellRef, cells: Array<{ x: number; y: number; walkable?: boolean }>, mapW: number): CellRef {
-  const dx = Math.sign(from.x - threat.x);
-  const dy = Math.sign(from.y - threat.y);
-  if (dx !== 0 && isWalkable(cells, from.x + dx, from.y, mapW)) return { x: from.x + dx, y: from.y };
-  if (dy !== 0 && isWalkable(cells, from.x, from.y + dy, mapW)) return { x: from.x, y: from.y + dy };
-  return from;
-}
-
-function findCoverCells(cells: Array<{ x: number; y: number; walkable?: boolean; cover?: number }>): CellRef[] {
-  return cells
-    .filter((c) => c.walkable !== false && Number(c.cover ?? 0) > 0.3)
-    .map((c) => ({ x: c.x, y: c.y }));
-}
-
 function findExitCells(loc: SimLocation): CellRef[] {
   const exits = (loc as any)?.entity?.map?.exits;
   if (!Array.isArray(exits)) return [];
   return exits
     .map((e: any) => ({ x: Number(e?.x), y: Number(e?.y) }))
     .filter((p: CellRef) => Number.isFinite(p.x) && Number.isFinite(p.y));
-}
-
-/**
- * Pick best high-level move goal using deterministic local heuristics.
- * No RNG: same world state -> same chosen goal/target.
- */
-function pickMoveGoal(world: SimWorld, actorId: string): { goal: MoveGoal; targetPos?: CellRef; score: number } | null {
-  const actor = world.characters[actorId];
-  if (!actor) return null;
-  const loc = world.locations[(actor as any).locId];
-  if (!loc) return null;
-
-  const cells = getMapCells(loc);
-  if (!cells.length) return null;
-
-  const pos = charXY(world, actorId);
-  if (!pos) return null;
-
-  const facts: any = world.facts || {};
-  const danger = clamp01(Number(facts[`ctx:danger:${actorId}`] ?? 0));
-  const stress = clamp01(Number((actor as any).stress ?? 0));
-
-  const allies: CellRef[] = [];
-  const threats: CellRef[] = [];
-
-  for (const other of Object.values(world.characters)) {
-    if (other.id === actorId || (other as any).locId !== (actor as any).locId) continue;
-    const otherPos = charXY(world, other.id);
-    if (!otherPos) continue;
-
-    const trust = clamp01(Number(facts[`rel:trust:${actorId}:${other.id}`] ?? facts?.relations?.[actorId]?.[other.id]?.trust ?? 0.5));
-    const threat = clamp01(Number(facts[`rel:threat:${actorId}:${other.id}`] ?? facts?.relations?.[actorId]?.[other.id]?.threat ?? 0.3));
-
-    if (trust > 0.6) allies.push(otherPos);
-    if (threat > 0.5) threats.push(otherPos);
-  }
-
-  const candidates: Array<{ goal: MoveGoal; targetPos?: CellRef; score: number }> = [];
-
-  if (threats.length && danger > 0.3) {
-    const nearThreat = nearest(pos, threats);
-    if (nearThreat && manhattan(pos, nearThreat) < 5) {
-      candidates.push({ goal: 'away_threat', targetPos: nearThreat, score: 0.3 + danger * 0.5 });
-    }
-  }
-
-  if (danger > 0.4) {
-    const cover = nearest(pos, findCoverCells(cells));
-    if (cover && manhattan(pos, cover) > 0) {
-      candidates.push({ goal: 'toward_cover', targetPos: cover, score: 0.2 + danger * 0.4 });
-    }
-  }
-
-  if (danger > 0.6 || stress > 0.7) {
-    const exit = nearest(pos, findExitCells(loc));
-    if (exit) {
-      candidates.push({ goal: 'toward_exit', targetPos: exit, score: 0.15 + danger * 0.5 + stress * 0.3 });
-    }
-  }
-
-  if (allies.length) {
-    const farAllies = allies.filter((a) => manhattan(pos, a) > 3);
-    if (farAllies.length) {
-      candidates.push({ goal: 'toward_ally', targetPos: farAllies[0], score: 0.15 });
-    }
-  }
-
-  candidates.push({ goal: 'wander', score: 0.05 });
-  candidates.sort((a, b) => b.score - a.score);
-  return candidates[0] ?? null;
 }
 
 export const MoveCellSpec: ActionSpec = {
@@ -174,15 +81,89 @@ export const MoveCellSpec: ActionSpec = {
     const cells = getMapCells(loc);
     if (!cells.length) return [];
 
-    const picked = pickMoveGoal(world, actorId);
-    if (!picked || picked.score < 0.03) return [];
+    const pos = charXY(world, actorId);
+    if (!pos) return [];
 
-    return [{
+    const facts: any = world.facts || {};
+    const { w: mapW } = getMapSize(loc);
+
+    // Build tactical context from local relations.
+    const allies: CellRef[] = [];
+    const threats: CellRef[] = [];
+    for (const other of Object.values(world.characters)) {
+      if (other.id === actorId || (other as any).locId !== (actor as any).locId) continue;
+      const otherPos = charXY(world, other.id);
+      if (!otherPos) continue;
+      const trust = clamp01(Number(facts?.relations?.[actorId]?.[other.id]?.trust ?? 0.5));
+      const threat = clamp01(Number(facts?.relations?.[actorId]?.[other.id]?.threat ?? 0.3));
+      if (trust > 0.6) allies.push(otherPos);
+      if (threat > 0.5) threats.push(otherPos);
+    }
+
+    const exitCells = findExitCells(loc);
+    const danger = clamp01(Number(facts[`ctx:danger:${actorId}`] ?? 0));
+
+    const dirs = [
+      { dx: 1, dy: 0 }, { dx: -1, dy: 0 },
+      { dx: 0, dy: 1 }, { dx: 0, dy: -1 },
+      { dx: 1, dy: 1 }, { dx: -1, dy: -1 },
+      { dx: 1, dy: -1 }, { dx: -1, dy: 1 },
+    ];
+
+    const offers: ActionOffer[] = [];
+    for (const d of dirs) {
+      const nx = pos.x + d.dx;
+      const ny = pos.y + d.dy;
+      if (!isWalkable(cells, nx, ny, mapW)) continue;
+
+      const target: CellRef = { x: nx, y: ny };
+      const cell = cells.find((c) => c.x === nx && c.y === ny);
+      const cellCover = clamp01(Number(cell?.cover ?? 0));
+      const deltaGoals: Record<string, number> = {};
+
+      const nearestThreatDist = threats.length ? Math.min(...threats.map((t) => manhattan(target, t))) : 99;
+      const curThreatDist = threats.length ? Math.min(...threats.map((t) => manhattan(pos, t))) : 99;
+      deltaGoals.safety = (cellCover - 0.3) * 0.2 + (nearestThreatDist > curThreatDist ? 0.1 : -0.05);
+
+      const nearestAllyDist = allies.length ? Math.min(...allies.map((a) => manhattan(target, a))) : 99;
+      const curAllyDist = allies.length ? Math.min(...allies.map((a) => manhattan(pos, a))) : 99;
+      deltaGoals.affiliation = nearestAllyDist < curAllyDist ? 0.1 : -0.03;
+
+      deltaGoals.control = cellCover * 0.1 + clamp01(Number((cell as any)?.elevation ?? 0) / 5) * 0.08;
+      deltaGoals.exploration = 0.03;
+
+      const tags = Array.isArray((cell as any)?.tags) ? (cell as any).tags : [];
+      const isRest = tags.includes('rest') || tags.includes('medical');
+      if (isRest) deltaGoals.rest = 0.15;
+
+      if (danger > 0.5 && exitCells.length) {
+        const nearestExit = nearest(target, exitCells);
+        const curExit = nearest(pos, exitCells);
+        if (nearestExit && curExit) {
+          const exitImprovement = manhattan(pos, curExit) - manhattan(target, nearestExit);
+          if (exitImprovement > 0) deltaGoals.safety = (deltaGoals.safety || 0) + exitImprovement * 0.05;
+        }
+      }
+
+      const topGoal = Object.entries(deltaGoals).sort((a, b) => b[1] - a[1])[0]?.[0] || 'wander';
+      const score = Math.max(0.02, Object.values(deltaGoals).reduce((sum, v) => sum + Math.max(0, v), 0));
+
+      offers.push({
+        kind: 'move_cell',
+        actorId,
+        score,
+        meta: { moveGoal: topGoal as MoveGoal, targetPos: target, deltaGoals, cellCover },
+      });
+    }
+
+    offers.push({
       kind: 'move_cell',
       actorId,
-      score: picked.score,
-      meta: { moveGoal: picked.goal, targetPos: picked.targetPos },
-    }];
+      score: 0.01,
+      meta: { moveGoal: 'wander' as MoveGoal, targetPos: pos, deltaGoals: {}, cellCover: 0, isStay: true },
+    });
+
+    return offers;
   },
   validateV1: ({ offer }: ValidateCtx) => offer,
   validateV2: ({ offer }: ValidateCtx) => offer,
@@ -197,39 +178,19 @@ export const MoveCellSpec: ActionSpec = {
     const loc = world.locations[(actor as any).locId];
     if (!loc) return { world, events, notes: ['move_cell: no loc'] };
 
-    const cells = getMapCells(loc);
-    const { w: mapW } = getMapSize(loc);
     const pos = charXY(world, action.actorId);
     if (!pos) return { world, events, notes: ['move_cell: no pos'] };
 
     const goal: MoveGoal = (action.meta as any)?.moveGoal ?? 'wander';
     const targetPos: CellRef | undefined = (action.meta as any)?.targetPos;
-
-    let next = pos;
-
-    if (goal === 'away_threat' && targetPos) {
-      next = stepAway(pos, targetPos, cells, mapW);
-    } else if (targetPos) {
-      next = stepToward(pos, targetPos, cells, mapW);
-    } else {
-      const dirs = [
-        { dx: 1, dy: 0 },
-        { dx: -1, dy: 0 },
-        { dx: 0, dy: 1 },
-        { dx: 0, dy: -1 },
-      ];
-      const walkable = dirs.filter((d) => isWalkable(cells, pos.x + d.dx, pos.y + d.dy, mapW));
-      if (walkable.length) {
-        // Deterministic pseudo-choice (no RNG): depends only on tick index.
-        const pick = walkable[world.tickIndex % walkable.length];
-        next = { x: pos.x + pick.dx, y: pos.y + pick.dy };
-      }
-    }
-
-    if (next.x === pos.x && next.y === pos.y) {
-      notes.push(`${actor.id} can't move (stuck)`);
+    const isStay = (action.meta as any)?.isStay === true;
+    if (isStay || !targetPos || (targetPos.x === pos.x && targetPos.y === pos.y)) {
+      notes.push(`${actor.id} holds position`);
       return { world, events, notes };
     }
+
+    // Target cell is selected during enumerate and later scored by GoalLab.
+    const next = targetPos;
 
     (actor as any).pos = { ...(actor as any).pos, nodeId: null, x: next.x, y: next.y };
     (actor as any).energy = clamp01(Number((actor as any).energy ?? 0.5) - 0.005);

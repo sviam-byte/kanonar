@@ -138,6 +138,147 @@ export function buildGenericSocialSpec(kind: string): ActionSpec {
         facts[`ctx:lastActionTarget:${action.actorId}`] = targetId;
       }
 
+      // Action-specific world effects for richer downstream context.
+      if (kind === 'guard') {
+        if (targetId) {
+          facts[`ctx:guardedBy:${targetId}`] = action.actorId;
+          facts[`ctx:guardedBy:${targetId}:tick`] = world.tickIndex;
+          const dangerKey = `ctx:danger:${targetId}`;
+          const curDanger = clamp01(Number(facts[dangerKey] ?? 0));
+          facts[dangerKey] = clamp01(curDanger - 0.15);
+          notes.push(`guard: ${action.actorId} protects ${targetId} (danger -0.15)`);
+        }
+      }
+
+      if (kind === 'hide') {
+        facts[`ctx:hidden:${action.actorId}`] = true;
+        facts[`ctx:hidden:${action.actorId}:tick`] = world.tickIndex;
+        notes.push(`hide: ${action.actorId} becomes hidden`);
+      } else if (facts[`ctx:hidden:${action.actorId}`]) {
+        // Any non-hide action removes hidden flag.
+        delete facts[`ctx:hidden:${action.actorId}`];
+        delete facts[`ctx:hidden:${action.actorId}:tick`];
+      }
+
+      if (kind === 'investigate' || kind === 'observe_area') {
+        bumpFact(facts, `obs:infoAdequacy:${action.actorId}`, 0.12);
+        if (targetId && target) {
+          facts[`obs:revealed:stress:${action.actorId}:${targetId}`] = clamp01(Number(target.stress ?? 0));
+          facts[`obs:revealed:health:${action.actorId}:${targetId}`] = clamp01(Number(target.health ?? 1));
+          notes.push(`investigate: ${action.actorId} learns ${targetId} stress=${target.stress.toFixed(2)}`);
+        } else {
+          const uncKey = `ctx:uncertainty:${action.actorId}`;
+          const curUnc = clamp01(Number(facts[uncKey] ?? 0.5));
+          facts[uncKey] = clamp01(curUnc - 0.10);
+          notes.push(`observe: ${action.actorId} reduces uncertainty -0.10`);
+        }
+      }
+
+      if (kind === 'treat' && target && targetId) {
+        const healAmount = 0.10;
+        target.health = clamp01(target.health + healAmount);
+        target.stress = clamp01(target.stress - 0.04);
+        notes.push(`treat: ${action.actorId} heals ${targetId} +${healAmount.toFixed(2)} hp`);
+      }
+
+      if (kind === 'command' && target && targetId) {
+        facts[`ctx:commandedBy:${targetId}`] = action.actorId;
+        facts[`ctx:commandedBy:${targetId}:tick`] = world.tickIndex;
+        const actorAuth = clamp01(Number(facts[`role:clearance:${action.actorId}`] ?? 0.5));
+        const targetAuth = clamp01(Number(facts[`role:clearance:${targetId}`] ?? 0.5));
+        if (actorAuth > targetAuth) {
+          target.stress = clamp01(target.stress - 0.02);
+          notes.push(`command: ${action.actorId} commands ${targetId} (authority ${actorAuth.toFixed(2)} > ${targetAuth.toFixed(2)})`);
+        } else {
+          target.stress = clamp01(target.stress + 0.03);
+          notes.push(`command: ${action.actorId} commands ${targetId} (resisted — auth ${actorAuth.toFixed(2)} ≤ ${targetAuth.toFixed(2)})`);
+        }
+      }
+
+      if (kind === 'share_resource') {
+        bumpFact(facts, `ctx:resourceAccess:${action.actorId}`, -0.06);
+        if (targetId) {
+          bumpFact(facts, `ctx:resourceAccess:${targetId}`, +0.06);
+          bumpFact(facts, `ctx:scarcity:${targetId}`, -0.04);
+        }
+        notes.push(`share: ${action.actorId} transfers resources${targetId ? ` to ${targetId}` : ''}`);
+      }
+
+      if (kind === 'encourage' && target && targetId) {
+        target.stress = clamp01(target.stress - 0.06);
+        target.energy = clamp01(target.energy + 0.03);
+        notes.push(`encourage: ${action.actorId} motivates ${targetId} (stress −0.06, energy +0.03)`);
+      }
+
+      if (kind === 'suppress' && targetId) {
+        facts[`ctx:suppressed:${targetId}`] = action.actorId;
+        facts[`ctx:suppressed:${targetId}:tick`] = world.tickIndex;
+        if (target) target.stress = clamp01(target.stress + 0.08);
+        notes.push(`suppress: ${action.actorId} pins ${targetId}`);
+      }
+
+      if (kind === 'retreat') {
+        facts[`ctx:retreating:${action.actorId}`] = true;
+        facts[`ctx:retreating:${action.actorId}:tick`] = world.tickIndex;
+        notes.push(`retreat: ${action.actorId} falling back`);
+      }
+
+      if (kind === 'rally') {
+        const locId = actor.locId;
+        for (const c of Object.values(world.characters || {})) {
+          if (c.id === action.actorId || (c as any).locId !== locId) continue;
+          const curTrust = clamp01(Number((world.facts as any)?.relations?.[c.id]?.[action.actorId]?.trust ?? 0.5));
+          if (curTrust > 0.5) {
+            c.stress = clamp01(c.stress - 0.03);
+            bumpRelation(world.facts as any, c.id, action.actorId, 'trust', 0.02);
+          }
+        }
+        notes.push(`rally: ${action.actorId} rallies allies`);
+      }
+
+      if (kind === 'warn' && targetId && target) {
+        const dangerKey = `ctx:danger:${targetId}`;
+        const actorDanger = clamp01(Number(facts[`ctx:danger:${action.actorId}`] ?? 0));
+        const curTargetDanger = clamp01(Number(facts[dangerKey] ?? 0));
+        facts[dangerKey] = clamp01(Math.max(curTargetDanger, actorDanger * 0.7));
+        notes.push(`warn: ${action.actorId} warns ${targetId} (danger → ${facts[dangerKey].toFixed(2)})`);
+      }
+
+      if (kind === 'confide' && targetId) {
+        bumpRelation(world.facts as any, action.actorId, targetId, 'closeness', 0.08);
+        bumpRelation(world.facts as any, targetId, action.actorId, 'closeness', 0.06);
+        bumpRelation(world.facts as any, action.actorId, targetId, 'familiarity', 0.05);
+        bumpRelation(world.facts as any, targetId, action.actorId, 'familiarity', 0.05);
+        notes.push(`confide: ${action.actorId} opens up to ${targetId}`);
+      }
+
+      if (kind === 'cover_fire' && targetId) {
+        facts[`ctx:coveredBy:${targetId}`] = action.actorId;
+        facts[`ctx:coveredBy:${targetId}:tick`] = world.tickIndex;
+        const dangerKey = `ctx:danger:${targetId}`;
+        facts[dangerKey] = clamp01(Number(facts[dangerKey] ?? 0) - 0.10);
+        notes.push(`cover_fire: ${action.actorId} covers ${targetId}`);
+      }
+
+      if (kind === 'patrol') {
+        bumpFact(facts, `obs:infoAdequacy:${action.actorId}`, 0.08);
+        const uncKey = `ctx:uncertainty:${action.actorId}`;
+        facts[uncKey] = clamp01(Number(facts[uncKey] ?? 0.5) - 0.06);
+        notes.push(`patrol: ${action.actorId} patrols area`);
+      }
+
+      if (kind === 'plead' && targetId) {
+        bumpRelation(world.facts as any, targetId, action.actorId, 'closeness', 0.03);
+        notes.push(`plead: ${action.actorId} pleads with ${targetId}`);
+      }
+
+      if (kind === 'challenge' && targetId && target) {
+        target.stress = clamp01(target.stress + 0.04);
+        bumpRelation(world.facts as any, targetId, action.actorId, 'threat', 0.05);
+        bumpRelation(world.facts as any, action.actorId, targetId, 'threat', 0.03);
+        notes.push(`challenge: ${action.actorId} challenges ${targetId}`);
+      }
+
       return { world, events, notes };
     },
   };

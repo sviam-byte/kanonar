@@ -85,6 +85,24 @@ const BASE_EFFECTS: Record<string, Partial<Record<FeatureKeyLite, number>>> = {
   // ── Missing from possibilities but in GOAL_DEFS/bridge ──
   deceive: { socialTrust: -0.10, emotionValence: -0.03, stress: +0.03, visibility: -0.04 },
   recruit: { socialTrust: +0.06, emotionValence: +0.03, visibility: +0.04 },
+
+  // ── Tactical actions ──
+  retreat: { threat: -0.10, escape: +0.12, stress: -0.04, fatigue: +0.04, socialTrust: -0.02 },
+  rally: { socialTrust: +0.06, emotionValence: +0.04, stress: -0.03, visibility: +0.06 },
+  suppress: { threat: +0.02, stress: +0.04, fatigue: +0.05, visibility: +0.08, socialTrust: -0.04 },
+  patrol: { threat: -0.03, stress: +0.01, fatigue: +0.03, visibility: -0.02 },
+  cover_fire: { threat: -0.02, stress: +0.03, fatigue: +0.04, socialTrust: +0.04 },
+  take_cover: { threat: -0.06, cover: +0.08, stress: -0.02, visibility: -0.06, fatigue: +0.01 },
+  hold_position: { threat: -0.02, stress: +0.01, cover: +0.03 },
+
+  // ── Social-emotional actions ──
+  confide: { socialTrust: +0.08, emotionValence: +0.05, stress: -0.05, visibility: +0.04 },
+  encourage: { socialTrust: +0.05, emotionValence: +0.06, stress: -0.02 },
+  warn: { socialTrust: +0.04, threat: +0.03, stress: +0.02 },
+  plead: { socialTrust: +0.03, emotionValence: -0.02, stress: -0.03, visibility: +0.06 },
+  mourn: { emotionValence: -0.06, stress: +0.04, fatigue: +0.02 },
+  celebrate: { emotionValence: +0.08, socialTrust: +0.04, stress: -0.06 },
+  challenge: { socialTrust: -0.04, emotionValence: -0.02, stress: +0.03, visibility: +0.06 },
 };
 
 const PATTERN_MAP: Array<[RegExp, string]> = [

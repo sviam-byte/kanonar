@@ -131,3 +131,82 @@ export function canHear(world: SimWorld, speakerId: string, listenerId: string, 
   const priv = privacyOf(world, speaker.locId, speaker.pos?.nodeId ?? null);
   return priv >= cfg.whisperMinPrivacy;
 }
+
+/**
+ * Returns cell cover value [0..1] for the current character grid position.
+ * If map/cells are unavailable, defaults to 0 (open tile).
+ */
+export function getCellCover(world: SimWorld, charId: string): number {
+  const c = getChar(world, charId);
+  const loc = getLoc(world, c.locId);
+  const pos = getCharXY(world, charId);
+  const cells: any[] = (loc as any)?.entity?.map?.cells;
+  if (!Array.isArray(cells)) return 0;
+  const cell = cells.find((cl: any) => cl.x === Math.round(pos.x) && cl.y === Math.round(pos.y));
+  return clamp01(Number(cell?.cover ?? 0));
+}
+
+/**
+ * Grid LoS using Bresenham trace between character cells.
+ * Non-walkable cells are treated as opaque blockers.
+ */
+export function hasLineOfSight(world: SimWorld, aId: string, bId: string): boolean {
+  const a = getChar(world, aId);
+  const b = getChar(world, bId);
+  if (!a || !b) return false;
+  if (a.locId !== b.locId) return false;
+
+  const loc = getLoc(world, a.locId);
+  const cells: any[] = (loc as any)?.entity?.map?.cells;
+  if (!Array.isArray(cells) || !cells.length) return true;
+
+  const pa = getCharXY(world, aId);
+  const pb = getCharXY(world, bId);
+  const ax = Math.round(pa.x);
+  const ay = Math.round(pa.y);
+  const bx = Math.round(pb.x);
+  const by = Math.round(pb.y);
+
+  let x = ax;
+  let y = ay;
+  const dx = Math.abs(bx - ax);
+  const dy = Math.abs(by - ay);
+  const sx = ax < bx ? 1 : -1;
+  const sy = ay < by ? 1 : -1;
+  let err = dx - dy;
+
+  const blocked = new Set<string>();
+  for (const cCell of cells) {
+    if (cCell.walkable === false) blocked.add(`${cCell.x},${cCell.y}`);
+  }
+
+  while (true) {
+    if (!(x === ax && y === ay) && !(x === bx && y === by) && blocked.has(`${x},${y}`)) return false;
+    if (x === bx && y === by) break;
+    const e2 = 2 * err;
+    if (e2 > -dy) {
+      err -= dy;
+      x += sx;
+    }
+    if (e2 < dx) {
+      err += dx;
+      y += sy;
+    }
+  }
+
+  return true;
+}
+
+/**
+ * Returns elevation value for the current character grid position.
+ * If map/cells are unavailable, defaults to 0.
+ */
+export function getCellElevation(world: SimWorld, charId: string): number {
+  const c = getChar(world, charId);
+  const loc = getLoc(world, c.locId);
+  const pos = getCharXY(world, charId);
+  const cells: any[] = (loc as any)?.entity?.map?.cells;
+  if (!Array.isArray(cells)) return 0;
+  const cell = cells.find((cl: any) => cl.x === Math.round(pos.x) && cl.y === Math.round(pos.y));
+  return Number(cell?.elevation ?? 0);
+}

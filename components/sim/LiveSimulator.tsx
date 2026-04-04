@@ -36,6 +36,20 @@ const ACTION_RU: Record<string, string> = {
   investigate: 'расследует', share_resource: 'делится',
   accuse: 'обвиняет', praise: 'хвалит', apologize: 'извиняется',
   submit: 'подчиняется', deceive: 'обманывает', self_talk: 'размышляет',
+  // tactical
+  retreat: 'отступает', rally: 'собирает группу', suppress: 'подавляет',
+  patrol: 'патрулирует', cover_fire: 'прикрывает', take_cover: 'укрывается',
+  hold_position: 'удерживает позицию',
+  // social-emotional
+  confide: 'доверяется', encourage: 'подбадривает', warn: 'предупреждает',
+  plead: 'умоляет', challenge: 'бросает вызов',
+  mourn: 'скорбит', celebrate: 'празднует',
+  // existing but unlabeled
+  escort: 'сопровождает', signal: 'подаёт сигнал', call_backup: 'зовёт подкрепление',
+  loot: 'мародёрствует', betray: 'предаёт', recruit: 'вербует',
+  cooperate: 'сотрудничает с', protect: 'защищает',
+  propose_trade: 'предлагает сделку', verify: 'проверяет',
+  observe_target: 'наблюдает за', monologue: 'рассуждает вслух',
 };
 
 function nameMap(world: SimWorld): Record<string, string> {

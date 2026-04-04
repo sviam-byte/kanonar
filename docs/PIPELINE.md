@@ -20,6 +20,7 @@
 
 Outputs:
 - `world:*`, `obs:*`, `mem:*`, `rel:*`, `life:*`
+- адаптер SimKit может добавлять `memory:episodic` belief-atoms (derived from recent salient events) в `agent.memory.beliefAtoms` до S0.
 - `artifacts.placementValidation` — итог проверки размещения персонажей до запуска S0…S8.
 - `artifacts.placementComplete` — краткий флаг `placementValidation.isComplete`.
 
@@ -206,6 +207,10 @@ Compatibility note:
 
 Inputs:
 - `util:*`, action priors, access, possibilities
+- temperature policy:
+  - prefer per-agent `feat:char:<selfId>:trait.decisionTemperature` when present (scaled to decision temperature),
+  - fallback to world/agent legacy temperature fields for backward compatibility.
+- `sceneControl` is always forwarded from SimKit adapter so deliberative/degraded modes can consistently toggle S9 predict behavior.
 
 Outputs:
 - `action:*`

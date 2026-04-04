@@ -6,6 +6,7 @@ import { EntityType, type WorldState } from '../../../types';
 import { makeAgentRNG, setGlobalRunSeed } from '../../core/noise';
 import { clamp01 } from '../../util/math';
 import { arr } from '../../utils/arr';
+import { buildEpisodicAtomsForAgent } from '../post/perceiveActions';
 
 type BuildWorldStateFromSimOpts = {
   offersByAgent?: Record<string, ActionOffer[]>;
@@ -81,6 +82,129 @@ function inferPolarity(kind: string): number {
   if (/help|comfort|praise|promise|save|heal/.test(k)) return 1;
   if (/attack|threat|hazard|blocked|betray|accuse/.test(k)) return -1;
   return 0;
+}
+
+/**
+ * Derive life-goal priors when explicit lifeGoals are absent.
+ * Keeps adapter backward-compatible for older character payloads.
+ */
+function deriveLifeGoals(entity: any): Record<string, number> {
+  const explicit = entity?.lifeGoals;
+  if (explicit && typeof explicit === 'object' && Object.keys(explicit).length > 0) return explicit;
+
+  const vb = entity?.vector_base ?? {};
+  const n = (key: string, fb = 0.5) => {
+    const v = Number(vb[key]);
+    return Number.isFinite(v) ? clamp01(v) : fb;
+  };
+
+  return {
+    protect_lives: clamp01(0.3 * n('A_Safety_Care') + 0.3 * (1 - n('A_Power_Sovereignty')) + 0.2 * n('C_dominance_empathy') + 0.2 * n('C_coalition_loyalty')),
+    maintain_order: clamp01(0.35 * n('A_Legitimacy_Procedure') + 0.3 * n('A_Tradition_Continuity') + 0.2 * (1 - n('A_Liberty_Autonomy')) + 0.15 * n('B_cooldown_discipline')),
+    seek_status: clamp01(0.4 * n('A_Power_Sovereignty') + 0.3 * n('C_reputation_sensitivity') + 0.15 * n('A_Justice_Fairness') + 0.15 * (1 - n('C_dominance_empathy'))),
+    preserve_autonomy: clamp01(0.45 * n('A_Liberty_Autonomy') + 0.25 * (1 - n('A_Legitimacy_Procedure')) + 0.15 * n('B_tolerance_ambiguity') + 0.15 * n('B_exploration_rate')),
+    pursue_truth: clamp01(0.45 * n('A_Knowledge_Truth') + 0.3 * n('B_tolerance_ambiguity') + 0.25 * n('B_exploration_rate')),
+    maintain_bonds: clamp01(0.35 * n('A_Safety_Care') + 0.3 * (1 - n('A_Power_Sovereignty')) + 0.2 * n('C_coalition_loyalty') + 0.15 * n('C_reciprocity_index')),
+    accumulate_resources: clamp01(0.3 * (1 - n('A_Liberty_Autonomy')) + 0.25 * n('B_discount_rate') + 0.25 * n('A_Power_Sovereignty') + 0.2 * n('D_stamina_reserve')),
+  };
+}
+
+type SigmoidCurve = { type: 'sigmoid'; center: number; slope: number };
+
+/** Personality-dependent activation curves for driver physics. */
+function deriveDriverCurves(entity: any): Record<string, SigmoidCurve> | null {
+  const vb = entity?.vector_base;
+  if (!vb || typeof vb !== 'object') return null;
+
+  const n = (key: string, fb = 0.5) => {
+    const v = Number(vb[key]);
+    return Number.isFinite(v) ? clamp01(v) : fb;
+  };
+
+  const safetyCenterShift = 0.15 * n('D_pain_tolerance') - 0.15 * n('D_HPA_reactivity') + 0.1 * n('B_tolerance_ambiguity');
+  const safetySlope = 4 + 2 * n('D_HPA_reactivity');
+
+  const controlCenterShift = -0.12 * n('A_Power_Sovereignty') + 0.1 * n('A_Liberty_Autonomy');
+  const controlSlope = 4 + 1.5 * (1 - n('B_tolerance_ambiguity'));
+
+  const affCenterShift = 0.15 * (1 - n('C_coalition_loyalty')) - 0.1 * n('A_Safety_Care');
+  const affSlope = 3.5;
+
+  const statusCenterShift = -0.15 * n('A_Power_Sovereignty') - 0.1 * n('C_reputation_sensitivity') + 0.1;
+  const statusSlope = 3.5 + 2 * n('C_reputation_sensitivity');
+
+  const resolveCenterShift = -0.12 * n('D_HPA_reactivity') - 0.08 * n('A_Power_Sovereignty');
+  const resolveSlope = 4.5 + 2 * n('D_HPA_reactivity');
+
+  const restCenterShift = 0.15 * n('D_stamina_reserve') + 0.1 * n('D_pain_tolerance') - 0.1;
+  const restSlope = 3.5;
+
+  const curiosityCenterShift = -0.15 * n('A_Knowledge_Truth') - 0.1 * n('B_exploration_rate') + 0.1;
+  const curiositySlope = 3.5;
+
+  return {
+    safetyNeed: { type: 'sigmoid', center: clamp01(0.45 + safetyCenterShift), slope: safetySlope },
+    controlNeed: { type: 'sigmoid', center: clamp01(0.45 + controlCenterShift), slope: controlSlope },
+    affiliationNeed: { type: 'sigmoid', center: clamp01(0.5 + affCenterShift), slope: affSlope },
+    statusNeed: { type: 'sigmoid', center: clamp01(0.5 + statusCenterShift), slope: statusSlope },
+    resolveNeed: { type: 'sigmoid', center: clamp01(0.45 + resolveCenterShift), slope: resolveSlope },
+    restNeed: { type: 'sigmoid', center: clamp01(0.5 + restCenterShift), slope: restSlope },
+    curiosityNeed: { type: 'sigmoid', center: clamp01(0.5 + curiosityCenterShift), slope: curiositySlope },
+  };
+}
+
+/** Personality-dependent inhibition matrix overrides for driver interactions. */
+function deriveInhibitionOverrides(entity: any): Record<string, Record<string, number>> | null {
+  const vb = entity?.vector_base;
+  if (!vb || typeof vb !== 'object') return null;
+
+  const n = (key: string, fb = 0.5) => {
+    const v = Number(vb[key]);
+    return Number.isFinite(v) ? clamp01(v) : fb;
+  };
+
+  const out: Record<string, Record<string, number>> = {};
+
+  const curiosityResilience = 0.35 * (1 - 0.7 * n('A_Knowledge_Truth') * n('D_pain_tolerance'));
+  if (Math.abs(curiosityResilience - 0.35) > 0.03) {
+    out.safetyNeed = { ...(out.safetyNeed || {}), curiosityNeed: curiosityResilience };
+  }
+
+  const care = 0.6 * n('A_Safety_Care') + 0.4 * (1 - n('A_Power_Sovereignty'));
+  if (care > 0.6) {
+    out.resolveNeed = { ...(out.resolveNeed || {}), affiliationNeed: 0.3 * (1 - care * 0.5) };
+  }
+
+  if (n('A_Power_Sovereignty') > 0.6) {
+    out.safetyNeed = { ...(out.safetyNeed || {}), statusNeed: 0.2 * (1 - n('A_Power_Sovereignty') * 0.4) };
+  }
+
+  return Object.keys(out).length > 0 ? out : null;
+}
+
+/** Personality-dependent driver accumulation inertia (alpha) overrides. */
+function deriveDriverInertia(entity: any): Record<string, number> | null {
+  const vb = entity?.vector_base;
+  if (!vb || typeof vb !== 'object') return null;
+
+  const n = (key: string, fb = 0.5) => {
+    const v = Number(vb[key]);
+    return Number.isFinite(v) ? clamp01(v) : fb;
+  };
+
+  const discipline = n('B_cooldown_discipline');
+  const tradition = n('A_Tradition_Continuity');
+  const baseAlpha = clamp01(0.3 + 0.25 * discipline + 0.15 * tradition);
+
+  return {
+    safetyNeed: clamp01(baseAlpha - 0.08 * n('D_HPA_reactivity')),
+    controlNeed: baseAlpha,
+    statusNeed: clamp01(baseAlpha + 0.05 * n('C_reputation_sensitivity')),
+    affiliationNeed: clamp01(baseAlpha + 0.05 * (1 - n('A_Power_Sovereignty'))),
+    resolveNeed: clamp01(baseAlpha - 0.1 * n('D_HPA_reactivity')),
+    restNeed: clamp01(baseAlpha - 0.05),
+    curiosityNeed: clamp01(baseAlpha - 0.05 * n('B_exploration_rate')),
+  };
 }
 
 function toWitnessIds(world: SimWorld, payload: any): string[] {
@@ -220,6 +344,9 @@ export function buildWorldStateFromSim(world: SimWorld, snapshot: SimSnapshot, o
     const entityId = String(c?.id);
     const locId = String(c?.locId ?? 'loc:unknown');
     const beliefAtoms = arr<any>((world as any)?.facts?.[`mem:beliefAtoms:${entityId}`]);
+    // Episodic memory atoms are generated from prior salient events around co-present agents.
+    const episodicAtoms = buildEpisodicAtomsForAgent(world, entityId);
+    const allBeliefAtoms = [...beliefAtoms, ...episodicAtoms];
     return {
       entityId,
       type: EntityType.Character,
@@ -227,7 +354,7 @@ export function buildWorldStateFromSim(world: SimWorld, snapshot: SimSnapshot, o
       locationId: locId,
       // pipeline reads agent.memory.beliefAtoms
       // persisted by perceptionMemoryPlugin into world.facts[mem:beliefAtoms:<id>]
-      memory: { beliefAtoms },
+      memory: { beliefAtoms: allBeliefAtoms },
       // keep room for extensions
       params: {
         stress: clamp01(Number(c?.stress ?? 0)),
@@ -250,11 +377,11 @@ export function buildWorldStateFromSim(world: SimWorld, snapshot: SimSnapshot, o
       vector_base: (c as any)?.entity?.vector_base ?? {},
       identity: (c as any)?.entity?.identity ?? {},
       context: (c as any)?.entity?.context ?? {},
-      lifeGoals: (c as any)?.entity?.lifeGoals ?? {},
+      lifeGoals: deriveLifeGoals((c as any)?.entity),
       goalTuning: (c as any)?.entity?.goalTuning ?? null,
-      driverCurves: (c as any)?.entity?.driverCurves ?? null,
-      inhibitionOverrides: (c as any)?.entity?.inhibitionOverrides ?? null,
-      driverInertia: (c as any)?.entity?.driverInertia ?? null,
+      driverCurves: (c as any)?.entity?.driverCurves ?? deriveDriverCurves((c as any)?.entity),
+      inhibitionOverrides: (c as any)?.entity?.inhibitionOverrides ?? deriveInhibitionOverrides((c as any)?.entity),
+      driverInertia: (c as any)?.entity?.driverInertia ?? deriveDriverInertia((c as any)?.entity),
     } as any;
   });
 
