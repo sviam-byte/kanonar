@@ -155,6 +155,28 @@ export function buildActionCandidates(args: {
       goalEnergy
     );
 
+    // ── SimKit offer deltaGoals passthrough ──
+    // When a SimKit spec (e.g. moveCellSpec) computes per-offer deltaGoals
+    // from spatial/tactical analysis, those deltas ride along in
+    // possibility.meta.sim.deltaGoals. Blend them into the projection-based
+    // deltas so the GoalLab scorer sees the tactical signal.
+    const offerDeltas: Record<string, number> | undefined =
+      (p as any)?.meta?.sim?.deltaGoals;
+    if (offerDeltas && typeof offerDeltas === 'object') {
+      // Weight: offer deltas are additive on top of projection, with a
+      // mixing weight. Pure offer deltas are ~0.1-0.3 range, projection
+      // deltas are similar, so 0.6 offer / 0.4 projection keeps projection
+      // as tiebreaker while letting spatial detail dominate.
+      const OFFER_W = 0.6;
+      const PROJ_W = 1 - OFFER_W;
+      const allKeys = new Set([...Object.keys(deltaGoals), ...Object.keys(offerDeltas)]);
+      for (const g of allKeys) {
+        const proj = Number(deltaGoals[g] ?? 0);
+        const offer = Number(offerDeltas[g] ?? 0);
+        deltaGoals[g] = clamp11(PROJ_W * proj + OFFER_W * offer);
+      }
+    }
+
     // Target-specific ToM modulation:
     // keeps action kind identical but differentiates expected value by target.
     if (targetId && typeof targetId === 'string') {
