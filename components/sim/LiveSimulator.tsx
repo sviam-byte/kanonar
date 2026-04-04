@@ -71,6 +71,21 @@ function describeAction(a: SimAction, names: Record<string, string>, world?: Sim
   const mode = (a.meta as any)?.decisionMode;
   const prefix = mode === 'reactive' ? '⚡ ' : mode === 'degraded' ? '⚠ ' : '';
 
+  // ── Move cell: show position and goal ──
+  if (a.kind === 'move_cell') {
+    const pos = (a.meta as any)?.targetPos;
+    const goal = (a.meta as any)?.moveGoal || 'move';
+    const GOAL_RU: Record<string, string> = {
+      toward_ally: 'к союзнику', toward_exit: 'к выходу',
+      toward_cover: 'в укрытие', away_threat: 'от угрозы', wander: 'блуждает',
+    };
+    const goalLabel = GOAL_RU[goal] || goal;
+    if (pos) {
+      return `${prefix}${actor} двигается ${goalLabel} → (${pos.x},${pos.y})`;
+    }
+    return `${prefix}${actor} двигается ${goalLabel}`;
+  }
+
   // ── Intent actions: show what the intent is ABOUT, not raw kind ──
   if (a.kind === 'start_intent') {
     const original = (a.payload as any)?.intent?.originalAction;
@@ -101,8 +116,18 @@ function describeAction(a: SimAction, names: Record<string, string>, world?: Sim
       execute: 'говорит с', detach: 'завершает',
     };
     const stageLabel = stageRu[stageKind] || stageKind;
+
+    // Show position during approach.
+    let posLabel = '';
+    if (stageKind === 'approach') {
+      const charPos = (world?.characters?.[a.actorId] as any)?.pos;
+      if (charPos && Number.isFinite(charPos.x)) {
+        posLabel = ` (${Math.round(charPos.x)},${Math.round(charPos.y)})`;
+      }
+    }
+
     const base = target
-      ? `${actor} ${stageLabel} ${target}`
+      ? `${actor} ${stageLabel} ${target}${posLabel}`
       : `${actor} продолжает: ${origVerb}`;
     if (suppressed) {
       return `${prefix}${base} (хотел ${ACTION_RU[suppressed] || suppressed})`;
@@ -142,9 +167,9 @@ function getTopReason(a: SimAction, world?: SimWorld): string {
   };
 
   const parts: string[] = [];
-  if (topGoal) {
+  if (topGoal && topGoal.domain) {
     const goalName = GOAL_RU[topGoal.domain] || topGoal.domain;
-    parts.push(`цель: ${goalName}`);
+    if (goalName !== 'undefined') parts.push(`цель: ${goalName}`);
   }
   if (topDriver) {
     const drvName = DRIVER_RU[topDriver[0]] || topDriver[0];
@@ -152,7 +177,7 @@ function getTopReason(a: SimAction, world?: SimWorld): string {
   }
 
   const ci = trace.communicativeIntent;
-  if (ci?.topic?.primary) {
+  if (ci?.topic?.primary && !String(ci.topic.primary).startsWith('schema_')) {
     parts.push(`тема: ${ci.topic.primary}`);
   }
 
@@ -384,10 +409,30 @@ export const LiveSimulator: React.FC = () => {
 
     const lines = actions.map((a: any) => describeAction(a, names, sim.world));
 
+    // ── Show position changes (intra-location movement) ──
+    const deltasChars = record.trace?.deltas?.chars || [];
+    for (const dc of deltasChars) {
+      const charName = names[dc.id] || dc.id;
+      const afterPos = (sim.world.characters[dc.id] as any)?.pos;
+      if (afterPos && Number.isFinite(afterPos.x) && Number.isFinite(afterPos.y)) {
+        const beforeFacts = record.trace?.deltas?.facts || {};
+        // Check if position actually changed by looking at move_cell events
+        const moveEvt = (record.trace?.eventsApplied || []).find(
+          (e: any) => e?.type === 'action:move_cell' && (e?.payload?.actorId === dc.id),
+        );
+        if (moveEvt) {
+          const p = (moveEvt as any).payload;
+          lines.push(`  🚶 ${charName} → (${p.x},${p.y}) [${p.goal || 'move'}]`);
+        }
+      }
+    }
+
     const allEvents = [
       ...((record as any).trace?.eventsApplied || []),
       ...(sim.world.events || []),
     ];
+
+    // ── Speech events with atom details ──
     const seenSpeech = new Set<string>();
     for (const ev of allEvents) {
       if (!ev || String(ev.type) !== 'speech:v1') continue;
@@ -411,7 +456,7 @@ export const LiveSimulator: React.FC = () => {
         plead: 'просит', warn: 'предупреждает', confide: 'доверяет',
       };
       const actLabel = ACT_RU[act] || act;
-      const topicLabel = topic && topic !== act ? ` [${topic}]` : '';
+      const topicLabel = topic && topic !== act && !topic.startsWith('schema_') ? ` [${topic}]` : '';
       const intentSuffix = intent === 'deceptive' ? ' ⚠️ ложь' : intent === 'selective' ? ' ◐ выборочно' : '';
 
       if (toName) {
@@ -419,8 +464,22 @@ export const LiveSimulator: React.FC = () => {
       } else {
         lines.push(`  💬 ${fromName} ${actLabel}${topicLabel}: "${text}"${intentSuffix}`);
       }
+
+      // Show transmitted atoms (what information was actually exchanged).
+      const atoms = Array.isArray(p.atoms) ? p.atoms : [];
+      const sigAtoms = atoms.filter((a: any) => a && (a.magnitude ?? 0) > 0.2).slice(0, 4);
+      if (sigAtoms.length) {
+        const atomStr = sigAtoms.map((a: any) => {
+          const id = String(a.id || '').replace(/^ctx:/, '').replace(/:[\w-]+$/, '');
+          const mag = Number(a.magnitude ?? 0).toFixed(2);
+          const trueM = a.meta?.trueMagnitude != null ? ` [реал:${Number(a.meta.trueMagnitude).toFixed(2)}]` : '';
+          return `${id}=${mag}${trueM}`;
+        }).join(', ');
+        lines.push(`     📦 атомы: ${atomStr}`);
+      }
     }
 
+    // ── Intent completions ──
     for (const ev of allEvents) {
       if (!ev) continue;
       const type = String((ev as any).type || '');
@@ -430,6 +489,53 @@ export const LiveSimulator: React.FC = () => {
       const scriptId = String(p.scriptId || '');
       if (scriptId) {
         lines.push(`  ✓ ${actorName} завершил: ${scriptId.replace(/^dialog:/, '')}`);
+      }
+    }
+
+    // ── Nonverbal observations ──
+    const nvKey = `obs:nonverbal:${record.trace.tickIndex}`;
+    const nvAtoms: any[] = Array.isArray((sim.world.facts as any)?.[nvKey])
+      ? (sim.world.facts as any)[nvKey]
+      : [];
+    if (nvAtoms.length) {
+      const NV_RU: Record<string, string> = {
+        tense: 'напряжён', angry: 'злится', afraid: 'боится',
+        confident: 'уверен', exhausted: 'измотан', hurt: 'ранен',
+      };
+      // Group by observer for readability.
+      const byObserver = new Map<string, string[]>();
+      for (const nv of nvAtoms) {
+        const obs = names[nv.observerId] || nv.observerId;
+        const subj = names[nv.subjectId] || nv.subjectId;
+        const kindRu = NV_RU[nv.kind] || nv.kind;
+        const conf = Number(nv.confidence ?? 0).toFixed(2);
+        const entry = `${subj} ${kindRu} (${(Number(nv.magnitude) * 100).toFixed(0)}%, уверенность ${conf})`;
+        const arr = byObserver.get(obs) || [];
+        arr.push(entry);
+        byObserver.set(obs, arr);
+      }
+      for (const [obs, entries] of byObserver) {
+        for (const e of entries) {
+          lines.push(`  👁 ${obs} видит: ${e}`);
+        }
+      }
+    }
+
+    // ── Atom reception feedback (accepted/quarantined/rejected) ──
+    const inboxDebug = (sim.world.facts as any)?.[`debug:inbox:${record.trace.tickIndex}`];
+    if (inboxDebug?.perAgent) {
+      for (const [agentId, info] of Object.entries(inboxDebug.perAgent as Record<string, any>)) {
+        const agentName = names[agentId] || agentId;
+        const acc = info.accepted || 0;
+        const qua = info.quarantined || 0;
+        const rej = info.rejected || 0;
+        if (acc + qua + rej > 0) {
+          const parts: string[] = [];
+          if (acc > 0) parts.push(`✓${acc}`);
+          if (qua > 0) parts.push(`⏸${qua}`);
+          if (rej > 0) parts.push(`✗${rej}`);
+          lines.push(`  📥 ${agentName} принял атомы: ${parts.join(' ')}`);
+        }
       }
     }
 

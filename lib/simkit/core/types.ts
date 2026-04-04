@@ -162,6 +162,8 @@ export type SpeechEventV1 = {
   // опционально: “тема” и краткая строка (для UI)
   topic?: string;
   text?: string;
+  // speech intent: truthful | selective | deceptive
+  intent?: 'truthful' | 'selective' | 'deceptive';
 };
 
 export type ActionOffer = {

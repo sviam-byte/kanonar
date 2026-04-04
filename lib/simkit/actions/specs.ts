@@ -16,6 +16,7 @@ import { buildGenericSocialSpec } from './genericSocialSpec';
 import { recordTrail } from '../core/mapTypes';
 import { RespondSpec } from './respondSpec';
 import { MoveCellSpec } from './moveCellSpec';
+import { decideSpeechContent } from '../dialogue/speechContent';
 
 const clamp = (x: number, a: number, b: number) => Math.max(a, Math.min(b, x));
 
@@ -223,7 +224,8 @@ function isInternalCall(action: any) {
 }
 
 // Standardize speech atoms for talk/question/negotiate.
-function mkSpeechAtoms(kind: string, fromId: string, toId: string, extra?: any) {
+// Legacy fallback — returns one generic atom when no pipeline data exists.
+function mkSpeechAtomsFallback(kind: string, fromId: string, toId: string, extra?: any) {
   const base = {
     id: `ctx:${kind}:${fromId}:${toId}`,
     magnitude: 1,
@@ -231,6 +233,96 @@ function mkSpeechAtoms(kind: string, fromId: string, toId: string, extra?: any) 
     meta: { kind, ...extra },
   };
   return [base];
+}
+
+/**
+ * Collect relevant belief/context atoms the speaker actually has,
+ * filter through decideSpeechContent (truthful/selective/deceptive),
+ * and return the atom set + intent metadata for SpeechEventV1.
+ */
+function buildSpeechAtoms(
+  world: SimWorld,
+  speakerId: string,
+  targetId: string,
+  social: string,
+): {
+  atoms: Array<{ id: string; magnitude: number; confidence: number; meta?: any }>;
+  intent: 'truthful' | 'selective' | 'deceptive';
+  omittedCount: number;
+  distortedCount: number;
+} {
+  const facts: any = world.facts || {};
+
+  // 1) Gather what the speaker knows: agentAtoms + recent nonverbal observations.
+  const agentAtoms: any[] = Array.isArray(facts[`agentAtoms:${speakerId}`])
+    ? facts[`agentAtoms:${speakerId}`]
+    : [];
+  // Add own context axes as "things I can talk about".
+  const ctxKeys = Object.keys(facts).filter(
+    (k) => k.startsWith(`ctx:`) && k.endsWith(`:${speakerId}`) && typeof facts[k] === 'number',
+  );
+  const ctxAtoms = ctxKeys.map((k) => {
+    const parts = k.split(':');
+    const axis = parts.slice(1, -1).join(':');
+    return {
+      id: k,
+      magnitude: clamp01(Number(facts[k])),
+      confidence: 0.85,
+      meta: { axis, source: 'self' },
+    };
+  });
+
+  // Only include atoms with meaningful magnitude for topic relevance.
+  const topicPool = [...agentAtoms, ...ctxAtoms]
+    .filter((a) => typeof a?.magnitude === 'number' && a.magnitude > 0.15)
+    .sort((a, b) => (b.magnitude ?? 0) - (a.magnitude ?? 0))
+    .slice(0, 12);
+
+  if (!topicPool.length) {
+    return {
+      atoms: mkSpeechAtomsFallback(social, speakerId, targetId, { social }),
+      intent: 'truthful',
+      omittedCount: 0,
+      distortedCount: 0,
+    };
+  }
+
+  // 2) Build goal scores from pipeline trace for decideSpeechContent.
+  const trace = facts[`sim:trace:${speakerId}`];
+  const goalScores: Record<string, number> = {};
+  if (trace?.goalScores && typeof trace.goalScores === 'object') {
+    for (const [k, v] of Object.entries(trace.goalScores)) {
+      if (typeof v === 'number') goalScores[k] = v;
+    }
+  }
+
+  // 3) Run speech content filter (truthful / selective / deceptive).
+  const result = decideSpeechContent(world, {
+    speakerId,
+    targetId,
+    beliefAtoms: topicPool,
+    topicAtoms: topicPool,
+    goalScores,
+  });
+
+  const speechAtoms = result.atoms.map((a: any) => ({
+    id: String(a.id || ''),
+    magnitude: Number(a.magnitude ?? 0),
+    confidence: Number(a.confidence ?? 0.6),
+    meta: {
+      ...(a.meta || {}),
+      from: speakerId,
+      speechIntent: result.intent,
+      ...(a.trueMagnitude != null ? { trueMagnitude: a.trueMagnitude } : {}),
+    },
+  }));
+
+  return {
+    atoms: speechAtoms.length ? speechAtoms : mkSpeechAtomsFallback(social, speakerId, targetId, { social }),
+    intent: result.intent,
+    omittedCount: result.omitted?.length ?? 0,
+    distortedCount: result.distorted?.length ?? 0,
+  };
 }
 
 const WaitSpec: ActionSpec = {
@@ -669,13 +761,28 @@ const TalkSpec: ActionSpec = {
       threaten: 'угрожает',
     };
 
+    // ── Collect atoms and run speech content filter ──
+    const speechData = buildSpeechAtoms(world, c.id, otherId, social);
+
+    // ── Build descriptive text from CI + atoms ──
     let speechText = SPEECH_TEXT_RU[social] || 'обращается';
-    // Enrich with communicativeIntent topic/facts.
-    if (ciTopic) {
+    if (ciTopic && ciTopic !== social && !ciTopic.startsWith('schema_')) {
       speechText += ` (тема: ${ciTopic})`;
     }
     if (ciFacts.length) {
-      speechText += ': ' + ciFacts.slice(0, 3).join('; ');
+      const cleanFacts = ciFacts.filter((f: string) => f && !f.startsWith('schema_'));
+      if (cleanFacts.length) speechText += ': ' + cleanFacts.slice(0, 3).join('; ');
+    }
+    // Append key atom summaries for narrative readability.
+    const topAtomSummaries = speechData.atoms
+      .filter((a: any) => a.magnitude > 0.3)
+      .slice(0, 3)
+      .map((a: any) => {
+        const short = String(a.id || '').replace(/^ctx:/, '').replace(/:.*$/, '');
+        return `${short}:${a.magnitude.toFixed(1)}`;
+      });
+    if (topAtomSummaries.length && !ciFacts.length) {
+      speechText += ' [' + topAtomSummaries.join(', ') + ']';
     }
 
     const speech: SpeechEventV1 = {
@@ -693,8 +800,9 @@ const TalkSpec: ActionSpec = {
               : 'inform',
       volume,
       topic: ciTopic || social,
+      intent: speechData.intent,
       text: speechText,
-      atoms: mkSpeechAtoms('talk', c.id, otherId, { social, trust }),
+      atoms: speechData.atoms,
     };
     events.push(mkActionEvent(world, 'speech:v1', speech));
     return { world, events, notes };
@@ -930,6 +1038,12 @@ const QuestionAboutSpec: ActionSpec = {
       topic,
       locationId: c.locId,
     }));
+    const speechData = buildSpeechAtoms(world, c.id, otherId, 'question');
+    const TOPIC_RU: Record<string, string> = {
+      situation: 'ситуацию', danger: 'опасность', plan: 'план',
+      health: 'здоровье', resources: 'ресурсы', route: 'маршрут',
+    };
+    const topicRu = TOPIC_RU[topic] || topic;
     const speech: SpeechEventV1 = {
       schema: 'SpeechEventV1',
       actorId: c.id,
@@ -937,8 +1051,9 @@ const QuestionAboutSpec: ActionSpec = {
       act: 'ask',
       volume,
       topic,
-      text: `asks about ${topic}`,
-      atoms: mkSpeechAtoms('question', c.id, otherId, { topic }),
+      intent: speechData.intent,
+      text: `спрашивает о: ${topicRu}`,
+      atoms: speechData.atoms,
     };
     events.push(mkActionEvent(world, 'speech:v1', speech));
     return { world, events, notes };
@@ -973,15 +1088,45 @@ const NegotiateSpec: ActionSpec = {
     world.facts[`negotiate:${c.id}:${otherId}`] = (world.facts[`negotiate:${c.id}:${otherId}`] ?? 0) + 1;
     notes.push(`${c.id} negotiates with ${otherId}`);
     events.push(mkActionEvent(world, 'action:negotiate', { actorId: c.id, targetId: otherId, locationId: c.locId }));
+
+    // ── Build negotiate speech with proper atom exchange ──
+    const pipelineData = (world.facts as any)?.[`sim:pipeline:${c.id}`];
+    const ci = pipelineData?.communicativeIntent;
+    const ciTopic = ci?.topic?.primary || '';
+    const ciFacts = Array.isArray(ci?.topic?.facts) ? ci.topic.facts : [];
+
+    const speechData = buildSpeechAtoms(world, c.id, otherId, 'negotiate');
+
+    let negotiateText = 'ведёт переговоры';
+    if (ciTopic && !ciTopic.startsWith('schema_') && ciTopic !== 'terms') {
+      negotiateText += ` (тема: ${ciTopic})`;
+    }
+    if (ciFacts.length) {
+      const cleanFacts = ciFacts.filter((f: string) => f && !f.startsWith('schema_'));
+      if (cleanFacts.length) negotiateText += ': ' + cleanFacts.slice(0, 3).join('; ');
+    }
+    // Show top atoms being negotiated about.
+    const topNegAtoms = speechData.atoms
+      .filter((a: any) => a.magnitude > 0.2)
+      .slice(0, 3)
+      .map((a: any) => {
+        const short = String(a.id || '').replace(/^ctx:/, '').replace(new RegExp(`:${c.id}$`), '');
+        return `${short}:${a.magnitude.toFixed(1)}`;
+      });
+    if (topNegAtoms.length && !ciFacts.length) {
+      negotiateText += ' [' + topNegAtoms.join(', ') + ']';
+    }
+
     const speech: SpeechEventV1 = {
       schema: 'SpeechEventV1',
       actorId: c.id,
       targetId: otherId,
       act: 'negotiate',
       volume,
-      topic: 'terms',
-      text: 'proposes terms',
-      atoms: mkSpeechAtoms('negotiate', c.id, otherId, { topic: 'terms' }),
+      topic: ciTopic || 'terms',
+      intent: speechData.intent,
+      text: negotiateText,
+      atoms: speechData.atoms,
     };
     events.push(mkActionEvent(world, 'speech:v1', speech));
     return { world, events, notes };
@@ -1439,6 +1584,13 @@ const ContinueIntentSpec: ActionSpec = {
       }
 
       delete world.facts[key];
+      // ── Write intent cooldown to prevent immediate re-start ──
+      const cdKey = `intentCooldown:${c.id}`;
+      const cdData: any = typeof (world.facts as any)?.[cdKey] === 'object' ? (world.facts as any)[cdKey] : {};
+      const origKind2 = original?.kind || '';
+      const origTarget2 = original?.targetId || '';
+      cdData[`${origKind2}:${origTarget2}`] = world.tickIndex;
+      (world.facts as any)[cdKey] = cdData;
       events.push(
         mkActionEvent(world, 'action:intent_complete', {
           actorId: c.id,
@@ -1488,6 +1640,12 @@ const ContinueIntentSpec: ActionSpec = {
       } else {
         notes.push(`${c.id} intent complete: no originalAction`);
       }
+      // ── Write intent cooldown (v0 path) ──
+      const cdKeyV0 = `intentCooldown:${c.id}`;
+      const cdDataV0: any = typeof (world.facts as any)?.[cdKeyV0] === 'object' ? (world.facts as any)[cdKeyV0] : {};
+      const okV0 = (cur as any)?.intent?.originalAction;
+      if (okV0) cdDataV0[`${okV0.kind || ''}:${okV0.targetId || ''}`] = world.tickIndex;
+      (world.facts as any)[cdKeyV0] = cdDataV0;
       delete world.facts[key];
       events.push(mkActionEvent(world, 'action:intent_complete', {
         actorId: c.id,
@@ -1556,9 +1714,15 @@ export function enumerateActionOffers(world: SimWorld): ActionOffer[] {
   for (const actorId of actorIds) {
     const ctx: OfferCtx = { world, actorId };
 
-    // If an actor has an active intent, restrict offers to continue/abort/wait.
-    const hasIntent = Boolean(world.facts[`intent:${actorId}`]);
+    // If an actor has an active intent, restrict offers to continue/abort/wait
+    // BUT allow move_cell during approach stage (so movement is visible).
+    const intentData: any = world.facts[`intent:${actorId}`];
+    const hasIntent = Boolean(intentData);
     if (hasIntent) {
+      const stageIdx = Number(intentData?.stageIndex ?? 0);
+      const stageKind = intentData?.intentScript?.stages?.[stageIdx]?.kind;
+      const inApproach = stageKind === 'approach';
+
       for (const kind of ['continue_intent', 'abort_intent', 'wait'] as ActionKind[]) {
         const spec = ACTION_SPECS[kind];
         const raw = spec.enumerate(ctx);
@@ -1569,13 +1733,39 @@ export function enumerateActionOffers(world: SimWorld): ActionOffer[] {
           offers.push(v2);
         }
       }
+      // During approach, also enumerate move_cell so spatial movement is visible
+      // and competes with the intent's built-in teleport.
+      if (inApproach && ACTION_SPECS['move_cell' as ActionKind]) {
+        const mcSpec = ACTION_SPECS['move_cell' as ActionKind];
+        const mcRaw = mcSpec.enumerate(ctx);
+        for (const o of mcRaw) {
+          const v1 = mcSpec.validateV1({ ...ctx, offer: o });
+          const v2 = mcSpec.validateV2({ ...ctx, offer: v1 });
+          offers.push(v2);
+        }
+      }
       continue;
     }
+
+    // ── Intent cooldown: block same kind→target for 2 ticks after completion ──
+    const cooldownKey = `intentCooldown:${actorId}`;
+    const cooldown: any = (world.facts as any)?.[cooldownKey];
 
     for (const kind of Object.keys(ACTION_SPECS).sort() as ActionKind[]) {
       const spec = ACTION_SPECS[kind];
       const raw = spec.enumerate(ctx);
       for (const o of raw) {
+        // Apply cooldown block for recently completed intent patterns.
+        if (kind === 'start_intent' && cooldown && typeof cooldown === 'object') {
+          const origKind = (o.payload as any)?.intent?.originalAction?.kind;
+          const origTarget = (o.payload as any)?.intent?.originalAction?.targetId;
+          const cdKey = `${origKind}:${origTarget}`;
+          const cdTick = Number(cooldown[cdKey]);
+          if (Number.isFinite(cdTick) && world.tickIndex - cdTick < 3) {
+            offers.push({ ...o, blocked: true, reason: 'cooldown:recent_intent', score: 0 });
+            continue;
+          }
+        }
         const v1 = spec.validateV1({ ...ctx, offer: o });
         const v2 = spec.validateV2({ ...ctx, offer: v1 });
         offers.push(v2);
