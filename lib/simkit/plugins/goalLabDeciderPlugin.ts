@@ -7,7 +7,7 @@ import type { SimSnapshot, SimWorld, SimAction, ActionOffer } from '../core/type
 import { runGoalLabPipelineV1 } from '../../goal-lab/pipeline/runPipelineV1';
 import { arr } from '../../utils/arr';
 import { toSimAction } from '../actions/fromActionCandidate';
-import { buildWorldStateFromSim } from './goalLabPipelinePlugin';
+import { buildWorldStateFromSim } from './goalLabWorldState';
 import { selectDecisionMode, type DecisionMode } from '../core/decisionGate';
 import { reactiveDecision } from '../core/reactiveDecision';
 import { FCS } from '../../config/formulaConfigSim';
@@ -168,6 +168,7 @@ function groundAbstractAction(
   offers: ActionOffer[],
   actorId: string,
   goalLabKind: string,
+  world: SimWorld,
 ): SimAction {
   const rawKind = String(action.kind || '');
   const actionId = String(action.id || '');
@@ -272,6 +273,79 @@ function groundAbstractAction(
         goalLabKind,
         groundedFrom: rawKind,
         groundedVia: 'kindMap',
+      },
+    };
+  }
+
+  // ── Intent bridge for talk / question_about ──
+  // TalkSpec and QuestionAboutSpec block direct (non-internal) calls — they
+  // require the intent lifecycle (start_intent → continue_intent → intent_complete).
+  // GoalLab doesn't know about intents, so when it picks 'talk' or 'question_about'
+  // we wrap the action in a start_intent envelope here.  The intent system will
+  // approach the target, execute the original action with meta.internal=true on
+  // completion, and emit the speech/information-transfer events.
+  const needsIntentWrap = (action.kind === 'talk' || action.kind === 'question_about') && action.targetId;
+  if (needsIntentWrap) {
+    const social = String((action as any).meta?.social ?? 'inform');
+    const volume = String((action as any).meta?.volume ?? 'normal');
+    const topic = (action as any).meta?.topic ?? null;
+    const intentId = `intent:${actorId}:${action.kind}:${social}:${Date.now()}`;
+    const scriptId = action.kind === 'question_about'
+      ? `dialog:${social}:${topic ?? 'topic'}`
+      : `dialog:${social}`;
+
+    // Resolve target position for approach navigation.
+    // move_toward expects {x, y}, not {charId}.
+    const targetChar = world.characters[String(action.targetId)];
+    const targetPos = targetChar
+      ? { x: Number((targetChar as any).pos?.x ?? 0), y: Number((targetChar as any).pos?.y ?? 0) }
+      : { x: 0, y: 0 };
+
+    return {
+      ...action,
+      id: `act:start_intent:${actorId}:${action.kind}:grounded`,
+      kind: 'start_intent' as any,
+      payload: {
+        intentId,
+        remainingTicks: 9999, // script controls actual duration
+        intentScript: {
+          id: scriptId,
+          explain: [
+            `Bridge: GoalLab ${action.kind} → intent transaction`,
+            `Target: ${action.targetId}`,
+          ],
+          stages: [
+            {
+              kind: 'approach',
+              ticksRequired: 'until_condition' as const,
+              // No completionCondition — ContinueIntentSpec falls back to
+              // dest-proximity check: stageDone when dist(agent, dest) <= 2.
+              perTick: [
+                { target: 'agent', key: 'dest', op: 'set', value: targetPos },
+                { target: 'agent', key: 'move_toward', op: 'set', value: targetPos },
+              ],
+            },
+            { kind: 'attach', ticksRequired: 1 },
+            { kind: 'execute', ticksRequired: 1 },
+            { kind: 'detach', ticksRequired: 1 },
+          ],
+        },
+        intent: {
+          originalAction: {
+            kind: action.kind,
+            actorId,
+            targetId: action.targetId,
+            meta: { volume, social, ...(topic ? { topic } : {}), internal: true },
+            payload: null,
+          },
+        },
+      },
+      meta: {
+        ...(action.meta || {}),
+        goalLabKind,
+        groundedFrom: action.kind,
+        groundedVia: 'intentBridge:talk',
+        scriptId,
       },
     };
   }
@@ -675,7 +749,7 @@ export function makeGoalLabDeciderPlugin(opts?: { storePipeline?: boolean; enabl
         const rawAction = toSimAction(best, tickIndex);
         if (!rawAction) continue;
         const goalLabKind = String(best?.kind || rawAction.kind || '');
-        const action = groundAbstractAction(rawAction, offers, actorId, goalLabKind);
+        const action = groundAbstractAction(rawAction, offers, actorId, goalLabKind, world);
         const decorated = decorateAction(action, best);
         decorated.meta = { ...(decorated.meta || {}), decisionMode: mode, gate: gateResult };
         actions.push(decorated);
