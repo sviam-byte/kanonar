@@ -24,10 +24,11 @@ function getIntentCooldownPenalty(world: SimWorld, actorId: string, kind: string
   const comboKey = `${kind}:${targetId || ''}`;
   const lastTick = Number(cdData[comboKey] ?? -999);
   const gap = (world.tickIndex ?? 0) - lastTick;
-  if (gap <= 0) return 0.6;  // just completed this tick
-  if (gap <= 1) return 0.45;
-  if (gap <= 2) return 0.25;
-  if (gap <= 4) return 0.10;
+  if (gap <= 0) return 0.8;  // just completed this tick — strong block
+  if (gap <= 2) return 0.65; // within 2 ticks — still blocked
+  if (gap <= 4) return 0.45; // within 4 ticks — mostly blocked
+  if (gap <= 6) return 0.25; // fading
+  if (gap <= 8) return 0.10;
   return 0;
 }
 
@@ -347,20 +348,41 @@ function groundAbstractAction(
   // completion, and emit the speech/information-transfer events.
   const needsIntentWrap = (action.kind === 'talk' || action.kind === 'question_about' || action.kind === 'negotiate') && action.targetId;
   if (needsIntentWrap) {
-    // ── Cooldown guard: don't re-wrap if recently completed same intent ──
+    // ── Cooldown guard: don't re-wrap if recently completed same or similar intent ──
+    // Check exact kind+target.
     const cdPenalty = getIntentCooldownPenalty(world, actorId, action.kind, action.targetId ?? null);
-    if (cdPenalty > 0.4) {
+    // Also check any talk-family intent toward same target (prevents negotiate→talk→negotiate loop).
+    const talkFamily = ['talk', 'negotiate', 'question_about'];
+    const familyPenalty = Math.max(
+      ...talkFamily.map(k => getIntentCooldownPenalty(world, actorId, k, action.targetId ?? null))
+    );
+    const effectivePenalty = Math.max(cdPenalty, familyPenalty * 0.8);
+    if (effectivePenalty > 0.4) {
       // Too soon to start this intent again — fall back to a direct single-tick action.
+      // Pick something contextually useful: observe if driver is curiosity/control,
+      // otherwise wait or a social action.
+      const trace = (world.facts as any)?.[`sim:trace:${actorId}`];
+      const topDriver = trace?.drivers
+        ? Object.entries(trace.drivers as Record<string, number>)
+            .filter(([, v]) => typeof v === 'number')
+            .sort(([, a], [, b]) => (b as number) - (a as number))[0]
+        : null;
+      const fallbackKind = topDriver?.[0] === 'safetyNeed' ? 'observe'
+        : topDriver?.[0] === 'affiliationNeed' ? 'encourage'
+        : topDriver?.[0] === 'controlNeed' ? 'observe'
+        : topDriver?.[0] === 'curiosityNeed' ? 'investigate'
+        : 'observe';
       return {
         ...action,
-        kind: 'observe' as any,
+        kind: fallbackKind as any,
         targetId: action.targetId,
         meta: {
           ...(action.meta || {}),
           goalLabKind,
           groundedFrom: rawKind,
-          groundedVia: 'intentCooldown:observe',
-          cooldownPenalty: cdPenalty,
+          groundedVia: 'intentCooldown:fallback',
+          cooldownPenalty: effectivePenalty,
+          fallbackKind,
         },
       };
     }

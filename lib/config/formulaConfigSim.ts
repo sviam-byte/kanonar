@@ -75,14 +75,14 @@ export const BEATS = {
 } as const;
 
 export const BEHAVIOR_VARIETY = {
-  historyWindow: 10,
-  noveltyWindow: 5,
-  noveltyBonus: 0.03,
+  historyWindow: 12,
+  noveltyWindow: 6,
+  noveltyBonus: 0.08,
   repetitionPenalties: {
-    streak2: 0.12,
-    streak3: 0.30,
-    streak4: 0.55,
-    streak5Plus: 0.85,
+    streak2: 0.25,
+    streak3: 0.50,
+    streak4: 0.75,
+    streak5Plus: 0.95,
   },
 } as const;
 

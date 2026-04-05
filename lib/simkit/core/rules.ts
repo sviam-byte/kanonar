@@ -44,7 +44,15 @@ export function proposeActions(w: SimWorld): ActionOffer[] {
 
 export function applyAction(w: SimWorld, a: SimAction): { world: SimWorld; events: SimEvent[]; notes: string[] } {
   const { world, events, notes } = applyActionViaSpec(w, a);
-  recordAction(world.facts as any, a.actorId, a.kind, a.targetId ?? null, world.tickIndex);
+  // Record the *semantic* kind for repetition damping: for intent actions,
+  // use the original action kind (negotiate/talk/etc.) rather than start_intent/continue_intent.
+  let semanticKind = a.kind;
+  if (a.kind === 'start_intent' || a.kind === 'continue_intent') {
+    const intentData = (world.facts as any)?.[`intent:${a.actorId}`];
+    const origKind = intentData?.intent?.originalAction?.kind;
+    if (origKind) semanticKind = origKind;
+  }
+  recordAction(world.facts as any, a.actorId, semanticKind, a.targetId ?? null, world.tickIndex);
 
   // Location hazards emit hazardPulse for downstream handling.
   const c = getChar(world, a.actorId);

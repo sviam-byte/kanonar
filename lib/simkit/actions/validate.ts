@@ -74,7 +74,7 @@ export function validateActionStrict(world: SimWorld, a: SimAction): ValidationR
     // Skip intent wrapping if the action was already grounded by the GoalLab decider plugin.
     // This prevents double-wrapping: goalLabDeciderPlugin already handles intent lifecycle.
     const groundedVia = (a as any)?.meta?.groundedVia;
-    if (groundedVia === 'directExecute' || groundedVia === 'kindMap' || groundedVia === 'intentCooldown:observe') {
+    if (groundedVia === 'directExecute' || groundedVia === 'kindMap' || groundedVia === 'intentCooldown:fallback') {
       return {
         allowed: true,
         singleTick: true,

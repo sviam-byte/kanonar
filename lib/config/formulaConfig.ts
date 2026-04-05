@@ -419,11 +419,11 @@ export const DECISION = {
   /** Repetition penalty: discourages repeating the same action kind consecutively. */
   repetition: {
     /** Penalty applied to Q when action kind matches previous tick. */
-    sameKindPenalty: 0.12,
+    sameKindPenalty: 0.25,
     /** Additional penalty when both kind AND target match. */
-    sameTargetPenalty: 0.08,
+    sameTargetPenalty: 0.15,
     /** Decay factor per tick gap (0 = no decay, 1 = full decay after 1 tick). */
-    decayPerTick: 0.5,
+    decayPerTick: 0.3,
   },
 
   /** Context key modifiers: action-type × context → multiplier */

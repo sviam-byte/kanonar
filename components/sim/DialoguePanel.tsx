@@ -97,6 +97,8 @@ function describeAtomTransfer(atom: any, names: Record<string, string>): { what:
 }
 
 function describeAcceptReason(info: any): string {
+  const reasonKey = String(info?.reason || info?.acceptReason || '').trim();
+  if (reasonKey && ACCEPT_REASON_RU[reasonKey]) return ACCEPT_REASON_RU[reasonKey];
   const trust = Number(info?.trust ?? 0.5);
   const compat = Number(info?.compat ?? 0.5);
   const parts: string[] = [];
@@ -206,6 +208,7 @@ type AtomExchangeEntry = {
 
 const AtomExchangeRow: React.FC<{ entry: AtomExchangeEntry; labels: Record<string, string> }> = ({ entry, labels }) => {
   const agentName = name(entry.agentId, labels);
+  const acceptReason = describeAcceptReason(entry.acceptMeta);
 
   return (
     <div style={{
@@ -237,6 +240,11 @@ const AtomExchangeRow: React.FC<{ entry: AtomExchangeEntry; labels: Record<strin
           {entry.items.length > 5 && (
             <div style={{ color: '#475569', fontSize: 8 }}>+{entry.items.length - 5} ещё</div>
           )}
+        </div>
+      )}
+      {!!acceptReason && (
+        <div style={{ marginLeft: 20, color: '#475569', fontSize: 8 }}>
+          причина принятия: {acceptReason}
         </div>
       )}
     </div>
