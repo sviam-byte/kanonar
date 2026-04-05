@@ -102,13 +102,21 @@ export function scoreOfferSubjective(world: SimWorld, offer: ActionOffer): numbe
   const tags = actionTags(offer.kind, offer);
 
   // -------------------------------------------------------------------------
-  // Hard rule: if an intent is active, keep executing it.
-  // This prevents "start new intent every tick" and makes staged scripts visible.
+  // Intent lifecycle: keep executing active intent, but allow spatial movement
+  // during approach stage (agent is physically walking toward target).
   // -------------------------------------------------------------------------
   const curIntent: any = (world.facts as any)?.[`intent:${c.id}`];
   if (curIntent && typeof curIntent === 'object') {
+    const stageIdx = Number(curIntent?.stageIndex ?? 0);
+    const stageKind = curIntent?.intentScript?.stages?.[stageIdx]?.kind;
+    const inApproach = stageKind === 'approach';
+
     if (offer.kind === 'continue_intent') {
-      s += 1.25; // dominate
+      // During approach, reduce continue_intent dominance so move_cell can compete.
+      s += inApproach ? 0.35 : 1.25;
+    } else if (offer.kind === 'move_cell' && inApproach) {
+      // Move_cell during approach is NOT an interrupt — it's part of the transaction.
+      s += 0.05;
     } else if (offer.kind === 'start_intent') {
       s -= 0.9; // strongly discourage stacking
     } else {

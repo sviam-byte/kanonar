@@ -1561,6 +1561,9 @@ const ContinueIntentSpec: ActionSpec = {
 
         // Per-tick effects.
         if (Array.isArray(stage.perTick)) {
+          // Capture position before deltas to detect movement.
+          const posBefore = { x: Number((c as any).pos?.x), y: Number((c as any).pos?.y) };
+
           for (const d of stage.perTick) {
             // Helper: allow scripts to set a destination.
             if (
@@ -1573,6 +1576,22 @@ const ContinueIntentSpec: ActionSpec = {
               (cur as any).dest = d.value;
             }
             applyIntentDeltaV1(world, c.id, action.targetId ?? null, d);
+          }
+
+          // Emit position-change event during approach so narrative can show movement.
+          if (stage.kind === 'approach') {
+            const posAfter = { x: Number((c as any).pos?.x), y: Number((c as any).pos?.y) };
+            const moved = Number.isFinite(posAfter.x) && Number.isFinite(posAfter.y) &&
+              (Math.abs(posAfter.x - posBefore.x) > 0.01 || Math.abs(posAfter.y - posBefore.y) > 0.01);
+            if (moved) {
+              events.push(mkActionEvent(world, 'action:approach_move', {
+                actorId: c.id,
+                locationId: c.locId,
+                targetId: action.targetId,
+                fromX: Math.round(posBefore.x), fromY: Math.round(posBefore.y),
+                toX: Math.round(posAfter.x), toY: Math.round(posAfter.y),
+              }));
+            }
           }
         }
 

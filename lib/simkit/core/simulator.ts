@@ -558,6 +558,13 @@ export class SimKitSimulator {
           quarantined: quarantined.length,
           rejected: rejected.length,
           rejectedItems: rejected.slice(0, 12),
+          // Store key info about accepted atoms for narrative display.
+          acceptedItems: accepted.slice(0, 8).map((a: any) => ({
+            id: String(a.id || '').replace(/:\d+$/, ''),
+            mag: Number(a.magnitude ?? 0).toFixed(2),
+            src: a.source || a.meta?.origin?.type || 'unknown',
+            from: a.meta?.from || a.meta?.origin?.from || null,
+          })),
         };
       }
 

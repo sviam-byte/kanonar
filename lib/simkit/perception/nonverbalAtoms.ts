@@ -83,16 +83,31 @@ export function generateNonverbalAtoms(world: SimWorld): NonverbalAtom[] {
       }
 
       // ── Extended nonverbal channels ──
-      // Confidence: high energy + low stress + low fear → confident body language.
+      // Only emit when state clearly deviates from baseline — suppress "everyone is
+      // confident" noise at default state (energy=0.5, stress=0, health=1).
       const energy = clamp01(Number(subject.energy ?? 0.5));
       const health = clamp01(Number(subject.health ?? 1));
-      const confidenceSignal = clamp01(energy * 0.4 + (1 - stress) * 0.3 + health * 0.3);
-      if (confidenceSignal > 0.7 && suppressionFactor > 0.3) {
+
+      // Confident: only when energy is HIGH (> 0.7) and stress LOW (< 0.15).
+      // This means the agent is actively in good shape, not just at default.
+      if (energy > 0.7 && stress < 0.15 && health > 0.8) {
+        const confidenceSignal = clamp01(energy * 0.4 + (1 - stress) * 0.3 + health * 0.3);
         out.push({
           id: `obs:nonverbal:${observer.id}:${subject.id}:confident:${world.tickIndex}`,
           observerId: observer.id, subjectId: subject.id,
           kind: 'confident', magnitude: confidenceSignal,
           confidence: clamp01(baseConf * 0.7 * obsBonus),
+          source: 'nonverbal',
+        });
+      }
+
+      // Wary/uneasy: moderate stress (0.25-0.55) — below threshold for "tense".
+      if (stress > 0.25 && stress <= 0.55 && suppressionFactor > 0.3) {
+        out.push({
+          id: `obs:nonverbal:${observer.id}:${subject.id}:uneasy:${world.tickIndex}`,
+          observerId: observer.id, subjectId: subject.id,
+          kind: 'uneasy', magnitude: stress,
+          confidence: clamp01(baseConf * suppressionFactor * 0.7 * obsBonus),
           source: 'nonverbal',
         });
       }

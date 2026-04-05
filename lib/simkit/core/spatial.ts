@@ -24,7 +24,7 @@ export const DEFAULT_SPATIAL_CONFIG: SpatialConfig = {
   whisperRange: 28,
   shoutRange: 1e9,
   attackRange: 18,
-  moveMaxStep: 4,
+  moveMaxStep: 2,
   whisperMinPrivacy: 0.35,
 };
 
