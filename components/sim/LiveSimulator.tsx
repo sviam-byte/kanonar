@@ -48,6 +48,9 @@ const ACTION_RU: Record<string, string> = {
   propose_trade: 'предлагает сделку', verify: 'проверяет',
   observe_target: 'наблюдает за', monologue: 'рассуждает вслух',
   question_about: 'расспрашивает',
+  share: 'делится', trade: 'торгует',
+  inspect_feature: 'осматривает объект', repair_feature: 'чинит',
+  scavenge_feature: 'обыскивает',
 };
 
 const SOCIAL_RU: Record<string, string> = {
@@ -215,8 +218,8 @@ const NarrativeLog: React.FC<{ entries: NarrativeEntry[] }> = ({ entries }) => {
   return (
     <div ref={ref} style={{
       flex: 1,
-      minHeight: 120,
-      maxHeight: 250,
+      minHeight: 180,
+      maxHeight: 450,
       overflowY: 'auto',
       padding: 8,
       fontFamily: '"JetBrains Mono", monospace',
@@ -549,7 +552,9 @@ export const LiveSimulator: React.FC = () => {
       }
     }
 
-    // ── Atom reception feedback (accepted/quarantined/rejected) ──
+    // ── Atom reception feedback ──
+    // Stored on world for DialoguePanel to render with rich descriptions.
+    // NarrativeLog only shows summary count.
     const inboxDebug = (sim.world.facts as any)?.[`debug:inbox:${record.trace.tickIndex}`];
     if (inboxDebug?.perAgent) {
       for (const [agentId, info] of Object.entries(inboxDebug.perAgent as Record<string, any>)) {
@@ -558,26 +563,7 @@ export const LiveSimulator: React.FC = () => {
         const qua = info.quarantined || 0;
         const rej = info.rejected || 0;
         if (acc + qua + rej > 0) {
-          const parts: string[] = [];
-          if (acc > 0) parts.push(`✓${acc}`);
-          if (qua > 0) parts.push(`⏸${qua}`);
-          if (rej > 0) parts.push(`✗${rej}`);
-
-          // Show what was actually accepted.
-          const items: any[] = info.acceptedItems || [];
-          const itemDescs = items
-            .filter((it: any) => it && it.id)
-            .map((it: any) => {
-              const shortId = String(it.id).replace(/^obs:nonverbal:[\w-]+:[\w-]+:/, 'nv:').replace(/^obs:/, '');
-              const fromLabel = it.from ? ` ←${names[it.from] || it.from}` : '';
-              return `${shortId}(${it.mag})${fromLabel}`;
-            });
-
-          if (itemDescs.length) {
-            lines.push(`  📥 ${agentName} принял: ${parts.join(' ')} — ${itemDescs.join(', ')}`);
-          } else {
-            lines.push(`  📥 ${agentName} принял атомы: ${parts.join(' ')}`);
-          }
+          lines.push(`  📥 ${agentName}: ✓${acc}${qua ? ` ⏸${qua}` : ''}${rej ? ` ✗${rej}` : ''} атомов`);
         }
       }
     }
@@ -604,6 +590,15 @@ export const LiveSimulator: React.FC = () => {
     }
 
     if (!lines.length) lines.push('(ничего не произошло)');
+
+    // ── Action diversity indicator ──
+    const actionKinds = actions.map((a: any) => String(a.kind || ''));
+    const uniqueKinds = new Set(actionKinds);
+    if (actionKinds.length >= 2 && uniqueKinds.size === 1) {
+      lines.push(`  ★ конвергенция: ${actionKinds.length} агентов → ${actionKinds[0]}`);
+    } else if (actionKinds.length >= 3 && uniqueKinds.size >= 3) {
+      lines.push(`  ◆ разнообразие: ${uniqueKinds.size} разных действий`);
+    }
 
     const tickBeats = (sim as any).beats?.filter((b: any) => b.tick === record.trace.tickIndex) || [];
     const beatLines = tickBeats.map((b: any) => String(b.summary || b.kind || 'beat'));
@@ -745,9 +740,9 @@ export const LiveSimulator: React.FC = () => {
           <NarrativeLog entries={narrative} />
 
           <div style={{ fontSize: 9, color: '#475569', textTransform: 'uppercase', letterSpacing: 1, fontWeight: 600, flexShrink: 0 }}>
-            Диалоги
+            Диалоги и обмен информацией
           </div>
-          <div style={{ minHeight: 100, maxHeight: 160, border: '1px solid #1e293b', borderRadius: 6, background: '#020617', padding: 4, overflow: 'auto' }}>
+          <div style={{ minHeight: 140, maxHeight: 260, border: '1px solid #1e293b', borderRadius: 6, background: '#020617', padding: 4, overflow: 'auto' }}>
             <DialoguePanel world={worldView as any} actorLabels={names} />
           </div>
         </div>

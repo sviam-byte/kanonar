@@ -586,7 +586,7 @@ const RepairFeatureSpec: ActionSpec = {
   },
   validateV1: ({ world, offer }) => validateCommon(world, offer),
   validateV2: ({ world, offer }) => validateCommon(world, offer),
-  classifyV3: () => 'intent',
+  classifyV3: () => 'single',
   apply: ({ world, action }) => {
     const c = getChar(world, action.actorId);
     const fid = String(action.meta?.featureId || '');
@@ -1151,7 +1151,7 @@ const NegotiateSpec: ActionSpec = {
   },
   validateV1: ({ world, offer }) => QuestionAboutSpec.validateV1({ world, actorId: offer.actorId, offer }),
   validateV2: ({ world, offer }) => QuestionAboutSpec.validateV2({ world, actorId: offer.actorId, offer }),
-  classifyV3: () => 'intent',
+  classifyV3: () => 'single',
   apply: ({ world, action }) => {
     const notes: string[] = [];
     const events: SimEvent[] = [];

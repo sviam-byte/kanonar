@@ -15,6 +15,33 @@ import { clamp01 } from '../../util/math';
 import type { Possibility } from '../../possibilities/catalog';
 import { validatePlacement } from '../placement/validatePlacement';
 
+// ── Intent cooldown: read cooldown facts and return penalty multiplier ──
+// If an agent just completed an intent of the same kind+target, penalize re-selection.
+function getIntentCooldownPenalty(world: SimWorld, actorId: string, kind: string, targetId: string | null): number {
+  const cdKey = `intentCooldown:${actorId}`;
+  const cdData: any = (world.facts as any)?.[cdKey];
+  if (!cdData || typeof cdData !== 'object') return 0;
+  const comboKey = `${kind}:${targetId || ''}`;
+  const lastTick = Number(cdData[comboKey] ?? -999);
+  const gap = (world.tickIndex ?? 0) - lastTick;
+  if (gap <= 0) return 0.6;  // just completed this tick
+  if (gap <= 1) return 0.45;
+  if (gap <= 2) return 0.25;
+  if (gap <= 4) return 0.10;
+  return 0;
+}
+
+// ── Actions that execute in one tick via genericSocialSpec — no intent wrap needed ──
+const DIRECT_EXECUTE_KINDS = new Set([
+  'comfort', 'guard', 'escort', 'treat', 'investigate', 'deceive',
+  'accuse', 'praise', 'apologize', 'share', 'trade', 'signal',
+  'command', 'call_backup', 'observe_target', 'verify',
+  'retreat', 'rally', 'suppress', 'patrol', 'cover_fire', 'take_cover',
+  'confide', 'encourage', 'warn', 'plead', 'challenge',
+  'help', 'cooperate', 'protect', 'confront', 'threaten', 'submit',
+  'hide', 'observe', 'wait', 'rest',
+]);
+
 function buildSnapshot(world: SimWorld, tickIndex: number): SimSnapshot {
   return {
     schema: 'SimKitSnapshotV1',
@@ -294,15 +321,49 @@ function groundAbstractAction(
     };
   }
 
-  // ── Intent bridge for talk / question_about ──
+  // ── Direct-execute bypass ──
+  // Actions that have specs in genericSocialSpec (comfort, guard, help, etc.)
+  // execute in one tick and do NOT need the intent lifecycle wrapper.
+  // Let them pass through directly for action diversity.
+  if (DIRECT_EXECUTE_KINDS.has(mapped)) {
+    return {
+      ...action,
+      kind: mapped as any,
+      meta: {
+        ...(action.meta || {}),
+        goalLabKind,
+        groundedFrom: rawKind,
+        groundedVia: 'directExecute',
+      },
+    };
+  }
+
+  // ── Intent bridge for talk / question_about / negotiate ──
   // TalkSpec and QuestionAboutSpec block direct (non-internal) calls — they
   // require the intent lifecycle (start_intent → continue_intent → intent_complete).
   // GoalLab doesn't know about intents, so when it picks 'talk' or 'question_about'
   // we wrap the action in a start_intent envelope here.  The intent system will
   // approach the target, execute the original action with meta.internal=true on
   // completion, and emit the speech/information-transfer events.
-  const needsIntentWrap = (action.kind === 'talk' || action.kind === 'question_about') && action.targetId;
+  const needsIntentWrap = (action.kind === 'talk' || action.kind === 'question_about' || action.kind === 'negotiate') && action.targetId;
   if (needsIntentWrap) {
+    // ── Cooldown guard: don't re-wrap if recently completed same intent ──
+    const cdPenalty = getIntentCooldownPenalty(world, actorId, action.kind, action.targetId ?? null);
+    if (cdPenalty > 0.4) {
+      // Too soon to start this intent again — fall back to a direct single-tick action.
+      return {
+        ...action,
+        kind: 'observe' as any,
+        targetId: action.targetId,
+        meta: {
+          ...(action.meta || {}),
+          goalLabKind,
+          groundedFrom: rawKind,
+          groundedVia: 'intentCooldown:observe',
+          cooldownPenalty: cdPenalty,
+        },
+      };
+    }
     const social = String((action as any).meta?.social ?? 'inform');
     const volume = String((action as any).meta?.volume ?? 'normal');
     const topic = (action as any).meta?.topic ?? null;
@@ -770,30 +831,49 @@ export function makeGoalLabDeciderPlugin(opts?: { storePipeline?: boolean; enabl
         if (!rawAction) continue;
         const goalLabKind = String(best?.kind || rawAction.kind || '');
 
-        // ── Intent lifecycle guard ──────────────────────────────────────────
-        // If the actor already has an active intent, force continue/abort/wait
-        // and suppress new non-intent actions to avoid start_intent loops.
+        // ── Intent lifecycle guard (v2) ─────────────────────────────────────
+        // If the actor has an active intent, decide: continue, abort, or override.
+        // v2 improvements:
+        //   - Allow abort if GoalLab wants a DIFFERENT kind of action (not just talk→talk loop)
+        //   - Allow direct-execute actions to override stale intents (>3 ticks old)
+        //   - Force continue only during approach/execute stages of scripted intents
         const activeIntent = world.facts[`intent:${actorId}`];
         if (activeIntent) {
           const isIntentAction = /^(continue_intent|abort_intent|wait)$/.test(rawAction.kind);
           if (!isIntentAction) {
-            actions.push({
-              id: `act:continue_intent:${tickIndex}:${actorId}:forced`,
-              kind: 'continue_intent' as any,
-              actorId,
-              targetId: (activeIntent as any)?.intent?.originalAction?.targetId ?? null,
-              meta: {
-                decisionMode: mode,
-                gate: gateResult,
-                goalLabKind,
-                groundedFrom: rawAction.kind,
-                groundedVia: 'intentGuard:forceContinue',
-                suppressedAction: rawAction.kind,
-                activeIntentId: (activeIntent as any)?.id ?? null,
-                activeIntentScriptId: (activeIntent as any)?.scriptId ?? null,
-              },
-            });
-            continue;
+            const intentAge = tickIndex - Number((activeIntent as any)?.startedAtTick ?? tickIndex);
+            const intentOrigKind = (activeIntent as any)?.intent?.originalAction?.kind || '';
+            const wantsDifferentKind = rawAction.kind !== intentOrigKind && rawAction.kind !== 'start_intent';
+            const isDirectAction = DIRECT_EXECUTE_KINDS.has(String(rawAction.kind));
+            const isStale = intentAge >= 3;
+            const stageKind = (activeIntent as any)?.intentScript?.stages?.[(activeIntent as any)?.stageIndex ?? 0]?.kind || '';
+            const inCriticalStage = stageKind === 'execute' || stageKind === 'attach';
+
+            // Abort if: agent wants genuinely different action AND (intent is stale OR action is direct-execute)
+            // BUT not if we're in a critical stage (execute/attach).
+            if (wantsDifferentKind && (isStale || isDirectAction) && !inCriticalStage) {
+              // Abort the current intent, then let the new action through.
+              delete world.facts[`intent:${actorId}`];
+              // Fall through to grounding below — the new action will execute directly.
+            } else {
+              actions.push({
+                id: `act:continue_intent:${tickIndex}:${actorId}:forced`,
+                kind: 'continue_intent' as any,
+                actorId,
+                targetId: (activeIntent as any)?.intent?.originalAction?.targetId ?? null,
+                meta: {
+                  decisionMode: mode,
+                  gate: gateResult,
+                  goalLabKind,
+                  groundedFrom: rawAction.kind,
+                  groundedVia: 'intentGuard:forceContinue',
+                  suppressedAction: rawAction.kind,
+                  activeIntentId: (activeIntent as any)?.id ?? null,
+                  activeIntentScriptId: (activeIntent as any)?.scriptId ?? null,
+                },
+              });
+              continue;
+            }
           }
         }
         const action = groundAbstractAction(rawAction, offers, actorId, goalLabKind, world);
