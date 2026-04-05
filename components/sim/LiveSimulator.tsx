@@ -450,6 +450,15 @@ export const LiveSimulator: React.FC = () => {
       ...(sim.world.events || []),
     ];
 
+    // ── Approach movement events (walking toward target) ──
+    for (const ev of allEvents) {
+      if (!ev || String(ev.type) !== 'action:approach_move') continue;
+      const p = (ev as any).payload || {};
+      const actorName = names[String(p.actorId || '')] || String(p.actorId || '');
+      const targetName = p.targetId ? (names[String(p.targetId)] || String(p.targetId)) : '';
+      lines.push(`  🚶 ${actorName} идёт к ${targetName}: (${p.fromX},${p.fromY}) → (${p.toX},${p.toY})`);
+    }
+
     // ── Speech events with atom details ──
     const seenSpeech = new Set<string>();
     for (const ev of allEvents) {
@@ -519,6 +528,7 @@ export const LiveSimulator: React.FC = () => {
       const NV_RU: Record<string, string> = {
         tense: 'напряжён', angry: 'злится', afraid: 'боится',
         confident: 'уверен', exhausted: 'измотан', hurt: 'ранен',
+        uneasy: 'встревожен',
       };
       // Group by observer for readability.
       const byObserver = new Map<string, string[]>();
@@ -552,7 +562,22 @@ export const LiveSimulator: React.FC = () => {
           if (acc > 0) parts.push(`✓${acc}`);
           if (qua > 0) parts.push(`⏸${qua}`);
           if (rej > 0) parts.push(`✗${rej}`);
-          lines.push(`  📥 ${agentName} принял атомы: ${parts.join(' ')}`);
+
+          // Show what was actually accepted.
+          const items: any[] = info.acceptedItems || [];
+          const itemDescs = items
+            .filter((it: any) => it && it.id)
+            .map((it: any) => {
+              const shortId = String(it.id).replace(/^obs:nonverbal:[\w-]+:[\w-]+:/, 'nv:').replace(/^obs:/, '');
+              const fromLabel = it.from ? ` ←${names[it.from] || it.from}` : '';
+              return `${shortId}(${it.mag})${fromLabel}`;
+            });
+
+          if (itemDescs.length) {
+            lines.push(`  📥 ${agentName} принял: ${parts.join(' ')} — ${itemDescs.join(', ')}`);
+          } else {
+            lines.push(`  📥 ${agentName} принял атомы: ${parts.join(' ')}`);
+          }
         }
       }
     }

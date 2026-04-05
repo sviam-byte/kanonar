@@ -71,8 +71,10 @@ export function ensureCharacterPos(world: SimWorld, charId: string, orderIndex?:
     const idx = Number.isFinite(orderIndex as any) ? Number(orderIndex) : 0;
     const cx = mapW / 2;
     const cy = mapH / 2;
-    const r = Math.min(mapW, mapH) * (0.06 + 0.02 * Math.sqrt(idx));
-    const a = idx * 0.85;
+    // Spread agents across the map, not clustered at center.
+    // Golden angle (~2.4 rad) gives even angular distribution for any N.
+    const r = Math.min(mapW, mapH) * (0.20 + 0.08 * Math.sqrt(idx + 1));
+    const a = idx * 2.399;
     c.pos.x = cx + r * Math.cos(a);
     c.pos.y = cy + r * Math.sin(a);
     c.pos.nodeId = c.pos.nodeId ?? null;
