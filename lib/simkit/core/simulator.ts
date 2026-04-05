@@ -16,6 +16,110 @@ import { generateNonverbalAtoms } from '../perception/nonverbalAtoms';
 import { detectBeats, computeTension, type NarrativeBeat } from '../narrative/beatDetector';
 import { resolveConflicts } from '../resolution/conflictDetector';
 import { expireDialogues } from '../dialogue/dialogueState';
+import { distSameLocation, getCellCover, getCellElevation, getCharXY, getSpatialConfig, hasLineOfSight } from './spatial';
+
+/**
+ * Compute per-agent tactical situation atoms from spatial data.
+ * These feed into the GoalLab pipeline through S0 canonicalization,
+ * giving agents spatial awareness that modulates drivers/goals/decisions.
+ */
+function computeTacticalAtoms(world: SimWorld) {
+  const facts: any = world.facts || {};
+  const chars = Object.values(world.characters || {});
+  const cfg = getSpatialConfig(world);
+
+  for (const c of chars) {
+    const actorId = (c as any).id;
+    const locId = (c as any).locId;
+    if (!actorId || !locId) continue;
+
+    // Cover at current position.
+    let cover = 0;
+    try { cover = getCellCover(world, actorId); } catch { /* no map */ }
+    facts[`ctx:tactical:cover:${actorId}`] = clamp01(cover);
+
+    // Elevation at current position.
+    let elev = 0;
+    try { elev = getCellElevation(world, actorId); } catch { /* no map */ }
+
+    // Count threats and allies nearby.
+    let threatsNearby = 0;
+    let alliesNearby = 0;
+    let losThreats = 0;
+    let maxElevAdv = 0;
+
+    for (const other of chars) {
+      if (other.id === actorId || (other as any).locId !== locId) continue;
+      const d = distSameLocation(world, actorId, other.id);
+      if (!Number.isFinite(d)) continue;
+
+      const trust = clamp01(Number(facts?.relations?.[actorId]?.[other.id]?.trust ?? 0.5));
+      const threat = clamp01(Number(facts?.relations?.[actorId]?.[other.id]?.threat ?? 0));
+
+      if (threat > 0.4 && d <= cfg.attackRange * 2) {
+        threatsNearby++;
+        // Check if threat has LoS to us.
+        let los = true;
+        try { los = hasLineOfSight(world, other.id, actorId); } catch { /* open */ }
+        if (los) losThreats++;
+
+        // Elevation advantage over this threat.
+        let otherElev = 0;
+        try { otherElev = getCellElevation(world, other.id); } catch {}
+        maxElevAdv = Math.max(maxElevAdv, elev - otherElev);
+      }
+
+      if (trust > 0.55 && d <= 5) {
+        alliesNearby++;
+      }
+    }
+
+    facts[`ctx:tactical:threats:${actorId}`] = clamp01(threatsNearby / 3);
+    facts[`ctx:tactical:allies:${actorId}`] = clamp01(alliesNearby / 3);
+    facts[`ctx:tactical:los_threats:${actorId}`] = clamp01(losThreats / 3);
+    facts[`ctx:tactical:elevation:${actorId}`] = clamp01(0.5 + maxElevAdv * 0.15);
+
+    // Escape routes: count walkable cells adjacent to exits.
+    const loc = world.locations[locId];
+    const cells: any[] = (loc as any)?.entity?.map?.cells;
+    const exits: any[] = (loc as any)?.entity?.map?.exits;
+    let escapeScore = 0.5; // default if no map
+    if (Array.isArray(cells) && Array.isArray(exits) && exits.length) {
+      const pos = getCharXY(world, actorId);
+      let minExitDist = 999;
+      for (const ex of exits) {
+        const dx = pos.x - Number(ex.x ?? 0);
+        const dy = pos.y - Number(ex.y ?? 0);
+        minExitDist = Math.min(minExitDist, Math.hypot(dx, dy));
+      }
+      escapeScore = clamp01(1 - minExitDist / 15);
+    }
+    facts[`ctx:tactical:escape:${actorId}`] = escapeScore;
+
+    // Composite tactical advantage (for driver modulation).
+    const tacticalAdv = clamp01(
+      cover * 0.3 +
+      escapeScore * 0.2 +
+      clamp01(0.5 + maxElevAdv * 0.15) * 0.2 +
+      clamp01(alliesNearby / 3) * 0.15 +
+      (1 - clamp01(losThreats / 3)) * 0.15,
+    );
+    facts[`ctx:tactical:advantage:${actorId}`] = tacticalAdv;
+
+    // ── Modulate danger by tactical situation ──
+    // Exposed agent (low cover, threats with LoS) → danger boosted.
+    // Well-positioned agent → danger dampened.
+    const baseDanger = clamp01(Number(facts[`ctx:danger:${actorId}`] ?? 0));
+    if (threatsNearby > 0) {
+      const exposure = clamp01(losThreats / Math.max(1, threatsNearby)) * (1 - cover);
+      facts[`ctx:danger:${actorId}`] = clamp01(baseDanger + exposure * 0.2);
+    }
+
+    // ── Modulate control by tactical advantage ──
+    const baseControl = clamp01(Number(facts[`ctx:control:${actorId}`] ?? 0.5));
+    facts[`ctx:control:${actorId}`] = clamp01(baseControl * 0.7 + tacticalAdv * 0.3);
+  }
+}
 
 function applyHazardPoints(world: SimWorld) {
   const points = Array.isArray((world.facts as any)?.hazardPoints) ? (world.facts as any).hazardPoints : [];
@@ -253,6 +357,7 @@ export class SimKitSimulator {
     // Apply hazard/safe map points into world facts before scoring/actions.
     applyHazardPoints(this.world);
     applyInputAxesSensors(this.world);
+    computeTacticalAtoms(this.world);
 
     const offers = proposeActions(this.world);
 

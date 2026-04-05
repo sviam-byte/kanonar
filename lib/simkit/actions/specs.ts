@@ -16,6 +16,7 @@ import { buildGenericSocialSpec } from './genericSocialSpec';
 import { recordTrail } from '../core/mapTypes';
 import { RespondSpec } from './respondSpec';
 import { MoveCellSpec } from './moveCellSpec';
+import { decideSpeechContent } from '../dialogue/speechContent';
 
 const clamp = (x: number, a: number, b: number) => Math.max(a, Math.min(b, x));
 
@@ -223,7 +224,8 @@ function isInternalCall(action: any) {
 }
 
 // Standardize speech atoms for talk/question/negotiate.
-function mkSpeechAtoms(kind: string, fromId: string, toId: string, extra?: any) {
+// Legacy fallback — returns one generic atom when no pipeline data exists.
+function mkSpeechAtomsFallback(kind: string, fromId: string, toId: string, extra?: any) {
   const base = {
     id: `ctx:${kind}:${fromId}:${toId}`,
     magnitude: 1,
@@ -231,6 +233,96 @@ function mkSpeechAtoms(kind: string, fromId: string, toId: string, extra?: any) 
     meta: { kind, ...extra },
   };
   return [base];
+}
+
+/**
+ * Collect relevant belief/context atoms the speaker actually has,
+ * filter through decideSpeechContent (truthful/selective/deceptive),
+ * and return the atom set + intent metadata for SpeechEventV1.
+ */
+function buildSpeechAtoms(
+  world: SimWorld,
+  speakerId: string,
+  targetId: string,
+  social: string,
+): {
+  atoms: Array<{ id: string; magnitude: number; confidence: number; meta?: any }>;
+  intent: 'truthful' | 'selective' | 'deceptive';
+  omittedCount: number;
+  distortedCount: number;
+} {
+  const facts: any = world.facts || {};
+
+  // 1) Gather what the speaker knows: agentAtoms + recent nonverbal observations.
+  const agentAtoms: any[] = Array.isArray(facts[`agentAtoms:${speakerId}`])
+    ? facts[`agentAtoms:${speakerId}`]
+    : [];
+  // Add own context axes as "things I can talk about".
+  const ctxKeys = Object.keys(facts).filter(
+    (k) => k.startsWith(`ctx:`) && k.endsWith(`:${speakerId}`) && typeof facts[k] === 'number',
+  );
+  const ctxAtoms = ctxKeys.map((k) => {
+    const parts = k.split(':');
+    const axis = parts.slice(1, -1).join(':');
+    return {
+      id: k,
+      magnitude: clamp01(Number(facts[k])),
+      confidence: 0.85,
+      meta: { axis, source: 'self' },
+    };
+  });
+
+  // Only include atoms with meaningful magnitude for topic relevance.
+  const topicPool = [...agentAtoms, ...ctxAtoms]
+    .filter((a) => typeof a?.magnitude === 'number' && a.magnitude > 0.15)
+    .sort((a, b) => (b.magnitude ?? 0) - (a.magnitude ?? 0))
+    .slice(0, 12);
+
+  if (!topicPool.length) {
+    return {
+      atoms: mkSpeechAtomsFallback(social, speakerId, targetId, { social }),
+      intent: 'truthful',
+      omittedCount: 0,
+      distortedCount: 0,
+    };
+  }
+
+  // 2) Build goal scores from pipeline trace for decideSpeechContent.
+  const trace = facts[`sim:trace:${speakerId}`];
+  const goalScores: Record<string, number> = {};
+  if (trace?.goalScores && typeof trace.goalScores === 'object') {
+    for (const [k, v] of Object.entries(trace.goalScores)) {
+      if (typeof v === 'number') goalScores[k] = v;
+    }
+  }
+
+  // 3) Run speech content filter (truthful / selective / deceptive).
+  const result = decideSpeechContent(world, {
+    speakerId,
+    targetId,
+    beliefAtoms: topicPool,
+    topicAtoms: topicPool,
+    goalScores,
+  });
+
+  const speechAtoms = result.atoms.map((a: any) => ({
+    id: String(a.id || ''),
+    magnitude: Number(a.magnitude ?? 0),
+    confidence: Number(a.confidence ?? 0.6),
+    meta: {
+      ...(a.meta || {}),
+      from: speakerId,
+      speechIntent: result.intent,
+      ...(a.trueMagnitude != null ? { trueMagnitude: a.trueMagnitude } : {}),
+    },
+  }));
+
+  return {
+    atoms: speechAtoms.length ? speechAtoms : mkSpeechAtomsFallback(social, speakerId, targetId, { social }),
+    intent: result.intent,
+    omittedCount: result.omitted?.length ?? 0,
+    distortedCount: result.distorted?.length ?? 0,
+  };
 }
 
 const WaitSpec: ActionSpec = {
@@ -669,13 +761,28 @@ const TalkSpec: ActionSpec = {
       threaten: 'угрожает',
     };
 
+    // ── Collect atoms and run speech content filter ──
+    const speechData = buildSpeechAtoms(world, c.id, otherId, social);
+
+    // ── Build descriptive text from CI + atoms ──
     let speechText = SPEECH_TEXT_RU[social] || 'обращается';
-    // Enrich with communicativeIntent topic/facts.
-    if (ciTopic) {
+    if (ciTopic && ciTopic !== social && !ciTopic.startsWith('schema_')) {
       speechText += ` (тема: ${ciTopic})`;
     }
     if (ciFacts.length) {
-      speechText += ': ' + ciFacts.slice(0, 3).join('; ');
+      const cleanFacts = ciFacts.filter((f: string) => f && !f.startsWith('schema_'));
+      if (cleanFacts.length) speechText += ': ' + cleanFacts.slice(0, 3).join('; ');
+    }
+    // Append key atom summaries for narrative readability.
+    const topAtomSummaries = speechData.atoms
+      .filter((a: any) => a.magnitude > 0.3)
+      .slice(0, 3)
+      .map((a: any) => {
+        const short = String(a.id || '').replace(/^ctx:/, '').replace(/:.*$/, '');
+        return `${short}:${a.magnitude.toFixed(1)}`;
+      });
+    if (topAtomSummaries.length && !ciFacts.length) {
+      speechText += ' [' + topAtomSummaries.join(', ') + ']';
     }
 
     const speech: SpeechEventV1 = {
@@ -693,8 +800,9 @@ const TalkSpec: ActionSpec = {
               : 'inform',
       volume,
       topic: ciTopic || social,
+      intent: speechData.intent,
       text: speechText,
-      atoms: mkSpeechAtoms('talk', c.id, otherId, { social, trust }),
+      atoms: speechData.atoms,
     };
     events.push(mkActionEvent(world, 'speech:v1', speech));
     return { world, events, notes };
@@ -833,12 +941,12 @@ const AttackSpec: ActionSpec = {
 const ObserveSpec: ActionSpec = {
   kind: 'observe',
   enumerate: ({ world, actorId }) => {
-    // базово всегда возможно; чуть выше, чем wait, но ниже "настоящих" действий
     const c = getChar(world, actorId);
     const loc = getLoc(world, c.locId);
     const radiation = Number(loc.hazards?.['radiation'] ?? 0);
-    // чем опаснее, тем чаще "озираемся"
-    const score = clamp01(0.12 + 0.22 * radiation);
+    const danger = clamp01(Number((world.facts as any)?.[`ctx:danger:${actorId}`] ?? 0));
+    // More dangerous situations → more valuable to observe.
+    const score = clamp01(0.12 + 0.22 * radiation + 0.15 * danger);
     return [{ kind: 'observe', actorId, score }];
   },
   validateV1: ({ world, offer }) => validateCommon(world, offer),
@@ -855,13 +963,88 @@ const ObserveSpec: ActionSpec = {
     const notes: string[] = [];
     const events: SimEvent[] = [];
     const c = getChar(world, action.actorId);
-    // "наблюдение" повышает готовность принимать атомы (observeBoost).
     c.energy = clamp01(c.energy - 0.01);
     world.facts[`observeBoost:${c.id}`] = world.tickIndex;
     world.facts[`observe:${c.id}:${world.tickIndex}`] = true;
     world.facts['observe:count'] = (world.facts['observe:count'] ?? 0) + 1;
-    notes.push(`${c.id} observes carefully`);
-    events.push(mkActionEvent(world, 'action:observe', { actorId: c.id, locationId: c.locId }));
+
+    // ── Generate observation atoms: what the agent actually sees ──
+    const obsAtoms: any[] = [];
+    const cfg = getSpatialConfig(world);
+    const facts: any = world.facts || {};
+
+    for (const other of Object.values(world.characters)) {
+      if (other.id === c.id || (other as any).locId !== c.locId) continue;
+
+      // LoS check: can we see this agent?
+      let los = true;
+      try { los = hasLineOfSight(world, c.id, other.id); } catch { /* open */ }
+      if (!los) continue;
+
+      const d = distSameLocation(world, c.id, other.id);
+      if (!Number.isFinite(d)) continue;
+
+      const distConf = clamp01(1 - d / (cfg.talkRange * 1.5));
+      const otherName = other.id;
+
+      // Observe their current action (if visible).
+      const lastAct = facts[`lastAction:${other.id}`];
+      if (lastAct?.kind) {
+        obsAtoms.push({
+          id: `obs:action:${c.id}:${otherName}:${world.tickIndex}`,
+          magnitude: 0.8,
+          confidence: distConf * 0.9,
+          meta: {
+            from: null,
+            to: c.id,
+            observedAction: lastAct.kind,
+            observedTarget: lastAct.targetId || null,
+            observedAgent: otherName,
+          },
+        });
+      }
+
+      // Observe their position.
+      const otherPos = getCharXY(world, other.id);
+      obsAtoms.push({
+        id: `obs:position:${c.id}:${otherName}:${world.tickIndex}`,
+        magnitude: 0.6,
+        confidence: distConf * 0.85,
+        meta: {
+          to: c.id,
+          observedAgent: otherName,
+          position: { x: Math.round(otherPos.x), y: Math.round(otherPos.y) },
+        },
+      });
+
+      // Observe their approximate health (visible injuries).
+      const otherHealth = clamp01(Number((other as any).health ?? 1));
+      if (otherHealth < 0.7) {
+        obsAtoms.push({
+          id: `obs:injury:${c.id}:${otherName}:${world.tickIndex}`,
+          magnitude: 1 - otherHealth,
+          confidence: distConf * 0.7,
+          meta: { to: c.id, observedAgent: otherName },
+        });
+      }
+    }
+
+    // Deliver observation atoms to agent's inbox for next tick processing.
+    if (obsAtoms.length) {
+      const inbox = (facts['inboxAtoms'] && typeof facts['inboxAtoms'] === 'object')
+        ? facts['inboxAtoms'] : {};
+      const arr = Array.isArray((inbox as any)[c.id]) ? (inbox as any)[c.id] : [];
+      arr.push(...obsAtoms);
+      (inbox as any)[c.id] = arr;
+      facts['inboxAtoms'] = inbox;
+    }
+
+    notes.push(`${c.id} observes (${obsAtoms.length} atoms)`);
+    events.push(mkActionEvent(world, 'action:observe', {
+      actorId: c.id,
+      locationId: c.locId,
+      atomCount: obsAtoms.length,
+    }));
     return { world, events, notes };
   },
 };
@@ -930,6 +1113,12 @@ const QuestionAboutSpec: ActionSpec = {
       topic,
       locationId: c.locId,
     }));
+    const speechData = buildSpeechAtoms(world, c.id, otherId, 'question');
+    const TOPIC_RU: Record<string, string> = {
+      situation: 'ситуацию', danger: 'опасность', plan: 'план',
+      health: 'здоровье', resources: 'ресурсы', route: 'маршрут',
+    };
+    const topicRu = TOPIC_RU[topic] || topic;
     const speech: SpeechEventV1 = {
       schema: 'SpeechEventV1',
       actorId: c.id,
@@ -937,8 +1126,9 @@ const QuestionAboutSpec: ActionSpec = {
       act: 'ask',
       volume,
       topic,
-      text: `asks about ${topic}`,
-      atoms: mkSpeechAtoms('question', c.id, otherId, { topic }),
+      intent: speechData.intent,
+      text: `спрашивает о: ${topicRu}`,
+      atoms: speechData.atoms,
     };
     events.push(mkActionEvent(world, 'speech:v1', speech));
     return { world, events, notes };
@@ -973,15 +1163,45 @@ const NegotiateSpec: ActionSpec = {
     world.facts[`negotiate:${c.id}:${otherId}`] = (world.facts[`negotiate:${c.id}:${otherId}`] ?? 0) + 1;
     notes.push(`${c.id} negotiates with ${otherId}`);
     events.push(mkActionEvent(world, 'action:negotiate', { actorId: c.id, targetId: otherId, locationId: c.locId }));
+
+    // ── Build negotiate speech with proper atom exchange ──
+    const pipelineData = (world.facts as any)?.[`sim:pipeline:${c.id}`];
+    const ci = pipelineData?.communicativeIntent;
+    const ciTopic = ci?.topic?.primary || '';
+    const ciFacts = Array.isArray(ci?.topic?.facts) ? ci.topic.facts : [];
+
+    const speechData = buildSpeechAtoms(world, c.id, otherId, 'negotiate');
+
+    let negotiateText = 'ведёт переговоры';
+    if (ciTopic && !ciTopic.startsWith('schema_') && ciTopic !== 'terms') {
+      negotiateText += ` (тема: ${ciTopic})`;
+    }
+    if (ciFacts.length) {
+      const cleanFacts = ciFacts.filter((f: string) => f && !f.startsWith('schema_'));
+      if (cleanFacts.length) negotiateText += ': ' + cleanFacts.slice(0, 3).join('; ');
+    }
+    // Show top atoms being negotiated about.
+    const topNegAtoms = speechData.atoms
+      .filter((a: any) => a.magnitude > 0.2)
+      .slice(0, 3)
+      .map((a: any) => {
+        const short = String(a.id || '').replace(/^ctx:/, '').replace(new RegExp(`:${c.id}$`), '');
+        return `${short}:${a.magnitude.toFixed(1)}`;
+      });
+    if (topNegAtoms.length && !ciFacts.length) {
+      negotiateText += ' [' + topNegAtoms.join(', ') + ']';
+    }
+
     const speech: SpeechEventV1 = {
       schema: 'SpeechEventV1',
       actorId: c.id,
       targetId: otherId,
       act: 'negotiate',
       volume,
-      topic: 'terms',
-      text: 'proposes terms',
-      atoms: mkSpeechAtoms('negotiate', c.id, otherId, { topic: 'terms' }),
+      topic: ciTopic || 'terms',
+      intent: speechData.intent,
+      text: negotiateText,
+      atoms: speechData.atoms,
     };
     events.push(mkActionEvent(world, 'speech:v1', speech));
     return { world, events, notes };
@@ -1439,6 +1659,13 @@ const ContinueIntentSpec: ActionSpec = {
       }
 
       delete world.facts[key];
+      // ── Write intent cooldown to prevent immediate re-start ──
+      const cdKey = `intentCooldown:${c.id}`;
+      const cdData: any = typeof (world.facts as any)?.[cdKey] === 'object' ? (world.facts as any)[cdKey] : {};
+      const origKind2 = original?.kind || '';
+      const origTarget2 = original?.targetId || '';
+      cdData[`${origKind2}:${origTarget2}`] = world.tickIndex;
+      (world.facts as any)[cdKey] = cdData;
       events.push(
         mkActionEvent(world, 'action:intent_complete', {
           actorId: c.id,
@@ -1488,6 +1715,12 @@ const ContinueIntentSpec: ActionSpec = {
       } else {
         notes.push(`${c.id} intent complete: no originalAction`);
       }
+      // ── Write intent cooldown (v0 path) ──
+      const cdKeyV0 = `intentCooldown:${c.id}`;
+      const cdDataV0: any = typeof (world.facts as any)?.[cdKeyV0] === 'object' ? (world.facts as any)[cdKeyV0] : {};
+      const okV0 = (cur as any)?.intent?.originalAction;
+      if (okV0) cdDataV0[`${okV0.kind || ''}:${okV0.targetId || ''}`] = world.tickIndex;
+      (world.facts as any)[cdKeyV0] = cdDataV0;
       delete world.facts[key];
       events.push(mkActionEvent(world, 'action:intent_complete', {
         actorId: c.id,
@@ -1529,6 +1762,130 @@ const AbortIntentSpec: ActionSpec = {
   },
 };
 
+// ── Retreat: personality-driven withdrawal toward exits/cover ──
+const RetreatSpec: ActionSpec = {
+  kind: 'retreat' as ActionKind,
+  enumerate: ({ world, actorId }) => {
+    const c = getChar(world, actorId);
+    const facts: any = world.facts || {};
+    const health = clamp01(Number(c.health ?? 1));
+    const stress = clamp01(Number(c.stress ?? 0));
+    const danger = clamp01(Number(facts[`ctx:danger:${actorId}`] ?? 0));
+
+    // Personality modulates retreat threshold.
+    const entity: any = (c as any)?.entity;
+    const traits: any = entity?.traits || entity?.params || {};
+    const bravery = clamp01(Number(traits?.D_pain_tolerance ?? traits?.B_tolerance_ambiguity ?? 0.5));
+    const caution = clamp01(Number(traits?.D_HPA_reactivity ?? traits?.A_Safety_Care ?? 0.5));
+
+    // Brave characters retreat at lower health/higher stress thresholds.
+    const healthThreshold = 0.2 + 0.3 * bravery; // brave: 0.5, cautious: 0.2
+    const stressThreshold = 0.5 + 0.3 * bravery;  // brave: 0.8, cautious: 0.5
+
+    const shouldRetreat =
+      health < healthThreshold ||
+      stress > stressThreshold ||
+      (danger > 0.6 && health < 0.5);
+
+    if (!shouldRetreat) return [];
+
+    // Score scales with urgency.
+    const urgency = clamp01(
+      Math.max(0, healthThreshold - health) * 2 +
+      Math.max(0, stress - stressThreshold) * 1.5 +
+      danger * 0.3 +
+      caution * 0.15,
+    );
+    const score = clamp01(0.15 + urgency * 0.3);
+
+    return [{ kind: 'retreat' as ActionKind, actorId, score }];
+  },
+  validateV1: ({ world, offer }) => validateCommon(world, offer),
+  validateV2: ({ world, offer }) => validateCommon(world, offer),
+  classifyV3: () => 'single',
+  apply: ({ world, action }) => {
+    const notes: string[] = [];
+    const events: SimEvent[] = [];
+    const c = getChar(world, action.actorId);
+    const loc = world.locations[(c as any).locId];
+    const facts: any = world.facts || {};
+
+    // Move toward nearest exit or highest-cover cell.
+    const cells: any[] = (loc as any)?.entity?.map?.cells;
+    const exits: any[] = (loc as any)?.entity?.map?.exits;
+    const pos = getCharXY(world, c.id);
+    const cfg = getSpatialConfig(world);
+
+    let bestX = pos.x;
+    let bestY = pos.y;
+    let bestScore = -1;
+
+    if (Array.isArray(cells)) {
+      // Score nearby walkable cells: prefer exits, then cover, then distance from threats.
+      const dirs = [
+        { dx: 1, dy: 0 }, { dx: -1, dy: 0 }, { dx: 0, dy: 1 }, { dx: 0, dy: -1 },
+        { dx: 1, dy: 1 }, { dx: -1, dy: -1 }, { dx: 1, dy: -1 }, { dx: -1, dy: 1 },
+      ];
+
+      for (const d of dirs) {
+        const nx = Math.round(pos.x) + d.dx;
+        const ny = Math.round(pos.y) + d.dy;
+        const cell = cells.find((cl: any) => cl.x === nx && cl.y === ny);
+        if (!cell || cell.walkable === false) continue;
+
+        let s = 0;
+        const cellCover = clamp01(Number(cell.cover ?? 0));
+        s += cellCover * 0.3;
+
+        // Distance to nearest exit.
+        if (Array.isArray(exits) && exits.length) {
+          let minExitDist = 999;
+          for (const ex of exits) {
+            minExitDist = Math.min(minExitDist, Math.abs(nx - Number(ex.x ?? 0)) + Math.abs(ny - Number(ex.y ?? 0)));
+          }
+          const curExitDist = exits.reduce((m: number, ex: any) =>
+            Math.min(m, Math.abs(Math.round(pos.x) - Number(ex.x ?? 0)) + Math.abs(Math.round(pos.y) - Number(ex.y ?? 0))), 999);
+          if (minExitDist < curExitDist) s += 0.4;
+        }
+
+        // Distance from threats.
+        for (const other of Object.values(world.characters)) {
+          if (other.id === c.id || (other as any).locId !== (c as any).locId) continue;
+          const threat = clamp01(Number(facts?.relations?.[c.id]?.[other.id]?.threat ?? 0));
+          if (threat <= 0.3) continue;
+          const otherPos = getCharXY(world, other.id);
+          const curDist = Math.hypot(pos.x - otherPos.x, pos.y - otherPos.y);
+          const newDist = Math.hypot(nx - otherPos.x, ny - otherPos.y);
+          if (newDist > curDist) s += 0.2 * threat;
+        }
+
+        if (s > bestScore) {
+          bestScore = s;
+          bestX = nx;
+          bestY = ny;
+        }
+      }
+    }
+
+    // Apply movement.
+    if (bestX !== pos.x || bestY !== pos.y) {
+      (c as any).pos = { ...(c as any).pos, nodeId: null, x: bestX, y: bestY };
+      recordTrail(world.facts as any, c.id, world.tickIndex, (c as any).locId, undefined, bestX, bestY);
+    }
+
+    c.stress = clamp01(c.stress - 0.02); // slight stress relief from taking action
+    c.energy = clamp01(c.energy - 0.01);
+
+    notes.push(`${c.id} retreats to (${bestX},${bestY})`);
+    events.push(mkActionEvent(world, 'action:retreat', {
+      actorId: c.id, locationId: (c as any).locId,
+      x: bestX, y: bestY,
+      health: c.health, stress: c.stress,
+    }));
+    return { world, events, notes };
+  },
+};
+
 export const ACTION_SPECS: Record<ActionKind, ActionSpec> = {
   wait: WaitSpec,
   rest: RestSpec,
@@ -1547,6 +1904,7 @@ export const ACTION_SPECS: Record<ActionKind, ActionSpec> = {
   continue_intent: ContinueIntentSpec,
   abort_intent: AbortIntentSpec,
   respond: RespondSpec,
+  retreat: RetreatSpec,
 };
 
 export function enumerateActionOffers(world: SimWorld): ActionOffer[] {
@@ -1556,9 +1914,15 @@ export function enumerateActionOffers(world: SimWorld): ActionOffer[] {
   for (const actorId of actorIds) {
     const ctx: OfferCtx = { world, actorId };
 
-    // If an actor has an active intent, restrict offers to continue/abort/wait.
-    const hasIntent = Boolean(world.facts[`intent:${actorId}`]);
+    // If an actor has an active intent, restrict offers to continue/abort/wait
+    // BUT allow move_cell during approach stage (so movement is visible).
+    const intentData: any = world.facts[`intent:${actorId}`];
+    const hasIntent = Boolean(intentData);
     if (hasIntent) {
+      const stageIdx = Number(intentData?.stageIndex ?? 0);
+      const stageKind = intentData?.intentScript?.stages?.[stageIdx]?.kind;
+      const inApproach = stageKind === 'approach';
+
       for (const kind of ['continue_intent', 'abort_intent', 'wait'] as ActionKind[]) {
         const spec = ACTION_SPECS[kind];
         const raw = spec.enumerate(ctx);
@@ -1569,13 +1933,39 @@ export function enumerateActionOffers(world: SimWorld): ActionOffer[] {
           offers.push(v2);
         }
       }
+      // During approach, also enumerate move_cell so spatial movement is visible
+      // and competes with the intent's built-in teleport.
+      if (inApproach && ACTION_SPECS['move_cell' as ActionKind]) {
+        const mcSpec = ACTION_SPECS['move_cell' as ActionKind];
+        const mcRaw = mcSpec.enumerate(ctx);
+        for (const o of mcRaw) {
+          const v1 = mcSpec.validateV1({ ...ctx, offer: o });
+          const v2 = mcSpec.validateV2({ ...ctx, offer: v1 });
+          offers.push(v2);
+        }
+      }
       continue;
     }
+
+    // ── Intent cooldown: block same kind→target for 2 ticks after completion ──
+    const cooldownKey = `intentCooldown:${actorId}`;
+    const cooldown: any = (world.facts as any)?.[cooldownKey];
 
     for (const kind of Object.keys(ACTION_SPECS).sort() as ActionKind[]) {
       const spec = ACTION_SPECS[kind];
       const raw = spec.enumerate(ctx);
       for (const o of raw) {
+        // Apply cooldown block for recently completed intent patterns.
+        if (kind === 'start_intent' && cooldown && typeof cooldown === 'object') {
+          const origKind = (o.payload as any)?.intent?.originalAction?.kind;
+          const origTarget = (o.payload as any)?.intent?.originalAction?.targetId;
+          const cdKey = `${origKind}:${origTarget}`;
+          const cdTick = Number(cooldown[cdKey]);
+          if (Number.isFinite(cdTick) && world.tickIndex - cdTick < 3) {
+            offers.push({ ...o, blocked: true, reason: 'cooldown:recent_intent', score: 0 });
+            continue;
+          }
+        }
         const v1 = spec.validateV1({ ...ctx, offer: o });
         const v2 = spec.validateV2({ ...ctx, offer: v1 });
         offers.push(v2);

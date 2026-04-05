@@ -81,6 +81,43 @@ export function generateNonverbalAtoms(world: SimWorld): NonverbalAtom[] {
           source: 'nonverbal',
         });
       }
+
+      // ── Extended nonverbal channels ──
+      // Confidence: high energy + low stress + low fear → confident body language.
+      const energy = clamp01(Number(subject.energy ?? 0.5));
+      const health = clamp01(Number(subject.health ?? 1));
+      const confidenceSignal = clamp01(energy * 0.4 + (1 - stress) * 0.3 + health * 0.3);
+      if (confidenceSignal > 0.7 && suppressionFactor > 0.3) {
+        out.push({
+          id: `obs:nonverbal:${observer.id}:${subject.id}:confident:${world.tickIndex}`,
+          observerId: observer.id, subjectId: subject.id,
+          kind: 'confident', magnitude: confidenceSignal,
+          confidence: clamp01(baseConf * 0.7 * obsBonus),
+          source: 'nonverbal',
+        });
+      }
+
+      // Exhausted: low energy clearly visible.
+      if (energy < 0.25) {
+        out.push({
+          id: `obs:nonverbal:${observer.id}:${subject.id}:exhausted:${world.tickIndex}`,
+          observerId: observer.id, subjectId: subject.id,
+          kind: 'exhausted', magnitude: 1 - energy,
+          confidence: clamp01(baseConf * 0.8 * obsBonus),
+          source: 'nonverbal',
+        });
+      }
+
+      // Hurt: low health visible.
+      if (health < 0.5) {
+        out.push({
+          id: `obs:nonverbal:${observer.id}:${subject.id}:hurt:${world.tickIndex}`,
+          observerId: observer.id, subjectId: subject.id,
+          kind: 'hurt', magnitude: 1 - health,
+          confidence: clamp01(baseConf * 0.85 * obsBonus),
+          source: 'nonverbal',
+        });
+      }
     }
   }
   return out;

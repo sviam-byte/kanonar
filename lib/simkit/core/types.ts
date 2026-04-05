@@ -87,7 +87,8 @@ export type ActionKindBuiltin =
   | 'scavenge_feature'
   | 'start_intent'
   | 'continue_intent'
-  | 'abort_intent';
+  | 'abort_intent'
+  | 'retreat';
 
 /**
  * ActionKind includes builtins + any string for pipeline-generated social actions
@@ -162,6 +163,8 @@ export type SpeechEventV1 = {
   // опционально: “тема” и краткая строка (для UI)
   topic?: string;
   text?: string;
+  // speech intent: truthful | selective | deceptive
+  intent?: 'truthful' | 'selective' | 'deceptive';
 };
 
 export type ActionOffer = {
