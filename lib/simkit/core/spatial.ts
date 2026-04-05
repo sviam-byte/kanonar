@@ -123,11 +123,16 @@ export function canHear(world: SimWorld, speakerId: string, listenerId: string, 
   const d = distSameLocation(world, speakerId, listenerId);
   if (!Number.isFinite(d)) return false;
 
-  if (volume === 'shout') return d <= cfg.shoutRange;
-  if (volume === 'normal') return d <= cfg.talkRange;
+  if (volume === 'shout') return d <= cfg.shoutRange; // shout penetrates walls
+
+  // Normal and whisper require line of sight (walls block sound).
+  let los = true;
+  try { los = hasLineOfSight(world, speakerId, listenerId); } catch { /* no grid → open */ }
+
+  if (volume === 'normal') return d <= cfg.talkRange && los;
 
   // whisper
-  if (d > cfg.whisperRange) return false;
+  if (d > cfg.whisperRange || !los) return false;
   const priv = privacyOf(world, speaker.locId, speaker.pos?.nodeId ?? null);
   return priv >= cfg.whisperMinPrivacy;
 }

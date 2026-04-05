@@ -86,6 +86,24 @@ function describeAction(a: SimAction, names: Record<string, string>, world?: Sim
     return `${prefix}${actor} двигается ${goalLabel}`;
   }
 
+  // ── Retreat: show position + health/stress context ──
+  if (a.kind === 'retreat') {
+    const c = world?.characters?.[a.actorId] as any;
+    const px = c?.pos?.x != null ? Math.round(c.pos.x) : '?';
+    const py = c?.pos?.y != null ? Math.round(c.pos.y) : '?';
+    const h = c ? `❤${(c.health * 100).toFixed(0)}%` : '';
+    const s = c ? `⚡${(c.stress * 100).toFixed(0)}%` : '';
+    return `${prefix}🏃 ${actor} отступает → (${px},${py}) [${h} ${s}]`;
+  }
+
+  // ── Observe: show atom count ──
+  if (a.kind === 'observe') {
+    const evts = (world?.facts as any)?.[`sim:recentEvents`] || [];
+    const obsEvt = evts.find((e: any) => e.type === 'action:observe' && e.actorId === a.actorId && e.tick === world?.tickIndex);
+    const atomCount = obsEvt?.payload?.atomCount ?? '?';
+    return `${prefix}${actor} наблюдает (📡 ${atomCount} атомов)`;
+  }
+
   // ── Intent actions: show what the intent is ABOUT, not raw kind ──
   if (a.kind === 'start_intent') {
     const original = (a.payload as any)?.intent?.originalAction;
@@ -536,6 +554,27 @@ export const LiveSimulator: React.FC = () => {
           if (rej > 0) parts.push(`✗${rej}`);
           lines.push(`  📥 ${agentName} принял атомы: ${parts.join(' ')}`);
         }
+      }
+    }
+
+    // ── Tactical situation summary (when threats present) ──
+    for (const agentId of Object.keys(sim.world.characters).sort()) {
+      const facts: any = sim.world.facts;
+      const threats = Number(facts[`ctx:tactical:threats:${agentId}`] ?? 0);
+      if (threats <= 0) continue;
+      const agentName = names[agentId] || agentId;
+      const cover = Number(facts[`ctx:tactical:cover:${agentId}`] ?? 0);
+      const losT = Number(facts[`ctx:tactical:los_threats:${agentId}`] ?? 0);
+      const allies = Number(facts[`ctx:tactical:allies:${agentId}`] ?? 0);
+      const escape = Number(facts[`ctx:tactical:escape:${agentId}`] ?? 0);
+      const adv = Number(facts[`ctx:tactical:advantage:${agentId}`] ?? 0);
+      const parts: string[] = [];
+      if (cover > 0.3) parts.push(`укрытие:${(cover * 100).toFixed(0)}%`);
+      if (losT > 0) parts.push(`LoS-угрозы:${(losT * 3).toFixed(0)}`);
+      if (allies > 0) parts.push(`союзники:${(allies * 3).toFixed(0)}`);
+      if (escape > 0.5) parts.push(`отход:✓`);
+      if (parts.length) {
+        lines.push(`  ⚔ ${agentName} тактика: ${parts.join(', ')} [преим:${(adv * 100).toFixed(0)}%]`);
       }
     }
 

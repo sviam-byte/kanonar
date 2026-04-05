@@ -941,12 +941,12 @@ const AttackSpec: ActionSpec = {
 const ObserveSpec: ActionSpec = {
   kind: 'observe',
   enumerate: ({ world, actorId }) => {
-    // базово всегда возможно; чуть выше, чем wait, но ниже "настоящих" действий
     const c = getChar(world, actorId);
     const loc = getLoc(world, c.locId);
     const radiation = Number(loc.hazards?.['radiation'] ?? 0);
-    // чем опаснее, тем чаще "озираемся"
-    const score = clamp01(0.12 + 0.22 * radiation);
+    const danger = clamp01(Number((world.facts as any)?.[`ctx:danger:${actorId}`] ?? 0));
+    // More dangerous situations → more valuable to observe.
+    const score = clamp01(0.12 + 0.22 * radiation + 0.15 * danger);
     return [{ kind: 'observe', actorId, score }];
   },
   validateV1: ({ world, offer }) => validateCommon(world, offer),
@@ -963,13 +963,88 @@ const ObserveSpec: ActionSpec = {
     const notes: string[] = [];
     const events: SimEvent[] = [];
     const c = getChar(world, action.actorId);
-    // "наблюдение" повышает готовность принимать атомы (observeBoost).
     c.energy = clamp01(c.energy - 0.01);
     world.facts[`observeBoost:${c.id}`] = world.tickIndex;
     world.facts[`observe:${c.id}:${world.tickIndex}`] = true;
     world.facts['observe:count'] = (world.facts['observe:count'] ?? 0) + 1;
-    notes.push(`${c.id} observes carefully`);
-    events.push(mkActionEvent(world, 'action:observe', { actorId: c.id, locationId: c.locId }));
+
+    // ── Generate observation atoms: what the agent actually sees ──
+    const obsAtoms: any[] = [];
+    const cfg = getSpatialConfig(world);
+    const facts: any = world.facts || {};
+
+    for (const other of Object.values(world.characters)) {
+      if (other.id === c.id || (other as any).locId !== c.locId) continue;
+
+      // LoS check: can we see this agent?
+      let los = true;
+      try { los = hasLineOfSight(world, c.id, other.id); } catch { /* open */ }
+      if (!los) continue;
+
+      const d = distSameLocation(world, c.id, other.id);
+      if (!Number.isFinite(d)) continue;
+
+      const distConf = clamp01(1 - d / (cfg.talkRange * 1.5));
+      const otherName = other.id;
+
+      // Observe their current action (if visible).
+      const lastAct = facts[`lastAction:${other.id}`];
+      if (lastAct?.kind) {
+        obsAtoms.push({
+          id: `obs:action:${c.id}:${otherName}:${world.tickIndex}`,
+          magnitude: 0.8,
+          confidence: distConf * 0.9,
+          meta: {
+            from: null,
+            to: c.id,
+            observedAction: lastAct.kind,
+            observedTarget: lastAct.targetId || null,
+            observedAgent: otherName,
+          },
+        });
+      }
+
+      // Observe their position.
+      const otherPos = getCharXY(world, other.id);
+      obsAtoms.push({
+        id: `obs:position:${c.id}:${otherName}:${world.tickIndex}`,
+        magnitude: 0.6,
+        confidence: distConf * 0.85,
+        meta: {
+          to: c.id,
+          observedAgent: otherName,
+          position: { x: Math.round(otherPos.x), y: Math.round(otherPos.y) },
+        },
+      });
+
+      // Observe their approximate health (visible injuries).
+      const otherHealth = clamp01(Number((other as any).health ?? 1));
+      if (otherHealth < 0.7) {
+        obsAtoms.push({
+          id: `obs:injury:${c.id}:${otherName}:${world.tickIndex}`,
+          magnitude: 1 - otherHealth,
+          confidence: distConf * 0.7,
+          meta: { to: c.id, observedAgent: otherName },
+        });
+      }
+    }
+
+    // Deliver observation atoms to agent's inbox for next tick processing.
+    if (obsAtoms.length) {
+      const inbox = (facts['inboxAtoms'] && typeof facts['inboxAtoms'] === 'object')
+        ? facts['inboxAtoms'] : {};
+      const arr = Array.isArray((inbox as any)[c.id]) ? (inbox as any)[c.id] : [];
+      arr.push(...obsAtoms);
+      (inbox as any)[c.id] = arr;
+      facts['inboxAtoms'] = inbox;
+    }
+
+    notes.push(`${c.id} observes (${obsAtoms.length} atoms)`);
+    events.push(mkActionEvent(world, 'action:observe', {
+      actorId: c.id,
+      locationId: c.locId,
+      atomCount: obsAtoms.length,
+    }));
     return { world, events, notes };
   },
 };
@@ -1687,6 +1762,130 @@ const AbortIntentSpec: ActionSpec = {
   },
 };
 
+// ── Retreat: personality-driven withdrawal toward exits/cover ──
+const RetreatSpec: ActionSpec = {
+  kind: 'retreat' as ActionKind,
+  enumerate: ({ world, actorId }) => {
+    const c = getChar(world, actorId);
+    const facts: any = world.facts || {};
+    const health = clamp01(Number(c.health ?? 1));
+    const stress = clamp01(Number(c.stress ?? 0));
+    const danger = clamp01(Number(facts[`ctx:danger:${actorId}`] ?? 0));
+
+    // Personality modulates retreat threshold.
+    const entity: any = (c as any)?.entity;
+    const traits: any = entity?.traits || entity?.params || {};
+    const bravery = clamp01(Number(traits?.D_pain_tolerance ?? traits?.B_tolerance_ambiguity ?? 0.5));
+    const caution = clamp01(Number(traits?.D_HPA_reactivity ?? traits?.A_Safety_Care ?? 0.5));
+
+    // Brave characters retreat at lower health/higher stress thresholds.
+    const healthThreshold = 0.2 + 0.3 * bravery; // brave: 0.5, cautious: 0.2
+    const stressThreshold = 0.5 + 0.3 * bravery;  // brave: 0.8, cautious: 0.5
+
+    const shouldRetreat =
+      health < healthThreshold ||
+      stress > stressThreshold ||
+      (danger > 0.6 && health < 0.5);
+
+    if (!shouldRetreat) return [];
+
+    // Score scales with urgency.
+    const urgency = clamp01(
+      Math.max(0, healthThreshold - health) * 2 +
+      Math.max(0, stress - stressThreshold) * 1.5 +
+      danger * 0.3 +
+      caution * 0.15,
+    );
+    const score = clamp01(0.15 + urgency * 0.3);
+
+    return [{ kind: 'retreat' as ActionKind, actorId, score }];
+  },
+  validateV1: ({ world, offer }) => validateCommon(world, offer),
+  validateV2: ({ world, offer }) => validateCommon(world, offer),
+  classifyV3: () => 'single',
+  apply: ({ world, action }) => {
+    const notes: string[] = [];
+    const events: SimEvent[] = [];
+    const c = getChar(world, action.actorId);
+    const loc = world.locations[(c as any).locId];
+    const facts: any = world.facts || {};
+
+    // Move toward nearest exit or highest-cover cell.
+    const cells: any[] = (loc as any)?.entity?.map?.cells;
+    const exits: any[] = (loc as any)?.entity?.map?.exits;
+    const pos = getCharXY(world, c.id);
+    const cfg = getSpatialConfig(world);
+
+    let bestX = pos.x;
+    let bestY = pos.y;
+    let bestScore = -1;
+
+    if (Array.isArray(cells)) {
+      // Score nearby walkable cells: prefer exits, then cover, then distance from threats.
+      const dirs = [
+        { dx: 1, dy: 0 }, { dx: -1, dy: 0 }, { dx: 0, dy: 1 }, { dx: 0, dy: -1 },
+        { dx: 1, dy: 1 }, { dx: -1, dy: -1 }, { dx: 1, dy: -1 }, { dx: -1, dy: 1 },
+      ];
+
+      for (const d of dirs) {
+        const nx = Math.round(pos.x) + d.dx;
+        const ny = Math.round(pos.y) + d.dy;
+        const cell = cells.find((cl: any) => cl.x === nx && cl.y === ny);
+        if (!cell || cell.walkable === false) continue;
+
+        let s = 0;
+        const cellCover = clamp01(Number(cell.cover ?? 0));
+        s += cellCover * 0.3;
+
+        // Distance to nearest exit.
+        if (Array.isArray(exits) && exits.length) {
+          let minExitDist = 999;
+          for (const ex of exits) {
+            minExitDist = Math.min(minExitDist, Math.abs(nx - Number(ex.x ?? 0)) + Math.abs(ny - Number(ex.y ?? 0)));
+          }
+          const curExitDist = exits.reduce((m: number, ex: any) =>
+            Math.min(m, Math.abs(Math.round(pos.x) - Number(ex.x ?? 0)) + Math.abs(Math.round(pos.y) - Number(ex.y ?? 0))), 999);
+          if (minExitDist < curExitDist) s += 0.4;
+        }
+
+        // Distance from threats.
+        for (const other of Object.values(world.characters)) {
+          if (other.id === c.id || (other as any).locId !== (c as any).locId) continue;
+          const threat = clamp01(Number(facts?.relations?.[c.id]?.[other.id]?.threat ?? 0));
+          if (threat <= 0.3) continue;
+          const otherPos = getCharXY(world, other.id);
+          const curDist = Math.hypot(pos.x - otherPos.x, pos.y - otherPos.y);
+          const newDist = Math.hypot(nx - otherPos.x, ny - otherPos.y);
+          if (newDist > curDist) s += 0.2 * threat;
+        }
+
+        if (s > bestScore) {
+          bestScore = s;
+          bestX = nx;
+          bestY = ny;
+        }
+      }
+    }
+
+    // Apply movement.
+    if (bestX !== pos.x || bestY !== pos.y) {
+      (c as any).pos = { ...(c as any).pos, nodeId: null, x: bestX, y: bestY };
+      recordTrail(world.facts as any, c.id, world.tickIndex, (c as any).locId, undefined, bestX, bestY);
+    }
+
+    c.stress = clamp01(c.stress - 0.02); // slight stress relief from taking action
+    c.energy = clamp01(c.energy - 0.01);
+
+    notes.push(`${c.id} retreats to (${bestX},${bestY})`);
+    events.push(mkActionEvent(world, 'action:retreat', {
+      actorId: c.id, locationId: (c as any).locId,
+      x: bestX, y: bestY,
+      health: c.health, stress: c.stress,
+    }));
+    return { world, events, notes };
+  },
+};
+
 export const ACTION_SPECS: Record<ActionKind, ActionSpec> = {
   wait: WaitSpec,
   rest: RestSpec,
@@ -1705,6 +1904,7 @@ export const ACTION_SPECS: Record<ActionKind, ActionSpec> = {
   continue_intent: ContinueIntentSpec,
   abort_intent: AbortIntentSpec,
   respond: RespondSpec,
+  retreat: RetreatSpec,
 };
 
 export function enumerateActionOffers(world: SimWorld): ActionOffer[] {

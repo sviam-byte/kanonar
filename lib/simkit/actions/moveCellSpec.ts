@@ -87,6 +87,22 @@ export const MoveCellSpec: ActionSpec = {
     const facts: any = world.facts || {};
     const { w: mapW } = getMapSize(loc);
 
+    // ── Read personality traits for movement preferences ──
+    const entity: any = (actor as any)?.entity;
+    const traits: any = entity?.traits || entity?.params || {};
+    const traitN = (k: string, fb: number) => {
+      const v = Number(traits[k]);
+      return Number.isFinite(v) ? clamp01(v) : fb;
+    };
+    // Cautious characters value safety/cover more.
+    const safetyWeight = 0.2 + 0.25 * traitN('D_HPA_reactivity', 0.5) + 0.15 * traitN('A_Safety_Care', 0.5);
+    // Social characters value ally proximity more.
+    const affiliationWeight = 0.1 + 0.2 * traitN('C_Social_Affiliation', 0.5);
+    // Dominant characters value control positions (elevation, cover-as-dominance).
+    const controlWeight = 0.1 + 0.15 * traitN('A_Power_Sovereignty', 0.5);
+    // Curious characters explore more.
+    const explorationWeight = 0.03 + 0.08 * traitN('B_openness', 0.5);
+
     // Build tactical context from local relations.
     const allies: CellRef[] = [];
     const threats: CellRef[] = [];
@@ -123,14 +139,14 @@ export const MoveCellSpec: ActionSpec = {
 
       const nearestThreatDist = threats.length ? Math.min(...threats.map((t) => manhattan(target, t))) : 99;
       const curThreatDist = threats.length ? Math.min(...threats.map((t) => manhattan(pos, t))) : 99;
-      deltaGoals.safety = (cellCover - 0.3) * 0.2 + (nearestThreatDist > curThreatDist ? 0.1 : -0.05);
+      deltaGoals.safety = (cellCover - 0.3) * safetyWeight + (nearestThreatDist > curThreatDist ? safetyWeight * 0.5 : -0.05);
 
       const nearestAllyDist = allies.length ? Math.min(...allies.map((a) => manhattan(target, a))) : 99;
       const curAllyDist = allies.length ? Math.min(...allies.map((a) => manhattan(pos, a))) : 99;
-      deltaGoals.affiliation = nearestAllyDist < curAllyDist ? 0.1 : -0.03;
+      deltaGoals.affiliation = nearestAllyDist < curAllyDist ? affiliationWeight : -0.03;
 
-      deltaGoals.control = cellCover * 0.1 + clamp01(Number((cell as any)?.elevation ?? 0) / 5) * 0.08;
-      deltaGoals.exploration = 0.03;
+      deltaGoals.control = cellCover * controlWeight + clamp01(Number((cell as any)?.elevation ?? 0) / 5) * controlWeight * 0.8;
+      deltaGoals.exploration = explorationWeight;
 
       const tags = Array.isArray((cell as any)?.tags) ? (cell as any).tags : [];
       const isRest = tags.includes('rest') || tags.includes('medical');

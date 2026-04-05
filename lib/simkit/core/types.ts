@@ -87,7 +87,8 @@ export type ActionKindBuiltin =
   | 'scavenge_feature'
   | 'start_intent'
   | 'continue_intent'
-  | 'abort_intent';
+  | 'abort_intent'
+  | 'retreat';
 
 /**
  * ActionKind includes builtins + any string for pipeline-generated social actions
