@@ -71,6 +71,17 @@ export function validateActionStrict(world: SimWorld, a: SimAction): ValidationR
 
   const atomicity = spec.classifyV3({ world, actorId: a.actorId, offer: v2 });
   if (atomicity === 'intent') {
+    // Skip intent wrapping if the action was already grounded by the GoalLab decider plugin.
+    // This prevents double-wrapping: goalLabDeciderPlugin already handles intent lifecycle.
+    const groundedVia = (a as any)?.meta?.groundedVia;
+    if (groundedVia === 'directExecute' || groundedVia === 'kindMap' || groundedVia === 'intentCooldown:fallback') {
+      return {
+        allowed: true,
+        singleTick: true,
+        reasons: ['v3:intent:bypassed:grounded'],
+        normalizedAction: null,
+      };
+    }
     const intentTicks = Math.max(1, Number((spec as any).intentTicks ?? 2));
     const intentId = `intent:${a.actorId}:${world.tickIndex}:${a.kind}`;
     const normalized: SimAction = {
