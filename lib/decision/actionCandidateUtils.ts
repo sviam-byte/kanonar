@@ -8,6 +8,7 @@ import { clamp01, clamp11 } from '../util/math';
 import { FC } from '../config/formulaConfig';
 import { getCtx } from '../context/layers';
 import { familyOfActionKind } from '../behavior/actionPattern';
+import { computeActionCost } from './costModel';
 
 function keyFromPossibilityId(id: string): string {
   const parts = String(id || '').split(':');
@@ -262,6 +263,58 @@ function buildSupportAtoms(atoms: ContextAtom[], usedIds: string[]): ContextAtom
   return uniqIds.map((id) => byId.get(id)).filter(Boolean) as ContextAtom[];
 }
 
+function buildCostBreakdown(args: {
+  selfId: string;
+  atoms: ContextAtom[];
+  possibility: Possibility;
+  why: WhyDraft;
+}) {
+  const { selfId, atoms, possibility, why } = args;
+  const baseCost = clamp01(Number((possibility as any)?.cost ?? (possibility as any)?.meta?.cost ?? 0));
+  const runtimeCost = computeActionCost({ selfId, atoms, p: possibility });
+  const runtimeScalar = clamp01(Number(runtimeCost?.cost ?? baseCost));
+  const runtimeUsedIds = arr<string>(runtimeCost?.usedAtomIds);
+  const runtimeObservedIds = runtimeUsedIds.filter((id) => Boolean(getAtom(atoms, id)));
+  const runtimeHasSignal = runtimeObservedIds.length > 0;
+  const costAtomId = typeof (possibility as any)?.costAtomId === 'string' ? String((possibility as any).costAtomId) : null;
+  const hasBaseSignal = baseCost > 0 || Boolean(costAtomId);
+  const runtimeWeight = runtimeHasSignal ? (hasBaseSignal ? 0.75 : 1.0) : 0.0;
+  const baseWeight = runtimeHasSignal ? (hasBaseSignal ? 0.25 : 0.0) : 1.0;
+  const finalCost = clamp01(baseCost * baseWeight + runtimeScalar * runtimeWeight);
+
+  pushUsed(why, costAtomId, ...runtimeObservedIds);
+  why.parts.costBreakdown = {
+    baseCost,
+    runtimeCost: runtimeScalar,
+    selectedCost: finalCost,
+    weights: { base: baseWeight, runtime: runtimeWeight },
+    costAtomId,
+    runtimeUsedAtomIds: runtimeObservedIds.slice(),
+    runtimeParts: runtimeCost?.parts || {},
+    source: runtimeHasSignal ? (hasBaseSignal ? 'runtime+base' : 'runtime') : 'base',
+  };
+  pushNotes(why, `cost:${runtimeHasSignal ? (hasBaseSignal ? 'runtime+base' : 'runtime') : 'base'}`);
+  pushModifier(why, {
+    stage: 'cost',
+    label: runtimeHasSignal ? (hasBaseSignal ? 'runtime-cost-blend' : 'runtime-cost') : 'base-cost',
+    value: Number(finalCost.toFixed(6)),
+    usedAtomIds: [costAtomId, ...runtimeObservedIds].filter(Boolean) as string[],
+    note: `base=${baseCost.toFixed(3)} runtime=${runtimeScalar.toFixed(3)}`,
+  });
+
+  return finalCost;
+}
+
+function readWorldTick(atoms: ContextAtom[]): number | null {
+  for (const atom of atoms) {
+    const id = String((atom as any)?.id || '');
+    if (!id.startsWith('world:tick:')) continue;
+    const n = Number(id.slice('world:tick:'.length));
+    if (Number.isFinite(n)) return n;
+  }
+  return null;
+}
+
 export function buildActionCandidates(args: {
   selfId: string;
   atoms: ContextAtom[];
@@ -437,6 +490,12 @@ export function buildActionCandidates(args: {
       why.parts.deltaGoalsAfterTarget = { ...deltaGoals };
     }
 
+    const finalCost = buildCostBreakdown({
+      selfId: args.selfId,
+      atoms: args.atoms,
+      possibility: p,
+      why,
+    });
     const actionWhy = finalizeWhy(why);
     actions.push({
       id: String(p.id),
@@ -445,7 +504,7 @@ export function buildActionCandidates(args: {
       targetId: (p as any)?.targetId ?? null,
       targetNodeId: (p as any)?.targetNodeId ?? null,
       deltaGoals,
-      cost: Number((p as any)?.meta?.cost ?? 0),
+      cost: finalCost,
       confidence: clamp01(Number((p as any)?.confidence ?? 1)),
       supportAtoms: buildSupportAtoms(args.atoms, actionWhy.usedAtomIds),
       why: actionWhy,
@@ -476,8 +535,11 @@ export function buildActionCandidates(args: {
     }
 
     if (prevKind) {
-      const tickGap = prevTick >= 0
-        ? Math.max(1, currentTick != null ? currentTick - prevTick : 1)
+      const nowTick = readWorldTick(args.atoms);
+      const tickGap = (prevTick >= 0 && Number.isFinite(nowTick as any))
+        ? Math.max(1, Number(nowTick) - prevTick)
+        : prevTick >= 0
+          ? Math.max(1, currentTick != null ? currentTick - prevTick : 1)
         : 1;
       const decayFactor = Math.pow(1 - REP.decayPerTick, tickGap);
 
@@ -486,11 +548,8 @@ export function buildActionCandidates(args: {
         const actionFamily = familyOfActionKind(action.kind);
         const familyMatch = actionFamily === prevFamily;
         const targetMatch = action.targetId === prevTargetId && Boolean(prevTargetId);
-        const sameFamilyNovelTarget = familyMatch
-          && Boolean(action.targetId)
-          && Boolean(prevTargetId)
-          && action.targetId !== prevTargetId;
-        const sameKindNovelTarget = kindMatch && sameFamilyNovelTarget && !targetMatch;
+        const novelTargetInFamily = familyMatch && Boolean(action.targetId) && action.targetId !== prevTargetId;
+        const sameKindNovelTarget = kindMatch && novelTargetInFamily && !targetMatch;
 
         if (!kindMatch && !familyMatch) continue;
 
@@ -498,7 +557,7 @@ export function buildActionCandidates(args: {
           (kindMatch ? Number(REP.sameKindPenalty ?? 0) : 0) +
           (targetMatch ? Number(REP.sameTargetPenalty ?? 0) : 0) +
           (!kindMatch && familyMatch ? Number(REP.sameFamilyPenalty ?? 0) : 0) -
-          (sameFamilyNovelTarget ? Number(REP.novelTargetRelief ?? 0) : 0)
+          (novelTargetInFamily ? Number(REP.novelTargetRelief ?? 0) : 0)
         ) * decayFactor;
         const activeGoals = Object.keys(action.deltaGoals);
         if (activeGoals.length > 0 && Math.abs(penalty) > 1e-9) {
@@ -523,7 +582,7 @@ export function buildActionCandidates(args: {
             penalty,
             targetMatch,
             familyMatch,
-            sameFamilyNovelTarget,
+            novelTargetInFamily,
             sameKindNovelTarget,
           },
           deltaGoalsAfterRepetition: { ...action.deltaGoals },
@@ -538,7 +597,7 @@ export function buildActionCandidates(args: {
                 ? 'same-kind-novel-target'
                 : kindMatch
                   ? 'same-kind'
-                  : sameFamilyNovelTarget
+                  : novelTargetInFamily
                     ? 'same-family-novel-target'
                     : 'same-family',
             targetId: action.targetId ?? null,
