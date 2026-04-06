@@ -20,6 +20,7 @@ import { decideSpeechContent } from '../dialogue/speechContent';
 import { FCS } from '../../config/formulaConfigSim';
 import { familyOfActionKind, normalizeTargetId } from '../../behavior/actionPattern';
 import { markIntentCooldown, readIntentCooldown } from '../core/behaviorMemory';
+import { getIntentStaleness, isCriticalIntentStage } from '../core/intentLifecycle';
 
 const clamp = (x: number, a: number, b: number) => Math.max(a, Math.min(b, x));
 
@@ -1492,6 +1493,9 @@ const StartIntentSpec: ActionSpec = {
         : null,
       stageEnteredIndex: safeIntentScript ? -1 : null,
       scriptId,
+      lifecycleState: 'active',
+      stageStartedAtTick: world.tickIndex,
+      lastProgressTick: world.tickIndex,
       // Approach helper (JSON-friendly).
       dest: null,
     };
@@ -1541,6 +1545,22 @@ const ContinueIntentSpec: ActionSpec = {
       return { world, events, notes };
     }
 
+    const staleness = getIntentStaleness(cur, world.tickIndex);
+    if (staleness.stale && !isCriticalIntentStage(cur)) {
+      delete world.facts[key];
+      notes.push(`${c.id} aborts stale intent ${String((cur as any)?.id ?? 'unknown')} stage=${staleness.stageKind || 'unknown'} no_progress=${staleness.ticksSinceProgress}`);
+      events.push(mkActionEvent(world, 'action:abort_intent', {
+        actorId: c.id,
+        locationId: c.locId,
+        intentId: (cur as any)?.id ?? null,
+        reason: 'stale',
+        stageKind: staleness.stageKind,
+        ticksSinceProgress: staleness.ticksSinceProgress,
+        ticksInStage: staleness.ticksInStage,
+      }));
+      return { world, events, notes };
+    }
+
     // -----------------------------------------------------------------------
     // v1 staged scripts (preferred path):
     // explicit transactional stages with deterministic progression.
@@ -1587,6 +1607,7 @@ const ContinueIntentSpec: ActionSpec = {
             const moved = Number.isFinite(posAfter.x) && Number.isFinite(posAfter.y) &&
               (Math.abs(posAfter.x - posBefore.x) > 0.01 || Math.abs(posAfter.y - posBefore.y) > 0.01);
             if (moved) {
+              (cur as any).lastProgressTick = world.tickIndex;
               events.push(mkActionEvent(world, 'action:approach_move', {
                 actorId: c.id,
                 locationId: c.locId,
@@ -1639,6 +1660,9 @@ const ContinueIntentSpec: ActionSpec = {
         );
 
         if (!stageDone) {
+          if (stage.ticksRequired !== 'until_condition') {
+            (cur as any).lastProgressTick = world.tickIndex;
+          }
           world.facts[key] = cur;
           return { world, events, notes };
         }
@@ -1648,10 +1672,12 @@ const ContinueIntentSpec: ActionSpec = {
           for (const d of stage.onExit) applyIntentDeltaV1(world, c.id, action.targetId ?? null, d);
         }
         const nextStageIndex = stageIndex + 1;
+        (cur as any).lastProgressTick = world.tickIndex;
         (cur as any).stageIndex = nextStageIndex;
         (cur as any).stageEnteredIndex = -1;
         const next = script.stages[nextStageIndex];
         if (next) {
+          (cur as any).stageStartedAtTick = world.tickIndex;
           (cur as any).stageTicksLeft =
             next.ticksRequired === 'until_condition' ? 'until_condition' : next.ticksRequired;
           world.facts[key] = cur;
@@ -1680,6 +1706,7 @@ const ContinueIntentSpec: ActionSpec = {
         notes.push(`${c.id} intent complete: no originalAction`);
       }
 
+      (cur as any).lifecycleState = 'completed';
       delete world.facts[key];
       // ── Write intent cooldown to prevent immediate re-start ──
       markIntentCooldown(world.facts as any, c.id, String(original?.kind || ''), original?.targetId ?? null, world.tickIndex);
@@ -1701,6 +1728,7 @@ const ContinueIntentSpec: ActionSpec = {
     const remainingBefore = Math.max(0, Number((cur as any).remainingTicks ?? 0));
     const remainingAfter = Math.max(0, remainingBefore - 1);
     (cur as any).remainingTicks = remainingAfter;
+    (cur as any).lastProgressTick = world.tickIndex;
     world.facts[key] = cur;
 
     notes.push(`${c.id} continues intent ${(cur as any).id} (${remainingBefore} -> ${remainingAfter})`);
@@ -1735,6 +1763,7 @@ const ContinueIntentSpec: ActionSpec = {
       // ── Write intent cooldown (v0 path) ──
       const okV0 = (cur as any)?.intent?.originalAction;
       if (okV0) markIntentCooldown(world.facts as any, c.id, String(okV0.kind || ''), okV0.targetId ?? null, world.tickIndex);
+      (cur as any).lifecycleState = 'completed';
       delete world.facts[key];
       events.push(mkActionEvent(world, 'action:intent_complete', {
         actorId: c.id,
@@ -1765,6 +1794,7 @@ const AbortIntentSpec: ActionSpec = {
     const c = getChar(world, action.actorId);
     const key = `intent:${c.id}`;
     const cur = world.facts[key];
+    if (cur && typeof cur === 'object') (cur as any).lifecycleState = 'aborted';
     delete world.facts[key];
     notes.push(`${c.id} aborts intent ${String((cur as any)?.id ?? 'unknown')}`);
     events.push(mkActionEvent(world, 'action:abort_intent', {

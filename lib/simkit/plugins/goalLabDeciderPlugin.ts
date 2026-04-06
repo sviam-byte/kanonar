@@ -14,8 +14,9 @@ import { FCS } from '../../config/formulaConfigSim';
 import { clamp01 } from '../../util/math';
 import type { Possibility } from '../../possibilities/catalog';
 import { validatePlacement } from '../placement/validatePlacement';
-import { familyOfActionKind, sameTransactionalIntentKind } from '../../behavior/actionPattern';
+import { familyOfActionKind } from '../../behavior/actionPattern';
 import { readIntentCooldown } from '../core/behaviorMemory';
+import { getIntentStaleness, isCriticalIntentStage, isTransactionallyEquivalentAction, originalActionOfIntent } from '../core/intentLifecycle';
 
 // ── Intent cooldown: read cooldown facts and return penalty multiplier ──
 // If an agent just completed an intent of the same kind+target, penalize re-selection.
@@ -886,24 +887,19 @@ export function makeGoalLabDeciderPlugin(opts?: { storePipeline?: boolean; enabl
         if (activeIntent) {
           const isIntentAction = /^(continue_intent|abort_intent|wait)$/.test(rawAction.kind);
           if (!isIntentAction) {
-            const intentAge = tickIndex - Number((activeIntent as any)?.startedAtTick ?? tickIndex);
-            const intentOrigKind = (activeIntent as any)?.intent?.originalAction?.kind || '';
-            const intentOrigTarget = (activeIntent as any)?.intent?.originalAction?.targetId ?? null;
-            const activeFamily = familyOfActionKind(intentOrigKind);
-            const desiredFamily = familyOfActionKind(rawAction.kind);
-            const sameIntentTransaction = sameTransactionalIntentKind(rawAction.kind, intentOrigKind)
-              && (rawAction.targetId ?? null) === intentOrigTarget;
-            const wantsDifferentKind = rawAction.kind !== intentOrigKind && rawAction.kind !== 'start_intent';
-            const isDirectAction = DIRECT_EXECUTE_KINDS.has(String(rawAction.kind));
-            const isStale = intentAge >= 3;
-            const stageKind = (activeIntent as any)?.intentScript?.stages?.[(activeIntent as any)?.stageIndex ?? 0]?.kind || '';
-            const inCriticalStage = stageKind === 'execute' || stageKind === 'attach';
+            const original = originalActionOfIntent(activeIntent);
+            const intentOrigKind = original?.kind || '';
+            const intentOrigTarget = original?.targetId ?? null;
+            const isEquivalent = isTransactionallyEquivalentAction(activeIntent, rawAction as any);
+            const staleness = getIntentStaleness(activeIntent, tickIndex);
+            const inCriticalStage = isCriticalIntentStage(activeIntent);
+            const wantsOverride = rawAction.kind !== intentOrigKind && rawAction.kind !== 'start_intent';
+            const targetChanged = (rawAction.targetId ?? null) !== intentOrigTarget;
 
-            // Keep the current intent alive only for the same transactional action kind on the same target.
-            // Same-family switches (e.g. help -> comfort on the same target) should be allowed to re-evaluate.
-            if (sameIntentTransaction) {
+            // Keep current transactional flow alive only for exact/equivalent intent actions.
+            if (isEquivalent) {
               actions.push({
-                id: `act:continue_intent:${tickIndex}:${actorId}:sameintent`,
+                id: `act:continue_intent:${tickIndex}:${actorId}:transactional`,
                 kind: 'continue_intent' as any,
                 actorId,
                 targetId: intentOrigTarget,
@@ -912,26 +908,25 @@ export function makeGoalLabDeciderPlugin(opts?: { storePipeline?: boolean; enabl
                   gate: gateResult,
                   goalLabKind,
                   groundedFrom: rawAction.kind,
-                  groundedVia: 'intentGuard:sameTransactionalIntent',
+                  groundedVia: 'intentGuard:transactionalEquivalent',
                   suppressedAction: rawAction.kind,
                   activeIntentId: (activeIntent as any)?.id ?? null,
-                  activeIntentFamily: activeFamily,
-                  desiredFamily,
+                  transactionalClass: familyOfActionKind(intentOrigKind),
                 },
               });
               continue;
             }
 
-            // Abort if: agent wants genuinely different action AND (intent is stale OR action is direct-execute)
-            // BUT not if we're in a critical stage (execute/attach).
-            if (wantsDifferentKind && (isStale || isDirectAction) && !inCriticalStage) {
+            // Allow override when the new action is genuinely different or retargeted,
+            // unless we are inside a critical stage. Stale intents may always be dropped.
+            if ((staleness.stale || wantsOverride || targetChanged) && !inCriticalStage) {
               delete world.facts[`intent:${actorId}`];
             } else {
               actions.push({
                 id: `act:continue_intent:${tickIndex}:${actorId}:forced`,
                 kind: 'continue_intent' as any,
                 actorId,
-                targetId: (activeIntent as any)?.intent?.originalAction?.targetId ?? null,
+                targetId: intentOrigTarget,
                 meta: {
                   decisionMode: mode,
                   gate: gateResult,
@@ -941,6 +936,9 @@ export function makeGoalLabDeciderPlugin(opts?: { storePipeline?: boolean; enabl
                   suppressedAction: rawAction.kind,
                   activeIntentId: (activeIntent as any)?.id ?? null,
                   activeIntentScriptId: (activeIntent as any)?.scriptId ?? null,
+                  stageKind: staleness.stageKind,
+                  stale: staleness.stale,
+                  ticksSinceProgress: staleness.ticksSinceProgress,
                 },
               });
               continue;
