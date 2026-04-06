@@ -37,3 +37,10 @@ export function exactActionKey(kind: string | null | undefined, targetId: string
 export function familyActionKey(kind: string | null | undefined, targetId: string | null | undefined): string {
   return `${familyOfActionKind(kind)}:${normalizeTargetId(targetId) || ''}`;
 }
+
+export function sameTransactionalIntentKind(a: string | null | undefined, b: string | null | undefined): boolean {
+  const left = String(a || '').trim().toLowerCase();
+  const right = String(b || '').trim().toLowerCase();
+  if (!left || !right) return false;
+  return left === right;
+}

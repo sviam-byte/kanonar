@@ -9,7 +9,7 @@
 import type { ActionOffer, SimAction, SimWorld } from './types';
 import { getDyadTrust } from './trust';
 import { FCS } from '../../config/formulaConfigSim';
-import { recordBehaviorMemory, summarizeBehaviorPattern } from './behaviorMemory';
+import { summarizeBehaviorPattern } from './behaviorMemory';
 
 const clamp01 = (x: number) => (Number.isFinite(x) ? Math.max(0, Math.min(1, x)) : 0);
 const clamp = (x: number, a: number, b: number) => (Number.isFinite(x) ? Math.max(a, Math.min(b, x)) : a);
@@ -198,5 +198,4 @@ export function rememberLastAction(world: SimWorld, action: SimAction) {
     targetId: action.targetId ?? null,
     tick: world.tickIndex,
   };
-  recordBehaviorMemory(world.facts as any, action.actorId, action.kind, action.targetId ?? null, world.tickIndex);
 }

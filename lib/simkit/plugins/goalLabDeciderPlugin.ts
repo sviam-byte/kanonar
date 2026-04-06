@@ -14,7 +14,7 @@ import { FCS } from '../../config/formulaConfigSim';
 import { clamp01 } from '../../util/math';
 import type { Possibility } from '../../possibilities/catalog';
 import { validatePlacement } from '../placement/validatePlacement';
-import { familyOfActionKind } from '../../behavior/actionPattern';
+import { familyOfActionKind, sameTransactionalIntentKind } from '../../behavior/actionPattern';
 import { readIntentCooldown } from '../core/behaviorMemory';
 
 // ── Intent cooldown: read cooldown facts and return penalty multiplier ──
@@ -889,17 +889,19 @@ export function makeGoalLabDeciderPlugin(opts?: { storePipeline?: boolean; enabl
             const intentOrigTarget = (activeIntent as any)?.intent?.originalAction?.targetId ?? null;
             const activeFamily = familyOfActionKind(intentOrigKind);
             const desiredFamily = familyOfActionKind(rawAction.kind);
-            const sameIntentFamilyTarget = desiredFamily === activeFamily && (rawAction.targetId ?? null) === intentOrigTarget;
+            const sameIntentTransaction = sameTransactionalIntentKind(rawAction.kind, intentOrigKind)
+              && (rawAction.targetId ?? null) === intentOrigTarget;
             const wantsDifferentKind = rawAction.kind !== intentOrigKind && rawAction.kind !== 'start_intent';
             const isDirectAction = DIRECT_EXECUTE_KINDS.has(String(rawAction.kind));
             const isStale = intentAge >= 3;
             const stageKind = (activeIntent as any)?.intentScript?.stages?.[(activeIntent as any)?.stageIndex ?? 0]?.kind || '';
             const inCriticalStage = stageKind === 'execute' || stageKind === 'attach';
 
-            // Same family + same target should keep the current transactional intent alive.
-            if (sameIntentFamilyTarget) {
+            // Keep the current intent alive only for the same transactional action kind on the same target.
+            // Same-family switches (e.g. help -> comfort on the same target) should be allowed to re-evaluate.
+            if (sameIntentTransaction) {
               actions.push({
-                id: `act:continue_intent:${tickIndex}:${actorId}:samefamily`,
+                id: `act:continue_intent:${tickIndex}:${actorId}:sameintent`,
                 kind: 'continue_intent' as any,
                 actorId,
                 targetId: intentOrigTarget,
@@ -908,9 +910,11 @@ export function makeGoalLabDeciderPlugin(opts?: { storePipeline?: boolean; enabl
                   gate: gateResult,
                   goalLabKind,
                   groundedFrom: rawAction.kind,
-                  groundedVia: 'intentGuard:sameFamilyTarget',
+                  groundedVia: 'intentGuard:sameTransactionalIntent',
                   suppressedAction: rawAction.kind,
                   activeIntentId: (activeIntent as any)?.id ?? null,
+                  activeIntentFamily: activeFamily,
+                  desiredFamily,
                 },
               });
               continue;

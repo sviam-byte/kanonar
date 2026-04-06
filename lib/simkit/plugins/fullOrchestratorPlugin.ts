@@ -208,7 +208,7 @@ export function makeFullOrchestratorPlugin(opts?: { T?: number }): SimPlugin {
           .filter((o) => o.actorId === actorId)
           .map(offerToPossibility);
 
-        const { actions, goalEnergy } = buildActionCandidates({ selfId: actorId, atoms, possibilities: poss });
+        const { actions, goalEnergy } = buildActionCandidates({ selfId: actorId, atoms, possibilities: poss, currentTick: tickIndex });
         const decision = decideAction({
           actions,
           goalEnergy,

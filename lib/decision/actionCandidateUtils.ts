@@ -266,6 +266,7 @@ export function buildActionCandidates(args: {
   selfId: string;
   atoms: ContextAtom[];
   possibilities: Possibility[];
+  currentTick?: number;
 }): { actions: ActionCandidate[]; goalEnergy: Record<string, number> } {
   const actions: ActionCandidate[] = [];
   const goalEnergy = buildGoalEnergyMap(args.atoms, args.selfId);
@@ -453,6 +454,7 @@ export function buildActionCandidates(args: {
   }
 
   const REP = FC.decision.repetition;
+  const currentTick = Number.isFinite(args.currentTick as any) ? Number(args.currentTick) : null;
   if (REP) {
     let prevKind = '';
     let prevTargetId = '';
@@ -474,7 +476,9 @@ export function buildActionCandidates(args: {
     }
 
     if (prevKind) {
-      const tickGap = prevTick >= 0 ? 1 : 1;
+      const tickGap = prevTick >= 0
+        ? Math.max(1, currentTick != null ? currentTick - prevTick : 1)
+        : 1;
       const decayFactor = Math.pow(1 - REP.decayPerTick, tickGap);
 
       for (const action of actions) {
@@ -482,7 +486,11 @@ export function buildActionCandidates(args: {
         const actionFamily = familyOfActionKind(action.kind);
         const familyMatch = actionFamily === prevFamily;
         const targetMatch = action.targetId === prevTargetId && Boolean(prevTargetId);
-        const sameFamilyNovelTarget = familyMatch && !kindMatch && Boolean(action.targetId) && action.targetId !== prevTargetId;
+        const sameFamilyNovelTarget = familyMatch
+          && Boolean(action.targetId)
+          && Boolean(prevTargetId)
+          && action.targetId !== prevTargetId;
+        const sameKindNovelTarget = kindMatch && sameFamilyNovelTarget && !targetMatch;
 
         if (!kindMatch && !familyMatch) continue;
 
@@ -516,6 +524,7 @@ export function buildActionCandidates(args: {
             targetMatch,
             familyMatch,
             sameFamilyNovelTarget,
+            sameKindNovelTarget,
           },
           deltaGoalsAfterRepetition: { ...action.deltaGoals },
         };
@@ -523,7 +532,15 @@ export function buildActionCandidates(args: {
           ...arr<ActionWhyModifier>(whyObj.modifiers),
           {
             stage: 'repetition',
-            label: targetMatch ? 'same-kind-and-target' : kindMatch ? 'same-kind' : sameFamilyNovelTarget ? 'same-family-novel-target' : 'same-family',
+            label: targetMatch
+              ? 'same-kind-and-target'
+              : sameKindNovelTarget
+                ? 'same-kind-novel-target'
+                : kindMatch
+                  ? 'same-kind'
+                  : sameFamilyNovelTarget
+                    ? 'same-family-novel-target'
+                    : 'same-family',
             targetId: action.targetId ?? null,
             delta: -Number(penalty.toFixed(6)),
             usedAtomIds: prevBeliefId ? [prevBeliefId] : [],
