@@ -7,13 +7,14 @@
 // - classify V3 (single tick vs intent) — v1: all are single
 // - apply (effects + events)
 
-import type { ActionKind, ActionOffer, SimAction, SimEvent, SimWorld, SpeechEventV1 } from '../core/types';
+import type { ActionKind, ActionOffer, SimAction, SimEvent, SimWorld, SpeechEventV1, IntentState } from '../core/types';
 import { getChar, getLoc } from '../core/world';
 import { distSameLocation, getCellCover, getCellElevation, getCharXY, getSpatialConfig, hasLineOfSight } from '../core/spatial';
 import { getDyadTrust } from '../core/trust';
 import { clamp01 } from '../../util/math';
 import { buildGenericSocialSpec } from './genericSocialSpec';
 import { recordTrail } from '../core/mapTypes';
+import { setFact } from '../core/factsAccessors';
 import { RespondSpec } from './respondSpec';
 import { MoveCellSpec } from './moveCellSpec';
 import { decideSpeechContent } from '../dialogue/speechContent';
@@ -85,8 +86,9 @@ function mkActionEvent(world: SimWorld, type: string, payload: any): SimEvent {
 
 function annotateCanonicalAction(action: SimAction, world: SimWorld, extra?: Partial<any>) {
   const canonical = canonicalActionFromSimAction(action, world);
+  const prevMeta = (action.meta ?? {}) as Record<string, unknown>;
   (action as any).meta = {
-    ...((action as any).meta || {}),
+    ...prevMeta,
     canonicalAction: {
       ...canonical,
       ...(extra || {}),
@@ -95,14 +97,14 @@ function annotateCanonicalAction(action: SimAction, world: SimWorld, extra?: Par
 }
 
 function writeIntentRuntimeEvent(world: SimWorld, actorId: string, event: Record<string, any>) {
-  const facts: any = world.facts || (world.facts = {} as any);
-  facts[`sim:intent:last:${actorId}`] = {
+  const facts = world.facts || (world.facts = {} as Record<string, unknown>);
+  setFact(world, `sim:intent:last:${actorId}`, {
     tick: Number(world.tickIndex ?? 0),
     actorId,
     ...event,
     // Backward-compatible alias for older UI/tests.
     event: event?.kind ?? event?.event ?? null,
-  };
+  });
 }
 
 function validateCommon(_world: SimWorld, o: ActionOffer): ActionOffer {
@@ -117,9 +119,9 @@ function validateCommon(_world: SimWorld, o: ActionOffer): ActionOffer {
 
 // Relation helpers: store dyadic values in a JSON-friendly matrix.
 function ensureRelations(world: SimWorld) {
-  const facts: any = world.facts as any;
+  const facts = world.facts as Record<string, unknown>;
   if (!facts.relations || typeof facts.relations !== 'object') facts.relations = {};
-  return facts.relations as any;
+  return facts.relations as Record<string, Record<string, Record<string, unknown>>>;
 }
 
 function bumpRelation(world: SimWorld, fromId: string, toId: string, key: 'trust' | 'respect', delta: number) {
@@ -247,7 +249,7 @@ function autoVolume(world: SimWorld, aId: string, bId: string): 'whisper' | 'nor
 // They exist only as originalAction executed on intent_complete (meta.internal=true).
 
 function isInternalCall(action: any) {
-  return Boolean(action?.meta && typeof action.meta === 'object' && (action.meta as any).internal === true);
+  return Boolean(action?.meta && typeof action.meta === 'object' && (action.meta as Record<string, unknown>).internal === true);
 }
 
 // Standardize speech atoms for talk/question/negotiate.
@@ -454,7 +456,7 @@ const MoveXYSpec: ActionSpec = {
     const y = cur.y + dy * t;
     // Only local reposition (no locId change).
     c.pos = { nodeId: null, x, y };
-    recordTrail(world.facts as any, c.id, world.tickIndex, c.locId, undefined, x, y);
+    recordTrail(world.facts as Record<string, unknown>, c.id, world.tickIndex, c.locId, undefined, x, y);
     // energy cost scales with moved distance
     const moved = Number.isFinite(d) ? Math.min(d, maxStep) : 0;
     c.energy = clamp01(c.energy - clamp01(moved / maxStep) * 0.012);
@@ -528,7 +530,7 @@ const MoveSpec: ActionSpec = {
       const loc = getLoc(world, c.locId);
       const n = loc?.nav?.nodes?.find((x) => x.id === action.targetNodeId);
       c.pos = { nodeId: action.targetNodeId, x: n?.x, y: n?.y };
-      recordTrail(world.facts as any, c.id, world.tickIndex, c.locId, action.targetNodeId, n?.x, n?.y);
+      recordTrail(world.facts as Record<string, unknown>, c.id, world.tickIndex, c.locId, action.targetNodeId ?? undefined, n?.x, n?.y);
       c.energy = clamp01(c.energy - 0.01);
       notes.push(`${c.id} moves to node ${action.targetNodeId}`);
       events.push(mkActionEvent(world, 'action:move_local', {
@@ -556,7 +558,7 @@ const MoveSpec: ActionSpec = {
     }
 
     c.locId = to;
-    recordTrail(world.facts as any, c.id, world.tickIndex, c.locId, c.pos?.nodeId ?? undefined, c.pos?.x, c.pos?.y);
+    recordTrail(world.facts as Record<string, unknown>, c.id, world.tickIndex, c.locId, c.pos?.nodeId ?? undefined, c.pos?.x, c.pos?.y);
     c.energy = clamp01(c.energy - 0.03);
     notes.push(`${c.id} moves ${from} -> ${to}`);
     events.push(mkActionEvent(world, 'action:move', {
@@ -721,13 +723,17 @@ const TalkSpec: ActionSpec = {
       bumpRelation(world, otherId, c.id, 'trust', -0.08);
       c.stress = clamp01(c.stress + 0.01);
       const t = world.characters[otherId];
-      if (t) (t as any).stress = clamp01(Number((t as any).stress ?? 0) + 0.04);
+      if (t) {
+        t.stress = clamp01(Number(t.stress ?? 0) + 0.04);
+      }
     } else if (social === 'insult') {
       bumpRelation(world, otherId, c.id, 'trust', -0.1);
       bumpRelation(world, otherId, c.id, 'respect', -0.06);
       c.stress = clamp01(c.stress + 0.015);
       const t = world.characters[otherId];
-      if (t) (t as any).stress = clamp01(Number((t as any).stress ?? 0) + 0.06);
+      if (t) {
+        t.stress = clamp01(Number(t.stress ?? 0) + 0.06);
+      }
     } else if (social === 'confront') {
       // Confrontation is assertive pressure: trust goes down, respect can rise slightly.
       bumpRelation(world, otherId, c.id, 'trust', -0.05);
@@ -736,7 +742,9 @@ const TalkSpec: ActionSpec = {
       c.stress = clamp01(c.stress + 0.02);
       c.energy = clamp01(c.energy - 0.01);
       const t = world.characters[otherId];
-      if (t) (t as any).stress = clamp01(Number((t as any).stress ?? 0) + 0.05);
+      if (t) {
+        t.stress = clamp01(Number(t.stress ?? 0) + 0.05);
+      }
     } else if (social === 'help' || social === 'cooperate' || social === 'protect') {
       // Cooperative acts improve trust and calm the local social state.
       bumpRelation(world, otherId, c.id, 'trust', +0.06);
@@ -745,7 +753,9 @@ const TalkSpec: ActionSpec = {
       c.stress = clamp01(c.stress - 0.02);
       c.energy = clamp01(c.energy - 0.02);
       const t = world.characters[otherId];
-      if (t) (t as any).stress = clamp01(Number((t as any).stress ?? 0) - 0.03);
+      if (t) {
+        t.stress = clamp01(Number(t.stress ?? 0) - 0.03);
+      }
     } else if (social === 'submit') {
       // Submission signals deference and slightly increases counterpart respect.
       bumpRelation(world, otherId, c.id, 'trust', +0.02);
@@ -757,7 +767,9 @@ const TalkSpec: ActionSpec = {
       bumpRelation(world, otherId, c.id, 'respect', -0.04);
       c.stress = clamp01(c.stress + 0.02);
       const t = world.characters[otherId];
-      if (t) (t as any).stress = clamp01(Number((t as any).stress ?? 0) + 0.07);
+      if (t) {
+        t.stress = clamp01(Number(t.stress ?? 0) + 0.07);
+      }
     }
 
     notes.push(`${c.id} ${social} -> ${otherId}`);
@@ -1574,7 +1586,7 @@ const ContinueIntentSpec: ActionSpec = {
   validateV1: ({ world, offer }) => {
     const base = validateCommon(world, offer);
     const c = getChar(world, base.actorId);
-    const cur = world.facts[`intent:${c.id}`];
+    const cur = world.facts[`intent:${c.id}`] as IntentState | undefined;
     if (!cur) return { ...base, blocked: true, reason: 'intent:none', score: 0 };
     return base;
   },
@@ -1585,7 +1597,7 @@ const ContinueIntentSpec: ActionSpec = {
     const events: SimEvent[] = [];
     const c = getChar(world, action.actorId);
     const key = `intent:${c.id}`;
-    const cur = world.facts[key];
+    const cur = world.facts[key] as IntentState | undefined;
     if (!cur || typeof cur !== 'object') {
       notes.push(`${c.id} continue_intent: none`);
       writeIntentRuntimeEvent(world, c.id, {
@@ -1601,16 +1613,16 @@ const ContinueIntentSpec: ActionSpec = {
       delete world.facts[key];
       writeIntentRuntimeEvent(world, c.id, {
         kind: 'stale_abort',
-        intentId: (cur as any)?.id ?? null,
+        intentId: cur?.id ?? null,
         stageKind: staleness.stageKind,
         ticksSinceProgress: staleness.ticksSinceProgress,
         ticksInStage: staleness.ticksInStage,
       });
-      notes.push(`${c.id} aborts stale intent ${String((cur as any)?.id ?? 'unknown')} stage=${staleness.stageKind || 'unknown'} no_progress=${staleness.ticksSinceProgress}`);
+      notes.push(`${c.id} aborts stale intent ${String(cur?.id ?? 'unknown')} stage=${staleness.stageKind || 'unknown'} no_progress=${staleness.ticksSinceProgress}`);
       events.push(mkActionEvent(world, 'action:abort_intent', {
         actorId: c.id,
         locationId: c.locId,
-        intentId: (cur as any)?.id ?? null,
+        intentId: cur?.id ?? null,
         reason: 'stale',
         stageKind: staleness.stageKind,
         ticksSinceProgress: staleness.ticksSinceProgress,
@@ -1624,17 +1636,17 @@ const ContinueIntentSpec: ActionSpec = {
     // explicit transactional stages with deterministic progression.
     // -----------------------------------------------------------------------
     const script: IntentScriptV1 | null =
-      (cur as any).intentScript && typeof (cur as any).intentScript === 'object' ? ((cur as any).intentScript as any) : null;
+      cur.intentScript && typeof cur.intentScript === 'object' ? cur.intentScript as IntentScriptV1 : null;
     if (script && Array.isArray(script.stages) && script.stages.length > 0) {
-      const stageIndex = Math.max(0, Number((cur as any).stageIndex ?? 0));
+      const stageIndex = Math.max(0, Number(cur.stageIndex ?? 0));
       const stage = script.stages[stageIndex];
       if (!stage) {
         // No stage => complete below.
       } else {
         // On-enter once per stage.
-        const entered = Number((cur as any).stageEnteredIndex ?? -1);
+        const entered = Number(cur.stageEnteredIndex ?? -1);
         if (entered !== stageIndex) {
-          (cur as any).stageEnteredIndex = stageIndex;
+          cur.stageEnteredIndex = stageIndex;
           if (Array.isArray(stage.onEnter)) {
             for (const d of stage.onEnter) applyIntentDeltaV1(world, c.id, action.targetId ?? null, d);
           }
@@ -1654,7 +1666,7 @@ const ContinueIntentSpec: ActionSpec = {
               d.op === 'set' &&
               (d.key === 'destination' || d.key === 'dest')
             ) {
-              (cur as any).dest = d.value;
+              cur.dest = d.value as { x: number; y: number } | null;
             }
             applyIntentDeltaV1(world, c.id, action.targetId ?? null, d);
           }
@@ -1665,7 +1677,7 @@ const ContinueIntentSpec: ActionSpec = {
             const moved = Number.isFinite(posAfter.x) && Number.isFinite(posAfter.y) &&
               (Math.abs(posAfter.x - posBefore.x) > 0.01 || Math.abs(posAfter.y - posBefore.y) > 0.01);
             if (moved) {
-              (cur as any).lastProgressTick = world.tickIndex;
+              cur.lastProgressTick = world.tickIndex;
               events.push(mkActionEvent(world, 'action:approach_move', {
                 actorId: c.id,
                 locationId: c.locId,
@@ -1684,7 +1696,7 @@ const ContinueIntentSpec: ActionSpec = {
           if (stage.completionCondition) {
             stageDone = evalCompletionCondition(world, c.id, action.targetId ?? null, stage.completionCondition);
           } else {
-            const dest = (cur as any).dest;
+            const dest = cur.dest;
             const dx = Number((dest as any)?.x);
             const dy = Number((dest as any)?.y);
             if (Number.isFinite(dx) && Number.isFinite(dy)) {
@@ -1697,42 +1709,42 @@ const ContinueIntentSpec: ActionSpec = {
             }
           }
         } else {
-          const before = Number((cur as any).stageTicksLeft ?? stage.ticksRequired);
+          const before = Number(cur.stageTicksLeft ?? stage.ticksRequired);
           const after = Math.max(0, before - 1);
-          (cur as any).stageTicksLeft = after;
+          cur.stageTicksLeft = after;
           stageDone = after <= 0;
         }
 
         annotateCanonicalAction(action, world, {
           transportKind: 'continue_intent',
-          semanticKind: String((cur as any)?.intent?.originalAction?.kind || ''),
-          semanticFamily: familyOfActionKind(String((cur as any)?.intent?.originalAction?.kind || '')),
-          semanticTargetId: normalizeTargetId((cur as any)?.intent?.originalAction?.targetId ?? action.targetId),
+          semanticKind: String(cur?.intent?.originalAction?.kind || ''),
+          semanticFamily: familyOfActionKind(String(cur?.intent?.originalAction?.kind || '')),
+          semanticTargetId: normalizeTargetId(cur?.intent?.originalAction?.targetId ?? action.targetId),
           lifecycle: stage.kind === 'execute' ? 'intent_execute' : 'intent_continue',
           stageKind: stage.kind,
-          social: (cur as any)?.intent?.originalAction?.meta?.social ?? null,
-          topic: (cur as any)?.intent?.originalAction?.meta?.topic ?? null,
+          social: cur?.intent?.originalAction?.meta?.social ?? null,
+          topic: cur?.intent?.originalAction?.meta?.topic ?? null,
         });
         (action as any).meta = {
           ...((action as any).meta || {}),
-          semanticOriginalAction: (cur as any)?.intent?.originalAction || null,
+          semanticOriginalAction: cur?.intent?.originalAction || null,
         };
         writeIntentRuntimeEvent(world, c.id, {
           kind: stageDone ? 'stage_done' : 'continue',
-          intentId: (cur as any).id,
+          intentId: cur.id,
           scriptId: script.id,
-          semanticKind: String((cur as any)?.intent?.originalAction?.kind || ''),
-          semanticTargetId: normalizeTargetId((cur as any)?.intent?.originalAction?.targetId ?? action.targetId),
+          semanticKind: String(cur?.intent?.originalAction?.kind || ''),
+          semanticTargetId: normalizeTargetId(cur?.intent?.originalAction?.targetId ?? action.targetId),
           stageIndex,
           stageKind: stage.kind,
           stageDone,
         });
-        notes.push(`${c.id} continues intent ${(cur as any).id} stage=${stage.kind}@${stageIndex}${stageDone ? ' (done)' : ''}`);
+        notes.push(`${c.id} continues intent ${cur.id} stage=${stage.kind}@${stageIndex}${stageDone ? ' (done)' : ''}`);
         events.push(
           mkActionEvent(world, 'action:continue_intent', {
             actorId: c.id,
             locationId: c.locId,
-            intentId: (cur as any).id,
+            intentId: cur.id,
             ok: true,
             scriptId: script.id,
             stageIndex,
@@ -1743,7 +1755,7 @@ const ContinueIntentSpec: ActionSpec = {
 
         if (!stageDone) {
           if (stage.ticksRequired !== 'until_condition') {
-            (cur as any).lastProgressTick = world.tickIndex;
+            cur.lastProgressTick = world.tickIndex;
           }
           world.facts[key] = cur;
           return { world, events, notes };
@@ -1754,20 +1766,20 @@ const ContinueIntentSpec: ActionSpec = {
           for (const d of stage.onExit) applyIntentDeltaV1(world, c.id, action.targetId ?? null, d);
         }
         const nextStageIndex = stageIndex + 1;
-        (cur as any).lastProgressTick = world.tickIndex;
-        (cur as any).stageIndex = nextStageIndex;
-        (cur as any).stageEnteredIndex = -1;
+        cur.lastProgressTick = world.tickIndex;
+        cur.stageIndex = nextStageIndex;
+        cur.stageEnteredIndex = -1;
         const next = script.stages[nextStageIndex];
         if (next) {
-          (cur as any).stageStartedAtTick = world.tickIndex;
-          (cur as any).stageTicksLeft =
+          cur.stageStartedAtTick = world.tickIndex;
+          cur.stageTicksLeft =
             next.ticksRequired === 'until_condition' ? 'until_condition' : next.ticksRequired;
           writeIntentRuntimeEvent(world, c.id, {
             kind: 'stage_advance',
-            intentId: (cur as any).id ?? null,
+            intentId: cur.id ?? null,
             scriptId: script.id,
-            semanticKind: String((cur as any)?.intent?.originalAction?.kind || ''),
-            semanticTargetId: normalizeTargetId((cur as any)?.intent?.originalAction?.targetId ?? action.targetId),
+            semanticKind: String(cur?.intent?.originalAction?.kind || ''),
+            semanticTargetId: normalizeTargetId(cur?.intent?.originalAction?.targetId ?? action.targetId),
             stageIndex: nextStageIndex,
             stageKind: next.kind,
           });
@@ -1778,7 +1790,7 @@ const ContinueIntentSpec: ActionSpec = {
       }
 
       // Complete intent (script finished).
-      const original = (cur as any)?.intent?.originalAction;
+      const original = cur?.intent?.originalAction;
       if (original && typeof original === 'object' && original.kind && ACTION_SPECS[original.kind as ActionKind]) {
         const oa: SimAction = {
           id: `act:intent_complete:${world.tickIndex}:${c.id}:${String(original.kind)}`,
@@ -1797,7 +1809,7 @@ const ContinueIntentSpec: ActionSpec = {
         notes.push(`${c.id} intent complete: no originalAction`);
       }
 
-      (cur as any).lifecycleState = 'completed';
+      cur.lifecycleState = 'completed';
       annotateCanonicalAction(action, world, {
         transportKind: 'continue_intent',
         semanticKind: String(original?.kind || ''),
@@ -1814,7 +1826,7 @@ const ContinueIntentSpec: ActionSpec = {
       };
       writeIntentRuntimeEvent(world, c.id, {
         kind: 'complete',
-        intentId: (cur as any).id ?? null,
+        intentId: cur.id ?? null,
         scriptId: script.id,
         semanticKind: String(original?.kind || ''),
         semanticTargetId: normalizeTargetId(original?.targetId ?? action.targetId),
@@ -1827,7 +1839,7 @@ const ContinueIntentSpec: ActionSpec = {
         mkActionEvent(world, 'action:intent_complete', {
           actorId: c.id,
           locationId: c.locId,
-          intentId: (cur as any).id,
+          intentId: cur.id,
           scriptId: script.id,
           semanticKind: String(original?.kind || ''),
           semanticTargetId: normalizeTargetId(original?.targetId ?? action.targetId),
@@ -1840,45 +1852,45 @@ const ContinueIntentSpec: ActionSpec = {
     // -----------------------------------------------------------------------
     // v0 fallback: timer-based intent (compat for old payloads/tests).
     // -----------------------------------------------------------------------
-    const remainingBefore = Math.max(0, Number((cur as any).remainingTicks ?? 0));
+    const remainingBefore = Math.max(0, Number(cur.remainingTicks ?? 0));
     const remainingAfter = Math.max(0, remainingBefore - 1);
-    (cur as any).remainingTicks = remainingAfter;
-    (cur as any).lastProgressTick = world.tickIndex;
+    cur.remainingTicks = remainingAfter;
+    cur.lastProgressTick = world.tickIndex;
     world.facts[key] = cur;
 
     annotateCanonicalAction(action, world, {
       transportKind: 'continue_intent',
-      semanticKind: String((cur as any)?.intent?.originalAction?.kind || ''),
-      semanticFamily: familyOfActionKind(String((cur as any)?.intent?.originalAction?.kind || '')),
-      semanticTargetId: normalizeTargetId((cur as any)?.intent?.originalAction?.targetId ?? action.targetId),
+      semanticKind: String(cur?.intent?.originalAction?.kind || ''),
+      semanticFamily: familyOfActionKind(String(cur?.intent?.originalAction?.kind || '')),
+      semanticTargetId: normalizeTargetId(cur?.intent?.originalAction?.targetId ?? action.targetId),
       lifecycle: remainingAfter <= 0 ? 'intent_execute' : 'intent_continue',
       stageKind: remainingAfter <= 0 ? 'execute' : null,
-      social: (cur as any)?.intent?.originalAction?.meta?.social ?? null,
-      topic: (cur as any)?.intent?.originalAction?.meta?.topic ?? null,
+      social: cur?.intent?.originalAction?.meta?.social ?? null,
+      topic: cur?.intent?.originalAction?.meta?.topic ?? null,
     });
     (action as any).meta = {
       ...((action as any).meta || {}),
-      semanticOriginalAction: (cur as any)?.intent?.originalAction || null,
+      semanticOriginalAction: cur?.intent?.originalAction || null,
     };
     writeIntentRuntimeEvent(world, c.id, {
       kind: remainingAfter <= 0 ? 'complete' : 'continue',
-      intentId: (cur as any).id,
-      semanticKind: String((cur as any)?.intent?.originalAction?.kind || ''),
-      semanticTargetId: normalizeTargetId((cur as any)?.intent?.originalAction?.targetId ?? action.targetId),
+      intentId: cur.id,
+      semanticKind: String(cur?.intent?.originalAction?.kind || ''),
+      semanticTargetId: normalizeTargetId(cur?.intent?.originalAction?.targetId ?? action.targetId),
       stageKind: remainingAfter <= 0 ? 'execute' : null,
     });
-    notes.push(`${c.id} continues intent ${(cur as any).id} (${remainingBefore} -> ${remainingAfter})`);
+    notes.push(`${c.id} continues intent ${cur.id} (${remainingBefore} -> ${remainingAfter})`);
     events.push(mkActionEvent(world, 'action:continue_intent', {
       actorId: c.id,
       locationId: c.locId,
-      intentId: (cur as any).id,
+      intentId: cur.id,
       remainingBefore,
       remainingAfter,
       ok: true,
     }));
 
     if (remainingAfter <= 0) {
-      const original = (cur as any)?.intent?.originalAction;
+      const original = cur?.intent?.originalAction;
       if (original && typeof original === 'object' && original.kind && ACTION_SPECS[original.kind as ActionKind]) {
         const oa: SimAction = {
           id: `act:intent_complete:${world.tickIndex}:${c.id}:${String(original.kind)}`,
@@ -1897,14 +1909,14 @@ const ContinueIntentSpec: ActionSpec = {
         notes.push(`${c.id} intent complete: no originalAction`);
       }
       // ── Write intent cooldown (v0 path) ──
-      const okV0 = (cur as any)?.intent?.originalAction;
+      const okV0 = cur?.intent?.originalAction;
       if (okV0) markIntentCooldown(world.facts as any, c.id, String(okV0.kind || ''), okV0.targetId ?? null, world.tickIndex);
-      (cur as any).lifecycleState = 'completed';
+      cur.lifecycleState = 'completed';
       delete world.facts[key];
       events.push(mkActionEvent(world, 'action:intent_complete', {
         actorId: c.id,
         locationId: c.locId,
-        intentId: (cur as any).id,
+        intentId: cur.id,
         semanticKind: String(okV0?.kind || ''),
         semanticTargetId: normalizeTargetId(okV0?.targetId ?? action.targetId),
       }));
@@ -1920,7 +1932,7 @@ const AbortIntentSpec: ActionSpec = {
   validateV1: ({ world, offer }) => {
     const base = validateCommon(world, offer);
     const c = getChar(world, base.actorId);
-    const cur = world.facts[`intent:${c.id}`];
+    const cur = world.facts[`intent:${c.id}`] as IntentState | undefined;
     if (!cur) return { ...base, blocked: true, reason: 'intent:none', score: 0 };
     return base;
   },
@@ -1931,37 +1943,37 @@ const AbortIntentSpec: ActionSpec = {
     const events: SimEvent[] = [];
     const c = getChar(world, action.actorId);
     const key = `intent:${c.id}`;
-    const cur = world.facts[key];
+    const cur = world.facts[key] as IntentState | undefined;
     annotateCanonicalAction(action, world, {
       transportKind: 'abort_intent',
-      semanticKind: String((cur as any)?.intent?.originalAction?.kind || ''),
-      semanticFamily: familyOfActionKind(String((cur as any)?.intent?.originalAction?.kind || '')),
-      semanticTargetId: normalizeTargetId((cur as any)?.intent?.originalAction?.targetId ?? action.targetId),
+      semanticKind: String(cur?.intent?.originalAction?.kind || ''),
+      semanticFamily: familyOfActionKind(String(cur?.intent?.originalAction?.kind || '')),
+      semanticTargetId: normalizeTargetId(cur?.intent?.originalAction?.targetId ?? action.targetId),
       lifecycle: 'intent_abort',
-      stageKind: (cur as any)?.intentScript?.stages?.[(cur as any)?.stageIndex ?? 0]?.kind ?? null,
-      social: (cur as any)?.intent?.originalAction?.meta?.social ?? null,
-      topic: (cur as any)?.intent?.originalAction?.meta?.topic ?? null,
+      stageKind: cur?.intentScript?.stages?.[cur?.stageIndex ?? 0]?.kind ?? null,
+      social: cur?.intent?.originalAction?.meta?.social ?? null,
+      topic: cur?.intent?.originalAction?.meta?.topic ?? null,
     });
     (action as any).meta = {
       ...((action as any).meta || {}),
-      semanticOriginalAction: (cur as any)?.intent?.originalAction || null,
+      semanticOriginalAction: cur?.intent?.originalAction || null,
     };
-    if (cur && typeof cur === 'object') (cur as any).lifecycleState = 'aborted';
+    if (cur && typeof cur === 'object') cur.lifecycleState = 'aborted';
     writeIntentRuntimeEvent(world, c.id, {
       kind: 'abort',
-      intentId: (cur as any)?.id ?? null,
-      semanticKind: String((cur as any)?.intent?.originalAction?.kind || ''),
-      semanticTargetId: normalizeTargetId((cur as any)?.intent?.originalAction?.targetId ?? action.targetId),
-      stageKind: (cur as any)?.intentScript?.stages?.[(cur as any)?.stageIndex ?? 0]?.kind ?? null,
+      intentId: cur?.id ?? null,
+      semanticKind: String(cur?.intent?.originalAction?.kind || ''),
+      semanticTargetId: normalizeTargetId(cur?.intent?.originalAction?.targetId ?? action.targetId),
+      stageKind: cur?.intentScript?.stages?.[cur?.stageIndex ?? 0]?.kind ?? null,
     });
     delete world.facts[key];
-    notes.push(`${c.id} aborts intent ${String((cur as any)?.id ?? 'unknown')}`);
+    notes.push(`${c.id} aborts intent ${String(cur?.id ?? 'unknown')}`);
     events.push(mkActionEvent(world, 'action:abort_intent', {
       actorId: c.id,
       locationId: c.locId,
-      intentId: (cur as any)?.id ?? null,
-      semanticKind: String((cur as any)?.intent?.originalAction?.kind || ''),
-      semanticTargetId: normalizeTargetId((cur as any)?.intent?.originalAction?.targetId ?? action.targetId),
+      intentId: cur?.id ?? null,
+      semanticKind: String(cur?.intent?.originalAction?.kind || ''),
+      semanticTargetId: normalizeTargetId(cur?.intent?.originalAction?.targetId ?? action.targetId),
     }));
     return { world, events, notes };
   },
@@ -2074,8 +2086,8 @@ const RetreatSpec: ActionSpec = {
 
     // Apply movement.
     if (bestX !== pos.x || bestY !== pos.y) {
-      (c as any).pos = { ...(c as any).pos, nodeId: null, x: bestX, y: bestY };
-      recordTrail(world.facts as any, c.id, world.tickIndex, (c as any).locId, undefined, bestX, bestY);
+      c.pos = { ...c.pos, nodeId: null, x: bestX, y: bestY };
+      recordTrail(world.facts as Record<string, unknown>, c.id, world.tickIndex, c.locId, undefined, bestX, bestY);
     }
 
     c.stress = clamp01(c.stress - 0.02); // slight stress relief from taking action
@@ -2083,7 +2095,7 @@ const RetreatSpec: ActionSpec = {
 
     notes.push(`${c.id} retreats to (${bestX},${bestY})`);
     events.push(mkActionEvent(world, 'action:retreat', {
-      actorId: c.id, locationId: (c as any).locId,
+      actorId: c.id, locationId: c.locId,
       x: bestX, y: bestY,
       health: c.health, stress: c.stress,
     }));
@@ -2121,7 +2133,7 @@ export function enumerateActionOffers(world: SimWorld): ActionOffer[] {
 
     // If an actor has an active intent, restrict offers to continue/abort/wait
     // BUT allow move_cell during approach stage (so movement is visible).
-    const intentData: any = world.facts[`intent:${actorId}`];
+    const intentData = world.facts[`intent:${actorId}`] as IntentState | undefined;
     const hasIntent = Boolean(intentData);
     if (hasIntent) {
       const stageIdx = Number(intentData?.stageIndex ?? 0);

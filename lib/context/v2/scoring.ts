@@ -8,7 +8,7 @@ import {
   GoalState,
   AffectState,
   AgentContextFrame
-} from '../../types';
+} from '../../../types';
 import {
   ContextSnapshot,
   ContextualGoalScore,

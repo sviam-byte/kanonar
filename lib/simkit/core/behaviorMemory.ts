@@ -112,7 +112,7 @@ export function markIntentCooldown(
 }
 
 export function readIntentCooldown(
-  facts: any,
+  facts: Record<string, unknown>,
   agentId: string,
   kind: string,
   targetId: string | null | undefined,

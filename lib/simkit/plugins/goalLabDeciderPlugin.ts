@@ -3,7 +3,11 @@
 // for UI inspection in world.facts['sim:trace:<agentId>'].
 
 import type { SimPlugin } from '../core/simulator';
-import type { SimSnapshot, SimWorld, SimAction, ActionOffer } from '../core/types';
+import type { SimSnapshot, SimWorld, SimAction, ActionOffer, IntentState } from '../core/types';
+import { getFact, setFact } from '../core/factsAccessors';
+import { atomId, atomMagnitude } from '../../context/v2/atomAccessors';
+import type { GoalLabPipelineResult } from '../../goal-lab/pipeline/pipelineTypes';
+import { stageArtifacts } from '../../goal-lab/pipeline/pipelineTypes';
 import { runGoalLabPipelineV1 } from '../../goal-lab/pipeline/runPipelineV1';
 import { arr } from '../../utils/arr';
 import { toSimAction } from '../actions/fromActionCandidate';
@@ -23,7 +27,7 @@ import { buildIntentLifecycleTrace, getIntentStaleness, isCriticalIntentStage, i
 // If an agent just completed an intent of the same kind+target, penalize re-selection.
 function getIntentCooldownPenalty(world: SimWorld, actorId: string, kind: string, targetId: string | null): number {
   const cd = FCS.behaviorVariety.intentCooldown;
-  const gaps = readIntentCooldown(world.facts as any, actorId, kind, targetId, Number(world.tickIndex ?? 0));
+  const gaps = readIntentCooldown(world.facts as Record<string, unknown>, actorId, kind, targetId, Number(world.tickIndex ?? 0));
   let penalty = 0;
   if (gaps.exactGap != null) {
     if (gaps.exactGap <= 0) penalty = Math.max(penalty, Number(cd.exactPenalty ?? 0.8));
@@ -61,15 +65,15 @@ function buildSnapshot(world: SimWorld, tickIndex: number): SimSnapshot {
 }
 
 function readActorFilter(world: SimWorld): string[] {
-  const raw = (world as any)?.facts?.['sim:actors'];
+  const raw = getFact(world, 'sim:actors');
   if (Array.isArray(raw)) return raw.map(String).filter(Boolean);
   if (typeof raw === 'string') return raw.split(',').map((x) => x.trim()).filter(Boolean);
   return [];
 }
 
-function extractDecisionBest(pipeline: any): any | null {
-  const s8 = pipeline?.stages?.find((s: any) => s?.stage === 'S8');
-  return (s8 as any)?.artifacts?.best ?? null;
+function extractDecisionBest(pipeline: GoalLabPipelineResult | null): Record<string, unknown> | null {
+  const arts = stageArtifacts(pipeline, 'S8');
+  return (arts.best as Record<string, unknown>) ?? null;
 }
 
 function decorateAction(action: SimAction, best: any): SimAction {
@@ -93,22 +97,22 @@ function decorateAction(action: SimAction, best: any): SimAction {
 function nextIntentSeq(world: SimWorld, actorId: string): number {
   const tick = Number(world.tickIndex ?? 0);
   const key = `sim:intentSeq:${actorId}:${tick}`;
-  const cur = Number((world.facts as any)?.[key] ?? 0);
+  const cur = Number(getFact(world, key) ?? 0);
   const next = Number.isFinite(cur) ? cur + 1 : 1;
-  (world.facts as any)[key] = next;
+  setFact(world, key, next);
   return next;
 }
 
 function mergeIntentTrace(world: SimWorld, actorId: string, patch: any) {
   const key = `sim:trace:${actorId}`;
-  const prev = ((world.facts as any)?.[key] && typeof (world.facts as any)[key] === 'object') ? (world.facts as any)[key] : {};
-  (world.facts as any)[key] = {
+  const prev = (getFact(world, key) && typeof getFact(world, key) === 'object') ? getFact<Record<string, unknown>>(world, key)! : {};
+  setFact(world, key, {
     ...prev,
     intentLifecycle: {
-      ...(prev?.intentLifecycle || {}),
+      ...((prev as Record<string, unknown>)?.intentLifecycle as Record<string, unknown> || {}),
       ...(patch || {}),
     },
-  };
+  });
 }
 
 // ── SimKit offers → GoalLab Possibilities bridge ──
@@ -370,7 +374,7 @@ function groundAbstractAction(
       // Too soon to start this intent again — fall back to a direct single-tick action.
       // Pick something contextually useful: observe if driver is curiosity/control,
       // otherwise wait or a social action.
-      const trace = (world.facts as any)?.[`sim:trace:${actorId}`];
+      const trace = getFact<Record<string, unknown>>(world, `sim:trace:${actorId}`);
       const topDriver = trace?.drivers
         ? Object.entries(trace.drivers as Record<string, number>)
             .filter(([, v]) => typeof v === 'number')
@@ -382,7 +386,7 @@ function groundAbstractAction(
         : topDriver?.[0] === 'curiosityNeed' ? 'investigate'
         : 'observe';
       mergeIntentTrace(world, actorId, buildIntentLifecycleTrace({
-        activeIntent: (world.facts as any)?.[`intent:${actorId}`] ?? null,
+        activeIntent: getFact<IntentState>(world, `intent:${actorId}`) ?? null,
         currentTick: Number(world.tickIndex ?? 0),
         status: 'cooldown_fallback',
         reason: 'intent_cooldown',
@@ -404,9 +408,10 @@ function groundAbstractAction(
         },
       };
     }
-    const social = String((action as any).meta?.social ?? 'inform');
-    const volume = String((action as any).meta?.volume ?? 'normal');
-    const topic = (action as any).meta?.topic ?? null;
+    const meta = (action.meta ?? {}) as Record<string, unknown>;
+    const social = String(meta.social ?? 'inform');
+    const volume = String(meta.volume ?? 'normal');
+    const topic = meta.topic ?? null;
     // Deterministic id for reproducible seeded runs.
     // We append a per-tick seq so repeated wraps in one tick remain unique.
     const intentSeq = nextIntentSeq(world, actorId);
@@ -419,11 +424,11 @@ function groundAbstractAction(
     // move_toward expects {x, y}, not {charId}.
     const targetChar = world.characters[String(action.targetId)];
     const targetPos = targetChar
-      ? { x: Number((targetChar as any).pos?.x ?? 0), y: Number((targetChar as any).pos?.y ?? 0) }
+      ? { x: Number(targetChar.pos?.x ?? 0), y: Number(targetChar.pos?.y ?? 0) }
       : { x: 0, y: 0 };
 
     mergeIntentTrace(world, actorId, buildIntentLifecycleTrace({
-      activeIntent: (world.facts as any)?.[`intent:${actorId}`] ?? null,
+      activeIntent: getFact<IntentState>(world, `intent:${actorId}`) ?? null,
       currentTick: Number(world.tickIndex ?? 0),
       status: 'start',
       reason: 'intent_bridge_wrap',
@@ -486,17 +491,17 @@ function groundAbstractAction(
  * Extracts compact per-agent trace from pipeline for UI consumption.
  * Trace lives in world.facts['sim:trace:<agentId>'] and is safe for rendering.
  */
-function extractAgentTrace(pipeline: any, actorId: string, world: SimWorld, mode: DecisionMode, gateResult: any): any {
-  const stages = arr((pipeline as any)?.stages);
+function extractAgentTrace(pipeline: GoalLabPipelineResult | null, actorId: string, world: SimWorld, mode: DecisionMode, gateResult: unknown): Record<string, unknown> {
+  const stages = pipeline?.stages ?? [];
 
   // S4: emotions
   const s4atoms = arr(stages.find((s: any) => s.stage === 'S4')?.atoms);
   const emotions: Record<string, number> = {};
   for (const a of s4atoms) {
-    const id = String((a as any)?.id || '');
+    const id = atomId(a);
     if (id.startsWith('emo:') && id.endsWith(`:${actorId}`)) {
       const key = id.split(':')[1] || '';
-      if (key) emotions[key] = clamp01(Number((a as any)?.magnitude ?? 0));
+      if (key) emotions[key] = clamp01(atomMagnitude(a));
     }
   }
 
@@ -504,17 +509,17 @@ function extractAgentTrace(pipeline: any, actorId: string, world: SimWorld, mode
   const s5atoms = arr(stages.find((s: any) => s.stage === 'S5')?.atoms);
   const relations: Record<string, Record<string, number>> = {};
   for (const a of s5atoms) {
-    const id = String((a as any)?.id || '');
+    const id = atomId(a);
     // tom:dyad:<metric>:<from>:<to> OR rel:state:<metric>:<from>:<to>
     const m = id.match(/^(?:tom:dyad:|rel:state:)([^:]+):([^:]+):([^:]+)$/);
     if (!m) continue;
     const [, metric, fromId, toId] = m;
     if (fromId !== actorId) continue;
     if (!relations[toId]) relations[toId] = {};
-    relations[toId][metric] = clamp01(Number((a as any)?.magnitude ?? 0));
+    relations[toId][metric] = clamp01(atomMagnitude(a));
   }
 
-  const factsRels = (world.facts as any)?.relations?.[actorId];
+  const factsRels = (getFact<Record<string, Record<string, unknown>>>(world, 'relations') ?? {})?.[actorId];
   if (factsRels && typeof factsRels === 'object') {
     for (const [toId, metrics] of Object.entries(factsRels as Record<string, any>)) {
       if (!relations[toId]) relations[toId] = {};
@@ -529,16 +534,16 @@ function extractAgentTrace(pipeline: any, actorId: string, world: SimWorld, mode
   const s6atoms = arr(stages.find((s: any) => s.stage === 'S6')?.atoms);
   const drivers: Record<string, number> = {};
   for (const a of s6atoms) {
-    const id = String((a as any)?.id || '');
+    const id = atomId(a);
     if (id.startsWith('drv:') && id.endsWith(`:${actorId}`)) {
       const key = id.split(':')[1] || '';
-      if (key) drivers[key] = clamp01(Number((a as any)?.magnitude ?? 0));
+      if (key) drivers[key] = clamp01(atomMagnitude(a));
     }
   }
 
   // S7: goals + active domains + goal mode
   const s7 = stages.find((s: any) => s.stage === 'S7');
-  const goalSnapshot = (s7 as any)?.artifacts?.goalLayerSnapshot;
+  const goalSnapshot = stageArtifacts(pipeline, 'S7').goalLayerSnapshot;
   const goals = arr(goalSnapshot?.domains).map((d: any) => ({
     domain: d.domain,
     score: clamp01(Number(d.score01 ?? 0)),
@@ -547,7 +552,7 @@ function extractAgentTrace(pipeline: any, actorId: string, world: SimWorld, mode
   const activeGoals = arr(goalSnapshot?.activeDomains).map((d: any) => d.domain);
   const modeLabel = goalSnapshot?.mode?.label || '';
   // S7.5: enriched intent + action schema trace.
-  const s7artifacts = (s7 as any)?.artifacts ?? {};
+  const s7artifacts = stageArtifacts(pipeline, 'S7');
   const intentCandidates = arr(s7artifacts.intentCandidatesV1).slice(0, 6).map((c: any) => ({
     intentId: String(c?.intentId || ''),
     family: String(c?.family || ''),
@@ -570,10 +575,11 @@ function extractAgentTrace(pipeline: any, actorId: string, world: SimWorld, mode
 
   // S8: ranked actions (top candidates)
   const s8 = stages.find((s: any) => s.stage === 'S8');
-  const appraisedEvents = arr((stages.find((s: any) => s.stage === 'S4') as any)?.artifacts?.appraisedEvents).slice(0, 8);
-  const communicativeIntent = (s8 as any)?.artifacts?.communicativeIntent ?? null;
-  const basedOnEvents = arr((s8 as any)?.artifacts?.basedOnEvents).map((x: any) => String(x)).filter(Boolean);
-  const ranked = arr((s8 as any)?.artifacts?.ranked).slice(0, 10).map((r: any) => ({
+  const appraisedEvents = arr(stageArtifacts(pipeline, 'S4').appraisedEvents).slice(0, 8);
+  const s8arts = stageArtifacts(pipeline, 'S8');
+  const communicativeIntent = s8arts.communicativeIntent ?? null;
+  const basedOnEvents = arr(s8arts.basedOnEvents).map((x: unknown) => String(x)).filter(Boolean);
+  const ranked = arr(s8arts.ranked).slice(0, 10).map((r: any) => ({
     action: String(r?.action?.id || r?.id || ''),
     kind: String(r?.action?.kind || r?.kind || ''),
     targetId: r?.action?.targetId || r?.targetId || null,
@@ -598,13 +604,13 @@ function extractAgentTrace(pipeline: any, actorId: string, world: SimWorld, mode
     modifiers: arr(r?.action?.why?.modifiers).slice(0, 12),
   }));
 
-  const decisionSnapshot = (s8 as any)?.artifacts?.decisionSnapshot ?? null;
+  const decisionSnapshot = s8arts.decisionSnapshot ?? null;
   const best = ranked[0] || null;
-  const activeIntentSummary = summarizeIntentForTrace((world.facts as any)?.[`intent:${actorId}`], Number((pipeline as any)?.tick ?? world.tickIndex ?? 0));
-  const lastIntentRuntimeEvent = (world.facts as any)?.[`sim:intent:last:${actorId}`] ?? null;
+  const activeIntentSummary = summarizeIntentForTrace(getFact(world, `intent:${actorId}`), Number(pipeline?.tick ?? world.tickIndex ?? 0));
+  const lastIntentRuntimeEvent = getFact(world, `sim:intent:last:${actorId}`) ?? null;
 
   return {
-    tick: (pipeline as any)?.tick ?? 0,
+    tick: pipeline?.tick ?? 0,
     actorId,
     activeIntent: activeIntentSummary,
     lastIntentRuntimeEvent,
@@ -763,7 +769,7 @@ export function makeGoalLabDeciderPlugin(opts?: { storePipeline?: boolean; enabl
       // Placement gate: skip deliberative pipeline if characters not placed.
       const placementResult = validatePlacement(world);
       if (!placementResult.isComplete) {
-        (world.facts as any)['sim:placementValidation'] = placementResult;
+        setFact(world, 'sim:placementValidation', placementResult);
         // Still allow reactive decisions, but skip full GoalLab pipeline.
         // The UI can read sim:placementValidation to show \"scene invalid\" state.
       }
@@ -771,11 +777,11 @@ export function makeGoalLabDeciderPlugin(opts?: { storePipeline?: boolean; enabl
       for (const actorId of actorIds) {
         if (!placementResult.isComplete) {
           const rr = reactiveDecision(world, actorId, offers, tickIndex);
-          (world.facts as any)[`sim:trace:${actorId}`] = {
+          setFact(world, `sim:trace:${actorId}`, {
             tick: tickIndex,
             actorId,
-            activeIntent: summarizeIntentForTrace((world.facts as any)?.[`intent:${actorId}`], tickIndex),
-            lastIntentRuntimeEvent: (world.facts as any)?.[`sim:intent:last:${actorId}`] ?? null,
+            activeIntent: summarizeIntentForTrace(getFact(world, `intent:${actorId}`), tickIndex),
+            lastIntentRuntimeEvent: getFact(world, `sim:intent:last:${actorId}`) ?? null,
             decisionMode: 'reactive',
             gate: { reason: 'placement_incomplete', placementResult },
             emotions: {},
@@ -796,7 +802,7 @@ export function makeGoalLabDeciderPlugin(opts?: { storePipeline?: boolean; enabl
                 }
               : null,
             uiAction: rr.action ? canonicalActionFromSimAction(rr.action as any, world) : null,
-          };
+          });
           if (rr.action) {
             rr.action.meta = { ...(rr.action.meta || {}), decisionMode: 'reactive', reactiveReason: 'placement_incomplete', reactiveTrigger: rr.trigger, reactiveContext: rr.context, reactiveShortlist: rr.shortlist };
             actions.push(rr.action);
@@ -815,11 +821,11 @@ export function makeGoalLabDeciderPlugin(opts?: { storePipeline?: boolean; enabl
 
         if (mode === 'reactive') {
           const rr = reactiveDecision(world, actorId, offers, tickIndex);
-          (world.facts as any)[`sim:trace:${actorId}`] = {
+          setFact(world, `sim:trace:${actorId}`, {
             tick: tickIndex,
             actorId,
-            activeIntent: summarizeIntentForTrace((world.facts as any)?.[`intent:${actorId}`], tickIndex),
-            lastIntentRuntimeEvent: (world.facts as any)?.[`sim:intent:last:${actorId}`] ?? null,
+            activeIntent: summarizeIntentForTrace(getFact(world, `intent:${actorId}`), tickIndex),
+            lastIntentRuntimeEvent: getFact(world, `sim:intent:last:${actorId}`) ?? null,
             decisionMode: 'reactive',
             gate: gateResult,
             emotions: {},
@@ -840,7 +846,7 @@ export function makeGoalLabDeciderPlugin(opts?: { storePipeline?: boolean; enabl
                 }
               : null,
             uiAction: rr.action ? canonicalActionFromSimAction(rr.action as any, world) : null,
-          };
+          });
 
           if (rr.action) {
             rr.action.meta = { ...(rr.action.meta || {}), decisionMode: 'reactive', gate: gateResult, reactiveReason: rr.reason, reactiveTrigger: rr.trigger, reactiveContext: rr.context, reactiveShortlist: rr.shortlist };
@@ -879,21 +885,21 @@ export function makeGoalLabDeciderPlugin(opts?: { storePipeline?: boolean; enabl
         const bpAtoms = arr((pipeline as any)?.beliefPersist?.beliefAtoms);
         if (bpAtoms.length) {
           const memKey = `mem:beliefAtoms:${actorId}`;
-          const prev = arr((world.facts as any)?.[memKey]);
+          const prev = arr(getFact<unknown[]>(world, memKey));
           const byId = new Map<string, any>();
           for (const a of prev) {
-            const id = String((a as any)?.id || '');
+            const id = atomId(a);
             if (id) byId.set(id, a);
           }
           for (const a of bpAtoms) {
-            const id = String((a as any)?.id || '');
+            const id = atomId(a);
             if (id) byId.set(id, a);
           }
-          (world.facts as any)[memKey] = Array.from(byId.values());
+          setFact(world, memKey, Array.from(byId.values()));
         }
 
         if (opts?.storePipeline) {
-          (world as any).facts['sim:goalLab:lastPipeline'] = pipeline;
+          setFact(world, 'sim:goalLab:lastPipeline', pipeline);
         }
 
         const trace = extractAgentTrace(pipeline, actorId, world, mode, gateResult);
@@ -908,10 +914,10 @@ export function makeGoalLabDeciderPlugin(opts?: { storePipeline?: boolean; enabl
             trace,
           );
         }
-        (world.facts as any)[`sim:trace:${actorId}`] = trace;
-        const s8Stage = (pipeline as any)?.stages?.find((s: any) => s?.stage === 'S8');
-        (world.facts as any)[`sim:grounded:${actorId}`] = arr((s8Stage as any)?.artifacts?.groundedSchemasV1).slice(0, 5);
-        (world.facts as any)[`sim:pipeline:${actorId}`] = {
+        setFact(world, `sim:trace:${actorId}`, trace);
+        const s8StageArts = stageArtifacts(pipeline, 'S8');
+        setFact(world, `sim:grounded:${actorId}`, arr(s8StageArts.groundedSchemasV1).slice(0, 5));
+        setFact(world, `sim:pipeline:${actorId}`, {
           mode: trace.mode,
           decisionMode: mode,
           tick: tickIndex,
@@ -919,10 +925,10 @@ export function makeGoalLabDeciderPlugin(opts?: { storePipeline?: boolean; enabl
           appraisedEvents: trace.appraisedEvents || [],
           basedOnEvents: trace.basedOnEvents || [],
           communicativeIntent: trace.communicativeIntent || null,
-        };
+        });
         // Store placement validation for UI consumption.
         if (placementResult) {
-          (world.facts as any)['sim:placementValidation'] = placementResult;
+          setFact(world, 'sim:placementValidation', placementResult);
         }
 
         const best = extractDecisionBest(pipeline);
@@ -974,12 +980,12 @@ export function makeGoalLabDeciderPlugin(opts?: { storePipeline?: boolean; enabl
                   groundedFrom: rawAction.kind,
                   groundedVia: 'intentGuard:transactionalEquivalent',
                   suppressedAction: rawAction.kind,
-                  activeIntentId: (activeIntent as any)?.id ?? null,
+                  activeIntentId: (activeIntent as IntentState | undefined)?.id ?? null,
                   transactionalClass: familyOfActionKind(intentOrigKind),
                 },
               } as SimAction;
               actions.push(continuedAction);
-              const t = (world.facts as any)[`sim:trace:${actorId}`];
+              const t = getFact<Record<string, unknown>>(world, `sim:trace:${actorId}`);
               if (t) t.uiAction = canonicalActionFromSimAction(continuedAction as any, world);
               continue;
             }
@@ -1019,15 +1025,15 @@ export function makeGoalLabDeciderPlugin(opts?: { storePipeline?: boolean; enabl
                   groundedFrom: rawAction.kind,
                   groundedVia: 'intentGuard:forceContinue',
                   suppressedAction: rawAction.kind,
-                  activeIntentId: (activeIntent as any)?.id ?? null,
-                  activeIntentScriptId: (activeIntent as any)?.scriptId ?? null,
+                  activeIntentId: (activeIntent as IntentState | undefined)?.id ?? null,
+                  activeIntentScriptId: (activeIntent as IntentState | undefined)?.scriptId ?? null,
                   stageKind: staleness.stageKind,
                   stale: staleness.stale,
                   ticksSinceProgress: staleness.ticksSinceProgress,
                 },
               } as SimAction;
               actions.push(forcedContinue);
-              const t = (world.facts as any)[`sim:trace:${actorId}`];
+              const t = getFact<Record<string, unknown>>(world, `sim:trace:${actorId}`);
               if (t) t.uiAction = canonicalActionFromSimAction(forcedContinue as any, world);
               continue;
             }
@@ -1036,14 +1042,14 @@ export function makeGoalLabDeciderPlugin(opts?: { storePipeline?: boolean; enabl
         const action = groundAbstractAction(rawAction, offers, actorId, goalLabKind, world);
         const decorated = decorateAction(action, best);
         decorated.meta = { ...(decorated.meta || {}), decisionMode: mode, gate: gateResult };
-        const traceForUi = (world.facts as any)[`sim:trace:${actorId}`];
+        const traceForUi = getFact<Record<string, unknown>>(world, `sim:trace:${actorId}`);
         if (traceForUi) {
           traceForUi.uiAction = canonicalActionFromSimAction(decorated as any, world);
           traceForUi.groundedBest = {
             kind: decorated.kind,
             targetId: decorated.targetId ?? null,
             transportKind: decorated.kind,
-            groundedVia: (decorated.meta as any)?.groundedVia ?? null,
+            groundedVia: (decorated.meta as Record<string, unknown>)?.groundedVia ?? null,
           };
         }
         actions.push(decorated);

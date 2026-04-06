@@ -3,7 +3,7 @@ import { useSandbox } from '../contexts/SandboxContext';
 import { useAccess } from '../contexts/AccessContext';
 import { getEntitiesByType } from '../data';
 import { relations as STATIC_RELATIONS } from '../data/relations';
-import { EntityType } from '../enums';
+import { EntityType } from '../types';
 import type { CharacterEntity } from '../types';
 import { ThinkingSimilarityPanel } from '../components/ThinkingSimilarityPanel';
 

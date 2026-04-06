@@ -6,7 +6,7 @@
 
 import React, { useState, useCallback, useMemo, useRef } from 'react';
 import { getEntitiesByType, getAllCharactersWithRuntime } from '../data';
-import { EntityType } from '../enums';
+import { EntityType } from '../types';
 import type { CharacterEntity, LocationEntity } from '../types';
 import { SimKitSimulator } from '../lib/simkit/core/simulator';
 import type { SimWorld } from '../lib/simkit/core/types';

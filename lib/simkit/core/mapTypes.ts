@@ -49,7 +49,7 @@ export function getMacroMapLayout(facts: any, locationIds: string[]): MacroMapLa
 
 /** Record a movement step in the agent's trail. */
 export function recordTrail(
-  facts: any,
+  facts: Record<string, unknown>,
   agentId: string,
   tick: number,
   locId: string,

@@ -1,7 +1,8 @@
 import { clamp01 } from '../../util/math';
 export { clamp01 };
 
-export type AgentId = string;
+import type { AgentId } from '../../../types';
+export type { AgentId };
 export type AtomSource = "tom";
 export type DomainKey =
   | "danger"

@@ -1,12 +1,12 @@
 // Инварианты и утилиты. Без внешних зависимостей.
+import type { GoalBase } from '../../types';
+
 export type Z = Record<string, number>;
 
-export type Goal = {
-  id: string;
+export type Goal = GoalBase & {
   value?: number;         // 0..1
   deadline?: number;      // шаг
   min_lock?: number;      // мин-длительность
-  tags?: string[];
   softban_lambda?: number;
 };
 

@@ -18,7 +18,7 @@ import { LocationMapView } from '../../../components/LocationMapView';
 import { PlacementMiniMap } from '../../../components/ScenarioSetup/PlacementMiniMap';
 import { LocationVectorMap } from '../../../components/locations/LocationVectorMap';
 
-import { EntityType } from '../../../enums';
+import { EntityType } from '../../../types';
 import { getEntitiesByType, getAllCharactersWithRuntime } from '../../../data';
 import { useSandbox } from '../../../contexts/SandboxContext';
 import { uniq } from '../../util/collections';

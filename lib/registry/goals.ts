@@ -1,5 +1,7 @@
 // /lib/registry/goals.ts
-export type Goal = { id:string; name:string; kind:"L"|"S"|"both" };
+import type { GoalBase } from '../../types';
+
+export type Goal = GoalBase & { name:string; kind:"L"|"S"|"both" };
 export const GOALS_L: Goal[] = [
   { id:"reach_surface",        name:"выход на поверхность",        kind:"L" },
   { id:"maintain_legitimacy",  name:"сохранить легитимность",      kind:"L" },

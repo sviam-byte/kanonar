@@ -1,7 +1,7 @@
 
 // lib/context/v2/types.ts
 
-import type { CharacterGoalId, ContextAxesVector, ContextTuning } from '../../types';
+import type { CharacterGoalId, ContextAxesVector, ContextTuning } from '../../../types';
 
 export type { ContextAxesVector, ContextTuning };
 

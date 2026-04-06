@@ -1,8 +1,8 @@
-import type { SimAction } from './types';
+import type { SimAction, IntentState } from './types';
 import { normalizeTargetId } from '../../behavior/actionPattern';
 import { FCS } from '../../config/formulaConfigSim';
 
-type IntentLike = any;
+type IntentLike = IntentState | Record<string, unknown> | null | undefined;
 
 const DIALOGUE_TRANSACTION_KINDS = new Set(['talk', 'question_about', 'negotiate']);
 

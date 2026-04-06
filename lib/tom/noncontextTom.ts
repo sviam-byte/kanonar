@@ -11,10 +11,11 @@ import { METRIC_NAMES } from '../archetypes/metrics';
 import { computeSecondOrderSelf, TomSecondOrderSelf } from './second_order';
 import { LIFE_TO_PREGOAL } from '../life-goals/life-to-pregoal';
 import { getGlobalRunSeed, hashString32 } from "../core/noise";
+import type { Id, TomErrorProfile } from '../../types';
 
 // --- Type Definitions ---
 
-export type Id = string;
+export type { Id, TomErrorProfile };
 
 export interface VectorAxis {
   id: string;
@@ -44,13 +45,6 @@ export interface ProfileSummary {
   vector: VectorFingerprint;
   structural: TomStructuralDiagnosis;
   stress: TomStressProfile;
-}
-
-export interface TomErrorProfile {
-  paranoia: number;
-  naivete: number;
-  cynicism: number;
-  self_blame: number;
 }
 
 export interface CharacterDossier {

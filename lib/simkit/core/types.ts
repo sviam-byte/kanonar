@@ -1,7 +1,8 @@
 // lib/simkit/core/types.ts
 // Core types for the SimKit world, actions, snapshots, and exports.
 
-export type Id = string;
+import type { Id, ActionOfferBase } from '../../../types';
+export type { Id };
 
 export type SimCharacter = {
   id: Id;
@@ -23,7 +24,7 @@ export type SimCharacter = {
 
   tags?: string[];
   // исходная сущность Kanonar (CharacterEntity / AgentState-like)
-  entity?: any;
+  entity?: Record<string, unknown>;
 };
 
 export type SimLocation = {
@@ -44,17 +45,17 @@ export type SimLocation = {
   };
   features?: Array<{ id: string; kind: string; nodeId?: string; tags?: string[]; strength?: number }>;
   // исходная сущность Kanonar (LocationEntity)
-  entity?: any;
+  entity?: Record<string, unknown>;
 };
 
-export type SimWorldFacts = Record<string, any> & {
-  spatial?: any;
-  inboxAtoms?: Record<string, any[]>;
-  [k: `agentAtoms:${string}`]: any[];
-  [k: `quarantineAtoms:${string}`]: any[];
-  [k: `intent:${string}`]: any;
+export type SimWorldFacts = Record<string, unknown> & {
+  spatial?: Record<string, unknown>;
+  inboxAtoms?: Record<string, unknown[]>;
+  [k: `agentAtoms:${string}`]: unknown[];
+  [k: `quarantineAtoms:${string}`]: unknown[];
+  [k: `intent:${string}`]: unknown;
   [k: `observeBoost:${string}`]: number;
-  relations?: any;
+  relations?: Record<string, Record<string, Record<string, unknown>>>;
 };
 
 export type SimWorld = {
@@ -132,6 +133,33 @@ export type IntentScript = {
   explain?: string[];
 };
 
+/**
+ * Runtime intent state stored in world.facts[`intent:${agentId}`].
+ * Previously untyped (IntentLike = any), causing many `as any` casts in specs.ts.
+ */
+export type IntentState = {
+  id: string;
+  startedAtTick: number;
+  remainingTicks: number | null;
+  intent: {
+    originalAction?: {
+      kind: string;
+      targetId?: string | null;
+      meta?: Record<string, unknown>;
+    };
+    [k: string]: unknown;
+  } | null;
+  intentScript: IntentScript | null;
+  stageIndex: number | null;
+  stageTicksLeft: number | 'until_condition' | null;
+  stageEnteredIndex: number | null;
+  scriptId: string | null;
+  lifecycleState: 'active' | 'complete' | 'aborted';
+  stageStartedAtTick: number;
+  lastProgressTick: number;
+  dest: { x: number; y: number } | null;
+};
+
 export type SimAction = {
   id: Id;                 // unique action instance id
   kind: ActionKind;
@@ -167,15 +195,11 @@ export type SpeechEventV1 = {
   intent?: 'truthful' | 'selective' | 'deceptive';
 };
 
-export type ActionOffer = {
+export type ActionOffer = ActionOfferBase & {
   kind: ActionKind;
   actorId: Id;
-  targetId?: Id | null;
   // навигация внутри локации
   targetNodeId?: string | null;
-  meta?: any;
-  score: number;          // эвристика/полезность (не ToM!)
-  blocked?: boolean;
   reason?: string | null;
 };
 
