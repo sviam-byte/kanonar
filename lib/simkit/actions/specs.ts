@@ -17,6 +17,9 @@ import { recordTrail } from '../core/mapTypes';
 import { RespondSpec } from './respondSpec';
 import { MoveCellSpec } from './moveCellSpec';
 import { decideSpeechContent } from '../dialogue/speechContent';
+import { FCS } from '../../config/formulaConfigSim';
+import { familyOfActionKind, normalizeTargetId } from '../../behavior/actionPattern';
+import { markIntentCooldown, readIntentCooldown } from '../core/behaviorMemory';
 
 const clamp = (x: number, a: number, b: number) => Math.max(a, Math.min(b, x));
 
@@ -1679,12 +1682,7 @@ const ContinueIntentSpec: ActionSpec = {
 
       delete world.facts[key];
       // ── Write intent cooldown to prevent immediate re-start ──
-      const cdKey = `intentCooldown:${c.id}`;
-      const cdData: any = typeof (world.facts as any)?.[cdKey] === 'object' ? (world.facts as any)[cdKey] : {};
-      const origKind2 = original?.kind || '';
-      const origTarget2 = original?.targetId || '';
-      cdData[`${origKind2}:${origTarget2}`] = world.tickIndex;
-      (world.facts as any)[cdKey] = cdData;
+      markIntentCooldown(world.facts as any, c.id, String(original?.kind || ''), original?.targetId ?? null, world.tickIndex);
       events.push(
         mkActionEvent(world, 'action:intent_complete', {
           actorId: c.id,
@@ -1735,11 +1733,8 @@ const ContinueIntentSpec: ActionSpec = {
         notes.push(`${c.id} intent complete: no originalAction`);
       }
       // ── Write intent cooldown (v0 path) ──
-      const cdKeyV0 = `intentCooldown:${c.id}`;
-      const cdDataV0: any = typeof (world.facts as any)?.[cdKeyV0] === 'object' ? (world.facts as any)[cdKeyV0] : {};
       const okV0 = (cur as any)?.intent?.originalAction;
-      if (okV0) cdDataV0[`${okV0.kind || ''}:${okV0.targetId || ''}`] = world.tickIndex;
-      (world.facts as any)[cdKeyV0] = cdDataV0;
+      if (okV0) markIntentCooldown(world.facts as any, c.id, String(okV0.kind || ''), okV0.targetId ?? null, world.tickIndex);
       delete world.facts[key];
       events.push(mkActionEvent(world, 'action:intent_complete', {
         actorId: c.id,
@@ -1966,22 +1961,30 @@ export function enumerateActionOffers(world: SimWorld): ActionOffer[] {
       continue;
     }
 
-    // ── Intent cooldown: block same kind→target for 2 ticks after completion ──
-    const cooldownKey = `intentCooldown:${actorId}`;
-    const cooldown: any = (world.facts as any)?.[cooldownKey];
-
     for (const kind of Object.keys(ACTION_SPECS).sort() as ActionKind[]) {
       const spec = ACTION_SPECS[kind];
       const raw = spec.enumerate(ctx);
       for (const o of raw) {
-        // Apply cooldown block for recently completed intent patterns.
-        if (kind === 'start_intent' && cooldown && typeof cooldown === 'object') {
-          const origKind = (o.payload as any)?.intent?.originalAction?.kind;
-          const origTarget = (o.payload as any)?.intent?.originalAction?.targetId;
-          const cdKey = `${origKind}:${origTarget}`;
-          const cdTick = Number(cooldown[cdKey]);
-          if (Number.isFinite(cdTick) && world.tickIndex - cdTick < 3) {
-            offers.push({ ...o, blocked: true, reason: 'cooldown:recent_intent', score: 0 });
+        if (kind === 'start_intent') {
+          const origKind = String(((o as any).payload as any)?.intent?.originalAction?.kind || '');
+          const origTarget = normalizeTargetId(((o as any).payload as any)?.intent?.originalAction?.targetId);
+          const gaps = readIntentCooldown(world.facts as any, actorId, origKind, origTarget, world.tickIndex);
+          if ((gaps.exactGap != null && gaps.exactGap < Number(FCS.behaviorVariety.intentCooldown.exactBlockTicks ?? 3))
+            || (gaps.familyGap != null && gaps.familyGap < Number(FCS.behaviorVariety.intentCooldown.familyBlockTicks ?? 4))) {
+            offers.push({
+              ...o,
+              blocked: true,
+              reason: 'cooldown:recent_intent',
+              score: 0,
+              meta: {
+                ...(o as any).meta,
+                cooldown: {
+                  exactGap: gaps.exactGap,
+                  familyGap: gaps.familyGap,
+                  family: familyOfActionKind(origKind),
+                },
+              },
+            });
             continue;
           }
         }

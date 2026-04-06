@@ -422,6 +422,10 @@ export const DECISION = {
     sameKindPenalty: 0.25,
     /** Additional penalty when both kind AND target match. */
     sameTargetPenalty: 0.15,
+    /** Additional penalty for repeating same family with a different target. */
+    sameFamilyPenalty: 0.10,
+    /** Small relief when target is novel inside the same family. */
+    novelTargetRelief: 0.06,
     /** Decay factor per tick gap (0 = no decay, 1 = full decay after 1 tick). */
     decayPerTick: 0.3,
   },
@@ -475,6 +479,12 @@ export const ACTION_SCORING = {
   /** Risk penalty coefficient for confidence < 1. */
   /** Used in action scorer as a smooth penalty term; keep in config for auditability. */
   riskCoeff: 0.4,
+  exploration: {
+    tieBand: 0.08,
+    tieTopK: 3,
+    tieTemperatureMultiplier: 1.4,
+    minTieCandidates: 2,
+  },
 } as const;
 
 // ─── Target-Specific ToM Modulation (actionCandidateUtils.ts) ─────────────
@@ -486,18 +496,41 @@ export const TOM_MODULATION = {
     threatBonus: 0.5,
     physThreatSafetyPenalty: 0.6,
     socialStandingStatusPenalty: 0.3,
+    dominanceBonus: 0.25,
+    goalWeights: {
+      control: 1.12,
+      status: 1.18,
+      affiliation: 0.72,
+      safety: 0.85,
+      survival: 0.82,
+    },
   },
   cooperative: {
     trustBonus: 0.4,
     alignmentBonus: 0.2,
     threatPenalty: 0.3,
     supportBonus: 0.2,
+    intimacyBonus: 0.25,
+    goalWeights: {
+      affiliation: 1.22,
+      control: 1.04,
+      status: 0.96,
+      safety: 0.94,
+    },
   },
   avoidant: {
     threatBonus: 0.5,
     physThreatBonus: 0.3,
     trustPenalty: 0.3,
     intimacyPenalty: 0.2,
+    safetyGoalBonus: 0.35,
+    goalWeights: {
+      safety: 1.28,
+      survival: 1.25,
+      affiliation: 0.76,
+      status: 0.82,
+      control: 0.94,
+    },
   },
   contextual: {
     /** danger-based delta scaling for safety/survival goals. */

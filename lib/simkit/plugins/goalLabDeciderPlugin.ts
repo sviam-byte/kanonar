@@ -14,22 +14,24 @@ import { FCS } from '../../config/formulaConfigSim';
 import { clamp01 } from '../../util/math';
 import type { Possibility } from '../../possibilities/catalog';
 import { validatePlacement } from '../placement/validatePlacement';
+import { familyOfActionKind } from '../../behavior/actionPattern';
+import { readIntentCooldown } from '../core/behaviorMemory';
 
 // ── Intent cooldown: read cooldown facts and return penalty multiplier ──
 // If an agent just completed an intent of the same kind+target, penalize re-selection.
 function getIntentCooldownPenalty(world: SimWorld, actorId: string, kind: string, targetId: string | null): number {
-  const cdKey = `intentCooldown:${actorId}`;
-  const cdData: any = (world.facts as any)?.[cdKey];
-  if (!cdData || typeof cdData !== 'object') return 0;
-  const comboKey = `${kind}:${targetId || ''}`;
-  const lastTick = Number(cdData[comboKey] ?? -999);
-  const gap = (world.tickIndex ?? 0) - lastTick;
-  if (gap <= 0) return 0.8;  // just completed this tick — strong block
-  if (gap <= 2) return 0.65; // within 2 ticks — still blocked
-  if (gap <= 4) return 0.45; // within 4 ticks — mostly blocked
-  if (gap <= 6) return 0.25; // fading
-  if (gap <= 8) return 0.10;
-  return 0;
+  const cd = FCS.behaviorVariety.intentCooldown;
+  const gaps = readIntentCooldown(world.facts as any, actorId, kind, targetId, Number(world.tickIndex ?? 0));
+  let penalty = 0;
+  if (gaps.exactGap != null) {
+    if (gaps.exactGap <= 0) penalty = Math.max(penalty, Number(cd.exactPenalty ?? 0.8));
+    else if (gaps.exactGap < Number(cd.exactBlockTicks ?? 3)) penalty = Math.max(penalty, Number(cd.exactPenalty ?? 0.8) * 0.8);
+  }
+  if (gaps.familyGap != null) {
+    if (gaps.familyGap <= 0) penalty = Math.max(penalty, Number(cd.familyPenalty ?? 0.55));
+    else if (gaps.familyGap < Number(cd.familyBlockTicks ?? 4)) penalty = Math.max(penalty, Number(cd.familyPenalty ?? 0.55) * 0.8);
+  }
+  return penalty;
 }
 
 // ── Actions that execute in one tick via genericSocialSpec — no intent wrap needed ──
@@ -349,14 +351,7 @@ function groundAbstractAction(
   const needsIntentWrap = (action.kind === 'talk' || action.kind === 'question_about' || action.kind === 'negotiate') && action.targetId;
   if (needsIntentWrap) {
     // ── Cooldown guard: don't re-wrap if recently completed same or similar intent ──
-    // Check exact kind+target.
-    const cdPenalty = getIntentCooldownPenalty(world, actorId, action.kind, action.targetId ?? null);
-    // Also check any talk-family intent toward same target (prevents negotiate→talk→negotiate loop).
-    const talkFamily = ['talk', 'negotiate', 'question_about'];
-    const familyPenalty = Math.max(
-      ...talkFamily.map(k => getIntentCooldownPenalty(world, actorId, k, action.targetId ?? null))
-    );
-    const effectivePenalty = Math.max(cdPenalty, familyPenalty * 0.8);
+    const effectivePenalty = getIntentCooldownPenalty(world, actorId, action.kind, action.targetId ?? null);
     if (effectivePenalty > 0.4) {
       // Too soon to start this intent again — fall back to a direct single-tick action.
       // Pick something contextually useful: observe if driver is curiosity/control,
@@ -552,6 +547,11 @@ function extractAgentTrace(pipeline: any, actorId: string, world: SimWorld, mode
     kind: String(r?.action?.kind || r?.kind || ''),
     targetId: r?.action?.targetId || r?.targetId || null,
     q: Number(r?.q ?? 0),
+    qUsed: Number(r?.qUsed ?? r?.q ?? 0),
+    sampleNoise: Number(r?.sampleNoise ?? 0),
+    sampleScore: Number(r?.sampleScore ?? 0),
+    marginFromBest: Number(r?.marginFromBest ?? 0),
+    inTieBand: Boolean(r?.inTieBand),
     cost: Number(r?.action?.cost ?? r?.cost ?? 0),
     confidence: clamp01(Number(r?.action?.confidence ?? r?.confidence ?? 1)),
     goalContribs: (() => {
@@ -560,8 +560,14 @@ function extractAgentTrace(pipeline: any, actorId: string, world: SimWorld, mode
       for (const [g, d] of Object.entries(deltas)) out[g] = Number(d);
       return out;
     })(),
+    usedAtomIds: arr((r?.action?.why?.usedAtomIds ?? []) as string[])
+      .map(String)
+      .filter((id: string) => id && !id.startsWith('goal:')),
+    notes: arr((r?.action?.why?.notes ?? []) as string[]).map(String),
+    modifiers: arr(r?.action?.why?.modifiers).slice(0, 12),
   }));
 
+  const decisionSnapshot = (s8 as any)?.artifacts?.decisionSnapshot ?? null;
   const best = ranked[0] || null;
 
   return {
@@ -585,11 +591,26 @@ function extractAgentTrace(pipeline: any, actorId: string, world: SimWorld, mode
           kind: best.kind,
           targetId: best.targetId,
           q: best.q,
+          qUsed: best.qUsed,
+          sampleNoise: best.sampleNoise,
+          sampleScore: best.sampleScore,
+          marginFromBest: best.marginFromBest,
+          inTieBand: best.inTieBand,
           goalContribs: best.goalContribs,
+          usedAtomIds: best.usedAtomIds,
+          notes: best.notes,
+          modifiers: best.modifiers,
+          decisionBreakdown: decisionSnapshot?.best ?? null,
           explanation: buildExplanation(best, ranked, drivers, emotions, modeLabel, mode, {
             topIntent: intentCandidates[0] || null,
             topSchema: schemaCandidates[0] || null,
           }),
+        }
+      : null,
+    decisionBreakdown: decisionSnapshot
+      ? {
+          best: decisionSnapshot?.best ?? null,
+          ranked: arr(decisionSnapshot?.ranked).slice(0, 5),
         }
       : null,
     intentCandidates,
@@ -865,18 +886,40 @@ export function makeGoalLabDeciderPlugin(opts?: { storePipeline?: boolean; enabl
           if (!isIntentAction) {
             const intentAge = tickIndex - Number((activeIntent as any)?.startedAtTick ?? tickIndex);
             const intentOrigKind = (activeIntent as any)?.intent?.originalAction?.kind || '';
+            const intentOrigTarget = (activeIntent as any)?.intent?.originalAction?.targetId ?? null;
+            const activeFamily = familyOfActionKind(intentOrigKind);
+            const desiredFamily = familyOfActionKind(rawAction.kind);
+            const sameIntentFamilyTarget = desiredFamily === activeFamily && (rawAction.targetId ?? null) === intentOrigTarget;
             const wantsDifferentKind = rawAction.kind !== intentOrigKind && rawAction.kind !== 'start_intent';
             const isDirectAction = DIRECT_EXECUTE_KINDS.has(String(rawAction.kind));
             const isStale = intentAge >= 3;
             const stageKind = (activeIntent as any)?.intentScript?.stages?.[(activeIntent as any)?.stageIndex ?? 0]?.kind || '';
             const inCriticalStage = stageKind === 'execute' || stageKind === 'attach';
 
+            // Same family + same target should keep the current transactional intent alive.
+            if (sameIntentFamilyTarget) {
+              actions.push({
+                id: `act:continue_intent:${tickIndex}:${actorId}:samefamily`,
+                kind: 'continue_intent' as any,
+                actorId,
+                targetId: intentOrigTarget,
+                meta: {
+                  decisionMode: mode,
+                  gate: gateResult,
+                  goalLabKind,
+                  groundedFrom: rawAction.kind,
+                  groundedVia: 'intentGuard:sameFamilyTarget',
+                  suppressedAction: rawAction.kind,
+                  activeIntentId: (activeIntent as any)?.id ?? null,
+                },
+              });
+              continue;
+            }
+
             // Abort if: agent wants genuinely different action AND (intent is stale OR action is direct-execute)
             // BUT not if we're in a critical stage (execute/attach).
             if (wantsDifferentKind && (isStale || isDirectAction) && !inCriticalStage) {
-              // Abort the current intent, then let the new action through.
               delete world.facts[`intent:${actorId}`];
-              // Fall through to grounding below — the new action will execute directly.
             } else {
               actions.push({
                 id: `act:continue_intent:${tickIndex}:${actorId}:forced`,
