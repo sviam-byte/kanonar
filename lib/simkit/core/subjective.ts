@@ -8,6 +8,8 @@
 
 import type { ActionOffer, SimAction, SimWorld } from './types';
 import { getDyadTrust } from './trust';
+import { FCS } from '../../config/formulaConfigSim';
+import { recordBehaviorMemory, summarizeBehaviorPattern } from './behaviorMemory';
 
 const clamp01 = (x: number) => (Number.isFinite(x) ? Math.max(0, Math.min(1, x)) : 0);
 const clamp = (x: number, a: number, b: number) => (Number.isFinite(x) ? Math.max(a, Math.min(b, x)) : a);
@@ -158,22 +160,26 @@ export function scoreOfferSubjective(world: SimWorld, offer: ActionOffer): numbe
     }
   }
 
-  // Inertia + switch cost + ESCALATING repetition penalty.
+  // Inertia + semantic repetition penalty.
   const last = getLastAction(world, c.id);
+  const pattern = summarizeBehaviorPattern(world.facts as any, c.id, offer.kind, offer.targetId ?? null);
   if (last && Number.isFinite(last.tick)) {
-    if (last.kind === offer.kind) {
-      // Count consecutive repetitions of same kind+target.
-      const repKey = `repCount:${c.id}:${offer.kind}:${String(offer.targetId ?? '')}`;
-      const repCount = Number((world.facts as any)?.[repKey] ?? 0);
-      if (repCount <= 1) {
-        s += 0.03; // mild inertia for first repeat
-      } else {
-        // Escalating penalty: −0.04 × repCount, max −0.20
-        s -= Math.min(0.20, 0.04 * repCount);
-      }
+    if (pattern.exactStreak <= 1 && last.kind === offer.kind) {
+      s += 0.03; // mild inertia for the first exact repeat only
+    } else if (pattern.exactStreak > 1) {
+      s -= Math.min(0.20, 0.04 * pattern.exactStreak);
     } else {
       s -= 0.02; // switch cost
     }
+  }
+  if (pattern.familyStreak > 0) {
+    s -= Math.min(
+      Number(FCS.behaviorVariety.familyRepeatCap ?? 0.18),
+      Number(FCS.behaviorVariety.familyRepeatPenalty ?? 0.06) * pattern.familyStreak,
+    );
+  }
+  if (offer.targetId && pattern.familyStreak > 0 && !pattern.seenTargetInFamily) {
+    s += Number(FCS.behaviorVariety.novelTargetBonus ?? 0.04);
   }
 
   // Social contagion.
@@ -187,27 +193,10 @@ export function scoreOfferSubjective(world: SimWorld, offer: ActionOffer): numbe
 }
 
 export function rememberLastAction(world: SimWorld, action: SimAction) {
-  const prev: any = (world.facts as any)?.[`lastAction:${action.actorId}`];
-  const prevKind = prev?.kind || '';
-  const prevTarget = prev?.targetId || '';
-  const samePattern = prevKind === action.kind && prevTarget === (action.targetId ?? null);
-
   (world.facts as any)[`lastAction:${action.actorId}`] = {
     kind: action.kind,
     targetId: action.targetId ?? null,
     tick: world.tickIndex,
   };
-
-  // Track consecutive repetitions for escalating penalty.
-  const repKey = `repCount:${action.actorId}:${action.kind}:${String(action.targetId ?? '')}`;
-  if (samePattern) {
-    (world.facts as any)[repKey] = (Number((world.facts as any)[repKey]) || 0) + 1;
-  } else {
-    // Reset old pattern counter, start new one.
-    if (prevKind) {
-      const oldRepKey = `repCount:${action.actorId}:${prevKind}:${String(prevTarget ?? '')}`;
-      (world.facts as any)[oldRepKey] = 0;
-    }
-    (world.facts as any)[repKey] = 1;
-  }
+  recordBehaviorMemory(world.facts as any, action.actorId, action.kind, action.targetId ?? null, world.tickIndex);
 }

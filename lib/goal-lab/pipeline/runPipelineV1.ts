@@ -1155,6 +1155,12 @@ export function runGoalLabPipelineV1(input: {
     const rankedActions = arr((decision as any)?.ranked).map((r: any) => ({
       ...(r?.action || {}),
       q: Number(r?.q ?? 0),
+      qUsed: Number(r?.qUsed ?? r?.q ?? 0),
+      sampleNoise: Number(r?.sampleNoise ?? 0),
+      sampleScore: Number(r?.sampleScore ?? 0),
+      marginFromBest: Number(r?.marginFromBest ?? 0),
+      inTieBand: Boolean(r?.inTieBand),
+      chosen: Boolean(r?.chosen),
     }));
 
     // Level 4.0b (J): decision breakdown per action (goal contributions + cost/confidence).
@@ -1180,11 +1186,23 @@ export function runGoalLabPipelineV1(input: {
         kind: String(actionObj?.kind || ''),
         targetId: actionObj?.targetId ?? null,
         q: Number(q ?? 0),
+        qUsed: Number(actionObj?.qUsed ?? q ?? 0),
+        sampleNoise: Number(actionObj?.sampleNoise ?? 0),
+        sampleScore: Number(actionObj?.sampleScore ?? 0),
+        marginFromBest: Number(actionObj?.marginFromBest ?? 0),
+        inTieBand: Boolean(actionObj?.inTieBand),
+        chosen: Boolean(actionObj?.chosen),
         cost,
         confidence: conf,
         deltaGoals,
         contribByGoal,
         rawBeforeConfidence: sum - cost,
+        usedAtomIds: arr((actionObj?.why?.usedAtomIds ?? []) as string[])
+          .map(String)
+          .filter((id: string) => id && !id.startsWith('goal:')),
+        notes: arr((actionObj?.why?.notes ?? []) as string[]).map(String),
+        modifiers: arr(actionObj?.why?.modifiers).slice(0, 12),
+        why: actionObj?.why?.parts ?? null,
         // Lookahead (optional): Q_lookahead = Q_now + gamma * V(z_hat).
         qLookahead: look ? Number(look.qLookahead ?? 0) : null,
         deltaLookahead: look ? Number(look.delta ?? 0) : null,

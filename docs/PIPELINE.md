@@ -231,6 +231,12 @@ Outputs:
   - при наличии `actionSchemaCandidatesV1[*].dialogueHook` используется schema-layer источник,
   - fallback остаётся legacy `buildCommunicativeIntent`.
 - S8 artifacts содержат `schemaGroundedCommunicativeIntent` с источником (`schemaLayer|legacy`) и деталями schema/intent для трассировки.
+- `decisionSnapshot.ranked[*]` now exports sampling diagnostics and explainability payload:
+  - `qUsed`, `sampleNoise`, `sampleScore`, `chosen`
+  - `usedAtomIds`, `notes`, `modifiers`, `why`
+- `decisionSnapshot.best` mirrors the same explainability fields for the chosen action.
+- Near-tie exploration in S8 can sample from a tie-band subset around the best canonical `Q` (configurable via `FC.actionScoring.exploration`).
+- `decisionSnapshot.ranked[*]` may include tie telemetry: `marginFromBest`, `inTieBand`.
 
 Forbidden:
 - `action:*` НЕ должен зависеть от `goal:*` напрямую (только через `util:*`)

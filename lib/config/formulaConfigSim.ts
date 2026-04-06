@@ -78,11 +78,20 @@ export const BEHAVIOR_VARIETY = {
   historyWindow: 12,
   noveltyWindow: 6,
   noveltyBonus: 0.08,
+  novelTargetBonus: 0.04,
+  familyRepeatPenalty: 0.06,
+  familyRepeatCap: 0.18,
   repetitionPenalties: {
     streak2: 0.25,
     streak3: 0.50,
     streak4: 0.75,
     streak5Plus: 0.95,
+  },
+  intentCooldown: {
+    exactBlockTicks: 3,
+    familyBlockTicks: 4,
+    exactPenalty: 0.8,
+    familyPenalty: 0.55,
   },
 } as const;
 

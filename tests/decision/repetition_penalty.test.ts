@@ -41,6 +41,9 @@ describe('repetition penalty', () => {
       const talkQPenalty = Object.values(talkWithPenalty.deltaGoals).reduce((sum, v) => sum + v, 0);
       const talkQBase = Object.values(talkWithoutPenalty.deltaGoals).reduce((sum, v) => sum + v, 0);
       expect(talkQPenalty).toBeLessThan(talkQBase);
+      expect(talkWithPenalty.why?.parts?.repetition?.prevKind).toBe('talk');
+      expect(Array.isArray(talkWithPenalty.why?.modifiers)).toBe(true);
+      expect(talkWithPenalty.why?.usedAtomIds).toContain(`belief:chosen:action:${selfId}`);
     }
   });
 });
