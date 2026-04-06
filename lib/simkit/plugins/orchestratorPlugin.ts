@@ -419,7 +419,7 @@ export function makeOrchestratorPlugin(opts: { registry?: any; onPushToGoalLab?:
         const possExec = possAll.filter((p) => isExecutableKey(keyFromPossibilityId(p.id)));
 
         if (possExec.length) {
-          const { actions, goalEnergy } = buildActionCandidates({ selfId: actorId, atoms, possibilities: possExec });
+          const { actions, goalEnergy } = buildActionCandidates({ selfId: actorId, atoms, possibilities: possExec, currentTick: tickIndex });
           const decision = decideAction({
             actions,
             goalEnergy,

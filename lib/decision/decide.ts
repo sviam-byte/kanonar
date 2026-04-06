@@ -110,6 +110,7 @@ function toDecisionAtom(
         marginFromBest: Number(samplingMeta?.marginFromBest ?? 0),
         nearTieActionIds: arr<string>(samplingMeta?.nearTieActionIds).map(String),
         cost: Number(action.cost ?? 0),
+        costBreakdown: (whyParts && typeof whyParts === 'object') ? (whyParts as any).costBreakdown ?? null : null,
         confidence: clamp01(action.confidence),
         goalContribs,
         rawGoalSum,

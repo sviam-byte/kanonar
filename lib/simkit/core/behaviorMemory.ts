@@ -25,12 +25,19 @@ export function recordBehaviorMemory(
   tick: number,
 ): BehaviorMemoryItem[] {
   const history = getBehaviorMemory(facts, agentId).slice();
-  history.push({
+  const normalized: BehaviorMemoryItem = {
     kind: String(kind || ''),
     family: familyOfActionKind(kind),
     targetId: normalizeTargetId(targetId),
     tick: Number.isFinite(tick) ? tick : -1,
-  });
+  };
+  const last = history[history.length - 1];
+  const duplicateTail = Boolean(last)
+    && String(last.kind || '') === normalized.kind
+    && String(last.family || '') === normalized.family
+    && normalizeTargetId(last.targetId) === normalized.targetId
+    && Number(last.tick ?? -1) === normalized.tick;
+  if (!duplicateTail) history.push(normalized);
   const keep = Number(FCS.behaviorVariety.historyWindow ?? 12);
   if (history.length > keep) history.splice(0, history.length - keep);
   facts[memKey(agentId)] = history;

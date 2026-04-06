@@ -2,6 +2,7 @@
 // Beat detection with per-agent pipeline summary support.
 
 import type { SimTickRecord, SimWorld } from '../core/types';
+import { canonicalActionFromSimAction } from '../semantic/canonicalAction';
 import { clamp01 } from '../../util/math';
 import { FCS } from '../../config/formulaConfigSim';
 
@@ -149,7 +150,11 @@ function detectConvergence(record: SimTickRecord): NarrativeBeat[] {
   const cfg = FCS.beats;
   const actions = record.trace.actionsApplied || [];
   const kindCount: Record<string, string[]> = {};
-  for (const a of actions) (kindCount[a.kind] ||= []).push(a.actorId);
+  for (const a of actions) {
+    const canonical = canonicalActionFromSimAction(a as any, record.snapshot as any);
+    const key = canonical.semanticKind || a.kind;
+    (kindCount[key] ||= []).push(a.actorId);
+  }
   const beats: NarrativeBeat[] = [];
   for (const [kind, agents] of Object.entries(kindCount)) {
     if (agents.length >= cfg.convergenceMinAgents) {

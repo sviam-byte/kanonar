@@ -93,6 +93,12 @@ export const BEHAVIOR_VARIETY = {
     exactPenalty: 0.8,
     familyPenalty: 0.55,
   },
+  intentLifecycle: {
+    staleIntentTicks: 4,
+    approachNoProgressTicks: 2,
+    maxStageTicks: 6,
+    criticalStages: ['attach', 'execute'] as const,
+  },
 } as const;
 
 export const FCS = {

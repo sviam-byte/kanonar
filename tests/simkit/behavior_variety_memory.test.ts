@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 
 import type { ActionOffer, SimWorld } from '@/lib/simkit/core/types';
 import { applyRepetitionDamping, boostNovelActions, recordAction } from '@/lib/simkit/core/repetitionDamper';
+import { rememberLastAction } from '@/lib/simkit/core/subjective';
+import { getBehaviorMemory } from '@/lib/simkit/core/behaviorMemory';
 import { summarizeBehaviorPattern } from '@/lib/simkit/core/behaviorMemory';
 
 function mkWorld(): SimWorld {
@@ -55,5 +57,13 @@ describe('behavior variety memory', () => {
     ] as any;
     const res = boostNovelActions(world, offers, 'A');
     expect(res[0].score).toBeGreaterThan(1);
+  });
+
+  it('does not duplicate behavior memory when action application and lastAction bookkeeping both run in one tick', () => {
+    const world = mkWorld();
+    recordAction(world.facts as any, 'A', 'talk', 'B', 10);
+    rememberLastAction(world, { id: 'act:talk:10:A', kind: 'talk', actorId: 'A', targetId: 'B' } as any);
+    const mem = getBehaviorMemory(world.facts as any, 'A');
+    expect(mem).toHaveLength(1);
   });
 });

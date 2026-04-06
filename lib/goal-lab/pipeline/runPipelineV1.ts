@@ -1015,6 +1015,7 @@ export function runGoalLabPipelineV1(input: {
       selfId,
       atoms: mS8c.atoms,
       possibilities: possList,
+      currentTick: tick,
     });
 
     const rng = (agent as any)?.rngChannels?.decide;

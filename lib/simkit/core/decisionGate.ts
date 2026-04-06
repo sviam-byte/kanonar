@@ -4,6 +4,7 @@
 import type { SimWorld, SimCharacter } from './types';
 import { clamp01 } from '../../util/math';
 import { FCS } from '../../config/formulaConfigSim';
+import { readCtxSignal } from './contextSignals';
 
 export type DecisionMode = 'deliberative' | 'degraded' | 'reactive';
 
@@ -15,7 +16,13 @@ export type DecisionGateResult = {
     surprise: number;
     fatigue: number;
     reactiveScore: number;
-    arousalSource: 'emo' | 'quick';
+    arousalSource: 'emo' | 'ctx_final' | 'ctx_raw' | 'quick';
+    quickSignals?: {
+      danger: number;
+      dangerSource: 'final' | 'raw' | 'fallback';
+      stress: number;
+      surprise: number;
+    };
   };
 };
 
@@ -60,17 +67,21 @@ export function selectDecisionMode(world: SimWorld, agentId: string): DecisionGa
   // FIX A.1: Try pipeline emotion first; fall back to quick-arousal from raw signals.
   const emoArousal = readFact(facts, `emo:arousal:${agentId}`, -1);
   let arousal: number;
-  let arousalSource: 'emo' | 'quick';
+  let arousalSource: 'emo' | 'ctx_final' | 'ctx_raw' | 'quick';
+  let quickSignals: DecisionGateResult['gate']['quickSignals'];
 
   if (emoArousal >= 0) {
     arousal = emoArousal;
     arousalSource = 'emo';
   } else {
-    // Quick arousal from raw world signals (available even before first pipeline run).
-    const danger = readFact(facts, `ctx:danger:${agentId}`, 0);
+    const dangerRead = readCtxSignal(facts, agentId, 'danger', 0);
     const stress = clamp01(Number(char.stress ?? 0));
+    const danger = dangerRead.value;
     arousal = clamp01(Math.max(danger, stress, surprise) * 0.7);
-    arousalSource = 'quick';
+    if (danger >= stress && danger >= surprise && dangerRead.source === 'final') arousalSource = 'ctx_final';
+    else if (danger >= stress && danger >= surprise && dangerRead.source === 'raw') arousalSource = 'ctx_raw';
+    else arousalSource = 'quick';
+    quickSignals = { danger, dangerSource: dangerRead.source, stress, surprise };
   }
 
   const reactiveScore = clamp01(arousal * (1 - selfControl) + cfg.surpriseWeight * surprise);
@@ -79,5 +90,5 @@ export function selectDecisionMode(world: SimWorld, agentId: string): DecisionGa
   if (reactiveScore >= cfg.reactiveThreshold) mode = 'reactive';
   else if (reactiveScore >= cfg.degradedThreshold || fatigue >= cfg.fatigueHabitualThreshold) mode = 'degraded';
 
-  return { mode, gate: { arousal, selfControl, surprise, fatigue, reactiveScore, arousalSource } };
+  return { mode, gate: { arousal, selfControl, surprise, fatigue, reactiveScore, arousalSource, quickSignals } };
 }

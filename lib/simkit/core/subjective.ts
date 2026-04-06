@@ -8,8 +8,7 @@
 
 import type { ActionOffer, SimAction, SimWorld } from './types';
 import { getDyadTrust } from './trust';
-import { FCS } from '../../config/formulaConfigSim';
-import { recordBehaviorMemory, summarizeBehaviorPattern } from './behaviorMemory';
+import { readCtxSignal } from './contextSignals';
 
 const clamp01 = (x: number) => (Number.isFinite(x) ? Math.max(0, Math.min(1, x)) : 0);
 const clamp = (x: number, a: number, b: number) => (Number.isFinite(x) ? Math.max(a, Math.min(b, x)) : a);
@@ -49,13 +48,11 @@ export function actionTags(kind: ActionOffer['kind'], offer: ActionOffer): Actio
 }
 
 function getDanger(world: SimWorld, actorId: string): number {
-  const v = Number((world.facts as any)?.[`ctx:danger:${actorId}`]);
-  return clamp01(v);
+  return readCtxSignal((world.facts as any) || {}, actorId, 'danger', 0).value;
 }
 
 function getPrivacy(world: SimWorld, actorId: string): number {
-  const v = Number((world.facts as any)?.[`ctx:privacy:${actorId}`]);
-  return clamp01(v);
+  return readCtxSignal((world.facts as any) || {}, actorId, 'privacy', 0).value;
 }
 
 function getLastAction(world: SimWorld, actorId: string): { kind: string; tick: number; targetId?: string | null } | null {
@@ -160,27 +157,10 @@ export function scoreOfferSubjective(world: SimWorld, offer: ActionOffer): numbe
     }
   }
 
-  // Inertia + semantic repetition penalty.
-  const last = getLastAction(world, c.id);
-  const pattern = summarizeBehaviorPattern(world.facts as any, c.id, offer.kind, offer.targetId ?? null);
-  if (last && Number.isFinite(last.tick)) {
-    if (pattern.exactStreak <= 1 && last.kind === offer.kind) {
-      s += 0.03; // mild inertia for the first exact repeat only
-    } else if (pattern.exactStreak > 1) {
-      s -= Math.min(0.20, 0.04 * pattern.exactStreak);
-    } else {
-      s -= 0.02; // switch cost
-    }
-  }
-  if (pattern.familyStreak > 0) {
-    s -= Math.min(
-      Number(FCS.behaviorVariety.familyRepeatCap ?? 0.18),
-      Number(FCS.behaviorVariety.familyRepeatPenalty ?? 0.06) * pattern.familyStreak,
-    );
-  }
-  if (offer.targetId && pattern.familyStreak > 0 && !pattern.seenTargetInFamily) {
-    s += Number(FCS.behaviorVariety.novelTargetBonus ?? 0.04);
-  }
+  // Repetition and novelty are handled explicitly in repetitionDamper (early) and
+  // GoalLab decision scoring (late). Keep subjective scoring free of hidden
+  // family/exact-repeat penalties so the same behavioral signal is not charged
+  // three times on one path.
 
   // Social contagion.
   const peers = countPeersDoingSame(world, c.id, String(offer.kind));
@@ -198,5 +178,4 @@ export function rememberLastAction(world: SimWorld, action: SimAction) {
     targetId: action.targetId ?? null,
     tick: world.tickIndex,
   };
-  recordBehaviorMemory(world.facts as any, action.actorId, action.kind, action.targetId ?? null, world.tickIndex);
 }
