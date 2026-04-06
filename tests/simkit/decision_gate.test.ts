@@ -84,12 +84,24 @@ describe('selectDecisionMode', () => {
     expect(r.mode).toBe('deliberative');
   });
 
-  it('uses quick fallback arousal when emo signal is missing', () => {
+  it('uses final-first danger when emo signal is missing', () => {
     const w = makeWorld({ selfControl: 0.4 });
     delete (w.facts as any)['emo:arousal:test-agent'];
     (w.facts as any)['ctx:danger:test-agent'] = 0.8;
+    (w.facts as any)['ctx:final:danger:test-agent'] = 0.2;
     const r = selectDecisionMode(w, 'test-agent');
     expect(r.gate.arousalSource).toBe('quick');
-    expect(r.gate.arousal).toBeGreaterThan(0.5);
+    expect(r.gate.quickSignals?.dangerSource).toBe('final');
+    expect(r.gate.quickSignals?.danger).toBeCloseTo(0.2);
+  });
+
+  it('reports ctx_raw when raw danger dominates quick fallback', () => {
+    const w = makeWorld({ selfControl: 0.4 });
+    delete (w.facts as any)['emo:arousal:test-agent'];
+    (w.facts as any)['ctx:danger:test-agent'] = 0.9;
+    (w.characters as any)['test-agent'].stress = 0.1;
+    const r = selectDecisionMode(w, 'test-agent');
+    expect(r.gate.arousalSource).toBe('ctx_raw');
+    expect(r.gate.quickSignals?.dangerSource).toBe('raw');
   });
 });

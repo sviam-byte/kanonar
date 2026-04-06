@@ -732,19 +732,20 @@ export function makeGoalLabDeciderPlugin(opts?: { storePipeline?: boolean; enabl
             activeGoals: [],
             mode: '',
             relations: {},
-            ranked: [],
+            ranked: arr(rr.shortlist).map((entry: any) => ({ kind: entry.kind, targetId: entry.targetId ?? null, q: Number(entry.score ?? 0), explanation: arr(entry.reasons) })),
+            reactive: { trigger: rr.trigger, context: rr.context, shortlist: rr.shortlist },
             best: rr.action
               ? {
                   kind: rr.action.kind,
                   targetId: rr.action.targetId,
                   q: 0,
                   goalContribs: {},
-                  explanation: ['⚠ Делиберативный pipeline пропущен: placement incomplete', `Эмоция: ${rr.emotion} (${(rr.emotionValue * 100).toFixed(0)}%)`],
+                  explanation: ['⚠ Делиберативный pipeline пропущен: placement incomplete', `Эмоция: ${rr.emotion} (${(rr.emotionValue * 100).toFixed(0)}%)`, `Причина: ${rr.reason}`],
                 }
               : null,
           };
           if (rr.action) {
-            rr.action.meta = { ...(rr.action.meta || {}), decisionMode: 'reactive', reactiveReason: 'placement_incomplete' };
+            rr.action.meta = { ...(rr.action.meta || {}), decisionMode: 'reactive', reactiveReason: 'placement_incomplete', reactiveTrigger: rr.trigger, reactiveContext: rr.context, reactiveShortlist: rr.shortlist };
             actions.push(rr.action);
           }
           continue;
@@ -772,7 +773,8 @@ export function makeGoalLabDeciderPlugin(opts?: { storePipeline?: boolean; enabl
             activeGoals: [],
             mode: '',
             relations: {},
-            ranked: [],
+            ranked: arr(rr.shortlist).map((entry: any) => ({ kind: entry.kind, targetId: entry.targetId ?? null, q: Number(entry.score ?? 0), explanation: arr(entry.reasons) })),
+            reactive: { trigger: rr.trigger, context: rr.context, shortlist: rr.shortlist },
             best: rr.action
               ? {
                   kind: rr.action.kind,
@@ -785,7 +787,7 @@ export function makeGoalLabDeciderPlugin(opts?: { storePipeline?: boolean; enabl
           };
 
           if (rr.action) {
-            rr.action.meta = { ...(rr.action.meta || {}), decisionMode: 'reactive', gate: gateResult, reactiveReason: rr.reason };
+            rr.action.meta = { ...(rr.action.meta || {}), decisionMode: 'reactive', gate: gateResult, reactiveReason: rr.reason, reactiveTrigger: rr.trigger, reactiveContext: rr.context, reactiveShortlist: rr.shortlist };
             actions.push(rr.action);
           }
           continue;

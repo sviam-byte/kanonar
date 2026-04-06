@@ -8,6 +8,7 @@
 
 import type { ActionOffer, SimAction, SimWorld } from './types';
 import { getDyadTrust } from './trust';
+import { readCtxSignal } from './contextSignals';
 
 const clamp01 = (x: number) => (Number.isFinite(x) ? Math.max(0, Math.min(1, x)) : 0);
 const clamp = (x: number, a: number, b: number) => (Number.isFinite(x) ? Math.max(a, Math.min(b, x)) : a);
@@ -47,13 +48,11 @@ export function actionTags(kind: ActionOffer['kind'], offer: ActionOffer): Actio
 }
 
 function getDanger(world: SimWorld, actorId: string): number {
-  const v = Number((world.facts as any)?.[`ctx:danger:${actorId}`]);
-  return clamp01(v);
+  return readCtxSignal((world.facts as any) || {}, actorId, 'danger', 0).value;
 }
 
 function getPrivacy(world: SimWorld, actorId: string): number {
-  const v = Number((world.facts as any)?.[`ctx:privacy:${actorId}`]);
-  return clamp01(v);
+  return readCtxSignal((world.facts as any) || {}, actorId, 'privacy', 0).value;
 }
 
 function getLastAction(world: SimWorld, actorId: string): { kind: string; tick: number; targetId?: string | null } | null {
