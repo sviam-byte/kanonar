@@ -15,6 +15,7 @@ import { clamp01 } from '../../util/math';
 import type { Possibility } from '../../possibilities/catalog';
 import { validatePlacement } from '../placement/validatePlacement';
 import { familyOfActionKind } from '../../behavior/actionPattern';
+import { canonicalActionFromSimAction } from '../semantic/canonicalAction';
 import { readIntentCooldown } from '../core/behaviorMemory';
 import { buildIntentLifecycleTrace, getIntentStaleness, isCriticalIntentStage, isTransactionallyEquivalentAction, originalActionOfIntent, summarizeIntentForTrace } from '../core/intentLifecycle';
 
@@ -794,6 +795,7 @@ export function makeGoalLabDeciderPlugin(opts?: { storePipeline?: boolean; enabl
                   explanation: ['⚠ Делиберативный pipeline пропущен: placement incomplete', `Эмоция: ${rr.emotion} (${(rr.emotionValue * 100).toFixed(0)}%)`, `Причина: ${rr.reason}`],
                 }
               : null,
+            uiAction: rr.action ? canonicalActionFromSimAction(rr.action as any, world) : null,
           };
           if (rr.action) {
             rr.action.meta = { ...(rr.action.meta || {}), decisionMode: 'reactive', reactiveReason: 'placement_incomplete', reactiveTrigger: rr.trigger, reactiveContext: rr.context, reactiveShortlist: rr.shortlist };
@@ -837,6 +839,7 @@ export function makeGoalLabDeciderPlugin(opts?: { storePipeline?: boolean; enabl
                   explanation: [`⚡ Реактивное: ${rr.reason}`, `Эмоция: ${rr.emotion} (${(rr.emotionValue * 100).toFixed(0)}%)`],
                 }
               : null,
+            uiAction: rr.action ? canonicalActionFromSimAction(rr.action as any, world) : null,
           };
 
           if (rr.action) {
@@ -959,7 +962,7 @@ export function makeGoalLabDeciderPlugin(opts?: { storePipeline?: boolean; enabl
                 suppressedAction: { kind: rawAction.kind, targetId: rawAction.targetId ?? null },
                 details: { groundedFrom: rawAction.kind, goalLabKind },
               }));
-              actions.push({
+              const continuedAction = {
                 id: `act:continue_intent:${tickIndex}:${actorId}:transactional`,
                 kind: 'continue_intent' as any,
                 actorId,
@@ -974,7 +977,10 @@ export function makeGoalLabDeciderPlugin(opts?: { storePipeline?: boolean; enabl
                   activeIntentId: (activeIntent as any)?.id ?? null,
                   transactionalClass: familyOfActionKind(intentOrigKind),
                 },
-              });
+              } as SimAction;
+              actions.push(continuedAction);
+              const t = (world.facts as any)[`sim:trace:${actorId}`];
+              if (t) t.uiAction = canonicalActionFromSimAction(continuedAction as any, world);
               continue;
             }
 
@@ -1001,7 +1007,7 @@ export function makeGoalLabDeciderPlugin(opts?: { storePipeline?: boolean; enabl
                 suppressedAction: { kind: rawAction.kind, targetId: rawAction.targetId ?? null },
                 details: { stageKind: staleness.stageKind, stale: staleness.stale, ticksSinceProgress: staleness.ticksSinceProgress },
               }));
-              actions.push({
+              const forcedContinue = {
                 id: `act:continue_intent:${tickIndex}:${actorId}:forced`,
                 kind: 'continue_intent' as any,
                 actorId,
@@ -1019,7 +1025,10 @@ export function makeGoalLabDeciderPlugin(opts?: { storePipeline?: boolean; enabl
                   stale: staleness.stale,
                   ticksSinceProgress: staleness.ticksSinceProgress,
                 },
-              });
+              } as SimAction;
+              actions.push(forcedContinue);
+              const t = (world.facts as any)[`sim:trace:${actorId}`];
+              if (t) t.uiAction = canonicalActionFromSimAction(forcedContinue as any, world);
               continue;
             }
           }
@@ -1027,6 +1036,16 @@ export function makeGoalLabDeciderPlugin(opts?: { storePipeline?: boolean; enabl
         const action = groundAbstractAction(rawAction, offers, actorId, goalLabKind, world);
         const decorated = decorateAction(action, best);
         decorated.meta = { ...(decorated.meta || {}), decisionMode: mode, gate: gateResult };
+        const traceForUi = (world.facts as any)[`sim:trace:${actorId}`];
+        if (traceForUi) {
+          traceForUi.uiAction = canonicalActionFromSimAction(decorated as any, world);
+          traceForUi.groundedBest = {
+            kind: decorated.kind,
+            targetId: decorated.targetId ?? null,
+            transportKind: decorated.kind,
+            groundedVia: (decorated.meta as any)?.groundedVia ?? null,
+          };
+        }
         actions.push(decorated);
       }
 

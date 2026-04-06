@@ -16,6 +16,7 @@ import { scoreMovementOffers } from './moveScoring';
 import { enumerateResponseOffers } from '../dialogue/responseAction';
 import { decideSpeechContent } from '../dialogue/speechContent';
 import { applyRepetitionDamping, boostNovelActions, recordAction } from './repetitionDamper';
+import { canonicalActionFromSimAction } from '../semantic/canonicalAction';
 
 const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
 
@@ -44,15 +45,18 @@ export function proposeActions(w: SimWorld): ActionOffer[] {
 
 export function applyAction(w: SimWorld, a: SimAction): { world: SimWorld; events: SimEvent[]; notes: string[] } {
   const { world, events, notes } = applyActionViaSpec(w, a);
-  // Record the *semantic* kind for repetition damping: for intent actions,
-  // use the original action kind (negotiate/talk/etc.) rather than start_intent/continue_intent.
-  let semanticKind = a.kind;
-  if (a.kind === 'start_intent' || a.kind === 'continue_intent') {
-    const intentData = (world.facts as any)?.[`intent:${a.actorId}`];
-    const origKind = intentData?.intent?.originalAction?.kind;
-    if (origKind) semanticKind = origKind;
-  }
-  recordAction(world.facts as any, a.actorId, semanticKind, a.targetId ?? null, world.tickIndex);
+  const canonical = canonicalActionFromSimAction(a, world);
+  (a as any).meta = {
+    ...((a as any).meta || {}),
+    canonicalAction: canonical,
+  };
+  recordAction(
+    world.facts as any,
+    a.actorId,
+    canonical.semanticKind || a.kind,
+    canonical.semanticTargetId ?? a.targetId ?? null,
+    world.tickIndex,
+  );
 
   // Location hazards emit hazardPulse for downstream handling.
   const c = getChar(world, a.actorId);
