@@ -1,5 +1,5 @@
 
-import { WorldState, AgentState, LocationEntity, ScenarioContextState } from '../../types';
+import { WorldState, AgentState, LocationEntity, ScenarioContextState } from '../../../types';
 import { ContextAtom, ContextSnapshot, ContextAtomKind, ContextSummary, TemporalContextConfig } from './types';
 import { computeDomainsFromAtoms } from './domains';
 import { deriveAppraisalAndEmotionAtomsV2 } from './derive/deriveEmotionLayer';

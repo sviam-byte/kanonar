@@ -1,5 +1,5 @@
 import { AnyEntity, CharacterEntity } from '../types';
-import { EntityType } from '../enums';
+import { EntityType } from '../types';
 import { createFittedCharacterFromArchetype } from '../lib/archetypes/fitter';
 import { allSocialEvents } from './social-events';
 import { allLocations } from './locations';

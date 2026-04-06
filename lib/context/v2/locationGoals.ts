@@ -7,7 +7,7 @@ import {
   LocationId,
   AgentState,
   GoalEcology,
-} from '../../types';
+} from '../../../types';
 import {
   ContextSnapshot,
   ContextualGoalScore as BaseContextualGoalScore,
@@ -21,7 +21,7 @@ import {
 import { safeNumber } from './math-utils';
 import { hydrateLocation, calculateLocationGoalInfluence } from '../../adapters/rich-location';
 import { calculateAllCharacterMetrics } from '../../metrics';
-import { Branch } from '../../types';
+import { Branch } from '../../../types';
 import { buildLocationContextIfPossible } from '../locationContext';
 import type { Location } from '../../location/types';
 

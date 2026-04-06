@@ -1,4 +1,4 @@
-import { WorldState } from '../../types';
+import { WorldState } from '../../../types';
 
 /**
  * Checks if there are any wounded characters in the same location as the observer.

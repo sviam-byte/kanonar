@@ -1,5 +1,5 @@
 
-import { GoalDomainId as LegacyGoalDomainId } from '../types';
+import type { GoalDomainId as LegacyGoalDomainId, GoalDomainWeight } from '../types';
 
 export type ScenarioKind =
   | 'strategic_council'
@@ -27,10 +27,7 @@ export interface SituationContext {
 
 export type GoalDomainId = LegacyGoalDomainId;
 
-export interface GoalDomainWeight {
-  domain: GoalDomainId;
-  weight: number; // α_{j,d}
-}
+export type { GoalDomainWeight };
 
 // Extended Goal Definition for the Planner
 export interface PlanningGoalDef {
@@ -46,5 +43,5 @@ export interface PlanningGoalDef {
 export interface GoalPlanningResult {
   priorities: number[];
   alpha: number[];
-  debug: any;
+  debug: Record<string, unknown>;
 }

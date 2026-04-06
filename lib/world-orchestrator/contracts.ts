@@ -3,9 +3,7 @@
 
 import type { ContextAtom } from '../context/v2/types';
 import type { WorldEvent } from '../events/types';
-
-export type AgentId = string;
-export type LocationId = string;
+import type { AgentId, LocationId, ActionOfferBase, GoalBase } from '../../types';
 
 export type WorldSnapshot = {
   id: string;
@@ -61,7 +59,8 @@ export type PerAgentView = {
   atomsBefore: ContextAtom[];
 };
 
-export type Goal = {
+export type Goal = GoalBase & {
+  // NOTE: goalId duplicates GoalBase.id and is kept for backward compatibility.
   goalId: string;
   domain: string;
   targetId?: AgentId | LocationId | string;
@@ -76,15 +75,13 @@ export type GoalLabResult = {
   debug: any;
 };
 
-export type ActionOffer = {
+export type ActionOffer = ActionOfferBase & {
   offerId: string;
 
   actionType: string;
   actorId: AgentId;
-  targetId?: AgentId | LocationId | string;
   args?: Record<string, any>;
 
-  score: number;
   reasons: Array<{ kind: string; weight: number; note?: string; usedAtomIds?: string[] }>;
 
   requiredAtoms: string[];

@@ -1,8 +1,9 @@
 // lib/simkit/core/simulator.ts
 // Core simulator: step/run/reset/history plus optional plugins.
 
-import type { SimWorld, SimAction, ActionOffer, SimTickRecord, TickTrace } from './types';
+import type { SimWorld, SimAction, ActionOffer, SimTickRecord, TickTrace, SimWorldFacts } from './types';
 import { RNG } from './rng';
+import { getCtx, setCtx, getFact, setFact } from './factsAccessors';
 import { cloneWorld, buildSnapshot, ensureCharacterPos } from './world';
 import { proposeActions, applyAction, applyEvent } from './rules';
 import { validateActionStrict } from '../actions/validate';
@@ -24,13 +25,13 @@ import { distSameLocation, getCellCover, getCellElevation, getCharXY, getSpatial
  * giving agents spatial awareness that modulates drivers/goals/decisions.
  */
 function computeTacticalAtoms(world: SimWorld) {
-  const facts: any = world.facts || {};
+  const facts = world.facts || {};
   const chars = Object.values(world.characters || {});
   const cfg = getSpatialConfig(world);
 
   for (const c of chars) {
-    const actorId = (c as any).id;
-    const locId = (c as any).locId;
+    const actorId = c.id;
+    const locId = c.locId;
     if (!actorId || !locId) continue;
 
     // Cover at current position.
@@ -49,7 +50,7 @@ function computeTacticalAtoms(world: SimWorld) {
     let maxElevAdv = 0;
 
     for (const other of chars) {
-      if (other.id === actorId || (other as any).locId !== locId) continue;
+      if (other.id === actorId || other.locId !== locId) continue;
       const d = distSameLocation(world, actorId, other.id);
       if (!Number.isFinite(d)) continue;
 
@@ -122,12 +123,12 @@ function computeTacticalAtoms(world: SimWorld) {
 }
 
 function applyHazardPoints(world: SimWorld) {
-  const points = Array.isArray((world.facts as any)?.hazardPoints) ? (world.facts as any).hazardPoints : [];
+  const points = Array.isArray(getFact<unknown[]>(world, 'hazardPoints')) ? getFact<unknown[]>(world, 'hazardPoints')! : [];
   if (!points.length) return;
-  for (const c of Object.values(world.characters as any)) {
-    const locId = (c as any).locId;
-    const x = Number((c as any).pos?.x);
-    const y = Number((c as any).pos?.y);
+  for (const c of Object.values(world.characters || {})) {
+    const locId = c.locId;
+    const x = Number(c.pos?.x);
+    const y = Number(c.pos?.y);
     if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
     let danger = 0;
     let safe = 0;
@@ -143,8 +144,8 @@ function applyHazardPoints(world: SimWorld) {
       else safe += s;
     }
     const danger01 = clamp01(danger - 0.8 * safe);
-    (world.facts as any)[`ctx:danger:${(c as any).id}`] = danger01;
-    (world.facts as any)[`ctx:privacy:${(c as any).id}`] = clamp01(0.5 + 0.5 * safe - 0.4 * danger);
+    setCtx(world, 'danger', c.id, danger01);
+    setCtx(world, 'privacy', c.id, clamp01(0.5 + 0.5 * safe - 0.4 * danger));
   }
 }
 
@@ -160,7 +161,7 @@ type RecentSimEvent = {
 
 // Keeps short rolling event history so next tick adapter can still see just-consumed events.
 function persistRecentEvents(world: SimWorld, eventsApplied: any[]) {
-  const facts: any = world.facts || (world.facts = {} as any);
+  const facts = world.facts || (world.facts = {} as SimWorldFacts);
   const prev = Array.isArray(facts['sim:recentEvents']) ? facts['sim:recentEvents'] : [];
   const next: RecentSimEvent[] = (Array.isArray(eventsApplied) ? eventsApplied : []).map((e: any) => {
     const payload = (e && typeof e === 'object') ? (e.payload || {}) : {};
@@ -185,22 +186,22 @@ function persistRecentEvents(world: SimWorld, eventsApplied: any[]) {
 function applyInputAxesSensors(world: SimWorld) {
   // Sensors: standardized 0..1 axes per actor, derived from location properties + local crowd.
   // Stored as world.facts['ctx:<axis>:<actorId>'] for easy reuse by subjective + GoalLab pipeline.
-  if (!world.facts) world.facts = {} as any;
+  if (!world.facts) world.facts = {} as SimWorldFacts;
   const chars = Object.values(world.characters || {});
   const byLoc: Record<string, number> = {};
   for (const c of chars) {
-    const locId = (c as any).locId || (c as any).locationId;
+    const locId = c.locId;
     if (!locId) continue;
     byLoc[locId] = (byLoc[locId] || 0) + 1;
   }
 
   for (const c of chars) {
-    const actorId = (c as any).id;
-    const locId = (c as any).locId || (c as any).locationId;
+    const actorId = c.id;
+    const locId = c.locId;
     if (!actorId || !locId) continue;
 
     const loc = world.locations[locId];
-    const props: any = (loc as any)?.entity?.properties || {};
+    const props = (loc?.entity as Record<string, unknown>)?.properties as Record<string, unknown> || {};
 
     const privacyBase = props.privacy === 'private' ? 1 : props.privacy === 'semi' ? 0.5 : 0;
     const controlLevel = clamp01(Number(props.control_level ?? props.controlLevel ?? 0));
@@ -221,21 +222,21 @@ function applyInputAxesSensors(world: SimWorld) {
     const authorityPresence = clamp01(Number(props.authorityPresence ?? props.authority_presence ?? controlLevel));
 
     // Combine with existing privacy sensor if present, to avoid breaking current behavior.
-    const existingPrivacyRaw = (world.facts as any)[`ctx:privacy:${actorId}`];
+    const existingPrivacyRaw = getCtx(world, 'privacy', actorId);
     const existingPrivacy = typeof existingPrivacyRaw === 'number' ? existingPrivacyRaw : Number(existingPrivacyRaw);
     const privacy = Number.isFinite(existingPrivacy)
       ? clamp01(existingPrivacy * 0.6 + privacyComputed * 0.4)
       : privacyComputed;
 
-    (world.facts as any)[`ctx:temperature:${actorId}`] = temperature;
-    (world.facts as any)[`ctx:comfort:${actorId}`] = comfort;
-    (world.facts as any)[`ctx:hygiene:${actorId}`] = hygiene;
-    (world.facts as any)[`ctx:aesthetics:${actorId}`] = aesthetics;
-    (world.facts as any)[`ctx:crowdDensity:${actorId}`] = crowdDensity;
-    (world.facts as any)[`ctx:noise:${actorId}`] = noiseLevel;
-    (world.facts as any)[`ctx:noiseLevel:${actorId}`] = noiseLevel;
-    (world.facts as any)[`ctx:authorityPresence:${actorId}`] = authorityPresence;
-    (world.facts as any)[`ctx:privacy:${actorId}`] = privacy;
+    setCtx(world, 'temperature', actorId, temperature);
+    setCtx(world, 'comfort', actorId, comfort);
+    setCtx(world, 'hygiene', actorId, hygiene);
+    setCtx(world, 'aesthetics', actorId, aesthetics);
+    setCtx(world, 'crowdDensity', actorId, crowdDensity);
+    setFact(world, `ctx:noise:${actorId}`, noiseLevel);
+    setCtx(world, 'noiseLevel', actorId, noiseLevel);
+    setCtx(world, 'authorityPresence', actorId, authorityPresence);
+    setCtx(world, 'privacy', actorId, privacy);
   }
 }
 

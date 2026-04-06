@@ -1,7 +1,7 @@
 
-import type { AgentState, WorldState, AgentGoalState, AgentActionProfile, ActionStyleTag, GoalId, SocialActionId, CharacterGoalId } from '../../types';
+import type { AgentState, WorldState, AgentGoalState, AgentActionProfile, ActionStyleTag, GoalId, SocialActionId, CharacterGoalId, AgentId, ActionId, LocationId, Id } from '../../types';
 
-export type { AgentState, WorldState, AgentGoalState, AgentActionProfile, ActionStyleTag, GoalId, SocialActionId, CharacterGoalId };
+export type { AgentState, WorldState, AgentGoalState, AgentActionProfile, ActionStyleTag, GoalId, SocialActionId, CharacterGoalId, AgentId, ActionId, LocationId, Id };
 
 /**
  * 0) Метрики и базовые id
@@ -22,10 +22,7 @@ export type MetricId =
 
 export type Metrics = Record<MetricId, number>; // предполагаем 0..1, но не заставляем
 
-export type AgentId = string;
-export type ActionId = string;
 export type RoleId = string;
-export type LocationId = string;
 export type Tag = string;
 export type LocationTagId = string;
 

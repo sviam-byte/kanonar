@@ -3,7 +3,7 @@
 
 // Populated file to provide data for a referenced character and prevent linter errors.
 import { CharacterEntity } from '../../types';
-import { EntityType, Branch } from '../../enums';
+import { EntityType, Branch } from '../../types';
 
 const data: CharacterEntity = {
     entityId: "character-rion",

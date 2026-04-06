@@ -39,8 +39,8 @@ function isWalkable(cells: Array<{ x: number; y: number; walkable?: boolean }>, 
 function charXY(world: SimWorld, charId: string): CellRef | null {
   const c = world.characters[charId];
   if (!c) return null;
-  const x = Number((c as any).pos?.x);
-  const y = Number((c as any).pos?.y);
+  const x = Number(c.pos?.x);
+  const y = Number(c.pos?.y);
   if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
   return { x: Math.round(x), y: Math.round(y) };
 }
@@ -75,7 +75,7 @@ export const MoveCellSpec: ActionSpec = {
     const actor = world.characters[actorId];
     if (!actor) return [];
 
-    const loc = world.locations[(actor as any).locId];
+    const loc = world.locations[actor.locId];
     if (!loc) return [];
 
     const cells = getMapCells(loc);
@@ -107,7 +107,7 @@ export const MoveCellSpec: ActionSpec = {
     const allies: CellRef[] = [];
     const threats: CellRef[] = [];
     for (const other of Object.values(world.characters)) {
-      if (other.id === actorId || (other as any).locId !== (actor as any).locId) continue;
+      if (other.id === actorId || other.locId !== actor.locId) continue;
       const otherPos = charXY(world, other.id);
       if (!otherPos) continue;
       const trust = clamp01(Number(facts?.relations?.[actorId]?.[other.id]?.trust ?? 0.5));
@@ -191,7 +191,7 @@ export const MoveCellSpec: ActionSpec = {
     const actor = world.characters[action.actorId];
     if (!actor) return { world, events, notes: ['move_cell: no char'] };
 
-    const loc = world.locations[(actor as any).locId];
+    const loc = world.locations[actor.locId];
     if (!loc) return { world, events, notes: ['move_cell: no loc'] };
 
     const pos = charXY(world, action.actorId);
@@ -208,15 +208,15 @@ export const MoveCellSpec: ActionSpec = {
     // Target cell is selected during enumerate and later scored by GoalLab.
     const next = targetPos;
 
-    (actor as any).pos = { ...(actor as any).pos, nodeId: null, x: next.x, y: next.y };
-    (actor as any).energy = clamp01(Number((actor as any).energy ?? 0.5) - 0.005);
-    recordTrail(world.facts as any, actor.id, world.tickIndex, (actor as any).locId, undefined, next.x, next.y);
+    actor.pos = { ...actor.pos, nodeId: null, x: next.x, y: next.y };
+    actor.energy = clamp01(Number(actor.energy ?? 0.5) - 0.005);
+    recordTrail(world.facts as any, actor.id, world.tickIndex, actor.locId, undefined, next.x, next.y);
 
     notes.push(`${actor.id} moves ${goal} to (${next.x},${next.y})`);
     events.push({
       id: `evt:move_cell:${world.tickIndex}:${actor.id}`,
       type: 'action:move_cell',
-      payload: { actorId: actor.id, locationId: (actor as any).locId, x: next.x, y: next.y, goal },
+      payload: { actorId: actor.id, locationId: actor.locId, x: next.x, y: next.y, goal },
     });
 
     return { world, events, notes };

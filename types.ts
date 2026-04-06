@@ -5,6 +5,7 @@ export type { AffectState } from './lib/emotions/types';
 import type { ContextualMindState } from './lib/tom/contextual/types';
 export type { ContextualMindState };
 import type { AgentMemory } from './lib/core/mindTypes';
+import type { RNG } from './lib/core/noise';
 
 // --- Enums ---
 export enum EntityType {
@@ -145,7 +146,6 @@ export interface BaseEntity {
   tags?: string[];
   versionTags?: Branch[];
   security?: EntitySecurity;
-  [key: string]: any;
 }
 
 export interface AnyEntity extends BaseEntity {}
@@ -672,22 +672,65 @@ export interface TomEntry {
     uncertainty: number;
     lastUpdatedTick: number;
     lastInteractionTick: number;
-    policyPrior?: any;
-    repertoireMask?: any;
+    policyPrior?: TomPolicyPrior;
+    repertoireMask?: Partial<Record<string, boolean>>;
     arch_true_est?: number[];
     arch_stereotype?: number;
     lastActionPolarity?: number;
-    believedLifeGoals?: any;
-    secondOrderSelf?: any;
-    epistemic?: any;
-    roleProfile?: any;
-    norms?: any;
-    affect?: any;
-    errorProfile?: any;
+    believedLifeGoals?: Partial<Record<string, number>>;
+    secondOrderSelf?: {
+        perceivedTrustFromTarget: number;
+        perceivedAlignFromTarget: number;
+        perceivedDominanceInTargetsView: number;
+        perceivedUncertaintyOfTarget: number;
+    };
+    epistemic?: Record<string, EpistemicBelief>;
+    roleProfile?: TomRoleProfile;
+    norms?: TomNormativeProfile;
+    affect?: TomEmotionalState;
+    errorProfile?: TomErrorProfile;
     stress?: { load: number };
     selfLatents?: Record<string, number>;
-    biases?: any;
+    biases?: Record<string, number>;
     evidenceCount?: number;
+}
+
+export interface TomPolicyPrior {
+    actionMask?: Record<string, number>;
+    tagMask?: Record<string, number>;
+}
+
+export interface EpistemicBelief {
+    alpha: number;
+    beta: number;
+    lastUpdate: number;
+}
+
+export interface TomRoleProfile {
+    roles: Record<string, number>;
+    confidence: number;
+}
+
+export interface TomNormativeProfile {
+    values: Record<string, number>;
+    thresholds: Record<string, number>;
+    effective: Record<string, number>;
+}
+
+export interface TomEmotionalState {
+    fear: number;
+    anger: number;
+    shame: number;
+    guilt?: number;
+    hope: number;
+    exhaustion: number;
+}
+
+export interface TomErrorProfile {
+    paranoia: number;
+    naivete: number;
+    cynicism: number;
+    self_blame: number;
 }
 
 export interface TomBeliefTraits {
@@ -725,17 +768,17 @@ export interface CharacterEntity extends BaseEntity {
   relationships?: Record<string, Relationship>;
   tom?: TomState;
   capabilities?: Record<string, number>;
-  context?: { age?: number; faction?: string; social_history?: any[]; faction_relations?: any };
-  memory?: any;
-  resources?: any;
-  competencies?: any;
-  authority?: any;
-  evidence?: any;
-  observation?: any;
-  compute?: any;
-  sector?: any;
-  repro?: any;
-  goal_graph?: any;
+  context?: { age?: number; faction?: string; social_history?: Record<string, unknown>[]; faction_relations?: Record<string, number> };
+  memory?: AgentMemory & { attention?: { E?: number }; beliefAtoms?: unknown[] };
+  resources?: Record<string, number | unknown[]>;
+  competencies?: Record<string, number>;
+  authority?: Record<string, number>;
+  evidence?: Record<string, unknown>;
+  observation?: Record<string, unknown>;
+  compute?: Record<string, number>;
+  sector?: Record<string, unknown>;
+  repro?: Record<string, unknown>;
+  goal_graph?: Record<string, unknown>;
   lifeGoals?: Record<string, number>;
   biography?: Biography;
   
@@ -765,11 +808,11 @@ export interface CharacterParams {
     rhoS: number;
     zeta_belief: number;
     phi_max: number;
-    phi_beta: any;
+    phi_beta: number | Record<string, number>;
     lambda_soft_ban: number;
     shock_lambda: number;
     shock_profile_J: { stress: number; energy: number; injury: number; moral: number };
-    appraisal_weights: any;
+    appraisal_weights: Record<string, number>;
     yerkes_A_star: number;
     yerkes_sigma_A: number;
     kappa_T_sensitivity: number;
@@ -848,7 +891,7 @@ export interface PlanStep {
     actionId: string;
     targetId?: string;
     explanation?: string;
-    args?: any;
+    args?: Record<string, unknown>;
     goalId?: string;
 }
 
@@ -886,7 +929,7 @@ export interface GoalState {
     is_active: boolean;
     satisfaction: number;
     targetId?: string;
-    effect_profile?: any;
+    effect_profile?: Record<string, number>;
     directSupport?: number;
     contextSources?: string[];
     baseWeight?: number;
@@ -904,9 +947,9 @@ export interface GoalEcology {
   tension: number;
   frustration: number;
   conflictMatrix: Record<string, string[]>;
-  groupGoals: any[];
-  cascade?: any;
-  lifeGoalDebug?: any | null; // Broadened for complex debug objects
+  groupGoals: GoalState[];
+  cascade?: Record<string, unknown>;
+  lifeGoalDebug?: Record<string, unknown> | null;
 }
 
 export interface AgentActionProfile {
@@ -1219,23 +1262,23 @@ export interface AgentState extends CharacterEntity {
     v: number;
     mode?: string;
     behavioralParams: CharacterParams;
-    rngChannels: { decide: any, physio: any, perceive: any, goals?: any };
+    rngChannels: { decide: RNG; physio: RNG; perceive: RNG; goals?: RNG };
     goalIds: string[];
     w_eff: number[];
     wSelfBase?: number[];
     drivingGoalId?: CharacterGoalId;
-    drivingGoalState?: any;
+    drivingGoalState?: Record<string, unknown>;
     locationId?: string;
     position?: { x: number; y: number };
     factionId?: string;
     relationships: Record<string, Relationship>;
     acquaintances?: Record<string, AcquaintanceEdge>;
-    perceivedStates: Map<string, any>;
+    perceivedStates: Map<string, Record<string, unknown>>;
     /**
      * Long-term memory of observed facts (optional for legacy compatibility).
      */
     memory?: AgentMemory;
-    pendingProposals: any[];
+    pendingProposals: Proposal[];
     actionHistory: { id: SocialActionId, targetId?: string }[];
     v42metrics?: V42Metrics;
     tomMetrics?: ToMDashboardMetrics;
@@ -1243,7 +1286,7 @@ export interface AgentState extends CharacterEntity {
     derivedMetrics?: DerivedMetrics;
     latents: Record<string, number>;
     quickStates: Record<string, number>;
-    fieldMetrics?: any;
+    fieldMetrics?: Record<string, number> | null;
     planState?: PlanState;
     cognitiveBudget?: number;
     useSystem1?: boolean;
@@ -1263,7 +1306,7 @@ export interface AgentState extends CharacterEntity {
     inhibitionOverrides?: Record<string, Record<string, number>>;
     /** Per-agent accumulation inertia overrides (driverKey -> alpha). */
     driverInertia?: Partial<Record<string, number>>;
-    contextGoals?: any[]; // AgentGoalState[] | ContextGoal[]
+    contextGoals?: Array<AgentGoalState | ContextGoal>;
     actionProfile?: AgentActionProfile;
     psych?: AgentPsychState;
     archetype?: ArchetypeState;
@@ -1292,10 +1335,10 @@ export interface AgentState extends CharacterEntity {
     intent_idx?: number;
     intent_idx_lag?: number;
     intent_id?: string;
-    flags?: Record<string, any>;
+    flags?: Record<string, unknown>;
     trauma?: TraumaLoad;
     traumaIntegration?: { processedFraction: number };
-    roleDistributionSelf?: any;
+    roleDistributionSelf?: Record<string, number>;
     affect?: AffectState;
     effectiveRole?: string;
     massMembership?: MassMembership;
@@ -1364,8 +1407,8 @@ export interface ActionEffectDef {
 export interface RoleSlotDef {
     roleId: string;
     count: number;
-    capabilityProfile: any;
-    goalProfile: any;
+    capabilityProfile: Record<string, number>;
+    goalProfile: Record<string, number>;
 }
 
 export interface SceneTopology {
@@ -1386,7 +1429,7 @@ export interface ScenarioDef {
     objectives?: Record<string, Record<string, number>>;
     topology?: SceneTopology;
     defaultRoles?: Record<string, string>;
-    contextConfig?: any; // ScenarioConfig
+    contextConfig?: Record<string, unknown>;
     globalGoalModifiers?: Record<string, number>;
 }
 
@@ -1701,24 +1744,29 @@ export interface WorldState {
     agents: AgentState[];
     locations: LocationEntity[];
     context?: string;
-    threats?: any[];
+    threats?: Array<{ x: number; y: number; level?: number; kind?: string }>;
     tom?: TomState;
     groupGoalId?: string;
     leadership: LeadershipState;
     factions?: Faction[];
-    initialRelations: Record<string, any>;
+    initialRelations: Record<string, Record<string, {
+        trust?: number;
+        bond?: number;
+        authority?: number;
+        [k: string]: unknown;
+    }>>;
     scene?: ScenarioState;
     scenario?: ScenarioDef;
     massNetwork?: MassNetwork;
     massNetwork_ei?: MassNetworkEI;
-    gilParams?: any;
-    observations?: Record<string, any[]>;
+    gilParams?: { phiMax: Record<string, number> };
+    observations?: Record<string, Observation[]>;
     systemEntities?: SystemEntity[];
     debugSnapshots?: WorldDebugSnapshot[];
     kanonarReports?: KanonarReport[];
     scenarioContext?: ScenarioContextState;
-    contextEx?: any; // ContextSlice
-    contextV2?: Record<string, any>;
+    contextEx?: { contextAtoms: Record<string, unknown>; [k: string]: unknown };
+    contextV2?: Record<string, unknown>;
     /** Context-conditioned ToM/emotion memory (smoothing across ticks). */
     contextualMind?: ContextualMindState;
     /** Global run seed for deterministic RNG (affects per-agent rngChannels). */
@@ -1736,16 +1784,16 @@ export interface WorldState {
     orders?: Order[];
     leadershipOffers?: { from: string, to: string, tick: number }[];
     actionsThisTick?: string[];
-    flags?: Record<string, any>;
+    flags?: Record<string, unknown>;
     worldEpisodes?: WorldEpisode[];
     maps?: LocationMap[];
     scenarioLayouts?: ScenarioLayout[];
     relations?: RelationsGraph;
     activePolicies?: string[];
     policies?: Policy[];
-    meta?: any;
+    meta?: Record<string, unknown>;
     helpOffers?: HelpOffer[];
-    allGoals?: any[];
+    allGoals?: GoalState[];
     engineMode?: 'legacy' | 'context' | 'hybrid';
     simulationEnded?: boolean;
     scenarioProcedures?: Record<string, Record<string, number>>;
@@ -2624,6 +2672,17 @@ export type LifeGoalId =
 
 export type LifeGoalVector = Partial<Record<LifeGoalId, number>>;
 
+export interface GoalDomainWeight {
+  domain: GoalDomainId;
+  weight: number;
+}
+
+export interface LifeGoalDef {
+  id: LifeGoalId;
+  label: string;
+  domains: GoalDomainWeight[];
+}
+
 export interface DialogueTask {
     id: string;
     label: string;
@@ -3124,3 +3183,37 @@ export interface SceneAffordance {
     locationId?: string;
     role: string;
 }
+
+// ---------------------------------------------------------------------------
+// Canonical base types for cross-module contracts.
+// Subsystems (SimKit, GoalLab, Decision, WorldOrchestrator) define their own
+// extended variants; these bases capture the guaranteed shared shape.
+// ---------------------------------------------------------------------------
+
+/**
+ * Minimal action offer shape shared across decision, simkit, and orchestrator.
+ * Extended variants add subsystem-specific fields (kind, reasons, requiredAtoms…).
+ */
+export interface ActionOfferBase {
+  score: number;
+  targetId?: string | null;
+  blocked?: boolean;
+  meta?: Record<string, unknown>;
+}
+
+/**
+ * Minimal goal shape shared across solver, orchestrator, and registry.
+ * Extended variants add domain-specific fields (deadline, urgency, constraints…).
+ */
+export interface GoalBase {
+  id: string;
+  tags?: string[];
+}
+
+/**
+ * Canonical TomState shape. Nested map: observer → target → entry.
+ * lib/tom/types.ts wraps this in { views: TomStateMap }.
+ * lib/tom/state.ts uses this directly.
+ * Root TomState interface (above) should converge to one of these two forms.
+ */
+export type TomStateMap = Record<string, Record<string, TomEntry>>;

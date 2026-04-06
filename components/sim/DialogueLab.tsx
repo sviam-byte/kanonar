@@ -10,7 +10,7 @@
 //   - NarrativeLog (compact) for non-speech actions
 
 import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
-import { EntityType } from '../../enums';
+import { EntityType } from '../../types';
 import { getEntitiesByType, getAllCharactersWithRuntime } from '../../data';
 import type { CharacterEntity, LocationEntity } from '../../types';
 import { SimKitSimulator } from '../../lib/simkit/core/simulator';

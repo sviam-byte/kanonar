@@ -4,7 +4,7 @@
 
 import React, { useState, useCallback, useMemo } from 'react';
 import { getEntitiesByType, getAllCharactersWithRuntime } from '../data';
-import { EntityType } from '../enums';
+import { EntityType } from '../types';
 import type { CharacterEntity, LocationEntity } from '../types';
 import { runBatch, compareRuns, type RunConfig, type CompareResult } from '../lib/simkit/compare/batchRunner';
 import { CompareView } from '../components/sim/CompareView';
