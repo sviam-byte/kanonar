@@ -159,7 +159,7 @@ const AgentListItem: React.FC<{
       </span>
       {best && (
         <span style={{ color: '#64748b', fontSize: 8, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 70 }}>
-          {ACTION_RU[best.kind] || best.kind}
+          {ACTION_RU[trace?.uiAction?.semanticKind || best.kind] || trace?.uiAction?.semanticKind || best.kind}
         </span>
       )}
     </div>
