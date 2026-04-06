@@ -131,8 +131,8 @@ const AgentCol: React.FC<{
         )}
         {best && (
           <div style={{ color: '#fbbf24', fontSize: 9, fontWeight: 600 }}>
-            → {ACTION_RU[best.kind] || best.kind}
-            {best.targetId ? ` → ${n(best.targetId).slice(0, 10)}` : ''}
+            → {ACTION_RU[trace?.uiAction?.semanticKind || best.kind] || trace?.uiAction?.semanticKind || best.kind}
+            {(trace?.uiAction?.semanticTargetId || best.targetId) ? ` → ${n(trace?.uiAction?.semanticTargetId || best.targetId).slice(0, 10)}` : ''}
           </div>
         )}
       </div>

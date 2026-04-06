@@ -22,6 +22,7 @@ import { SetupPanel } from './SetupPanel';
 import { AgentInspector } from './AgentInspector';
 import { LocationMapPanel } from './LocationMapPanel';
 import { TimelineChart } from './TimelineChart';
+import { canonicalActionFromSimAction } from '../../lib/simkit/semantic/canonicalAction';
 
 // ─── Helpers ───────────────────────────────────────────────────────────
 
@@ -70,7 +71,11 @@ function nameMap(world: SimWorld): Record<string, string> {
 
 function describeAction(a: SimAction, names: Record<string, string>, world?: SimWorld): string {
   const actor = names[a.actorId] || a.actorId;
-  const target = a.targetId ? (names[a.targetId] || a.targetId) : '';
+  // Resolve display target through canonical semantic layer so intent wrappers
+  // still show the human-meaningful target in logs.
+  const canonical = canonicalActionFromSimAction(a, world);
+  const effectiveTargetId = canonical.semanticTargetId || a.targetId || '';
+  const target = effectiveTargetId ? (names[effectiveTargetId] || effectiveTargetId) : '';
   const mode = (a.meta as any)?.decisionMode;
   const prefix = mode === 'reactive' ? '⚡ ' : mode === 'degraded' ? '⚠ ' : '';
 
@@ -107,11 +112,11 @@ function describeAction(a: SimAction, names: Record<string, string>, world?: Sim
     return `${prefix}${actor} наблюдает (📡 ${atomCount} атомов)`;
   }
 
-  // ── Intent actions: show what the intent is ABOUT, not raw kind ──
+  // ── Intent actions: show semantic action, not transport wrapper ──
   if (a.kind === 'start_intent') {
     const original = (a.payload as any)?.intent?.originalAction;
-    const origKind = original?.kind || '';
-    const social = original?.meta?.social || '';
+    const origKind = canonical.semanticKind || original?.kind || '';
+    const social = canonical.social || original?.meta?.social || '';
     const socialRu = SOCIAL_RU[social] || social;
     const origVerb = ACTION_RU[origKind] || origKind;
     const reason = getTopReason(a, world);
@@ -197,9 +202,19 @@ function getTopReason(a: SimAction, world?: SimWorld): string {
     parts.push(`${drvName} ${Math.round(topDriver[1] * 100)}%`);
   }
 
+  // Prefer semantic topic if decider provided canonical uiAction; fallback to
+  // communicative intent topic for compatibility with older traces.
+  const uiAction = trace.uiAction || (a as any)?.meta?.canonicalAction || null;
+  const semanticTopic = String(uiAction?.topic || '').trim();
   const ci = trace.communicativeIntent;
-  if (ci?.topic?.primary && !String(ci.topic.primary).startsWith('schema_')) {
-    parts.push(`тема: ${ci.topic.primary}`);
+  const ciTopic = String(ci?.topic?.primary || '').trim();
+  const topic = semanticTopic || ciTopic;
+  if (
+    topic &&
+    !topic.startsWith('schema_') &&
+    !['start_intent', 'continue_intent', 'abort_intent'].includes(topic)
+  ) {
+    parts.push(`тема: ${topic}`);
   }
 
   return parts.join(', ');
@@ -592,8 +607,11 @@ export const LiveSimulator: React.FC = () => {
     if (!lines.length) lines.push('(ничего не произошло)');
 
     // ── Action diversity indicator ──
-    const actionKinds = actions.map((a: any) => String(a.kind || ''));
-    const uniqueKinds = new Set(actionKinds);
+    const actionKinds = actions.map((a: any) => {
+      const c = canonicalActionFromSimAction(a as any, sim.world as any);
+      return String(c.semanticKind || a.kind || '');
+    });
+    const uniqueKinds = new Set(actionKinds.filter(Boolean));
     if (actionKinds.length >= 2 && uniqueKinds.size === 1) {
       lines.push(`  ★ конвергенция: ${actionKinds.length} агентов → ${actionKinds[0]}`);
     } else if (actionKinds.length >= 3 && uniqueKinds.size >= 3) {

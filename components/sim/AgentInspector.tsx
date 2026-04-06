@@ -70,8 +70,8 @@ export const AgentInspector: React.FC<Props> = ({ world, agentId, names }) => {
       {trace.best && (
         <div style={{ background: '#0c1929', border: '1px solid #1e3a5f', borderRadius: 6, padding: 8 }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: '#fbbf24', marginBottom: 4 }}>
-            → {ACTION_RU[trace.best.kind] || trace.best.kind}
-            {trace.best.targetId ? ` → ${n(trace.best.targetId)}` : ''}
+            → {ACTION_RU[trace.uiAction?.semanticKind || trace.best.kind] || trace.uiAction?.semanticKind || trace.best.kind}
+            {(trace.uiAction?.semanticTargetId || trace.best.targetId) ? ` → ${n(trace.uiAction?.semanticTargetId || trace.best.targetId)}` : ''}
             <span style={{ color: '#475569', fontWeight: 400, marginLeft: 8 }}>Q={Number(trace.best.q ?? 0).toFixed(3)}</span>
           </div>
           {(trace.best.explanation || []).map((line: string, i: number) => (
