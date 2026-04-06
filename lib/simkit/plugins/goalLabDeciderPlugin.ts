@@ -16,7 +16,7 @@ import type { Possibility } from '../../possibilities/catalog';
 import { validatePlacement } from '../placement/validatePlacement';
 import { familyOfActionKind } from '../../behavior/actionPattern';
 import { readIntentCooldown } from '../core/behaviorMemory';
-import { getIntentStaleness, isCriticalIntentStage, isTransactionallyEquivalentAction, originalActionOfIntent } from '../core/intentLifecycle';
+import { buildIntentLifecycleTrace, getIntentStaleness, isCriticalIntentStage, isTransactionallyEquivalentAction, originalActionOfIntent, summarizeIntentForTrace } from '../core/intentLifecycle';
 
 // ── Intent cooldown: read cooldown facts and return penalty multiplier ──
 // If an agent just completed an intent of the same kind+target, penalize re-selection.
@@ -96,6 +96,18 @@ function nextIntentSeq(world: SimWorld, actorId: string): number {
   const next = Number.isFinite(cur) ? cur + 1 : 1;
   (world.facts as any)[key] = next;
   return next;
+}
+
+function mergeIntentTrace(world: SimWorld, actorId: string, patch: any) {
+  const key = `sim:trace:${actorId}`;
+  const prev = ((world.facts as any)?.[key] && typeof (world.facts as any)[key] === 'object') ? (world.facts as any)[key] : {};
+  (world.facts as any)[key] = {
+    ...prev,
+    intentLifecycle: {
+      ...(prev?.intentLifecycle || {}),
+      ...(patch || {}),
+    },
+  };
 }
 
 // ── SimKit offers → GoalLab Possibilities bridge ──
@@ -368,6 +380,15 @@ function groundAbstractAction(
         : topDriver?.[0] === 'controlNeed' ? 'observe'
         : topDriver?.[0] === 'curiosityNeed' ? 'investigate'
         : 'observe';
+      mergeIntentTrace(world, actorId, buildIntentLifecycleTrace({
+        activeIntent: (world.facts as any)?.[`intent:${actorId}`] ?? null,
+        currentTick: Number(world.tickIndex ?? 0),
+        status: 'cooldown_fallback',
+        reason: 'intent_cooldown',
+        desiredAction: { kind: action.kind, targetId: action.targetId ?? null },
+        fallbackAction: { kind: fallbackKind, targetId: action.targetId ?? null },
+        details: { cooldownPenalty: effectivePenalty },
+      }));
       return {
         ...action,
         kind: fallbackKind as any,
@@ -400,6 +421,14 @@ function groundAbstractAction(
       ? { x: Number((targetChar as any).pos?.x ?? 0), y: Number((targetChar as any).pos?.y ?? 0) }
       : { x: 0, y: 0 };
 
+    mergeIntentTrace(world, actorId, buildIntentLifecycleTrace({
+      activeIntent: (world.facts as any)?.[`intent:${actorId}`] ?? null,
+      currentTick: Number(world.tickIndex ?? 0),
+      status: 'start',
+      reason: 'intent_bridge_wrap',
+      desiredAction: { kind: action.kind, targetId: action.targetId ?? null },
+      details: { scriptId, social, topic },
+    }));
     return {
       ...action,
       id: `act:start_intent:${actorId}:${action.kind}:grounded`,
@@ -570,10 +599,14 @@ function extractAgentTrace(pipeline: any, actorId: string, world: SimWorld, mode
 
   const decisionSnapshot = (s8 as any)?.artifacts?.decisionSnapshot ?? null;
   const best = ranked[0] || null;
+  const activeIntentSummary = summarizeIntentForTrace((world.facts as any)?.[`intent:${actorId}`], Number((pipeline as any)?.tick ?? world.tickIndex ?? 0));
+  const lastIntentRuntimeEvent = (world.facts as any)?.[`sim:intent:last:${actorId}`] ?? null;
 
   return {
     tick: (pipeline as any)?.tick ?? 0,
     actorId,
+    activeIntent: activeIntentSummary,
+    lastIntentRuntimeEvent,
     decisionMode: mode,
     gate: gateResult,
     emotions,
@@ -639,6 +672,21 @@ function buildExplanation(
   }
   if (decisionMode === 'degraded') {
     lines.push('⚠ Ослабленное обдумывание (усталость/стресс)');
+  }
+  if ((trace as any)?.intentLifecycle?.status) {
+    const il = (trace as any).intentLifecycle;
+    const active = il?.activeIntent;
+    const reason = il?.reason ? ` (${il.reason})` : '';
+    lines.push(`🧭 Intent: ${String(il.status)}${reason}`);
+    if (active?.originalKind) {
+      lines.push(`  ↳ active ${active.originalKind}${active.originalTargetId ? `→${active.originalTargetId}` : ''} [${active.stageKind || 'nostage'}]`);
+    }
+    if (il?.suppressedAction?.kind) {
+      lines.push(`  ⏸ подавлено: ${il.suppressedAction.kind}${il.suppressedAction.targetId ? `→${il.suppressedAction.targetId}` : ''}`);
+    }
+    if (il?.fallbackAction?.kind) {
+      lines.push(`  ↪ fallback: ${il.fallbackAction.kind}${il.fallbackAction.targetId ? `→${il.fallbackAction.targetId}` : ''}`);
+    }
   }
   // Intent/schema narrative.
   if (best && typeof best === 'object') {
@@ -725,6 +773,8 @@ export function makeGoalLabDeciderPlugin(opts?: { storePipeline?: boolean; enabl
           (world.facts as any)[`sim:trace:${actorId}`] = {
             tick: tickIndex,
             actorId,
+            activeIntent: summarizeIntentForTrace((world.facts as any)?.[`intent:${actorId}`], tickIndex),
+            lastIntentRuntimeEvent: (world.facts as any)?.[`sim:intent:last:${actorId}`] ?? null,
             decisionMode: 'reactive',
             gate: { reason: 'placement_incomplete', placementResult },
             emotions: {},
@@ -766,6 +816,8 @@ export function makeGoalLabDeciderPlugin(opts?: { storePipeline?: boolean; enabl
           (world.facts as any)[`sim:trace:${actorId}`] = {
             tick: tickIndex,
             actorId,
+            activeIntent: summarizeIntentForTrace((world.facts as any)?.[`intent:${actorId}`], tickIndex),
+            lastIntentRuntimeEvent: (world.facts as any)?.[`sim:intent:last:${actorId}`] ?? null,
             decisionMode: 'reactive',
             gate: gateResult,
             emotions: {},
@@ -898,6 +950,15 @@ export function makeGoalLabDeciderPlugin(opts?: { storePipeline?: boolean; enabl
 
             // Keep current transactional flow alive only for exact/equivalent intent actions.
             if (isEquivalent) {
+              mergeIntentTrace(world, actorId, buildIntentLifecycleTrace({
+                activeIntent,
+                currentTick: tickIndex,
+                status: 'continued',
+                reason: 'transactional_equivalent',
+                desiredAction: { kind: rawAction.kind, targetId: rawAction.targetId ?? null },
+                suppressedAction: { kind: rawAction.kind, targetId: rawAction.targetId ?? null },
+                details: { groundedFrom: rawAction.kind, goalLabKind },
+              }));
               actions.push({
                 id: `act:continue_intent:${tickIndex}:${actorId}:transactional`,
                 kind: 'continue_intent' as any,
@@ -920,8 +981,26 @@ export function makeGoalLabDeciderPlugin(opts?: { storePipeline?: boolean; enabl
             // Allow override when the new action is genuinely different or retargeted,
             // unless we are inside a critical stage. Stale intents may always be dropped.
             if ((staleness.stale || wantsOverride || targetChanged) && !inCriticalStage) {
+              const dropReason = staleness.stale ? 'stale' : (targetChanged ? 'retarget' : 'override');
+              mergeIntentTrace(world, actorId, buildIntentLifecycleTrace({
+                activeIntent,
+                currentTick: tickIndex,
+                status: 'dropped',
+                reason: dropReason,
+                desiredAction: { kind: rawAction.kind, targetId: rawAction.targetId ?? null },
+                details: { stageKind: staleness.stageKind, ticksSinceProgress: staleness.ticksSinceProgress, ticksInStage: staleness.ticksInStage },
+              }));
               delete world.facts[`intent:${actorId}`];
             } else {
+              mergeIntentTrace(world, actorId, buildIntentLifecycleTrace({
+                activeIntent,
+                currentTick: tickIndex,
+                status: 'forced_continue',
+                reason: inCriticalStage ? 'critical_stage' : 'active_intent_guard',
+                desiredAction: { kind: rawAction.kind, targetId: rawAction.targetId ?? null },
+                suppressedAction: { kind: rawAction.kind, targetId: rawAction.targetId ?? null },
+                details: { stageKind: staleness.stageKind, stale: staleness.stale, ticksSinceProgress: staleness.ticksSinceProgress },
+              }));
               actions.push({
                 id: `act:continue_intent:${tickIndex}:${actorId}:forced`,
                 kind: 'continue_intent' as any,

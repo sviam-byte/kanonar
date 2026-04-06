@@ -53,6 +53,82 @@ export function isTransactionallyEquivalentAction(
   return a === b && !a.startsWith('exact:');
 }
 
+export type IntentTraceSummary = {
+  intentId: string | null;
+  lifecycleState: string | null;
+  originalKind: string | null;
+  originalTargetId: string | null;
+  stageKind: string;
+  criticalStage: boolean;
+  transactionalClass: string | null;
+  startedAtTick: number | null;
+  stageStartedAtTick: number | null;
+  lastProgressTick: number | null;
+  ticksSinceProgress: number;
+  ticksInStage: number;
+  stale: boolean;
+};
+
+export function summarizeIntentForTrace(activeIntent: IntentLike, currentTick: number): IntentTraceSummary | null {
+  if (!activeIntent || typeof activeIntent !== 'object') return null;
+  const original = originalActionOfIntent(activeIntent);
+  const stageKind = intentStageKind(activeIntent);
+  const staleness = getIntentStaleness(activeIntent, currentTick);
+  return {
+    intentId: activeIntent?.id != null ? String(activeIntent.id) : null,
+    lifecycleState: activeIntent?.lifecycleState != null ? String(activeIntent.lifecycleState) : null,
+    originalKind: original?.kind ?? null,
+    originalTargetId: normalizeTargetId(original?.targetId ?? null),
+    stageKind,
+    criticalStage: isCriticalIntentStage(activeIntent),
+    transactionalClass: original?.kind ? transactionalIntentClass(original.kind, original.meta) : null,
+    startedAtTick: Number.isFinite(Number(activeIntent?.startedAtTick)) ? Number(activeIntent.startedAtTick) : null,
+    stageStartedAtTick: Number.isFinite(Number(activeIntent?.stageStartedAtTick)) ? Number(activeIntent.stageStartedAtTick) : null,
+    lastProgressTick: Number.isFinite(Number(activeIntent?.lastProgressTick)) ? Number(activeIntent.lastProgressTick) : null,
+    ticksSinceProgress: staleness.ticksSinceProgress,
+    ticksInStage: staleness.ticksInStage,
+    stale: staleness.stale,
+  };
+}
+
+export function buildIntentLifecycleTrace(args: {
+  activeIntent: IntentLike;
+  currentTick: number;
+  status: 'start' | 'cooldown_fallback' | 'continued' | 'forced_continue' | 'dropped' | 'no_active_intent';
+  reason: string;
+  desiredAction?: { kind?: string | null; targetId?: string | null } | null;
+  suppressedAction?: { kind?: string | null; targetId?: string | null } | null;
+  fallbackAction?: { kind?: string | null; targetId?: string | null } | null;
+  details?: Record<string, any> | null;
+}) {
+  const active = summarizeIntentForTrace(args.activeIntent, args.currentTick);
+  return {
+    status: args.status,
+    reason: String(args.reason || ''),
+    tick: Number(args.currentTick ?? 0),
+    activeIntent: active,
+    desiredAction: args.desiredAction
+      ? {
+          kind: args.desiredAction.kind != null ? String(args.desiredAction.kind) : null,
+          targetId: normalizeTargetId(args.desiredAction.targetId ?? null),
+        }
+      : null,
+    suppressedAction: args.suppressedAction
+      ? {
+          kind: args.suppressedAction.kind != null ? String(args.suppressedAction.kind) : null,
+          targetId: normalizeTargetId(args.suppressedAction.targetId ?? null),
+        }
+      : null,
+    fallbackAction: args.fallbackAction
+      ? {
+          kind: args.fallbackAction.kind != null ? String(args.fallbackAction.kind) : null,
+          targetId: normalizeTargetId(args.fallbackAction.targetId ?? null),
+        }
+      : null,
+    details: args.details ?? null,
+  };
+}
+
 export function getIntentStaleness(activeIntent: IntentLike, currentTick: number): {
   stale: boolean;
   ticksSinceProgress: number;

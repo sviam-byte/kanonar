@@ -1214,6 +1214,15 @@ const NegotiateSpec: ActionSpec = {
 
 // -----------------------------------------------------------------------------
 // Intent scripts (v1): fractal actions as staged transactions.
+//
+function writeIntentTelemetry(world: SimWorld, actorId: string, patch: Record<string, any>) {
+  (world.facts as any)[`sim:intent:last:${actorId}`] = {
+    tick: Number(world.tickIndex ?? 0),
+    actorId,
+    ...(patch || {}),
+  };
+}
+
 // Stored in world.facts['intent:<actorId>'] in a JSON-friendly shape.
 // -----------------------------------------------------------------------------
 
@@ -1509,6 +1518,14 @@ const StartIntentSpec: ActionSpec = {
       // This is the exact failure mode you currently see in your session.
       notes.push(`${c.id} starts intent ${intentId} (NO_SCRIPT, remainingTicks=${remainingTicks})`);
     }
+    writeIntentTelemetry(world, c.id, {
+      event: 'start',
+      intentId,
+      scriptId: safeIntentScript?.id ?? scriptId ?? null,
+      stageKind: safeIntentScript?.stages?.[0]?.kind ?? null,
+      originalKind: (intent as any)?.originalAction?.kind ?? null,
+      originalTargetId: (intent as any)?.originalAction?.targetId ?? null,
+    });
     events.push(mkActionEvent(world, 'action:start_intent', {
       actorId: c.id,
       locationId: c.locId,
@@ -1541,6 +1558,7 @@ const ContinueIntentSpec: ActionSpec = {
     const cur = world.facts[key];
     if (!cur || typeof cur !== 'object') {
       notes.push(`${c.id} continue_intent: none`);
+      writeIntentTelemetry(world, c.id, { event: 'continue_none', reason: 'none' });
       events.push(mkActionEvent(world, 'action:continue_intent', { actorId: c.id, ok: false, reason: 'none' }));
       return { world, events, notes };
     }
@@ -1548,6 +1566,13 @@ const ContinueIntentSpec: ActionSpec = {
     const staleness = getIntentStaleness(cur, world.tickIndex);
     if (staleness.stale && !isCriticalIntentStage(cur)) {
       delete world.facts[key];
+      writeIntentTelemetry(world, c.id, {
+        event: 'stale_abort',
+        intentId: (cur as any)?.id ?? null,
+        stageKind: staleness.stageKind,
+        ticksSinceProgress: staleness.ticksSinceProgress,
+        ticksInStage: staleness.ticksInStage,
+      });
       notes.push(`${c.id} aborts stale intent ${String((cur as any)?.id ?? 'unknown')} stage=${staleness.stageKind || 'unknown'} no_progress=${staleness.ticksSinceProgress}`);
       events.push(mkActionEvent(world, 'action:abort_intent', {
         actorId: c.id,
@@ -1663,6 +1688,14 @@ const ContinueIntentSpec: ActionSpec = {
           if (stage.ticksRequired !== 'until_condition') {
             (cur as any).lastProgressTick = world.tickIndex;
           }
+          writeIntentTelemetry(world, c.id, {
+            event: 'continue',
+            intentId: (cur as any).id ?? null,
+            scriptId: script.id,
+            stageIndex,
+            stageKind: stage.kind,
+            stageDone: false,
+          });
           world.facts[key] = cur;
           return { world, events, notes };
         }
@@ -1680,6 +1713,15 @@ const ContinueIntentSpec: ActionSpec = {
           (cur as any).stageStartedAtTick = world.tickIndex;
           (cur as any).stageTicksLeft =
             next.ticksRequired === 'until_condition' ? 'until_condition' : next.ticksRequired;
+          writeIntentTelemetry(world, c.id, {
+            event: 'stage_advance',
+            intentId: (cur as any).id ?? null,
+            scriptId: script.id,
+            fromStageIndex: stageIndex,
+            fromStageKind: stage.kind,
+            toStageIndex: nextStageIndex,
+            toStageKind: next.kind,
+          });
           world.facts[key] = cur;
           return { world, events, notes };
         }
@@ -1707,6 +1749,13 @@ const ContinueIntentSpec: ActionSpec = {
       }
 
       (cur as any).lifecycleState = 'completed';
+      writeIntentTelemetry(world, c.id, {
+        event: 'complete',
+        intentId: (cur as any).id ?? null,
+        scriptId: script.id,
+        originalKind: original?.kind ?? null,
+        originalTargetId: original?.targetId ?? null,
+      });
       delete world.facts[key];
       // ── Write intent cooldown to prevent immediate re-start ──
       markIntentCooldown(world.facts as any, c.id, String(original?.kind || ''), original?.targetId ?? null, world.tickIndex);
@@ -1732,6 +1781,13 @@ const ContinueIntentSpec: ActionSpec = {
     world.facts[key] = cur;
 
     notes.push(`${c.id} continues intent ${(cur as any).id} (${remainingBefore} -> ${remainingAfter})`);
+    writeIntentTelemetry(world, c.id, {
+      event: 'continue',
+      intentId: (cur as any).id ?? null,
+      remainingBefore,
+      remainingAfter,
+      stageKind: 'timer',
+    });
     events.push(mkActionEvent(world, 'action:continue_intent', {
       actorId: c.id,
       locationId: c.locId,
@@ -1764,6 +1820,12 @@ const ContinueIntentSpec: ActionSpec = {
       const okV0 = (cur as any)?.intent?.originalAction;
       if (okV0) markIntentCooldown(world.facts as any, c.id, String(okV0.kind || ''), okV0.targetId ?? null, world.tickIndex);
       (cur as any).lifecycleState = 'completed';
+      writeIntentTelemetry(world, c.id, {
+        event: 'complete',
+        intentId: (cur as any).id ?? null,
+        originalKind: okV0?.kind ?? null,
+        originalTargetId: okV0?.targetId ?? null,
+      });
       delete world.facts[key];
       events.push(mkActionEvent(world, 'action:intent_complete', {
         actorId: c.id,
@@ -1795,6 +1857,11 @@ const AbortIntentSpec: ActionSpec = {
     const key = `intent:${c.id}`;
     const cur = world.facts[key];
     if (cur && typeof cur === 'object') (cur as any).lifecycleState = 'aborted';
+    writeIntentTelemetry(world, c.id, {
+      event: 'abort',
+      intentId: (cur as any)?.id ?? null,
+      stageKind: (cur as any)?.intentScript?.stages?.[Math.max(0, Number((cur as any)?.stageIndex ?? 0))]?.kind ?? null,
+    });
     delete world.facts[key];
     notes.push(`${c.id} aborts intent ${String((cur as any)?.id ?? 'unknown')}`);
     events.push(mkActionEvent(world, 'action:abort_intent', {
