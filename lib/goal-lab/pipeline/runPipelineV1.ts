@@ -93,7 +93,7 @@ function computeAdded(prev: ContextAtom[], next: ContextAtom[]): string[] {
   const p = indexById(prev);
   const out: string[] = [];
   for (const a of next) {
-    const id = (a as any)?.id;
+    const id = a?.id;
     if (typeof id !== 'string') continue;
     if (!p.has(id)) out.push(id);
   }
@@ -102,7 +102,7 @@ function computeAdded(prev: ContextAtom[], next: ContextAtom[]): string[] {
 
 function indexById(atoms: ContextAtom[]): Set<string> {
   const s = new Set<string>();
-  for (const a of atoms) if (a && typeof (a as any).id === 'string') s.add((a as any).id);
+  for (const a of atoms) if (a && typeof a.id === 'string') s.add(a.id);
   return s;
 }
 
@@ -110,9 +110,9 @@ function stageStats(atoms: ContextAtom[]) {
   let missingCodeCount = 0;
   let missingTraceDerivedCount = 0;
   for (const a of atoms) {
-    if (!(a as any)?.code) missingCodeCount += 1;
-    if ((a as any)?.origin === 'derived') {
-      const tr = (a as any)?.trace;
+    if (!(a as Record<string, unknown>)?.code) missingCodeCount += 1;
+    if ((a as Record<string, unknown>)?.origin === 'derived') {
+      const tr = (a as Record<string, unknown>)?.trace;
       const used = Array.isArray(tr?.usedAtomIds) ? tr.usedAtomIds : [];
       const parts = tr?.parts;
       if (!used.length && (parts == null || (typeof parts === 'object' && Object.keys(parts).length === 0))) {
@@ -126,16 +126,16 @@ function stageStats(atoms: ContextAtom[]) {
 function cloneAsBaseCtxAtoms(ctxAtoms: ContextAtom[], selfId: string): ContextAtom[] {
   // debug-only: сохраняем "ctx до линзы" отдельными id вида ctx:base:*
   return ctxAtoms
-    .filter(a => typeof (a as any)?.id === 'string' && String((a as any).id).startsWith('ctx:'))
+    .filter(a => typeof a?.id === 'string' && String(a.id).startsWith('ctx:'))
     .map(a => {
-      const id = String((a as any).id);
-      const used = arr((a as any)?.trace?.usedAtomIds).filter((x: any) => typeof x === 'string');
+      const id = String(a.id);
+      const used = arr((a as Record<string, unknown>)?.trace as Record<string, unknown>)?.usedAtomIds as string[] ?? [];
       return normalizeAtom({
-        ...(a as any),
+        ...a,
         id: `ctx:base:${id.slice('ctx:'.length)}`,
         origin: 'derived',
         source: 'pipeline:S3.baseCopy',
-        label: (a as any)?.label ? `[base] ${(a as any).label}` : `[base] ${id}`,
+        label: a?.label ? `[base] ${a.label}` : `[base] ${id}`,
         trace: { usedAtomIds: used.length ? used : [id], notes: ['debug-only base copy'], parts: { selfId, originalId: id } }
       } as any);
     });
@@ -145,12 +145,12 @@ function computeQuarks(atoms: ContextAtom[]) {
   // минимальный quark-frame: ключ = atom.code
   const quarks: Record<string, { v: number; c: number; atomId: string }[]> = {};
   for (const a of atoms) {
-    const code = (a as any)?.code;
-    const id = (a as any)?.id;
+    const code = (a as Record<string, unknown>)?.code;
+    const id = a?.id;
     if (!code || typeof id !== 'string') continue;
-    const v = Number((a as any)?.magnitude ?? 0);
-    const c = Number((a as any)?.confidence ?? 1);
-    (quarks[code] ||= []).push({ v, c, atomId: id });
+    const v = Number(a?.magnitude ?? 0);
+    const c = Number(a?.confidence ?? 1);
+    (quarks[String(code)] ||= []).push({ v, c, atomId: id });
   }
   return quarks;
 }
@@ -347,7 +347,7 @@ function collectAppraisedEvents(args: {
   events: any[];
 }): AppraisedEventLite[] {
   const { selfId, tick, agent } = args;
-  const selfLocId = String((agent as any)?.locationId || '');
+  const selfLocId = String(agent?.locationId || '');
   const out: AppraisedEventLite[] = [];
 
   for (const ev of arr<any>(args.events)) {
@@ -494,17 +494,17 @@ export function runGoalLabPipelineV1(input: {
   externalPossibilities?: Possibility[];
 }): GoalLabPipelineV1 | null {
   const { world, agentId, participantIds } = input;
-  const tick = Number(input.tickOverride ?? (world as any)?.tick ?? 0);
-  const agent = arr((world as any)?.agents).find((a: any) => a?.entityId === agentId) as AgentState | undefined;
+  const tick = Number(input.tickOverride ?? world.tick ?? 0);
+  const agent = world.agents.find(a => a.entityId === agentId);
   if (!agent) return null;
   const selfId = agent.entityId;
 
   const step = makeSimStep({
     t: tick,
-    seed: (world as any)?.rngSeed ?? (world as any)?.rng_seed ?? (world as any)?.seed ?? 0,
+    seed: world.rngSeed ?? (world as Record<string, unknown>)?.rng_seed ?? 0,
     events: [
       ...arr(input.injectedEvents),
-      ...arr((world as any)?.eventLog?.events),
+      ...arr(world.eventLog?.events),
     ],
   });
 
@@ -521,7 +521,7 @@ export function runGoalLabPipelineV1(input: {
         characters: {},
         locations: {},
       };
-      const agents = arr((world as any)?.agents);
+      const agents = world.agents;
       for (const a of agents) {
         if (!a?.entityId) continue;
         simWorldLike.characters[a.entityId] = {
@@ -530,7 +530,7 @@ export function runGoalLabPipelineV1(input: {
           pos: a.pos ?? { nodeId: null, x: null, y: null },
         };
       }
-      const locs = arr((world as any)?.locations ?? (world as any)?.worldLocations);
+      const locs = arr(world.locations ?? (world as Record<string, unknown>)?.worldLocations as unknown[]);
       for (const l of locs) {
         const id = l?.entityId ?? l?.id;
         if (!id) continue;
@@ -548,10 +548,10 @@ export function runGoalLabPipelineV1(input: {
     agent,
     selfId,
     mapMetrics: input.mapMetrics,
-    beliefAtoms: arr((agent as any)?.memory?.beliefAtoms),
+    beliefAtoms: arr(agent?.memory?.beliefAtoms),
     overrideAtoms: arr(input.manualAtoms).map(normalizeAtom),
     events: step.events,
-    sceneSnapshot: (world as any).sceneSnapshot,
+    sceneSnapshot: (world as Record<string, unknown>).sceneSnapshot,
     includeAxes: false
   });
   atoms = arr((s0 as any)?.mergedAtoms).map(normalizeAtom);
@@ -567,16 +567,16 @@ export function runGoalLabPipelineV1(input: {
       radius: Number(input.observeLiteParams?.radius ?? 10),
       maxAgents: Number(input.observeLiteParams?.maxAgents ?? 12),
       noiseSigma: Number(input.observeLiteParams?.noiseSigma ?? 0),
-      seed: Number(input.observeLiteParams?.seed ?? (world as any)?.rngSeed ?? 0),
+      seed: Number(input.observeLiteParams?.seed ?? world.rngSeed ?? 0),
     },
   });
 
   const s0ObsAtomIds = arr((s0 as any)?.obsAtoms)
     .map((a: any) => String(a?.id || ''))
     .filter(Boolean);
-  const s0RawObservations = arr((world as any)?.observations?.[selfId]).slice(0, 50);
+  const s0RawObservations = arr(world.observations?.[selfId]).slice(0, 50);
 
-  const beliefAtomIds = arr((agent as any)?.memory?.beliefAtoms)
+  const beliefAtomIds = arr(agent?.memory?.beliefAtoms)
     .map((a: any) => (typeof a?.id === 'string' ? a.id : null))
     .filter(Boolean) as string[];
 
@@ -588,7 +588,7 @@ export function runGoalLabPipelineV1(input: {
     stage: 'S0',
     title: 'S0 Canonicalization (world/obs/mem/override)',
     atoms,
-    atomsAddedIds: atoms.map(a => String((a as any).id)).filter(Boolean),
+    atomsAddedIds: atoms.map(a => String(a.id)).filter(Boolean),
     warnings: placementValidation.isComplete
       ? []
       : [
@@ -666,9 +666,9 @@ export function runGoalLabPipelineV1(input: {
   const hzAtoms = arr((hz as any)?.atoms).map(normalizeAtom);
 
   // Guardrails: detect "input present but module produced nothing".
-  const hasNearby = atoms.some(a => typeof (a as any)?.id === 'string' && String((a as any).id).startsWith(`obs:nearby:${selfId}:`));
+  const hasNearby = atoms.some(a => typeof a?.id === 'string' && String(a.id).startsWith(`obs:nearby:${selfId}:`));
   const hasAnyHazard = atoms.some(a => {
-    const id = String((a as any)?.id || '');
+    const id = String(a?.id || '');
     return id.includes('hazard') || id.startsWith('world:env:') || id.startsWith('world:map:');
   });
   if (hasNearby && spAtoms.length === 0) {
@@ -703,8 +703,8 @@ export function runGoalLabPipelineV1(input: {
       overriddenIds: s2Overridden,
       moduleAdds: {
         // keep these bounded so export stays sane
-        socialProximityIds: spAtoms.map(a => String((a as any).id)).slice(0, 200),
-        hazardGeometryIds: hzAtoms.map(a => String((a as any).id)).slice(0, 200),
+        socialProximityIds: spAtoms.map(a => String(a.id)).slice(0, 200),
+        hazardGeometryIds: hzAtoms.map(a => String(a.id)).slice(0, 200),
       }
     }
   });
@@ -832,9 +832,9 @@ export function runGoalLabPipelineV1(input: {
   const mindAtoms = arr(atomizeContextMindMetrics(selfId, scoreboard as any)).map(normalizeAtom);
   const mS6a = mergeAtomsPreferNewer(atoms, mindAtoms);
 
-  const driverCurves = (agent as any)?.driverCurves;
-  const inhibitionOverrides = (agent as any)?.inhibitionOverrides;
-  const driverInertia = (agent as any)?.driverInertia;
+  const driverCurves = agent?.driverCurves;
+  const inhibitionOverrides = agent?.inhibitionOverrides;
+  const driverInertia = agent?.driverInertia;
   const drv = deriveDriversAtoms({
     selfId,
     atoms: mS6a.atoms,
@@ -867,7 +867,7 @@ export function runGoalLabPipelineV1(input: {
 
   // S7: goals (ecology + active) + planning-goals
   // Safe: uses only existing atoms; if drv/life are missing it falls back to ctx.
-  const goalTuning = (agent as any)?.goalTuning ?? null;
+  const goalTuning = agent?.goalTuning ?? null;
   const goalRes = deriveGoalAtoms(selfId, atoms as any, { topN: 3, goalTuning });
   const goalAtoms = arr((goalRes as any)?.atoms).map(normalizeAtom);
 
@@ -883,16 +883,16 @@ export function runGoalLabPipelineV1(input: {
   // Project Goal-layer atoms to Action-visible utility atoms (one-way dependency: Goal -> Util -> Action).
   // Decision layer must read `ns === 'util'`, not `ns === 'goal'`.
   const utilAtoms = mS7c.atoms
-    .filter(a => (a as any)?.ns === 'goal' && typeof (a as any)?.id === 'string' && (a as any).id.startsWith('goal:'))
+    .filter(a => a?.ns === 'goal' && typeof a?.id === 'string' && a.id.startsWith('goal:'))
     .map(a => ({
       ...a,
       ns: 'util' as const,
-      id: (a as any).id.replace(/^goal:/, 'util:'),
-      origin: (a as any).origin ?? 'derived',
+      id: a.id.replace(/^goal:/, 'util:'),
+      origin: a.origin ?? 'derived',
       trace: {
-        ...(a as any).trace,
-        usedAtomIds: uniqStrings([...(a as any)?.trace?.usedAtomIds || [], (a as any).id]),
-        notes: uniqStrings([...(a as any)?.trace?.notes || [], 'goal->util projection'])
+        ...(a.trace || {}),
+        usedAtomIds: uniqStrings([...(a.trace?.usedAtomIds || []), a.id]),
+        notes: uniqStrings([...(a.trace?.notes || []), 'goal->util projection'])
       }
     }));
 
@@ -912,7 +912,7 @@ export function runGoalLabPipelineV1(input: {
     metrics: collectGoalMetrics({ selfId, targetId: canonicalTargetId, atoms: atomsS7 }),
     recentEvents: collectRecentEventsForGoals({ tick, events: step.events }),
     appraisals: collectGoalAppraisals(appraisedEvents),
-    beliefs: arr((agent as any)?.memory?.beliefAtoms)
+    beliefs: arr(agent?.memory?.beliefAtoms)
       .map((a: any) => (typeof a?.id === 'string' ? a.id : null))
       .filter(Boolean) as string[],
     capabilities: [],
@@ -998,7 +998,7 @@ export function runGoalLabPipelineV1(input: {
     const possAtoms = arr(atomizePossibilities(possList)).map(normalizeAtom);
     const mS8a = mergeAtomsPreferNewer(atoms, possAtoms);
 
-    const locationId = (agent as any)?.locationId;
+    const locationId = agent?.locationId;
     const accessPack = deriveAccess(mS8a.atoms, selfId, locationId);
     const accessAtoms = arr((accessPack as any)?.atoms).map(normalizeAtom);
     const mS8b = mergeAtomsPreferNewer(mS8a.atoms, accessAtoms);
@@ -1018,16 +1018,16 @@ export function runGoalLabPipelineV1(input: {
       currentTick: tick,
     });
 
-    const rng = (agent as any)?.rngChannels?.decide;
+    const rng = agent?.rngChannels?.decide;
     // Prefer per-agent trait-derived temperature when available.
     // trait.decisionTemperature atom is normalized [0..1], so scale to practical
     // softmax range and clamp a non-zero floor for numerical stability.
     const agentTempAtom = getMag(atoms, `feat:char:${selfId}:trait.decisionTemperature`, -1);
     const temperature = agentTempAtom >= 0
       ? Math.max(0.05, agentTempAtom * 2.5)
-      : (world as any)?.decisionTemperature ??
-        (agent as any)?.behavioralParams?.T0 ??
-        (agent as any)?.temperature ??
+      : world.decisionTemperature ??
+        agent?.behavioralParams?.T0 ??
+        agent?.temperature ??
         1.0;
 
     const enablePredict = (input.sceneControl as any)?.enablePredict === true;
@@ -1146,7 +1146,7 @@ export function runGoalLabPipelineV1(input: {
       const actionAtoms = atomsS8.filter(a => a.ns === 'action');
       const bad: string[] = [];
       for (const a of actionAtoms) {
-        const used = arr((a as any)?.trace?.usedAtomIds).map(String);
+        const used = arr(a.trace?.usedAtomIds).map(String);
         const hits = used.filter(id => id.startsWith('goal:'));
         if (hits.length) bad.push(`${a.id} <- ${hits.join(', ')}`);
       }
@@ -1432,8 +1432,8 @@ export function runGoalLabPipelineV1(input: {
           : { source: 'legacy' },
         appraisedEvents,
         overriddenIds: s8Overridden,
-        priorsAtomIds: (priorsAtoms || []).map(a => String((a as any)?.id || '')),
-        decisionAtomIds: decisionAtoms.map(a => String((a as any)?.id || '')),
+        priorsAtomIds: (priorsAtoms || []).map(a => String(a?.id || '')),
+        decisionAtomIds: decisionAtoms.map(a => String(a?.id || '')),
       }
     });
 
@@ -1456,9 +1456,9 @@ export function runGoalLabPipelineV1(input: {
     // Caller MUST write beliefPersistResult.beliefAtoms to agent.memory.beliefAtoms.
     const driverPressure: Record<string, number> = {};
     for (const a of drvAtoms) {
-      const id = String((a as any)?.id || '');
+      const id = String(a?.id || '');
       const m = id.match(/^drv:(\w+):/);
-      if (m) driverPressure[m[1]] = clamp01(Number((a as any)?.magnitude ?? 0));
+      if (m) driverPressure[m[1]] = clamp01(Number(a?.magnitude ?? 0));
     }
 
     beliefPersistResult = buildBeliefPersistAtoms({
@@ -1472,7 +1472,7 @@ export function runGoalLabPipelineV1(input: {
       } : null,
       goalEnergy,
       transition: transitionSnapshot,
-      prevBeliefAtoms: arr((agent as any)?.memory?.beliefAtoms),
+      prevBeliefAtoms: arr(agent?.memory?.beliefAtoms),
       driverPressure,
     });
 

@@ -49,6 +49,8 @@ import type { AtomDiff } from '../../lib/snapshot/diffAtoms';
 import { diffAtoms } from '../../lib/snapshot/diffAtoms';
 import { adaptToSnapshotV1, normalizeSnapshot } from '../../lib/goal-lab/snapshotAdapter';
 import { runGoalLabPipelineV1 } from '../../lib/goal-lab/pipeline/runPipelineV1';
+import type { GoalLabPipelineV1 } from '../../lib/goal-lab/pipeline/runPipelineV1';
+import { findStage } from '../../lib/goal-lab/pipeline/pipelineTypes';
 import { EasyModePanel } from '../goal-lab/EasyModePanel';
 import { adaptPipelineV1ToContract } from '../../lib/goal-lab/pipeline/adaptV1ToContract';
 import { buildGoalLabSceneDumpV2, downloadJson } from '../../lib/goal-lab/sceneDump';
@@ -80,18 +82,18 @@ import { clamp01 } from '../../lib/util/math';
  */
 function collectTraitIds(agent: AgentState): Set<string> {
   const traitIds = new Set<string>();
-  const identity: any = (agent as any)?.identity || {};
+  const identity = (agent.identity || {}) as Record<string, unknown>;
 
-  const pushTrait = (t: any) => {
+  const pushTrait = (t: unknown) => {
     if (!t) return;
     if (typeof t === 'string') traitIds.add(t);
-    else if (typeof t?.id === 'string') traitIds.add(t.id);
-    else if (typeof t?.key === 'string') traitIds.add(t.key);
+    else if (typeof (t as Record<string, unknown>)?.id === 'string') traitIds.add(String((t as Record<string, unknown>).id));
+    else if (typeof (t as Record<string, unknown>)?.key === 'string') traitIds.add(String((t as Record<string, unknown>).key));
   };
 
   (Array.isArray(identity?.traits) ? identity.traits : []).forEach(pushTrait);
-  (Array.isArray((agent as any)?.traits) ? (agent as any).traits : []).forEach(pushTrait);
-  (Array.isArray((agent as any)?.tags) ? (agent as any).tags : []).forEach(pushTrait);
+  (Array.isArray((agent as Record<string, unknown>)?.traits) ? (agent as Record<string, unknown>).traits as unknown[] : []).forEach(pushTrait);
+  (Array.isArray((agent as Record<string, unknown>)?.tags) ? (agent as Record<string, unknown>).tags as unknown[] : []).forEach(pushTrait);
   if (typeof identity?.arch_true_dominant_id === 'string') {
     traitIds.add(identity.arch_true_dominant_id);
   }
@@ -413,8 +415,8 @@ const dedupeAtomsById = (arr: ContextAtom[]) => {
   const out: ContextAtom[] = [];
   for (let i = arr.length - 1; i >= 0; i--) {
     const a = arr[i];
-    if (!a || !(a as any).id) continue;
-    const id = (a as any).id as string;
+    if (!a || !a.id) continue;
+    const id = a.id;
     if (seen.has(id)) continue;
     seen.add(id);
     out.unshift(a);
@@ -466,10 +468,10 @@ const cloneWorld = <T,>(w: T): T => {
  */
 export type GoalSandboxVM = {
   // core dumps
-  sceneDump: any;
-  snapshotV1: any;
-  pipelineV1: any;
-  pipelineFrame: any;
+  sceneDump: Record<string, unknown> | null;
+  snapshotV1: ContextSnapshot | null;
+  pipelineV1: GoalLabPipelineV1 | null;
+  pipelineFrame: Record<string, unknown> | null;
   pipelineStageId: string;
 
   // selection / ids
@@ -485,7 +487,7 @@ export type GoalSandboxVM = {
   tom: any;
   atomDiff: any;
   manualAtoms: any[];
-  worldState: any;
+  worldState: WorldState | null;
 
   // callbacks used by DebugShell and console
   onChangePipelineStageId: (id: string) => void;
@@ -761,7 +763,7 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
     setActorPositions(prev => {
       const next = { ...prev };
       worldState.agents.forEach(a => {
-        const pos = (a as any).position;
+        const pos = (a as Record<string, unknown>).position as Record<string, unknown> | undefined;
         if (pos) next[a.entityId] = pos;
       });
       return next;
@@ -909,22 +911,22 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
       const agentIds = nextAgents.map(a => a.entityId);
 
       const agentsWithLoc = nextAgents.map(a => {
-        const pos = actorPositionsRef.current[a.entityId] || (a as any).position || { x: 5, y: 5 };
+        const pos = actorPositionsRef.current[a.entityId] || (a as Record<string, unknown>).position || { x: 5, y: 5 };
         const locId = actorLocationOverridesRef.current[a.entityId] || defaultLocId;
-        return { ...(a as any), locationId: locId, position: pos } as AgentState;
+        return { ...a, locationId: locId, position: pos } as AgentState;
       });
 
-      const initialRelations = ensureCompleteInitialRelations(agentIds, (prev as any).initialRelations);
+      const initialRelations = ensureCompleteInitialRelations(agentIds, prev!.initialRelations);
 
       const worldBase: WorldState = {
-        ...(prev as any),
+        ...prev!,
         agents: agentsWithLoc,
         initialRelations,
       };
 
       const roleMap = assignRoles(worldBase.agents, worldBase.scenario, worldBase);
       worldBase.agents = worldBase.agents.map(
-        a => ({ ...(a as any), effectiveRole: (roleMap as any)[a.entityId] } as AgentState)
+        a => ({ ...a, effectiveRole: (roleMap as Record<string, string>)[a.entityId] } as AgentState)
       );
 
       worldBase.tom = initTomForCharacters(
@@ -952,7 +954,7 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
     setWorldState(prev => {
       if (!prev) return prev;
       try {
-        return refreshWorldDerived(prev as any, arr((prev as any).agents) as any) as any;
+        return refreshWorldDerived(prev as WorldState, prev!.agents) as WorldState;
       } catch {
         return prev;
       }
@@ -1007,14 +1009,14 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
       });
 
       const locId = getActiveLocationId();
-      w.agents = arr((w as any)?.agents).map((a: any) => ({ ...(a as any), locationId: locId } as AgentState));
+      w.agents = arr(w.agents).map((a: AgentState) => ({ ...a, locationId: locId } as AgentState));
 
       const allIds = arr((w as any)?.agents).map((a: any) => a.entityId);
       (w as any).initialRelations = ensureCompleteInitialRelations(allIds, (w as any).initialRelations);
 
       const roleMap = assignRoles(w.agents as any, w.scenario as any, w as any);
       w.agents = w.agents.map(
-        a => ({ ...(a as any), effectiveRole: (roleMap as any)[a.entityId] } as AgentState)
+        a => ({ ...a, effectiveRole: (roleMap as Record<string, string>)[a.entityId] } as AgentState)
       );
 
       w.tom = initTomForCharacters(w.agents as any, w as any, runtimeDyadConfigs || undefined) as any;
@@ -1059,13 +1061,13 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
       setActorLocationOverrides(prev => ({ ...(prev || {}), [aid]: lid }));
       setWorldState(prev => {
         if (!prev) return prev;
-        const nextAgents = arr((prev as any).agents).map((a: any) =>
+        const nextAgents = prev!.agents.map((a: AgentState) =>
           String(a?.entityId) === aid ? ({ ...(a || {}), locationId: lid } as any) : a
         );
         try {
-          return worldSource === 'derived' ? (refreshWorldDerived(prev as any, nextAgents as any) as any) : ({ ...(prev as any), agents: nextAgents } as any);
+          return worldSource === 'derived' ? refreshWorldDerived(prev as WorldState, nextAgents) as WorldState : { ...prev!, agents: nextAgents } as WorldState;
         } catch {
-          return { ...(prev as any), agents: nextAgents } as any;
+          return { ...prev!, agents: nextAgents } as WorldState;
         }
       });
     },
@@ -1082,13 +1084,13 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
       setActorPositions(prev => ({ ...(prev || {}), [aid]: { x, y } }));
       setWorldState(prev => {
         if (!prev) return prev;
-        const nextAgents = arr((prev as any).agents).map((a: any) =>
+        const nextAgents = prev!.agents.map((a: AgentState) =>
           String(a?.entityId) === aid ? ({ ...(a || {}), position: { x, y } } as any) : a
         );
         try {
-          return worldSource === 'derived' ? (refreshWorldDerived(prev as any, nextAgents as any) as any) : ({ ...(prev as any), agents: nextAgents } as any);
+          return worldSource === 'derived' ? refreshWorldDerived(prev as WorldState, nextAgents) as WorldState : { ...prev!, agents: nextAgents } as WorldState;
         } catch {
-          return { ...(prev as any), agents: nextAgents } as any;
+          return { ...prev!, agents: nextAgents } as WorldState;
         }
       });
     },
@@ -1106,7 +1108,7 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
 
       setWorldState(prev => {
         if (!prev) return prev;
-        const nextAgents = arr((prev as any).agents).map((a: any) => {
+        const nextAgents = prev!.agents.map((a: AgentState) => {
           if (String(a?.entityId) !== aid) return a;
           const next = { ...(a || {}) } as any;
           const body = { ...(next.body || {}) } as any;
@@ -1134,9 +1136,9 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
         });
 
         try {
-          return worldSource === 'derived' ? (refreshWorldDerived(prev as any, nextAgents as any) as any) : ({ ...(prev as any), agents: nextAgents } as any);
+          return worldSource === 'derived' ? refreshWorldDerived(prev as WorldState, nextAgents) as WorldState : { ...prev!, agents: nextAgents } as WorldState;
         } catch {
-          return { ...(prev as any), agents: nextAgents } as any;
+          return { ...prev!, agents: nextAgents } as WorldState;
         }
       });
     },
@@ -1155,11 +1157,11 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
       });
       setWorldState(prev => {
         if (!prev) return prev;
-        const nextAgents = arr((prev as any).agents).map((a: any) => (ids.includes(String(a?.entityId)) ? ({ ...(a || {}), locationId: lid } as any) : a));
+        const nextAgents = prev!.agents.map((a: AgentState) => (ids.includes(String(a?.entityId)) ? ({ ...(a || {}), locationId: lid } as any) : a));
         try {
-          return worldSource === 'derived' ? (refreshWorldDerived(prev as any, nextAgents as any) as any) : ({ ...(prev as any), agents: nextAgents } as any);
+          return worldSource === 'derived' ? refreshWorldDerived(prev as WorldState, nextAgents) as WorldState : { ...prev!, agents: nextAgents } as WorldState;
         } catch {
-          return { ...(prev as any), agents: nextAgents } as any;
+          return { ...prev!, agents: nextAgents } as WorldState;
         }
       });
     },
@@ -1291,14 +1293,14 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
       });
 
       const locId = getActiveLocationId();
-      w.agents = arr((w as any)?.agents).map((a: any) => ({ ...(a as any), locationId: locId } as AgentState));
+      w.agents = arr(w.agents).map((a: AgentState) => ({ ...a, locationId: locId } as AgentState));
 
       const agentIds = arr((w as any)?.agents).map((a: any) => a.entityId);
       (w as any).initialRelations = ensureCompleteInitialRelations(agentIds, (w as any).initialRelations);
 
       const roleMap = assignRoles(w.agents as any, w.scenario as any, w as any);
       w.agents = w.agents.map(
-        a => ({ ...(a as any), effectiveRole: (roleMap as any)[a.entityId] } as AgentState)
+        a => ({ ...a, effectiveRole: (roleMap as Record<string, string>)[a.entityId] } as AgentState)
       );
 
       w.tom = initTomForCharacters(w.agents as any, w as any, runtimeDyadConfigs || undefined) as any;
@@ -1353,8 +1355,8 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
 
     setWorldState(prev => {
       if (!prev) return prev;
-      if ((prev as any).decisionTemperature === decisionTemperature) return prev;
-      return { ...(prev as any), decisionTemperature } as WorldState;
+      if (prev.decisionTemperature === decisionTemperature) return prev;
+      return { ...prev, decisionTemperature } as WorldState;
     });
 
     if (baselineWorldRef.current && (baselineWorldRef.current as any).decisionTemperature !== decisionTemperature) {
@@ -1490,10 +1492,10 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
     const locId = getActiveLocationId();
     setWorldState(prev => {
       if (!prev) return prev;
-      const already = prev.agents.every(a => (a as any).locationId === locId);
+      const already = prev.agents.every(a => a.locationId === locId);
       if (already) return prev;
-      const nextAgents = prev.agents.map(a => ({ ...(a as any), locationId: locId } as AgentState));
-      return { ...(prev as any), agents: nextAgents };
+      const nextAgents = prev.agents.map(a => ({ ...a, locationId: locId } as AgentState));
+      return { ...prev, agents: nextAgents };
     });
   }, [getActiveLocationId, worldState]);
 
@@ -1538,7 +1540,7 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
         const focusParticipants =
           Array.isArray(focus.participantIds) && focus.participantIds.length
             ? focus.participantIds.map(String)
-            : arr(w.agents).map(a => String((a as any).entityId)).filter(Boolean);
+            : arr(w.agents).map(a => String(a.entityId)).filter(Boolean);
 
         // Keep invariant: sceneParticipants excludes selectedAgentId (participantIds memo adds it back)
         const nextSceneParticipants = new Set<string>(
@@ -1625,7 +1627,7 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
 
     // NOTE: We keep this local to GoalLab; worldState must remain immutable.
     const worldForCtx = {
-      ...(worldState as any),
+      ...worldState!,
       contextAxes: manualContextAxes,
     } as WorldState;
 
@@ -1744,7 +1746,7 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
       const locScores = computeLocationGoalsForAgent(
         worldState,
         agent.entityId,
-        (agent as any).locationId || null
+        agent.locationId || null
       );
       const tomScores = computeTomGoalsForAgent(worldState, agent.entityId);
 
@@ -1820,8 +1822,8 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
 
   // Prefer staged pipeline ids, fallback to snapshot deltas (or a safe default list) for legacy data.
   const pipelineStageOptions = useMemo(() => {
-    if (pipelineV1 && Array.isArray((pipelineV1 as any).stages)) {
-      return (pipelineV1 as any).stages
+    if (pipelineV1 && Array.isArray(pipelineV1.stages)) {
+      return pipelineV1.stages
         .map((s: any, idx: number) => String(s?.stage || s?.id || `S${idx}`))
         .filter((x: string) => !!x);
     }
@@ -1833,8 +1835,8 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
 
   const pipelineStageLabelById = useMemo(() => {
     const m = new Map<string, string>();
-    if (pipelineV1 && Array.isArray((pipelineV1 as any).stages)) {
-      for (const s of (pipelineV1 as any).stages) {
+    if (pipelineV1 && Array.isArray(pipelineV1.stages)) {
+      for (const s of pipelineV1.stages) {
         const id = String(s?.stage || s?.id || '');
         const label = String(s?.title || s?.label || id);
         if (id) m.set(id, label);
@@ -1887,7 +1889,7 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
     if (!perspectiveId) return null;
 
     const ids = participantIds;
-    const tomRoot = (worldState as any).tom;
+    const tomRoot = worldState?.tom;
     const dyads = (tomRoot as any)?.dyads || tomRoot;
 
     const rows = ids
@@ -1926,7 +1928,7 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
             affectOverrides,
             decisionNonce,
           },
-          timeOverride: (worldState as any).tick,
+          timeOverride: worldState?.tick,
           devValidateAtoms,
         });
         const snap: any = res?.snapshot ?? null;
@@ -1968,7 +1970,7 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
     const ids =
       participantIds && participantIds.length
         ? participantIds
-        : arr((worldState as any)?.agents)
+        : (worldState?.agents ?? [])
             .map((a: any) => String(a?.entityId || ''))
             .filter(Boolean);
 
@@ -1985,7 +1987,7 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
     const ids =
       participantIds && participantIds.length
         ? participantIds
-        : arr((worldState as any)?.agents)
+        : (worldState?.agents ?? [])
             .map((a: any) => String(a?.entityId || ''))
             .filter(Boolean);
 
@@ -2050,7 +2052,7 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
 
   // Keep observeLite seed synced to world RNG seed (but don't override user-edited values).
   useEffect(() => {
-    const s = Number((worldState as any)?.rngSeed ?? 0);
+    const s = Number(worldState?.rngSeed ?? 0);
     if (!Number.isFinite(s)) return;
     setObserveLiteParams((p) => (p.seed === 0 ? { ...p, seed: s } : p));
   }, [worldState]);
@@ -2194,7 +2196,7 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
       const exportedAt = new Date().toISOString().replace(/[:.]/g, '-');
       downloadJson(
         pipelineV1,
-        `goal-lab__pipelineV1__${(pipelineV1 as any).selfId || 'self'}__t${(pipelineV1 as any).tick || 0}__${exportedAt}.json`
+        `goal-lab__pipelineV1__${pipelineV1?.selfId || 'self'}__t${pipelineV1?.tick || 0}__${exportedAt}.json`
       );
       return;
     }
@@ -2223,14 +2225,12 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
 
   const handleExportPipelineStage = useCallback(
     (stageId: string) => {
-      if (pipelineV1 && Array.isArray((pipelineV1 as any).stages)) {
-        const st = (pipelineV1 as any).stages.find(
-          (s: any) => String(s?.stage || s?.id) === String(stageId)
-        );
+      if (pipelineV1 && Array.isArray(pipelineV1.stages)) {
+        const st = findStage(pipelineV1 as any, String(stageId));
         if (!st) return;
         downloadJson(
           st,
-          `goal-lab__pipelineV1__stage-${stageId}__${(pipelineV1 as any).selfId || 'self'}__t${(pipelineV1 as any).tick || 0}.json`
+          `goal-lab__pipelineV1__stage-${stageId}__${pipelineV1.selfId || 'self'}__t${pipelineV1.tick || 0}.json`
         );
         return;
       }
@@ -2389,12 +2389,15 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
 
   const mapHighlights = useMemo(() => {
     if (!worldState) return [];
-    const agents = asArray<any>((worldState as any)?.agents);
-    return agents.map((a: any) => ({
-      x: (a as any).position?.x ?? 0,
-      y: (a as any).position?.y ?? 0,
-      color: a.entityId === selectedAgentId ? '#00aaff' : (a as any).hp < 70 ? '#ff4444' : '#33ff99',
-    }));
+    const agents = worldState?.agents ?? [];
+    return agents.map((a: AgentState) => {
+      const pos = (a as Record<string, unknown>).position as { x?: number; y?: number } | undefined;
+      return {
+        x: pos?.x ?? 0,
+        y: pos?.y ?? 0,
+        color: a.entityId === selectedAgentId ? '#00aaff' : (a.hp ?? 100) < 70 ? '#ff4444' : '#33ff99',
+      };
+    });
   }, [worldState, selectedAgentId]);
 
   const actionsLocLint = useMemo(() => {
@@ -2428,7 +2431,7 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
    * We tolerate partial shapes because pipelineV1 is optional.
    */
   const pipelineStagesForPanel = useMemo(() => {
-    const raw = (pipelineV1 as any)?.stages;
+    const raw = pipelineV1?.stages;
     if (!Array.isArray(raw)) return [];
     return raw.map((s: any, idx: number) => {
       const id = String(s?.id || s?.stageId || `S${idx}`);
@@ -2686,7 +2689,7 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
     contextualMind: contextualMind as any,
     locationScores: locationScores as any,
     tomScores: tomScores as any,
-    tom: (worldState as any)?.tom?.[focusId as any],
+    tom: worldState?.tom?.[focusId],
     atomDiff: atomDiff as any,
     manualAtoms: manualAtoms as any,
     worldState: worldState as any,
@@ -2802,14 +2805,14 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
             />
             <div className="flex flex-wrap gap-1 mt-2">
               {(manualAtoms || []).slice(0, 12).map((a) => {
-                const magnitude = Number((a as any).magnitude);
+                const magnitude = Number(a.magnitude);
                 const formattedMagnitude = Number.isFinite(magnitude) ? magnitude.toFixed(2) : '1.00';
                 return (
                   <span
-                    key={String((a as any).id)}
+                    key={String(a.id)}
                     className="text-[9px] bg-slate-800 px-1.5 py-0.5 rounded text-slate-300"
                   >
-                    {String((a as any).id)}:{formattedMagnitude}
+                    {String(a.id)}:{formattedMagnitude}
                   </span>
                 );
               })}
