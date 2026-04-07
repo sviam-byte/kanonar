@@ -14,7 +14,7 @@ export function atomizeFeatures(features: Features, nsPrefix: string): ContextAt
     const src = features.trace?.[k]?.source || 'features';
     out.push(normalizeAtom({
       id: `${nsPrefix}:${id}:${k}`,
-      ns: 'feat' as any,
+      ns: 'feat',
       kind: `${features.kind}_feature` as any,
       origin: 'world',
       source: 'features',
@@ -25,7 +25,7 @@ export function atomizeFeatures(features: Features, nsPrefix: string): ContextAt
       label: `${k}=${Math.round(v * 100)}%`,
       trace: { usedAtomIds: [], notes: [`from ${src}`], parts: {} },
       meta: { featureKey: k, featureSource: src, kind: features.kind }
-    } as any));
+    }));
   }
 
   return out;

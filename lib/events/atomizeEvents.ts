@@ -69,7 +69,7 @@ export function atomizeEventsForAgent(args: {
       label: `${ev.kind} (${Math.round(mag * 100)}%)`,
       trace: { usedAtomIds: [], notes: [isDirect ? 'direct event' : 'witnessed event'], parts: { tick: ev.tick } },
       meta: { event: ev, witnessed: isWitnessed }
-    } as any));
+    }));
 
     // Build "didTo" only for direct events where target is self (он сделал МНЕ).
     if (isDirect && ev.targetId === selfId && ev.actorId && ev.actorId !== selfId) {
@@ -104,7 +104,7 @@ export function atomizeEventsForAgent(args: {
       tags: ['event', 'didTo', kind],
       label: `didTo:${kind} ${actorId}→${selfId}`,
       trace: { usedAtomIds: [], notes: ['aggregated from recent events'], parts: { actorId, selfId, kind, v: clamp01(v) } }
-    } as any));
+    }));
   }
 
   // Emit per-kind "someone did to me".
@@ -122,15 +122,15 @@ export function atomizeEventsForAgent(args: {
       tags: ['event', 'didToAny', kind],
       label: `didToAny:${kind}→${selfId}`,
       trace: { usedAtomIds: [], notes: ['aggregated from recent events'], parts: { selfId, kind, v: clamp01(v) } }
-    } as any));
+    }));
   }
 
   // Bridges for social/decision layers.
   for (const [actorId, v] of harmByActor.entries()) {
     out.push(normalizeAtom({
       id: `soc:recentHarmBy:${actorId}:${selfId}`,
-      ns: 'soc' as any,
-      kind: 'soc_recent_harm' as any,
+      ns: 'soc',
+      kind: 'soc_recent_harm',
       origin: 'derived',
       source: 'event_aggregate',
       subject: actorId,
@@ -140,13 +140,13 @@ export function atomizeEventsForAgent(args: {
       tags: ['soc', 'eventBridge', 'harm'],
       label: `recentHarmBy:${actorId}→${selfId}`,
       trace: { usedAtomIds: [], notes: ['bridge from event:didTo'], parts: { actorId, selfId, v: clamp01(v) } }
-    } as any));
+    }));
   }
   for (const [actorId, v] of helpByActor.entries()) {
     out.push(normalizeAtom({
       id: `soc:recentHelpBy:${actorId}:${selfId}`,
-      ns: 'soc' as any,
-      kind: 'soc_recent_help' as any,
+      ns: 'soc',
+      kind: 'soc_recent_help',
       origin: 'derived',
       source: 'event_aggregate',
       subject: actorId,
@@ -156,7 +156,7 @@ export function atomizeEventsForAgent(args: {
       tags: ['soc', 'eventBridge', 'help'],
       label: `recentHelpBy:${actorId}→${selfId}`,
       trace: { usedAtomIds: [], notes: ['bridge from event:didTo'], parts: { actorId, selfId, v: clamp01(v) } }
-    } as any));
+    }));
   }
 
   return out;

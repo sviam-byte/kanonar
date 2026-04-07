@@ -205,7 +205,7 @@ export function deriveHazardGeometryAtoms(args: {
   const locId =
     getTarget(atoms, `world:location:${selfId}`) ||
     world?.agents?.find((a: any) => a?.entityId === selfId)?.locationId ||
-    world?.agents?.find((a: any) => a?.id === selfId)?.locationId;
+    world?.agents?.find((a: Record<string, unknown>) => a?.id === selfId)?.locationId;
 
   if (!locId) return { atoms: out };
 

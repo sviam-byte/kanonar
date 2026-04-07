@@ -36,7 +36,7 @@ function mk(
     relatedAgentId: otherId,
     tags: [String(ns), 'socialProximity', kind],
     trace: { usedAtomIds: Array.from(new Set(usedAtomIds)), notes: [], parts },
-  } as any);
+  });
 }
 
 export function deriveSocialProximityAtoms(args: { selfId: string; atoms: ContextAtom[] }): { atoms: ContextAtom[] } {

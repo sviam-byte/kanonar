@@ -47,8 +47,8 @@ export function derivePossibilities(atoms: ContextAtom[], selfId: string): { pos
   if (noViolence) {
     outAtoms.push(normalizeAtom({
       id: 'con:protocol:noViolence',
-      kind: 'constraint' as any,
-      ns: 'con' as any,
+      kind: 'constraint',
+      ns: 'con',
       origin: 'derived',
       source: 'possibilities',
       magnitude: 1,
@@ -56,7 +56,7 @@ export function derivePossibilities(atoms: ContextAtom[], selfId: string): { pos
       tags: ['con', 'protocol'],
       label: 'protocol forbids violence',
       trace: { usedAtomIds: [`ctx:proceduralStrict:${selfId}`], notes: ['derived constraint'], parts: { protocolStrict } }
-    } as any));
+    }));
   }
 
   // aff:hide
@@ -191,8 +191,8 @@ export function derivePossibilities(atoms: ContextAtom[], selfId: string): { pos
     if (hardTaboo) {
       outAtoms.push(normalizeAtom({
         id: `con:rel:taboo:attack:${selfId}:${other}`,
-        kind: 'constraint' as any,
-        ns: 'con' as any,
+        kind: 'constraint',
+        ns: 'con',
         origin: 'derived',
         source: 'possibilities',
         magnitude: 1,
@@ -206,7 +206,7 @@ export function derivePossibilities(atoms: ContextAtom[], selfId: string): { pos
             notes: ['hard taboo from relation tags'], 
             parts: { tags } 
         }
-      } as any));
+      }));
     }
   }
 
@@ -228,8 +228,8 @@ export function derivePossibilities(atoms: ContextAtom[], selfId: string): { pos
   // Emit summary atoms for UI
   outAtoms.push(normalizeAtom({
     id: `aff:banner:${selfId}`,
-    kind: 'summary_banner' as any,
-    ns: 'aff' as any,
+    kind: 'summary_banner',
+    ns: 'aff',
     origin: 'derived',
     source: 'possibilities',
     magnitude: clamp01(Math.min(1, poss.filter(x => x.enabled).length / 8)),
@@ -237,7 +237,7 @@ export function derivePossibilities(atoms: ContextAtom[], selfId: string): { pos
     tags: ['aff', 'banner'],
     label: `possibilities:${poss.filter(x => x.enabled).length}`,
     trace: { usedAtomIds: [], notes: ['count enabled possibilities'], parts: {} }
-  } as any));
+  }));
 
   return { possibilities: poss, atoms: outAtoms };
 }

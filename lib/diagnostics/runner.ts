@@ -144,7 +144,7 @@ export async function runDiagnosticScenario(
         world.agents.forEach(agent => {
             if (characterIds.includes(agent.entityId)) {
                 agent.body.acute.stress = Math.min(100, (agent.body.acute.stress ?? 0) + 50);
-                agent.historicalEvents.push({ id: `trauma-${world.tick}`, name: 'Катастрофа', t: Date.now(), domain: 'trauma', intensity: 0.9, valence: -1 } as any);
+                agent.historicalEvents.push({ id: `trauma-${world.tick}`, name: 'Катастрофа', t: Date.now(), domain: 'trauma', intensity: 0.9, valence: -1 });
             }
         });
     }

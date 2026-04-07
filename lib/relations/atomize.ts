@@ -68,7 +68,7 @@ function atomizeRelWithPrefix(prefix: 'rel:base' | 'rel:ctx', selfId: string, re
       tags: ['rel', (prefix === 'rel:base' ? 'base' : 'ctx'), name, ...arr(e.tags)],
       label: `rel.${name}=${Math.round(clamp01(v) * 100)}%`,
       trace: { usedAtomIds: used, notes: [prefix === 'rel:base' ? 'from rel_base' : 'from rel_ctx'], parts: { tags: e.tags, lastUpdatedTick: e.lastUpdatedTick } }
-    } as any));
+    }));
 
     emit('closeness', e.closeness ?? 0.1);
     emit('loyalty', e.loyalty ?? 0.1);
@@ -83,7 +83,7 @@ function atomizeRelWithPrefix(prefix: 'rel:base' | 'rel:ctx', selfId: string, re
       out.push(normalizeAtom({
         id: `rel:tag:${selfId}:${otherId}:${t}`,
         ns: 'rel',
-        kind: 'relation_tag' as any,
+        kind: 'relation_tag',
         origin: 'world',
         source: 'rel_base',
         magnitude: 1,
@@ -93,7 +93,7 @@ function atomizeRelWithPrefix(prefix: 'rel:base' | 'rel:ctx', selfId: string, re
         tags: ['rel', 'tag', t],
         label: `tag:${t}`,
         trace: { usedAtomIds: used, notes: ['relation tag'], parts: {} }
-      } as any));
+      }));
     }
 
     // Social biography atoms (available regardless of prefix)
@@ -103,9 +103,9 @@ function atomizeRelWithPrefix(prefix: 'rel:base' | 'rel:ctx', selfId: string, re
         const mag = clamp01(Number(v));
         out.push(normalizeAtom({
           id: `rel:bio:${k}:${selfId}:${otherId}`,
-          ns: 'rel' as any,
-          kind: 'rel_bio' as any,
-          origin: 'profile' as any,
+          ns: 'rel',
+          kind: 'rel_bio',
+          origin: 'profile',
           source: 'rel_bio',
           magnitude: mag,
           confidence: 1,
@@ -114,7 +114,7 @@ function atomizeRelWithPrefix(prefix: 'rel:base' | 'rel:ctx', selfId: string, re
           tags: ['rel', 'bio', k, ...arr(e.tags)],
           label: `bio.${k}=${Math.round(mag * 100)}%`,
           trace: { usedAtomIds: used, notes: ['from RelationMemory.edge.bio.aspects'], parts: { lastUpdatedTick: e.lastUpdatedTick } }
-        } as any));
+        }));
       }
     }
 
@@ -125,9 +125,9 @@ function atomizeRelWithPrefix(prefix: 'rel:base' | 'rel:ctx', selfId: string, re
         const mag01 = signedToUnit(rawN);
         out.push(normalizeAtom({
           id: `rel:vec:${dim}:${selfId}:${otherId}`,
-          ns: 'rel' as any,
-          kind: 'rel_vec' as any,
-          origin: 'profile' as any,
+          ns: 'rel',
+          kind: 'rel_vec',
+          origin: 'profile',
           source: 'rel_bio',
           magnitude: mag01,
           confidence: 1,
@@ -137,7 +137,7 @@ function atomizeRelWithPrefix(prefix: 'rel:base' | 'rel:ctx', selfId: string, re
           label: `vec.${dim}=${Number.isFinite(rawN) ? rawN.toFixed(2) : '0.00'}`,
           meta: { raw: Number.isFinite(rawN) ? rawN : 0 },
           trace: { usedAtomIds: used, notes: ['from RelationMemory.edge.bio.vector'], parts: { lastUpdatedTick: e.lastUpdatedTick } }
-        } as any));
+        }));
       }
     }
   }

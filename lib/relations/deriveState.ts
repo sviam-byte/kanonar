@@ -69,7 +69,7 @@ function mkRelState(selfId: string, otherId: string, name: string, v: number, us
   return normalizeAtom({
     id: `rel:state:${selfId}:${otherId}:${name}`,
     ns: 'rel',
-    kind: 'relation_state' as any,
+    kind: 'relation_state',
     origin: 'derived',
     source: 'rel_state',
     magnitude: clamp01(v),
@@ -79,7 +79,7 @@ function mkRelState(selfId: string, otherId: string, name: string, v: number, us
     tags: ['rel', 'state', name],
     label: `rel.state.${name}=${Math.round(clamp01(v) * 100)}%`,
     trace: { usedAtomIds, notes: ['derived rel:state'], parts }
-  } as any);
+  });
 }
 
 /**

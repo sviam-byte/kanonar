@@ -57,8 +57,8 @@ function sanitizeUsedAtomIds(outId: string, usedAtomIds: unknown): string[] {
 function mkDerived(id: string, selfId: string, magnitude: number, usedAtomIds: string[], parts: any, tags: string[]) {
   return normalizeAtom({
     id,
-    ns: 'ctx' as any,
-    kind: 'ctx_lens' as any,
+    ns: 'ctx',
+    kind: 'ctx_lens',
     origin: 'derived',
     source: 'character_lens',
     magnitude: clamp01(magnitude),
@@ -68,14 +68,14 @@ function mkDerived(id: string, selfId: string, magnitude: number, usedAtomIds: s
     tags,
     label: `lens:${id.split(':').slice(0, 2).join(':')}:${Math.round(clamp01(magnitude) * 100)}%`,
     trace: { usedAtomIds: sanitizeUsedAtomIds(id, usedAtomIds), notes: ['subjective lens override'], parts },
-  } as any);
+  });
 }
 
 function mkDyadDerived(id: string, selfId: string, otherId: string, metric: string, magnitude: number, usedAtomIds: string[], parts: any) {
   return normalizeAtom({
     id,
-    ns: 'tom' as any,
-    kind: 'tom_dyad_metric' as any,
+    ns: 'tom',
+    kind: 'tom_dyad_metric',
     origin: 'derived',
     source: 'character_lens',
     magnitude: clamp01(magnitude),
@@ -85,7 +85,7 @@ function mkDyadDerived(id: string, selfId: string, otherId: string, metric: stri
     tags: ['tom', 'dyad', metric, 'lens'],
     label: `lens.${metric}:${Math.round(clamp01(magnitude) * 100)}%`,
     trace: { usedAtomIds: sanitizeUsedAtomIds(id, usedAtomIds), notes: ['dyad lens'], parts },
-  } as any);
+  });
 }
 
 /**
@@ -402,8 +402,8 @@ export function applyCharacterLens(args: {
     // отдельный агрегат — удобно дебажить “почему ToM/эмоции сдвинулись”
     normalizeAtom({
       id: `lens:suspicion:${selfId}`,
-      ns: 'lens' as any,
-      kind: 'lens' as any,
+      ns: 'lens',
+      kind: 'lens',
       origin: 'derived',
       source: 'character_lens',
       magnitude: suspicion,
@@ -412,7 +412,7 @@ export function applyCharacterLens(args: {
       tags: ['lens', 'suspicion'],
       label: `suspicion:${Math.round(suspicion * 100)}%`,
       trace: { usedAtomIds: usedCtx, notes: ['suspicion aggregate'], parts: { suspicion, paranoia, stress, surv0, danger0 } },
-    } as any),
+    }),
   );
 
   // ToM-линза: сдвигаем dyad-* в зависимости от suspicion + social sensitivity + публичности/наблюдения

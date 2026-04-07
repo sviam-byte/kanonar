@@ -70,8 +70,8 @@ export function deriveDyadicEmotionAtoms(args: { selfId: string; atoms: ContextA
     const mk = (key: string, v: number, parts: any) =>
       normalizeAtom({
         id: `emo:dyad:${key}:${selfId}:${otherId}`,
-        ns: 'emo' as any,
-        kind: 'emotion_dyad' as any,
+        ns: 'emo',
+        kind: 'emotion_dyad',
         origin: 'derived',
         source: 'emotion_dyadic',
         magnitude: clamp01(v),
@@ -81,7 +81,7 @@ export function deriveDyadicEmotionAtoms(args: { selfId: string; atoms: ContextA
         tags: ['emo', 'dyad', key],
         label: `emo.${key}→${otherId}:${Math.round(clamp01(v) * 100)}%`,
         trace: { usedAtomIds: used, notes: ['derived dyadic emotion'], parts },
-      } as any);
+      });
 
     out.push(
       mk('fearOf', fearOf, { close, threat, control, globalFear, fearOf }),

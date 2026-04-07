@@ -35,7 +35,7 @@ export function atomsFromSpeechEvent(payload: any, tickIndex: number): ContextAt
         to: targetId,
         raw: a?.meta ?? null,
       },
-    } as any);
+    });
   }
 
   // общий “факт общения”
@@ -52,7 +52,7 @@ export function atomsFromSpeechEvent(payload: any, tickIndex: number): ContextAt
       parts: { act: payload.act, topic: payload.topic },
     },
     meta: { act: payload.act, topic: payload.topic ?? null, from: actorId, to: targetId },
-  } as any);
+  });
 
   return out;
 }

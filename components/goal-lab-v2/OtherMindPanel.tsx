@@ -94,10 +94,10 @@ export const OtherMindPanel: React.FC<Props> = ({ castRows, selfId, actorLabels 
     const decision = sn?.decision || sn?.snapshot?.decision;
     const oid = selected.id;
 
-    const emos = atoms.filter((a: any) => {
+    const emos = atoms.filter((a: Record<string, unknown>) => {
       const id = String(a?.id || '');
       return id.startsWith('emo:') && id.endsWith(`:${oid}`) && !id.includes(':dyad:');
-    }).map((a: any) => ({ n: String(a.id).split(':')[1], v: cl(Number(a.magnitude ?? 0)) }))
+    }).map((a: Record<string, unknown>) => ({ n: String(a.id).split(':')[1], v: cl(Number(a.magnitude ?? 0)) }))
       .filter((e: any) => e.v > 0.02).sort((a: any, b: any) => b.v - a.v).slice(0, 6);
 
     const goals: Array<{ id: string; a: number; d: string }> = [];
@@ -119,7 +119,7 @@ export const OtherMindPanel: React.FC<Props> = ({ castRows, selfId, actorLabels 
     for (const mt of tomMetrics) {
       let mag = -1;
       for (const pattern of [`tom:dyad:${oid}:${selfId}:${mt}`, `tom:effective:dyad:${oid}:${selfId}:${mt}`]) {
-        const found = atoms.find((a: any) => String(a?.id) === pattern);
+        const found = atoms.find((a: Record<string, unknown>) => String(a?.id) === pattern);
         if (found) {
           mag = Number((found as any)?.magnitude ?? -1);
           break;
@@ -130,7 +130,7 @@ export const OtherMindPanel: React.FC<Props> = ({ castRows, selfId, actorLabels 
 
     return {
       atomCount: atoms.length,
-      tomDyadCount: atoms.filter((a: any) => String(a?.id || '').startsWith(`tom:dyad:${oid}:`)).length,
+      tomDyadCount: atoms.filter((a: Record<string, unknown>) => String(a?.id || '').startsWith(`tom:dyad:${oid}:`)).length,
       emos,
       goals,
       ranked,

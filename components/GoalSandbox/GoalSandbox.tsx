@@ -107,9 +107,9 @@ function collectTraitIds(agent: AgentState): Set<string> {
  */
 function collectLocationTags(location: LocationEntity | null | undefined): string[] {
   if (!location) return [];
-  const direct = Array.isArray((location as any).tags) ? (location as any).tags : [];
+  const direct = Array.isArray(location.tags) ? location.tags : [];
   const propTags = Array.isArray(location.properties?.tags) ? location.properties?.tags : [];
-  const mapTags = Array.isArray((location as any)?.map?.tags) ? (location as any).map.tags : [];
+  const mapTags = Array.isArray(location?.map?.tags) ? location.map.tags : [];
   return Array.from(new Set([...direct, ...propTags, ...mapTags].map(String)));
 }
 
@@ -1567,7 +1567,7 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
 
         // manualAtoms should be normalized to avoid missing fields
         const importedManual = Array.isArray(inputs.manualAtoms) ? inputs.manualAtoms : [];
-        setManualAtoms(importedManual.map((a: any) => normalizeAtom(a)));
+        setManualAtoms(importedManual.map((a: Record<string, unknown>) => normalizeAtom(a)));
 
         // atomOverridesLayer
         setAtomOverridesLayer(
@@ -1810,7 +1810,7 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
 
   const pipelineV1 = useMemo(() => {
     if (!snapshotV1) return null;
-    const stages = arr((snapshotV1 as any)?.meta?.pipelineDeltas);
+    const stages = arr((snapshotV1 as Record<string, unknown>)?.meta?.pipelineDeltas);
     return {
       schema: 'GoalLabPipelineV1',
       agentId: perspectiveId,
@@ -1827,7 +1827,7 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
         .map((s: any, idx: number) => String(s?.stage || s?.id || `S${idx}`))
         .filter((x: string) => !!x);
     }
-    const deltasRaw = (snapshotV1 as any)?.meta?.pipelineDeltas;
+    const deltasRaw = (snapshotV1 as Record<string, unknown>)?.meta?.pipelineDeltas;
     const deltas = Array.isArray(deltasRaw) ? deltasRaw : [];
     const ids = deltas.map((d: any, idx: number) => String(d?.id || `S${idx}`)).filter((x: string) => !!x);
     return ids.length ? ids : ['S0', 'S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8'];
@@ -1971,7 +1971,7 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
       participantIds && participantIds.length
         ? participantIds
         : (worldState?.agents ?? [])
-            .map((a: any) => String(a?.entityId || ''))
+            .map((a: Record<string, unknown>) => String(a?.entityId || ''))
             .filter(Boolean);
 
     return ids.map((id) => buildCastRowForAgent(String(id))).filter(Boolean) as any[];
@@ -1988,7 +1988,7 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
       participantIds && participantIds.length
         ? participantIds
         : (worldState?.agents ?? [])
-            .map((a: any) => String(a?.entityId || ''))
+            .map((a: Record<string, unknown>) => String(a?.entityId || ''))
             .filter(Boolean);
 
     return ids.map((id) => buildCastRowForAgent(String(id))).filter(Boolean) as any[];
@@ -2588,7 +2588,7 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
               isEditor={locationMode === 'custom' && !placingActorId}
               onMapChange={setMap}
               onCellClick={handleActorClick}
-              highlights={mapHighlights as any}
+              highlights={mapHighlights}
             />
           ) : centerView === 'actions' ? (
             <div className="h-full w-full">
@@ -2597,15 +2597,15 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
           ) : (
             <div className="h-full w-full">
               <DecisionGraphView
-                frame={computed.frame as any}
+                frame={computed.frame}
                 contextAtoms={computed.snapshot?.atoms ?? []}
                 selfId={computed.snapshot?.selfId ?? undefined}
-                goalScores={arr(computed.goals) as any}
+                goalScores={arr(computed.goals)}
                 selectedGoalId={null}
                 mode={energyViewMode}
                 compact
                 temperature={decisionTemperature}
-                curvePreset={decisionCurvePreset as any}
+                curvePreset={decisionCurvePreset}
               />
             </div>
           )}
@@ -2659,14 +2659,14 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
             </div>
             <div className="flex-1 min-h-0">
               <DecisionGraphView
-                frame={computed.frame as any}
+                frame={computed.frame}
                 contextAtoms={computed.snapshot?.atoms ?? []}
                 selfId={computed.snapshot?.selfId ?? undefined}
-                goalScores={arr(computed.goals) as any}
+                goalScores={arr(computed.goals)}
                 selectedGoalId={null}
                 mode={energyViewMode}
                 temperature={decisionTemperature}
-                curvePreset={decisionCurvePreset as any}
+                curvePreset={decisionCurvePreset}
               />
             </div>
           </div>
@@ -2741,8 +2741,8 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
         <div className="flex-1 overflow-y-auto custom-scrollbar p-4">
           <GoalLabControls
             allCharacters={allCharacters}
-            allLocations={allLocations as any}
-            events={eventRegistry.getAll() as any}
+            allLocations={allLocations}
+            events={eventRegistry.getAll()}
             computedAtoms={asArray<any>((snapshotV1?.atoms ?? (snapshot as any)?.atoms) as any)}
             selectedAgentId={selectedAgentId}
             onSelectAgent={handleSelectAgent}
@@ -2771,8 +2771,8 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
             onResetSim={handleResetSim}
             onDownloadScene={onDownloadScene}
             onImportSceneDumpV2={handleImportSceneDumpV2}
-            world={worldState as any}
-            onWorldChange={(w: any) => setWorldState(normalizeWorldShape(w)) as any}
+            world={worldState}
+            onWorldChange={(w: WorldState) => setWorldState(normalizeWorldShape(w))}
             participantIds={participantIds}
             onAddParticipant={handleAddParticipant}
             onRemoveParticipant={handleRemoveParticipant}
@@ -2781,7 +2781,7 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
             onSelectPerspective={setPerspectiveAgentId}
             sceneControl={sceneControl}
             onSceneControlChange={setSceneControl}
-            scenePresets={Object.values(SCENE_PRESETS) as any}
+            scenePresets={Object.values(SCENE_PRESETS)}
             runSeed={runSeed}
             onRunSeedChange={setRunSeed}
             decisionTemperature={decisionTemperature}
@@ -2917,8 +2917,8 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
               <div className="h-full overflow-y-auto custom-scrollbar p-3">
                 <GoalLabControls
                   allCharacters={allCharacters}
-                  allLocations={allLocations as any}
-                  events={eventRegistry.getAll() as any}
+                  allLocations={allLocations}
+                  events={eventRegistry.getAll()}
                   computedAtoms={arr((snapshotV1 as any)?.atoms ?? (snapshot as any)?.atoms)}
                   selectedAgentId={selectedAgentId}
                   onSelectAgent={handleSelectAgent}
@@ -2945,8 +2945,8 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
                   onAffectOverridesChange={setAffectOverrides}
                   onDownloadScene={onDownloadScene}
                   onImportSceneDumpV2={handleImportSceneDumpV2}
-                  world={worldState as any}
-                  onWorldChange={(w: any) => setWorldState(normalizeWorldShape(w)) as any}
+                  world={worldState}
+                  onWorldChange={(w: WorldState) => setWorldState(normalizeWorldShape(w))}
                   participantIds={participantIds}
                   onAddParticipant={handleAddParticipant}
                   onRemoveParticipant={handleRemoveParticipant}
@@ -2955,7 +2955,7 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
                   onSelectPerspective={setPerspectiveAgentId}
                   sceneControl={sceneControl}
                   onSceneControlChange={setSceneControl}
-                  scenePresets={Object.values(SCENE_PRESETS) as any}
+                  scenePresets={Object.values(SCENE_PRESETS)}
                   runSeed={runSeed}
                   onRunSeedChange={setRunSeed}
                   decisionTemperature={decisionTemperature}
@@ -2985,40 +2985,40 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
                 <div className="rounded border border-slate-800 bg-slate-950/40 p-3">
                   <div className="text-[10px] text-slate-500 uppercase tracking-widest mb-2">Pipeline</div>
                   <PipelinePanel
-                    stages={pipelineStagesForPanel as any}
+                    stages={pipelineStagesForPanel}
                     selectedId={currentPipelineStageId}
-                    onSelect={setPipelineStageId as any}
+                    onSelect={setPipelineStageId}
                     onExportStage={handleExportPipelineStage}
                   />
                 </div>
                 <div className="rounded border border-slate-800 bg-slate-950/40 p-3">
                   <div className="text-[10px] text-slate-500 uppercase tracking-widest mb-2">ToM</div>
-                  <ToMPanel atoms={passportAtoms as any} />
+                  <ToMPanel atoms={passportAtoms} />
                 </div>
                 <div className="rounded border border-slate-800 bg-slate-950/40 p-3">
                   <div className="text-[10px] text-slate-500 uppercase tracking-widest mb-2">Cast Compare</div>
-                  <CastComparePanel rows={castRowsSafe as any} focusId={focusId} />
+                  <CastComparePanel rows={castRowsSafe} focusId={focusId} />
                 </div>
               </div>
             ) : frontTab === 'debug' ? (
               <div className="h-full overflow-y-auto custom-scrollbar p-3">
                 <DebugShell
-                  snapshotV1={snapshotV1 as any}
-                  pipelineV1={pipelineV1 as any}
-                  pipelineFrame={pipelineFrame as any}
+                  snapshotV1={snapshotV1}
+                  pipelineV1={pipelineV1}
+                  pipelineFrame={pipelineFrame}
                   pipelineStageId={currentPipelineStageId}
                   onChangePipelineStageId={setPipelineStageId}
                   castRows={castRowsSafe}
                   perspectiveId={focusId}
                   onSetPerspectiveId={setPerspectiveAgentId}
                   passportAtoms={passportAtoms}
-                  passportMeta={canonicalAtoms as any}
-                  contextualMind={contextualMind as any}
-                  locationScores={locationScores as any}
-                  tomScores={tomScores as any}
-                  tom={(worldState as any)?.tom?.[focusId as any]}
-                  atomDiff={atomDiff as any}
-                  sceneDump={sceneDumpV2 as any}
+                  passportMeta={canonicalAtoms}
+                  contextualMind={contextualMind}
+                  locationScores={locationScores}
+                  tomScores={tomScores}
+                  tom={worldState?.tom?.[focusId]}
+                  atomDiff={atomDiff}
+                  sceneDump={sceneDumpV2}
                   onDownloadScene={onDownloadScene}
                   onImportScene={handleImportSceneClick}
 
@@ -3043,12 +3043,12 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
               <div className="h-full overflow-y-auto custom-scrollbar p-3">
                 <GoalLabTestsPanel
                   selfId={perspectiveId || selectedAgentId || ''}
-                  actorLabels={actorLabels as any}
+                  actorLabels={actorLabels}
                 />
               </div>
             ) : frontTab === 'report' ? (
               <div className="h-full overflow-y-auto custom-scrollbar p-3">
-                <GoalLabReportPanel pipelineV1={pipelineV1 as any} />
+                <GoalLabReportPanel pipelineV1={pipelineV1} />
               </div>
             ) : (
               <div className="h-full overflow-auto">{mapArea}</div>
@@ -3077,16 +3077,16 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
               <div className="flex-1 overflow-y-auto custom-scrollbar p-4 min-h-0">
                 {activeBottomTab === 'pipeline' ? (
                   <PipelinePanel
-                    stages={pipelineStagesForPanel as any}
+                    stages={pipelineStagesForPanel}
                     selectedId={currentPipelineStageId}
-                    onSelect={setPipelineStageId as any}
+                    onSelect={setPipelineStageId}
                     onExportStage={handleExportPipelineStage}
                   />
                 ) : null}
                 {activeBottomTab === 'pomdp' ? (
                   <PomdpConsolePanel
-                    run={pomdpRun as any}
-                    rawV1={pomdpPipelineV1 as any}
+                    run={pomdpRun}
+                    rawV1={pomdpPipelineV1}
                     observeLiteParams={observeLiteParams}
                     onObserveLiteParamsChange={setObserveLiteParams}
                   />
@@ -3094,16 +3094,16 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
                 {activeBottomTab === 'tom' ? (
                   // IMPORTANT: ToM atoms are produced by GoalLab pipeline stages, not by the raw SimSnapshot.
                   // Using passportAtoms makes the Dyad/ToM layer non-empty.
-                  <ToMPanel atoms={passportAtoms as any} />
+                  <ToMPanel atoms={passportAtoms} />
                 ) : null}
                 {activeBottomTab === 'compare' ? (
-                  <CastComparePanel rows={castRowsSafe as any} focusId={focusId} />
+                  <CastComparePanel rows={castRowsSafe} focusId={focusId} />
                 ) : null}
                 {activeBottomTab === 'curves' ? (
                   <CurveStudio
                     selfId={focusId || ''}
-                    atoms={arr((computed as any)?.snapshot?.atoms) as any}
-                    preset={((decisionCurvePreset || 'smoothstep') as any) as CurvePreset}
+                    atoms={arr(computed?.snapshot?.atoms)}
+                    preset={(decisionCurvePreset || 'smoothstep') as CurvePreset}
                   />
                 ) : null}
                 {activeBottomTab === 'debug' ? (
@@ -3121,22 +3121,22 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
                       )}
                     </pre>
                     <DebugShell
-                      snapshotV1={snapshotV1 as any}
-                      pipelineV1={pipelineV1 as any}
-                      pipelineFrame={pipelineFrame as any}
+                      snapshotV1={snapshotV1}
+                      pipelineV1={pipelineV1}
+                      pipelineFrame={pipelineFrame}
                       pipelineStageId={currentPipelineStageId}
                       onChangePipelineStageId={setPipelineStageId}
                       castRows={castRowsSafe}
                       perspectiveId={focusId}
                       onSetPerspectiveId={setPerspectiveAgentId}
                       passportAtoms={passportAtoms}
-                      passportMeta={canonicalAtoms as any}
-                      contextualMind={contextualMind as any}
-                      locationScores={locationScores as any}
-                      tomScores={tomScores as any}
-                      tom={(worldState as any)?.tom?.[focusId as any]}
-                      atomDiff={atomDiff as any}
-                      sceneDump={sceneDumpV2 as any}
+                      passportMeta={canonicalAtoms}
+                      contextualMind={contextualMind}
+                      locationScores={locationScores}
+                      tomScores={tomScores}
+                      tom={worldState?.tom?.[focusId]}
+                      atomDiff={atomDiff}
+                      sceneDump={sceneDumpV2}
                       onDownloadScene={onDownloadScene}
                       onImportScene={handleImportSceneClick}
 
@@ -3179,18 +3179,18 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
           {uiMode === 'console' ? (
             <div className="flex-1 min-h-0 overflow-hidden">
               <GoalLabConsoleResults
-                sceneMetrics={((worldState as any)?.scene?.metrics as any) ?? null}
-                sceneMetricDefs={((worldState as any)?.scenario?.metrics as any) ?? null}
+                sceneMetrics={worldState?.scene?.metrics ?? null}
+                sceneMetricDefs={worldState?.scenario?.metrics ?? null}
                 onSetSceneMetric={handleSetSceneMetric}
                 onApplyActionMvp={handleApplyActionMvp}
-                snapshot={snapshot as any}
-                frame={computed.frame as any}
-                situation={situation as any}
-                snapshotV1={snapshotV1 as any}
-                pipelineV1={pipelineV1 as any}
-                focusId={focusId as any}
-                pomdpRun={pomdpRun as any}
-                pomdpRawV1={pomdpPipelineV1 as any}
+                snapshot={snapshot}
+                frame={computed.frame}
+                situation={situation}
+                snapshotV1={snapshotV1}
+                pipelineV1={pipelineV1}
+                focusId={focusId}
+                pomdpRun={pomdpRun}
+                pomdpRawV1={pomdpPipelineV1}
                 observeLiteParams={observeLiteParams}
                 onObserveLiteParamsChange={setObserveLiteParams}
                 onForceAction={(actionId) => {
@@ -3209,7 +3209,7 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
                   });
                   setDecisionNonce((n) => n + 1);
                 }}
-                sceneDump={sceneDumpV2 as any}
+                sceneDump={sceneDumpV2}
                 onDownloadScene={onDownloadScene}
                 onImportScene={handleImportSceneClick}
 
@@ -3223,33 +3223,33 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
                 sceneControl={sceneControl}
                 onSetSceneControl={setSceneControl}
                 onUpdateAgentVitals={handleUpdateAgentVitals}
-                manualAtoms={manualAtoms as any}
-                onChangeManualAtoms={setManualAtoms as any}
+                manualAtoms={manualAtoms}
+                onChangeManualAtoms={setManualAtoms}
                 pipelineStageId={currentPipelineStageId}
-                onChangePipelineStageId={setPipelineStageId as any}
-                onExportPipelineStage={handleExportPipelineStage as any}
-                onExportPipelineAll={handleExportPipelineAll as any}
-                goalScores={goals as any}
-                goalPreview={goalPreview as any}
-                actorLabels={actorLabels as any}
-                contextualMind={contextualMind as any}
-                locationScores={locationScores as any}
-                tomScores={tomScores as any}
-                atomDiff={atomDiff as any}
+                onChangePipelineStageId={setPipelineStageId}
+                onExportPipelineStage={handleExportPipelineStage}
+                onExportPipelineAll={handleExportPipelineAll}
+                goalScores={goals}
+                goalPreview={goalPreview}
+                actorLabels={actorLabels}
+                contextualMind={contextualMind}
+                locationScores={locationScores}
+                tomScores={tomScores}
+                atomDiff={atomDiff}
 
-                characters={allCharacters as any}
-                locations={allLocations as any}
-                selectedAgentId={selectedAgentId as any}
-                onSelectAgentId={handleSelectAgent as any}
-                locationMode={locationMode as any}
-                onSetLocationMode={setLocationMode as any}
-                selectedLocationId={selectedLocationId as any}
-                onSelectLocationId={setSelectedLocationId as any}
+                characters={allCharacters}
+                locations={allLocations}
+                selectedAgentId={selectedAgentId}
+                onSelectAgentId={handleSelectAgent}
+                locationMode={locationMode}
+                onSetLocationMode={setLocationMode}
+                selectedLocationId={selectedLocationId}
+                onSelectLocationId={setSelectedLocationId}
 
-                agents={(worldState as any)?.agents as any}
-                onSetAgentLocation={handleSetAgentLocation as any}
-                onSetAgentPosition={handleSetAgentPosition as any}
-                onMoveAllToLocation={handleMoveAllToLocation as any}
+                agents={worldState?.agents}
+                onSetAgentLocation={handleSetAgentLocation}
+                onSetAgentPosition={handleSetAgentPosition}
+                onMoveAllToLocation={handleMoveAllToLocation}
                 onRebuildWorld={() => {
                   // Rebuild the derived world so agent/location ids and roles/tom are consistent with editor state.
                   if (worldSource === 'imported') {
@@ -3267,22 +3267,22 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
             </div>
           ) : (
             <>
-              <DoNowCard decision={(snapshotV1 as any)?.decision ?? null} />
+              <DoNowCard decision={(snapshotV1 as Record<string, unknown>)?.decision ?? null} />
               <GoalLabResults
-                context={snapshot as any}
-                frame={computed.frame as any}
-                goalScores={goals as any}
-                situation={situation as any}
-                goalPreview={goalPreview as any}
-                actorLabels={actorLabels as any}
-                contextualMind={contextualMind as any}
-                locationScores={locationScores as any}
-                tomScores={tomScores as any}
-                atomDiff={atomDiff as any}
-                snapshotV1={snapshotV1 as any}
-                pipelineV1={pipelineV1 as any}
-                perspectiveAgentId={focusId as any}
-                sceneDump={sceneDumpV2 as any}
+                context={snapshot}
+                frame={computed.frame}
+                goalScores={goals}
+                situation={situation}
+                goalPreview={goalPreview}
+                actorLabels={actorLabels}
+                contextualMind={contextualMind}
+                locationScores={locationScores}
+                tomScores={tomScores}
+                atomDiff={atomDiff}
+                snapshotV1={snapshotV1}
+                pipelineV1={pipelineV1}
+                perspectiveAgentId={focusId}
+                sceneDump={sceneDumpV2}
                 onDownloadScene={onDownloadScene}
                 onImportScene={handleImportSceneClick}
 
@@ -3296,12 +3296,12 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
                 sceneControl={sceneControl}
                 onSetSceneControl={setSceneControl}
                 onUpdateAgentVitals={handleUpdateAgentVitals}
-                manualAtoms={manualAtoms as any}
-                onChangeManualAtoms={setManualAtoms as any}
+                manualAtoms={manualAtoms}
+                onChangeManualAtoms={setManualAtoms}
                 pipelineStageId={currentPipelineStageId}
-                onChangePipelineStageId={setPipelineStageId as any}
-                onExportPipelineStage={handleExportPipelineStage as any}
-                onExportPipelineAll={handleExportPipelineAll as any}
+                onChangePipelineStageId={setPipelineStageId}
+                onExportPipelineStage={handleExportPipelineStage}
+                onExportPipelineAll={handleExportPipelineAll}
               />
             </>
           )}

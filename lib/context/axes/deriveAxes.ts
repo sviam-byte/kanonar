@@ -56,7 +56,7 @@ function atom(
     confidence: 1,
     trace: { usedAtomIds, parts, notes },
     label: `${id.split(':')[1]}:${Math.round(clamp01(magnitude) * 100)}%`
-  } as any);
+  });
 }
 
 const AXES = [
@@ -519,7 +519,7 @@ export function deriveContextVectors(args: {
           parts: { raw: vRaw, tuned: v, tuning: tuning ?? null },
         },
         label: `${k}:${Math.round(v * 100)}%`
-      } as any);
+      });
     }
   }
 

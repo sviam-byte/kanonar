@@ -62,7 +62,7 @@ export const ValuePanel: React.FC<{ sceneDump?: any; snapshotV1?: any }> = ({ sc
     const ge: Record<string, number> =
       (decision?.goalEnergy && typeof decision.goalEnergy === 'object') ? decision.goalEnergy : {};
 
-    const rows = actionsRaw.map((a: any) => {
+    const rows = actionsRaw.map((a: Record<string, unknown>) => {
       const deltaGoals: Record<string, number> =
         (a?.deltaGoals || a?.why?.parts?.deltaGoals || a?.action?.deltaGoals || {}) as any;
 

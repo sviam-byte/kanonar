@@ -97,14 +97,14 @@ function mkDyadAtom(selfId: string, otherId: string, metric: string, magnitude: 
     tags: ['tom', 'dyad', metric],
     label: `${metric}:${Math.round(clamp01(magnitude) * 100)}%`,
     trace: { usedAtomIds: [`tom_state:${selfId}:${otherId}`], notes: ['from ToM state'], parts },
-  } as any);
+  });
 }
 
 function mkAcqAtom(selfId: string, otherId: string, name: string, magnitude: number, parts: any): ContextAtom {
   return normalizeAtom({
     id: `rel:acq:${selfId}:${otherId}:${name}`,
-    kind: 'acquaintance' as any,
-    ns: 'rel' as any,
+    kind: 'acquaintance',
+    ns: 'rel',
     origin: 'derived',
     source: 'acquaintance',
     magnitude: clamp01(magnitude),
@@ -114,7 +114,7 @@ function mkAcqAtom(selfId: string, otherId: string, name: string, magnitude: num
     tags: ['rel', 'acq', name],
     label: `acq.${name}:${Math.round(clamp01(magnitude) * 100)}%`,
     trace: { usedAtomIds: [], notes: ['acquaintance/recognition state'], parts },
-  } as any);
+  });
 }
 
 export function extractTomDyadAtoms(args: {
@@ -185,7 +185,7 @@ export function extractTomDyadAtoms(args: {
         target: otherId,
         tags: ['rel', 'tag', 'friend', 'tom_hint'],
         trace: { usedAtomIds: [`tom_state:${selfId}:${otherId}`], notes: ['trust+bond high'], parts: { trust: m.trust, bond: m.bond, threat } },
-      } as any));
+      }));
     }
 
     if (isLover) {
@@ -205,7 +205,7 @@ export function extractTomDyadAtoms(args: {
           notes: ['intimacy high'],
           parts: { trust: m.trust, bond: m.bond, intimacy, threat },
         },
-      } as any));
+      }));
     }
 
     if (isEnemy) {
@@ -221,7 +221,7 @@ export function extractTomDyadAtoms(args: {
         target: otherId,
         tags: ['rel', 'tag', 'enemy', 'tom_hint'],
         trace: { usedAtomIds: [`tom_state:${selfId}:${otherId}`], notes: ['threat high'], parts: { trust: m.trust, threat } },
-      } as any));
+      }));
     }
   }
 

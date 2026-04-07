@@ -158,7 +158,7 @@ export function buildBeliefToMBias(
       ],
       parts: { hostility, uncertainty, surveillance, publicness, normPressure, danger, meanTrust: meanTrust.mean, meanThreat: meanThreat.mean, socialSusp, bias }
     }
-  } as any));
+  }));
 
   return { bias, atoms: out };
 }

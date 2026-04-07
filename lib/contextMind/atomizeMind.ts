@@ -32,7 +32,7 @@ export function atomizeContextMindMetrics(selfId: string, contextMind: any): Con
         tags: ['mind', 'metric', key],
         label: `mind.${key}=${Math.round(value * 100)}%`,
         trace: { usedAtomIds: used, notes: ['materialized from contextMind.metrics'], parts: { key } },
-      } as any)
+      })
     );
   }
 

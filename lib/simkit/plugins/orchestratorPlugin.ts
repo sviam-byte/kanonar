@@ -401,7 +401,7 @@ export function makeOrchestratorPlugin(opts: { registry?: any; onPushToGoalLab?:
 
       for (const actorId of actorIds) {
         // Actor-scoped atoms (if your atoms encode subject; otherwise this is harmless).
-        const atoms = atomsAll.filter((a: any) => {
+        const atoms = atomsAll.filter((a: Record<string, unknown>) => {
           const subj = (a as any)?.subject;
           return !subj || String(subj) === String(actorId);
         });
@@ -410,7 +410,7 @@ export function makeOrchestratorPlugin(opts: { registry?: any; onPushToGoalLab?:
 
         // Per-actor temperature: makes characters diverge even under same world settings.
         // Uses trait.decisionTemperature (0..1) as variability knob.
-        const tAtom = atoms.find((a: any) => a?.id === `feat:char:${actorId}:trait.decisionTemperature`);
+        const tAtom = atoms.find((a: Record<string, unknown>) => a?.id === `feat:char:${actorId}:trait.decisionTemperature`);
         const traitT = clamp01(Number((tAtom as any)?.magnitude ?? 0.35));
         const T = Math.max(0.02, Math.min(1.5, Math.max(0, baseT) * (0.55 + 0.90 * traitT)));
 
@@ -717,7 +717,7 @@ export function makeOrchestratorPlugin(opts: { registry?: any; onPushToGoalLab?:
               };
             })
             .filter((x: any) => x.actorId && x.kind)
-        : (record?.trace?.actionsApplied || []).map((a: any) => ({
+        : (record?.trace?.actionsApplied || []).map((a: Record<string, unknown>) => ({
             actorId: a?.actorId ?? null,
             kind: a?.kind ?? null,
             targetId: a?.targetId ?? null,

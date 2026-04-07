@@ -135,8 +135,8 @@ export function computeActionCost(args: {
   
   const costAtom = normalizeAtom({
     id,
-    kind: 'action_cost' as any,
-    ns: 'cost' as any,
+    kind: 'action_cost',
+    ns: 'cost',
     origin: 'derived',
     source: 'cost',
     magnitude: total,
@@ -166,7 +166,7 @@ export function computeActionCost(args: {
       parts: { ...v, total, ...explain }
     },
     meta: { vector: v }
-  } as any);
+  });
 
   const actionCost: ActionCost = { actionId, targetId, cost: v, total, explain };
   return { actionCost, atoms: [costAtom] };

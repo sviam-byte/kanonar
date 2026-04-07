@@ -103,7 +103,7 @@ export const DecisionPanel: React.FC<Props> = ({ decision, selfId, castDecisions
     const bestQ = isNew ? Number(current?.q ?? 0) : Number(current?.score ?? 0);
     const alts = ranked.slice(0, 6).filter((_, i) => i !== sel).slice(0, 3);
 
-    const rows = alts.map((a: any) => {
+    const rows = alts.map((a: Record<string, unknown>) => {
       const node = isNew ? (a?.action || a) : a;
       const delta: Record<string, number> = isNew
         ? (node?.deltaGoals || {})
@@ -478,8 +478,8 @@ export const DecisionPanel: React.FC<Props> = ({ decision, selfId, castDecisions
                 <div className="p-3 rounded bg-black/20 border border-canon-border/30 text-xs">
                   <div className="font-bold text-canon-text-light mb-2 uppercase tracking-wider">Used Atoms</div>
                   <div className="font-mono text-[10px] text-canon-text-light break-all leading-relaxed">
-                    {arr(isNew ? current?.action?.supportAtoms?.map((a: any) => a?.id).filter(Boolean) : current.why?.usedAtomIds).slice(0, 80).join('  ')}
-                    {arr(isNew ? current?.action?.supportAtoms?.map((a: any) => a?.id).filter(Boolean) : current.why?.usedAtomIds).length > 80 && ' ...'}
+                    {arr(isNew ? current?.action?.supportAtoms?.map((a: Record<string, unknown>) => a?.id).filter(Boolean) : current.why?.usedAtomIds).slice(0, 80).join('  ')}
+                    {arr(isNew ? current?.action?.supportAtoms?.map((a: Record<string, unknown>) => a?.id).filter(Boolean) : current.why?.usedAtomIds).length > 80 && ' ...'}
                   </div>
                 </div>
               </>

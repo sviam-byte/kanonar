@@ -50,7 +50,7 @@ export function getCatalogTemplates(): CatalogTemplate[] {
           ns: spec.ns,
           origin: 'override',
           trace: { usedAtomIds: [], notes: [`created via catalog template: ${key}`] }
-        } as any);
+        });
 
         return atom;
       }

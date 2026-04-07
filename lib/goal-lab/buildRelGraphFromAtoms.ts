@@ -28,10 +28,10 @@ type RelGraph = {
 };
 
 function pickUpdatedAtTick(atom: ContextAtom): number | undefined {
-  const metaTick = (atom as any)?.meta?.updatedAtTick;
+  const metaTick = atom?.meta?.updatedAtTick;
   if (typeof metaTick === 'number') return metaTick;
 
-  const traceTick = (atom as any)?.trace?.parts?.lastUpdatedTick ?? (atom as any)?.trace?.parts?.updatedAtTick;
+  const traceTick = atom?.trace?.parts?.lastUpdatedTick ?? atom?.trace?.parts?.updatedAtTick;
   if (typeof traceTick === 'number') return traceTick;
 
   return undefined;
@@ -95,7 +95,7 @@ export function buildRelGraphFromAtoms(atoms: ContextAtom[]): RelGraph {
   };
 
   for (const atom of Array.isArray(atoms) ? atoms : []) {
-    const id = String((atom as any)?.id ?? '');
+    const id = String(atom?.id ?? '');
     const parts = id.split(':');
     if (parts.length < 3) continue;
 
@@ -105,17 +105,17 @@ export function buildRelGraphFromAtoms(atoms: ContextAtom[]): RelGraph {
       const otherId = parts[3];
       const edge = ensure(selfId, otherId);
 
-      const strength = Number((atom as any)?.magnitude ?? (atom as any)?.m ?? 0);
+      const strength = Number(atom?.magnitude ?? atom?.m ?? 0);
       if (Number.isFinite(strength)) edge.strength = clamp01(strength);
 
-      const tagsFromAtom = Array.isArray((atom as any)?.tags) ? (atom as any).tags.map(String) : [];
-      const label = String((atom as any)?.meta?.label ?? (atom as any)?.label ?? 'acquaintance');
+      const tagsFromAtom = Array.isArray(atom?.tags) ? atom.tags.map(String) : [];
+      const label = String(atom?.meta?.label ?? atom?.label ?? 'acquaintance');
       edge.tags = uniq([...(edge.tags || []), ...tagsFromAtom, label]);
 
       const updatedAt = pickUpdatedAtTick(atom as ContextAtom);
       if (typeof updatedAt === 'number') edge.updatedAtTick = Math.max(edge.updatedAtTick ?? 0, updatedAt);
 
-      const sources = (atom as any)?.meta?.sources;
+      const sources = atom?.meta?.sources;
       if (Array.isArray(sources)) edge.sources = sources as any;
 
       continue;
@@ -128,14 +128,14 @@ export function buildRelGraphFromAtoms(atoms: ContextAtom[]): RelGraph {
       const which = parts[4];
       const edge = ensure(selfId, otherId);
 
-      const v = Number((atom as any)?.magnitude ?? 0);
+      const v = Number(atom?.magnitude ?? 0);
       if (which === 'trust' && Number.isFinite(v)) edge.trustPrior = clamp01(v);
       if (which === 'threat' && Number.isFinite(v)) edge.threatPrior = clamp01(v);
 
       const updatedAt = pickUpdatedAtTick(atom as ContextAtom);
       if (typeof updatedAt === 'number') edge.updatedAtTick = Math.max(edge.updatedAtTick ?? 0, updatedAt);
 
-      const sources = (atom as any)?.meta?.sources;
+      const sources = atom?.meta?.sources;
       if (Array.isArray(sources)) edge.sources = sources as any;
 
       continue;
@@ -148,14 +148,14 @@ export function buildRelGraphFromAtoms(atoms: ContextAtom[]): RelGraph {
       const otherId = parts[4];
       const edge = ensure(selfId, otherId);
 
-      const v = Number((atom as any)?.magnitude ?? 0);
+      const v = Number(atom?.magnitude ?? 0);
       if (!edge.bioAspects) edge.bioAspects = {};
       if (Number.isFinite(v)) edge.bioAspects[aspect] = clamp01(v);
 
       const updatedAt = pickUpdatedAtTick(atom as ContextAtom);
       if (typeof updatedAt === 'number') edge.updatedAtTick = Math.max(edge.updatedAtTick ?? 0, updatedAt);
 
-      const sources = (atom as any)?.meta?.sources;
+      const sources = atom?.meta?.sources;
       if (Array.isArray(sources)) edge.sources = sources as any;
 
       continue;
@@ -168,14 +168,14 @@ export function buildRelGraphFromAtoms(atoms: ContextAtom[]): RelGraph {
       const otherId = parts[4];
       const edge = ensure(selfId, otherId);
 
-      const raw = Number((atom as any)?.meta?.raw);
+      const raw = Number(atom?.meta?.raw);
       if (!edge.bioVector) edge.bioVector = {};
       if (Number.isFinite(raw)) edge.bioVector[dim] = Math.max(-1, Math.min(1, raw));
 
       const updatedAt = pickUpdatedAtTick(atom as ContextAtom);
       if (typeof updatedAt === 'number') edge.updatedAtTick = Math.max(edge.updatedAtTick ?? 0, updatedAt);
 
-      const sources = (atom as any)?.meta?.sources;
+      const sources = atom?.meta?.sources;
       if (Array.isArray(sources)) edge.sources = sources as any;
 
       continue;
@@ -194,7 +194,7 @@ export function buildRelGraphFromAtoms(atoms: ContextAtom[]): RelGraph {
       const name = parts[4];
       const edge = ensure(selfId, otherId);
 
-      const v = Number((atom as any)?.magnitude ?? (atom as any)?.m ?? 0);
+      const v = Number(atom?.magnitude ?? atom?.m ?? 0);
       if (Number.isFinite(v)) {
         if (layer === 'base') {
           edge.base = edge.base || {};
@@ -206,7 +206,7 @@ export function buildRelGraphFromAtoms(atoms: ContextAtom[]): RelGraph {
       }
 
       // pull tags from atom.tags too
-      const tagsFromAtom = Array.isArray((atom as any)?.tags) ? (atom as any).tags.map(String) : [];
+      const tagsFromAtom = Array.isArray(atom?.tags) ? atom.tags.map(String) : [];
       edge.tags = uniq([...(edge.tags || []), ...tagsFromAtom]);
 
       const updatedAt = pickUpdatedAtTick(atom as ContextAtom);

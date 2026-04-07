@@ -85,7 +85,7 @@ export function deriveLensCtxAtoms(args: { selfId: string; atoms: ContextAtom[];
         usedAtomIds: sanitizeUsed(lensId, [...usedTraitIds, base.id].filter(Boolean)),
         parts: { axis, gain, base: base.magnitude, layer: base.layer }
       }
-    } as any));
+    }));
 
     const finId = `ctx:final:${axis}:${selfId}`;
     const adjusted = amp01(base.magnitude, gain);
@@ -104,7 +104,7 @@ export function deriveLensCtxAtoms(args: { selfId: string; atoms: ContextAtom[];
         parts: { axis, base: base.magnitude, adjusted, gain }
       },
       code: `ctx.axis.${axis}.final`
-    } as any));
+    }));
   }
 
   return { atoms: out };

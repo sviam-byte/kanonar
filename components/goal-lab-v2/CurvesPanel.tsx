@@ -50,8 +50,8 @@ export const CurvesPanel: React.FC<Props> = ({ atoms, selfId, world }) => {
     const defaults: Record<string, string> = { threat: 'sigmoid', norm: 'smoothstep', attachment: 'sqrt', curiosity: 'linear', status: 'pow2', autonomy: 'smoothstep', resource: 'linear', uncertainty: 'sigmoid' };
     return ['threat', 'norm', 'attachment', 'curiosity', 'status', 'autonomy', 'resource', 'uncertainty'].map(ch => {
       const spec = curves[ch] || defaults[ch] || 'smoothstep';
-      const raw = Number((atoms.find((a: any) => String(a?.id) === `ener:raw:${ch}:${selfId}`) as any)?.magnitude ?? 0);
-      const felt = Number((atoms.find((a: any) => String(a?.id) === `ener:felt:${ch}:${selfId}`) as any)?.magnitude ?? 0);
+      const raw = Number((atoms.find((a: Record<string, unknown>) => String(a?.id) === `ener:raw:${ch}:${selfId}`) as any)?.magnitude ?? 0);
+      const felt = Number((atoms.find((a: Record<string, unknown>) => String(a?.id) === `ener:felt:${ch}:${selfId}`) as any)?.magnitude ?? 0);
       return { ch, spec, raw, felt, specLabel: typeof spec === 'string' ? spec : spec?.type || '?' };
     });
   }, [atoms, selfId, world]);

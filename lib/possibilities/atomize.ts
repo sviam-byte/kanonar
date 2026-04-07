@@ -25,7 +25,7 @@ export function atomizePossibilities(poss: Possibility[] | any): ContextAtom[] {
       label: p.label,
       trace: { usedAtomIds: p.trace?.usedAtomIds || [], notes: p.trace?.notes || [], parts: p.trace?.parts || {} },
       meta: { blockedBy: p.blockedBy || [], requires: p.requires || [], ...p.meta }
-    } as any));
+    }));
   }
   return out;
 }

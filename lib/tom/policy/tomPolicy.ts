@@ -72,7 +72,7 @@ function mkAtom(
     tags: ['tom', 'policy'],
     label,
     trace: { usedAtomIds: Array.from(new Set(usedAtomIds.filter(Boolean))), parts }
-  } as any) as any;
+  }) as any;
 }
 
 export function buildTomPolicyLayer(
@@ -137,7 +137,7 @@ export function buildTomPolicyLayer(
       ],
       parts: { danger, crowd, publicness, surveillance, normPressure, uncertaintyCtx, stakes, timePressure, voi, S2 }
     }
-  } as any));
+  }));
 
   // ---------- dyad list ----------
   const eff = atoms.filter(a => typeof a.id === 'string' && a.id.startsWith(`tom:effective:dyad:${selfId}:`));

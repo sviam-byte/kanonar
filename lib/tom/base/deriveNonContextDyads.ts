@@ -8,7 +8,7 @@ function mk(selfId: string, otherId: string, metric: string, v: number, used: st
   return normalizeAtom({
     id: `tom:dyad:${selfId}:${otherId}:${metric}`,
     ns: 'tom',
-    kind: 'tom_dyad' as any,
+    kind: 'tom_dyad',
     origin: 'derived',
     source: 'tom_noncontext',
     subject: selfId,
@@ -18,7 +18,7 @@ function mk(selfId: string, otherId: string, metric: string, v: number, used: st
     tags: ['tom', 'dyad', metric],
     label: `tom.${metric}:${Math.round(clamp01(v) * 100)}%`,
     trace: { usedAtomIds: Array.from(new Set(used.filter(Boolean))), notes: ['rel:state -> tom:dyad'], parts }
-  } as any);
+  });
 }
 
 /**

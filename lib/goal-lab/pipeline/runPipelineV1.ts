@@ -161,12 +161,12 @@ function safeLogit01(p01: number): number {
 }
 
 function buildGoalLayerSnapshot(selfId: string, atomsAfterS7: ContextAtom[], goalRes: any, planRes: any) {
-  const domainAtoms = atomsAfterS7.filter((a: any) => a?.ns === 'goal' && typeof a?.id === 'string' && a.id.startsWith(`goal:domain:`) && a.id.endsWith(`:${selfId}`));
-  const activeDomainAtoms = atomsAfterS7.filter((a: any) => a?.ns === 'goal' && typeof a?.id === 'string' && a.id.startsWith(`goal:active:`) && a.id.endsWith(`:${selfId}`));
-  const modeAtom = atomsAfterS7.find((a: any) => a?.ns === 'goal' && typeof a?.id === 'string' && a.id === `goal:mode:${selfId}`) as any;
+  const domainAtoms = atomsAfterS7.filter((a: Record<string, unknown>) => a?.ns === 'goal' && typeof a?.id === 'string' && a.id.startsWith(`goal:domain:`) && a.id.endsWith(`:${selfId}`));
+  const activeDomainAtoms = atomsAfterS7.filter((a: Record<string, unknown>) => a?.ns === 'goal' && typeof a?.id === 'string' && a.id.startsWith(`goal:active:`) && a.id.endsWith(`:${selfId}`));
+  const modeAtom = atomsAfterS7.find((a: ContextAtom) => a?.ns === 'goal' && typeof a?.id === 'string' && a.id === `goal:mode:${selfId}`) as any;
 
   const domains = domainAtoms
-    .map((a: any) => {
+    .map((a: Record<string, unknown>) => {
       const id: string = String(a.id);
       const domain = id.split(':')[2] || id;
       const score01 = Number(a.magnitude ?? 0);
@@ -184,7 +184,7 @@ function buildGoalLayerSnapshot(selfId: string, atomsAfterS7: ContextAtom[], goa
     .sort((x: any, y: any) => (y.score01 ?? 0) - (x.score01 ?? 0));
 
   const activeDomains = activeDomainAtoms
-    .map((a: any) => {
+    .map((a: Record<string, unknown>) => {
       const id: string = String(a.id);
       const domain = id.split(':')[2] || id;
       return { id, domain, score01: Number(a.magnitude ?? 0), usedAtomIds: arr(a?.trace?.usedAtomIds).slice(0, 50) };
@@ -554,7 +554,7 @@ export function runGoalLabPipelineV1(input: {
     sceneSnapshot: (world as Record<string, unknown>).sceneSnapshot,
     includeAxes: false
   });
-  atoms = arr((s0 as any)?.mergedAtoms).map(normalizeAtom);
+  atoms = arr(s0?.mergedAtoms).map(normalizeAtom);
   // Observation snapshot (lite): best-effort visibility model for GoalLab console.
   // IMPORTANT: this does not replace the existing obs-atoms pipeline.
   const observationLite = observeLite({
@@ -571,17 +571,17 @@ export function runGoalLabPipelineV1(input: {
     },
   });
 
-  const s0ObsAtomIds = arr((s0 as any)?.obsAtoms)
+  const s0ObsAtomIds = arr(s0?.obsAtoms)
     .map((a: any) => String(a?.id || ''))
     .filter(Boolean);
   const s0RawObservations = arr(world.observations?.[selfId]).slice(0, 50);
 
   const beliefAtomIds = arr(agent?.memory?.beliefAtoms)
-    .map((a: any) => (typeof a?.id === 'string' ? a.id : null))
+    .map((a: Record<string, unknown>) => (typeof a?.id === 'string' ? a.id : null))
     .filter(Boolean) as string[];
 
   const overrideAtomIds = arr(input.manualAtoms)
-    .map((a: any) => (typeof a?.id === 'string' ? a.id : null))
+    .map((a: Record<string, unknown>) => (typeof a?.id === 'string' ? a.id : null))
     .filter(Boolean) as string[];
 
   stages.push({
@@ -599,8 +599,8 @@ export function runGoalLabPipelineV1(input: {
         ],
     stats: { atomCount: atoms.length, addedCount: atoms.length, ...stageStats(atoms) },
     artifacts: {
-      obsAtomsCount: arr((s0 as any)?.obsAtoms).length,
-      provenanceSize: ((s0 as any)?.provenance as any)?.size ?? 0,
+      obsAtomsCount: arr(s0?.obsAtoms).length,
+      provenanceSize: s0?.provenance?.size ?? 0,
       // Level 3.1: explicit observation snapshot (lite).
       observationSnapshot: {
         agentId: selfId,
@@ -660,10 +660,10 @@ export function runGoalLabPipelineV1(input: {
   // and the downstream context becomes "одинаковым" even when hazards exist.
   const s2Warnings: string[] = [];
   const sp = deriveSocialProximityAtoms({ selfId, atoms });
-  const hz = deriveHazardGeometryAtoms({ world, selfId, atoms } as any);
+  const hz = deriveHazardGeometryAtoms({ world, selfId, atoms });
 
-  const spAtoms = arr((sp as any)?.atoms).map(normalizeAtom);
-  const hzAtoms = arr((hz as any)?.atoms).map(normalizeAtom);
+  const spAtoms = arr(sp?.atoms).map(normalizeAtom);
+  const hzAtoms = arr(hz?.atoms).map(normalizeAtom);
 
   // Guardrails: detect "input present but module produced nothing".
   const hasNearby = atoms.some(a => typeof a?.id === 'string' && String(a.id).startsWith(`obs:nearby:${selfId}:`));
@@ -682,7 +682,7 @@ export function runGoalLabPipelineV1(input: {
   const atomsS2in = mS2a.atoms;
 
   const ctx = deriveAxes({ selfId, atoms: atomsS2in });
-  const ctxAtoms = arr((ctx as any)?.atoms).map(normalizeAtom);
+  const ctxAtoms = arr(ctx?.atoms).map(normalizeAtom);
   const ctxBaseCopies = cloneAsBaseCtxAtoms(ctxAtoms, selfId);
   const mS2b = mergeAtomsPreferNewer(atomsS2in, [...ctxAtoms, ...ctxBaseCopies]);
   const atomsS2 = mS2b.atoms;
@@ -711,7 +711,7 @@ export function runGoalLabPipelineV1(input: {
 
   // S3: lens (субъективные поправки)
   const lens = applyCharacterLens({ selfId, atoms, agent });
-  const mS3 = mergeAtomsPreferNewer(atoms, arr((lens as any)?.atoms));
+  const mS3 = mergeAtomsPreferNewer(atoms, (lens?.atoms ?? []));
   const atomsS3 = mS3.atoms;
   const s3Added = mS3.newIds;
   const s3Overridden = mS3.overriddenIds;
@@ -723,20 +723,20 @@ export function runGoalLabPipelineV1(input: {
     atomsAddedIds: s3Added,
     warnings: [],
     stats: { atomCount: atoms.length, addedCount: s3Added.length, ...stageStats(atoms) },
-    artifacts: { lens: (lens as any)?.lens, overriddenIds: s3Overridden }
+    artifacts: { lens: lens?.lens, overriddenIds: s3Overridden }
   });
 
   // S4: appraisal -> emotions
   const app = deriveAppraisalAtoms({ selfId, atoms });
-  const appAtoms = arr((app as any)?.atoms).map(normalizeAtom);
+  const appAtoms = arr(app?.atoms).map(normalizeAtom);
   const mS4a = mergeAtomsPreferNewer(atoms, appAtoms);
 
   const emo = deriveEmotionAtoms({ selfId, atoms: mS4a.atoms });
-  const emoAtoms = arr((emo as any)?.atoms).map(normalizeAtom);
+  const emoAtoms = arr(emo?.atoms).map(normalizeAtom);
   const mS4b = mergeAtomsPreferNewer(mS4a.atoms, emoAtoms);
 
   const dy = deriveDyadicEmotionAtoms({ selfId, atoms: mS4b.atoms });
-  const dyAtoms = arr((dy as any)?.atoms).map(normalizeAtom);
+  const dyAtoms = arr(dy?.atoms).map(normalizeAtom);
   const mS4c = mergeAtomsPreferNewer(mS4b.atoms, dyAtoms);
   const appraisedEvents = collectAppraisedEvents({
     selfId,
@@ -766,10 +766,10 @@ export function runGoalLabPipelineV1(input: {
   });
 
   // S5: ToM (priors/ctx/final + policy) + physical/social dyad factors
-  const enableToM = (input.sceneControl as any)?.enableToM !== false;
+  const enableToM = (input.sceneControl as Record<string, unknown> | undefined)?.enableToM !== false;
   if (enableToM) {
     const relPriors = applyRelationPriorsToDyads({ selfId, atoms });
-    const relAtoms = arr((relPriors as any)?.atoms).map(normalizeAtom);
+    const relAtoms = arr(relPriors?.atoms).map(normalizeAtom);
     const mS5a = mergeAtomsPreferNewer(atoms, relAtoms);
 
     const othersForTom = participantIds.filter(id => id && id !== selfId);
@@ -782,15 +782,15 @@ export function runGoalLabPipelineV1(input: {
     const mS5social = mergeAtomsPreferNewer(mS5phys.atoms, socialAtoms);
 
     const nonCtx = deriveNonContextDyadAtoms({ selfId, otherIds: othersForTom, atoms: mS5social.atoms });
-    const nonCtxAtoms = arr((nonCtx as any)?.atoms).map(normalizeAtom);
+    const nonCtxAtoms = arr(nonCtx?.atoms).map(normalizeAtom);
     const mS5x = mergeAtomsPreferNewer(mS5social.atoms, nonCtxAtoms);
 
     const beliefBias = buildBeliefToMBias({ selfId, atoms: mS5x.atoms });
-    const beliefAtoms = arr((beliefBias as any)?.atoms).map(normalizeAtom);
+    const beliefAtoms = arr(beliefBias?.atoms).map(normalizeAtom);
     const mS5b = mergeAtomsPreferNewer(mS5x.atoms, beliefAtoms);
 
     const policy = buildTomPolicyLayer({ selfId, atoms: mS5b.atoms });
-    const policyAtoms = arr((policy as any)?.atoms).map(normalizeAtom);
+    const policyAtoms = arr(policy?.atoms).map(normalizeAtom);
     const mS5c = mergeAtomsPreferNewer(mS5b.atoms, policyAtoms);
 
     const atomsS5 = mS5c.atoms;
@@ -842,13 +842,13 @@ export function runGoalLabPipelineV1(input: {
     ...(inhibitionOverrides ? { inhibitionOverrides } : {}),
     ...(driverInertia ? { driverInertia } : {}),
   });
-  const drvAtoms = arr((drv as any)?.atoms).map(normalizeAtom);
+  const drvAtoms = arr(drv?.atoms).map(normalizeAtom);
   const mS6b = mergeAtomsPreferNewer(mS6a.atoms, drvAtoms);
 
   // Personal context priorities are produced right after drivers so S7 goal ecology
   // can modulate domain activation through explicit ctx:prio:* atoms.
   const prio = deriveContextPriorities({ selfId, atoms: mS6b.atoms });
-  const prioAtoms = arr((prio as any)?.atoms).map(normalizeAtom);
+  const prioAtoms = arr(prio?.atoms).map(normalizeAtom);
   const mS6c = mergeAtomsPreferNewer(mS6b.atoms, prioAtoms);
 
   const atomsS6 = mS6c.atoms;
@@ -868,14 +868,14 @@ export function runGoalLabPipelineV1(input: {
   // S7: goals (ecology + active) + planning-goals
   // Safe: uses only existing atoms; if drv/life are missing it falls back to ctx.
   const goalTuning = agent?.goalTuning ?? null;
-  const goalRes = deriveGoalAtoms(selfId, atoms as any, { topN: 3, goalTuning });
-  const goalAtoms = arr((goalRes as any)?.atoms).map(normalizeAtom);
+  const goalRes = deriveGoalAtoms(selfId, atoms, { topN: 3, goalTuning });
+  const goalAtoms = arr(goalRes?.atoms).map(normalizeAtom);
 
   const planRes = derivePlanningGoalAtoms(selfId, mergeAtomsPreferNewer(atoms, goalAtoms).atoms as any, { topN: 5 });
-  const planAtoms = arr((planRes as any)?.atoms).map(normalizeAtom);
+  const planAtoms = arr(planRes?.atoms).map(normalizeAtom);
 
   const linkRes = deriveGoalActionLinkAtoms(selfId, mergeAtomsPreferNewer(atoms, goalAtoms).atoms);
-  const linkAtoms = arr((linkRes as any)?.atoms).map(normalizeAtom);
+  const linkAtoms = arr(linkRes?.atoms).map(normalizeAtom);
 
   const mS7a = mergeAtomsPreferNewer(atoms, goalAtoms);
   const mS7b = mergeAtomsPreferNewer(mS7a.atoms, planAtoms);
@@ -896,7 +896,7 @@ export function runGoalLabPipelineV1(input: {
       }
     }));
 
-  const mS7d = mergeAtomsPreferNewer(mS7c.atoms, utilAtoms as any);
+  const mS7d = mergeAtomsPreferNewer(mS7c.atoms, utilAtoms);
   const atomsS7 = mS7d.atoms;
   const s7Added = uniqStrings([...mS7a.newIds, ...mS7b.newIds, ...mS7c.newIds, ...mS7d.newIds]);
   const s7Overridden = uniqStrings([...mS7a.overriddenIds, ...mS7b.overriddenIds, ...mS7c.overriddenIds, ...mS7d.overriddenIds]);
@@ -913,7 +913,7 @@ export function runGoalLabPipelineV1(input: {
     recentEvents: collectRecentEventsForGoals({ tick, events: step.events }),
     appraisals: collectGoalAppraisals(appraisedEvents),
     beliefs: arr(agent?.memory?.beliefAtoms)
-      .map((a: any) => (typeof a?.id === 'string' ? a.id : null))
+      .map((a: Record<string, unknown>) => (typeof a?.id === 'string' ? a.id : null))
       .filter(Boolean) as string[],
     capabilities: [],
     recentActionKinds: [],
@@ -925,13 +925,13 @@ export function runGoalLabPipelineV1(input: {
   // project canonical GoalSpecV1 pressures into normal goal-atoms so downstream
   // layers can already "see" the new registry.
   const derivedGoalAtomsV1 = projectGoalPressuresToAtoms(derivedGoalPressuresV1);
-  const mS7e = mergeAtomsPreferNewer(atoms, derivedGoalAtomsV1 as any);
+  const mS7e = mergeAtomsPreferNewer(atoms, derivedGoalAtomsV1);
   // Layer F/G bridge (additive): derive intent candidates and action schemas from
   // canonical GoalSpecV1 pressures. These artifacts are currently observational and
   // do not replace legacy S8 choice logic.
   const intentCandidatesV1 = deriveIntentCandidatesV1(goalEvalCtx, derivedGoalPressuresV1);
   const intentAtomsV1 = projectIntentCandidatesToAtoms(intentCandidatesV1);
-  const mS7f = mergeAtomsPreferNewer(mS7e.atoms, intentAtomsV1 as any);
+  const mS7f = mergeAtomsPreferNewer(mS7e.atoms, intentAtomsV1);
   const actionSchemaCandidatesV1 = deriveActionSchemaCandidatesV1(intentCandidatesV1, goalEvalCtx);
   atoms = mS7f.atoms;
 
@@ -949,7 +949,7 @@ export function runGoalLabPipelineV1(input: {
     stats: { atomCount: atoms.length, addedCount: s7AddedFinal.length, ...stageStats(atoms) },
     artifacts: {
       goalAtomsCount: goalAtoms.length,
-      goalDebug: (goalRes as any)?.debug ?? null,
+      goalDebug: goalRes?.debug ?? null,
       goalLayerSnapshot,
       derivedGoalPressuresV1,
       projectedGoalAtomsV1: derivedGoalAtomsV1.map((a) => a.id),
@@ -970,7 +970,7 @@ export function runGoalLabPipelineV1(input: {
       planGoalAtomsCount: planAtoms.length,
       goalActionLinksCount: linkAtoms.length,
       utilAtomsCount: utilAtoms.length,
-      topPlanGoals: (planRes as any)?.top || [],
+      topPlanGoals: planRes?.top || [],
       overriddenIds: s7OverriddenFinal,
     }
   });
@@ -990,8 +990,8 @@ export function runGoalLabPipelineV1(input: {
     const externalOffersLike = externalPoss.map((p: any) => ({
       actorId: selfId,
       kind: String((p as any)?.meta?.sim?.kind ?? ''),
-      targetId: (p as any)?.targetId ?? null,
-      targetNodeId: (p as any)?.targetNodeId ?? null,
+      targetId: p?.targetId ?? null,
+      targetNodeId: p?.targetNodeId ?? null,
       score: Number((p as any)?.meta?.sim?.score ?? 0),
       blocked: false,
     }));
@@ -1000,7 +1000,7 @@ export function runGoalLabPipelineV1(input: {
 
     const locationId = agent?.locationId;
     const accessPack = deriveAccess(mS8a.atoms, selfId, locationId);
-    const accessAtoms = arr((accessPack as any)?.atoms).map(normalizeAtom);
+    const accessAtoms = arr(accessPack?.atoms).map(normalizeAtom);
     const mS8b = mergeAtomsPreferNewer(mS8a.atoms, accessAtoms);
 
     const otherIds = participantIds.filter(id => id && id !== selfId);
@@ -1030,10 +1030,10 @@ export function runGoalLabPipelineV1(input: {
         agent?.temperature ??
         1.0;
 
-    const enablePredict = (input.sceneControl as any)?.enablePredict === true;
-    const useLookaheadForChoice = (input.sceneControl as any)?.useLookaheadForChoice === true;
-    const lookaheadGamma = Number((input.sceneControl as any)?.lookaheadGamma ?? 0.7);
-    const lookaheadRisk = Number((input.sceneControl as any)?.lookaheadRiskAversion ?? (input.sceneControl as any)?.riskAversion ?? 0);
+    const enablePredict = (input.sceneControl as Record<string, unknown> | undefined)?.enablePredict === true;
+    const useLookaheadForChoice = (input.sceneControl as Record<string, unknown> | undefined)?.useLookaheadForChoice === true;
+    const lookaheadGamma = Number((input.sceneControl as Record<string, unknown> | undefined)?.lookaheadGamma ?? 0.7);
+    const lookaheadRisk = Number((input.sceneControl as Record<string, unknown> | undefined)?.lookaheadRiskAversion ?? (input.sceneControl as Record<string, unknown> | undefined)?.riskAversion ?? 0);
 
     // Build deterministic baseline ranking for lookahead (does not consume RNG channel).
     const rankedBaseline = actions
@@ -1055,13 +1055,13 @@ export function runGoalLabPipelineV1(input: {
         if (a && a !== selfId) continue;
         last = e;
       }
-      const id = String((last as any)?.actionId || (last as any)?.action || '');
+      const id = String((last as Record<string, unknown>)?.actionId || (last as Record<string, unknown>)?.action || '');
       return id && id !== 'undefined' && id !== 'null' ? id : '';
     })();
 
     const rankedForLookahead = (() => {
       if (!forcedActionId) return rankedBaseline;
-      const rest = rankedBaseline.filter((a: any) => String(a?.id || a?.actionId || a?.name || '') !== forcedActionId);
+      const rest = rankedBaseline.filter((a: Record<string, unknown>) => String(a?.id || a?.actionId || a?.name || '') !== forcedActionId);
       const forced = rankedBaseline.find((a: any) => String(a?.id || a?.actionId || a?.name || '') === forcedActionId) || { id: forcedActionId, q: (rest[0]?.q ?? 0) + 1e-6 };
       return [forced, ...rest];
     })();
@@ -1070,11 +1070,11 @@ export function runGoalLabPipelineV1(input: {
       ? buildTransitionSnapshot({
           selfId,
           tick,
-          seed: Number(input.observeLiteParams?.seed ?? (step as any)?.seed ?? 0),
+          seed: Number(input.observeLiteParams?.seed ?? step?.seed ?? 0),
           gamma: lookaheadGamma,
           riskAversion: lookaheadRisk,
           atoms: mS8c.atoms,
-          actions: rankedForLookahead.slice(0, 10).map((a: any) => ({
+          actions: rankedForLookahead.slice(0, 10).map((a: Record<string, unknown>) => ({
             id: String(a?.id || a?.actionId || a?.name || ''),
             kind: String(a?.kind || ''),
             qNow: Number(a?.q ?? 0),
@@ -1082,7 +1082,7 @@ export function runGoalLabPipelineV1(input: {
           goalEnergy,
           enableSensitivityZ0: true,
           observationLite: observationLite ? {
-            visibleAgentIds: arr((observationLite as any)?.visibleAgents).map((a: any) => String(a?.id || '')).filter(Boolean),
+            visibleAgentIds: arr(observationLite?.visibleAgents).map((a: Record<string, unknown>) => String(a?.id || '')).filter(Boolean),
             noiseSigma: Number(input.observeLiteParams?.noiseSigma ?? 0),
           } : undefined,
         })
@@ -1133,7 +1133,7 @@ export function runGoalLabPipelineV1(input: {
       qSamplingOverrides,
     });
 
-    const decisionAtoms = arr((decision as any)?.atoms).map(normalizeAtom);
+    const decisionAtoms = arr(decision?.atoms).map(normalizeAtom);
     const mS8d = mergeAtomsPreferNewer(mS8c.atoms, decisionAtoms);
     const atomsS8 = mS8d.atoms;
     const s8Added = uniqStrings([...mS8a.newIds, ...mS8b.newIds, ...mS8c.newIds, ...mS8d.newIds]);
@@ -1153,7 +1153,7 @@ export function runGoalLabPipelineV1(input: {
       return bad;
     })();
 
-    const rankedActions = arr((decision as any)?.ranked).map((r: any) => ({
+    const rankedActions = arr(decision?.ranked).map((r: Record<string, unknown>) => ({
       ...(r?.action || {}),
       q: Number(r?.q ?? 0),
       qUsed: Number(r?.qUsed ?? r?.q ?? 0),
@@ -1170,7 +1170,7 @@ export function runGoalLabPipelineV1(input: {
       const contribByGoal: Record<string, number> = {};
       let sum = 0;
       for (const [g, delta] of Object.entries(deltaGoals)) {
-        const w = Number((goalEnergy as any)?.[g] ?? 0);
+        const w = Number(goalEnergy[g] ?? 0);
         const d = Number(delta ?? 0);
         const c = w * d;
         contribByGoal[String(g)] = c;
@@ -1211,14 +1211,14 @@ export function runGoalLabPipelineV1(input: {
       };
     };
 
-    const bestRaw = (decision as any)?.best || null;
+    const bestRaw = decision?.best || null;
     const bestOverridden = forcedActionId
       ? (rankedActions.find((a: any) => String(a?.id || a?.actionId || a?.name || '') === forcedActionId) || { id: forcedActionId })
       : bestRaw;
 
     const rankedOverridden = (() => {
       if (!forcedActionId) return rankedActions;
-      const rest = rankedActions.filter((a: any) => String(a?.id || a?.actionId || a?.name || '') !== forcedActionId);
+      const rest = rankedActions.filter((a: Record<string, unknown>) => String(a?.id || a?.actionId || a?.name || '') !== forcedActionId);
       const forced = rankedActions.find((a: any) => String(a?.id || a?.actionId || a?.name || '') === forcedActionId) || { id: forcedActionId, q: (rest[0]?.q ?? 0) + 1e-6 };
       return [forced, ...rest];
     })();
@@ -1231,8 +1231,8 @@ export function runGoalLabPipelineV1(input: {
       }
     }
 
-    const decisionWarnings = arr<string>((decision as any)?.warnings);
-    const groundedSchemasV1 = groundSchemasToOffers(actionSchemaCandidatesV1, externalOffersLike as any, selfId).slice(0, 10);
+    const decisionWarnings = arr<string>(decision?.warnings);
+    const groundedSchemasV1 = groundSchemasToOffers(actionSchemaCandidatesV1, externalOffersLike, selfId).slice(0, 10);
     const communicativeIntent = (() => {
       // Prefer schema-layer communicative intent over legacy heuristic.
       const topCommSchema = actionSchemaCandidatesV1.find(
@@ -1277,8 +1277,8 @@ export function runGoalLabPipelineV1(input: {
 
     // Level 4.5: explicit mode/stabilizer snapshots for console observability.
     const modesSnapshot = {
-      fastMode: !!(input.sceneControl as any)?.fastMode,
-      source: (input as any)?.worldSource || 'derived',
+      fastMode: !!(input.sceneControl as Record<string, unknown> | undefined)?.fastMode,
+      source: (input as Record<string, unknown>)?.worldSource || 'derived',
       consoleMode: true,
       observe: {
         radius: input.observeLiteParams?.radius ?? null,
@@ -1286,7 +1286,7 @@ export function runGoalLabPipelineV1(input: {
         seed: input.observeLiteParams?.seed ?? null,
       },
       forcedActionId: forcedActionId || null,
-      enableToM: (input.sceneControl as any)?.enableToM !== false,
+      enableToM: (input.sceneControl as Record<string, unknown> | undefined)?.enableToM !== false,
       enablePredict: enablePredict,
       useLookaheadForChoice: useLookaheadForChoice,
       lookahead: enablePredict ? { gamma: lookaheadGamma, riskAversion: lookaheadRisk } : null,
@@ -1309,7 +1309,7 @@ export function runGoalLabPipelineV1(input: {
       stats: { atomCount: atomsS8.length, addedCount: s8Added.length, ...stageStats(atomsS8) },
       artifacts: {
         // Keep artifacts light: export is dominated by atoms; store only top scoring + access decisions.
-        accessDecisions: (accessPack as any)?.decisions || [],
+        accessDecisions: accessPack?.decisions || [],
         ranked: rankedOverridden.slice(0, 10),
         best: bestOverridden,
         groundedSchemasV1,
@@ -1366,8 +1366,8 @@ export function runGoalLabPipelineV1(input: {
               chosen,
             };
           })(),
-          ranked: arr((decision as any)?.ranked).slice(0, 10).map((r: any) => buildDecisionBreakdown(r?.action || {}, r?.q)),
-          rankedOverridden: rankedOverridden.slice(0, 10).map((a: any) => buildDecisionBreakdown(a, a?.q)),
+          ranked: arr(decision?.ranked).slice(0, 10).map((r: any) => buildDecisionBreakdown(r?.action || {}, r?.q)),
+          rankedOverridden: rankedOverridden.slice(0, 10).map((a: Record<string, unknown>) => buildDecisionBreakdown(a, a?.q)),
           best: bestOverridden ? buildDecisionBreakdown(bestOverridden as any, (bestOverridden as any)?.q ?? 0) : null,
           forcedActionId: forcedActionId || null,
           note: 'Decision breakdown: Q(a)=Σ_g goalEnergy[g]*Δg(a) - cost(a), then *confidence(a). contribByGoal are pre-confidence.',

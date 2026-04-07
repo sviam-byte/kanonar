@@ -97,7 +97,7 @@ function buildWorldStateFromSim(
 
 function atomsFromPipelineBeforeActions(pipeline: any): ContextAtom[] {
   const stages = arr<any>(pipeline?.stages);
-  const s7 = stages.find((s: any) => s?.stage === 'S7');
+  const s7 = stages.find((s: { stage?: string }) => s?.stage === 'S7');
   if (s7 && Array.isArray(s7.atoms)) return s7.atoms as ContextAtom[];
   const last = stages[stages.length - 1];
   return Array.isArray(last?.atoms) ? (last.atoms as ContextAtom[]) : [];

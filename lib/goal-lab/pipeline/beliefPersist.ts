@@ -63,7 +63,7 @@ export function buildBeliefPersistAtoms(input: BeliefPersistInput): BeliefPersis
       for (const [fk, val] of Object.entries(chosenEval.z1)) {
         beliefAtoms.push(normalizeAtom({
           id: `belief:predicted:${fk}:${selfId}`,
-          ns: 'belief' as any,
+          ns: 'belief',
           kind: 'belief_predicted_feature',
           origin: 'derived',
           source: 'beliefPersist',
@@ -78,7 +78,7 @@ export function buildBeliefPersistAtoms(input: BeliefPersistInput): BeliefPersis
             notes: [`S9 prediction for ${fk} after ${chosenAction.kind}`],
             parts: { tick, actionKind: chosenAction.kind, predictedValue: val },
           },
-        } as any));
+        }));
       }
     }
   }
@@ -87,7 +87,7 @@ export function buildBeliefPersistAtoms(input: BeliefPersistInput): BeliefPersis
   if (chosenAction) {
     beliefAtoms.push(normalizeAtom({
       id: `belief:chosen:${selfId}`,
-      ns: 'belief' as any,
+      ns: 'belief',
       kind: 'belief_chosen_action',
       origin: 'derived',
       source: 'beliefPersist',
@@ -104,7 +104,7 @@ export function buildBeliefPersistAtoms(input: BeliefPersistInput): BeliefPersis
         q: chosenAction.q,
       },
       trace: { usedAtomIds: [], notes: ['persisted chosen action for next tick'], parts: { tick } },
-    } as any));
+    }));
   }
 
   // 3) Goal feasibility beliefs — which goals can be advanced.
@@ -118,7 +118,7 @@ export function buildBeliefPersistAtoms(input: BeliefPersistInput): BeliefPersis
         const feasibility = clamp01((0.5 + delta * 2) * (0.6 + 0.4 * energyWeight));
         beliefAtoms.push(normalizeAtom({
           id: `belief:feasibility:${goalId}:${selfId}`,
-          ns: 'belief' as any,
+          ns: 'belief',
           kind: 'belief_goal_feasibility',
           origin: 'derived',
           source: 'beliefPersist',
@@ -133,7 +133,7 @@ export function buildBeliefPersistAtoms(input: BeliefPersistInput): BeliefPersis
             notes: [`goal feasibility from S9: delta=${delta.toFixed(3)}`],
             parts: { tick, goalId, delta },
           },
-        } as any));
+        }));
       }
     }
   }
@@ -141,16 +141,16 @@ export function buildBeliefPersistAtoms(input: BeliefPersistInput): BeliefPersis
   // 4) Surprise detection: compare prev tick predictions with current z₀.
   if (prevBeliefAtoms && transition?.z0) {
     for (const prev of prevBeliefAtoms) {
-      const id = String((prev as any)?.id || '');
+      const id = String(prev?.id || '');
       if (!id.startsWith('belief:predicted:') || !id.endsWith(`:${selfId}`)) continue;
       const fk = id.split(':')[2] as FeatureKey;
-      const predicted = clamp01(Number((prev as any)?.magnitude ?? 0));
+      const predicted = clamp01(Number(prev?.magnitude ?? 0));
       const actual = clamp01(Number((transition.z0.z as any)?.[fk] ?? 0));
       const surprise = Math.abs(actual - predicted);
       if (surprise > 0.05) {
         surpriseAtoms.push(normalizeAtom({
           id: `belief:surprise:${fk}:${selfId}`,
-          ns: 'belief' as any,
+          ns: 'belief',
           kind: 'belief_surprise',
           origin: 'derived',
           source: 'beliefPersist',
@@ -161,11 +161,11 @@ export function buildBeliefPersistAtoms(input: BeliefPersistInput): BeliefPersis
           label: `surprise.${fk}:${Math.round(surprise * 100)}%`,
           meta: { tick, feature: fk, predicted, actual, surprise },
           trace: {
-            usedAtomIds: [(prev as any)?.id],
+            usedAtomIds: [prev?.id],
             notes: [`predicted=${predicted.toFixed(2)}, actual=${actual.toFixed(2)}, surprise=${surprise.toFixed(2)}`],
             parts: { tick, feature: fk, predicted, actual },
           },
-        } as any));
+        }));
       }
     }
   }
@@ -177,7 +177,7 @@ export function buildBeliefPersistAtoms(input: BeliefPersistInput): BeliefPersis
       const pressure = clamp01(Number(value));
       beliefAtoms.push(normalizeAtom({
         id: `belief:pressure:${driverKey}:${selfId}`,
-        ns: 'belief' as any,
+        ns: 'belief',
         kind: 'belief_driver_pressure',
         origin: 'derived',
         source: 'beliefPersist',
@@ -192,7 +192,7 @@ export function buildBeliefPersistAtoms(input: BeliefPersistInput): BeliefPersis
           notes: ['persisted S6 driver pressure for temporal accumulation'],
           parts: { tick, driverKey, pressure },
         },
-      } as any));
+      }));
     }
   }
 

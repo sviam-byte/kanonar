@@ -40,7 +40,7 @@ export function materializeStageAtoms(
 
   const m = new Map<string, any>(
     arr((s0 as any).full)
-      .map((a: any) => [String(a?.id), a])
+      .map((a: Record<string, unknown>) => [String(a?.id), a])
       .filter(([id]) => id)
   );
 

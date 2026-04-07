@@ -775,7 +775,7 @@ export const GoalLabResults: React.FC<Props> = ({
                 const label = String(f?.title || f?.label || id);
                 const atoms = Array.isArray(f?.atoms) ? f.atoms : [];
                 const addedIds = Array.isArray(f?.atomsAddedIds) ? f.atomsAddedIds : [];
-                const added = addedIds.length ? atoms.filter((a: any) => addedIds.includes(String(a?.id))) : [];
+                const added = addedIds.length ? atoms.filter((a: Record<string, unknown>) => addedIds.includes(String(a?.id))) : [];
                 const overriddenIds = Array.isArray((f as any)?.artifacts?.overriddenIds)
                     ? ((f as any).artifacts.overriddenIds as any[]).map((x: any) => String(x)).filter(Boolean)
                     : [];

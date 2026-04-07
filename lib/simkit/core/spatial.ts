@@ -30,7 +30,7 @@ export const DEFAULT_SPATIAL_CONFIG: SpatialConfig = {
 
 // Read spatial config from world facts, with fallbacks to defaults.
 export function getSpatialConfig(world: SimWorld): SpatialConfig {
-  const raw = (world.facts || ({} as any))['spatial'];
+  const raw = (world.facts || ({}))['spatial'];
   const cfg = raw && typeof raw === 'object' ? raw : {};
   const pick = (k: keyof SpatialConfig, fb: number) => {
     const v = Number((cfg as any)[k]);

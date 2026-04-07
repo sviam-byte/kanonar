@@ -68,7 +68,7 @@ export const GoalActionGraphView: React.FC<Props> = ({ atoms, decision, selfId, 
     // New format: [{ action, q }]
     if (r.length && r[0]?.action) return r as any[];
     // Old format: ActionCandidate[] (q may be missing)
-    if (r.length && r[0]?.id) return r.map((a: any) => ({ action: a, q: Number(a?.q ?? a?.score ?? 0) }));
+    if (r.length && r[0]?.id) return r.map((a: Record<string, unknown>) => ({ action: a, q: Number(a?.q ?? a?.score ?? 0) }));
     return [];
   }, [decision]);
 

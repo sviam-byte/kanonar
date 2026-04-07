@@ -87,7 +87,7 @@ function mkActionEvent(world: SimWorld, type: string, payload: any): SimEvent {
 function annotateCanonicalAction(action: SimAction, world: SimWorld, extra?: Partial<any>) {
   const canonical = canonicalActionFromSimAction(action, world);
   const prevMeta = (action.meta ?? {}) as Record<string, unknown>;
-  (action as any).meta = {
+  action.meta = {
     ...prevMeta,
     canonicalAction: {
       ...canonical,
@@ -229,7 +229,7 @@ function mkSocialStartIntentOfferV1(args: {
 
 function featuresAtNode(world: SimWorld, locId: string, nodeId: string | undefined) {
   const loc = getLoc(world, locId);
-  const xs = Array.isArray((loc as any)?.features) ? (loc as any).features : [];
+  const xs = Array.isArray(loc?.features) ? (loc as any).features : [];
   if (!nodeId) return xs;
   return xs.filter((f: any) => !f.nodeId || f.nodeId === nodeId);
 }
@@ -334,7 +334,7 @@ function buildSpeechAtoms(
     goalScores,
   });
 
-  const speechAtoms = result.atoms.map((a: any) => ({
+  const speechAtoms = result.atoms.map((a: Record<string, unknown>) => ({
     id: String(a.id || ''),
     magnitude: Number(a.magnitude ?? 0),
     confidence: Number(a.confidence ?? 0.6),
@@ -406,8 +406,8 @@ const MoveXYSpec: ActionSpec = {
       const c = getChar(world, base.actorId);
       const locId = String((offer as any)?.payload?.locationId ?? c.locId);
       const loc = getLoc(world, locId);
-      const mapW = Number((loc as any)?.map?.width ?? (loc as any)?.width ?? 1024);
-      const mapH = Number((loc as any)?.map?.height ?? (loc as any)?.height ?? 768);
+      const mapW = Number(loc?.map?.width ?? (loc as any)?.width ?? 1024);
+      const mapH = Number(loc?.map?.height ?? (loc as any)?.height ?? 768);
       const x = Number((offer as any)?.payload?.x);
       const y = Number((offer as any)?.payload?.y);
       if (!Number.isFinite(x) || !Number.isFinite(y)) return { ...base, blocked: true, reason: 'v1:bad-xy', score: 0 };
@@ -438,8 +438,8 @@ const MoveXYSpec: ActionSpec = {
     const c = getChar(world, action.actorId);
     const locId = String(action.payload?.locationId ?? c.locId);
     const loc = getLoc(world, locId);
-    const mapW = Number((loc as any)?.map?.width ?? (loc as any)?.width ?? 1024);
-    const mapH = Number((loc as any)?.map?.height ?? (loc as any)?.height ?? 768);
+    const mapW = Number(loc?.map?.width ?? (loc as any)?.width ?? 1024);
+    const mapH = Number(loc?.map?.height ?? (loc as any)?.height ?? 768);
     const cfg = getSpatialConfig(world);
     const x0 = Number(action.payload?.x);
     const y0 = Number(action.payload?.y);
@@ -814,9 +814,9 @@ const TalkSpec: ActionSpec = {
     }
     // Append key atom summaries for narrative readability.
     const topAtomSummaries = speechData.atoms
-      .filter((a: any) => a.magnitude > 0.3)
+      .filter((a: Record<string, unknown>) => a.magnitude > 0.3)
       .slice(0, 3)
-      .map((a: any) => {
+      .map((a: Record<string, unknown>) => {
         const short = String(a.id || '').replace(/^ctx:/, '').replace(/:.*$/, '');
         return `${short}:${a.magnitude.toFixed(1)}`;
       });
@@ -1221,9 +1221,9 @@ const NegotiateSpec: ActionSpec = {
     }
     // Show top atoms being negotiated about.
     const topNegAtoms = speechData.atoms
-      .filter((a: any) => a.magnitude > 0.2)
+      .filter((a: Record<string, unknown>) => a.magnitude > 0.2)
       .slice(0, 3)
-      .map((a: any) => {
+      .map((a: Record<string, unknown>) => {
         const short = String(a.id || '').replace(/^ctx:/, '').replace(new RegExp(`:${c.id}$`), '');
         return `${short}:${a.magnitude.toFixed(1)}`;
       });
@@ -1511,7 +1511,7 @@ const StartIntentSpec: ActionSpec = {
     // Derive scriptId for debug/pipeline UI even if script is missing.
     const scriptId =
       safeIntentScript?.id ??
-      String((action.meta as any)?.scriptId ?? (payload as any)?.scriptId ?? null);
+      String((action.meta as Record<string, unknown>)?.scriptId ?? (payload as any)?.scriptId ?? null);
 
     world.facts[`intent:${c.id}`] = {
       id: intentId,
@@ -1554,8 +1554,8 @@ const StartIntentSpec: ActionSpec = {
       social: intent?.originalAction?.meta?.social ?? null,
       topic: intent?.originalAction?.meta?.topic ?? null,
     });
-    (action as any).meta = {
-      ...((action as any).meta || {}),
+    action.meta = {
+      ...(action.meta || {}),
       semanticOriginalAction: intent?.originalAction || null,
     };
     writeIntentRuntimeEvent(world, c.id, {
@@ -1725,8 +1725,8 @@ const ContinueIntentSpec: ActionSpec = {
           social: cur?.intent?.originalAction?.meta?.social ?? null,
           topic: cur?.intent?.originalAction?.meta?.topic ?? null,
         });
-        (action as any).meta = {
-          ...((action as any).meta || {}),
+        action.meta = {
+          ...(action.meta || {}),
           semanticOriginalAction: cur?.intent?.originalAction || null,
         };
         writeIntentRuntimeEvent(world, c.id, {
@@ -1820,8 +1820,8 @@ const ContinueIntentSpec: ActionSpec = {
         social: original?.meta?.social ?? null,
         topic: original?.meta?.topic ?? null,
       });
-      (action as any).meta = {
-        ...((action as any).meta || {}),
+      action.meta = {
+        ...(action.meta || {}),
         semanticOriginalAction: original || null,
       };
       writeIntentRuntimeEvent(world, c.id, {
@@ -1868,8 +1868,8 @@ const ContinueIntentSpec: ActionSpec = {
       social: cur?.intent?.originalAction?.meta?.social ?? null,
       topic: cur?.intent?.originalAction?.meta?.topic ?? null,
     });
-    (action as any).meta = {
-      ...((action as any).meta || {}),
+    action.meta = {
+      ...(action.meta || {}),
       semanticOriginalAction: cur?.intent?.originalAction || null,
     };
     writeIntentRuntimeEvent(world, c.id, {
@@ -1954,8 +1954,8 @@ const AbortIntentSpec: ActionSpec = {
       social: cur?.intent?.originalAction?.meta?.social ?? null,
       topic: cur?.intent?.originalAction?.meta?.topic ?? null,
     });
-    (action as any).meta = {
-      ...((action as any).meta || {}),
+    action.meta = {
+      ...(action.meta || {}),
       semanticOriginalAction: cur?.intent?.originalAction || null,
     };
     if (cur && typeof cur === 'object') cur.lifecycleState = 'aborted';
@@ -2028,8 +2028,8 @@ const RetreatSpec: ActionSpec = {
     const facts: any = world.facts || {};
 
     // Move toward nearest exit or highest-cover cell.
-    const cells: any[] = (loc as any)?.entity?.map?.cells;
-    const exits: any[] = (loc as any)?.entity?.map?.exits;
+    const cells: any[] = loc?.entity?.map?.cells;
+    const exits: any[] = loc?.entity?.map?.exits;
     const pos = getCharXY(world, c.id);
     const cfg = getSpatialConfig(world);
 

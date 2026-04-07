@@ -120,7 +120,7 @@ function toDecisionAtom(
         modifiers,
       },
     },
-  } as any);
+  });
 }
 
 export function decideAction(args: {

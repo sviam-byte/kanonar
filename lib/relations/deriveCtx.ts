@@ -12,7 +12,7 @@ function mk(selfId: string, otherId: string, name: string, v: number, usedAtomId
   return normalizeAtom({
     id: `rel:ctx:${selfId}:${otherId}:${name}`,
     ns: 'rel',
-    kind: 'relation_ctx' as any,
+    kind: 'relation_ctx',
     origin: 'derived',
     source: 'rel_ctx',
     magnitude: clamp01(v),
@@ -22,7 +22,7 @@ function mk(selfId: string, otherId: string, name: string, v: number, usedAtomId
     tags: ['rel', 'ctx', name],
     label: `rel.ctx.${name}=${Math.round(clamp01(v) * 100)}%`,
     trace: { usedAtomIds, notes: ['derived rel:ctx'], parts }
-  } as any);
+  });
 }
 
 /**

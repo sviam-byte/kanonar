@@ -39,8 +39,8 @@ function getRel(
 function mk(selfId: string, otherId: string, act: string, v: number, usedAtomIds: string[], parts: any): ContextAtom {
   return normalizeAtom({
     id: `act:prior:${selfId}:${otherId}:${act}`,
-    ns: 'act' as any,
-    kind: 'action_prior' as any,
+    ns: 'act',
+    kind: 'action_prior',
     origin: 'derived',
     source: 'action_priors',
     magnitude: clamp01(v),
@@ -50,7 +50,7 @@ function mk(selfId: string, otherId: string, act: string, v: number, usedAtomIds
     tags: ['act', 'prior', act],
     label: `prior.${act}:${Math.round(clamp01(v) * 100)}%`,
     trace: { usedAtomIds, notes: ['base action priors', 'goal ecology modulation'], parts }
-  } as any);
+  });
 }
 
 export function deriveActionPriors(args: {

@@ -37,7 +37,7 @@ function mk(selfId: string, goalId: string, v: number, usedAtomIds: string[], pa
 
   return normalizeAtom({
     id,
-    ns: 'goal' as any,
+    ns: 'goal',
     kind,
     origin: 'derived',
     source: kind === 'goal_plan' ? 'derivePlanningGoals' : 'selectActivePlanningGoals',
@@ -49,7 +49,7 @@ function mk(selfId: string, goalId: string, v: number, usedAtomIds: string[], pa
       ? `plan.${goalId}:${Math.round(clamp01(v) * 100)}%`
       : `activeGoal.${goalId}:${Math.round(clamp01(v) * 100)}%`,
     trace: { usedAtomIds: uniq(usedAtomIds), notes: [], parts }
-  } as any);
+  });
 }
 
 /**

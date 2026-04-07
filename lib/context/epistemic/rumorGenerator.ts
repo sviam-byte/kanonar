@@ -48,7 +48,7 @@ export function generateRumorBeliefs(input: {
         notes: ['generated from uncertainty'],
         parts: { uncertainty: u, uncertaintyLayer: unc.layer, strength, p: p1 }
       }
-    } as any));
+    }));
   }
 
   // 2) "The environment is hostile"
@@ -69,7 +69,7 @@ export function generateRumorBeliefs(input: {
         notes: ['generated from uncertainty'],
         parts: { uncertainty: u, uncertaintyLayer: unc.layer, strength, p: p2 }
       }
-    } as any));
+    }));
   }
 
   // Summary banner for UI
@@ -89,7 +89,7 @@ export function generateRumorBeliefs(input: {
         notes: ['belief banner'],
         parts: { uncertainty: u, uncertaintyLayer: unc.layer, strength }
       }
-    } as any));
+    }));
   }
 
   return out;

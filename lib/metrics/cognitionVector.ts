@@ -29,7 +29,7 @@ export function cognitionVector(cog?: CognitionProfile, opts?: { normalize?: boo
   if (!prior) return [];
   const th = prior.thinking;
   if (!th) return [];
-  const caps = prior.activityCaps ?? ({} as any);
+  const caps = prior.activityCaps ?? ({});
   const s = prior.scalars;
   const p = prior.policy;
 

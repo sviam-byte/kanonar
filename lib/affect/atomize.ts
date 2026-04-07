@@ -26,11 +26,11 @@ export function atomizeAffect(
       kind: 'affect',
       origin,
       source: 'affect',
-      magnitude: num((affect as any).valence, 0), // -1..+1
+      magnitude: num(affect.valence, 0), // -1..+1
       confidence: 1,
       tags: ['affect', 'emo'],
       subject: selfId,
-      label: `valence:${Math.round(num((affect as any).valence, 0) * 100) / 100}`,
+      label: `valence:${Math.round(num(affect.valence, 0) * 100) / 100}`,
       trace: { usedAtomIds: [], notes: ['core affect'] },
     } as any),
     normalizeAtom({
@@ -39,11 +39,11 @@ export function atomizeAffect(
       kind: 'affect',
       origin,
       source: 'affect',
-      magnitude: clamp01(num((affect as any).arousal, 0)),
+      magnitude: clamp01(num(affect.arousal, 0)),
       confidence: 1,
       tags: ['affect', 'emo'],
       subject: selfId,
-      label: `arousal:${Math.round(clamp01(num((affect as any).arousal, 0)) * 100)}%`,
+      label: `arousal:${Math.round(clamp01(num(affect.arousal, 0)) * 100)}%`,
       trace: { usedAtomIds: [], notes: ['core affect'] },
     } as any),
     normalizeAtom({
@@ -52,11 +52,11 @@ export function atomizeAffect(
       kind: 'affect',
       origin,
       source: 'affect',
-      magnitude: clamp01(num((affect as any).control, 0)),
+      magnitude: clamp01(num(affect.control, 0)),
       confidence: 1,
       tags: ['affect', 'emo'],
       subject: selfId,
-      label: `control:${Math.round(clamp01(num((affect as any).control, 0)) * 100)}%`,
+      label: `control:${Math.round(clamp01(num(affect.control, 0)) * 100)}%`,
       trace: { usedAtomIds: [], notes: ['core affect'] },
     } as any)
   );
@@ -69,11 +69,11 @@ export function atomizeAffect(
       kind: 'affect',
       origin,
       source: 'affect',
-      magnitude: clamp01(num((affect as any).stress, 0)),
+      magnitude: clamp01(num(affect.stress, 0)),
       confidence: 1,
       tags: ['affect', 'emo'],
       subject: selfId,
-      label: `stress:${Math.round(clamp01(num((affect as any).stress, 0)) * 100)}%`,
+      label: `stress:${Math.round(clamp01(num(affect.stress, 0)) * 100)}%`,
       trace: { usedAtomIds: [], notes: ['meta affect'] },
     } as any),
     normalizeAtom({
@@ -82,11 +82,11 @@ export function atomizeAffect(
       kind: 'affect',
       origin,
       source: 'affect',
-      magnitude: clamp01(num((affect as any).fatigue, 0)),
+      magnitude: clamp01(num(affect.fatigue, 0)),
       confidence: 1,
       tags: ['affect', 'emo'],
       subject: selfId,
-      label: `fatigue:${Math.round(clamp01(num((affect as any).fatigue, 0)) * 100)}%`,
+      label: `fatigue:${Math.round(clamp01(num(affect.fatigue, 0)) * 100)}%`,
       trace: { usedAtomIds: [], notes: ['meta affect'] },
     } as any),
     normalizeAtom({
@@ -95,17 +95,17 @@ export function atomizeAffect(
       kind: 'affect',
       origin,
       source: 'affect',
-      magnitude: clamp01(num((affect as any).dissociation, 0)),
+      magnitude: clamp01(num(affect.dissociation, 0)),
       confidence: 1,
       tags: ['affect', 'emo'],
       subject: selfId,
-      label: `dissociation:${Math.round(clamp01(num((affect as any).dissociation, 0)) * 100)}%`,
+      label: `dissociation:${Math.round(clamp01(num(affect.dissociation, 0)) * 100)}%`,
       trace: { usedAtomIds: [], notes: ['meta affect'] },
     } as any)
   );
 
   // Discrete emotions
-  const e = (affect as any).e || {};
+  const e = affect.e || {};
   for (const [k, vRaw] of Object.entries(e)) {
     const v = clamp01(num(vRaw, 0));
     if (v <= 0.001) continue;

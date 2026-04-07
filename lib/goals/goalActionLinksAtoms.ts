@@ -74,7 +74,7 @@ export function deriveGoalActionLinkAtoms(
       for (const actionKey of allKeys) {
         out.push(normalizeAtom({
         id: `goal:hint:allow:${goalId}:${actionKey}`,
-        ns: 'goal' as any,
+        ns: 'goal',
         kind: 'goal_action_link',
         origin: 'derived',
         source: 'GOAL_DEFS.allowedActions.contextual',
@@ -88,7 +88,7 @@ export function deriveGoalActionLinkAtoms(
           notes: ['contextual link: magnitude = 0.3 + 0.7 * avg(domain activation)'],
           parts: { goalId, actionKey, avgActivation, ecoDomains },
         },
-      } as any));
+      }));
       }
     }
   }

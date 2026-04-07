@@ -67,7 +67,7 @@ export function toSimActionFromPossibility(p: Possibility, tickIndex: number, ac
 
   return {
     id: `act:${kind}:${tickIndex}:${actorId}:poss:${k}`,
-    kind: kind as any,
+    kind: kind as ActionKind,
     actorId,
     targetId: targetId || null,
     targetNodeId: targetNodeId || null,
