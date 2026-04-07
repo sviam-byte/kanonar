@@ -29,6 +29,8 @@ import { applyRelationPriorsToDyads } from '../tom/base/applyRelationPriors';
 import { buildTomPolicyLayer } from '../tom/policy/tomPolicy';
 import { buildSelfAliases } from '../context/v2/aliases';
 import { computeThreatStack } from '../threat/threatStack';
+import type { ThreatBreakdown } from '../threat/threatStack';
+import { atomId, atomKind } from '../context/v2/atomAccessors';
 import { derivePossibilitiesRegistry } from '../possibilities/derive';
 import { atomizePossibilities } from '../possibilities/atomize';
 import { deriveAccess } from '../access/deriveAccess';
@@ -351,8 +353,8 @@ function dedupeAtomsById(arr0: ContextAtom[]): ContextAtom[] {
   const out: ContextAtom[] = [];
   for (let i = arr0.length - 1; i >= 0; i--) {
     const a = arr0[i];
-    if (!a || !(a as any).id) continue;
-    const id = String((a as any).id);
+    if (!a || !a.id) continue;
+    const id = String(a.id);
     if (seen.has(id)) continue;
     seen.add(id);
     out.unshift(a);
@@ -403,15 +405,15 @@ function buildSituationContextForLab(
 
   const timePressure =
     (typeof (snapshot.summary as any)?.timePressure === 'number' ? (snapshot.summary as any).timePressure : undefined) ??
-    (v4Atoms.find(a => (a as any).kind === 'time_pressure')?.magnitude ?? 0);
+    (v4Atoms.find(a => a.kind === 'time_pressure')?.magnitude ?? 0);
 
   const woundedPresent = v4Atoms.some(
-    a => (a as any).kind === 'care_need' || (a as any).kind === 'wounded_scene' || (a as any).kind === 'wounded'
+    a => a.kind === 'care_need' || a.kind === 'wounded_scene' || a.kind === 'wounded'
   );
 
   let scenarioKind: any = (ctxV2 as any).scenarioKind || 'other';
   if (!scenarioKind || scenarioKind === 'routine') {
-    const sId = (world as any).scenario?.id || '';
+    const sId = world.scenario?.id || '';
     if (sId.includes('council')) scenarioKind = 'strategic_council';
     else if (sId.includes('rescue') || sId.includes('evac')) scenarioKind = 'fight_escape';
     else if (sId.includes('training')) scenarioKind = 'patrol';
@@ -420,14 +422,14 @@ function buildSituationContextForLab(
 
   const crowdSize = (frame?.what?.nearbyAgents?.length ?? 0) + 1;
 
-  const leaderId = (world as any).leadership?.currentLeaderId;
+  const leaderId = world.leadership?.currentLeaderId;
   const leaderPresent =
     !!leaderId &&
-    (leaderId === (agent as any).entityId || (frame?.what?.nearbyAgents ?? []).some(a => (a as any)?.id === leaderId));
+    (leaderId === agent.entityId || (frame?.what?.nearbyAgents ?? []).some(a => a?.id === leaderId));
 
   return {
     scenarioKind,
-    stage: (world as any).scene?.currentPhaseId || 'default',
+    stage: world.scene?.currentPhaseId || 'default',
     threatLevel: Math.max(0, Math.min(1, threatLevel)),
     timePressure: Math.max(0, Math.min(1, timePressure)),
     woundedPresent: woundedPresent ? 1.0 : 0.0,
@@ -435,9 +437,9 @@ function buildSituationContextForLab(
     isFormal,
     isPrivate,
     crowdSize,
-    roleId: (agent as any).effectiveRole || 'any',
+    roleId: agent.effectiveRole || 'any',
     z: {},
-    affect: (agent as any).affect,
+    affect: agent.affect,
   } as any;
 }
 
@@ -457,22 +459,22 @@ export function buildGoalLabContext(
     devValidateAtoms?: boolean;
   } = {}
 ): GoalLabContextResult | null {
-  let agent = (world as any).agents.find((a: any) => a.entityId === agentId);
+  let agent: AgentState | undefined = world.agents.find(a => a.entityId === agentId);
   if (!agent) return null;
 
   // 1. Build Frame (Legacy / Visuals only)
   const frame = buildFullAgentContextFrame(world, agentId, undefined, { persistAffect: false });
 
   // Atomize frame for debug purposes (legacy logic) - DO NOT USE FOR TRUTH
-  const t = opts.timeOverride ?? (world as any).tick ?? 0;
+  const t = opts.timeOverride ?? world.tick ?? 0;
   const legacyFrameAtoms = frame ? atomizeFrame(frame, t, world).map(normalizeAtom) : [];
 
   // --- Merge selected legacy atoms into snapshot atoms for UI/debug panels ---
   // Reason: legacyFrameAtoms include soc_acq_* (recognition) + rel:* labels, but snapshot.atoms previously omitted them.
   const legacyUiAtoms = (legacyFrameAtoms || []).filter(a => {
-    const id = String((a as any)?.id || '');
-    const ns = String((a as any)?.ns || '');
-    const kind = String((a as any)?.kind || '');
+    const id = atomId(a);
+    const ns = String((a as Record<string, unknown>)?.ns ?? '');
+    const kind = atomKind(a);
 
     // Recognition / identification atoms.
     if (ns === 'soc' && (kind.startsWith('soc_acq_') || kind === 'soc_identify_as')) return true;
@@ -491,33 +493,33 @@ export function buildGoalLabContext(
   // Apply affect overrides from UI knobs (must affect ALL downstream calculations).
   const affectOverrides = (opts.snapshotOptions as any)?.affectOverrides;
   if (affectOverrides && typeof affectOverrides === 'object') {
-    const prev = (agent as any).affect || null;
+    const prev = agent.affect || null;
     const merged = {
       ...(prev || {}),
       ...affectOverrides,
-      e: { ...((prev as any)?.e || {}), ...((affectOverrides as any)?.e || {}) },
-      regulation: { ...((prev as any)?.regulation || {}), ...((affectOverrides as any)?.regulation || {}) },
-      moral: { ...((prev as any)?.moral || {}), ...((affectOverrides as any)?.moral || {}) },
+      e: { ...((prev as Record<string, unknown>)?.e as Record<string, unknown> || {}), ...((affectOverrides as Record<string, unknown>)?.e as Record<string, unknown> || {}) },
+      regulation: { ...((prev as Record<string, unknown>)?.regulation as Record<string, unknown> || {}), ...((affectOverrides as Record<string, unknown>)?.regulation as Record<string, unknown> || {}) },
+      moral: { ...((prev as Record<string, unknown>)?.moral as Record<string, unknown> || {}), ...((affectOverrides as Record<string, unknown>)?.moral as Record<string, unknown> || {}) },
     };
-    agent = { ...(agent as any), affect: normalizeAffectState(merged) } as any;
+    agent = { ...agent, affect: normalizeAffectState(merged) };
   }
 
   // Belief Atoms
-  const beliefAtoms = [...(((agent as any).memory?.beliefAtoms as any[]) || [])];
+  const beliefAtoms = [...(agent.memory?.beliefAtoms || [])];
 
   // Events
-  const tick = (world as any)?.tick ?? 0;
-  const worldEvents = (world as any)?.eventLog?.events || [];
-  const overrideEvents = (opts.snapshotOptions as any)?.overrideEvents || [];
+  const tick = world.tick ?? 0;
+  const worldEvents = world.eventLog?.events || [];
+  const overrideEvents = ((opts.snapshotOptions ?? {}) as Record<string, unknown>).overrideEvents as unknown[] || [];
   const eventsAllRaw = [...overrideEvents, ...worldEvents];
   const eventsAll = adaptToWorldEvents({ events: eventsAllRaw, fallbackTick: tick });
 
-  const selfId = (agent as any).entityId;
-  const arousal = (agent as any).affect?.arousal ?? 0;
+  const selfId = agent.entityId;
+  const arousal = agent.affect?.arousal ?? 0;
 
   // Crowd atom for stage 0 input (optional)
-  const ctxCrowdAtom = legacyFrameAtoms.find(a => (a as any).id === 'soc_crowd_density' || (a as any).kind === 'crowding_pressure');
-  const ctxCrowd = ctxCrowdAtom ? (ctxCrowdAtom as any).magnitude : 0;
+  const ctxCrowdAtom = legacyFrameAtoms.find(a => a.id === 'soc_crowd_density' || a.kind === 'crowding_pressure');
+  const ctxCrowd = ctxCrowdAtom ? ctxCrowdAtom.magnitude : 0;
 
   // --- SCENE ENGINE INTEGRATION ---
   const sc = (opts.snapshotOptions as any)?.sceneControl;
@@ -527,14 +529,14 @@ export function buildGoalLabContext(
     // participants define the closed ToM/affect "scene graph"
     const participantIds = Array.isArray((opts.snapshotOptions as any)?.participantIds)
       ? (opts.snapshotOptions as any).participantIds
-      : arr((world as any)?.agents).map((a: any) => a.entityId || a.id).filter(Boolean);
+      : world.agents.map(a => a.entityId || a.id).filter(Boolean);
 
     sceneInst = createSceneInstance({
       presetId: sc.presetId,
       sceneId: sc.sceneId || `scene_${sc.presetId}`,
       startedAtTick: tick,
       participants: participantIds,
-      locationId: (agent as any).locationId || getLocationForAgent(world, selfId)?.entityId,
+      locationId: agent.locationId || getLocationForAgent(world, selfId)?.entityId,
       metricsOverride: sc.metrics || {},
       normsOverride: sc.norms || {},
       seed: Number.isFinite(sc.seed) ? Number(sc.seed) : undefined,
@@ -547,7 +549,7 @@ export function buildGoalLabContext(
       sceneInst.phaseEnteredAtTick = tick;
     }
   } else {
-    sceneInst = (world as any).sceneSnapshot;
+    sceneInst = (world as Record<string, unknown>).sceneSnapshot;
   }
 
   // --- Location override (GoalLab UI) ---
@@ -627,20 +629,20 @@ export function buildGoalLabContext(
     const pipelineStages: PipelineStageDelta[] = [];
 
     const compactAtom = (a: ContextAtom): PipelineAtomStub => {
-      const id = String((a as any).id ?? '');
+      const id = String(a.id ?? '');
       const stub: PipelineAtomStub = {
         id,
-        magnitude: Number((a as any).magnitude ?? 0),
-        confidence: Number((a as any).confidence ?? 1),
-        origin: (a as any).origin ?? undefined,
-        ns: (a as any).ns ?? undefined,
-        kind: (a as any).kind ?? undefined,
-        source: (a as any).source ?? undefined,
-        label: (a as any).label ?? undefined,
-        code: (a as any).code ?? undefined,
+        magnitude: Number(a.magnitude ?? 0),
+        confidence: Number(a.confidence ?? 1),
+        origin: a.origin ?? undefined,
+        ns: a.ns ?? undefined,
+        kind: a.kind ?? undefined,
+        source: a.source ?? undefined,
+        label: a.label ?? undefined,
+        code: a.code ?? undefined,
       };
 
-      const tr = (a as any).trace;
+      const tr = a.trace;
       if (tr) {
         const used = Array.isArray(tr.usedAtomIds) ? tr.usedAtomIds.map(String) : undefined;
         const keepParts =
@@ -667,7 +669,7 @@ export function buildGoalLabContext(
     };
 
     const atomSig = (a: ContextAtom) => {
-      const tr = (a as any).trace;
+      const tr = a.trace;
       const usedIdsRaw = Array.isArray(tr?.usedAtomIds) ? tr.usedAtomIds.map(String) : [];
       const usedIds = Array.from(new Set(usedIdsRaw.filter(Boolean))).sort();
       const usedLen = usedIds.length;
@@ -702,13 +704,13 @@ export function buildGoalLabContext(
         partsHash = stableHashInt32(s.length > 4000 ? s.slice(0, 4000) : s);
       }
       return [
-        (a as any).id,
-        (a as any).magnitude ?? 0,
-        (a as any).confidence ?? 1,
-        (a as any).origin ?? '',
-        (a as any).ns ?? '',
-        (a as any).kind ?? '',
-        (a as any).source ?? '',
+        a.id,
+        a.magnitude ?? 0,
+        a.confidence ?? 1,
+        a.origin ?? '',
+        a.ns ?? '',
+        a.kind ?? '',
+        a.source ?? '',
         // usedAtomIds: include both len and hash of content (not just len)
         usedLen,
         usedHash,
@@ -734,12 +736,12 @@ export function buildGoalLabContext(
           meta: o?.meta,
         });
         prevAtoms = next;
-        prevMap = new Map(next.map(a => [String((a as any).id), atomSig(a)]));
+        prevMap = new Map(next.map(a => [String(a.id), atomSig(a)]));
         prevStageId = id;
         return;
       }
 
-      const curMap = new Map(next.map(a => [String((a as any).id), atomSig(a)]));
+      const curMap = new Map(next.map(a => [String(a.id), atomSig(a)]));
       const prevIds = new Set(prevMap.keys());
       const curIds = new Set(curMap.keys());
 
@@ -755,7 +757,7 @@ export function buildGoalLabContext(
         if (!curIds.has(id0)) removedIds.push(id0);
       }
 
-      const byId = new Map(next.map(a => [String((a as any).id), a]));
+      const byId = new Map(next.map(a => [String(a.id), a]));
 
       pipelineStages.push({
         id,
@@ -828,7 +830,7 @@ export function buildGoalLabContext(
 
     // Axes (strict staging): derive base ctx axes from canonical atoms, then apply tuning overlays.
     // Tuning merge order (earlier -> later): scene/frame -> auto (from life domains/traits) -> agent explicit.
-    const sceneTuning = (frame?.what as any)?.contextTuning || (world as any).scene?.contextTuning;
+    const sceneTuning = (frame?.what as Record<string, unknown>)?.contextTuning || world.scene?.contextTuning;
     const autoTuning = buildAutoContextTuning(selfId, atomsPreAxes);
     const agentTuning = (agentForPipeline as any)?.contextTuning;
     const tuning = mergeContextTuning(mergeContextTuning(sceneTuning, autoTuning), agentTuning);
@@ -861,11 +863,12 @@ export function buildGoalLabContext(
     pushStage('S1a', 'S1a • access constraints', atomsAfterAccess);
 
     // Rumors
+    const worldSceneSnapshot = (world as Record<string, unknown>).sceneSnapshot as Record<string, unknown> | undefined;
     const seed =
       Number.isFinite((sceneInst as any)?.seed) ? Number((sceneInst as any).seed) :
       Number.isFinite((sceneSnapshotForStage0 as any)?.seed) ? Number((sceneSnapshotForStage0 as any).seed) :
-      Number.isFinite((world as any).sceneSnapshot?.seed) ? Number((world as any).sceneSnapshot.seed) :
-      stableHashInt32(String((sceneInst as any)?.sceneId ?? (world as any)?.scenarioId ?? 'goal-lab') + '::' + String(selfId));
+      Number.isFinite(worldSceneSnapshot?.seed) ? Number(worldSceneSnapshot?.seed) :
+      stableHashInt32(String((sceneInst as any)?.sceneId ?? (world as Record<string, unknown>)?.scenarioId ?? 'goal-lab') + '::' + String(selfId));
 
     const rumorBeliefs = generateRumorBeliefs({ atomsAfterAxes: atomsAfterAccess, selfId, tick, seed });
     const atomsAfterBeliefGen = [...atomsAfterAccess, ...rumorBeliefs];
@@ -942,10 +945,10 @@ export function buildGoalLabContext(
     const tomCtxDyads: ContextAtom[] = [];
 
     const dyadEntries = (() => {
-      const entries = atomsAfterBias.filter(a => String((a as any).id).startsWith('tom:dyad:'));
+      const entries = atomsAfterBias.filter(a => String(a.id).startsWith('tom:dyad:'));
       const map = new Map<string, ContextAtom>(); // key = target|metric ; value = chosen atom
       for (const a of entries) {
-        const id = String((a as any).id);
+        const id = String(a.id);
         const parts = id.split(':');
 
         let isFinal = false;
@@ -969,7 +972,7 @@ export function buildGoalLabContext(
         const prev = map.get(key);
         if (!prev) map.set(key, a);
         else {
-          const prevIsFinal = String((prev as any).id).split(':')[2] === 'final';
+          const prevIsFinal = String(prev.id).split(':')[2] === 'final';
           if (isFinal && !prevIsFinal) map.set(key, a);
         }
       }
@@ -987,7 +990,7 @@ export function buildGoalLabContext(
       const target = e.target;
 
       if (e.metric === 'trust') {
-        const trust = clamp01((a as any).magnitude ?? 0);
+        const trust = clamp01(a.magnitude ?? 0);
         const trust2 = clamp01(trust * (1 - 0.6 * bias));
         tomCtxDyads.push(
           normalizeAtom({
@@ -1003,16 +1006,16 @@ export function buildGoalLabContext(
             target,
             label: `trust_ctx:${Math.round(trust2 * 100)}%`,
             trace: {
-              usedAtomIds: [String((a as any).id), `tom:ctx:bias:${selfId}`],
+              usedAtomIds: [String(a.id), `tom:ctx:bias:${selfId}`],
               notes: ['trust adjusted by ctx bias'],
-              parts: { trust, bias, baseId: String((a as any).id) },
+              parts: { trust, bias, baseId: String(a.id) },
             },
           } as any)
         );
       }
 
       if (e.metric === 'threat') {
-        const thr = clamp01((a as any).magnitude ?? 0);
+        const thr = clamp01(a.magnitude ?? 0);
         const thr2 = clamp01(thr + 0.6 * bias * (1 - thr));
         tomCtxDyads.push(
           normalizeAtom({
@@ -1028,9 +1031,9 @@ export function buildGoalLabContext(
             target,
             label: `threat_ctx:${Math.round(thr2 * 100)}%`,
             trace: {
-              usedAtomIds: [String((a as any).id), `tom:ctx:bias:${selfId}`],
+              usedAtomIds: [String(a.id), `tom:ctx:bias:${selfId}`],
               notes: ['threat adjusted by ctx bias'],
-              parts: { thr, bias, baseId: String((a as any).id) },
+              parts: { thr, bias, baseId: String(a.id) },
             },
           } as any)
         );
@@ -1043,7 +1046,7 @@ export function buildGoalLabContext(
 
     const getMag = (atoms: ContextAtom[], id: string, fb = 0) => {
       const a = atoms.find(x => String((x as any).id) === id);
-      const m = (a as any)?.magnitude;
+      const m = a?.magnitude;
       return typeof m === 'number' && Number.isFinite(m) ? m : fb;
     };
 
@@ -1058,7 +1061,7 @@ export function buildGoalLabContext(
 
       if (metric === 'trust' || metric === 'threat') {
         const ctxId = `tom:dyad:${selfId}:${target}:${metric}_ctx`;
-        const ctx = atomsAfterCtx.find(a => String((a as any).id) === ctxId);
+        const ctx = atomsAfterCtx.find(a => String(a.id) === ctxId);
         if (ctx) {
           eff = clamp01((ctx as any).magnitude ?? base);
           usedIds.push(ctxId);
@@ -1069,7 +1072,7 @@ export function buildGoalLabContext(
         const baseThreatId = (() => {
           const fin = `tom:dyad:final:${selfId}:${target}:threat`;
           const baseId = `tom:dyad:${selfId}:${target}:threat`;
-          return atomsAfterCtx.some(a => String((a as any).id) === fin) ? fin : baseId;
+          return atomsAfterCtx.some(a => String(a.id) === fin) ? fin : baseId;
         })();
 
         const baseThreat = getMag(atomsAfterCtx, baseThreatId, 0);
@@ -1110,8 +1113,8 @@ export function buildGoalLabContext(
     const otherIdsForPriors = Array.from(
       new Set(
         atomsAfterBias
-          .filter(a => String((a as any).id).startsWith(`tom:dyad:${selfId}:`))
-          .map(a => String((a as any).id).split(':')[3] || (a as any).target)
+          .filter(a => String(a.id).startsWith(`tom:dyad:${selfId}:`))
+          .map(a => String(a.id).split(':')[3] || (a as Record<string, unknown>).target)
           .filter(Boolean)
       )
     ) as string[];
@@ -1127,11 +1130,11 @@ export function buildGoalLabContext(
 
     const getMagThreat = (id: string, fb = 0) => {
       const a = atomsForThreat.find(x => String((x as any).id) === id);
-      const m = (a as any)?.magnitude;
+      const m = a?.magnitude;
       return typeof m === 'number' && Number.isFinite(m) ? m : fb;
     };
     const firstByPrefix = (prefix: string) =>
-      atomsForThreat.find(a => String((a as any)?.id || '').startsWith(prefix))?.id || null;
+      atomsForThreat.find(a => String(a?.id || '').startsWith(prefix))?.id || null;
 
     const ctxDanger = getMagThreat(`ctx:danger:${selfId}`, 0);
     const coverId = firstByPrefix(`world:map:cover:${selfId}`) || firstByPrefix(`ctx:cover:${selfId}`) || null;
@@ -1145,14 +1148,14 @@ export function buildGoalLabContext(
     const woundedPressure = getMagThreat(`ctx:wounded:${selfId}`, 0) || getMagThreat(`ctx:careNeed:${selfId}`, 0);
 
     const effTrust = atomsForThreat
-      .filter(a => String((a as any).id).startsWith(`tom:effective:dyad:${selfId}:`) && String((a as any).id).endsWith(`:trust`))
-      .map(a => Number((a as any).magnitude ?? 0))
+      .filter(a => String(a.id).startsWith(`tom:effective:dyad:${selfId}:`) && String(a.id).endsWith(`:trust`))
+      .map(a => Number(a.magnitude ?? 0))
       .sort((a, b) => b - a)
       .slice(0, 5);
 
     const effThreat = atomsForThreat
-      .filter(a => String((a as any).id).startsWith(`tom:effective:dyad:${selfId}:`) && String((a as any).id).endsWith(`:threat`))
-      .map(a => Number((a as any).magnitude ?? 0))
+      .filter(a => String(a.id).startsWith(`tom:effective:dyad:${selfId}:`) && String(a.id).endsWith(`:threat`))
+      .map(a => Number(a.magnitude ?? 0))
       .sort((a, b) => b - a)
       .slice(0, 5);
 
@@ -1178,14 +1181,14 @@ export function buildGoalLabContext(
       woundedPressure,
       goalBlock: Math.max(timePressure, scarcity),
 
-      paranoia: (agent as any)?.traits?.paranoia ?? 0.35,
-      trauma: (agent as any)?.traits?.trauma ?? 0,
-      exhaustion: (agent as any)?.body?.fatigue ?? 0,
-      dissociation: (agent as any)?.traits?.dissociation ?? 0,
-      experience: (agent as any)?.traits?.experience ?? 0.5,
+      paranoia: Number(((agent as Record<string, unknown>).traits as Record<string, unknown>)?.paranoia ?? 0.35),
+      trauma: Number(((agent as Record<string, unknown>).traits as Record<string, unknown>)?.trauma ?? 0),
+      exhaustion: Number(agent.body?.fatigue ?? 0),
+      dissociation: Number(((agent as Record<string, unknown>).traits as Record<string, unknown>)?.dissociation ?? 0),
+      experience: Number(((agent as Record<string, unknown>).traits as Record<string, unknown>)?.experience ?? 0.5),
     };
 
-    const threatCalc = computeThreatStack(threatInputs as any, atomsForThreat as any);
+    const threatCalc: ThreatBreakdown = computeThreatStack(threatInputs as any, atomsForThreat);
 
     const threatAtoms: ContextAtom[] = [
       normalizeAtom({
@@ -1194,11 +1197,11 @@ export function buildGoalLabContext(
         ns: 'threat' as any,
         origin: 'derived',
         source: 'threat',
-        magnitude: (threatCalc as any).env,
+        magnitude: threatCalc.env,
         confidence: 1,
         tags: ['threat', 'channel', 'env'],
-        label: `env threat:${Math.round((threatCalc as any).env * 100)}%`,
-        trace: { usedAtomIds: (threatCalc as any).usedAtomIds || [], notes: ['env channel'], parts: { env: (threatCalc as any).env } },
+        label: `env threat:${Math.round(threatCalc.env * 100)}%`,
+        trace: { usedAtomIds: threatCalc.usedAtomIds || [], notes: ['env channel'], parts: { env: threatCalc.env } },
       } as any),
       normalizeAtom({
         id: `threat:ch:social:${selfId}`,
@@ -1206,11 +1209,11 @@ export function buildGoalLabContext(
         ns: 'threat' as any,
         origin: 'derived',
         source: 'threat',
-        magnitude: (threatCalc as any).social,
+        magnitude: threatCalc.social,
         confidence: 1,
         tags: ['threat', 'channel', 'social'],
-        label: `social threat:${Math.round((threatCalc as any).social * 100)}%`,
-        trace: { usedAtomIds: (threatCalc as any).usedAtomIds || [], notes: ['social channel'], parts: { social: (threatCalc as any).social } },
+        label: `social threat:${Math.round(threatCalc.social * 100)}%`,
+        trace: { usedAtomIds: threatCalc.usedAtomIds || [], notes: ['social channel'], parts: { social: threatCalc.social } },
       } as any),
       normalizeAtom({
         id: `threat:ch:scenario:${selfId}`,
@@ -1218,11 +1221,11 @@ export function buildGoalLabContext(
         ns: 'threat' as any,
         origin: 'derived',
         source: 'threat',
-        magnitude: (threatCalc as any).scenario,
+        magnitude: threatCalc.scenario,
         confidence: 1,
         tags: ['threat', 'channel', 'scenario'],
-        label: `scenario threat:${Math.round((threatCalc as any).scenario * 100)}%`,
-        trace: { usedAtomIds: (threatCalc as any).usedAtomIds || [], notes: ['scenario channel'], parts: { scenario: (threatCalc as any).scenario } },
+        label: `scenario threat:${Math.round(threatCalc.scenario * 100)}%`,
+        trace: { usedAtomIds: threatCalc.usedAtomIds || [], notes: ['scenario channel'], parts: { scenario: threatCalc.scenario } },
       } as any),
       normalizeAtom({
         id: `threat:ch:personal:${selfId}`,
@@ -1230,25 +1233,25 @@ export function buildGoalLabContext(
         ns: 'threat' as any,
         origin: 'derived',
         source: 'threat',
-        magnitude: (threatCalc as any).personal,
+        magnitude: threatCalc.personal,
         confidence: 1,
         tags: ['threat', 'channel', 'personal'],
-        label: `personal bias:${Math.round((threatCalc as any).personal * 100)}%`,
-        trace: { usedAtomIds: (threatCalc as any).usedAtomIds || [], notes: ['personal bias channel'], parts: { personal: (threatCalc as any).personal } },
+        label: `personal bias:${Math.round(threatCalc.personal * 100)}%`,
+        trace: { usedAtomIds: threatCalc.usedAtomIds || [], notes: ['personal bias channel'], parts: { personal: threatCalc.personal } },
       } as any),
     ];
 
-    const authority = clamp01(((threatCalc as any).inputs as any)?.hierarchyPressure ?? 0);
+    const authority = clamp01(Number((threatCalc.inputs as Record<string, unknown>)?.hierarchyPressure ?? 0));
     const uncertainty = clamp01(
       (() => {
-        const u = atomsForThreat.find(a => (a as any).id === `ctx:uncertainty:${selfId}`)?.magnitude;
+        const u = atomsForThreat.find(a => a.id === `ctx:uncertainty:${selfId}`)?.magnitude;
         if (typeof u === 'number' && Number.isFinite(u)) return u;
-        const ia = atomsForThreat.find(a => (a as any).id === `obs:infoAdequacy:${selfId}`)?.magnitude;
+        const ia = atomsForThreat.find(a => a.id === `obs:infoAdequacy:${selfId}`)?.magnitude;
         if (typeof ia === 'number' && Number.isFinite(ia)) return 1 - ia;
         return 0;
       })()
     );
-    const body = clamp01(((threatCalc as any).inputs as any)?.woundedPressure ?? 0);
+    const body = clamp01(Number((threatCalc.inputs as Record<string, unknown>)?.woundedPressure ?? 0));
 
     threatAtoms.push(
       normalizeAtom({
@@ -1261,7 +1264,7 @@ export function buildGoalLabContext(
         confidence: 1,
         tags: ['threat', 'channel', 'authority'],
         label: `authority pressure:${Math.round(authority * 100)}%`,
-        trace: { usedAtomIds: (threatCalc as any).usedAtomIds || [], notes: ['authority channel'], parts: { authority } },
+        trace: { usedAtomIds: threatCalc.usedAtomIds || [], notes: ['authority channel'], parts: { authority } },
       } as any),
       normalizeAtom({
         id: `threat:ch:uncertainty:${selfId}`,
@@ -1273,7 +1276,7 @@ export function buildGoalLabContext(
         confidence: 1,
         tags: ['threat', 'channel', 'uncertainty'],
         label: `uncertainty pressure:${Math.round(uncertainty * 100)}%`,
-        trace: { usedAtomIds: (threatCalc as any).usedAtomIds || [], notes: ['uncertainty channel'], parts: { uncertainty } },
+        trace: { usedAtomIds: threatCalc.usedAtomIds || [], notes: ['uncertainty channel'], parts: { uncertainty } },
       } as any),
       normalizeAtom({
         id: `threat:ch:body:${selfId}`,
@@ -1285,7 +1288,7 @@ export function buildGoalLabContext(
         confidence: 1,
         tags: ['threat', 'channel', 'body'],
         label: `body pressure:${Math.round(body * 100)}%`,
-        trace: { usedAtomIds: (threatCalc as any).usedAtomIds || [], notes: ['body channel'], parts: { body } },
+        trace: { usedAtomIds: threatCalc.usedAtomIds || [], notes: ['body channel'], parts: { body } },
       } as any)
     );
 
@@ -1295,14 +1298,14 @@ export function buildGoalLabContext(
       ns: 'threat' as any,
       origin: 'derived',
       source: 'threat',
-      magnitude: (threatCalc as any).total,
+      magnitude: threatCalc.total,
       confidence: 1,
       tags: ['threat', 'final'],
-      label: `Threat: ${Math.round((threatCalc as any).total * 100)}%`,
+      label: `Threat: ${Math.round(threatCalc.total * 100)}%`,
       trace: {
-        usedAtomIds: (threatCalc as any).usedAtomIds || [],
-        notes: (threatCalc as any).why?.slice(0, 6) || ['threat stack'],
-        parts: { ...(threatCalc as any) },
+        usedAtomIds: threatCalc.usedAtomIds || [],
+        notes: threatCalc.why?.slice(0, 6) || ['threat stack'],
+        parts: { ...threatCalc },
       },
     } as any);
 
@@ -1639,7 +1642,7 @@ export function buildGoalLabContext(
   const lookaheadSeedBase = (() => {
     const s = Number((sc as any)?.seed);
     if (Number.isFinite(s)) return s;
-    const w = Number((world as any)?.rngSeed);
+    const w = Number(world.rngSeed);
     if (Number.isFinite(w)) return w;
     return Number(getGlobalRunSeed() || 0);
   })();
@@ -1648,7 +1651,7 @@ export function buildGoalLabContext(
   const transitionSnapshot = enablePredict
     ? buildTransitionSnapshot({
         seed: lookaheadSeedBase + (Number.isFinite(decisionNonce) ? decisionNonce * 1000 : 0),
-        tick: Number((world as any)?.tick ?? 0),
+        tick: Number(world.tick ?? 0),
         gamma: lookaheadGamma,
         riskAversion: lookaheadRisk,
         atoms: atomsWithMind,
@@ -1693,7 +1696,7 @@ export function buildGoalLabContext(
         ? () => (decideRng as any).next()
         : () => 0.5,
     temperature:
-      (world as any)?.decisionTemperature ??
+      world.decisionTemperature ??
       (agentForPipeline as any)?.behavioralParams?.T0 ??
       (agentForPipeline as any)?.temperature ??
       1.0,
@@ -1715,7 +1718,7 @@ export function buildGoalLabContext(
     : { enabled: false };
 
   if (forcedActionId) {
-    const forced = actions.find(a => String((a as any)?.id || '') === forcedActionId) || null;
+    const forced = actions.find(a => String(a?.id || '') === forcedActionId) || null;
     if (forced) {
       const qForced = scoreAction(forced as any, goalEnergy as any);
       const prevRanked = Array.isArray((decision as any).ranked) ? (decision as any).ranked : [];
@@ -1761,7 +1764,7 @@ export function buildGoalLabContext(
 
   // Drop legacy scene:* atoms in favor of canonical ctx:src:scene:* inputs.
   (snapshot as any).atoms = sortAtomsDeterministic(
-    (atomsWithDecision || []).filter(a => !String((a as any)?.id || '').startsWith('scene:'))
+    (atomsWithDecision || []).filter(a => !String(a?.id || '').startsWith('scene:'))
   );
   (snapshot as any).validation = validation;
   (snapshot as any).decision = decision;
