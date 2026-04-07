@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import type { ContextAtom } from '../../lib/context/v2/types';
 import type { GoalLabSnapshotV1 } from '../../lib/goal-lab/snapshotTypes';
+import type { GoalLabPipelineV1 } from '../../lib/goal-lab/pipeline/runPipelineV1';
 
 import { Tabs } from '../Tabs';
 import { CastComparePanel } from '../goal-lab/CastComparePanel';
@@ -28,24 +29,24 @@ function asArray<T>(x: any): T[] {
 
 export const DebugShell: React.FC<{
   snapshotV1: GoalLabSnapshotV1 | null;
-  pipelineV1?: any;
-  pipelineFrame?: any;
+  pipelineV1?: GoalLabPipelineV1 | null;
+  pipelineFrame?: Record<string, unknown> | null;
   pipelineStageId: string;
   onChangePipelineStageId: (id: string) => void;
 
-  castRows: any[];
+  castRows: Record<string, unknown>[];
   perspectiveId: string | null;
   onSetPerspectiveId: (id: string) => void;
 
   passportAtoms: ContextAtom[];
   passportMeta?: { stageId?: string; source?: string; warnings?: string[] };
-  contextualMind?: any;
-  locationScores?: any;
-  tomScores?: any;
-  tom?: any;
-  atomDiff?: any;
+  contextualMind?: Record<string, unknown> | null;
+  locationScores?: Record<string, unknown> | null;
+  tomScores?: Record<string, unknown> | null;
+  tom?: Record<string, unknown> | null;
+  atomDiff?: Record<string, unknown> | null;
 
-  sceneDump?: any;
+  sceneDump?: Record<string, unknown> | null;
   onDownloadScene?: () => void;
   onImportScene?: () => void;
 

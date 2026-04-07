@@ -20,7 +20,7 @@ function mk(selfId: string, otherId: string, value: number, usedAtomIds: string[
       notes: ['Derived physical threat from body/combat/weapon/proximity cues'],
       parts,
     },
-  } as any);
+  });
 }
 
 /**

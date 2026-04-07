@@ -64,7 +64,7 @@ export function atomizeObservations(world: WorldState, agent: AgentState, input:
     tags: ['obs', 'quality'],
     label: `info:${Math.round(quality * 100)}%`,
     trace: { usedAtomIds: [], notes: ['computed from visibility/crowd/chaos/arousal'], parts }
-  } as any));
+  }));
 
   // 2. Observations of others ("Who is nearby?")
   // IMPORTANT:
@@ -102,7 +102,7 @@ export function atomizeObservations(world: WorldState, agent: AgentState, input:
           tags: ['obs', 'nearby'],
           label: `near:${otherId} c=${Math.round(closeness * 100)}%`,
           trace: { usedAtomIds: ['obs:infoAdequacy'], notes: ['distance->closeness with confidence'], parts: { d, maxD, quality } }
-        } as any));
+        }));
 
         // LOS proxy
         const los = closeness > 0.2 ? 1 : 0;
@@ -119,7 +119,7 @@ export function atomizeObservations(world: WorldState, agent: AgentState, input:
           tags: ['obs', 'los'],
           label: `los:${otherId}=${los}`,
           trace: { usedAtomIds: [`obs:nearby:${otherId}:closeness`, 'obs:infoAdequacy'], notes: ['simple LOS proxy'], parts: { closeness } }
-        } as any));
+        }));
       }
   }
 

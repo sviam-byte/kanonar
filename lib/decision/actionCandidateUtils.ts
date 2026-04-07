@@ -84,7 +84,7 @@ function readCtxSignal(atoms: ContextAtom[], selfId: string, axis: string, fallb
 function readFirstFinite(atoms: ContextAtom[], ids: string[], fallback = 0) {
   for (const id of ids) {
     const atom = getAtom(atoms, id);
-    const value = Number((atom as any)?.magnitude ?? Number.NaN);
+    const value = Number(atom?.magnitude ?? Number.NaN);
     if (Number.isFinite(value)) {
       return { value, usedAtomIds: [id], atomId: id };
     }
@@ -270,13 +270,13 @@ function buildCostBreakdown(args: {
   why: WhyDraft;
 }) {
   const { selfId, atoms, possibility, why } = args;
-  const baseCost = clamp01(Number((possibility as any)?.cost ?? (possibility as any)?.meta?.cost ?? 0));
+  const baseCost = clamp01(Number(possibility?.cost ?? possibility?.meta?.cost ?? 0));
   const runtimeCost = computeActionCost({ selfId, atoms, p: possibility });
   const runtimeScalar = clamp01(Number(runtimeCost?.cost ?? baseCost));
   const runtimeUsedIds = arr<string>(runtimeCost?.usedAtomIds);
   const runtimeObservedIds = runtimeUsedIds.filter((id) => Boolean(getAtom(atoms, id)));
   const runtimeHasSignal = runtimeObservedIds.length > 0;
-  const costAtomId = typeof (possibility as any)?.costAtomId === 'string' ? String((possibility as any).costAtomId) : null;
+  const costAtomId = typeof possibility?.costAtomId === 'string' ? String((possibility as any).costAtomId) : null;
   const hasBaseSignal = baseCost > 0 || Boolean(costAtomId);
   const runtimeWeight = runtimeHasSignal ? (hasBaseSignal ? 0.75 : 1.0) : 0.0;
   const baseWeight = runtimeHasSignal ? (hasBaseSignal ? 0.25 : 0.0) : 1.0;
@@ -307,7 +307,7 @@ function buildCostBreakdown(args: {
 
 function readWorldTick(atoms: ContextAtom[]): number | null {
   for (const atom of atoms) {
-    const id = String((atom as any)?.id || '');
+    const id = String(atom?.id || '');
     if (!id.startsWith('world:tick:')) continue;
     const n = Number(id.slice('world:tick:'.length));
     if (Number.isFinite(n)) return n;

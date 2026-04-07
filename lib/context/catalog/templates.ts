@@ -46,7 +46,7 @@ export const ATOM_TEMPLATES: AtomTemplate[] = [
       ns: 'ctx',
       origin: 'override',
       trace: { usedAtomIds: [], notes: ['created via template: ctx_axis'] }
-    } as any)
+    })
   },
 
   {
@@ -69,7 +69,7 @@ export const ATOM_TEMPLATES: AtomTemplate[] = [
       ns: 'threat',
       origin: 'override',
       trace: { usedAtomIds: [], notes: ['created via template: threat_value'] }
-    } as any)
+    })
   },
 
   {
@@ -96,7 +96,7 @@ export const ATOM_TEMPLATES: AtomTemplate[] = [
       target: String(a.other),
       meta: { metric: a.metric },
       trace: { usedAtomIds: [], notes: ['created via template: tom_dyad'] }
-    } as any)
+    })
   },
 
   {
@@ -123,7 +123,7 @@ export const ATOM_TEMPLATES: AtomTemplate[] = [
       target: String(a.other),
       meta: { label: a.label },
       trace: { usedAtomIds: [], notes: ['created via template: rel_label'] }
-    } as any)
+    })
   },
 
   {
@@ -147,6 +147,6 @@ export const ATOM_TEMPLATES: AtomTemplate[] = [
       ns: 'misc',
       origin: 'override',
       trace: { usedAtomIds: [], notes: ['created via template: manual_generic'] }
-    } as any)
+    })
   }
 ];

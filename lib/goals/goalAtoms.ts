@@ -83,7 +83,7 @@ function clampPos(x: number): number {
 }
 
 function get(atoms: ContextAtom[], id: string, def: number): number {
-  const a = atoms.find(x => (x as any)?.id === id) as any;
+  const a = atoms.find(x => x?.id === id) as any;
   if (!a) return def;
   const v = Number(a.magnitude);
   return Number.isFinite(v) ? v : def;
@@ -156,7 +156,7 @@ function mkGoalAtom(selfId: string, domain: GoalDomain, v: number, usedAtomIds: 
   const id = `goal:domain:${domain}:${selfId}`;
   return normalizeAtom({
     id,
-    ns: 'goal' as any,
+    ns: 'goal',
     kind: 'goal_domain',
     origin: 'derived',
     source: 'deriveGoalEcology',
@@ -171,14 +171,14 @@ function mkGoalAtom(selfId: string, domain: GoalDomain, v: number, usedAtomIds: 
       notes: ['goal ecology from drivers + context'],
       parts
     }
-  } as any);
+  });
 }
 
 function mkActiveGoal(selfId: string, domain: GoalDomain, v: number, usedAtomIds: string[], parts: any) {
   const id = `goal:active:${domain}:${selfId}`;
   return normalizeAtom({
     id,
-    ns: 'goal' as any,
+    ns: 'goal',
     kind: 'goal_active',
     origin: 'derived',
     source: 'selectActiveGoals',
@@ -193,14 +193,14 @@ function mkActiveGoal(selfId: string, domain: GoalDomain, v: number, usedAtomIds
       notes: ['top goals selection'],
       parts
     }
-  } as any);
+  });
 }
 
 function mkModeAtom(selfId: string, mode: string, weights: any, usedAtomIds: string[], parts: any) {
   const id = `goal:mode:${selfId}`;
   return normalizeAtom({
     id,
-    ns: 'goal' as any,
+    ns: 'goal',
     kind: 'goal_mode',
     origin: 'derived',
     source: 'selectMode',
@@ -216,14 +216,14 @@ function mkModeAtom(selfId: string, mode: string, weights: any, usedAtomIds: str
       notes: ['mixture-of-experts mode selection'],
       parts
     }
-  } as any);
+  });
 }
 
 function mkGoalStateAtom(selfId: string, domain: GoalDomain, st: GoalState, usedAtomIds: string[], parts: any) {
   const id = `goal:state:${domain}:${selfId}`;
   return normalizeAtom({
     id,
-    ns: 'goal' as any,
+    ns: 'goal',
     kind: 'goal_state',
     origin: 'derived',
     source: 'updateGoalState',
@@ -239,7 +239,7 @@ function mkGoalStateAtom(selfId: string, domain: GoalDomain, st: GoalState, used
       notes: ['goal state (tension/lockIn/fatigue/progress)'],
       parts
     }
-  } as any);
+  });
 }
 
 /**
@@ -571,15 +571,15 @@ export function deriveGoalAtoms(selfId: string, atoms: ContextAtom[], opts?: { t
     const antiFatigue = clamp01(1 - FC.goal.antiFatiguePenalty * st.fatigue);
     const antiSaturation = clamp01(1 - FC.goal.saturationPenalty * (st.saturation ?? 0));
     e.v = clamp01(e.v * boost * antiFatigue * antiSaturation);
-    (e.parts as any).mode = effectiveMode;
-    (e.parts as any).modeWeights = W;
-    (e.parts as any).bias = bias;
-    (e.parts as any).boost = boost;
-    (e.parts as any).antiFatigue = antiFatigue;
-    (e.parts as any).saturation = st.saturation ?? 0;
-    (e.parts as any).antiSaturation = antiSaturation;
-    (e.parts as any).surpriseOverride = surpriseOverrideMode;
-    (e.parts as any).prevState = st;
+    e.parts.mode = effectiveMode;
+    e.parts.modeWeights = W;
+    e.parts.bias = bias;
+    e.parts.boost = boost;
+    e.parts.antiFatigue = antiFatigue;
+    e.parts.saturation = st.saturation ?? 0;
+    e.parts.antiSaturation = antiSaturation;
+    e.parts.surpriseOverride = surpriseOverrideMode;
+    e.parts.prevState = st;
   }
 
   // ------------------------------------------------------------
@@ -680,14 +680,14 @@ export function deriveGoalAtoms(selfId: string, atoms: ContextAtom[], opts?: { t
       const { ecologyWeight, energyWeight } = FC.goal.energyBlend;
       const blended = clamp01(ecologyWeight * e.v + energyWeight * energyScore);
       e.v = blended;
-      (e.parts as any).energy = {
+      e.parts.energy = {
         score: energyScore,
         raw,
         byChannel,
         weights: w,
       };
       // Keep attribution only for debug; it is potentially heavy.
-      (e.parts as any).energyAttribution = {
+      e.parts.energyAttribution = {
         threat: (energy.attributionByChannel as any)?.threat?.[goalId] ?? [],
         uncertainty: (energy.attributionByChannel as any)?.uncertainty?.[goalId] ?? [],
       };
@@ -699,7 +699,7 @@ export function deriveGoalAtoms(selfId: string, atoms: ContextAtom[], opts?: { t
   for (const e of ecology) {
     const before = e.v;
     e.v = applyGoalTuning(e.domain, e.v, goalTuning);
-    (e.parts as any).goalTuning = {
+    e.parts.goalTuning = {
       applied: e.v !== before,
       before,
       after: e.v,
@@ -723,7 +723,7 @@ export function deriveGoalAtoms(selfId: string, atoms: ContextAtom[], opts?: { t
     const alpha = delta > shockThreshold ? Math.max(shockAlphaMin, baseAlpha * shockAlphaScale) : baseAlpha;
     const after = clamp01(alpha * (st.activationEMA ?? 0) + (1 - alpha) * before);
     e.v = after;
-    (e.parts as any).activationHysteresis = { alpha, baseAlpha, shockThreshold, delta, before, prevEMA: st.activationEMA ?? 0, after };
+    e.parts.activationHysteresis = { alpha, baseAlpha, shockThreshold, delta, before, prevEMA: st.activationEMA ?? 0, after };
   }
 
   const modeAtom = mkModeAtom(selfId, effectiveMode, W, usedCommon, {

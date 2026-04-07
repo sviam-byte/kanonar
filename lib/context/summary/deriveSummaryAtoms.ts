@@ -54,7 +54,7 @@ function atom(
       parts,
       notes: ['prototype summary metric'],
     },
-  } as any);
+  });
 }
 
 /**

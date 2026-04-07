@@ -146,16 +146,16 @@ function processDyad(args: {
       },
     } as DyadBeliefMemory);
 
-  const danger = as01((ctx as any).danger, 0);
-  const intimacy = as01((ctx as any).intimacy, 0);
-  const hierarchy = as01((ctx as any).hierarchy, 0);
-  const publicness = as01((ctx as any).publicness, 0.2);
-  const normPressure = as01((ctx as any).normPressure, 0);
+  const danger = as01(ctx.danger, 0);
+  const intimacy = as01(ctx.intimacy, 0);
+  const hierarchy = as01(ctx.hierarchy, 0);
+  const publicness = as01(ctx.publicness, 0.2);
+  const normPressure = as01(ctx.normPressure, 0);
   
   // Extended axes
-  const scarcity = as01((ctx as any).scarcity, 0);
-  const timePressure = as01((ctx as any).timePressure, 0);
-  const uncertainty = as01((ctx as any).uncertainty, 0);
+  const scarcity = as01(ctx.scarcity, 0);
+  const timePressure = as01(ctx.timePressure, 0);
+  const uncertainty = as01(ctx.uncertainty, 0);
   const legitimacy = as01((ctx as any).legitimacy, 0.5);
   const secrecy = as01((ctx as any).secrecy, 0);
 
@@ -342,14 +342,14 @@ export function computeContextualMind(inputs: ContextualMindInputs): ContextualM
 
     nextDyads[targetId] = memory;
 
-    const targetName = world.agents?.find((a: any) => a.entityId === targetId)?.title;
+    const targetName = world.agents?.find(a => a.entityId === targetId)?.title;
     // Robust access to role label
     const roleLabel = (frame?.what?.nearbyAgents?.find(n => n.id === targetId)?.role) || 'none';
     
-    const selfFear = as01((normalizedAffect as any).e?.fear, as01((normalizedAffect as any).fear, 0));
-    const selfAnger = as01((normalizedAffect as any).e?.anger, as01((normalizedAffect as any).anger, 0));
-    const selfShame = as01((normalizedAffect as any).e?.shame, as01((normalizedAffect as any).shame, 0));
-    const selfHope = as01((normalizedAffect as any).hope, 0);
+    const selfFear = as01(normalizedAffect.e?.fear, as01((normalizedAffect as Record<string, unknown>).fear, 0));
+    const selfAnger = as01(normalizedAffect.e?.anger, as01((normalizedAffect as Record<string, unknown>).anger, 0));
+    const selfShame = as01(normalizedAffect.e?.shame, as01((normalizedAffect as Record<string, unknown>).shame, 0));
+    const selfHope = as01((normalizedAffect as Record<string, unknown>).hope, 0);
     const selfControl = as01((normalizedAffect as any).control, 0.5);
 
     const dThreat = current.threat - 0.5;
@@ -414,15 +414,15 @@ export function computeContextualMind(inputs: ContextualMindInputs): ContextualM
   const point: ContextualMindHistoryPoint = {
     tick,
     self: {
-      fear: as01((normalizedAffect as any).e?.fear, 0),
-      anger: as01((normalizedAffect as any).e?.anger, 0),
-      shame: as01((normalizedAffect as any).e?.shame, 0),
-      hope: as01((normalizedAffect as any).hope, 0),
-      guilt: as01((normalizedAffect as any).e?.guilt, 0),
-      stress: as01((normalizedAffect as any).stress, 0),
+      fear: as01(normalizedAffect.e?.fear, 0),
+      anger: as01(normalizedAffect.e?.anger, 0),
+      shame: as01(normalizedAffect.e?.shame, 0),
+      hope: as01((normalizedAffect as Record<string, unknown>).hope, 0),
+      guilt: as01(normalizedAffect.e?.guilt, 0),
+      stress: as01(normalizedAffect.stress, 0),
       fatigue: as01((normalizedAffect as any).fatigue, 0),
-      valence: as01((normalizedAffect as any).valence, 0),
-      arousal: as01((normalizedAffect as any).arousal, 0),
+      valence: as01(normalizedAffect.valence, 0),
+      arousal: as01(normalizedAffect.arousal, 0),
       control: as01((normalizedAffect as any).control, 0.5),
     },
     dyads: Object.fromEntries(
@@ -444,7 +444,7 @@ export function computeContextualMind(inputs: ContextualMindInputs): ContextualM
 
   nextState.history = pushHistory(prevState.history, point, 24);
 
-  const agentObj = world.agents?.find((a: any) => a.entityId === agent.entityId);
+  const agentObj = world.agents?.find(a => a.entityId === agent.entityId);
   if (agentObj) (agentObj as any).contextualMind = nextState;
 
   const targetsUsed: string[] = Array.isArray(candidates) ? candidates : [];

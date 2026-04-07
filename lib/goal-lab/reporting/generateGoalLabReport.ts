@@ -54,7 +54,7 @@ export function generateGoalLabReportMarkdown(r: GoalLabPipelineV1, opts: Opts =
   const best = (decision?.best ?? s8?.artifacts?.best ?? null) as any;
 
   const usedAtomIdsBest: string[] = uniq([
-    ...(best?.supportAtoms ?? []).map((a: any) => String(a?.id ?? '')),
+    ...(best?.supportAtoms ?? []).map((a: Record<string, unknown>) => String(a?.id ?? '')),
     ...((best?.trace?.usedAtomIds ?? []) as string[]).map(String),
   ]);
 

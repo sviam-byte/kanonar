@@ -25,7 +25,7 @@ export type WorldFactsInput = {
 export function buildWorldFactsAtoms(input: WorldFactsInput): ContextAtom[] {
   const out: ContextAtom[] = [];
   const { tick, selfId } = input;
-  const preset: CurvePreset = (input.world?.decisionCurvePreset as any) || 'smoothstep';
+  const preset: CurvePreset = input.world?.decisionCurvePreset as CurvePreset || 'smoothstep';
 
   // ---------- Tick ----------
   out.push(normalizeAtom({
@@ -40,7 +40,7 @@ export function buildWorldFactsAtoms(input: WorldFactsInput): ContextAtom[] {
     tags: ['world', 'tick'],
     label: `tick=${tick}`,
     trace: { usedAtomIds: [], notes: ['canonical tick'], parts: {} }
-  } as any));
+  }));
 
   // ---------- Location basic ----------
   const locId = input.locationId || input.location?.entityId || input.location?.id || input.self?.state?.locationId;
@@ -59,7 +59,7 @@ export function buildWorldFactsAtoms(input: WorldFactsInput): ContextAtom[] {
       label: `location=${String(locId)}`,
       trace: { usedAtomIds: [], notes: ['canonical location reference'], parts: { locationId: String(locId) } },
       meta: { locationId: String(locId) }
-    } as any));
+    }));
   }
 
   // ---------- Location properties -> norm/public axes seeds (as world facts) ----------
@@ -92,7 +92,7 @@ export function buildWorldFactsAtoms(input: WorldFactsInput): ContextAtom[] {
         }
       },
       meta: { locationId: locId ? String(locId) : undefined, raw: v }
-    } as any));
+    }));
     return m;
   };
 
@@ -105,12 +105,12 @@ export function buildWorldFactsAtoms(input: WorldFactsInput): ContextAtom[] {
   const controlLevelVal = addProp01(`world:loc:control_level:${selfId}`, props.control_level, `control_level=${Math.round(clamp01(num(props.control_level))*100)}%`, ['world','loc','control_level']);
 
   // Standardized InputAxis seeds
-  addProp01(`world:loc:temperature:${selfId}`, (props as any).temperature, `temperature=${Math.round(clamp01(num((props as any).temperature, 0.5))*100)}%`, ['world','loc','temperature']);
-  addProp01(`world:loc:comfort:${selfId}`, (props as any).comfort, `comfort=${Math.round(clamp01(num((props as any).comfort, 0.5))*100)}%`, ['world','loc','comfort']);
-  addProp01(`world:loc:hygiene:${selfId}`, (props as any).hygiene, `hygiene=${Math.round(clamp01(num((props as any).hygiene, 0.5))*100)}%`, ['world','loc','hygiene']);
-  addProp01(`world:loc:aesthetics:${selfId}`, (props as any).aesthetics, `aesthetics=${Math.round(clamp01(num((props as any).aesthetics, 0.5))*100)}%`, ['world','loc','aesthetics']);
+  addProp01(`world:loc:temperature:${selfId}`, props.temperature, `temperature=${Math.round(clamp01(num(props.temperature, 0.5))*100)}%`, ['world','loc','temperature']);
+  addProp01(`world:loc:comfort:${selfId}`, props.comfort, `comfort=${Math.round(clamp01(num(props.comfort, 0.5))*100)}%`, ['world','loc','comfort']);
+  addProp01(`world:loc:hygiene:${selfId}`, props.hygiene, `hygiene=${Math.round(clamp01(num(props.hygiene, 0.5))*100)}%`, ['world','loc','hygiene']);
+  addProp01(`world:loc:aesthetics:${selfId}`, props.aesthetics, `aesthetics=${Math.round(clamp01(num(props.aesthetics, 0.5))*100)}%`, ['world','loc','aesthetics']);
 
-  const authorityPresenceSeed = num((props as any).authorityPresence ?? (props as any).authority_presence, controlLevelVal);
+  const authorityPresenceSeed = num(props.authorityPresence ?? (props as any).authority_presence, controlLevelVal);
   const authorityPresenceVal = addProp01(`world:loc:authorityPresence:${selfId}`, authorityPresenceSeed, `authorityPresence=${Math.round(clamp01(authorityPresenceSeed)*100)}%`, ['world','loc','authorityPresence']);
 
   // Legacy aliases for downstream compatibility
@@ -128,7 +128,7 @@ export function buildWorldFactsAtoms(input: WorldFactsInput): ContextAtom[] {
       label,
       trace: { usedAtomIds: [ref], notes: ['legacy alias'], parts: { ref, magnitude } },
       meta: { aliasOf: ref }
-    } as any));
+    }));
   };
 
   addAlias(`world:loc:normPressure:${selfId}`, `world:loc:normative_pressure:${selfId}`, normPressureVal, ['world','loc','normPressure'], `normPressure=${Math.round(clamp01(normPressureVal)*100)}%`);
@@ -169,7 +169,7 @@ export function buildWorldFactsAtoms(input: WorldFactsInput): ContextAtom[] {
         }
       },
       meta: { locationId: locId2 ? String(locId2) : undefined, raw: v }
-    } as any));
+    }));
   };
 
   if (mm) {
@@ -201,7 +201,7 @@ export function buildWorldFactsAtoms(input: WorldFactsInput): ContextAtom[] {
         tags,
         label,
         trace: { usedAtomIds: [], notes: ['from sceneSnapshot'], parts: {} }
-      } as any));
+      }));
     };
 
     // Canonical path for axes: ctx:src:scene:* and ctx:src:norm:*
@@ -219,7 +219,7 @@ export function buildWorldFactsAtoms(input: WorldFactsInput): ContextAtom[] {
         tags,
         label,
         trace: { usedAtomIds: [], notes: ['from sceneSnapshot'], parts: {} }
-      } as any));
+      }));
     };
 
     // keep them as 0..1 already; if you store 0..100 elsewhere, convert before passing here
@@ -303,7 +303,7 @@ export function buildWorldFactsAtoms(input: WorldFactsInput): ContextAtom[] {
         label: `scene=${String(presetId)}`,
         trace: { usedAtomIds: [], notes: ['from sceneSnapshot'], parts: {} },
         meta: { scene: sc }
-      } as any));
+      }));
     }
   }
 

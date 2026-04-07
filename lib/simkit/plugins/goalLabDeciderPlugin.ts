@@ -80,7 +80,7 @@ function decorateAction(action: SimAction, best: any): SimAction {
   return {
     ...action,
     meta: {
-      ...(action as any).meta,
+      ...action.meta,
       source: 'goalLab',
       decisionId: String(best?.p?.id ?? best?.id ?? ''),
       score: Number((best as any)?.q ?? 0),
@@ -137,8 +137,8 @@ function offersToExternalPossibilities(
   // We keep explicit idx in IDs so same kind+target variants remain uniquely traceable.
   const forActor = offers.filter(o => o.actorId === actorId && !o.blocked);
   return forActor.map((o, idx) => {
-    const provenanceId = `sim:offer:${actorId}:${o.kind}:${String(o.targetId ?? (o as any).targetNodeId ?? 'self')}:${idx}`;
-    const targetStr = String(o.targetId ?? (o as any).targetNodeId ?? 'self');
+    const provenanceId = `sim:offer:${actorId}:${o.kind}:${String(o.targetId ?? o.targetNodeId ?? 'self')}:${idx}`;
+    const targetStr = String(o.targetId ?? o.targetNodeId ?? 'self');
     return {
       // Include stable per-tick index to avoid id collisions when multiple
       // offers share kind+target (e.g., variants with different meta/score).
@@ -150,13 +150,13 @@ function offersToExternalPossibilities(
       subjectId: actorId,
       targetId: o.targetId ?? undefined,
       // targetNodeId must be at top level for buildActionCandidates to propagate it.
-      targetNodeId: (o as any).targetNodeId ?? undefined,
+      targetNodeId: o.targetNodeId ?? undefined,
       meta: {
         source: 'simkit:offer',
         sim: {
           kind: o.kind,
           targetId: o.targetId ?? null,
-          targetNodeId: (o as any).targetNodeId ?? null,
+          targetNodeId: o.targetNodeId ?? null,
           score: o.score ?? 0,
           ...(o.meta || {}),
         },
@@ -246,7 +246,7 @@ function groundAbstractAction(
     const mapped = GOALLAB_TO_SIMKIT[rawKind] || rawKind;
     return {
       ...action,
-      kind: mapped as any,
+      kind: mapped as ActionKind,
       meta: {
         ...(action.meta || {}),
         goalLabKind,
@@ -274,7 +274,7 @@ function groundAbstractAction(
         ...action,
         kind: best.kind as any,
         targetId: best.targetId ?? null,
-        targetNodeId: (best as any).targetNodeId ?? null,
+        targetNodeId: best.targetNodeId ?? null,
         meta: {
           ...(action.meta || {}),
           goalLabKind,
@@ -315,7 +315,7 @@ function groundAbstractAction(
         if (fallbackOffer) {
           return {
             ...action,
-            kind: mapped as any,
+            kind: mapped as ActionKind,
             targetId: fallbackOffer.targetId ?? null,
             meta: {
               ...(action.meta || {}),
@@ -332,7 +332,7 @@ function groundAbstractAction(
 
     return {
       ...action,
-      kind: mapped as any,
+      kind: mapped as ActionKind,
       meta: {
         ...(action.meta || {}),
         goalLabKind,
@@ -349,7 +349,7 @@ function groundAbstractAction(
   if (DIRECT_EXECUTE_KINDS.has(mapped)) {
     return {
       ...action,
-      kind: mapped as any,
+      kind: mapped as ActionKind,
       meta: {
         ...(action.meta || {}),
         goalLabKind,
@@ -396,7 +396,7 @@ function groundAbstractAction(
       }));
       return {
         ...action,
-        kind: fallbackKind as any,
+        kind: fallbackKind as ActionKind,
         targetId: action.targetId,
         meta: {
           ...(action.meta || {}),
@@ -438,7 +438,7 @@ function groundAbstractAction(
     return {
       ...action,
       id: `act:start_intent:${actorId}:${action.kind}:grounded`,
-      kind: 'start_intent' as any,
+      kind: 'start_intent',
       payload: {
         intentId,
         remainingTicks: 9999, // script controls actual duration
@@ -495,7 +495,7 @@ function extractAgentTrace(pipeline: GoalLabPipelineResult | null, actorId: stri
   const stages = pipeline?.stages ?? [];
 
   // S4: emotions
-  const s4atoms = arr(stages.find((s: any) => s.stage === 'S4')?.atoms);
+  const s4atoms = arr(stages.find((s: { stage: string }) => s.stage === 'S4')?.atoms);
   const emotions: Record<string, number> = {};
   for (const a of s4atoms) {
     const id = atomId(a);
@@ -506,7 +506,7 @@ function extractAgentTrace(pipeline: GoalLabPipelineResult | null, actorId: stri
   }
 
   // S5: ToM dyad metrics from atoms and fallback world facts
-  const s5atoms = arr(stages.find((s: any) => s.stage === 'S5')?.atoms);
+  const s5atoms = arr(stages.find((s: { stage: string }) => s.stage === 'S5')?.atoms);
   const relations: Record<string, Record<string, number>> = {};
   for (const a of s5atoms) {
     const id = atomId(a);
@@ -531,7 +531,7 @@ function extractAgentTrace(pipeline: GoalLabPipelineResult | null, actorId: stri
   }
 
   // S6: drivers
-  const s6atoms = arr(stages.find((s: any) => s.stage === 'S6')?.atoms);
+  const s6atoms = arr(stages.find((s: { stage: string }) => s.stage === 'S6')?.atoms);
   const drivers: Record<string, number> = {};
   for (const a of s6atoms) {
     const id = atomId(a);
@@ -542,7 +542,7 @@ function extractAgentTrace(pipeline: GoalLabPipelineResult | null, actorId: stri
   }
 
   // S7: goals + active domains + goal mode
-  const s7 = stages.find((s: any) => s.stage === 'S7');
+  const s7 = stages.find((s: { stage: string }) => s.stage === 'S7');
   const goalSnapshot = stageArtifacts(pipeline, 'S7').goalLayerSnapshot;
   const goals = arr(goalSnapshot?.domains).map((d: any) => ({
     domain: d.domain,
@@ -574,12 +574,12 @@ function extractAgentTrace(pipeline: GoalLabPipelineResult | null, actorId: stri
   }));
 
   // S8: ranked actions (top candidates)
-  const s8 = stages.find((s: any) => s.stage === 'S8');
+  const s8 = stages.find((s: { stage: string }) => s.stage === 'S8');
   const appraisedEvents = arr(stageArtifacts(pipeline, 'S4').appraisedEvents).slice(0, 8);
   const s8arts = stageArtifacts(pipeline, 'S8');
   const communicativeIntent = s8arts.communicativeIntent ?? null;
   const basedOnEvents = arr(s8arts.basedOnEvents).map((x: unknown) => String(x)).filter(Boolean);
-  const ranked = arr(s8arts.ranked).slice(0, 10).map((r: any) => ({
+  const ranked = arr(s8arts.ranked).slice(0, 10).map((r: Record<string, unknown>) => ({
     action: String(r?.action?.id || r?.id || ''),
     kind: String(r?.action?.kind || r?.kind || ''),
     targetId: r?.action?.targetId || r?.targetId || null,
@@ -970,7 +970,7 @@ export function makeGoalLabDeciderPlugin(opts?: { storePipeline?: boolean; enabl
               }));
               const continuedAction = {
                 id: `act:continue_intent:${tickIndex}:${actorId}:transactional`,
-                kind: 'continue_intent' as any,
+                kind: 'continue_intent',
                 actorId,
                 targetId: intentOrigTarget,
                 meta: {
@@ -1015,7 +1015,7 @@ export function makeGoalLabDeciderPlugin(opts?: { storePipeline?: boolean; enabl
               }));
               const forcedContinue = {
                 id: `act:continue_intent:${tickIndex}:${actorId}:forced`,
-                kind: 'continue_intent' as any,
+                kind: 'continue_intent',
                 actorId,
                 targetId: intentOrigTarget,
                 meta: {

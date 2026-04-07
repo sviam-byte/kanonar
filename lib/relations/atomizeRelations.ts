@@ -47,7 +47,7 @@ export function atomizeRelations(graph: RelationshipGraph, selfId: string): Cont
           parts: { tags: e.tags, strength, updatedAtTick },
         },
         meta: { label: topTag, sources, updatedAtTick },
-      } as any),
+      }),
     );
 
     // rel:prior:* (ToM priors)
@@ -66,7 +66,7 @@ export function atomizeRelations(graph: RelationshipGraph, selfId: string): Cont
         label: `trustPrior:${Math.round(trustPrior * 100)}%`,
         trace: { usedAtomIds: [], notes: ['trust prior from relationship'], parts: { trustPrior, updatedAtTick } },
         meta: { sources, updatedAtTick },
-      } as any),
+      }),
     );
 
     out.push(
@@ -84,7 +84,7 @@ export function atomizeRelations(graph: RelationshipGraph, selfId: string): Cont
         label: `threatPrior:${Math.round(threatPrior * 100)}%`,
         trace: { usedAtomIds: [], notes: ['threat prior from relationship'], parts: { threatPrior, updatedAtTick } },
         meta: { sources, updatedAtTick },
-      } as any),
+      }),
     );
 
     // Social biography aspects (0..1)
@@ -107,7 +107,7 @@ export function atomizeRelations(graph: RelationshipGraph, selfId: string): Cont
             label: `${k}:${Math.round(mag * 100)}%`,
             trace: { usedAtomIds: [], notes: ['bio aspect from relationship'], parts: { aspect: k, value: mag, updatedAtTick } },
             meta: { sources, updatedAtTick },
-          } as any),
+          }),
         );
       }
     }
@@ -137,7 +137,7 @@ export function atomizeRelations(graph: RelationshipGraph, selfId: string): Cont
               parts: { dim, raw: rawN, mapped01: mag, updatedAtTick },
             },
             meta: { raw: rawN, sources, updatedAtTick },
-          } as any),
+          }),
         );
       }
     }

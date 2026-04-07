@@ -258,7 +258,7 @@ export async function runSimulationTick(world: WorldState): Promise<SimulationEv
                     newTrust: entry.traits.trust, newBond: entry.traits.bond, newAlign: entry.traits.align,
                     newDominance: entry.traits.dominance, newVulnerability: entry.traits.vulnerability,
                     newUncertainty: entry.uncertainty
-                 } as any); // Simplified typing for log
+                 }); // Simplified typing for log
             }
             
             // Fallback to SocialSystem for legacy/simple fields not covered by Bayesian

@@ -50,7 +50,7 @@ function ensureBaseCopyAtom(lookupAtoms: ContextAtom[], outAtoms: ContextAtom[],
       notes: ['base copy before override', sourceNote],
       parts: { from: outId }
     },
-  } as any);
+  });
 
   return baseId;
 }
@@ -145,7 +145,7 @@ function mkBeliefDyad(selfId: string, otherId: string, metric: string, magnitude
       notes: ['seeded from rel:base'],
       parts
     },
-  } as any);
+  });
 }
 
 /**
@@ -322,7 +322,7 @@ export function applyRelationPriorsToDyads(
         notes: [`rel priors applied: floor=${floor.toFixed(2)} cap=${cap.toFixed(2)} base=${base.toFixed(2)} -> ${eff.toFixed(2)}`],
         parts: { metric, base, floor, cap, rel: r }
       }
-    } as any));
+    }));
   }
 
   return { atoms: out };

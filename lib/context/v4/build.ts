@@ -14,7 +14,7 @@ import { listify } from '../../utils/listify';
 import { clamp01 } from '../../util/math';
 
 function syncWorldTomFromDyadReport(world: WorldState, selfId: string, otherId: string, report: TomDyadReport) {
-  const tom: any = (world as any).tom;
+  const tom: any = world.tom;
   if (!tom || !report?.state) return;
 
   if (!tom[selfId]) tom[selfId] = {};
@@ -52,7 +52,7 @@ function syncWorldTomFromDyadReport(world: WorldState, selfId: string, otherId: 
 
   // legacy: conflict == threat
   t.conflict = clamp01(report.state?.threat ?? 0);
-  (t as any).threat = clamp01(report.state?.threat ?? 0);
+  (t as Record<string, unknown>).threat = clamp01(report.state?.threat ?? 0);
 
   const da = report.dyadicAffect;
   entry.affect = {
@@ -94,7 +94,7 @@ function computeExits(
   // This is how custom maps can "force" exits for goal/context affordances.
   const explicit: { x: number; y: number }[] = [];
   for (const cell of cells.values()) {
-    const tags = Array.isArray((cell as any)?.tags) ? (cell as any).tags : [];
+    const tags = Array.isArray(cell?.tags) ? cell.tags : [];
     if (tags.includes('exit')) explicit.push({ x: cell.x, y: cell.y });
   }
   if (explicit.length) return explicit;
@@ -141,7 +141,7 @@ function buildTomPhysicalSelf(agent: AgentState): TomPhysicalSelf {
 
 function buildTomPhysicalOthers(nearby: NearbyAgentSummary[], world: WorldState): TomPhysicalOther[] {
   const result: TomPhysicalOther[] = [];
-  const agents = listify<any>((world as any).agents);
+  const agents = listify<any>(world.agents);
   for (const nb of nearby) {
       const other = agents.find(a => a.entityId === nb.id);
       const trueHp = other?.hp ?? 100;
@@ -181,7 +181,7 @@ export function buildFullAgentContextFrame(
       persistAffect?: boolean;
     }
 ): AgentContextFrame | null {
-    const agents = listify<any>((world as any).agents);
+    const agents = listify<any>(world.agents);
     const orders = listify<any>((world as any).orders);
     const agent = agents.find(a => a.entityId === agentId);
     if (!agent) return null;
@@ -193,7 +193,7 @@ export function buildFullAgentContextFrame(
 
     const timeOfDay = (world as any).timeOfDay || inferTimeOfDay((world as any).storyTime);
     
-    const locationId = (loc as any)?.entityId || loc?.id || null;
+    const locationId = loc?.entityId || loc?.id || null;
 
     // --- Build Active Orders including Oaths and Group Goals ---
     const activeOrders: ActiveOrder[] = orders
@@ -249,8 +249,8 @@ export function buildFullAgentContextFrame(
                 cell: pos,
                 hazard: myCell?.danger || 0,
                 cover: myCell?.cover || 0,
-                cellTags: Array.isArray((myCell as any)?.tags) ? (myCell as any).tags : [],
-                isSafeCell: Array.isArray((myCell as any)?.tags) ? (myCell as any).tags.includes('safe') : false,
+                cellTags: Array.isArray(myCell?.tags) ? myCell.tags : [],
+                isSafeCell: Array.isArray(myCell?.tags) ? myCell.tags.includes('safe') : false,
                 nearestHazardDist: computeNearestHazardDist(pos, locCells),
                 exits: computeExits(pos, locCells)
             }
@@ -313,7 +313,7 @@ export function buildFullAgentContextFrame(
     const reports: Record<string, TomDyadReport> = {};
     let maxLocalThreat = 0;
     
-    const selfLocationId = (agent as any).locationId ?? null;
+    const selfLocationId = agent.locationId ?? null;
     const MAX_NEARBY_DIST = 20;
 
     const roleRels: { other_id: string; role: string }[] = agent.roles?.relations ?? [];
@@ -631,8 +631,8 @@ export function buildFullAgentContextFrame(
        { kind: 'emotion', emotion: 'shame', intensity: newAffect.shame, why: newAffect.why }
     ].filter(a => a.intensity > 0.1);
 
-    (frame.derived as any).emotionAppraisal = emotionAppraisal;
-    (frame.derived as any).emotionAtoms = emotionAtoms;
+    (frame.derived as Record<string, unknown>).emotionAppraisal = emotionAppraisal;
+    (frame.derived as Record<string, unknown>).emotionAtoms = emotionAtoms;
 
 
     if (prev) {
@@ -642,7 +642,7 @@ export function buildFullAgentContextFrame(
         const prevWounded = prev.what?.localWoundedCount ?? 0;
         const nowWounded = frame.what?.localWoundedCount ?? 0;
     
-        (frame.derived as any).history = {
+        (frame.derived as Record<string, unknown>).history = {
           threatDelta: nowThreat - prevThreat,
           woundedDelta: nowWounded - prevWounded,
         };

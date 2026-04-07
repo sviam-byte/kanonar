@@ -30,7 +30,7 @@ function bumpRelation(facts: any, fromId: string, toId: string, key: string, del
  */
 export function buildGenericSocialSpec(kind: string): ActionSpec {
   return {
-    kind: kind as any,
+    kind: kind as ActionKind,
 
     enumerate: (_ctx: OfferCtx) => {
       // Generic social actions are not proposed by SimKit's heuristic;

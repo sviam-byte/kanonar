@@ -44,7 +44,7 @@ export function buildSummaryAtoms(frameAtoms: ContextAtom[], opts: { selfId: str
     confidence: 1,
     trace: { sourceAtomIds: topCtx.map(a => a.id), notes: ['top ctx axes'] },
     meta: { top: topCtx.map(a => ({ id: a.id, magnitude: a.magnitude, label: atomLabel(a) })) }
-  } as any));
+  }));
 
   // 2) threat banner: main channel + final
   // Prefer per-agent canonical IDs (threat:*:${selfId}), fallback to legacy unsuffixed.
@@ -75,7 +75,7 @@ export function buildSummaryAtoms(frameAtoms: ContextAtom[], opts: { selfId: str
     confidence: 1,
     trace: { sourceAtomIds: [topCh?.id, threatFinal?.id].filter(Boolean) as string[], notes: ['top threat channel + final'] },
     meta: { topChannel: topCh ? { id: topCh.id, magnitude: topCh.magnitude, label: atomLabel(topCh) } : null }
-  } as any));
+  }));
 
   // 3) emo banner: dominant emotion (prefer discrete affect:e:/emotion: over valence)
   const emoCandidates = frameAtoms
@@ -99,7 +99,7 @@ export function buildSummaryAtoms(frameAtoms: ContextAtom[], opts: { selfId: str
     confidence: 1,
     trace: { sourceAtomIds: topEmo ? [topEmo.id] : [], notes: ['dominant emotion'] },
     meta: { top: topEmo ? { id: topEmo.id, magnitude: topEmo.magnitude, label: topEmo.label } : null }
-  } as any));
+  }));
 
   // 4) tom banner per target (who is this person for me now)
   // Inputs:
@@ -135,7 +135,7 @@ export function buildSummaryAtoms(frameAtoms: ContextAtom[], opts: { selfId: str
       target: otherId,
       trace: { sourceAtomIds: [rel.id, trust?.id, dyThreat?.id].filter(Boolean) as string[], notes: ['rel + tom dyad'] },
       meta: { otherId }
-    } as any));
+    }));
   }
 
   return { atoms: out };

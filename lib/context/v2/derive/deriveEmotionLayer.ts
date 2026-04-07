@@ -34,7 +34,7 @@ function mk(
       notes: ['deriveEmotionLayer@v1'],
       parts,
     },
-  } as any);
+  });
 }
 
 /**

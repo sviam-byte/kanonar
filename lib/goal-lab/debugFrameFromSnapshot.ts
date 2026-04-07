@@ -8,39 +8,39 @@ type AtomOrigin = 'world' | 'obs' | 'override' | 'derived';
 
 export function buildDebugFrameFromSnapshot(snapshot: GoalLabSnapshotV1, stageId?: string) {
   const resolvedStageId =
-    stageId || (snapshot as any)?.ui?.selectedStageId || (snapshot as any)?.meta?.ui?.selectedStageId;
+    stageId || (snapshot as Record<string, unknown>)?.ui?.selectedStageId || (snapshot as Record<string, unknown>)?.meta?.ui?.selectedStageId;
   const canon = getCanonicalAtomsFromSnapshot(snapshot, resolvedStageId);
   const rawAtoms: any[] = Array.isArray(canon.atoms) ? (canon.atoms as any[]) : [];
 
   const atoms = rawAtoms.map(a => {
     const raw: any = {
-      id: String((a as any).id),
-      magnitude: Number((a as any).magnitude ?? 0),
-      confidence: Number((a as any).confidence ?? 1),
-      origin: ((a as any).origin ?? 'derived') as AtomOrigin,
-      kind: (a as any).kind ?? null,
-      ns: (a as any).ns ?? null,
-      source: (a as any).source ?? null,
-      label: (a as any).label ?? null,
-      code: (a as any).code ?? null,
-      specId: (a as any).specId ?? null,
-      params: (a as any).params ?? null,
-      trace: (a as any).trace ?? (a as any).meta ?? null,
+      id: String(a.id),
+      magnitude: Number(a.magnitude ?? 0),
+      confidence: Number(a.confidence ?? 1),
+      origin: (a.origin ?? 'derived') as AtomOrigin,
+      kind: a.kind ?? null,
+      ns: a.ns ?? null,
+      source: a.source ?? null,
+      label: a.label ?? null,
+      code: a.code ?? null,
+      specId: a.specId ?? null,
+      params: a.params ?? null,
+      trace: a.trace ?? a.meta ?? null,
     };
     const norm = normalizeAtom(raw);
     return {
       id: String(norm.id),
-      m: Number((norm as any).magnitude ?? 0),
-      c: Number((norm as any).confidence ?? 1),
-      o: ((norm as any).origin ?? 'derived') as AtomOrigin,
-      code: (norm as any).code ?? null,
-      specId: (norm as any).specId ?? null,
-      params: (norm as any).params ?? null,
-      label: (norm as any).label ?? null,
-      kind: (norm as any).kind ?? null,
-      ns: (norm as any).ns ?? null,
-      source: (norm as any).source ?? null,
-      meta: (norm as any).trace ?? null,
+      m: Number(norm.magnitude ?? 0),
+      c: Number(norm.confidence ?? 1),
+      o: (norm.origin ?? 'derived') as AtomOrigin,
+      code: norm.code ?? null,
+      specId: norm.specId ?? null,
+      params: norm.params ?? null,
+      label: norm.label ?? null,
+      kind: norm.kind ?? null,
+      ns: norm.ns ?? null,
+      source: norm.source ?? null,
+      meta: norm.trace ?? null,
     };
   });
   const index: Record<string, any> = {};

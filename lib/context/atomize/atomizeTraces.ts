@@ -11,8 +11,8 @@ export function atomizeTraces(selfId: string, agent: any): ContextAtom[] {
     out.push(
       normalizeAtom({
         id: `trace:${key}:${selfId}`,
-        ns: 'trace' as any, // Will be mapped to misc or specific if we update types
-        kind: 'trace_state' as any,
+        ns: 'trace', // Will be mapped to misc or specific if we update types
+        kind: 'trace_state',
         origin: 'world',
         source: 'agent_state',
         magnitude: clamp01(v),
@@ -21,7 +21,7 @@ export function atomizeTraces(selfId: string, agent: any): ContextAtom[] {
         tags: ['trace', key],
         label,
         trace: { usedAtomIds: [], notes: ['from agent.state.traces'], parts: {} },
-      } as any)
+      })
     );
 
   if (typeof tr.stressLoad === 'number')

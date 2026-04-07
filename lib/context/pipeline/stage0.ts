@@ -78,13 +78,13 @@ function buildLifeGoalAtoms(self: AgentState): ContextAtom[] {
   // In the rest of the codebase (types.ts + metrics), `lifeGoals` is a Record<string, number>.
   // Earlier versions used LifeGoalEntry[]. Stage0 must support both shapes.
   const vec: Record<string, number> = {};
-  const rawLife: any = (self as any).lifeGoals;
+  const rawLife: any = self.lifeGoals;
   if (Array.isArray(rawLife)) {
     // Legacy: [{id, weight}, ...]
     for (const e of rawLife) {
-      const gid = String((e as any).id ?? '');
+      const gid = String(e.id ?? '');
       if (!gid) continue;
-      const w = Number((e as any).weight ?? 0);
+      const w = Number(e.weight ?? 0);
       if (!Number.isFinite(w)) continue;
       vec[gid] = Math.max(0, Math.min(1, w));
     }
@@ -101,9 +101,9 @@ function buildLifeGoalAtoms(self: AgentState): ContextAtom[] {
 
   const lifeGoalAtoms: ContextAtom[] = Object.entries(vec).map(([gid, w]) => normalizeAtom({
     id: `goal:life:${gid}:${selfId}`,
-    ns: 'goal' as any,
-    kind: 'life_goal' as any,
-    origin: 'profile' as any,
+    ns: 'goal',
+    kind: 'life_goal',
+    origin: 'profile',
     source: 'lifeGoals',
     target: selfId,
     magnitude: clamp01(w),
@@ -111,15 +111,15 @@ function buildLifeGoalAtoms(self: AgentState): ContextAtom[] {
     tags: ['goal', 'life', gid],
     label: `lifeGoal:${gid}=${clamp01(w).toFixed(3)}`,
     trace: { usedAtomIds: [], notes: ['from agent.lifeGoals'], parts: { gid, w: clamp01(w) } }
-  } as any));
+  }));
 
   // Domain weights from the life-goal vector (life-domains mapping)
   const domainWeights = buildLifeDomainWeights(vec as any);
   const domainAtoms: ContextAtom[] = Object.entries(domainWeights).map(([domain, w]) => normalizeAtom({
     id: `goal:lifeDomain:${domain}:${selfId}`,
-    ns: 'goal' as any,
-    kind: 'life_domain' as any,
-    origin: 'profile' as any,
+    ns: 'goal',
+    kind: 'life_domain',
+    origin: 'profile',
     source: 'lifeDomains',
     target: selfId,
     magnitude: clamp01(Number(w ?? 0)),
@@ -127,7 +127,7 @@ function buildLifeGoalAtoms(self: AgentState): ContextAtom[] {
     tags: ['goal', 'lifeDomain', domain],
     label: `lifeDomain:${domain}=${clamp01(Number(w ?? 0)).toFixed(3)}`,
     trace: { usedAtomIds: lifeGoalAtoms.map(a => String(a.id)), notes: ['mapped via LIFE_GOAL_DEFS'], parts: { domain, w: clamp01(Number(w ?? 0)) } }
-  } as any));
+  }));
 
   // Bridge to GoalLab simplified domains (goalAtoms.ts expects these)
   const get = (k: string) => clamp01(Number(domainWeights[k] ?? 0));
@@ -160,9 +160,9 @@ function buildLifeGoalAtoms(self: AgentState): ContextAtom[] {
     const used = b.used.filter((id) => id && id !== outId);
     return normalizeAtom({
       id: outId,
-    ns: 'goal' as any,
-    kind: 'life_domain' as any,
-    origin: 'profile' as any,
+    ns: 'goal',
+    kind: 'life_domain',
+    origin: 'profile',
     source: 'lifeDomainBridge',
     target: selfId,
     magnitude: clamp01(b.val),
@@ -174,7 +174,7 @@ function buildLifeGoalAtoms(self: AgentState): ContextAtom[] {
         notes: ['bridge for GoalLab simplified domains (self-cycles removed)'],
         parts: b.parts
       }
-    } as any);
+    });
   });
 
   return [...lifeGoalAtoms, ...domainAtoms, ...bridgeAtoms];
@@ -198,8 +198,8 @@ function atomizeLocationAccess(location: LocationEntity): ContextAtom[] {
 
     const mk = (suffix: string, mag: number, label: string) => normalizeAtom({
         id: `loc:${id}:access:${suffix}`,
-        kind: 'loc_access' as any,
-        ns: 'loc' as any,
+        kind: 'loc_access',
+        ns: 'loc',
         origin: 'world',
         source: 'location',
         magnitude: clamp01(mag),
@@ -208,7 +208,7 @@ function atomizeLocationAccess(location: LocationEntity): ContextAtom[] {
         tags: ['loc', 'access', suffix],
         label,
         trace: { usedAtomIds: [], notes: ['from location entity'], parts: { isPublic, requiresKey, requiresSecKey, reqMid, reqHigh } }
-    } as any);
+    });
 
     return [
         mk('public', isPublic ? 1 : 0, `public=${isPublic}`),
@@ -223,9 +223,9 @@ export function buildStage0Atoms(input: Stage0Input): Stage0Output {
   const tick = input.world?.tick ?? 0;
 
   // 0. World Facts (Canonical)
-  const locId = (input.agent as any).locationId || input.world.agents.find(a => a.entityId === input.selfId)?.locationId;
+  const locId = input.agent.locationId || input.world.agents.find(a => a.entityId === input.selfId)?.locationId;
   const loc = input.world.locations.find(l => l.entityId === locId);
-  const sceneSnapshot = input.sceneSnapshot || (input.world as any).sceneSnapshot || input.world.scene;
+  const sceneSnapshot = input.sceneSnapshot || (input.world as Record<string, unknown>).sceneSnapshot || input.world.scene;
 
   const worldFacts = buildWorldFactsAtoms({
       world: input.world,
@@ -313,7 +313,7 @@ export function buildStage0Atoms(input: Stage0Input): Stage0Output {
     events: worldEvents,
     nowTick: tick,
     maxLookbackTicks: 60,
-    selfLocationId: String(loc?.entityId ?? (input.agent as any)?.locationId ?? ''),
+    selfLocationId: String(loc?.entityId ?? input.agent?.locationId ?? ''),
     includeWitnessed: true
   });
 

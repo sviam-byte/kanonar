@@ -194,7 +194,7 @@ export function deriveDriversAtoms(input: {
       origin: 'derived',
       source: 'drv/deriveDriversAtoms',
       trace: { usedAtomIds: used.filter(Boolean), parts }
-    } as any);
+    });
 
   out.push(mk(
     `drv:safetyNeed:${selfId}`,

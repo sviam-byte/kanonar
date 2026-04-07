@@ -108,26 +108,26 @@ function clamp01(x: number) {
 
 function collectLocationTags(location: LocationEntity | null | undefined): string[] {
   if (!location) return [];
-  const direct = Array.isArray((location as any).tags) ? (location as any).tags : [];
+  const direct = Array.isArray(location.tags) ? location.tags : [];
   const propTags = Array.isArray(location.properties?.tags) ? location.properties?.tags : [];
-  const mapTags = Array.isArray((location as any)?.map?.tags) ? (location as any).map.tags : [];
+  const mapTags = Array.isArray(location?.map?.tags) ? location.map.tags : [];
   return Array.from(new Set([...direct, ...propTags, ...mapTags].map(String)));
 }
 
 function deriveManualContextAxes(location: LocationEntity | null | undefined) {
   const tags = collectLocationTags(location);
   const tagSet = new Set(tags.map(t => t.toLowerCase()));
-  const props: Record<string, unknown> = (location as any)?.properties ?? {};
+  const props: Record<string, unknown> = (location as Record<string, unknown>)?.properties ?? {};
   return {
-    privacy: clamp01(Number((props as any).privacy ?? (tagSet.has('private') || tagSet.has('bedroom') ? 1.0 : 0.1))),
-    social: clamp01(Number((props as any).social ?? (tagSet.has('public') || tagSet.has('bar') ? 1.0 : 0.0))),
-    duty: clamp01(Number((props as any).duty ?? (tagSet.has('work') || tagSet.has('office') ? 1.0 : 0.0))),
-    danger: clamp01(Number((props as any).danger ?? (tagSet.has('dangerous') ? 0.8 : 0.0))),
-    comfort: clamp01(Number((props as any).comfort ?? 0.5)),
-    hygiene: clamp01(Number((props as any).hygiene ?? 0.5)),
-    authorityPresence: clamp01(Number((props as any).authorityPresence ?? (tagSet.has('throne') ? 1.0 : 0.0))),
-    crowding: clamp01(Number((props as any).crowding ?? clamp01(Number((props as any).social ?? 0)))),
-    noise: clamp01(Number((props as any).noise ?? 0.2)),
+    privacy: clamp01(Number(props.privacy ?? (tagSet.has('private') || tagSet.has('bedroom') ? 1.0 : 0.1))),
+    social: clamp01(Number(props.social ?? (tagSet.has('public') || tagSet.has('bar') ? 1.0 : 0.0))),
+    duty: clamp01(Number(props.duty ?? (tagSet.has('work') || tagSet.has('office') ? 1.0 : 0.0))),
+    danger: clamp01(Number(props.danger ?? (tagSet.has('dangerous') ? 0.8 : 0.0))),
+    comfort: clamp01(Number(props.comfort ?? 0.5)),
+    hygiene: clamp01(Number(props.hygiene ?? 0.5)),
+    authorityPresence: clamp01(Number(props.authorityPresence ?? (tagSet.has('throne') ? 1.0 : 0.0))),
+    crowding: clamp01(Number(props.crowding ?? clamp01(Number(props.social ?? 0)))),
+    noise: clamp01(Number(props.noise ?? 0.2)),
   };
 }
 

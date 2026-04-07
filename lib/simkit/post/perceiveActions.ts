@@ -55,7 +55,7 @@ export function buildBeliefAtomsForTick(world: SimWorld, eventsApplied: SimEvent
 
       const mag = clamp01(Number(p.magnitude ?? 1));
       atoms.push({
-        id: `mem:obs:${observerId}:${actorId}:${kind}${targetId ? `:${targetId}` : ''}:${String((e as any).id || '')}`,
+        id: `mem:obs:${observerId}:${actorId}:${kind}${targetId ? `:${targetId}` : ''}:${String(e.id || '')}`,
         ns: 'memory',
         kind: 'beliefAtom',
         origin: 'derived',
@@ -65,7 +65,7 @@ export function buildBeliefAtomsForTick(world: SimWorld, eventsApplied: SimEvent
         confidence: 1,
         tags: ['memory', 'event', 'observed', kind],
         label: `observed ${kind}${targetId ? `→${targetId}` : ''}`,
-        trace: { usedAtomIds: [], notes: [], parts: { simEventId: (e as any).id, payload: p, atomKey } },
+        trace: { usedAtomIds: [], notes: [], parts: { simEventId: e.id, payload: p, atomKey } },
       });
     }
     out[observerId] = atoms;

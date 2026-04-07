@@ -62,7 +62,7 @@ export const ATOM_CATALOG: AtomSpec[] = [
   // Normalized Features
   {
     idPrefix: 'feat:',
-    ns: 'feat' as any, // New namespace
+    ns: 'feat', // New namespace
     defaultOrigin: 'world',
     magnitudeRange: [0, 1],
     require: ['id', 'kind', 'magnitude', 'source'],
@@ -72,7 +72,7 @@ export const ATOM_CATALOG: AtomSpec[] = [
   // Cost
   {
     idPrefix: 'cost:',
-    ns: 'cost' as any,
+    ns: 'cost',
     defaultOrigin: 'derived',
     magnitudeRange: [0, 1],
     require: ['id', 'kind', 'magnitude', 'source'],
@@ -81,7 +81,7 @@ export const ATOM_CATALOG: AtomSpec[] = [
   // Affordance
   {
     idPrefix: 'aff:',
-    ns: 'aff' as any,
+    ns: 'aff',
     defaultOrigin: 'derived',
     magnitudeRange: [0, 1],
     require: ['id', 'kind', 'magnitude', 'source'],
@@ -90,7 +90,7 @@ export const ATOM_CATALOG: AtomSpec[] = [
   // Constraint
   {
     idPrefix: 'con:',
-    ns: 'con' as any,
+    ns: 'con',
     defaultOrigin: 'derived',
     magnitudeRange: [0, 1],
     require: ['id', 'kind', 'magnitude', 'source'],
@@ -99,7 +99,7 @@ export const ATOM_CATALOG: AtomSpec[] = [
   // Capability
   {
     idPrefix: 'cap:',
-    ns: 'cap' as any,
+    ns: 'cap',
     defaultOrigin: 'world',
     magnitudeRange: [0, 1],
     require: ['id', 'kind', 'magnitude', 'source'],
@@ -108,7 +108,7 @@ export const ATOM_CATALOG: AtomSpec[] = [
   // Access
   {
     idPrefix: 'access:',
-    ns: 'access' as any,
+    ns: 'access',
     defaultOrigin: 'derived',
     magnitudeRange: [0, 1],
     require: ['id', 'kind', 'magnitude', 'source'],
@@ -387,7 +387,7 @@ export const ATOM_CATALOG: AtomSpec[] = [
   },
   {
     idPrefix: 'loc:',
-    ns: 'scene' as any,
+    ns: 'scene',
     defaultOrigin: 'world',
     magnitudeRange: [0, 1],
     description: 'Location access atoms (public/locked/etc).'

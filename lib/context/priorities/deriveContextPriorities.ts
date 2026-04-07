@@ -8,8 +8,8 @@ function mkPrio(selfId: string, axis: string, v: number, usedAtomIds: string[], 
   const id = `ctx:prio:${axis}:${selfId}`;
   return normalizeAtom({
     id,
-    ns: 'ctx' as any,
-    kind: 'ctx_priority' as any,
+    ns: 'ctx',
+    kind: 'ctx_priority',
     origin: 'derived',
     source: 'context_priorities',
     subject: selfId,
@@ -23,7 +23,7 @@ function mkPrio(selfId: string, axis: string, v: number, usedAtomIds: string[], 
       notes: ['context priority (what the agent attends to / weights)'],
       parts,
     },
-  } as any);
+  });
 }
 
 /**

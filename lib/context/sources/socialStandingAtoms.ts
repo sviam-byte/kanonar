@@ -20,7 +20,7 @@ function mk(selfId: string, otherId: string, value: number, usedAtomIds: string[
       notes: ['Derived social rank differential from authority/reputation/deference'],
       parts,
     },
-  } as any);
+  });
 }
 
 /**

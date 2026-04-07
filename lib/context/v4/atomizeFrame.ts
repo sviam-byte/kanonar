@@ -18,7 +18,7 @@ function mkId(parts: (string | number | null | undefined)[]) {
 
 function getCharacterById(world: any, id: string): any | null {
   if (!id) return null;
-  if (world?.agents) return world.agents.find((a: any) => a.entityId === id) || null;
+  if (world?.agents) return world.agents.find(a => a.entityId === id) || null;
   // Fallback for non-agent entities if necessary, though deriveRelationshipLabel expects characters
   if (typeof world?.getEntityById === 'function') return world.getEntityById(id);
   if (world?.entities && Array.isArray(world.entities)) return world.entities.find((e: any) => e?.entityId === id) || null;
@@ -102,7 +102,7 @@ export function atomizeFrame(frame: AgentContextFrame, t: number, world?: WorldS
           add('env_visibility', loc.properties?.visibility ?? 0.5, 'Visibility');
           add('env_noise', loc.properties?.noise ?? 0.5, 'Noise Level');
           // Structural integrity (if available in state or physics)
-          const structInt = (loc.state as any)?.structuralIntegrity ?? 1.0;
+          const structInt = (loc.state as Record<string, unknown>)?.structuralIntegrity ?? 1.0;
           add('env_structural_integrity', structInt, 'Structural Integrity');
 
           // 3) Navigation & Cover
@@ -301,7 +301,7 @@ export function atomizeFrame(frame: AgentContextFrame, t: number, world?: WorldS
             magnitude: ea.intensity,
             label: `${ea.emotion} (${(ea.intensity * 100).toFixed(0)}%)`,
             meta: { valence: ea.valence, arousal: ea.arousal, why: ea.why },
-          } as any));
+          }));
       }
     }
   }
@@ -333,7 +333,7 @@ export function atomizeFrame(frame: AgentContextFrame, t: number, world?: WorldS
                 relatedAgentId: otherId,
                 distance: a.distance,
                 timestamp: t
-             } as any));
+             }));
          }
     }
     
@@ -358,7 +358,7 @@ export function atomizeFrame(frame: AgentContextFrame, t: number, world?: WorldS
               label: 'Needs Care',
               relatedAgentId: otherId,
               timestamp: t
-          } as any));
+          }));
       }
     }
   }
@@ -379,7 +379,7 @@ export function atomizeFrame(frame: AgentContextFrame, t: number, world?: WorldS
         emotion: kind,
         intensity: value,
         timestamp: t,
-      } as any));
+      }));
     };
 
     pushEmotion(mkId(['emotion:fear', subj]), 'fear', aff.fear ?? 0);
@@ -418,7 +418,7 @@ export function atomizeFrame(frame: AgentContextFrame, t: number, world?: WorldS
                           label: `${other.name} looks capable`,
                           relatedAgentId: other.targetId,
                           timestamp: t
-                      } as any));
+                      }));
                    }
               }
               
@@ -434,7 +434,7 @@ export function atomizeFrame(frame: AgentContextFrame, t: number, world?: WorldS
                           label: `${other.name} looks critical`,
                           relatedAgentId: other.targetId,
                           timestamp: t
-                      } as any));
+                      }));
                    }
               } else if (!other.isCombatCapable) {
                    const atomId = `${baseId}:incapable`;
@@ -448,7 +448,7 @@ export function atomizeFrame(frame: AgentContextFrame, t: number, world?: WorldS
                           label: `${other.name} unfit`,
                           relatedAgentId: other.targetId,
                           timestamp: t
-                      } as any));
+                      }));
                    }
               }
           }
@@ -471,7 +471,7 @@ export function atomizeFrame(frame: AgentContextFrame, t: number, world?: WorldS
 
         const selfChar = getCharacterById(world, selfId);
         const selfAgent: any =
-          (world as any)?.agents?.find((a: any) => a?.entityId === selfId) ?? null;
+          world.agents?.find(a => a?.entityId === selfId) ?? null;
         const acqMap: Record<string, any> | null = selfAgent?.acquaintances ?? null;
         const acqTierToMag = (tier: any) => {
           switch (tier) {
@@ -509,7 +509,7 @@ export function atomizeFrame(frame: AgentContextFrame, t: number, world?: WorldS
                 subject: selfId,
                 targetId: otherId,
                 meta: meta ?? {}
-              } as any));
+              }));
             };
 
             // --- ACQUAINTANCE / RECOGNITION ATOMS ---
@@ -630,7 +630,7 @@ export function atomizeFrame(frame: AgentContextFrame, t: number, world?: WorldS
                     parts: { close, trust, adv, selfPower, otherPower },
                     notes: ['attackBias ~ close*(1-trust)*adv^1.8']
                   }
-                } as any));
+                }));
               }
             }
         
@@ -651,7 +651,7 @@ export function atomizeFrame(frame: AgentContextFrame, t: number, world?: WorldS
                 targetId: otherId,
                 subject: selfId,
                 meta: { scores: rel.scores, why: rel.why, label: rel.label }
-              } as any);
+              });
 
               atoms.push(relAtom);
 
@@ -670,7 +670,7 @@ export function atomizeFrame(frame: AgentContextFrame, t: number, world?: WorldS
                   ns: 'tom',
                   relatedAgentId: otherId,
                   meta: { key: k, label: rel.label }
-                } as any));
+                }));
               }
             }
         }
@@ -693,7 +693,7 @@ export function atomizeFrame(frame: AgentContextFrame, t: number, world?: WorldS
                       label: rel.label || rel.roleTag,
                       relatedAgentId: other,
                       timestamp: t,
-                    } as any));
+                    }));
                 }
             }
             
@@ -710,7 +710,7 @@ export function atomizeFrame(frame: AgentContextFrame, t: number, world?: WorldS
                         label: `Trusted: ${rel.targetId}`,
                         relatedAgentId: rel.targetId,
                         timestamp: t
-                    } as any));
+                    }));
                 }
             }
 
@@ -726,7 +726,7 @@ export function atomizeFrame(frame: AgentContextFrame, t: number, world?: WorldS
                         label: `Threat: ${rel.targetId}`,
                         relatedAgentId: rel.targetId,
                         timestamp: t
-                    } as any));
+                    }));
                 }
             }
         }
@@ -818,7 +818,7 @@ export function atomizeFrame(frame: AgentContextFrame, t: number, world?: WorldS
   const orders = frame.why?.activeOrders || [];
   for (const order of orders) {
     const targetId = (order as any).targetAgentId || (order as any).targetId || null;
-    const kind = (order as any).kind || 'order';
+    const kind = order.kind || 'order';
     const strength = (order as any).priority ?? (order as any).strength ?? 1;
     
     // Explicit add for complex objects to ensure ID consistency
@@ -833,7 +833,7 @@ export function atomizeFrame(frame: AgentContextFrame, t: number, world?: WorldS
           label: order.summary || order.id,
           relatedAgentId: targetId,
           timestamp: t,
-        } as any));
+        }));
     }
 
     if (kind === 'oath' && targetId) {
@@ -848,7 +848,7 @@ export function atomizeFrame(frame: AgentContextFrame, t: number, world?: WorldS
             label: `Oath to serve ${targetId}`,
             relatedAgentId: targetId,
             timestamp: t,
-          } as any));
+          }));
       }
     }
   }

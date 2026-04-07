@@ -154,7 +154,7 @@ export function inferAtomNamespace(atom: Pick<ContextAtom, 'kind' | 'id' | 'sour
 
 export function inferAtomOrigin(source: ContextSource, id: string): AtomOrigin {
   // catalog origin is optional but if present - take it
-  const m = matchAtomSpec({ id, kind: '' as any, tags: [] as any, ns: undefined } as any);
+  const m = matchAtomSpec({ id, kind: '' as any, tags: [] as any, ns: undefined });
   if (m?.spec?.defaultOrigin) return m.spec.defaultOrigin;
 
   if (id.startsWith('manual:') || source === 'manual') return 'override';

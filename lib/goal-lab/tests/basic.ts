@@ -48,21 +48,21 @@ export function goalLabTestScenarios(selfId: string): GoalLabTestScenario[] {
   const other = 'other';
   const atomsCalm: ContextAtom[] = [
     atom(`obs:nearby:${other}:closeness`, 0.8, { subject: me, target: other }),
-    atom(`access:weapon:${me}`, 1, { kind: 'access' as any, ns: 'access' as any, subject: me }),
-    atom(`ctx:danger:${me}`, 0.05, { kind: 'ctx' as any, ns: 'ctx' as any, subject: me }),
-    atom(`sum:threatLevel:${me}`, 0.05, { kind: 'sum' as any, ns: 'sum' as any, subject: me }),
+    atom(`access:weapon:${me}`, 1, { kind: 'access', ns: 'access', subject: me }),
+    atom(`ctx:danger:${me}`, 0.05, { kind: 'ctx', ns: 'ctx', subject: me }),
+    atom(`sum:threatLevel:${me}`, 0.05, { kind: 'sum', ns: 'sum', subject: me }),
   ];
   const atomsAggro: ContextAtom[] = [
     atom(`obs:nearby:${other}:closeness`, 0.8, { subject: me, target: other }),
-    atom(`access:weapon:${me}`, 1, { kind: 'access' as any, ns: 'access' as any, subject: me }),
-    atom(`ctx:danger:${me}`, 0.9, { kind: 'ctx' as any, ns: 'ctx' as any, subject: me }),
-    atom(`sum:threatLevel:${me}`, 0.9, { kind: 'sum' as any, ns: 'sum' as any, subject: me }),
-    atom(`affect:e:anger:${me}`, 0.8, { kind: 'emotion' as any, ns: 'emo' as any, subject: me, origin: 'derived' }),
-    atom(`affect:stress:${me}`, 0.7, { kind: 'affect' as any, ns: 'emo' as any, subject: me, origin: 'derived' }),
+    atom(`access:weapon:${me}`, 1, { kind: 'access', ns: 'access', subject: me }),
+    atom(`ctx:danger:${me}`, 0.9, { kind: 'ctx', ns: 'ctx', subject: me }),
+    atom(`sum:threatLevel:${me}`, 0.9, { kind: 'sum', ns: 'sum', subject: me }),
+    atom(`affect:e:anger:${me}`, 0.8, { kind: 'emotion', ns: 'emo', subject: me, origin: 'derived' }),
+    atom(`affect:stress:${me}`, 0.7, { kind: 'affect', ns: 'emo', subject: me, origin: 'derived' }),
   ];
   const atomsProtocol: ContextAtom[] = [
     ...atomsAggro,
-    atom(`ctx:proceduralStrict:${me}`, 0.95, { kind: 'ctx' as any, ns: 'ctx' as any, subject: me })
+    atom(`ctx:proceduralStrict:${me}`, 0.95, { kind: 'ctx', ns: 'ctx', subject: me })
   ];
   return [
     { id: 'calm_no_attack', title: 'Calm / low threat => attack disabled', atoms: atomsCalm, expect: { mustDisable: ['aff:attack:'] } },

@@ -25,7 +25,7 @@ function findArtifact(run: any, stageId: string, kind: string): any | null {
   const st = findStage(run, stageId);
   if (!st) return null;
   const aa = Array.isArray(st?.artifacts) ? st.artifacts : [];
-  return aa.find((a: any) => String(a?.kind) === kind) || null;
+  return aa.find((a: Record<string, unknown>) => String(a?.kind) === kind) || null;
 }
 
 type TabId = 'world' | 'pipeline' | 'debug' | 'tom';
@@ -243,7 +243,7 @@ const ConsoleWorldTab: React.FC<WorldTabProps> = (props: WorldTabProps) => {
           <div className="text-xs text-slate-500">n={atoms.length}</div>
         </div>
         <div className="mt-2 overflow-auto max-h-[520px] pr-1">
-          {atoms.slice(0, 400).map((a: any) => (
+          {atoms.slice(0, 400).map((a: Record<string, unknown>) => (
             <div key={String(a?.id)} className="flex justify-between gap-2 py-1 border-b border-slate-900/40">
               <div className="text-[11px] text-slate-200 font-mono truncate">{String(a?.id || '')}</div>
               <div className="text-[11px] text-cyan-300 font-mono">{Number(a?.magnitude ?? 0).toFixed(3)}</div>
@@ -260,8 +260,8 @@ const ConsoleWorldTab: React.FC<WorldTabProps> = (props: WorldTabProps) => {
     const st = findStage(run, 'S0');
     const aa = Array.isArray(st?.artifacts) ? st.artifacts : [];
     const snap =
-      aa.find((a: any) => String(a?.id || '').includes('observation_snapshot')) ||
-      aa.find((a: any) => String(a?.id || '').includes('observation_summary')) ||
+      aa.find((a: Record<string, unknown>) => String(a?.id || '').includes('observation_snapshot')) ||
+      aa.find((a: Record<string, unknown>) => String(a?.id || '').includes('observation_summary')) ||
       obs;
     return (
       <div className="rounded border border-slate-800 bg-black/20 p-2 min-h-0 flex flex-col">
@@ -284,14 +284,14 @@ const ConsoleWorldTab: React.FC<WorldTabProps> = (props: WorldTabProps) => {
     return l?.title ? `${l.title} (${id})` : id;
   };
 
-  const selAgent: any = arr(agents).find((a: any) => String(a?.entityId ?? a?.id ?? '') === String(selectedAgentId)) || null;
+  const selAgent: any = arr(agents).find((a: Record<string, unknown>) => String(a?.entityId ?? a?.id ?? '') === String(selectedAgentId)) || null;
   const selAcute: any = selAgent?.body?.acute || selAgent?.body?.state?.acute || {};
 
   // Tiny, high-signal metric overlay derived from atoms (best-effort; does NOT pretend to be full truth).
   const getMetric = (art: any, keys: string[]): number | null => {
     const atoms = Array.isArray(art?.data?.atoms) ? art.data.atoms : [];
     for (const k of keys) {
-      const hit = atoms.find((a: any) => String(a?.id || '').toLowerCase().includes(k));
+      const hit = atoms.find((a: Record<string, unknown>) => String(a?.id || '').toLowerCase().includes(k));
       if (hit) {
         const v = Number(hit?.magnitude);
         if (Number.isFinite(v)) return v;

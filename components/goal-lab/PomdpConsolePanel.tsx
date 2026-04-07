@@ -842,7 +842,7 @@ export const PomdpConsolePanel: React.FC<Props> = ({ run, rawV1, observeLitePara
                       count={Number(data?.count ?? list.length)} (showing up to {Math.min(120, list.length)})
                     </div>
                     <div className="mt-2 space-y-1 max-h-[320px] overflow-auto">
-                      {list.slice(0, 120).map((a: any) => {
+                      {list.slice(0, 120).map((a: Record<string, unknown>) => {
                         const id = safeStr(a?.id);
                         const mag = Number(a?.magnitude ?? 0);
                         const label = safeStr(a?.label || a?.code);

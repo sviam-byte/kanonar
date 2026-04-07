@@ -67,8 +67,8 @@ export function deriveEmotionAtoms(args: { selfId: string; atoms: ContextAtom[] 
   const mk = (key: string, v: number, parts: any) =>
     normalizeAtom({
       id: `emo:${key}:${selfId}`,
-      ns: 'emo' as any,
-      kind: 'emotion' as any,
+      ns: 'emo',
+      kind: 'emotion',
       origin: 'derived',
       source: 'emotion_core',
       magnitude: clamp01(v),
@@ -77,13 +77,13 @@ export function deriveEmotionAtoms(args: { selfId: string; atoms: ContextAtom[] 
       tags: ['emo', key],
       label: `emo.${key}:${Math.round(clamp01(v) * 100)}%`,
       trace: { usedAtomIds: used, notes: ['derived core emotion'], parts },
-    } as any);
+    });
 
   const mk11 = (key: string, v: number, parts: any) =>
     normalizeAtom({
       id: `emo:${key}:${selfId}`,
-      ns: 'emo' as any,
-      kind: 'emotion_axis' as any,
+      ns: 'emo',
+      kind: 'emotion_axis',
       origin: 'derived',
       source: 'emotion_axes',
       magnitude: v as any, // valence: -1..1 (оставляем как есть)
@@ -92,7 +92,7 @@ export function deriveEmotionAtoms(args: { selfId: string; atoms: ContextAtom[] 
       tags: ['emo', 'axis', key],
       label: `emo.${key}:${Math.round(v * 100)}%`,
       trace: { usedAtomIds: used, notes: ['derived affect axis'], parts },
-    } as any);
+    });
 
   return {
     emotions: { fear, anger, shame, relief, resolve, care, arousal, valence },
@@ -105,8 +105,8 @@ export function deriveEmotionAtoms(args: { selfId: string; atoms: ContextAtom[] 
       mk('care', care, { attachment, threat, care0, care, trCareTrait }),
       normalizeAtom({ // arousal 0..1
         id: `emo:arousal:${selfId}`,
-        ns: 'emo' as any,
-        kind: 'emotion_axis' as any,
+        ns: 'emo',
+        kind: 'emotion_axis',
         origin: 'derived',
         source: 'emotion_axes',
         magnitude: arousal,
@@ -115,7 +115,7 @@ export function deriveEmotionAtoms(args: { selfId: string; atoms: ContextAtom[] 
         tags: ['emo', 'axis', 'arousal'],
         label: `emo.arousal:${Math.round(arousal * 100)}%`,
         trace: { usedAtomIds: used, notes: ['derived affect axis'], parts: { arousal0, arousal, trHpa, trSensitivity } },
-      } as any),
+      }),
       mk11('valence', valence, { valence }),
     ],
     usedAtomIds: used,

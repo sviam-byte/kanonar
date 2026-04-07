@@ -45,7 +45,7 @@ export function runBatch(config: RunConfig): RunResult {
     locations: config.locations,
     characters: config.characters,
     placements: config.placements,
-  } as any);
+  });
 
   const sim = new SimKitSimulator({
     scenarioId: 'compare:batch',

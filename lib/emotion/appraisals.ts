@@ -207,8 +207,8 @@ export function deriveAppraisalAtoms(args: { selfId: string; atoms: ContextAtom[
   const mk = (key: string, v: number, parts: any) =>
     normalizeAtom({
       id: `app:${key}:${selfId}`,
-      ns: 'app' as any,
-      kind: 'appraisal' as any,
+      ns: 'app',
+      kind: 'appraisal',
       origin: 'derived',
       source: 'emotion_appraisal',
       magnitude: clamp01(v),
@@ -217,7 +217,7 @@ export function deriveAppraisalAtoms(args: { selfId: string; atoms: ContextAtom[
       tags: ['appraisal', key],
       label: `app.${key}:${Math.round(clamp01(v) * 100)}%`,
       trace: { usedAtomIds: used, notes: ['derived appraisal (personalized)'], parts },
-    } as any);
+    });
 
   const partsBase = {
     traits: { paranoia: trParanoia, sensitivity: trSensitive, experience: trExperience },

@@ -447,7 +447,7 @@ export function buildWorldStateFromSim(world: SimWorld, snapshot: SimSnapshot, o
   const rels = (world.facts as any)?.relations;
   if (rels && typeof rels === 'object') {
     for (const agent of agents) {
-      const selfId = String((agent as any)?.entityId ?? '');
+      const selfId = String(agent?.entityId ?? '');
       if (!selfId) continue;
       const selfRels: any[] = [];
 
@@ -475,8 +475,8 @@ export function buildWorldStateFromSim(world: SimWorld, snapshot: SimSnapshot, o
       }
 
       if (selfRels.length) {
-        (agent as any).memory = (agent as any).memory || {};
-        (agent as any).memory.beliefAtoms = [...arr((agent as any)?.memory?.beliefAtoms), ...selfRels];
+        agent.memory = agent.memory || {};
+        agent.memory.beliefAtoms = [...arr(agent?.memory?.beliefAtoms), ...selfRels];
       }
     }
   }
@@ -496,7 +496,7 @@ export function buildWorldStateFromSim(world: SimWorld, snapshot: SimSnapshot, o
   });
 
   const beliefAtomsByAgent = Object.fromEntries(
-    agents.map((a: any) => [String(a.entityId), arr((a as any)?.memory?.beliefAtoms)])
+    agents.map((a: Record<string, unknown>) => [String(a.entityId), arr((a as any)?.memory?.beliefAtoms)])
   );
 
   const w: WorldState = {

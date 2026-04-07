@@ -60,7 +60,7 @@ export function deriveRelFinalAtoms(args: {
             notes: ['rel:final = mix(rel:state, tom:effective)'],
             parts: { metric, wState, wTom, ms, mt, mFinal },
           },
-        } as any)
+        })
       );
     }
   }
@@ -156,7 +156,7 @@ export function finalizeRelations(raw: RelationshipGraph): RelationshipGraph {
       updatedAtTick,
       sources,
       ...(mergedBio ? { bio: mergedBio } : {}),
-    } as any);
+    });
   }
 
   const edges = Array.from(map.values()).map(e => ({

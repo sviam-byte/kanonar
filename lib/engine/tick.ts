@@ -190,7 +190,7 @@ export function runTicksForCast(args: {
   const ids: string[] =
     arr(participantIds).length
       ? arr(participantIds)
-      : arr(world?.agents || world?.entities).map((a: any) => a?.entityId).filter(Boolean);
+      : arr(world?.agents || world?.entities).map((a: Record<string, unknown>) => a?.entityId).filter(Boolean);
 
   const snapshotsByAgentId: Record<string, any[]> = {};
   const diffsByAgentId: Record<string, any[]> = {};

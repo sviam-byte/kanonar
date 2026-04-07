@@ -9,10 +9,10 @@ import { updateTomTraits, TraitObservation } from "./update.traits";
 import { clamp01 } from '../util/math';
 
 function ensureTom(world: WorldState): TomState {
-  if (!(world as any).tom || !(world as any).tom.views) {
-    (world as any).tom = { views: {} };
+  if (!world.tom || !world.tom.views) {
+    world.tom = { views: {} };
   }
-  return (world as any).tom as TomState;
+  return world.tom as TomState;
 }
 
 export function getTomView(
@@ -20,7 +20,7 @@ export function getTomView(
   observerId: string,
   targetId: string
 ): TomView | null {
-  const tom = (world as any).tom as TomState | undefined;
+  const tom = world.tom as TomState | undefined;
   if (!tom) return null;
   // Handle both structure types if necessary, but standard is tom[obs][target] in this engine
   // The 'views' structure is from older spec, but the engine uses direct map
@@ -171,7 +171,7 @@ export function updateSelfTomFromAffect(
   agent: AgentState
 ): TomView {
   const id = agent.entityId;
-  const affect = (agent as any).affect; 
+  const affect = agent.affect; 
   if (!affect) {
     return patchTomView(world, id, id, {});
   }
@@ -221,7 +221,7 @@ export function diffuseTomToAffect(
   agent: AgentState
 ): AgentState {
   const id = agent.entityId;
-  const tom = (world as any).tom as TomState | undefined;
+  const tom = world.tom as TomState | undefined;
   // Use views if available or fallback to tom keys
   if (!tom) return agent;
   
@@ -251,7 +251,7 @@ export function diffuseTomToAffect(
 
   const avgAnger = count > 0 ? totalAngerTowardsMe / count : 0;
 
-  const affect = { ...((agent as any).affect ?? {
+  const affect = { ...(agent.affect ?? {
     valence: 0,
     arousal: 0.2,
     fear: 0,

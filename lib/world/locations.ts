@@ -221,7 +221,7 @@ export function canAgentEnterLocation(world: WorldState, locationId: string): bo
   const capacity = loc.geometry?.capacity;
   if (capacity == null) return true;
 
-  const current = world.agents.filter((a: any) => a.locationId === locationId).length;
+  const current = world.agents.filter((a: Record<string, unknown>) => a.locationId === locationId).length;
   return current < capacity;
 }
 

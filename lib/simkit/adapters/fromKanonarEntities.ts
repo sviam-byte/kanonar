@@ -93,7 +93,7 @@ export function makeSimWorldFromSelection(args: {
       hazards: hazardsFromLocation(loc),
       norms: normsFromLocation(loc),
       tags: (loc.properties?.tags || []) as any,
-      map: (loc as any).map ?? null,
+      map: loc.map ?? null,
       entity: loc,
     };
   }
@@ -170,7 +170,7 @@ export function makeSimWorldFromSelection(args: {
 
     for (const [locId, xs] of Object.entries(byLoc)) {
       const loc = locMap[locId];
-      const navNodes = Array.isArray((loc as any)?.nav?.nodes) ? (loc as any).nav.nodes : [];
+      const navNodes = Array.isArray(loc?.nav?.nodes) ? (loc as any).nav.nodes : [];
       if (navNodes.length) {
         for (let i = 0; i < xs.length; i++) {
           const n = navNodes[i % navNodes.length];
@@ -180,8 +180,8 @@ export function makeSimWorldFromSelection(args: {
       }
 
       // 2) Otherwise, scatter on map bounds (fallback 1024x768).
-      const mapW = Number((loc as any)?.map?.width ?? (loc as any)?.width ?? 1024);
-      const mapH = Number((loc as any)?.map?.height ?? (loc as any)?.height ?? 768);
+      const mapW = Number(loc?.map?.width ?? (loc as any)?.width ?? 1024);
+      const mapH = Number(loc?.map?.height ?? (loc as any)?.height ?? 768);
       const w = Number.isFinite(mapW) ? mapW : 1024;
       const h = Number.isFinite(mapH) ? mapH : 768;
       const cx = w / 2;
@@ -202,13 +202,13 @@ export function makeSimWorldFromSelection(args: {
       const hasXY = Number.isFinite(Number(c?.pos?.x)) && Number.isFinite(Number(c?.pos?.y));
       if (hasXY) continue;
       const loc = locMap[c.locId];
-      const n0 = (loc as any)?.nav?.nodes?.[0];
+      const n0 = loc?.nav?.nodes?.[0];
       if (n0) {
         c.pos = { nodeId: String(n0.id), x: Number(n0.x), y: Number(n0.y) };
         continue;
       }
-      const mapW = Number((loc as any)?.map?.width ?? (loc as any)?.width ?? 1024);
-      const mapH = Number((loc as any)?.map?.height ?? (loc as any)?.height ?? 768);
+      const mapW = Number(loc?.map?.width ?? (loc as any)?.width ?? 1024);
+      const mapH = Number(loc?.map?.height ?? (loc as any)?.height ?? 768);
       c.pos = {
         nodeId: null,
         x: (Number.isFinite(mapW) ? mapW : 1024) / 2,
