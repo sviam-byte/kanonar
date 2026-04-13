@@ -1,8 +1,9 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { CATALOG, getSpec } from '../lib/dilemma/catalog';
 import { advanceGame, createGame, isGameOver } from '../lib/dilemma/engine';
 import { analyzeGame, bestStrategy } from '../lib/dilemma/analysis';
 import type { DilemmaGameState } from '../lib/dilemma/types';
+import { useSandbox } from '../contexts/SandboxContext';
 
 /**
  * Простая интерактивная UI-песочница для DilemmaLab.
@@ -11,6 +12,8 @@ import type { DilemmaGameState } from '../lib/dilemma/types';
  * и аналитику без подключения полного world/pipeline runner.
  */
 export const DilemmaLabPage: React.FC = () => {
+  const { characters } = useSandbox();
+
   const specIds = useMemo(() => Object.keys(CATALOG), []);
   const [specId, setSpecId] = useState<string>(specIds[0] ?? 'prisoners_dilemma');
   const [totalRounds, setTotalRounds] = useState<number>(5);
@@ -18,6 +21,27 @@ export const DilemmaLabPage: React.FC = () => {
   const [p1, setP1] = useState<string>('agent:b');
   const [game, setGame] = useState<DilemmaGameState | null>(null);
   const spec = getSpec(specId);
+
+  /**
+   * Список агентов для селектов.
+   * Если в песочнице нет персонажей — остаётся ручной fallback.
+   */
+  const agentOptions = useMemo(
+    () => characters.map((c) => ({ id: c.entityId, label: c.title || c.entityId })),
+    [characters],
+  );
+
+  useEffect(() => {
+    if (agentOptions.length < 2) return;
+
+    // Инициализируем дефолтные значения из sandbox-каста,
+    // чтобы пользователь сразу видел валидную пару агентов.
+    setP0((prev) => (agentOptions.some((a) => a.id === prev) ? prev : agentOptions[0].id));
+    setP1((prev) => {
+      if (agentOptions.some((a) => a.id === prev) && prev !== agentOptions[0].id) return prev;
+      return agentOptions[1]?.id ?? agentOptions[0].id;
+    });
+  }, [agentOptions]);
 
   const startGame = () => {
     try {
@@ -69,20 +93,46 @@ export const DilemmaLabPage: React.FC = () => {
 
           <label className="text-xs text-canon-text-light">
             Player A
-            <input
-              value={p0}
-              onChange={(e) => setP0(e.target.value)}
-              className="w-full mt-1 bg-canon-bg border border-canon-border rounded p-2 text-sm"
-            />
+            {agentOptions.length > 0 ? (
+              <select
+                value={p0}
+                onChange={(e) => setP0(e.target.value)}
+                className="w-full mt-1 bg-canon-bg border border-canon-border rounded p-2 text-sm"
+              >
+                {agentOptions.map((a) => (
+                  <option key={a.id} value={a.id}>{a.label} ({a.id})</option>
+                ))}
+              </select>
+            ) : (
+              <input
+                value={p0}
+                onChange={(e) => setP0(e.target.value)}
+                className="w-full mt-1 bg-canon-bg border border-canon-border rounded p-2 text-sm"
+                placeholder="agent:a"
+              />
+            )}
           </label>
 
           <label className="text-xs text-canon-text-light">
             Player B
-            <input
-              value={p1}
-              onChange={(e) => setP1(e.target.value)}
-              className="w-full mt-1 bg-canon-bg border border-canon-border rounded p-2 text-sm"
-            />
+            {agentOptions.length > 0 ? (
+              <select
+                value={p1}
+                onChange={(e) => setP1(e.target.value)}
+                className="w-full mt-1 bg-canon-bg border border-canon-border rounded p-2 text-sm"
+              >
+                {agentOptions.map((a) => (
+                  <option key={a.id} value={a.id}>{a.label} ({a.id})</option>
+                ))}
+              </select>
+            ) : (
+              <input
+                value={p1}
+                onChange={(e) => setP1(e.target.value)}
+                className="w-full mt-1 bg-canon-bg border border-canon-border rounded p-2 text-sm"
+                placeholder="agent:b"
+              />
+            )}
           </label>
 
           <label className="text-xs text-canon-text-light">
@@ -97,6 +147,12 @@ export const DilemmaLabPage: React.FC = () => {
             />
           </label>
         </div>
+
+        {agentOptions.length < 2 && (
+          <div className="mt-2 text-[11px] text-amber-300">
+            В сессии меньше двух персонажей: используй ручной ввод ID или добавь персонажей в Sandbox.
+          </div>
+        )}
 
         <div className="flex gap-2 mt-4">
           <button className="px-3 py-2 rounded bg-canon-accent text-canon-bg text-sm font-bold" onClick={startGame}>
