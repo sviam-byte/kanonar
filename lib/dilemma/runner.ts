@@ -22,7 +22,7 @@ import { buildActionCandidates } from '../decision/actionCandidateUtils';
 import { decideAction } from '../decision/decide';
 import { clamp01 } from '../util/math';
 import { atomizeFeatures } from '../features/atomize';
-import { extractCharacter } from '../features/extractCharacter';
+import { extractCharacterFeatures } from '../features/extractCharacter';
 
 export type DilemmaRunConfig = {
   specId: string;
@@ -137,7 +137,7 @@ function extractAgentAtoms(agent: AgentState, selfId: string): ContextAtom[] {
   const atoms: ContextAtom[] = [];
 
   try {
-    const features = extractCharacter(agent);
+    const features = extractCharacterFeatures({ character: agent, selfId });
     const featureAtoms = atomizeFeatures(features, `feat:char:${selfId}`);
     atoms.push(...featureAtoms);
   } catch {

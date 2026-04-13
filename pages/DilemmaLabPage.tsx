@@ -1,231 +1,761 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { CATALOG, getSpec } from '../lib/dilemma/catalog';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { CATALOG, getSpec, allSpecs } from '../lib/dilemma/catalog';
 import { advanceGame, createGame, isGameOver } from '../lib/dilemma/engine';
 import { analyzeGame, bestStrategy } from '../lib/dilemma/analysis';
-import type { DilemmaGameState } from '../lib/dilemma/types';
+import { runDilemmaGame } from '../lib/dilemma/runner';
+import type {
+  DilemmaGameState,
+  DilemmaSpec,
+  StrategyMatchScores,
+} from '../lib/dilemma/types';
+import type { WorldState, AgentState } from '../types';
 import { useSandbox } from '../contexts/SandboxContext';
+import { Tabs } from '../components/Tabs';
+
+// ═══════════════════════════════════════════════════════════════
+// Types & constants
+// ═══════════════════════════════════════════════════════════════
+
+type Mode = 'idle' | 'manual' | 'pipeline';
+
+const ICONS: Record<string, string> = {
+  prisoners_dilemma: '⛓',
+  stag_hunt: '🦌',
+  chicken: '🦅',
+  trust_game: '🤝',
+};
+
+const STRAT_LABEL: Record<string, string> = {
+  titForTat: 'Tit for Tat',
+  alwaysCooperate: 'Always Cooperate',
+  alwaysDefect: 'Always Defect',
+  pavlov: 'Pavlov',
+  grimTrigger: 'Grim Trigger',
+};
+
+const STRAT_COLOR: Record<string, string> = {
+  titForTat: '#66d9ff',
+  alwaysCooperate: '#42f5b3',
+  alwaysDefect: '#ff5c7a',
+  pavlov: '#9b87ff',
+  grimTrigger: '#ffaa44',
+};
+
+// ═══════════════════════════════════════════════════════════════
+// Helpers
+// ═══════════════════════════════════════════════════════════════
 
 /**
- * Простая интерактивная UI-песочница для DilemmaLab.
+ * Преобразует possibility-id из trace обратно в id действия дилеммы.
+ * Нужен для читабельного вывода трасс и нарративных меток.
+ */
+function possIdToActionId(possId: string, spec: DilemmaSpec): string | null {
+  for (const a of spec.actions) {
+    const m = spec.scoringMap[a.id];
+    if (m && possId.startsWith(m.idPrefix)) return a.id;
+  }
+  return null;
+}
+
+const pct = (v: number) => `${(v * 100).toFixed(0)}%`;
+const f2 = (v: number) => v.toFixed(2);
+
+/**
+ * Минимально валидное world-состояние для pipeline runner.
+ * Держим структуру явной, чтобы не ломать границы API model -> runner.
+ */
+function buildMinimalWorld(
+  characters: { entityId: string; [k: string]: unknown }[],
+): WorldState {
+  return {
+    tick: 0,
+    agents: characters as unknown as AgentState[],
+    locations: [],
+    leadership: { leaderId: null } as WorldState['leadership'],
+    initialRelations: {},
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Sub-components
+// ═══════════════════════════════════════════════════════════════
+
+/* ── Dilemma card ── */
+
+const DilemmaCard: React.FC<{
+  spec: DilemmaSpec; selected: boolean; onClick: () => void;
+}> = ({ spec, selected, onClick }) => (
+  <button
+    onClick={onClick}
+    className={`text-left p-3 rounded-lg border transition-all ${selected
+      ? 'border-canon-accent bg-canon-accent/10 shadow-canon-1'
+      : 'border-canon-border bg-canon-card hover:border-canon-accent/40'
+      }`}
+  >
+    <div className="flex items-center gap-2">
+      <span className="text-lg">{ICONS[spec.id] ?? '◆'}</span>
+      <span className={`text-sm font-semibold ${selected ? 'text-canon-accent' : 'text-canon-text'}`}>
+        {spec.name}
+      </span>
+    </div>
+    <div className="text-[11px] text-canon-muted mt-1 line-clamp-2">
+      Nash: [{spec.nashEquilibria.map((e) => e.join('+')).join(', ')}]
+      {' · '}
+      Pareto: [{spec.paretoOptimal.map((e) => e.join('+')).join(', ')}]
+    </div>
+  </button>
+);
+
+/* ── Payoff matrix ── */
+
+const PayoffMatrixView: React.FC<{
+  spec: DilemmaSpec;
+  narrative: boolean;
+  highlight?: { a0: string; a1: string } | null;
+}> = ({ spec, narrative, highlight }) => {
+  const acts = spec.actions;
+  const isNash = (a0: string, a1: string) =>
+    spec.nashEquilibria.some(([n0, n1]) => n0 === a0 && n1 === a1);
+  const isPareto = (a0: string, a1: string) =>
+    spec.paretoOptimal.some(([p0, p1]) => p0 === a0 && p1 === a1);
+  const lbl = (id: string) =>
+    narrative ? (spec.framing.actionLabels[id] ?? id) : id;
+
+  return (
+    <div className="space-y-2">
+      <div className="text-xs font-semibold text-canon-muted uppercase tracking-wider">Payoff Matrix</div>
+      <table className="w-full text-xs border-collapse">
+        <thead>
+          <tr>
+            <th className="p-2 text-canon-muted font-normal text-left border-b border-canon-border">A↓ · B→</th>
+            {acts.map((a) => (
+              <th key={a.id} className="p-2 text-canon-text font-semibold border-b border-canon-border text-center">
+                {lbl(a.id)}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {acts.map((a0) => (
+            <tr key={a0.id}>
+              <td className="p-2 text-canon-text font-semibold border-b border-canon-border/50">{lbl(a0.id)}</td>
+              {acts.map((a1) => {
+                const [p0, p1] = spec.payoffs[a0.id][a1.id];
+                const hl = highlight?.a0 === a0.id && highlight?.a1 === a1.id;
+                const badges: string[] = [];
+                if (isNash(a0.id, a1.id)) badges.push('N');
+                if (isPareto(a0.id, a1.id)) badges.push('P');
+                return (
+                  <td
+                    key={a1.id}
+                    className={`p-2 text-center border-b border-canon-border/50 transition-colors ${hl ? 'bg-canon-accent/15' : ''}`}
+                  >
+                    <div className="font-mono">
+                      <span className="text-canon-accent">{f2(p0)}</span>
+                      <span className="text-canon-muted mx-1">/</span>
+                      <span className="text-canon-accent-2">{f2(p1)}</span>
+                    </div>
+                    {badges.length > 0 && (
+                      <div className="flex gap-1 justify-center mt-1">
+                        {badges.includes('N') && <span className="text-[9px] px-1 rounded bg-canon-bad/20 text-canon-bad">Nash</span>}
+                        {badges.includes('P') && <span className="text-[9px] px-1 rounded bg-canon-good/20 text-canon-good">Pareto</span>}
+                      </div>
+                    )}
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+};
+
+/* ── Cooperation curve (SVG) ── */
+
+const CoopCurveChart: React.FC<{
+  curve: number[];
+  players: readonly [string, string];
+  game: DilemmaGameState;
+  spec: DilemmaSpec;
+}> = ({ curve, players, game, spec }) => {
+  if (curve.length === 0) return <div className="text-xs text-canon-muted italic">Нет данных</div>;
+
+  const W = 480; const H = 160;
+  const pad = { top: 16, right: 16, bottom: 28, left: 36 };
+  const iw = W - pad.left - pad.right;
+  const ih = H - pad.top - pad.bottom;
+  const n = curve.length;
+  const xStep = n > 1 ? iw / (n - 1) : iw;
+  const toX = (i: number) => pad.left + (n > 1 ? i * xStep : iw / 2);
+  const toY = (v: number) => pad.top + ih * (1 - v);
+
+  const p0Coop = game.rounds.map((r) => (r.choices[players[0]] === spec.cooperativeActionId ? 1 : 0));
+  const p1Coop = game.rounds.map((r) => (r.choices[players[1]] === spec.cooperativeActionId ? 1 : 0));
+  const makeLine = (data: number[]) =>
+    data.map((v, i) => `${i === 0 ? 'M' : 'L'} ${toX(i).toFixed(1)} ${toY(v).toFixed(1)}`).join(' ');
+
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ maxHeight: 180 }}>
+      {[0, 0.25, 0.5, 0.75, 1].map((v) => (
+        <g key={v}>
+          <line x1={pad.left} x2={W - pad.right} y1={toY(v)} y2={toY(v)}
+            stroke="rgba(255,255,255,0.06)" strokeWidth={1} />
+          <text x={pad.left - 4} y={toY(v) + 3} textAnchor="end"
+            fill="rgba(255,255,255,0.3)" fontSize={9} fontFamily="monospace">{pct(v)}</text>
+        </g>
+      ))}
+      {curve.map((_, i) => (
+        <text key={i} x={toX(i)} y={H - 4} textAnchor="middle"
+          fill="rgba(255,255,255,0.3)" fontSize={9} fontFamily="monospace">R{i + 1}</text>
+      ))}
+      <path d={makeLine(curve)} fill="none" stroke="#66d9ff" strokeWidth={2} opacity={0.8} />
+      {curve.map((v, i) => <circle key={i} cx={toX(i)} cy={toY(v)} r={3} fill="#66d9ff" />)}
+      {p0Coop.map((v, i) => (
+        <circle key={`a${i}`} cx={toX(i) - 4} cy={toY(v)} r={2.5} fill={v ? '#42f5b3' : '#ff5c7a'} opacity={0.7} />
+      ))}
+      {p1Coop.map((v, i) => (
+        <circle key={`b${i}`} cx={toX(i) + 4} cy={toY(v)} r={2.5}
+          fill={v ? '#42f5b3' : '#ff5c7a'} opacity={0.7} stroke="#9b87ff" strokeWidth={0.8} />
+      ))}
+      <circle cx={pad.left + 8} cy={8} r={3} fill="#66d9ff" />
+      <text x={pad.left + 16} y={11} fill="rgba(255,255,255,0.5)" fontSize={8}>avg</text>
+      <circle cx={pad.left + 48} cy={8} r={3} fill="#42f5b3" />
+      <text x={pad.left + 56} y={11} fill="rgba(255,255,255,0.5)" fontSize={8}>coop</text>
+      <circle cx={pad.left + 88} cy={8} r={3} fill="#ff5c7a" />
+      <text x={pad.left + 96} y={11} fill="rgba(255,255,255,0.5)" fontSize={8}>defect</text>
+    </svg>
+  );
+};
+
+/* ── Strategy bars ── */
+
+const StrategyBars: React.FC<{ scores: StrategyMatchScores; label: string }> = ({ scores, label }) => {
+  const entries = Object.entries(scores) as [string, number][];
+  const best = bestStrategy(scores);
+  return (
+    <div className="space-y-1.5">
+      <div className="text-xs font-semibold text-canon-muted">{label}</div>
+      {entries.map(([key, val]) => (
+        <div key={key} className="flex items-center gap-2">
+          <div className="text-[10px] text-canon-muted w-28 text-right truncate">{STRAT_LABEL[key] ?? key}</div>
+          <div className="flex-1 h-3 bg-canon-bg rounded-full overflow-hidden">
+            <div className="h-full rounded-full transition-all" style={{
+              width: `${Math.max(2, val * 100)}%`,
+              backgroundColor: STRAT_COLOR[key] ?? '#66d9ff',
+              opacity: best.name === (STRAT_LABEL[key] ?? key) ? 1 : 0.5,
+            }} />
+          </div>
+          <div className="text-[10px] font-mono text-canon-muted w-10 text-right">{pct(val)}</div>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+/* ── Single trace block ── */
+
+const TraceBlock: React.FC<{
+  round: number; spec: DilemmaSpec; game: DilemmaGameState; narrative: boolean;
+}> = ({ round, spec, game, narrative }) => {
+  const [open, setOpen] = useState(round === game.rounds.length - 1);
+  const r = game.rounds[round];
+  if (!r) return null;
+  const [p0, p1] = game.players;
+
+  const aLabel = (possId: string) => {
+    const actId = possIdToActionId(possId, spec);
+    if (!actId) return possId;
+    if (narrative && spec.framing.actionLabels[actId]) return spec.framing.actionLabels[actId];
+    return spec.actions.find((a) => a.id === actId)?.label ?? actId;
+  };
+
+  const renderTrace = (pid: string) => {
+    const t = r.traces[pid];
+    if (!t || t.ranked.length === 0) {
+      return <div className="text-[10px] text-canon-muted italic">Trace недоступен (manual mode)</div>;
+    }
+    return (
+      <div className="space-y-1">
+        <div className="text-[10px] text-canon-muted">
+          trust = <span className="font-mono text-canon-accent">{f2(t.trustAtDecision)}</span>
+        </div>
+        {t.ranked.slice().sort((a, b) => b.q - a.q).map((e, i) => (
+          <div key={i} className={`flex items-center gap-2 text-[10px] px-1.5 py-0.5 rounded ${e.chosen ? 'bg-canon-accent/10 text-canon-accent' : 'text-canon-muted'}`}>
+            <span className="font-mono w-14 text-right">Q={f2(e.q)}</span>
+            <span className="flex-1 truncate">{aLabel(e.actionId)}</span>
+            {e.chosen && <span className="text-[9px] text-canon-accent">◀</span>}
+          </div>
+        ))}
+        {t.dilemmaAtomIds.length > 0 && (
+          <details className="text-[10px]">
+            <summary className="text-canon-muted cursor-pointer hover:text-canon-text">
+              atoms ({t.dilemmaAtomIds.length})
+            </summary>
+            <div className="mt-1 pl-2 space-y-0.5 text-canon-faint font-mono">
+              {t.dilemmaAtomIds.map((id) => <div key={id}>{id}</div>)}
+            </div>
+          </details>
+        )}
+      </div>
+    );
+  };
+
+  const c0 = r.choices[p0]; const c1 = r.choices[p1];
+  return (
+    <div className="border border-canon-border/50 rounded-lg bg-canon-card overflow-hidden">
+      <button onClick={() => setOpen(!open)}
+        className="w-full flex items-center justify-between px-3 py-2 hover:bg-canon-accent/5 transition text-left">
+        <div className="text-xs font-semibold text-canon-text flex items-center gap-2">
+          <span className="text-canon-faint">{open ? '▾' : '▸'}</span>
+          R{round + 1}
+        </div>
+        <div className="text-[10px] text-canon-muted font-mono">
+          {c0} × {c1} → <span className="text-canon-accent">{f2(r.payoffs[p0])}</span> / <span className="text-canon-accent-2">{f2(r.payoffs[p1])}</span>
+        </div>
+      </button>
+      {open && (
+        <div className="px-3 pb-3 pt-1 grid grid-cols-2 gap-3 border-t border-canon-border/30">
+          <div>
+            <div className="text-[10px] font-semibold text-canon-accent mb-1">{p0}</div>
+            {renderTrace(p0)}
+          </div>
+          <div>
+            <div className="text-[10px] font-semibold text-canon-accent-2 mb-1">{p1}</div>
+            {renderTrace(p1)}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+/* ── Stat card ── */
+
+const Stat: React.FC<{ label: string; value: string; sub?: string; color?: string }> = ({ label, value, sub, color }) => (
+  <div className="bg-canon-card border border-canon-border/50 rounded-lg p-3">
+    <div className="text-[10px] text-canon-muted uppercase tracking-wider">{label}</div>
+    <div className={`text-lg font-mono font-bold mt-0.5 ${color ?? 'text-canon-text'}`}>{value}</div>
+    {sub && <div className="text-[10px] text-canon-faint mt-0.5">{sub}</div>}
+  </div>
+);
+
+// ═══════════════════════════════════════════════════════════════
+// Main page component
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * DilemmaLabPage
  *
- * Важно: это intentionally light UI, чтобы быстро смотреть поведение
- * и аналитику без подключения полного world/pipeline runner.
+ * Полноценный UI для двух режимов:
+ * 1) Pipeline — решения берутся из runDilemmaGame (scorePossibility → decideAction)
+ * 2) Manual — действия задаются вручную по раундам
+ *
+ * Плюс: матрица выплат, история раундов, аналитика и трассы решений.
  */
 export const DilemmaLabPage: React.FC = () => {
   const { characters } = useSandbox();
 
+  // Config
   const specIds = useMemo(() => Object.keys(CATALOG), []);
-  const [specId, setSpecId] = useState<string>(specIds[0] ?? 'prisoners_dilemma');
-  const [totalRounds, setTotalRounds] = useState<number>(5);
-  const [p0, setP0] = useState<string>('agent:a');
-  const [p1, setP1] = useState<string>('agent:b');
-  const [game, setGame] = useState<DilemmaGameState | null>(null);
-  const spec = getSpec(specId);
+  const [specId, setSpecId] = useState(specIds[0] ?? 'prisoners_dilemma');
+  const [totalRounds, setTotalRounds] = useState(10);
+  const [p0, setP0] = useState('');
+  const [p1, setP1] = useState('');
+  const [initialTrust, setInitialTrust] = useState(0.5);
+  const [narrative, setNarrative] = useState(false);
 
-  /**
-   * Список агентов для селектов.
-   * Если в песочнице нет персонажей — остаётся ручной fallback.
-   */
+  // State
+  const [mode, setMode] = useState<Mode>('idle');
+  const [game, setGame] = useState<DilemmaGameState | null>(null);
+  const [pipelineError, setPipelineError] = useState<string | null>(null);
+  const [manualA0, setManualA0] = useState('');
+  const [manualA1, setManualA1] = useState('');
+
+  const spec = getSpec(specId);
+  const analysis = game ? analyzeGame(spec, game) : null;
+
   const agentOptions = useMemo(
     () => characters.map((c) => ({ id: c.entityId, label: c.title || c.entityId })),
     [characters],
   );
 
+  // Auto-select players from sandbox
   useEffect(() => {
-    if (agentOptions.length < 2) return;
-
-    // Инициализируем дефолтные значения из sandbox-каста,
-    // чтобы пользователь сразу видел валидную пару агентов.
-    setP0((prev) => (agentOptions.some((a) => a.id === prev) ? prev : agentOptions[0].id));
-    setP1((prev) => {
-      if (agentOptions.some((a) => a.id === prev) && prev !== agentOptions[0].id) return prev;
-      return agentOptions[1]?.id ?? agentOptions[0].id;
-    });
+    if (agentOptions.length >= 2) {
+      setP0((prev) => (agentOptions.some((a) => a.id === prev) ? prev : agentOptions[0].id));
+      setP1((prev) => {
+        if (agentOptions.some((a) => a.id === prev) && prev !== agentOptions[0].id) return prev;
+        return agentOptions[1]?.id ?? agentOptions[0].id;
+      });
+    }
   }, [agentOptions]);
 
-  const startGame = () => {
-    try {
-      const init = createGame(spec, [p0.trim(), p1.trim()], Math.max(1, Math.floor(totalRounds)));
-      setGame(init);
-    } catch (e) {
-      console.error('[DilemmaLab] createGame failed', e);
+  // Reset picks on spec change
+  useEffect(() => {
+    if (spec.actions.length > 0) {
+      setManualA0(spec.actions[0].id);
+      setManualA1(spec.actions[0].id);
     }
-  };
+  }, [specId, spec.actions]);
 
-  const resetGame = () => setGame(null);
+  // ── Actions ──
 
-  const playRound = (a0: string, a1: string) => {
+  const reset = useCallback(() => {
+    setGame(null);
+    setMode('idle');
+    setPipelineError(null);
+  }, []);
+
+  const startManual = useCallback(() => {
+    const id0 = p0.trim() || 'agent:a';
+    const id1 = p1.trim() || 'agent:b';
+    if (id0 === id1) { setPipelineError('Players must be different'); return; }
+    try {
+      setGame(createGame(spec, [id0, id1], Math.max(1, Math.floor(totalRounds))));
+      setMode('manual');
+      setPipelineError(null);
+    } catch (e) { setPipelineError(String(e)); }
+  }, [spec, p0, p1, totalRounds]);
+
+  const startPipeline = useCallback(() => {
+    const id0 = p0.trim() || 'agent:a';
+    const id1 = p1.trim() || 'agent:b';
+    if (id0 === id1) { setPipelineError('Players must be different'); return; }
+    setPipelineError(null);
+    try {
+      const world = buildMinimalWorld(characters.length >= 2 ? characters : []);
+      const findAgent = (id: string) =>
+        world.agents?.find((a) => (a as any).entityId === id || (a as any).id === id);
+      if (!findAgent(id0)) throw new Error(`Agent "${id0}" не найден в Sandbox. Добавь персонажей или используй Manual.`);
+      if (!findAgent(id1)) throw new Error(`Agent "${id1}" не найден в Sandbox.`);
+
+      const result = runDilemmaGame({
+        specId: spec.id,
+        players: [id0, id1],
+        totalRounds: Math.max(1, Math.floor(totalRounds)),
+        world,
+        initialTrust,
+        seed: 42,
+      });
+      setGame(result.game);
+      setMode('pipeline');
+    } catch (e: unknown) {
+      setPipelineError(e instanceof Error ? e.message : String(e));
+      setMode('idle');
+    }
+  }, [spec, p0, p1, totalRounds, initialTrust, characters]);
+
+  const playManualRound = useCallback(() => {
     if (!game || isGameOver(game)) return;
     try {
-      const next = advanceGame(spec, game, {
-        [game.players[0]]: a0,
-        [game.players[1]]: a1,
-      });
-      setGame(next);
-    } catch (e) {
-      console.error('[DilemmaLab] advanceGame failed', e);
-    }
+      setGame(advanceGame(spec, game, {
+        [game.players[0]]: manualA0 || spec.actions[0].id,
+        [game.players[1]]: manualA1 || spec.actions[0].id,
+      }));
+    } catch (e) { console.error('[DilemmaLab] advanceGame failed', e); }
+  }, [game, spec, manualA0, manualA1]);
+
+  const actionLabel = (actionId: string) => {
+    if (narrative && spec.framing.actionLabels[actionId]) return spec.framing.actionLabels[actionId];
+    return spec.actions.find((a) => a.id === actionId)?.label ?? actionId;
   };
 
-  const analysis = game ? analyzeGame(spec, game) : null;
+  const lastRound = game?.rounds[game.rounds.length - 1] ?? null;
+  const lastOutcome = lastRound && narrative && game
+    ? spec.framing.outcomeDescriptions[lastRound.choices[game.players[0]]]?.[lastRound.choices[game.players[1]]]
+    : null;
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-4">
-      <div className="bg-canon-bg-light border border-canon-border rounded-lg p-4">
-        <h1 className="text-xl font-bold text-canon-text">Dilemma Lab (MVP UI)</h1>
-        <p className="text-xs text-canon-text-light mt-1">
-          Мини-интерфейс для формальных дилемм: запускай раунды и смотри аналитику.
+    <div className="p-6 max-w-7xl mx-auto space-y-5">
+      <div>
+        <h1 className="text-xl font-bold text-canon-text flex items-center gap-2">
+          <span className="text-canon-accent">◆</span> DilemmaLab
+        </h1>
+        <p className="text-xs text-canon-muted mt-1">
+          Формальные дилеммы теории игр для тестирования decision pipeline.
+          <span className="text-canon-accent"> Pipeline</span> прогоняет через scorePossibility → decideAction.
+          <span className="text-canon-text"> Manual</span> — ручной ввод действий.
         </p>
+      </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mt-4">
-          <label className="text-xs text-canon-text-light">
-            Dilemma
-            <select
-              value={specId}
-              onChange={(e) => setSpecId(e.target.value)}
-              className="w-full mt-1 bg-canon-bg border border-canon-border rounded p-2 text-sm"
-            >
-              {specIds.map((id) => (
-                <option key={id} value={id}>{CATALOG[id].name}</option>
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
+        <div className="lg:col-span-3 bg-canon-panel border border-canon-border rounded-lg p-4 space-y-4">
+          <div>
+            <div className="text-xs font-semibold text-canon-muted uppercase tracking-wider mb-2">Дилемма</div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+              {allSpecs().map((s) => (
+                <DilemmaCard key={s.id} spec={s} selected={specId === s.id}
+                  onClick={() => { setSpecId(s.id); reset(); }} />
               ))}
-            </select>
-          </label>
+            </div>
+          </div>
 
-          <label className="text-xs text-canon-text-light">
-            Player A
-            {agentOptions.length > 0 ? (
-              <select
-                value={p0}
-                onChange={(e) => setP0(e.target.value)}
-                className="w-full mt-1 bg-canon-bg border border-canon-border rounded p-2 text-sm"
-              >
-                {agentOptions.map((a) => (
-                  <option key={a.id} value={a.id}>{a.label} ({a.id})</option>
-                ))}
-              </select>
-            ) : (
-              <input
-                value={p0}
-                onChange={(e) => setP0(e.target.value)}
-                className="w-full mt-1 bg-canon-bg border border-canon-border rounded p-2 text-sm"
-                placeholder="agent:a"
-              />
+          {narrative && (
+            <div className="text-xs text-canon-muted bg-canon-card border border-canon-border/50 rounded-lg p-3 italic">
+              {spec.framing.setup}
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <label className="text-xs text-canon-muted">
+              Player A
+              {agentOptions.length > 0 ? (
+                <select value={p0} onChange={(e) => setP0(e.target.value)}
+                  className="w-full mt-1 bg-canon-bg border border-canon-border rounded-lg p-2 text-sm text-canon-text">
+                  {agentOptions.map((a) => <option key={a.id} value={a.id}>{a.label}</option>)}
+                </select>
+              ) : (
+                <input value={p0} onChange={(e) => setP0(e.target.value)} placeholder="agent:a"
+                  className="w-full mt-1 bg-canon-bg border border-canon-border rounded-lg p-2 text-sm text-canon-text" />
+              )}
+            </label>
+            <label className="text-xs text-canon-muted">
+              Player B
+              {agentOptions.length > 0 ? (
+                <select value={p1} onChange={(e) => setP1(e.target.value)}
+                  className="w-full mt-1 bg-canon-bg border border-canon-border rounded-lg p-2 text-sm text-canon-text">
+                  {agentOptions.map((a) => <option key={a.id} value={a.id}>{a.label}</option>)}
+                </select>
+              ) : (
+                <input value={p1} onChange={(e) => setP1(e.target.value)} placeholder="agent:b"
+                  className="w-full mt-1 bg-canon-bg border border-canon-border rounded-lg p-2 text-sm text-canon-text" />
+              )}
+            </label>
+            <label className="text-xs text-canon-muted">
+              Rounds
+              <div className="flex items-center gap-2 mt-1">
+                <input type="range" min={1} max={50} value={totalRounds}
+                  onChange={(e) => setTotalRounds(Number(e.target.value))}
+                  className="flex-1 accent-canon-accent" />
+                <span className="text-sm font-mono text-canon-text w-8 text-right">{totalRounds}</span>
+              </div>
+            </label>
+            <label className="text-xs text-canon-muted">
+              Initial Trust
+              <div className="flex items-center gap-2 mt-1">
+                <input type="range" min={0} max={100} value={Math.round(initialTrust * 100)}
+                  onChange={(e) => setInitialTrust(Number(e.target.value) / 100)}
+                  className="flex-1 accent-canon-accent" />
+                <span className="text-sm font-mono text-canon-text w-10 text-right">{f2(initialTrust)}</span>
+              </div>
+            </label>
+          </div>
+
+          <div className="flex items-center gap-3 flex-wrap">
+            <button onClick={startPipeline}
+              disabled={mode === 'pipeline' && game !== null}
+              className="px-4 py-2 rounded-lg bg-canon-accent text-canon-bg text-sm font-bold hover:brightness-110 transition disabled:opacity-40">
+              ▶ Pipeline
+            </button>
+            <button onClick={startManual}
+              disabled={mode === 'manual' && game !== null}
+              className="px-4 py-2 rounded-lg bg-canon-card border border-canon-border text-sm text-canon-text hover:border-canon-accent/40 transition disabled:opacity-40">
+              ✎ Manual
+            </button>
+            {mode !== 'idle' && (
+              <button onClick={reset}
+                className="px-3 py-2 rounded-lg bg-canon-card border border-canon-border text-sm text-canon-muted hover:text-canon-bad transition">
+                ✕ Reset
+              </button>
             )}
-          </label>
+            <label className="flex items-center gap-1.5 text-xs text-canon-muted ml-auto cursor-pointer select-none">
+              <input type="checkbox" checked={narrative} onChange={(e) => setNarrative(e.target.checked)}
+                className="accent-canon-accent" />
+              Нарративная обёртка
+            </label>
+          </div>
 
-          <label className="text-xs text-canon-text-light">
-            Player B
-            {agentOptions.length > 0 ? (
-              <select
-                value={p1}
-                onChange={(e) => setP1(e.target.value)}
-                className="w-full mt-1 bg-canon-bg border border-canon-border rounded p-2 text-sm"
-              >
-                {agentOptions.map((a) => (
-                  <option key={a.id} value={a.id}>{a.label} ({a.id})</option>
-                ))}
-              </select>
-            ) : (
-              <input
-                value={p1}
-                onChange={(e) => setP1(e.target.value)}
-                className="w-full mt-1 bg-canon-bg border border-canon-border rounded p-2 text-sm"
-                placeholder="agent:b"
-              />
-            )}
-          </label>
-
-          <label className="text-xs text-canon-text-light">
-            Rounds
-            <input
-              type="number"
-              min={1}
-              max={50}
-              value={totalRounds}
-              onChange={(e) => setTotalRounds(Number(e.target.value))}
-              className="w-full mt-1 bg-canon-bg border border-canon-border rounded p-2 text-sm"
-            />
-          </label>
+          {agentOptions.length < 2 && (
+            <div className="text-[11px] text-amber-300/80">
+              В Sandbox &lt;2 персонажей. Pipeline требует агентов; Manual работает с любыми ID.
+            </div>
+          )}
+          {pipelineError && (
+            <div className="text-xs text-canon-bad bg-canon-bad/10 border border-canon-bad/20 rounded-lg p-3">
+              {pipelineError}
+            </div>
+          )}
         </div>
 
-        {agentOptions.length < 2 && (
-          <div className="mt-2 text-[11px] text-amber-300">
-            В сессии меньше двух персонажей: используй ручной ввод ID или добавь персонажей в Sandbox.
+        <div className="lg:col-span-2 bg-canon-panel border border-canon-border rounded-lg p-4">
+          <PayoffMatrixView
+            spec={spec}
+            narrative={narrative}
+            highlight={lastRound && game ? { a0: lastRound.choices[game.players[0]], a1: lastRound.choices[game.players[1]] } : null}
+          />
+          <div className="mt-3 text-[10px] text-canon-faint space-y-0.5">
+            <div><span className="text-canon-accent">A</span> / <span className="text-canon-accent-2">B</span> payoffs</div>
+            {spec.actions.map((a) => {
+              const m = spec.scoringMap[a.id];
+              return <div key={a.id}>{a.id} → <span className="font-mono text-canon-muted">{m.idPrefix}</span> ({m.kind})</div>;
+            })}
           </div>
-        )}
-
-        <div className="flex gap-2 mt-4">
-          <button className="px-3 py-2 rounded bg-canon-accent text-canon-bg text-sm font-bold" onClick={startGame}>
-            Start
-          </button>
-          <button className="px-3 py-2 rounded bg-canon-bg border border-canon-border text-sm" onClick={resetGame}>
-            Reset
-          </button>
         </div>
       </div>
 
       {game && (
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-          <div className="xl:col-span-2 bg-canon-bg-light border border-canon-border rounded-lg p-4">
-            <div className="flex items-center justify-between">
-              <h2 className="font-bold text-canon-text">Round {game.currentRound + 1} / {game.totalRounds}</h2>
-              <div className="text-xs text-canon-text-light">{spec.name}</div>
-            </div>
+        <div className="bg-canon-panel border border-canon-border rounded-lg overflow-hidden">
+          <Tabs syncKey="dlt" className="flex flex-col" contentClassName="min-h-0"
+            tabs={[
+              {
+                label: mode === 'pipeline' ? 'Результаты' : 'Play',
+                content: (
+                  <div className="p-4 space-y-4">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <div className="text-sm font-semibold text-canon-text">
+                        {isGameOver(game) ? `Игра завершена · ${game.totalRounds} раундов` : `Round ${game.currentRound + 1} / ${game.totalRounds}`}
+                      </div>
+                      <div className="text-xs text-canon-muted font-mono">
+                        {mode === 'pipeline' ? '🔧 Pipeline' : '✎ Manual'} · {spec.name}
+                      </div>
+                    </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
-              {spec.actions.map((a0Act) => (
-                spec.actions.map((a1Act) => (
-                  <button
-                    key={`${a0Act.id}-${a1Act.id}`}
-                    className="text-left p-3 rounded border border-canon-border bg-canon-bg hover:border-canon-accent"
-                    onClick={() => playRound(a0Act.id, a1Act.id)}
-                    disabled={isGameOver(game)}
-                  >
-                    <div className="text-sm font-semibold text-canon-text">
-                      {game.players[0]}: {a0Act.label}
-                    </div>
-                    <div className="text-sm font-semibold text-canon-text">
-                      {game.players[1]}: {a1Act.label}
-                    </div>
-                    <div className="text-xs text-canon-text-light mt-1">
-                      payoff: {spec.payoffs[a0Act.id][a1Act.id][0].toFixed(2)} / {spec.payoffs[a0Act.id][a1Act.id][1].toFixed(2)}
-                    </div>
-                  </button>
-                ))
-              ))}
-            </div>
+                    {mode === 'manual' && !isGameOver(game) && (
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+                        <div>
+                          <div className="text-xs font-semibold text-canon-accent mb-1.5">{game.players[0]}</div>
+                          <div className="space-y-1">
+                            {spec.actions.map((a) => (
+                              <button key={a.id} onClick={() => setManualA0(a.id)}
+                                className={`w-full text-left px-3 py-2 rounded-lg border text-sm transition ${manualA0 === a.id
+                                  ? 'border-canon-accent bg-canon-accent/10 text-canon-accent'
+                                  : 'border-canon-border bg-canon-card text-canon-muted hover:border-canon-accent/40'}`}>
+                                {actionLabel(a.id)}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-xs font-semibold text-canon-accent-2 mb-1.5">{game.players[1]}</div>
+                          <div className="space-y-1">
+                            {spec.actions.map((a) => (
+                              <button key={a.id} onClick={() => setManualA1(a.id)}
+                                className={`w-full text-left px-3 py-2 rounded-lg border text-sm transition ${manualA1 === a.id
+                                  ? 'border-canon-accent-2 bg-canon-accent-2/10 text-canon-accent-2'
+                                  : 'border-canon-border bg-canon-card text-canon-muted hover:border-canon-accent-2/40'}`}>
+                                {actionLabel(a.id)}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        <button onClick={playManualRound}
+                          className="px-4 py-3 rounded-lg bg-canon-accent text-canon-bg font-bold text-sm hover:brightness-110 transition">
+                          ▶ Play Round
+                        </button>
+                      </div>
+                    )}
 
-            <div className="mt-4">
-              <h3 className="font-bold text-sm mb-2">History</h3>
-              <div className="max-h-72 overflow-auto space-y-2">
-                {game.rounds.map((r) => (
-                  <div key={r.index} className="text-xs bg-canon-bg border border-canon-border rounded p-2">
-                    <div>R{r.index + 1}: {game.players[0]} → {r.choices[game.players[0]]}, {game.players[1]} → {r.choices[game.players[1]]}</div>
-                    <div className="text-canon-text-light">payoff: {r.payoffs[game.players[0]].toFixed(2)} / {r.payoffs[game.players[1]].toFixed(2)}</div>
+                    {lastOutcome && (
+                      <div className="text-xs text-canon-muted bg-canon-card border border-canon-border/50 rounded-lg p-3 italic">
+                        {lastOutcome}
+                      </div>
+                    )}
+
+                    <div>
+                      <div className="text-xs font-semibold text-canon-muted uppercase tracking-wider mb-2">История</div>
+                      <div className="space-y-1 max-h-64 overflow-y-auto pr-1">
+                        {game.rounds.length === 0 && <div className="text-xs text-canon-faint italic">Ещё нет раундов</div>}
+                        {game.rounds.map((r) => {
+                          const c0 = r.choices[game.players[0]];
+                          const c1 = r.choices[game.players[1]];
+                          return (
+                            <div key={r.index}
+                              className="flex items-center gap-2 text-xs bg-canon-card border border-canon-border/30 rounded-lg px-3 py-1.5">
+                              <span className="text-canon-faint font-mono w-6">R{r.index + 1}</span>
+                              <span className={c0 === spec.cooperativeActionId ? 'text-canon-good' : 'text-canon-bad'}>
+                                {actionLabel(c0)}
+                              </span>
+                              <span className="text-canon-faint">×</span>
+                              <span className={c1 === spec.cooperativeActionId ? 'text-canon-good' : 'text-canon-bad'}>
+                                {actionLabel(c1)}
+                              </span>
+                              <span className="ml-auto font-mono text-canon-muted">
+                                <span className="text-canon-accent">{f2(r.payoffs[game.players[0]])}</span>
+                                {' / '}
+                                <span className="text-canon-accent-2">{f2(r.payoffs[game.players[1]])}</span>
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
                   </div>
-                ))}
-                {game.rounds.length === 0 && <div className="text-xs text-canon-text-light italic">No rounds yet.</div>}
-              </div>
-            </div>
-          </div>
+                ),
+              },
+              {
+                label: 'Analysis',
+                content: analysis && game ? (
+                  <div className="p-4 space-y-5">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                      <Stat label="Mutual cooperation" value={pct(analysis.mutualCooperationRate)} color="text-canon-good" />
+                      <Stat label="Mutual defection" value={pct(analysis.mutualDefectionRate)} color="text-canon-bad" />
+                      <Stat label={`Payoff ${game.players[0]}`} value={f2(analysis.totalPayoffs[game.players[0]])}
+                        sub={`avg ${f2(analysis.totalPayoffs[game.players[0]] / Math.max(1, game.rounds.length))}/r`}
+                        color="text-canon-accent" />
+                      <Stat label={`Payoff ${game.players[1]}`} value={f2(analysis.totalPayoffs[game.players[1]])}
+                        sub={`avg ${f2(analysis.totalPayoffs[game.players[1]] / Math.max(1, game.rounds.length))}/r`}
+                        color="text-canon-accent-2" />
+                    </div>
 
-          <div className="bg-canon-bg-light border border-canon-border rounded-lg p-4 space-y-3">
-            <h2 className="font-bold text-canon-text">Analysis</h2>
-            {analysis && (
-              <>
-                <div className="text-xs">Cooperation curve: <span className="font-mono">[{analysis.cooperationCurve.map((v) => v.toFixed(2)).join(', ')}]</span></div>
-                <div className="text-xs">Mutual coop rate: <span className="font-mono">{analysis.mutualCooperationRate.toFixed(2)}</span></div>
-                <div className="text-xs">Mutual defect rate: <span className="font-mono">{analysis.mutualDefectionRate.toFixed(2)}</span></div>
-                <div className="text-xs">Nash alignment A/B: <span className="font-mono">{analysis.nashAlignment[game.players[0]]?.toFixed(2)} / {analysis.nashAlignment[game.players[1]]?.toFixed(2)}</span></div>
-                <div className="text-xs">Total payoff A/B: <span className="font-mono">{analysis.totalPayoffs[game.players[0]]?.toFixed(2)} / {analysis.totalPayoffs[game.players[1]]?.toFixed(2)}</span></div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <Stat label={`Nash align · ${game.players[0]}`}
+                        value={pct(analysis.nashAlignment[game.players[0]] ?? 0)}
+                        sub="Доля раундов в Nash eq" />
+                      <Stat label={`Nash align · ${game.players[1]}`}
+                        value={pct(analysis.nashAlignment[game.players[1]] ?? 0)}
+                        sub="Доля раундов в Nash eq" />
+                    </div>
 
-                <div className="pt-2 border-t border-canon-border">
-                  <div className="text-xs font-semibold">Best strategy match</div>
-                  <div className="text-xs text-canon-text-light">{game.players[0]}: {bestStrategy(analysis.strategyMatch[game.players[0]]).name} ({bestStrategy(analysis.strategyMatch[game.players[0]]).score.toFixed(2)})</div>
-                  <div className="text-xs text-canon-text-light">{game.players[1]}: {bestStrategy(analysis.strategyMatch[game.players[1]]).name} ({bestStrategy(analysis.strategyMatch[game.players[1]]).score.toFixed(2)})</div>
-                </div>
-              </>
-            )}
+                    <div>
+                      <div className="text-xs font-semibold text-canon-muted uppercase tracking-wider mb-2">Cooperation Curve</div>
+                      <div className="bg-canon-card border border-canon-border/50 rounded-lg p-3">
+                        <CoopCurveChart curve={analysis.cooperationCurve} players={game.players} game={game} spec={spec} />
+                      </div>
+                    </div>
+
+                    {game.rounds.length >= 3 ? (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="bg-canon-card border border-canon-border/50 rounded-lg p-3">
+                          <StrategyBars scores={analysis.strategyMatch[game.players[0]]} label={game.players[0]} />
+                        </div>
+                        <div className="bg-canon-card border border-canon-border/50 rounded-lg p-3">
+                          <StrategyBars scores={analysis.strategyMatch[game.players[1]]} label={game.players[1]} />
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="text-xs text-canon-faint italic">Strategy matching: нужно 3+ раундов.</div>
+                    )}
+                  </div>
+                ) : <div className="p-4 text-xs text-canon-faint italic">Сыграйте хотя бы один раунд.</div>,
+              },
+              {
+                label: 'Traces',
+                content: (
+                  <div className="p-4 space-y-3">
+                    <div className="text-xs text-canon-muted">
+                      Q-values, trust и atoms для каждого решения. Полные traces — в Pipeline mode.
+                    </div>
+                    {game.rounds.length === 0 && <div className="text-xs text-canon-faint italic">Ещё нет раундов.</div>}
+                    <div className="space-y-2 max-h-[500px] overflow-y-auto pr-1">
+                      {game.rounds.map((_, i) => (
+                        <TraceBlock key={i} round={i} spec={spec} game={game} narrative={narrative} />
+                      ))}
+                    </div>
+                  </div>
+                ),
+              },
+            ]}
+          />
+        </div>
+      )}
+
+      {mode === 'idle' && !game && (
+        <div className="text-center py-12 space-y-2">
+          <div className="text-3xl opacity-20">◆</div>
+          <div className="text-sm text-canon-faint">
+            Выбери дилемму и игроков → <span className="text-canon-accent">▶ Pipeline</span> или <span className="text-canon-text">✎ Manual</span>
           </div>
         </div>
       )}
