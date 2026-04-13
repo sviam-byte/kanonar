@@ -133,7 +133,7 @@ export const Header: React.FC = () => {
 
             <NavDropdown 
                 label="Lab & Edit" 
-                active={isGroupActive(['/builder', '/character-lab', '/planning-lab', '/dialogue-lab', '/dialogue-lab-v2', '/dialogue-lab-v3', '/compare', '/biography-lab', '/presets', '/goal-lab', '/goal-lab-console', '/simulator', '/relations-lab', '/location-constructor'])}
+                active={isGroupActive(['/builder', '/character-lab', '/planning-lab', '/dialogue-lab', '/dialogue-lab-v2', '/dialogue-lab-v3', '/compare', '/biography-lab', '/presets', '/goal-lab', '/goal-lab-console', '/simulator', '/relations-lab', '/location-constructor', '/dilemma-lab'])}
                 colorClass="text-green-400"
             >
                 <NavItem to="/builder" label="Конструктор Персонажа" active={isActive('/builder')} />
@@ -141,6 +141,7 @@ export const Header: React.FC = () => {
                 <NavItem to="/character-lab" label="Инспектор ToM (Dyad)" active={isActive('/character-lab')} />
                 <NavItem to="/goal-lab" label="Лаборатория Целей" active={isActive('/goal-lab')} />
                 <NavItem to="/goal-lab-console" label="Goal Lab Console" active={isActive('/goal-lab-console')} />
+                <NavItem to="/dilemma-lab" label="Dilemma Lab" active={isActive('/dilemma-lab')} />
                 <NavItem to="/simulator" label="▶ Live Sim" active={isActive('/simulator')} />
                 <NavItem to="/compare" label="⚖ Compare" active={isActive('/compare')} />
                 <NavItem to="/relations-lab" label="Relations Lab (Global)" active={isActive('/relations-lab')} />
