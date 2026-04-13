@@ -3,7 +3,7 @@
 
 import { AgentState, Action, PhysioParams } from '../../types';
 import { stepOU, RNG } from '../core/noise';
-import { cosSim } from '../math/core';
+import { cosSim } from '../util/math';
 import { computeDistortionProfile } from '../metrics/psych-layer';
 import { computeSelfArchetypeVector } from '../archetypes/system';
 import { computeBiographyLatent } from '../biography/lifeGoalsEngine';

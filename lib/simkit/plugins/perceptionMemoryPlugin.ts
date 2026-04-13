@@ -43,9 +43,12 @@ export function makePerceptionMemoryPlugin(): SimPlugin {
               .map((id) => [id, beliefAtomsByAgentId[id].length])
           ),
         };
-      } catch (e: any) {
+      } catch (e: unknown) {
+        const message = e instanceof Error ? e.message : String(e);
+        const stack = e instanceof Error ? String(e.stack || '') : '';
+        console.warn('[plugin:perceptionMemory] afterSnapshot failed', message);
         record.plugins ||= {};
-        record.plugins.perceptionMemory = { error: String(e?.message || e), stack: String(e?.stack || '') };
+        record.plugins.perceptionMemory = { error: message, stack };
       }
     },
   };

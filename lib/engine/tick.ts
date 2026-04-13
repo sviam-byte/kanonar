@@ -157,7 +157,10 @@ export function runTicks(args: {
         tickNow,
         dt,
       });
-    } catch {}
+    } catch (err) {
+      // Intentional fallback: keep ticking even if event scheduling fails for one step.
+      console.warn('[tick] applyChosenActionToWorld failed', err);
+    }
 
     // 6. Compute Diffs if requested
     if (withDiffs && snapshots.length >= 2) {
@@ -242,11 +245,17 @@ export function runTicksForCast(args: {
         agent.relations.graph = agent.relations.graph || agent.rel_graph || { schemaVersion: 1, edges: [] };
         const updated = updateRelationshipGraphFromEvents({ graph: agent.relations.graph, selfId, events: worldEvents, nowTick: tickNow });
         agent.relations.graph = updated.graph;
-      } catch {}
+      } catch (err) {
+        // Intentional fallback: relation updates are best-effort during tick simulation.
+        console.warn('[tick] relationship graph update failed', err);
+      }
 
       try {
         if (evAll.length > 0) applyEvidenceToTomBase({ agent, evidence: evAll, tuning: baseInput?.tuning?.tomUpdate });
-      } catch {}
+      } catch (err) {
+        // Intentional fallback: skip a single evidence pass instead of crashing the full loop.
+        console.warn('[tick] ToM evidence update failed', err);
+      }
     }
 
     // Snapshot + Affect integration for every agent
@@ -282,7 +291,10 @@ export function runTicksForCast(args: {
 
       try {
         integrateAgentState({ agent, atomsAfterAffect: snap.atoms, tuning: baseInput?.integratorTuning });
-      } catch {}
+      } catch (err) {
+        // Intentional fallback: keep snapshot output even if integrator step fails.
+        console.warn('[tick] integrateAgentState failed', err);
+      }
 
       // CLOSE THE LOOP: decision -> scheduled world event (next tick)
       try {
@@ -293,7 +305,10 @@ export function runTicksForCast(args: {
           tickNow,
           dt,
         });
-      } catch {}
+      } catch (err) {
+        // Intentional fallback: event scheduling is non-blocking for per-agent pass.
+        console.warn('[tick] applyChosenActionToWorld (cast) failed', err);
+      }
 
       if (withDiffs && arr.length >= 2) {
         const prev = arr[arr.length - 2];

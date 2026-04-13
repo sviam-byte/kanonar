@@ -3,7 +3,7 @@
 import { Agent } from './types';
 import { CharacterEntity } from '../../types';
 import { mapCharacterToBehaviorParams } from '../core/character_mapper';
-import { hash32 } from '../math/core';
+import { hash32 } from '../util/math';
 
 export function characterEntityToAgent(char: CharacterEntity): Agent {
     const p = mapCharacterToBehaviorParams(char);

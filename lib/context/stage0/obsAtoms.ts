@@ -1,5 +1,5 @@
 import { Atom } from '../../atoms/types';
-import { clamp01 } from '../../math/normalize';
+import { clamp01 } from '../../util/math';
 
 export function atomizeObservation(
   a: { id: string; pos: { x: number; y: number } },

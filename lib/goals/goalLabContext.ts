@@ -1787,7 +1787,10 @@ export function buildGoalLabContext(
       );
       (snapshot as any).coverage = computeCoverageReport((snapshot as any).atoms as any);
     }
-  } catch {}
+  } catch (err) {
+    // Intentional fallback: keep returning a snapshot even if mind->affect synthesis fails.
+    console.warn('[goalLabContext] affect synthesis failed', err);
+  }
 
   // Fill snapshot.summary for UI/compare panels.
   (snapshot as any).summary = computeSnapshotSummary((snapshot as any).atoms as any, selfId);

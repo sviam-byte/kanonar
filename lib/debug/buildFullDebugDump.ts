@@ -46,7 +46,10 @@ export function buildFullDebugDump(args: {
       if (!id) continue;
       materializedByStage[id] = materializeStageAtoms(pipelineDeltas, id);
     }
-  } catch {}
+  } catch (err) {
+    // Intentional fallback: debug dump should never crash caller paths.
+    console.warn('[debugDump] failed to materialize pipeline stages', err);
+  }
 
   // useful computed slices
   const atoms = asArr<any>(snapshotV1?.atoms);

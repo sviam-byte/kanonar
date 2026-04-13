@@ -6,7 +6,7 @@
 import { ContextAtom } from '../../context/v2/types';
 import { normalizeAtom } from '../../context/v2/infer';
 import { getCtx, pickCtxId } from '../../context/layers';
-import { clamp01, entropy01, invLogit, logit, sigmoid, softmax } from './decisionMath';
+import { clamp01, entropy01, invLogit, logit, sigmoid, softmax } from '../../util/math';
 import { getMag } from '../../util/atoms';
 
 function unpackAtomsAndSelfId(

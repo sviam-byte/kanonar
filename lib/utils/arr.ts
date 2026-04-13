@@ -14,7 +14,10 @@ function diagPush(payload: any) {
     const b = Array.isArray(buf) ? buf : (g.__KANONAR_DIAG__ = []);
     b.push(payload);
     if (b.length > 200) b.splice(0, b.length - 200);
-  } catch {}
+  } catch (err) {
+    // Intentional fallback: diagnostics must be best-effort only.
+    void err;
+  }
 }
 
 export function arr<T = any>(x: any): T[] {

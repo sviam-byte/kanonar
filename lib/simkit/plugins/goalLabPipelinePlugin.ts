@@ -60,9 +60,12 @@ export function makeGoalLabPipelinePlugin(opts?: {
             `stages=${stages.length} atomsOut=${lastAtoms.length}`,
           ],
         };
-      } catch (e: any) {
+      } catch (e: unknown) {
+        const message = e instanceof Error ? e.message : String(e);
+        const stack = e instanceof Error ? String(e.stack || '') : '';
+        console.warn('[plugin:goalLabPipeline] afterSnapshot failed', message);
         record.plugins ||= {};
-        record.plugins.goalLabPipeline = { error: String(e?.message || e), stack: String(e?.stack || '') };
+        record.plugins.goalLabPipeline = { error: message, stack };
       }
     },
   };

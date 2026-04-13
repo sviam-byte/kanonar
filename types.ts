@@ -2892,6 +2892,9 @@ export interface SocialEventEntity {
     structure?: any;
     goalEffects?: any;
     participants?: any;
+    // Optional compiler metadata used by biography->social formalization.
+    normative?: any[];
+    deltas?: any[];
     security?: EntitySecurity;
     delay_days?: number;
 }

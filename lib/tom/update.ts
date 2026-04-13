@@ -2,7 +2,7 @@
 // /lib/tom/update.ts
 
 import { AgentState, TomState, TomEntry, TomBeliefTraits } from '../../types';
-import { cosSim } from '../math/core';
+import { cosSim } from '../util/math';
 import { computeEffectiveNorms } from './norms';
 import { updateAffectFromStress } from './affect';
 import { computeErrorProfile } from './errors';

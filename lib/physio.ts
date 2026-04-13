@@ -3,7 +3,7 @@
 
 import { AgentState, Action, PhysioParams } from '../types';
 import { stepOU, RNG } from './core/noise';
-import { cosSim } from './math/core';
+import { cosSim } from './util/math';
 
 /**
  * Вычисляет множитель-усилитель шума h_i(x) на основе текущего состояния.

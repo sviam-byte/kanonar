@@ -24,7 +24,10 @@ export function listify<T = any>(input: any): T[] {
         keys: typeof input === 'object' ? Object.keys(input).slice(0, 24) : null,
       });
       if (buf.length > 200) buf.splice(0, buf.length - 200);
-    } catch {}
+    } catch (err) {
+      // Intentional fallback: diagnostics must not affect list conversion.
+      void err;
+    }
   }
 
   // Preserve iterables when possible.
