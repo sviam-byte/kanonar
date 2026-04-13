@@ -133,7 +133,7 @@ export function runDilemmaGame(config: DilemmaRunConfig): DilemmaRunResult {
   };
 }
 
-function extractAgentAtoms(agent: AgentState, selfId: string): ContextAtom[] {
+export function extractAgentAtoms(agent: AgentState, selfId: string): ContextAtom[] {
   const atoms: ContextAtom[] = [];
 
   try {
@@ -176,7 +176,124 @@ function extractAgentAtoms(agent: AgentState, selfId: string): ContextAtom[] {
     });
   }
 
+  const goalAtoms = deriveActiveGoalAtoms(agent, selfId, atoms);
+  atoms.push(...goalAtoms);
+
   return atoms;
+}
+
+/**
+ * Infer util:activeGoal atoms for the dilemma runner.
+ *
+ * Why here:
+ * - Dilemma scenarios bypass parts of the full GoalLab pipeline.
+ * - Without active-goal energy, action ranking degenerates into near-uniform noise.
+ *
+ * Priority:
+ * 1) Explicit agent goal/driver payloads (goalEcology, goals, drivers, etc).
+ * 2) Trait-based fallback from character features / behavioral params.
+ */
+function deriveActiveGoalAtoms(agent: AgentState, selfId: string, atoms: ContextAtom[]): ContextAtom[] {
+  const goalDomains = ['survival', 'safety', 'social', 'autonomy', 'affiliation', 'control', 'status', 'order'] as const;
+  const explicit = collectExplicitGoalSignals(agent, goalDomains);
+
+  const byId = new Map(atoms.map((a) => [a.id, a] as const));
+  const trait = (name: string, fallback = 0.5) =>
+    clamp01(Number(byId.get(`feat:char:${selfId}:trait.${name}`)?.magnitude ?? (agent.behavioralParams as any)?.[name] ?? fallback));
+
+  const inferredByTrait: Record<(typeof goalDomains)[number], number> = {
+    // Core self-preservation and threat sensitivity.
+    survival: 0.7 * trait('safety') + 0.3 * trait('paranoia'),
+    safety: 0.8 * trait('safety') + 0.2 * trait('paranoia'),
+    // Social valuation and prosocial orientation.
+    social: 0.6 * trait('care') + 0.4 * trait('normSensitivity'),
+    affiliation: 0.7 * trait('care') + 0.3 * (1 - trait('powerDrive')),
+    // Agency and hierarchy pressure.
+    autonomy: 0.8 * trait('autonomy') + 0.2 * (1 - trait('order')),
+    control: 0.8 * trait('powerDrive') + 0.2 * trait('autonomy'),
+    status: 0.8 * trait('powerDrive') + 0.2 * trait('normSensitivity'),
+    // Institutional / structure orientation.
+    order: 0.7 * trait('order') + 0.3 * trait('normSensitivity'),
+  };
+
+  return goalDomains.map((domain) => ({
+    id: `util:activeGoal:${selfId}:${domain}`,
+    kind: 'fact',
+    source: 'goal_inference',
+    magnitude: clamp01(explicit[domain] ?? inferredByTrait[domain] ?? 0.5),
+    ns: 'util',
+    confidence: 1.0,
+  }));
+}
+
+/**
+ * Extract explicit goal energy from agent state when present.
+ * Accepts multiple legacy payload shapes and normalizes to canonical domains.
+ */
+function collectExplicitGoalSignals(
+  agent: AgentState,
+  goalDomains: readonly string[],
+): Partial<Record<string, number>> {
+  const out: Partial<Record<string, number>> = {};
+  const norm = (key: string): string | null => {
+    const lower = String(key ?? '').toLowerCase();
+    const base = lower.includes(':') ? lower.split(':').pop() ?? lower : lower;
+    const aliases: Record<string, string> = {
+      affiliation: 'affiliation',
+      belong: 'affiliation',
+      belonging: 'affiliation',
+      social: 'social',
+      society: 'social',
+      survive: 'survival',
+      survival: 'survival',
+      safety: 'safety',
+      autonomy: 'autonomy',
+      liberty: 'autonomy',
+      control: 'control',
+      power: 'control',
+      status: 'status',
+      order: 'order',
+    };
+    const mapped = aliases[base] ?? base;
+    return goalDomains.includes(mapped) ? mapped : null;
+  };
+  const put = (key: string, raw: unknown) => {
+    const domain = norm(key);
+    if (!domain) return;
+    const value = clamp01(Number(raw ?? 0.5));
+    out[domain] = Math.max(out[domain] ?? 0, value);
+  };
+
+  // 1) Goal ecology from the core planner.
+  for (const g of agent.goalEcology?.execute ?? []) {
+    put(g.domain || g.id, g.activation_score ?? g.priority ?? g.weight ?? 0);
+  }
+
+  // 2) Generic object forms found in diagnostics/snapshots.
+  const bags = [
+    (agent as any).goals,
+    (agent as any).drivers,
+    (agent as any).behavioralParams?.drivers,
+  ];
+  for (const bag of bags) {
+    if (!bag || typeof bag !== 'object') continue;
+    for (const [k, v] of Object.entries(bag as Record<string, unknown>)) {
+      if (typeof v === 'number') put(k, v);
+      else if (v && typeof v === 'object') {
+        const vv = (v as any).value ?? (v as any).score ?? (v as any).magnitude;
+        if (typeof vv === 'number') put(k, vv);
+      }
+    }
+  }
+
+  // 3) Fallback: active goal ids + effective weights.
+  const ids = Array.isArray(agent.goalIds) ? agent.goalIds : [];
+  const ws = Array.isArray(agent.w_eff) ? agent.w_eff : [];
+  for (let i = 0; i < ids.length; i++) {
+    put(ids[i] ?? '', ws[i] ?? 0.5);
+  }
+
+  return out;
 }
 
 function fallbackChoice(spec: DilemmaSpec, _scored: unknown[]): string {
