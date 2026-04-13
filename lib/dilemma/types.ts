@@ -92,6 +92,25 @@ export type RoundTrace = {
   dilemmaAtomIds: string[];
   /** Trust at decision time. */
   trustAtDecision: number;
+
+  // ── Extended diagnostics ──
+
+  /** Goal energy map at decision time. */
+  goalEnergy?: Record<string, number>;
+  /** DeltaGoals per action candidate (actionId → goalId → delta). */
+  deltaGoalsPerAction?: Record<string, Record<string, number>>;
+  /** Margin between top-1 and top-2 Q-scores (hesitation signal). */
+  qMargin?: number;
+  /** Effective temperature used for sampling. */
+  effectiveTemperature?: number;
+  /** Whether a tie-band was active (multiple near-equal options). */
+  tieBandActive?: boolean;
+  /** Character trait summary used in decision. */
+  traitSnapshot?: Record<string, number>;
+  /** ToM signals about opponent at decision time. */
+  tomSnapshot?: Record<string, number>;
+  /** Relationship state at decision time. */
+  relSnapshot?: Record<string, number>;
 };
 
 export type DilemmaGameState = {

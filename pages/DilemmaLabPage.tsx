@@ -255,6 +255,35 @@ const StrategyBars: React.FC<{ scores: StrategyMatchScores; label: string }> = (
   );
 };
 
+/* ── Hesitation badge ── */
+
+const HesitationBadge: React.FC<{ qMargin?: number; tieBand?: boolean }> = ({ qMargin, tieBand }) => {
+  if (qMargin === undefined) return null;
+  const abs = Math.abs(qMargin);
+  let label: string;
+  let color: string;
+  if (abs < 0.02 || tieBand) { label = 'колеблется'; color = 'text-yellow-400 bg-yellow-400/15'; }
+  else if (abs < 0.08) { label = 'неуверен'; color = 'text-orange-300 bg-orange-300/10'; }
+  else { label = 'уверен'; color = 'text-canon-good bg-canon-good/10'; }
+  return (
+    <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium ${color}`}>
+      {label} <span className="opacity-60">ΔQ={abs.toFixed(3)}</span>
+    </span>
+  );
+};
+
+/* ── Mini bar for a 0..1 value ── */
+
+const MiniBar: React.FC<{ value: number; label: string; color?: string }> = ({ value, label, color = '#66d9ff' }) => (
+  <div className="flex items-center gap-1.5 text-[9px]">
+    <span className="text-canon-faint w-16 text-right truncate">{label}</span>
+    <div className="flex-1 h-1.5 bg-canon-bg rounded-full overflow-hidden" style={{ maxWidth: 60 }}>
+      <div className="h-full rounded-full" style={{ width: `${Math.max(2, value * 100)}%`, backgroundColor: color, opacity: 0.8 }} />
+    </div>
+    <span className="font-mono text-canon-muted w-7 text-right">{(value * 100).toFixed(0)}</span>
+  </div>
+);
+
 /* ── Single trace block ── */
 
 const TraceBlock: React.FC<{
@@ -272,16 +301,45 @@ const TraceBlock: React.FC<{
     return spec.actions.find((a) => a.id === actId)?.label ?? actId;
   };
 
-  const renderTrace = (pid: string) => {
+  const renderTrace = (pid: string, accentClass: string) => {
     const t = r.traces[pid];
     if (!t || t.ranked.length === 0) {
       return <div className="text-[10px] text-canon-muted italic">Trace недоступен (manual mode)</div>;
     }
+
+    const topGoals = t.goalEnergy
+      ? Object.entries(t.goalEnergy)
+        .filter(([, v]) => v > 0.1)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+      : [];
+
+    const relEntries = t.relSnapshot ? Object.entries(t.relSnapshot).filter(([, v]) => Math.abs(v - 0.5) > 0.02 || v > 0.01) : [];
+    const tomEntries = t.tomSnapshot ? Object.entries(t.tomSnapshot) : [];
+
+    // Short trait labels
+    const TRAIT_SHORT: Record<string, string> = {
+      A_Safety_Care: 'safety', A_Power_Sovereignty: 'power', A_Liberty_Autonomy: 'liberty',
+      A_Knowledge_Truth: 'truth', A_Tradition_Continuity: 'tradition', A_Legitimacy_Procedure: 'procedure',
+      C_reciprocity_index: 'reciproc.', C_betrayal_cost: 'betray₋cost', C_coalition_loyalty: 'coalition',
+      C_reputation_sensitivity: 'reput.', C_dominance_empathy: 'empathy',
+      B_exploration_rate: 'explore', B_tolerance_ambiguity: 'ambiguity', B_decision_temperature: 'temp',
+    };
+
     return (
-      <div className="space-y-1">
-        <div className="text-[10px] text-canon-muted">
-          trust = <span className="font-mono text-canon-accent">{f2(t.trustAtDecision)}</span>
+      <div className="space-y-2">
+        {/* Q-scores + hesitation */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="text-[10px] text-canon-muted">
+            trust = <span className={`font-mono ${accentClass}`}>{f2(t.trustAtDecision)}</span>
+          </div>
+          <HesitationBadge qMargin={t.qMargin} tieBand={t.tieBandActive} />
+          {t.effectiveTemperature !== undefined && (
+            <span className="text-[9px] text-canon-faint font-mono">T={f2(t.effectiveTemperature)}</span>
+          )}
         </div>
+
+        {/* Ranked actions */}
         {t.ranked.slice().sort((a, b) => b.q - a.q).map((e, i) => (
           <div key={i} className={`flex items-center gap-2 text-[10px] px-1.5 py-0.5 rounded ${e.chosen ? 'bg-canon-accent/10 text-canon-accent' : 'text-canon-muted'}`}>
             <span className="font-mono w-14 text-right">Q={f2(e.q)}</span>
@@ -289,6 +347,94 @@ const TraceBlock: React.FC<{
             {e.chosen && <span className="text-[9px] text-canon-accent">◀</span>}
           </div>
         ))}
+
+        {/* Goal energy */}
+        {topGoals.length > 0 && (
+          <details className="text-[10px]">
+            <summary className="text-canon-muted cursor-pointer hover:text-canon-text">
+              🎯 goals ({topGoals.length})
+            </summary>
+            <div className="mt-1 space-y-0.5">
+              {topGoals.map(([g, v]) => (
+                <MiniBar key={g} label={g} value={v} color="#42f5b3" />
+              ))}
+            </div>
+          </details>
+        )}
+
+        {/* Relationship state */}
+        {relEntries.length > 0 && (
+          <details className="text-[10px]">
+            <summary className="text-canon-muted cursor-pointer hover:text-canon-text">
+              🤝 rel ({relEntries.length})
+            </summary>
+            <div className="mt-1 space-y-0.5">
+              {relEntries.map(([k, v]) => (
+                <MiniBar key={k} label={k} value={v} color={k === 'conflict' || k === 'fear' ? '#ff5c7a' : '#9b87ff'} />
+              ))}
+            </div>
+          </details>
+        )}
+
+        {/* ToM */}
+        {tomEntries.length > 0 && (
+          <details className="text-[10px]">
+            <summary className="text-canon-muted cursor-pointer hover:text-canon-text">
+              🧠 ToM ({tomEntries.length})
+            </summary>
+            <div className="mt-1 space-y-0.5">
+              {tomEntries.map(([k, v]) => (
+                <MiniBar key={k} label={k.replace('tom_', '').replace('so_', '2nd:')} value={v} color="#ffaa44" />
+              ))}
+            </div>
+          </details>
+        )}
+
+        {/* Traits */}
+        {t.traitSnapshot && Object.keys(t.traitSnapshot).length > 0 && (
+          <details className="text-[10px]">
+            <summary className="text-canon-muted cursor-pointer hover:text-canon-text">
+              🧬 traits ({Object.keys(t.traitSnapshot).length})
+            </summary>
+            <div className="mt-1 space-y-0.5">
+              {Object.entries(t.traitSnapshot).map(([k, v]) => (
+                <MiniBar key={k} label={TRAIT_SHORT[k] ?? k} value={v} color="#66d9ff" />
+              ))}
+            </div>
+          </details>
+        )}
+
+        {/* DeltaGoals per action */}
+        {t.deltaGoalsPerAction && Object.keys(t.deltaGoalsPerAction).length > 0 && (
+          <details className="text-[10px]">
+            <summary className="text-canon-muted cursor-pointer hover:text-canon-text">
+              Δgoals per action
+            </summary>
+            <div className="mt-1 space-y-1.5 pl-1">
+              {Object.entries(t.deltaGoalsPerAction).map(([actionId, deltas]) => {
+                const nonZero = Object.entries(deltas).filter(([, d]) => Math.abs(d) > 0.001);
+                if (!nonZero.length) return <div key={actionId} className="text-canon-faint">{aLabel(actionId)}: ∅</div>;
+                return (
+                  <div key={actionId}>
+                    <div className="text-canon-muted font-semibold">{aLabel(actionId)}</div>
+                    <div className="pl-2 space-y-0.5">
+                      {nonZero.sort((a, b) => Math.abs(b[1]) - Math.abs(a[1])).map(([g, d]) => (
+                        <div key={g} className="flex items-center gap-1 font-mono">
+                          <span className="text-canon-faint w-16 text-right truncate">{g}</span>
+                          <span className={d > 0 ? 'text-canon-good' : 'text-canon-bad'}>
+                            {d > 0 ? '+' : ''}{d.toFixed(3)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </details>
+        )}
+
+        {/* Raw atom IDs */}
         {t.dilemmaAtomIds.length > 0 && (
           <details className="text-[10px]">
             <summary className="text-canon-muted cursor-pointer hover:text-canon-text">
@@ -304,6 +450,17 @@ const TraceBlock: React.FC<{
   };
 
   const c0 = r.choices[p0]; const c1 = r.choices[p1];
+
+  // Hesitation indicator in the collapsed header
+  const t0 = r.traces[p0];
+  const t1 = r.traces[p1];
+  const headerHesitation = (t: typeof t0) => {
+    if (!t?.qMargin) return '';
+    if (t.qMargin < 0.02 || t.tieBandActive) return '⚖';
+    if (t.qMargin < 0.08) return '~';
+    return '';
+  };
+
   return (
     <div className="border border-canon-border/50 rounded-lg bg-canon-card overflow-hidden">
       <button onClick={() => setOpen(!open)}
@@ -311,6 +468,13 @@ const TraceBlock: React.FC<{
         <div className="text-xs font-semibold text-canon-text flex items-center gap-2">
           <span className="text-canon-faint">{open ? '▾' : '▸'}</span>
           R{round + 1}
+          {(headerHesitation(t0) || headerHesitation(t1)) && (
+            <span className="text-[9px] text-yellow-400">
+              {headerHesitation(t0) && `A${headerHesitation(t0)}`}
+              {headerHesitation(t0) && headerHesitation(t1) && ' '}
+              {headerHesitation(t1) && `B${headerHesitation(t1)}`}
+            </span>
+          )}
         </div>
         <div className="text-[10px] text-canon-muted font-mono">
           {c0} × {c1} → <span className="text-canon-accent">{f2(r.payoffs[p0])}</span> / <span className="text-canon-accent-2">{f2(r.payoffs[p1])}</span>
@@ -320,11 +484,11 @@ const TraceBlock: React.FC<{
         <div className="px-3 pb-3 pt-1 grid grid-cols-2 gap-3 border-t border-canon-border/30">
           <div>
             <div className="text-[10px] font-semibold text-canon-accent mb-1">{p0}</div>
-            {renderTrace(p0)}
+            {renderTrace(p0, 'text-canon-accent')}
           </div>
           <div>
             <div className="text-[10px] font-semibold text-canon-accent-2 mb-1">{p1}</div>
-            {renderTrace(p1)}
+            {renderTrace(p1, 'text-canon-accent-2')}
           </div>
         </div>
       )}
@@ -366,6 +530,7 @@ export const DilemmaLabPage: React.FC = () => {
   const [p1, setP1] = useState('');
   const [initialTrust, setInitialTrust] = useState(0.5);
   const [narrative, setNarrative] = useState(false);
+  const [seed, setSeed] = useState(42);
 
   // State
   const [mode, setMode] = useState<Mode>('idle');
@@ -452,7 +617,7 @@ export const DilemmaLabPage: React.FC = () => {
         totalRounds: Math.max(1, Math.floor(totalRounds)),
         world,
         initialTrust,
-        seed: 42,
+        seed,
       });
       setGame(result.game);
       setMode('pipeline');
@@ -460,7 +625,7 @@ export const DilemmaLabPage: React.FC = () => {
       setPipelineError(e instanceof Error ? e.message : String(e));
       setMode('idle');
     }
-  }, [spec, p0, p1, totalRounds, initialTrust, allCharacters]);
+  }, [spec, p0, p1, totalRounds, initialTrust, seed, allCharacters]);
 
   const playManualRound = useCallback(() => {
     if (!game || isGameOver(game)) return;
@@ -513,7 +678,7 @@ export const DilemmaLabPage: React.FC = () => {
             </div>
           )}
 
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
             <label className="text-xs text-canon-muted">
               Player A
               {agentOptions.length > 0 ? (
@@ -556,12 +721,19 @@ export const DilemmaLabPage: React.FC = () => {
                 <span className="text-sm font-mono text-canon-text w-10 text-right">{f2(initialTrust)}</span>
               </div>
             </label>
+            <label className="text-xs text-canon-muted">
+              Seed
+              <div className="flex items-center gap-2 mt-1">
+                <input type="number" min={1} max={99999} value={seed}
+                  onChange={(e) => setSeed(Number(e.target.value) || 42)}
+                  className="w-full bg-canon-bg border border-canon-border rounded-lg p-2 text-sm font-mono text-canon-text" />
+              </div>
+            </label>
           </div>
 
           <div className="flex items-center gap-3 flex-wrap">
             <button onClick={startPipeline}
-              disabled={mode === 'pipeline' && game !== null}
-              className="px-4 py-2 rounded-lg bg-canon-accent text-canon-bg text-sm font-bold hover:brightness-110 transition disabled:opacity-40">
+              className="px-4 py-2 rounded-lg bg-canon-accent text-canon-bg text-sm font-bold hover:brightness-110 transition">
               ▶ Pipeline
             </button>
             <button onClick={startManual}
