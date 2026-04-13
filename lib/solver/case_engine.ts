@@ -3,7 +3,7 @@
 import { Agent, World, CaseCard, Beat, Z, sigmoid, softplus, sat, normalize, gumbel, xorshift32, EPS, Goal, LogEntry } from "./types";
 import { Logger } from "./logger";
 import { explainContribs, topK } from "./explain";
-import { cosSim } from "../math/core";
+import { cosSim } from "../util/math";
 import cardData from '../../data/cards/case/evac-bridge';
 
 // ====== Порты (можно заменить своими реализациями) ======

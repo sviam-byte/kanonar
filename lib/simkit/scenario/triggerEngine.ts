@@ -43,7 +43,10 @@ export class TriggerEngine {
       if (t.once && this.firedOnce.has(t.id)) continue;
 
       let fired = false;
-      try { fired = t.when(world); } catch { }
+      try { fired = t.when(world); } catch (err) {
+        // Intentional fallback: invalid trigger predicate should not break tick.
+        console.warn('[triggerEngine] trigger predicate failed', err);
+      }
       if (!fired) continue;
 
       if (t.once) this.firedOnce.add(t.id);
@@ -78,7 +81,10 @@ export class TriggerEngine {
       if (!r.perTick) continue;
       if (r.condition) {
         let ok = false;
-        try { ok = r.condition(world); } catch { }
+        try { ok = r.condition(world); } catch (err) {
+          // Intentional fallback: broken rule condition is treated as non-match.
+          console.warn('[triggerEngine] rule condition failed', err);
+        }
         if (!ok) continue;
       }
       const prev = Number((world.facts as any)[r.key] ?? 1);

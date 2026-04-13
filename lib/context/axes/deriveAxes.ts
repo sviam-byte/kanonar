@@ -64,6 +64,12 @@ const AXES = [
   'normPressure', 'surveillance', 'scarcity', 'timePressure',
   'uncertainty', 'legitimacy', 'secrecy', 'grief', 'pain'
 ];
+type AxisKey = keyof ContextAxesVector;
+const AXIS_KEY_SET = new Set<AxisKey>(AXES as AxisKey[]);
+
+function isAxisKey(key: string): key is AxisKey {
+  return AXIS_KEY_SET.has(key as AxisKey);
+}
 
 export function defaultAxes(): ContextAxesVector {
   return Object.fromEntries(AXES.map((k) => [k, 0])) as any;
@@ -452,11 +458,9 @@ export function deriveContextVectors(args: {
     for (const a of atoms) {
       if (a.id && a.id.startsWith('ctx:')) {
         const key = a.id.split(':')[1]; // ctx:danger:xyz -> danger
-        if (key && key in raw) {
-          // @ts-ignore
+        if (key && isAxisKey(key)) {
           raw[key] = Math.max(raw[key], clamp01(a.magnitude || 0));
-          // @ts-ignore
-          atomsUsed[`ctx_${key}`] = { value: raw[key], confidence: a.confidence, from: a.id };
+          atomsUsed[`ctx_${key}` as ContextSignalId] = { value: raw[key], confidence: a.confidence, from: a.id };
         }
       }
     }
@@ -542,21 +546,19 @@ export function applyTuning(
   const AXES = Object.keys(raw);
 
   for (const k of AXES) {
-    const lock = tuning.lock?.[k as keyof ContextAxesVector];
+    const axisKey = k as keyof ContextAxesVector;
+    const lock = tuning.lock?.[axisKey];
     if (typeof lock === 'number') {
-      // @ts-ignore
-      out[k] = clamp01(lock);
+      out[axisKey] = clamp01(lock);
       continue;
     }
 
-    const add = typeof tuning.add?.[k as keyof ContextAxesVector] === 'number' ? clamp(tuning.add[k as keyof ContextAxesVector]!, -1, 1) : 0;
-    const mul = typeof tuning.mul?.[k as keyof ContextAxesVector] === 'number' ? clamp(tuning.mul[k as keyof ContextAxesVector]!, 0, 2) : 1;
+    const add = typeof tuning.add?.[axisKey] === 'number' ? clamp(tuning.add[axisKey]!, -1, 1) : 0;
+    const mul = typeof tuning.mul?.[axisKey] === 'number' ? clamp(tuning.mul[axisKey]!, 0, 2) : 1;
 
-    // @ts-ignore
-    const v = out[k];
+    const v = out[axisKey];
     const tuned = clamp01((v * mul + add) * (0.35 + 0.65 * gain));
-    // @ts-ignore
-    out[k] = tuned;
+    out[axisKey] = tuned;
   }
 
   return out;

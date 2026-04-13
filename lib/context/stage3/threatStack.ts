@@ -1,6 +1,6 @@
 import { Atom } from '../../atoms/types';
 import { getM, used } from '../../atoms/read';
-import { clamp01, linMix, noisyOr } from '../../math/normalize';
+import { clamp01, linMix, noisyOr } from '../../util/math';
 import { pickCtxId } from '../layers';
 
 type ThreatWeights = {

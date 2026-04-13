@@ -1,6 +1,6 @@
 import { Atom } from '../../atoms/types';
 import { getM, used } from '../../atoms/read';
-import { clamp01, linMix } from '../../math/normalize';
+import { clamp01, linMix } from '../../util/math';
 
 export function deriveCtxAxes(agentId: string, resolved: Map<string, Atom>): Atom[] {
   const id_priv = `world:loc:privacy:${agentId}`;

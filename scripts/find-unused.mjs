@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import { existsSync } from "node:fs";
 import path from "node:path";
 
 const ROOT = path.resolve(".");
@@ -45,23 +46,25 @@ function resolveImport(fromFile, spec) {
     return null; // external package
   }
 
-  // exact file
-  if (EXTS.has(path.extname(base))) return base;
+  // 1) Exact path with extension already provided.
+  if (path.extname(base) && existsSync(base)) return base;
 
-  // try extensions
+  // 2) TS/JS extension resolution for extensionless imports.
   for (const ext of EXTS) {
     const candidate = base + ext;
-    return candidate;
+    if (existsSync(candidate)) return candidate;
   }
 
-  // try index.*
+  // 3) Directory index resolution (barrels).
   const idxCandidates = [
     path.join(base, "index.ts"),
     path.join(base, "index.tsx"),
     path.join(base, "index.js"),
     path.join(base, "index.jsx"),
   ];
-  for (const c of idxCandidates) return c;
+  for (const c of idxCandidates) {
+    if (existsSync(c)) return c;
+  }
 
   return null;
 }
@@ -78,6 +81,7 @@ async function fileExists(p) {
 async function main() {
   const allFiles = await walk(ROOT);
   const adj = new Map();
+  const includeTests = !process.argv.includes("--no-tests");
 
   for (const f of allFiles) {
     const txt = await fs.readFile(f, "utf8").catch(() => "");
@@ -86,20 +90,31 @@ async function main() {
     for (const spec of specs) {
       const resolved = resolveImport(f, spec);
       if (!resolved) continue;
-      // resolveImport returns first plausible candidate; validate existence
-      if (await fileExists(resolved)) edges.push(path.resolve(resolved));
-      else {
-        // also check index.* candidates if base is a dir
-        if (!EXTS.has(path.extname(resolved))) continue;
-      }
+      edges.push(path.resolve(resolved));
     }
     adj.set(path.resolve(f), edges);
   }
 
-  const entrypoints = [
+  const entrypointCandidates = [
     path.resolve(ROOT, "index.tsx"),
-    path.resolve(ROOT, "vite.config.ts")
-  ].filter(async (p) => await fileExists(p));
+    path.resolve(ROOT, "vite.config.ts"),
+  ];
+  const entrypoints = [];
+  for (const p of entrypointCandidates) {
+    // NOTE: Array.filter does not await async callbacks.
+    if (await fileExists(p)) entrypoints.push(p);
+  }
+
+  if (includeTests) {
+    // Safety default for cleanup work: keep test-only support files reachable.
+    // Use --no-tests for production-only reachability analysis.
+    for (const f of allFiles) {
+      const rel = path.relative(ROOT, f);
+      const isTestDir = rel.startsWith(`tests${path.sep}`);
+      const isTestFile = /(?:^|\/|\\).+\.(test|spec)\.[cm]?[jt]sx?$/.test(rel);
+      if (isTestDir || isTestFile) entrypoints.push(path.resolve(f));
+    }
+  }
 
   const reachable = new Set();
   const stack = [...entrypoints];

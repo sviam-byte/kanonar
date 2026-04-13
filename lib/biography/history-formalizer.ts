@@ -159,8 +159,7 @@ export function formalizeEvent(bio: PersonalEvent): FormalizedEvent | null {
             veracity: 1.0,
             tags: eventTags,
             versionTags: [Branch.Current],
-            // Extra metadata for UI
-            // @ts-ignore
+            // Extra metadata for downstream UI/debug consumers.
             normative,
             deltas
         });

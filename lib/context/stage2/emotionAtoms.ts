@@ -1,6 +1,6 @@
 import { Atom } from '../../atoms/types';
 import { getM, used } from '../../atoms/read';
-import { clamp01 } from '../../math/normalize';
+import { clamp01 } from '../../util/math';
 
 function clampNegPos1(x: number) {
   return Math.max(-1, Math.min(1, x));

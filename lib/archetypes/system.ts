@@ -4,7 +4,7 @@ import { allArchetypes } from '../../data/archetypes';
 import { getNestedValue, setNestedValue } from '../param-utils';
 import { getArchetypeBehaviorProfile, computeEffectiveBehaviorProfile, NormKind } from './behavior';
 import { METRIC_NAMES } from './metrics';
-import { cosSim } from '../math/core';
+import { cosSim } from '../util/math';
 import { BiographyLatent } from '../biography/lifeGoalsEngine';
 import { clamp01 } from '../util/math';
 

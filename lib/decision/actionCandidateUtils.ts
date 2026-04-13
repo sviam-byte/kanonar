@@ -22,6 +22,24 @@ type WhyDraft = {
   modifiers: ActionWhyModifier[];
   blockedBy: string[];
 };
+type PossibilityTrace = { usedAtomIds?: string[]; parts?: Record<string, unknown>; notes?: string[] };
+type PossibilityRuntime = Possibility & {
+  targetId?: string | null;
+  targetNodeId?: string | null;
+  magnitude?: number;
+  confidence?: number;
+  costAtomId?: string;
+  trace?: PossibilityTrace;
+  meta?: {
+    payload?: unknown;
+    sim?: { deltaGoals?: Record<string, number> };
+    cost?: number;
+  };
+};
+
+const asRuntimePossibility = (p: Possibility): PossibilityRuntime => p as PossibilityRuntime;
+const goalWeight = (weights: Record<string, number> | undefined, goalId: string): number =>
+  Number(weights?.[goalId] ?? 1);
 
 function makeWhyDraft(seedParts?: Record<string, any>): WhyDraft {
   return {
@@ -98,7 +116,7 @@ function buildGoalEnergyMap(atoms: ContextAtom[], selfId: string): Record<string
   for (const a of atoms) {
     if (!a?.id?.startsWith(activePrefix)) continue;
     const goalId = a.id.slice(activePrefix.length);
-    out[goalId] = clamp01(Number((a as any)?.magnitude ?? 0));
+    out[goalId] = clamp01(Number(a?.magnitude ?? 0));
   }
 
   if (Object.keys(out).length) return out;
@@ -110,7 +128,7 @@ function buildGoalEnergyMap(atoms: ContextAtom[], selfId: string): Record<string
     const domain = parts[2];
     const owner = parts[3];
     if (!domain || owner !== selfId) continue;
-    out[domain] = clamp01(Number((a as any)?.magnitude ?? 0));
+    out[domain] = clamp01(Number(a?.magnitude ?? 0));
   }
 
   return out;
@@ -142,7 +160,7 @@ function buildDeltaGoals(
     const goalId = parts[3];
     const key = parts[4];
     if (!goalId || !key || key !== actionKey) continue;
-    out[goalId] = clamp11(Number((a as any)?.magnitude ?? 0));
+    out[goalId] = clamp11(Number(a?.magnitude ?? 0));
     hintIds.push(String(a.id));
   }
 
@@ -168,7 +186,7 @@ function buildDeltaGoals(
 
       let dot = 0;
       for (const [fk, coeff] of Object.entries(proj)) {
-        dot += Number(coeff ?? 0) * Number((effect as any)[fk] ?? 0);
+        dot += Number(coeff ?? 0) * Number((effect as Record<string, number>)[fk] ?? 0);
       }
 
       if (Math.abs(dot) > 1e-6) out[goalId] = clamp11(dot * 4);
@@ -276,7 +294,8 @@ function buildCostBreakdown(args: {
   const runtimeUsedIds = arr<string>(runtimeCost?.usedAtomIds);
   const runtimeObservedIds = runtimeUsedIds.filter((id) => Boolean(getAtom(atoms, id)));
   const runtimeHasSignal = runtimeObservedIds.length > 0;
-  const costAtomId = typeof possibility?.costAtomId === 'string' ? String((possibility as any).costAtomId) : null;
+  const pRuntime = asRuntimePossibility(possibility);
+  const costAtomId = typeof pRuntime?.costAtomId === 'string' ? String(pRuntime.costAtomId) : null;
   const hasBaseSignal = baseCost > 0 || Boolean(costAtomId);
   const runtimeWeight = runtimeHasSignal ? (hasBaseSignal ? 0.75 : 1.0) : 0.0;
   const baseWeight = runtimeHasSignal ? (hasBaseSignal ? 0.25 : 0.0) : 1.0;
@@ -325,13 +344,14 @@ export function buildActionCandidates(args: {
   const goalEnergy = buildGoalEnergyMap(args.atoms, args.selfId);
 
   for (const p of arr<Possibility>(args.possibilities)) {
+    const pRuntime = asRuntimePossibility(p);
     const key = keyFromPossibilityId(p.id);
-    const targetId = (p as any)?.targetId ?? null;
+    const targetId = pRuntime.targetId ?? null;
     const deltaInfo = buildDeltaGoals(
       args.atoms,
       args.selfId,
       key,
-      Number((p as any)?.magnitude ?? 0),
+      Number(pRuntime?.magnitude ?? 0),
       goalEnergy
     );
     const deltaGoals = deltaInfo.deltaGoals;
@@ -339,17 +359,17 @@ export function buildActionCandidates(args: {
       possibilityId: String(p.id),
       kind: key,
       targetId,
-      possibilityMagnitude: Number((p as any)?.magnitude ?? 0),
-      possibilityConfidence: Number((p as any)?.confidence ?? 1),
+      possibilityMagnitude: Number(pRuntime?.magnitude ?? 0),
+      possibilityConfidence: Number(pRuntime?.confidence ?? 1),
     });
     mergeWhyDraft(why, deltaInfo.why);
-    pushUsed(why, ...arr<string>((p as any)?.trace?.usedAtomIds));
-    if ((p as any)?.trace?.parts) why.parts.possibilityTrace = (p as any).trace.parts;
-    if (Array.isArray((p as any)?.trace?.notes) && (p as any).trace.notes.length) {
-      pushNotes(why, ...arr<string>((p as any)?.trace?.notes).map((n) => `poss:${n}`));
+    pushUsed(why, ...arr<string>(pRuntime?.trace?.usedAtomIds));
+    if (pRuntime?.trace?.parts) why.parts.possibilityTrace = pRuntime.trace.parts;
+    if (Array.isArray(pRuntime?.trace?.notes) && pRuntime.trace.notes.length) {
+      pushNotes(why, ...arr<string>(pRuntime.trace.notes).map((n) => `poss:${n}`));
     }
 
-    const offerDeltas: Record<string, number> | undefined = (p as any)?.meta?.sim?.deltaGoals;
+    const offerDeltas: Record<string, number> | undefined = pRuntime?.meta?.sim?.deltaGoals;
     if (offerDeltas && typeof offerDeltas === 'object') {
       const OFFER_W = 0.6;
       const PROJ_W = 1 - OFFER_W;
@@ -369,7 +389,7 @@ export function buildActionCandidates(args: {
         label: 'offer-delta-blend',
         targetId,
         value: OFFER_W,
-        usedAtomIds: arr<string>((p as any)?.trace?.usedAtomIds),
+        usedAtomIds: arr<string>(pRuntime?.trace?.usedAtomIds),
         note: 'Blended projection deltas with SimKit tactical deltas',
       });
     }
@@ -447,7 +467,7 @@ export function buildActionCandidates(args: {
         if (isAggressive) {
           mod *= (1 - AGG.trustPenalty * trust.value) * (1 - AGG.intimacyPenalty * intimacy.value);
           mod *= (1 + AGG.threatBonus * threat.value);
-          mod *= Number((AGG.goalWeights as any)?.[goalId] ?? 1);
+          mod *= goalWeight(AGG.goalWeights, goalId);
           if (goalId === 'safety' || goalId === 'survival') {
             mod *= (1 - AGG.physThreatSafetyPenalty * physThreat.value);
           }
@@ -461,14 +481,14 @@ export function buildActionCandidates(args: {
           mod *= (1 + COOP.trustBonus * trust.value) * (1 + COOP.alignmentBonus * alignment.value);
           mod *= (1 - COOP.threatPenalty * threat.value);
           mod *= (1 + COOP.supportBonus * support.value);
-          mod *= Number((COOP.goalWeights as any)?.[goalId] ?? 1);
+          mod *= goalWeight(COOP.goalWeights, goalId);
           if (goalId === 'affiliation') {
             mod *= (1 + COOP.intimacyBonus * intimacy.value);
           }
         } else if (isAvoidant) {
           mod *= (1 + AVO.threatBonus * threat.value + AVO.physThreatBonus * physThreat.value);
           mod *= (1 - AVO.trustPenalty * trust.value - AVO.intimacyPenalty * intimacy.value);
-          mod *= Number((AVO.goalWeights as any)?.[goalId] ?? 1);
+          mod *= goalWeight(AVO.goalWeights, goalId);
           if (goalId === 'safety' || goalId === 'survival') {
             mod *= (1 + AVO.safetyGoalBonus * clamp01((threat.value + physThreat.value) / 2));
           }
@@ -501,19 +521,19 @@ export function buildActionCandidates(args: {
       id: String(p.id),
       kind: key,
       actorId: args.selfId,
-      targetId: (p as any)?.targetId ?? null,
-      targetNodeId: (p as any)?.targetNodeId ?? null,
+      targetId: pRuntime?.targetId ?? null,
+      targetNodeId: pRuntime?.targetNodeId ?? null,
       deltaGoals,
       cost: finalCost,
-      confidence: clamp01(Number((p as any)?.confidence ?? 1)),
+      confidence: clamp01(Number(pRuntime?.confidence ?? 1)),
       supportAtoms: buildSupportAtoms(args.atoms, actionWhy.usedAtomIds),
       why: actionWhy,
-      payload: (p as any)?.meta?.payload ?? undefined,
+      payload: pRuntime?.meta?.payload ?? undefined,
     });
   }
 
   const REP = FC.decision.repetition;
-  const currentTick = Number.isFinite(args.currentTick as any) ? Number(args.currentTick) : null;
+  const currentTick = Number.isFinite(args.currentTick) ? Number(args.currentTick) : null;
   if (REP) {
     let prevKind = '';
     let prevTargetId = '';
@@ -522,9 +542,9 @@ export function buildActionCandidates(args: {
     let prevFamily = '';
 
     for (const a of args.atoms) {
-      const id = String((a as any)?.id || '');
+      const id = String(a?.id || '');
       if (!id.startsWith('belief:chosen:') || !id.endsWith(`:${args.selfId}`)) continue;
-      const meta = (a as any)?.meta;
+      const meta = a?.meta;
       if (meta && typeof meta === 'object') {
         prevBeliefId = id;
         prevKind = String(meta.kind || '');
@@ -536,7 +556,7 @@ export function buildActionCandidates(args: {
 
     if (prevKind) {
       const nowTick = readWorldTick(args.atoms);
-      const tickGap = (prevTick >= 0 && Number.isFinite(nowTick as any))
+      const tickGap = (prevTick >= 0 && Number.isFinite(nowTick))
         ? Math.max(1, Number(nowTick) - prevTick)
         : prevTick >= 0
           ? Math.max(1, currentTick != null ? currentTick - prevTick : 1)

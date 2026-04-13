@@ -66,7 +66,10 @@ function computeTacticalAtoms(world: SimWorld) {
 
         // Elevation advantage over this threat.
         let otherElev = 0;
-        try { otherElev = getCellElevation(world, other.id); } catch {}
+        try { otherElev = getCellElevation(world, other.id); } catch (err) {
+          // Intentional fallback: terrain data may be absent for some maps.
+          console.warn('[simulator] getCellElevation failed', err);
+        }
         maxElevAdv = Math.max(maxElevAdv, elev - otherElev);
       }
 
