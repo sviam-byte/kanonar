@@ -8,8 +8,9 @@ import type {
   DilemmaSpec,
   StrategyMatchScores,
 } from '../lib/dilemma/types';
-import type { WorldState, AgentState } from '../types';
+import type { WorldState, AgentState, CharacterEntity } from '../types';
 import { useSandbox } from '../contexts/SandboxContext';
+import { getAllCharactersWithRuntime } from '../data';
 import { Tabs } from '../components/Tabs';
 
 // ═══════════════════════════════════════════════════════════════
@@ -376,9 +377,23 @@ export const DilemmaLabPage: React.FC = () => {
   const spec = getSpec(specId);
   const analysis = game ? analyzeGame(spec, game) : null;
 
+  /**
+   * Объединяем базовый реестр персонажей и sandbox-персонажей.
+   * Sandbox имеет приоритет (override), чтобы UI всегда отражал текущую сессию.
+   */
+  const allCharacters = useMemo(() => {
+    const base = getAllCharactersWithRuntime();
+    const map = new Map<string, CharacterEntity>();
+
+    for (const c of base) map.set(c.entityId, c);
+    for (const c of characters) map.set(c.entityId, c as CharacterEntity);
+
+    return Array.from(map.values());
+  }, [characters]);
+
   const agentOptions = useMemo(
-    () => characters.map((c) => ({ id: c.entityId, label: c.title || c.entityId })),
-    [characters],
+    () => allCharacters.map((c) => ({ id: c.entityId, label: c.title || c.entityId })),
+    [allCharacters],
   );
 
   // Auto-select players from sandbox
@@ -425,7 +440,7 @@ export const DilemmaLabPage: React.FC = () => {
     if (id0 === id1) { setPipelineError('Players must be different'); return; }
     setPipelineError(null);
     try {
-      const world = buildMinimalWorld(characters.length >= 2 ? characters : []);
+      const world = buildMinimalWorld(allCharacters);
       const findAgent = (id: string) =>
         world.agents?.find((a) => (a as any).entityId === id || (a as any).id === id);
       if (!findAgent(id0)) throw new Error(`Agent "${id0}" не найден в Sandbox. Добавь персонажей или используй Manual.`);
@@ -445,7 +460,7 @@ export const DilemmaLabPage: React.FC = () => {
       setPipelineError(e instanceof Error ? e.message : String(e));
       setMode('idle');
     }
-  }, [spec, p0, p1, totalRounds, initialTrust, characters]);
+  }, [spec, p0, p1, totalRounds, initialTrust, allCharacters]);
 
   const playManualRound = useCallback(() => {
     if (!game || isGameOver(game)) return;
@@ -567,11 +582,6 @@ export const DilemmaLabPage: React.FC = () => {
             </label>
           </div>
 
-          {agentOptions.length < 2 && (
-            <div className="text-[11px] text-amber-300/80">
-              В Sandbox &lt;2 персонажей. Pipeline требует агентов; Manual работает с любыми ID.
-            </div>
-          )}
           {pipelineError && (
             <div className="text-xs text-canon-bad bg-canon-bad/10 border border-canon-bad/20 rounded-lg p-3">
               {pipelineError}
