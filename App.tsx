@@ -37,6 +37,7 @@ const RelationsLabPage = lazy(() => import('./pages/RelationsLabPage').then(m =>
 const LocationConstructorPage = lazy(() => import('./pages/LocationConstructorPage').then(m => ({ default: m.LocationConstructorPage })));
 const DiagnosticsPage = lazy(() => import('./pages/DiagnosticsPage').then(m => ({ default: m.DiagnosticsPage })));
 const SimulatorPage = lazy(() => import('./pages/SimulatorPage').then(m => ({ default: m.SimulatorPage })));
+const DilemmaLabPage = lazy(() => import('./pages/DilemmaLabPage').then(m => ({ default: m.DilemmaLabPage })));
 // GoalLab legacy routes stay default for compatibility.
 // V2 is exposed on explicit /goal-lab-v2 routes until parity is confirmed.
 const GoalLabPage = lazy(() => import('./pages/GoalLabPage').then(m => ({ default: m.GoalLabPage })));
@@ -94,6 +95,7 @@ function App() {
                     <Route path="/goal-lab-console-v2" element={<GoalLabConsolePageV2 />} />
                     <Route path="/console" element={<ConsolePage />} />
                     <Route path="/simulator" element={<SimulatorPage />} />
+                    <Route path="/dilemma-lab" element={<DilemmaLabPage />} />
                     <Route path="/relations-lab" element={<RelationsLabPage />} />
                     <Route path="/biography-lab" element={<BiographyLabPage />} />
                     <Route path="/location-constructor" element={<LocationConstructorPage />} />
