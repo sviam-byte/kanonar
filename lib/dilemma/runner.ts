@@ -247,7 +247,7 @@ function computeM(
 // P — Payoff (expected value)
 // ═══════════════════════════════════════════════════════════════
 
-const W_PAYOFF = 0.8;
+const W_PAYOFF = 1.2;
 
 /**
  * Expected payoff given opponent prediction (opp_ema as P(opp cooperates)).
@@ -298,10 +298,10 @@ function computeE(
   const effectiveShadow = futureShadow * (1 - discount * 0.5);
 
   if (isCoopAction) {
-    return { E: 0.3 * effectiveShadow, effectiveShadow };
+    return { E: 0.12 * effectiveShadow, effectiveShadow };
   } else {
     return {
-      E: 0.3 * (1 - effectiveShadow) * (1 - repSens),
+      E: 0.12 * (1 - effectiveShadow) * (1 - repSens),
       effectiveShadow,
     };
   }
@@ -346,7 +346,7 @@ function computeQ(
   for (const action of spec.actions) {
     const isCoop = action.id === spec.cooperativeActionId;
 
-    const D = isCoop ? +disposition : -disposition;
+    const D = isCoop ? +disposition * 1.5 : -disposition * 1.5;
     const R = isCoop
       ? +BETA_REL * (tc.composite - 0.5)
       : -BETA_REL * (tc.composite - 0.5);
