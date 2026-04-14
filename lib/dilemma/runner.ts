@@ -1,52 +1,41 @@
-// lib/dilemma/runner.ts
+// lib/dilemma/runner.ts — v5
 //
-// Dedicated dilemma decision model: U(a) = D + R + M + P + E
-//
-// D — Dispositional: static character traits → cooperation baseline
-// R — Relational: trust composite from relationship + ToM about THIS opponent
-// M — Momentum: opponent EMA, trend, own inertia, betrayal shock
-// P — Payoff: expected value given opponent prediction × rationality
-// E — Endgame: shadow of the future
+// U(a) = D + R + M + P + E
+// + Pair-specific initial trust from trait/state/value compatibility
+// + State modifiers (will, burnout, dark_exposure) in D
+// + Betrayal shock in M
 
 import type {
-  DilemmaAnalysis,
-  DilemmaGameState,
-  DilemmaSpec,
-  RoundTrace,
-  ActionDecomposition,
+  DilemmaAnalysis, DilemmaGameState, DilemmaSpec,
+  RoundTrace, ActionDecomposition,
 } from './types';
 import type { AgentState, WorldState, Relationship, TomEntry, TomBeliefTraits } from '../../types';
-
 import { createGame, advanceGame, isGameOver } from './engine';
 import { getSpec } from './catalog';
 import { analyzeGame } from './analysis';
 import { clamp01 } from '../util/math';
-
-// ═══════════════════════════════════════════════════════════════
-// Config
-// ═══════════════════════════════════════════════════════════════
 
 export type DilemmaRunConfig = {
   specId: string;
   players: readonly [string, string];
   totalRounds: number;
   world: WorldState;
-  initialTrust?: number;
+  initialTrust?: number;   // if set, OVERRIDES pair-specific trust (for manual tuning)
   seed?: number;
 };
-
-export type DilemmaRunResult = {
-  game: DilemmaGameState;
-  analysis: DilemmaAnalysis;
-};
+export type DilemmaRunResult = { game: DilemmaGameState; analysis: DilemmaAnalysis };
 
 // ═══════════════════════════════════════════════════════════════
-// Character trait reader
+// Trait reader
 // ═══════════════════════════════════════════════════════════════
 
 function vb(agent: AgentState, key: string, fb = 0.5): number {
   const val = Number((agent as any).vector_base?.[key]);
   return Number.isFinite(val) ? clamp01(val) : fb;
+}
+function stateNum(agent: AgentState, key: string, fb = 50): number {
+  const val = Number((agent as any).state?.[key]);
+  return Number.isFinite(val) ? val : fb;
 }
 
 const TRAIT_KEYS = [
@@ -64,24 +53,86 @@ function traitSnapshot(agent: AgentState): Record<string, number> {
     const v = Number((agent as any).vector_base?.[k]);
     if (Number.isFinite(v)) out[k] = v;
   }
+  // State
+  for (const k of ['will', 'loyalty', 'dark_exposure', 'burnout_risk']) {
+    const v = Number((agent as any).state?.[k]);
+    if (Number.isFinite(v)) out[`state.${k}`] = v;
+  }
   return out;
 }
 
 // ═══════════════════════════════════════════════════════════════
-// D — Dispositional
+// Pair-specific initial trust: A's trust of B
+// ═══════════════════════════════════════════════════════════════
+
+function computePairTrust(a: AgentState, b: AgentState): number {
+  let t = 0.5;
+
+  // 1. Value alignment: difference on value axes
+  const valueAxes = [
+    'A_Safety_Care', 'A_Knowledge_Truth', 'A_Tradition_Continuity',
+    'A_Legitimacy_Procedure', 'A_Liberty_Autonomy',
+  ];
+  let valDiff = 0;
+  for (const k of valueAxes) valDiff += Math.abs(vb(a, k) - vb(b, k));
+  valDiff /= valueAxes.length;
+  t += 0.15 * (1 - valDiff * 2);  // aligned → +0.15
+
+  // 2. Reciprocity match
+  t += 0.08 * Math.min(vb(a, 'C_reciprocity_index'), vb(b, 'C_reciprocity_index'));
+
+  // 3. Power competition (both high → distrust)
+  t -= 0.15 * vb(a, 'A_Power_Sovereignty') * vb(b, 'A_Power_Sovereignty');
+
+  // 4. Empathy readability (A can read B)
+  t += 0.06 * vb(a, 'C_dominance_empathy') * vb(b, 'C_reputation_sensitivity');
+
+  // 5. Institutional loyalty alignment
+  t += 0.05 * (stateNum(a, 'loyalty', 50) / 100) * (stateNum(b, 'loyalty', 50) / 100);
+
+  // 6. Dark exposure gap → experiential distance
+  t -= 0.12 * Math.abs(stateNum(a, 'dark_exposure', 0) - stateNum(b, 'dark_exposure', 0)) / 100;
+
+  // 7. A's caution from betrayal sensitivity
+  t -= 0.10 * vb(a, 'C_betrayal_cost');
+  t += 0.05;  // rebalance
+
+  // 8. Use existing relationship if present
+  const rel = a.relationships?.[b.entityId ?? (b as any).id] as Partial<Relationship> | undefined;
+  if (rel?.trust !== undefined) {
+    const existing = clamp01(Number(rel.trust));
+    t = 0.3 * t + 0.7 * existing;  // existing relationship dominates
+  }
+
+  return clamp01(Math.max(0.1, Math.min(0.9, t)));
+}
+
+// ═══════════════════════════════════════════════════════════════
+// D — Dispositional (with state)
 // ═══════════════════════════════════════════════════════════════
 
 function cooperativeDisposition(agent: AgentState): number {
-  return (
-    +0.25 * vb(agent, 'A_Safety_Care')
+  // Trait base
+  const base =
+    + 0.25 * vb(agent, 'A_Safety_Care')
     + 0.20 * vb(agent, 'C_reciprocity_index')
     + 0.20 * vb(agent, 'C_coalition_loyalty')
     + 0.15 * vb(agent, 'C_dominance_empathy')
     + 0.10 * vb(agent, 'C_reputation_sensitivity')
     - 0.20 * vb(agent, 'A_Power_Sovereignty')
     - 0.10 * vb(agent, 'B_exploration_rate')
-    - 0.30 // center so all-0.5 → 0
-  );
+    - 0.30;
+
+  // State modifiers
+  const will = stateNum(agent, 'will', 50) / 100;     // 0..1
+  const burnout = Number((agent as any).state?.burnout_risk ?? 0);
+  const dark = stateNum(agent, 'dark_exposure', 0) / 100;  // 0..1
+
+  const willMod = (will - 0.5) * 0.15;       // low will → less cooperative
+  const burnoutMod = -burnout * 0.10;          // burnout → less cooperative
+  const darkMod = -dark * 0.08;               // cynicism
+
+  return (base + willMod + burnoutMod + darkMod) * 1.5;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -95,9 +146,7 @@ type TrustCompositeResult = {
 };
 
 function computeTrustComposite(
-  agent: AgentState,
-  selfId: string,
-  otherId: string,
+  agent: AgentState, selfId: string, otherId: string,
 ): TrustCompositeResult {
   const relSnapshot: Record<string, number> = {};
   const rel = agent.relationships?.[otherId] as Partial<Relationship> | undefined;
@@ -105,68 +154,42 @@ function computeTrustComposite(
   const relTrust = clamp01(Number(rel?.trust ?? 0.5));
   const relBond = clamp01(Number(rel?.bond ?? 0.3));
   const relConflict = clamp01(Number(rel?.conflict ?? 0));
-  const relAlign = clamp01(Number(rel?.align ?? 0.5));
-  const relRespect = clamp01(Number(rel?.respect ?? 0.5));
-  const relFear = clamp01(Number(rel?.fear ?? 0));
-
   relSnapshot.trust = relTrust;
   relSnapshot.bond = relBond;
   relSnapshot.conflict = relConflict;
-  relSnapshot.align = relAlign;
-  relSnapshot.respect = relRespect;
-  relSnapshot.fear = relFear;
+  relSnapshot.align = clamp01(Number(rel?.align ?? 0.5));
+  relSnapshot.respect = clamp01(Number(rel?.respect ?? 0.5));
+  relSnapshot.fear = clamp01(Number(rel?.fear ?? 0));
 
-  // ToM
-  let tomTrust = 0.5;
-  let tomReliability = 0.5;
-  let soPerceivedTrust = 0.5;
-
+  let tomTrust = 0.5; let tomReliability = 0.5; let soPerceivedTrust = 0.5;
   const tomState = (agent as any).tom;
   if (tomState) {
-    const tomEntry: Partial<TomEntry> | null =
-      tomState?.[selfId]?.[otherId]
-      ?? tomState?.views?.[selfId]?.[otherId]
-      ?? null;
-
-    if (tomEntry?.traits) {
-      const traits = tomEntry.traits as Partial<TomBeliefTraits>;
-      if (traits.trust !== undefined) tomTrust = clamp01(Number(traits.trust));
-      if (traits.reliability !== undefined) tomReliability = clamp01(Number(traits.reliability));
+    const te: Partial<TomEntry> | null =
+      tomState?.[selfId]?.[otherId] ?? tomState?.views?.[selfId]?.[otherId] ?? null;
+    if (te?.traits) {
+      const tr = te.traits as Partial<TomBeliefTraits>;
+      if (tr.trust !== undefined) tomTrust = clamp01(Number(tr.trust));
+      if (tr.reliability !== undefined) tomReliability = clamp01(Number(tr.reliability));
     }
-    if (tomEntry?.secondOrderSelf?.perceivedTrustFromTarget !== undefined) {
-      soPerceivedTrust = clamp01(Number(tomEntry.secondOrderSelf.perceivedTrustFromTarget));
+    if (te?.secondOrderSelf?.perceivedTrustFromTarget !== undefined) {
+      soPerceivedTrust = clamp01(Number(te.secondOrderSelf.perceivedTrustFromTarget));
     }
   }
 
-  // Personality-modulated weights
   const paranoia = vb(agent, 'C_betrayal_cost');
   const truthNeed = vb(agent, 'A_Knowledge_Truth');
-  const repSensitivity = vb(agent, 'C_reputation_sensitivity');
-
-  let wRelTrust = 0.35;
-  let wRelBond = 0.20;
-  let wRelConflict = 0.15;
-  let wTomTrust = 0.15 * (1.0 - 0.5 * paranoia);
-  let wTomReliability = 0.10 * (1.0 + 0.5 * truthNeed);
-  let wSoTrust = 0.05 * (1.0 + 1.0 * repSensitivity);
-
-  const wSum = wRelTrust + wRelBond + wRelConflict + wTomTrust + wTomReliability + wSoTrust;
+  const repSens = vb(agent, 'C_reputation_sensitivity');
+  const wRT = 0.35; const wRB = 0.20; const wRC = 0.15;
+  const wTT = 0.15 * (1 - 0.5 * paranoia);
+  const wTR = 0.10 * (1 + 0.5 * truthNeed);
+  const wST = 0.05 * (1 + repSens);
+  const wSum = wRT + wRB + wRC + wTT + wTR + wST;
 
   const composite = clamp01(
-    (wRelTrust * relTrust
-      + wRelBond * relBond
-      + wRelConflict * (1 - relConflict)
-      + wTomTrust * tomTrust
-      + wTomReliability * tomReliability
-      + wSoTrust * soPerceivedTrust
-    ) / wSum
+    (wRT * relTrust + wRB * relBond + wRC * (1 - relConflict) + wTT * tomTrust + wTR * tomReliability + wST * soPerceivedTrust) / wSum,
   );
 
-  return {
-    composite,
-    components: { relTrust, relBond, relConflict, tomTrust, tomReliability, soPerceivedTrust },
-    relSnapshot,
-  };
+  return { composite, components: { relTrust, relBond, relConflict, tomTrust, tomReliability, soPerceivedTrust }, relSnapshot };
 }
 
 const BETA_REL = 1.0;
@@ -177,207 +200,109 @@ const BETA_REL = 1.0;
 
 type MomentumState = {
   oppEma: number;
-  myLastCoop: number;     // +1 cooperated, -1 defected, 0 first round
-  betrayalShock: number;  // accumulated, decays each round
-  oppPrevCooperated: boolean; // for betrayal detection
+  myLastCoop: number;
+  betrayalShock: number;
+  oppPrevCooperated: boolean;
 };
 
 const EMA_ALPHA = 0.3;
 const SHOCK_DECAY = 0.6;
-const W_EMA = 0.8;
-const W_TREND = 0.4;
-const W_INERTIA = 0.3;
-const W_SHOCK = 0.6;
+const W_EMA = 0.8; const W_TREND = 0.4; const W_INERTIA = 0.3; const W_SHOCK = 0.6;
 
 function initMomentum(): MomentumState {
   return { oppEma: 0.5, myLastCoop: 0, betrayalShock: 0, oppPrevCooperated: false };
 }
 
-function updateMomentum(
-  m: MomentumState,
-  opponentCooperated: boolean,
-  iCooperated: boolean,
-  betrayalSensitivity: number,  // C_betrayal_cost
-): MomentumState {
-  // Betrayal = opponent was cooperating, now defected
-  const betrayalJustHappened = m.oppPrevCooperated && !opponentCooperated;
-  const newShock = SHOCK_DECAY * m.betrayalShock
-    + (betrayalJustHappened ? betrayalSensitivity : 0);
-
+function updateMomentum(m: MomentumState, oppCoop: boolean, iCoop: boolean, betrayalSens: number): MomentumState {
+  const betrayed = m.oppPrevCooperated && !oppCoop;
   return {
-    oppEma: EMA_ALPHA * (opponentCooperated ? 1 : 0) + (1 - EMA_ALPHA) * m.oppEma,
-    myLastCoop: iCooperated ? 1 : -1,
-    betrayalShock: newShock,
-    oppPrevCooperated: opponentCooperated,
+    oppEma: EMA_ALPHA * (oppCoop ? 1 : 0) + (1 - EMA_ALPHA) * m.oppEma,
+    myLastCoop: iCoop ? 1 : -1,
+    betrayalShock: SHOCK_DECAY * m.betrayalShock + (betrayed ? betrayalSens : 0),
+    oppPrevCooperated: oppCoop,
   };
 }
 
-function computeM(
-  agent: AgentState,
-  mom: MomentumState,
-  prevOppEma: number,
-  isCoopAction: boolean,
-): number {
-  const reciprocity = vb(agent, 'C_reciprocity_index');
-  const betrayalCost = vb(agent, 'C_betrayal_cost');
+function computeM(agent: AgentState, mom: MomentumState, prevOppEma: number, isCoop: boolean): number {
+  const recip = vb(agent, 'C_reciprocity_index');
+  const betCost = vb(agent, 'C_betrayal_cost');
   const power = vb(agent, 'A_Power_Sovereignty');
-  const coherence = vb(agent, 'B_goal_coherence', 0.5);
+  const coher = vb(agent, 'B_goal_coherence', 0.5);
+  const sig = mom.oppEma - 0.5;
+  const trend = mom.oppEma - prevOppEma;
 
-  const reciprocitySignal = mom.oppEma - 0.5;
-  const oppTrend = mom.oppEma - prevOppEma;
-
-  if (isCoopAction) {
-    return (
-      W_EMA * reciprocitySignal * reciprocity
-      + W_TREND * Math.max(0, oppTrend) * reciprocity
-      + W_INERTIA * Math.max(0, mom.myLastCoop) * coherence
-      - W_SHOCK * mom.betrayalShock  // shock pushes AWAY from cooperation
-    );
+  if (isCoop) {
+    return W_EMA * sig * recip + W_TREND * Math.max(0, trend) * recip
+      + W_INERTIA * Math.max(0, mom.myLastCoop) * coher - W_SHOCK * mom.betrayalShock;
   } else {
-    return (
-      W_EMA * (-reciprocitySignal) * (1 - betrayalCost)
-      + W_TREND * Math.max(0, -oppTrend) * power
-      + W_INERTIA * Math.max(0, -mom.myLastCoop) * coherence
-      + W_SHOCK * mom.betrayalShock  // shock pushes TOWARD defection
-    );
+    return W_EMA * (-sig) * (1 - betCost) + W_TREND * Math.max(0, -trend) * power
+      + W_INERTIA * Math.max(0, -mom.myLastCoop) * coher + W_SHOCK * mom.betrayalShock;
   }
 }
 
 // ═══════════════════════════════════════════════════════════════
-// P — Payoff (expected value)
+// P — Payoff
 // ═══════════════════════════════════════════════════════════════
 
 const W_PAYOFF = 1.2;
 
-/**
- * Expected payoff given opponent prediction (opp_ema as P(opp cooperates)).
- * Scaled by rationality = coherence * (1 - temperature).
- * Centers EV around 0.5 so neutral payoff → 0 contribution.
- */
-function computeP(
-  spec: DilemmaSpec,
-  agent: AgentState,
-  actionId: string,
-  oppCoopProb: number,
-): { P: number; ev: number } {
-  const coopAction = spec.cooperativeActionId;
-  // Find the defect action (the other one)
-  const defectAction = spec.actions.find((a) => a.id !== coopAction)?.id ?? '';
-
-  const payoffVsCoop = spec.payoffs[actionId]?.[coopAction]?.[0] ?? 0.5;
-  const payoffVsDefect = spec.payoffs[actionId]?.[defectAction]?.[0] ?? 0.5;
-
-  const ev = oppCoopProb * payoffVsCoop + (1 - oppCoopProb) * payoffVsDefect;
-
-  const coherence = vb(agent, 'B_goal_coherence', 0.5);
-  const temp = vb(agent, 'B_decision_temperature', 0.5);
-  const rationality = coherence * (1 - temp * 0.7);  // high temp → less rational
-
-  const P = W_PAYOFF * rationality * (ev - 0.5);  // center on 0.5
-
-  return { P, ev };
+function computeP(spec: DilemmaSpec, agent: AgentState, actionId: string, oppCoopProb: number): { P: number; ev: number } {
+  const coopAct = spec.cooperativeActionId;
+  const defAct = spec.actions.find((a) => a.id !== coopAct)?.id ?? '';
+  const evVsCoop = spec.payoffs[actionId]?.[coopAct]?.[0] ?? 0.5;
+  const evVsDef = spec.payoffs[actionId]?.[defAct]?.[0] ?? 0.5;
+  const ev = oppCoopProb * evVsCoop + (1 - oppCoopProb) * evVsDef;
+  const rat = vb(agent, 'B_goal_coherence', 0.5) * (1 - vb(agent, 'B_decision_temperature', 0.5) * 0.7);
+  return { P: W_PAYOFF * rat * (ev - 0.5), ev };
 }
 
 // ═══════════════════════════════════════════════════════════════
 // E — Endgame
 // ═══════════════════════════════════════════════════════════════
 
-const KAPPA = 1.5;
-
-function computeE(
-  agent: AgentState,
-  roundsRemaining: number,
-  totalRounds: number,
-  isCoopAction: boolean,
-): { E: number; effectiveShadow: number } {
-  const ratio = totalRounds > 1 ? roundsRemaining / totalRounds : 0.5;
-  const futureShadow = Math.pow(ratio, KAPPA);
-  const discount = vb(agent, 'B_discount_rate', 0.5);
-  const repSens = vb(agent, 'C_reputation_sensitivity');
-
-  const effectiveShadow = futureShadow * (1 - discount * 0.5);
-
-  if (isCoopAction) {
-    return { E: 0.12 * effectiveShadow, effectiveShadow };
-  } else {
-    return {
-      E: 0.12 * (1 - effectiveShadow) * (1 - repSens),
-      effectiveShadow,
-    };
-  }
+function computeE(agent: AgentState, roundsRem: number, total: number, isCoop: boolean): { E: number; effectiveShadow: number } {
+  const ratio = total > 1 ? roundsRem / total : 0.5;
+  const shadow = Math.pow(ratio, 1.5) * (1 - vb(agent, 'B_discount_rate', 0.5) * 0.5);
+  return isCoop
+    ? { E: 0.12 * shadow, effectiveShadow: shadow }
+    : { E: 0.12 * (1 - shadow) * (1 - vb(agent, 'C_reputation_sensitivity')), effectiveShadow: shadow };
 }
 
 // ═══════════════════════════════════════════════════════════════
 // Full Q
 // ═══════════════════════════════════════════════════════════════
 
-type QResult = {
-  actions: ActionDecomposition[];
-  trustComposite: number;
-  trustComponents: RoundTrace['trustComponents'];
-  relSnapshot: Record<string, number>;
-  disposition: number;
-  oppEma: number;
-  oppTrend: number;
-  myInertia: number;
-  betrayalShock: number;
-  effectiveShadow: number;
-  evPerAction: Record<string, number>;
-};
-
 function computeQ(
-  spec: DilemmaSpec,
-  agent: AgentState,
-  selfId: string,
-  otherId: string,
-  mom: MomentumState,
-  prevOppEma: number,
-  roundsRemaining: number,
-  totalRounds: number,
-): QResult {
+  spec: DilemmaSpec, agent: AgentState, selfId: string, otherId: string,
+  mom: MomentumState, prevOppEma: number, roundsRem: number, total: number,
+): {
+  actions: ActionDecomposition[]; trustComposite: number; trustComponents: RoundTrace['trustComponents'];
+  relSnapshot: Record<string, number>; disposition: number; oppEma: number; oppTrend: number;
+  myInertia: number; betrayalShock: number; effectiveShadow: number; evPerAction: Record<string, number>;
+} {
   const disposition = cooperativeDisposition(agent);
   const tc = computeTrustComposite(agent, selfId, otherId);
-  const oppTrend = mom.oppEma - prevOppEma;
   const evPerAction: Record<string, number> = {};
-
   const actions: ActionDecomposition[] = [];
-  let lastEffectiveShadow = 0;
+  let es = 0;
 
   for (const action of spec.actions) {
     const isCoop = action.id === spec.cooperativeActionId;
-
     const D = isCoop ? +disposition * 1.5 : -disposition * 1.5;
-    const R = isCoop
-      ? +BETA_REL * (tc.composite - 0.5)
-      : -BETA_REL * (tc.composite - 0.5);
+    const R = BETA_REL * (isCoop ? (tc.composite - 0.5) : -(tc.composite - 0.5));
     const M = computeM(agent, mom, prevOppEma, isCoop);
-    const pResult = computeP(spec, agent, action.id, mom.oppEma);
-    const eResult = computeE(agent, roundsRemaining, totalRounds, isCoop);
-    lastEffectiveShadow = eResult.effectiveShadow;
-    evPerAction[action.id] = pResult.ev;
-
-    const q = D + R + M + pResult.P + eResult.E;
-
-    actions.push({
-      actionId: action.id,
-      q,
-      chosen: false,
-      D, R, M, P: pResult.P, E: eResult.E,
-    });
+    const { P, ev } = computeP(spec, agent, action.id, mom.oppEma);
+    const { E, effectiveShadow } = computeE(agent, roundsRem, total, isCoop);
+    es = effectiveShadow;
+    evPerAction[action.id] = ev;
+    actions.push({ actionId: action.id, q: D + R + M + P + E, chosen: false, D, R, M, P, E });
   }
 
   return {
-    actions,
-    trustComposite: tc.composite,
-    trustComponents: tc.components,
-    relSnapshot: tc.relSnapshot,
-    disposition,
-    oppEma: mom.oppEma,
-    oppTrend,
-    myInertia: mom.myLastCoop,
-    betrayalShock: mom.betrayalShock,
-    effectiveShadow: lastEffectiveShadow,
-    evPerAction,
+    actions, trustComposite: tc.composite, trustComponents: tc.components,
+    relSnapshot: tc.relSnapshot, disposition, oppEma: mom.oppEma,
+    oppTrend: mom.oppEma - prevOppEma, myInertia: mom.myLastCoop,
+    betrayalShock: mom.betrayalShock, effectiveShadow: es, evPerAction,
   };
 }
 
@@ -385,27 +310,16 @@ function computeQ(
 // Gumbel sampling
 // ═══════════════════════════════════════════════════════════════
 
-function gumbelSample(
-  actions: ActionDecomposition[],
-  temperature: number,
-  rng: () => number,
-): ActionDecomposition[] {
-  let bestScore = -Infinity;
-  let bestIdx = 0;
-
-  const sampled = actions.map((a, i) => {
+function gumbelSample(actions: ActionDecomposition[], temp: number, rng: () => number): ActionDecomposition[] {
+  let best = -Infinity; let bestI = 0;
+  const out = actions.map((a, i) => {
     const u = Math.min(1 - 1e-12, Math.max(1e-12, rng()));
-    const noise = -Math.log(-Math.log(u));
-    const score = a.q / temperature + noise;
-    if (score > bestScore) {
-      bestScore = score;
-      bestIdx = i;
-    }
+    const score = a.q / temp + (-Math.log(-Math.log(u)));
+    if (score > best) { best = score; bestI = i; }
     return { ...a };
   });
-
-  sampled[bestIdx].chosen = true;
-  return sampled;
+  out[bestI].chosen = true;
+  return out;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -415,33 +329,27 @@ function gumbelSample(
 export function runDilemmaGame(config: DilemmaRunConfig): DilemmaRunResult {
   const spec = getSpec(config.specId);
   const [p0Id, p1Id] = config.players;
-
   const agents = cloneAgents(config.world, [p0Id, p1Id]);
-  if (!agents[p0Id] || !agents[p1Id]) {
-    throw new Error(`Agent not found: ${!agents[p0Id] ? p0Id : p1Id}`);
-  }
+  if (!agents[p0Id] || !agents[p1Id]) throw new Error(`Agent not found: ${!agents[p0Id] ? p0Id : p1Id}`);
 
   const rngs: Record<string, () => number> = {
     [p0Id]: makeRng(config.seed ?? 42),
     [p1Id]: makeRng((config.seed ?? 42) * 2654435761),
   };
 
-  if (config.initialTrust !== undefined) {
-    const t = clamp01(config.initialTrust);
-    ensureRelationship(agents[p0Id], p1Id, t);
-    ensureRelationship(agents[p1Id], p0Id, t);
-  }
+  // Pair-specific initial trust (or override from slider)
+  const pairTrust0to1 = config.initialTrust !== undefined
+    ? clamp01(config.initialTrust)
+    : computePairTrust(agents[p0Id], agents[p1Id]);
+  const pairTrust1to0 = config.initialTrust !== undefined
+    ? clamp01(config.initialTrust)
+    : computePairTrust(agents[p1Id], agents[p0Id]);
 
-  const momentum: Record<string, MomentumState> = {
-    [p0Id]: initMomentum(),
-    [p1Id]: initMomentum(),
-  };
+  ensureRelationship(agents[p0Id], p1Id, pairTrust0to1);
+  ensureRelationship(agents[p1Id], p0Id, pairTrust1to0);
 
-  const emaHistory: Record<string, number[]> = {
-    [p0Id]: [0.5],
-    [p1Id]: [0.5],
-  };
-
+  const momentum: Record<string, MomentumState> = { [p0Id]: initMomentum(), [p1Id]: initMomentum() };
+  const emaHistory: Record<string, number[]> = { [p0Id]: [0.5], [p1Id]: [0.5] };
   let game = createGame(spec, [p0Id, p1Id], config.totalRounds);
 
   while (!isGameOver(game)) {
@@ -452,77 +360,47 @@ export function runDilemmaGame(config: DilemmaRunConfig): DilemmaRunResult {
       const otherId = playerId === p0Id ? p1Id : p0Id;
       const agent = agents[playerId];
       const mom = momentum[playerId];
-
       const hist = emaHistory[playerId];
       const prevOppEma = hist.length >= 3 ? hist[hist.length - 3] : hist[0];
-      const roundsRemaining = game.totalRounds - game.currentRound;
 
-      const result = computeQ(
-        spec, agent, playerId, otherId,
-        mom, prevOppEma,
-        roundsRemaining, game.totalRounds,
-      );
+      const result = computeQ(spec, agent, playerId, otherId, mom, prevOppEma,
+        game.totalRounds - game.currentRound, game.totalRounds);
 
       const charTemp = vb(agent, 'B_decision_temperature');
       const temperature = 0.3 + 1.4 * charTemp;
-
       const ranked = gumbelSample(result.actions, temperature, rngs[playerId]);
-      const chosen = ranked.find((a) => a.chosen);
-      choices[playerId] = chosen?.actionId ?? spec.actions[0].id;
+      choices[playerId] = ranked.find((a) => a.chosen)?.actionId ?? spec.actions[0].id;
 
       const sorted = [...ranked].sort((a, b) => b.q - a.q);
       const qMargin = sorted.length >= 2 ? sorted[0].q - sorted[1].q : Infinity;
 
       traces[playerId] = {
-        ranked,
-        dilemmaAtomIds: [],
-        trustAtDecision: result.trustComposite,
-        qMargin,
-        temperature,
-        cooperativeDisposition: result.disposition,
-        trustComposite: result.trustComposite,
-        trustComponents: result.trustComponents,
-        oppEma: result.oppEma,
-        oppTrend: result.oppTrend,
-        myInertia: result.myInertia,
-        betrayalShock: result.betrayalShock,
-        evPerAction: result.evPerAction,
+        ranked, dilemmaAtomIds: [], trustAtDecision: result.trustComposite,
+        qMargin, temperature, cooperativeDisposition: result.disposition,
+        trustComposite: result.trustComposite, trustComponents: result.trustComponents,
+        oppEma: result.oppEma, oppTrend: result.oppTrend, myInertia: result.myInertia,
+        betrayalShock: result.betrayalShock, evPerAction: result.evPerAction,
         effectiveShadow: result.effectiveShadow,
-        relSnapshot: result.relSnapshot,
-        traitSnapshot: traitSnapshot(agent),
+        relSnapshot: result.relSnapshot, traitSnapshot: traitSnapshot(agent),
       };
     }
 
     game = advanceGame(spec, game, choices, traces);
 
-    // Post-round updates
     const lastRound = game.rounds[game.rounds.length - 1];
     if (lastRound) {
-      for (const playerId of config.players) {
-        const otherId = playerId === p0Id ? p1Id : p0Id;
-        const oppCooperated = lastRound.choices[otherId] === spec.cooperativeActionId;
-        const iCooperated = lastRound.choices[playerId] === spec.cooperativeActionId;
+      for (const pid of config.players) {
+        const oid = pid === p0Id ? p1Id : p0Id;
+        const oppCoop = lastRound.choices[oid] === spec.cooperativeActionId;
+        const iCoop = lastRound.choices[pid] === spec.cooperativeActionId;
+        momentum[pid] = updateMomentum(momentum[pid], oppCoop, iCoop, vb(agents[pid], 'C_betrayal_cost'));
+        emaHistory[pid].push(momentum[pid].oppEma);
 
-        momentum[playerId] = updateMomentum(
-          momentum[playerId],
-          oppCooperated,
-          iCooperated,
-          vb(agents[playerId], 'C_betrayal_cost'),
-        );
-        emaHistory[playerId].push(momentum[playerId].oppEma);
-
-        // Update relationship
-        const rel = agents[playerId].relationships?.[otherId] as
-          { trust?: number; conflict?: number; bond?: number } | undefined;
+        const rel = agents[pid].relationships?.[oid] as { trust?: number; conflict?: number; bond?: number } | undefined;
         if (rel) {
-          rel.trust = clamp01((rel.trust ?? 0.5) + (oppCooperated ? 0.06 : -0.10));
-          if (oppCooperated) {
-            rel.conflict = clamp01((rel.conflict ?? 0) - 0.03);
-            rel.bond = clamp01((rel.bond ?? 0.3) + 0.02);
-          } else {
-            rel.conflict = clamp01((rel.conflict ?? 0) + 0.05);
-            rel.bond = clamp01((rel.bond ?? 0.3) - 0.01);
-          }
+          rel.trust = clamp01((rel.trust ?? 0.5) + (oppCoop ? 0.06 : -0.10));
+          if (oppCoop) { rel.conflict = clamp01((rel.conflict ?? 0) - 0.03); rel.bond = clamp01((rel.bond ?? 0.3) + 0.02); }
+          else { rel.conflict = clamp01((rel.conflict ?? 0) + 0.05); rel.bond = clamp01((rel.bond ?? 0.3) - 0.01); }
         }
       }
     }
@@ -532,36 +410,23 @@ export function runDilemmaGame(config: DilemmaRunConfig): DilemmaRunResult {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// Helpers
-// ═══════════════════════════════════════════════════════════════
-
-function cloneAgents(world: WorldState, playerIds: readonly string[]): Record<string, AgentState> {
-  const result: Record<string, AgentState> = {};
-  for (const id of playerIds) {
-    const agent = world.agents?.find((a) => a.entityId === id || a.id === id);
-    if (agent) result[id] = JSON.parse(JSON.stringify(agent));
+function cloneAgents(world: WorldState, ids: readonly string[]): Record<string, AgentState> {
+  const r: Record<string, AgentState> = {};
+  for (const id of ids) {
+    const a = world.agents?.find((x) => x.entityId === id || x.id === id);
+    if (a) r[id] = JSON.parse(JSON.stringify(a));
   }
-  return result;
+  return r;
 }
-
 function ensureRelationship(agent: AgentState, otherId: string, trust: number) {
   if (!agent.relationships) agent.relationships = {};
   if (!agent.relationships[otherId]) {
-    agent.relationships[otherId] = {
-      trust: clamp01(trust), align: 0.5, respect: 0.5,
-      fear: 0, bond: 0.3, conflict: 0, history: [],
-    } as any;
+    agent.relationships[otherId] = { trust: clamp01(trust), align: 0.5, respect: 0.5, fear: 0, bond: 0.3, conflict: 0, history: [] } as any;
   } else {
     (agent.relationships[otherId] as { trust?: number }).trust = clamp01(trust);
   }
 }
-
 function makeRng(seed: number): () => number {
   let x = (seed >>> 0) || 1;
-  return () => {
-    x ^= x << 13;
-    x ^= x >>> 17;
-    x ^= x << 5;
-    return (x >>> 0) / 4294967296;
-  };
+  return () => { x ^= x << 13; x ^= x >>> 17; x ^= x << 5; return (x >>> 0) / 4294967296; };
 }

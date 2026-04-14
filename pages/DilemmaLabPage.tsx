@@ -230,6 +230,68 @@ const CoopCurveChart: React.FC<{
   );
 };
 
+/* ── Trust & DRME evolution chart ── */
+
+const TrustEvolutionChart: React.FC<{
+  game: DilemmaGameState;
+}> = ({ game }) => {
+  const rounds = game.rounds;
+  if (rounds.length < 2) return <div className="text-xs text-canon-muted italic">Нужно 2+ раунда</div>;
+  const [p0, p1] = game.players;
+
+  const W = 480; const H = 200;
+  const pad = { top: 20, right: 16, bottom: 28, left: 40 };
+  const iw = W - pad.left - pad.right;
+  const ih = H - pad.top - pad.bottom;
+  const n = rounds.length;
+  const xStep = n > 1 ? iw / (n - 1) : iw;
+  const toX = (i: number) => pad.left + (n > 1 ? i * xStep : iw / 2);
+
+  // Extract per-round data
+  const p0Trust = rounds.map((r) => r.traces[p0]?.trustComposite ?? 0.5);
+  const p1Trust = rounds.map((r) => r.traces[p1]?.trustComposite ?? 0.5);
+  const p0Shock = rounds.map((r) => r.traces[p0]?.betrayalShock ?? 0);
+  const p1Shock = rounds.map((r) => r.traces[p1]?.betrayalShock ?? 0);
+
+  // Scale: trust 0..1, shock 0..1
+  const toY = (v: number) => pad.top + ih * (1 - v);
+  const makeLine = (data: number[]) =>
+    data.map((v, i) => `${i === 0 ? 'M' : 'L'} ${toX(i).toFixed(1)} ${toY(v).toFixed(1)}`).join(' ');
+
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ maxHeight: 220 }}>
+      {/* Grid */}
+      {[0, 0.25, 0.5, 0.75, 1].map((v) => (
+        <g key={v}>
+          <line x1={pad.left} x2={W - pad.right} y1={toY(v)} y2={toY(v)} stroke="rgba(255,255,255,0.06)" strokeWidth={1} />
+          <text x={pad.left - 4} y={toY(v) + 3} textAnchor="end" fill="rgba(255,255,255,0.3)" fontSize={9} fontFamily="monospace">{pct(v)}</text>
+        </g>
+      ))}
+      {rounds.map((_, i) => (
+        <text key={i} x={toX(i)} y={H - 4} textAnchor="middle" fill="rgba(255,255,255,0.3)" fontSize={9} fontFamily="monospace">R{i + 1}</text>
+      ))}
+
+      {/* Trust lines */}
+      <path d={makeLine(p0Trust)} fill="none" stroke="#66d9ff" strokeWidth={2} opacity={0.9} />
+      <path d={makeLine(p1Trust)} fill="none" stroke="#9b87ff" strokeWidth={2} opacity={0.9} />
+      {p0Trust.map((v, i) => <circle key={`t0${i}`} cx={toX(i)} cy={toY(v)} r={2.5} fill="#66d9ff" />)}
+      {p1Trust.map((v, i) => <circle key={`t1${i}`} cx={toX(i)} cy={toY(v)} r={2.5} fill="#9b87ff" />)}
+
+      {/* Shock bars */}
+      {p0Shock.map((v, i) => (v > 0.01 ? <circle key={`s0${i}`} cx={toX(i) - 3} cy={toY(0) + 2} r={Math.min(4, v * 6)} fill="#ff5c7a" opacity={0.7} /> : null))}
+      {p1Shock.map((v, i) => (v > 0.01 ? <circle key={`s1${i}`} cx={toX(i) + 3} cy={toY(0) + 2} r={Math.min(4, v * 6)} fill="#ff5c7a" opacity={0.7} /> : null))}
+
+      {/* Legend */}
+      <line x1={pad.left + 8} y1={10} x2={pad.left + 20} y2={10} stroke="#66d9ff" strokeWidth={2} />
+      <text x={pad.left + 24} y={13} fill="rgba(255,255,255,0.5)" fontSize={8}>A trust</text>
+      <line x1={pad.left + 68} y1={10} x2={pad.left + 80} y2={10} stroke="#9b87ff" strokeWidth={2} />
+      <text x={pad.left + 84} y={13} fill="rgba(255,255,255,0.5)" fontSize={8}>B trust</text>
+      <circle cx={pad.left + 128} cy={10} r={3} fill="#ff5c7a" />
+      <text x={pad.left + 134} y={13} fill="rgba(255,255,255,0.5)" fontSize={8}>shock</text>
+    </svg>
+  );
+};
+
 /* ── Strategy bars ── */
 
 const StrategyBars: React.FC<{ scores: StrategyMatchScores; label: string }> = ({ scores, label }) => {
@@ -577,7 +639,7 @@ export const DilemmaLabPage: React.FC = () => {
   const [totalRounds, setTotalRounds] = useState(10);
   const [p0, setP0] = useState('');
   const [p1, setP1] = useState('');
-  const [initialTrust, setInitialTrust] = useState(0.5);
+  const [initialTrust, setInitialTrust] = useState<number | null>(null); // null = auto pair-specific
   const [narrative, setNarrative] = useState(false);
   const [seed, setSeed] = useState(42);
 
@@ -665,7 +727,7 @@ export const DilemmaLabPage: React.FC = () => {
         players: [id0, id1],
         totalRounds: Math.max(1, Math.floor(totalRounds)),
         world,
-        initialTrust,
+        initialTrust: initialTrust ?? undefined,
         seed,
       });
       setGame(result.game);
@@ -762,12 +824,22 @@ export const DilemmaLabPage: React.FC = () => {
               </div>
             </label>
             <label className="text-xs text-canon-muted">
-              Initial Trust
-              <div className="flex items-center gap-2 mt-1">
-                <input type="range" min={0} max={100} value={Math.round(initialTrust * 100)}
-                  onChange={(e) => setInitialTrust(Number(e.target.value) / 100)}
-                  className="flex-1 accent-canon-accent" />
-                <span className="text-sm font-mono text-canon-text w-10 text-right">{f2(initialTrust)}</span>
+              Trust
+              <div className="flex items-center gap-1 mt-1">
+                <label className="flex items-center gap-1 cursor-pointer select-none">
+                  <input type="checkbox" checked={initialTrust === null}
+                    onChange={(e) => setInitialTrust(e.target.checked ? null : 0.5)}
+                    className="accent-canon-accent" />
+                  <span className="text-[9px]">auto</span>
+                </label>
+                {initialTrust !== null && (
+                  <>
+                    <input type="range" min={0} max={100} value={Math.round(initialTrust * 100)}
+                      onChange={(e) => setInitialTrust(Number(e.target.value) / 100)}
+                      className="flex-1 accent-canon-accent" />
+                    <span className="text-sm font-mono text-canon-text w-8 text-right">{f2(initialTrust)}</span>
+                  </>
+                )}
               </div>
             </label>
             <label className="text-xs text-canon-muted">
@@ -842,6 +914,19 @@ export const DilemmaLabPage: React.FC = () => {
                         {mode === 'pipeline' ? '🔧 Pipeline' : '✎ Manual'} · {spec.name}
                       </div>
                     </div>
+
+                    {mode === 'pipeline' && game.rounds.length > 0 && (() => {
+                      const r0 = game.rounds[0];
+                      const t0 = r0?.traces[game.players[0]];
+                      const t1 = r0?.traces[game.players[1]];
+                      return t0 && t1 ? (
+                        <div className="flex gap-4 text-[10px] text-canon-muted">
+                          <span>Init trust: <span className="text-canon-accent font-mono">{game.players[0].replace('character-', '')}</span>→ {(t0.relSnapshot?.trust ?? t0.trustComposite)?.toFixed?.(2) ?? '?'}</span>
+                          <span><span className="text-canon-accent-2 font-mono">{game.players[1].replace('character-', '')}</span>→ {(t1.relSnapshot?.trust ?? t1.trustComposite)?.toFixed?.(2) ?? '?'}</span>
+                          <span>D: <span className="text-canon-accent">{f2(t0.cooperativeDisposition)}</span> / <span className="text-canon-accent-2">{f2(t1.cooperativeDisposition)}</span></span>
+                        </div>
+                      ) : null;
+                    })()}
 
                     {mode === 'manual' && !isGameOver(game) && (
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
@@ -943,6 +1028,13 @@ export const DilemmaLabPage: React.FC = () => {
                       <div className="text-xs font-semibold text-canon-muted uppercase tracking-wider mb-2">Cooperation Curve</div>
                       <div className="bg-canon-card border border-canon-border/50 rounded-lg p-3">
                         <CoopCurveChart curve={analysis.cooperationCurve} players={game.players} game={game} spec={spec} />
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="text-xs font-semibold text-canon-muted uppercase tracking-wider mb-2">Trust Evolution</div>
+                      <div className="bg-canon-card border border-canon-border/50 rounded-lg p-3">
+                        <TrustEvolutionChart game={game} />
                       </div>
                     </div>
 
