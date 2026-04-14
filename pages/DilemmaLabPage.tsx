@@ -257,13 +257,12 @@ const StrategyBars: React.FC<{ scores: StrategyMatchScores; label: string }> = (
 
 /* ── Hesitation badge ── */
 
-const HesitationBadge: React.FC<{ qMargin?: number; tieBand?: boolean }> = ({ qMargin, tieBand }) => {
-  if (qMargin === undefined) return null;
+const HesitationBadge: React.FC<{ qMargin: number }> = ({ qMargin }) => {
   const abs = Math.abs(qMargin);
   let label: string;
   let color: string;
-  if (abs < 0.02 || tieBand) { label = 'колеблется'; color = 'text-yellow-400 bg-yellow-400/15'; }
-  else if (abs < 0.08) { label = 'неуверен'; color = 'text-orange-300 bg-orange-300/10'; }
+  if (abs < 0.03) { label = 'колеблется'; color = 'text-yellow-400 bg-yellow-400/15'; }
+  else if (abs < 0.10) { label = 'неуверен'; color = 'text-orange-300 bg-orange-300/10'; }
   else { label = 'уверен'; color = 'text-canon-good bg-canon-good/10'; }
   return (
     <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium ${color}`}>
@@ -274,15 +273,46 @@ const HesitationBadge: React.FC<{ qMargin?: number; tieBand?: boolean }> = ({ qM
 
 /* ── Mini bar for a 0..1 value ── */
 
-const MiniBar: React.FC<{ value: number; label: string; color?: string }> = ({ value, label, color = '#66d9ff' }) => (
+const MiniBar: React.FC<{ value: number; label: string; color?: string; signed?: boolean }> = ({ value, label, color = '#66d9ff', signed }) => (
   <div className="flex items-center gap-1.5 text-[9px]">
     <span className="text-canon-faint w-16 text-right truncate">{label}</span>
     <div className="flex-1 h-1.5 bg-canon-bg rounded-full overflow-hidden" style={{ maxWidth: 60 }}>
-      <div className="h-full rounded-full" style={{ width: `${Math.max(2, value * 100)}%`, backgroundColor: color, opacity: 0.8 }} />
+      <div className="h-full rounded-full" style={{
+        width: `${Math.max(2, (signed ? Math.abs(value) : value) * 100)}%`,
+        backgroundColor: color,
+        opacity: 0.8,
+      }} />
     </div>
-    <span className="font-mono text-canon-muted w-7 text-right">{(value * 100).toFixed(0)}</span>
+    <span className="font-mono text-canon-muted w-8 text-right">
+      {signed ? (value >= 0 ? '+' : '') + value.toFixed(2) : (value * 100).toFixed(0)}
+    </span>
   </div>
 );
+
+/* ── DRME bar: a single signed value bar for the decomposition ── */
+
+const DRMEBar: React.FC<{ label: string; value: number; maxAbs?: number; color: string; desc?: string }> = ({ label, value, maxAbs = 0.6, color, desc }) => {
+  const pct = Math.abs(value) / maxAbs * 50;
+  const isPos = value >= 0;
+  return (
+    <div className="flex items-center gap-1.5 text-[9px]" title={desc}>
+      <span className="text-canon-faint w-5 text-right font-bold">{label}</span>
+      <div className="flex-1 h-2 bg-canon-bg rounded-full overflow-hidden relative" style={{ maxWidth: 100 }}>
+        {/* center line */}
+        <div className="absolute left-1/2 top-0 bottom-0 w-px bg-canon-border/50" />
+        <div className="absolute h-full rounded-full" style={{
+          width: `${Math.min(50, pct)}%`,
+          backgroundColor: color,
+          opacity: 0.85,
+          left: isPos ? '50%' : `${50 - Math.min(50, pct)}%`,
+        }} />
+      </div>
+      <span className={`font-mono w-10 text-right ${value > 0.01 ? 'text-canon-good' : value < -0.01 ? 'text-canon-bad' : 'text-canon-faint'}`}>
+        {value >= 0 ? '+' : ''}{value.toFixed(3)}
+      </span>
+    </div>
+  );
+};
 
 /* ── Single trace block ── */
 
@@ -294,11 +324,18 @@ const TraceBlock: React.FC<{
   if (!r) return null;
   const [p0, p1] = game.players;
 
-  const aLabel = (possId: string) => {
-    const actId = possIdToActionId(possId, spec);
-    if (!actId) return possId;
-    if (narrative && spec.framing.actionLabels[actId]) return spec.framing.actionLabels[actId];
-    return spec.actions.find((a) => a.id === actId)?.label ?? actId;
+  const aLabel = (actionId: string) => {
+    if (narrative && spec.framing.actionLabels[actionId]) return spec.framing.actionLabels[actionId];
+    return spec.actions.find((a) => a.id === actionId)?.label ?? actionId;
+  };
+
+  const TRAIT_SHORT: Record<string, string> = {
+    A_Safety_Care: 'safety', A_Power_Sovereignty: 'power', A_Liberty_Autonomy: 'liberty',
+    A_Knowledge_Truth: 'truth', A_Tradition_Continuity: 'tradition', A_Legitimacy_Procedure: 'procedure',
+    C_reciprocity_index: 'reciproc.', C_betrayal_cost: 'betray₋cost', C_coalition_loyalty: 'coalition',
+    C_reputation_sensitivity: 'reput.', C_dominance_empathy: 'empathy',
+    B_exploration_rate: 'explore', B_tolerance_ambiguity: 'ambiguity', B_decision_temperature: 'temp',
+    B_goal_coherence: 'coherence', B_discount_rate: 'discount',
   };
 
   const renderTrace = (pid: string, accentClass: string) => {
@@ -307,40 +344,26 @@ const TraceBlock: React.FC<{
       return <div className="text-[10px] text-canon-muted italic">Trace недоступен (manual mode)</div>;
     }
 
-    const topGoals = t.goalEnergy
-      ? Object.entries(t.goalEnergy)
-        .filter(([, v]) => v > 0.1)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 5)
+    const sorted = [...t.ranked].sort((a, b) => b.q - a.q);
+    const chosen = t.ranked.find((a) => a.chosen);
+
+    const relEntries = t.relSnapshot
+      ? Object.entries(t.relSnapshot).filter(([, v]) => Math.abs(v) > 0.01)
       : [];
-
-    const relEntries = t.relSnapshot ? Object.entries(t.relSnapshot).filter(([, v]) => Math.abs(v - 0.5) > 0.02 || v > 0.01) : [];
-    const tomEntries = t.tomSnapshot ? Object.entries(t.tomSnapshot) : [];
-
-    // Short trait labels
-    const TRAIT_SHORT: Record<string, string> = {
-      A_Safety_Care: 'safety', A_Power_Sovereignty: 'power', A_Liberty_Autonomy: 'liberty',
-      A_Knowledge_Truth: 'truth', A_Tradition_Continuity: 'tradition', A_Legitimacy_Procedure: 'procedure',
-      C_reciprocity_index: 'reciproc.', C_betrayal_cost: 'betray₋cost', C_coalition_loyalty: 'coalition',
-      C_reputation_sensitivity: 'reput.', C_dominance_empathy: 'empathy',
-      B_exploration_rate: 'explore', B_tolerance_ambiguity: 'ambiguity', B_decision_temperature: 'temp',
-    };
 
     return (
       <div className="space-y-2">
-        {/* Q-scores + hesitation */}
+        {/* Header: trust + hesitation + temperature */}
         <div className="flex items-center gap-2 flex-wrap">
           <div className="text-[10px] text-canon-muted">
-            trust = <span className={`font-mono ${accentClass}`}>{f2(t.trustAtDecision)}</span>
+            trust = <span className={`font-mono ${accentClass}`}>{f2(t.trustComposite)}</span>
           </div>
-          <HesitationBadge qMargin={t.qMargin} tieBand={t.tieBandActive} />
-          {t.effectiveTemperature !== undefined && (
-            <span className="text-[9px] text-canon-faint font-mono">T={f2(t.effectiveTemperature)}</span>
-          )}
+          <HesitationBadge qMargin={t.qMargin} />
+          <span className="text-[9px] text-canon-faint font-mono">T={f2(t.temperature)}</span>
         </div>
 
-        {/* Ranked actions */}
-        {t.ranked.slice().sort((a, b) => b.q - a.q).map((e, i) => (
+        {/* Ranked actions with Q */}
+        {sorted.map((e, i) => (
           <div key={i} className={`flex items-center gap-2 text-[10px] px-1.5 py-0.5 rounded ${e.chosen ? 'bg-canon-accent/10 text-canon-accent' : 'text-canon-muted'}`}>
             <span className="font-mono w-14 text-right">Q={f2(e.q)}</span>
             <span className="flex-1 truncate">{aLabel(e.actionId)}</span>
@@ -348,43 +371,112 @@ const TraceBlock: React.FC<{
           </div>
         ))}
 
-        {/* Goal energy */}
-        {topGoals.length > 0 && (
+        {/* D/R/M/E decomposition for chosen action */}
+        {chosen && (
+          <div className="mt-1 bg-canon-bg/50 rounded-lg p-2 space-y-0.5">
+            <div className="text-[9px] text-canon-muted font-semibold mb-1">
+              U({aLabel(chosen.actionId)}) = D + R + M + P + E
+            </div>
+            <DRMEBar label="D" value={chosen.D} color="#9b87ff"
+              desc={`Disposition: cooperative_disp = ${f2(t.cooperativeDisposition)}`} />
+            <DRMEBar label="R" value={chosen.R} color="#66d9ff"
+              desc={`Relational: trust_composite = ${f2(t.trustComposite)}`} />
+            <DRMEBar label="M" value={chosen.M} color="#42f5b3"
+              desc={`Momentum: opp_ema = ${f2(t.oppEma)}, trend = ${f2(t.oppTrend)}, inertia = ${t.myInertia}, shock = ${f2(t.betrayalShock)}`} />
+            <DRMEBar label="P" value={chosen.P} color="#ff79c6"
+              desc={`Payoff: EV = ${f2(t.evPerAction[chosen.actionId] ?? 0)}`} />
+            <DRMEBar label="E" value={chosen.E} color="#ffaa44"
+              desc={`Endgame: shadow = ${f2(t.effectiveShadow)}`} />
+          </div>
+        )}
+
+        {/* Compare D/R/M/E for ALL actions */}
+        {sorted.length > 1 && (
           <details className="text-[10px]">
             <summary className="text-canon-muted cursor-pointer hover:text-canon-text">
-              🎯 goals ({topGoals.length})
+              сравнить все действия
             </summary>
-            <div className="mt-1 space-y-0.5">
-              {topGoals.map(([g, v]) => (
-                <MiniBar key={g} label={g} value={v} color="#42f5b3" />
+            <div className="mt-1 space-y-2">
+              {sorted.map((a) => (
+                <div key={a.actionId} className={`p-1.5 rounded ${a.chosen ? 'bg-canon-accent/5' : ''}`}>
+                  <div className="text-[9px] font-semibold text-canon-muted mb-0.5">
+                    {aLabel(a.actionId)} {a.chosen ? '◀' : ''} Q={f2(a.q)}
+                  </div>
+                  <div className="space-y-0.5">
+                    <DRMEBar label="D" value={a.D} color="#9b87ff" />
+                    <DRMEBar label="R" value={a.R} color="#66d9ff" />
+                    <DRMEBar label="M" value={a.M} color="#42f5b3" />
+                    <DRMEBar label="P" value={a.P} color="#ff79c6" />
+                    <DRMEBar label="E" value={a.E} color="#ffaa44" />
+                  </div>
+                </div>
               ))}
             </div>
           </details>
         )}
 
-        {/* Relationship state */}
+        {/* Momentum details */}
+        <details className="text-[10px]">
+          <summary className="text-canon-muted cursor-pointer hover:text-canon-text">
+            📈 momentum
+          </summary>
+          <div className="mt-1 space-y-0.5 pl-1">
+            <MiniBar label="opp_ema" value={t.oppEma} color="#42f5b3" />
+            <MiniBar label="trend" value={t.oppTrend} color={t.oppTrend >= 0 ? '#42f5b3' : '#ff5c7a'} signed />
+            <div className="flex items-center gap-1.5 text-[9px]">
+              <span className="text-canon-faint w-16 text-right">inertia</span>
+              <span className={`font-mono ${t.myInertia > 0 ? 'text-canon-good' : t.myInertia < 0 ? 'text-canon-bad' : 'text-canon-faint'}`}>
+                {t.myInertia > 0 ? '→ coop' : t.myInertia < 0 ? '→ defect' : 'neutral'}
+              </span>
+            </div>
+            {t.betrayalShock > 0.01 && (
+              <MiniBar label="shock" value={t.betrayalShock} color="#ff5c7a" />
+            )}
+            <MiniBar label="shadow" value={t.effectiveShadow} color="#ffaa44" />
+          </div>
+        </details>
+
+        {/* EV per action */}
+        {Object.keys(t.evPerAction).length > 0 && (
+          <details className="text-[10px]">
+            <summary className="text-canon-muted cursor-pointer hover:text-canon-text">
+              📊 EV (payoff × prediction)
+            </summary>
+            <div className="mt-1 space-y-0.5 pl-1">
+              {Object.entries(t.evPerAction).map(([aid, ev]) => (
+                <MiniBar key={aid} label={aLabel(aid)} value={ev} color="#ff79c6" />
+              ))}
+              <div className="text-[8px] text-canon-faint mt-1">
+                P(opp coop) = {(t.oppEma * 100).toFixed(0)}%
+              </div>
+            </div>
+          </details>
+        )}
+
+        {/* Trust composite breakdown */}
+        <details className="text-[10px]">
+          <summary className="text-canon-muted cursor-pointer hover:text-canon-text">
+            🤝 trust composite = {(t.trustComposite * 100).toFixed(0)}
+          </summary>
+          <div className="mt-1 space-y-0.5 pl-1">
+            <MiniBar label="rel.trust" value={t.trustComponents.relTrust} color="#9b87ff" />
+            <MiniBar label="rel.bond" value={t.trustComponents.relBond} color="#9b87ff" />
+            <MiniBar label="1−conflict" value={1 - t.trustComponents.relConflict} color="#9b87ff" />
+            <MiniBar label="tom.trust" value={t.trustComponents.tomTrust} color="#ffaa44" />
+            <MiniBar label="tom.reliab" value={t.trustComponents.tomReliability} color="#ffaa44" />
+            <MiniBar label="2nd:trust" value={t.trustComponents.soPerceivedTrust} color="#ffaa44" />
+          </div>
+        </details>
+
+        {/* Relationship */}
         {relEntries.length > 0 && (
           <details className="text-[10px]">
             <summary className="text-canon-muted cursor-pointer hover:text-canon-text">
-              🤝 rel ({relEntries.length})
+              rel ({relEntries.length})
             </summary>
             <div className="mt-1 space-y-0.5">
               {relEntries.map(([k, v]) => (
                 <MiniBar key={k} label={k} value={v} color={k === 'conflict' || k === 'fear' ? '#ff5c7a' : '#9b87ff'} />
-              ))}
-            </div>
-          </details>
-        )}
-
-        {/* ToM */}
-        {tomEntries.length > 0 && (
-          <details className="text-[10px]">
-            <summary className="text-canon-muted cursor-pointer hover:text-canon-text">
-              🧠 ToM ({tomEntries.length})
-            </summary>
-            <div className="mt-1 space-y-0.5">
-              {tomEntries.map(([k, v]) => (
-                <MiniBar key={k} label={k.replace('tom_', '').replace('so_', '2nd:')} value={v} color="#ffaa44" />
               ))}
             </div>
           </details>
@@ -403,61 +495,18 @@ const TraceBlock: React.FC<{
             </div>
           </details>
         )}
-
-        {/* DeltaGoals per action */}
-        {t.deltaGoalsPerAction && Object.keys(t.deltaGoalsPerAction).length > 0 && (
-          <details className="text-[10px]">
-            <summary className="text-canon-muted cursor-pointer hover:text-canon-text">
-              Δgoals per action
-            </summary>
-            <div className="mt-1 space-y-1.5 pl-1">
-              {Object.entries(t.deltaGoalsPerAction).map(([actionId, deltas]) => {
-                const nonZero = Object.entries(deltas).filter(([, d]) => Math.abs(d) > 0.001);
-                if (!nonZero.length) return <div key={actionId} className="text-canon-faint">{aLabel(actionId)}: ∅</div>;
-                return (
-                  <div key={actionId}>
-                    <div className="text-canon-muted font-semibold">{aLabel(actionId)}</div>
-                    <div className="pl-2 space-y-0.5">
-                      {nonZero.sort((a, b) => Math.abs(b[1]) - Math.abs(a[1])).map(([g, d]) => (
-                        <div key={g} className="flex items-center gap-1 font-mono">
-                          <span className="text-canon-faint w-16 text-right truncate">{g}</span>
-                          <span className={d > 0 ? 'text-canon-good' : 'text-canon-bad'}>
-                            {d > 0 ? '+' : ''}{d.toFixed(3)}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </details>
-        )}
-
-        {/* Raw atom IDs */}
-        {t.dilemmaAtomIds.length > 0 && (
-          <details className="text-[10px]">
-            <summary className="text-canon-muted cursor-pointer hover:text-canon-text">
-              atoms ({t.dilemmaAtomIds.length})
-            </summary>
-            <div className="mt-1 pl-2 space-y-0.5 text-canon-faint font-mono">
-              {t.dilemmaAtomIds.map((id) => <div key={id}>{id}</div>)}
-            </div>
-          </details>
-        )}
       </div>
     );
   };
 
   const c0 = r.choices[p0]; const c1 = r.choices[p1];
-
-  // Hesitation indicator in the collapsed header
   const t0 = r.traces[p0];
   const t1 = r.traces[p1];
-  const headerHesitation = (t: typeof t0) => {
-    if (!t?.qMargin) return '';
-    if (t.qMargin < 0.02 || t.tieBandActive) return '⚖';
-    if (t.qMargin < 0.08) return '~';
+
+  const hesitIcon = (t: typeof t0) => {
+    if (!t) return '';
+    if (t.qMargin < 0.03) return '⚖';
+    if (t.qMargin < 0.10) return '~';
     return '';
   };
 
@@ -468,11 +517,11 @@ const TraceBlock: React.FC<{
         <div className="text-xs font-semibold text-canon-text flex items-center gap-2">
           <span className="text-canon-faint">{open ? '▾' : '▸'}</span>
           R{round + 1}
-          {(headerHesitation(t0) || headerHesitation(t1)) && (
+          {(hesitIcon(t0) || hesitIcon(t1)) && (
             <span className="text-[9px] text-yellow-400">
-              {headerHesitation(t0) && `A${headerHesitation(t0)}`}
-              {headerHesitation(t0) && headerHesitation(t1) && ' '}
-              {headerHesitation(t1) && `B${headerHesitation(t1)}`}
+              {hesitIcon(t0) && `A${hesitIcon(t0)}`}
+              {hesitIcon(t0) && hesitIcon(t1) && ' '}
+              {hesitIcon(t1) && `B${hesitIcon(t1)}`}
             </span>
           )}
         </div>

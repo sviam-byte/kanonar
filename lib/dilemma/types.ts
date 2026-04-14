@@ -85,32 +85,71 @@ export type DilemmaRound = {
   traces: Record<string, RoundTrace>; // agentId → decision trace
 };
 
+/**
+ * Per-action U decomposition: U(a) = D + R + M + P + E.
+ *
+ * D — Dispositional (who am I, static traits)
+ * R — Relational (who are they to me, trust composite)
+ * M — Momentum (history: EMA, trend, inertia, betrayal shock)
+ * P — Payoff (expected value given opponent prediction)
+ * E — Endgame (shadow of the future)
+ */
+export type ActionDecomposition = {
+  actionId: string;
+  q: number;
+  chosen: boolean;
+  D: number;
+  R: number;
+  M: number;
+  P: number;
+  E: number;
+};
+
 export type RoundTrace = {
-  /** All scored actions with Q-values. */
-  ranked: { actionId: string; q: number; chosen: boolean }[];
-  /** Atoms that were specific to this dilemma round. */
+  /** Per-action Q with D/R/M/P/E decomposition. */
+  ranked: ActionDecomposition[];
+  /** Atoms used (for backward compat / debug). */
   dilemmaAtomIds: string[];
-  /** Trust at decision time. */
+  /** Trust composite at decision time. */
   trustAtDecision: number;
 
-  // ── Extended diagnostics ──
+  // ── Diagnostics ──
 
-  /** Goal energy map at decision time. */
-  goalEnergy?: Record<string, number>;
-  /** DeltaGoals per action candidate (actionId → goalId → delta). */
-  deltaGoalsPerAction?: Record<string, Record<string, number>>;
-  /** Margin between top-1 and top-2 Q-scores (hesitation signal). */
-  qMargin?: number;
-  /** Effective temperature used for sampling. */
-  effectiveTemperature?: number;
-  /** Whether a tie-band was active (multiple near-equal options). */
-  tieBandActive?: boolean;
-  /** Character trait summary used in decision. */
-  traitSnapshot?: Record<string, number>;
-  /** ToM signals about opponent at decision time. */
-  tomSnapshot?: Record<string, number>;
-  /** Relationship state at decision time. */
-  relSnapshot?: Record<string, number>;
+  /** ΔQ between top-1 and top-2 (hesitation signal). */
+  qMargin: number;
+  /** Effective sampling temperature. */
+  temperature: number;
+
+  /** Dispositional baseline (same across rounds for a character). */
+  cooperativeDisposition: number;
+
+  /** Trust composite breakdown. */
+  trustComposite: number;
+  trustComponents: {
+    relTrust: number;
+    relBond: number;
+    relConflict: number;
+    tomTrust: number;
+    tomReliability: number;
+    soPerceivedTrust: number;
+  };
+
+  /** Momentum signals. */
+  oppEma: number;
+  oppTrend: number;
+  myInertia: number;  // +1 last cooperated, -1 last defected, 0 first round
+  betrayalShock: number;  // accumulated shock from opponent betrayals
+
+  /** Payoff signal. */
+  evPerAction: Record<string, number>;  // actionId → EV
+
+  /** Endgame. */
+  effectiveShadow: number;
+
+  /** Relationship state snapshot (full). */
+  relSnapshot: Record<string, number>;
+  /** Key trait values used. */
+  traitSnapshot: Record<string, number>;
 };
 
 export type DilemmaGameState = {
