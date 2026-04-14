@@ -1,19 +1,24 @@
-// lib/dilemma/runner.ts — v5
+// lib/dilemma/runner.ts — v6
 //
-// U(a) = D + R + M + P + E
-// + Pair-specific initial trust from trait/state/value compatibility
-// + State modifiers (will, burnout, dark_exposure) in D
-// + Betrayal shock in M
+// Contains both runners:
+// - runDilemmaGame() — v1 legacy decomposition (D + R + M + P + E)
+// - runDilemmaV2()   — v2 pipeline (compile → dyad → filter → score → resolve → update)
 
 import type {
   DilemmaAnalysis, DilemmaGameState, DilemmaSpec,
   RoundTrace, ActionDecomposition,
+  V2RunConfig, V2RunResult, V2GameState, V2RoundTrace,
+  ActionScore, StateUpdate, CompiledAgent, CompiledDyad,
+  ScenarioTemplate, ActionTemplate,
 } from './types';
 import type { AgentState, WorldState, Relationship, TomEntry, TomBeliefTraits } from '../../types';
 import { createGame, advanceGame, isGameOver } from './engine';
 import { getSpec } from './catalog';
 import { analyzeGame } from './analysis';
 import { clamp01 } from '../util/math';
+import { compileAgent, compileDyad } from './compiler';
+import { getScenario } from './scenarios';
+import { explainDecision, summarizeGame } from './explainer';
 
 export type DilemmaRunConfig = {
   specId: string;
@@ -407,6 +412,266 @@ export function runDilemmaGame(config: DilemmaRunConfig): DilemmaRunResult {
   }
 
   return { game, analysis: analyzeGame(spec, game) };
+}
+
+// ═══════════════════════════════════════════════════════════════
+// v2 pipeline runner
+// ═══════════════════════════════════════════════════════════════
+
+export function runDilemmaV2(config: V2RunConfig): V2RunResult {
+  const scenario = getScenario(config.scenarioId);
+  const [p0Id, p1Id] = config.players;
+  const agents = cloneAgents(config.world, [p0Id, p1Id]);
+  if (!agents[p0Id] || !agents[p1Id]) {
+    throw new Error(`Agent not found: ${!agents[p0Id] ? p0Id : p1Id}`);
+  }
+
+  const rngs: Record<string, () => number> = {
+    [p0Id]: makeRng(config.seed ?? 42),
+    [p1Id]: makeRng((config.seed ?? 42) * 2654435761),
+  };
+
+  const game: V2GameState = {
+    scenarioId: config.scenarioId,
+    players: config.players,
+    rounds: [],
+    currentRound: 0,
+    totalRounds: config.totalRounds,
+  };
+
+  const allTraces: Record<string, V2RoundTrace[]> = { [p0Id]: [], [p1Id]: [] };
+
+  for (let round = 0; round < config.totalRounds; round++) {
+    const choices: Record<string, string> = {};
+    const traces: Record<string, V2RoundTrace> = {};
+
+    for (const playerId of config.players) {
+      const otherId = playerId === p0Id ? p1Id : p0Id;
+      const compiled = compileAgent(agents[playerId]);
+      const compiledOther = compileAgent(agents[otherId]);
+      const dyad = compileDyad(compiled, compiledOther, agents[playerId], agents[otherId]);
+
+      const { available, filteredOut } = filterActions(scenario, compiled);
+      const scores = scoreActions(available, scenario, compiled, dyad, round, config.totalRounds);
+      const chosenId = resolveAction(scores, compiled.effectiveTemperature, rngs[playerId]);
+      choices[playerId] = chosenId;
+
+      for (const score of scores) score.chosen = score.actionId === chosenId;
+
+      const explanation = explainDecision({ agent: compiled, dyad, scenario, scores, chosenId });
+      const chosenTemplate = scenario.actionPool.find((a) => a.id === chosenId);
+      if (!chosenTemplate) {
+        throw new Error(`Action ${chosenId} not found in scenario ${scenario.id}`);
+      }
+      const stateUpdate = computeStateUpdate(playerId, chosenTemplate, compiled, dyad);
+
+      const trace: V2RoundTrace = {
+        compiled: { agent: compiled, dyad },
+        availableActions: available.map((a) => a.id),
+        filteredOut,
+        scores,
+        chosenActionId: chosenId,
+        stateUpdate,
+        explanation,
+      };
+
+      traces[playerId] = trace;
+      allTraces[playerId].push(trace);
+    }
+
+    for (const playerId of config.players) {
+      const otherId = playerId === p0Id ? p1Id : p0Id;
+      applyStateUpdate(agents[playerId], otherId, traces[playerId].stateUpdate);
+    }
+
+    game.rounds.push({ index: round, choices, traces });
+    game.currentRound = round + 1;
+  }
+
+  const confidence: Record<string, number> = {};
+  const summaries: Record<string, string> = {};
+  for (const playerId of config.players) {
+    const first = allTraces[playerId][0];
+    confidence[playerId] = first?.compiled.agent.confidence ?? 0;
+    summaries[playerId] = summarizeGame(
+      playerId,
+      allTraces[playerId].map((t) => ({ chosenActionId: t.chosenActionId, explanation: t.explanation })),
+      confidence[playerId],
+    );
+  }
+
+  return { game, confidence, summaries };
+}
+
+function filterActions(
+  scenario: ScenarioTemplate,
+  agent: CompiledAgent,
+): { available: ActionTemplate[]; filteredOut: string[] } {
+  const available: ActionTemplate[] = [];
+  const filteredOut: string[] = [];
+
+  for (const action of scenario.actionPool) {
+    if (!meetsRequirements(action, agent)) {
+      filteredOut.push(action.id);
+      continue;
+    }
+    available.push(action);
+  }
+
+  return available.length < 2 ? { available: scenario.actionPool, filteredOut: [] } : { available, filteredOut };
+}
+
+function meetsRequirements(action: ActionTemplate, agent: CompiledAgent): boolean {
+  const req = action.requires;
+  if (!req) return true;
+  if (req.roles && req.roles.length > 0 && !req.roles.some((r) => agent.roles.includes(r))) return false;
+  if (req.minClearance !== undefined && agent.clearance < req.minClearance) return false;
+  if (req.minTrait) {
+    const val = agent.axes[req.minTrait.axis] ?? 0.5;
+    if (val < req.minTrait.threshold) return false;
+  }
+  if (req.maxTrait) {
+    const val = agent.axes[req.maxTrait.axis] ?? 0.5;
+    if (val > req.maxTrait.threshold) return false;
+  }
+  if (req.hasFallback && req.hasFallback.length > 0) {
+    const fallback = agent.cognitive.fallbackPolicy ?? '';
+    if (!req.hasFallback.includes(fallback)) return false;
+  }
+  return true;
+}
+
+function scoreActions(
+  actions: ActionTemplate[],
+  scenario: ScenarioTemplate,
+  agent: CompiledAgent,
+  dyad: CompiledDyad,
+  round: number,
+  totalRounds: number,
+): ActionScore[] {
+  const w = agent.weights;
+  const goalSalience = computeGoalSalience(agent, dyad, scenario);
+  const remaining = totalRounds - round;
+  const shadowRatio = totalRounds > 1 ? remaining / totalRounds : 1;
+  const shadow = Math.pow(shadowRatio, 1.5) * (1 - (agent.axes.B_discount_rate ?? 0.5) * 0.5);
+
+  return actions.map((action) => {
+    const p = action.profile;
+    const G = w.wG * (p.goalFit ?? 0) * goalSalience;
+    const trustComposite = 0.4 * dyad.rel.trust + 0.3 * dyad.rel.bond - 0.3 * dyad.rel.conflict;
+    const R = w.wR * (p.relationalFit ?? 0) * (0.5 + 0.5 * trustComposite);
+    const I = w.wI * (p.identityFit ?? 0);
+    const L = w.wL * (p.legitimacyFit ?? 0) * (0.5 + 0.5 * scenario.institutionalPressure);
+    const safetyBoost = 1 + agent.state.burnoutRisk + (agent.acute.stress / 100) * 0.5;
+    const S = w.wS * (p.safetyFit ?? 0) * safetyBoost;
+    const M = w.wM * (p.mirrorFit ?? 0) * (0.5 + 0.5 * dyad.secondOrder.mirrorIndex);
+    const X = w.wX * (p.expectedCost ?? 0) * shadow;
+    const U = G + R + I + L + S + M - X;
+
+    return { actionId: action.id, U, G, R, I, L, S, M, X, probability: 0, chosen: false };
+  });
+}
+
+function computeGoalSalience(
+  agent: CompiledAgent,
+  dyad: CompiledDyad,
+  scenario: ScenarioTemplate,
+): number {
+  const base = (agent.axes.B_goal_coherence ?? 0.5) * (1 - agent.state.burnoutRisk * 0.5);
+  const stakesMag = (scenario.stakes.personal + scenario.stakes.relational) / 2;
+  const conflictPenalty = dyad.rel.conflict * 0.3;
+  return clamp01(base * (0.7 + 0.3 * stakesMag) - conflictPenalty);
+}
+
+function resolveAction(scores: ActionScore[], temperature: number, rng: () => number): string {
+  const maxU = Math.max(...scores.map((s) => s.U));
+  const exps = scores.map((s) => Math.exp((s.U - maxU) / Math.max(0.01, temperature)));
+  const sumExp = exps.reduce((a, b) => a + b, 0);
+  for (let i = 0; i < scores.length; i++) scores[i].probability = exps[i] / sumExp;
+
+  let bestScore = -Infinity;
+  let bestId = scores[0]?.actionId ?? '';
+  for (const score of scores) {
+    const u = Math.min(1 - 1e-12, Math.max(1e-12, rng()));
+    const gumbel = score.U / Math.max(0.01, temperature) + (-Math.log(-Math.log(u)));
+    if (gumbel > bestScore) {
+      bestScore = gumbel;
+      bestId = score.actionId;
+    }
+  }
+  return bestId;
+}
+
+function computeStateUpdate(
+  agentId: string,
+  action: ActionTemplate,
+  agent: CompiledAgent,
+  dyad: CompiledDyad,
+): StateUpdate {
+  const cost = action.profile.expectedCost ?? 0;
+  const isSupportive = action.socialTags.includes('support') || action.socialTags.includes('help') || action.socialTags.includes('protect');
+  const isHarmful = action.socialTags.includes('harm') || action.socialTags.includes('punish');
+  const isBetrayal = action.socialTags.includes('deceive') || action.socialTags.includes('betrayal') || action.socialTags.includes('lie');
+
+  const willDelta = -cost * 3;
+  const burnoutDelta = cost * 0.05 * (1 + agent.acute.stress / 100);
+  const stressDelta = isSupportive ? -2 : isHarmful ? 5 : isBetrayal ? 8 : 1;
+  const fatigueDelta = 1 + cost * 2;
+  const shameSens = agent.cognitive.shameGuiltSensitivity / 100;
+  const shameDelta = isBetrayal ? shameSens * 0.2 : isHarmful ? shameSens * 0.1 : 0;
+
+  const trustDelta = isSupportive ? 0.06 : isBetrayal ? -0.15 : isHarmful ? -0.08 : 0;
+  const bondDelta = isSupportive ? 0.03 : isBetrayal ? -0.05 : -0.01;
+  const conflictDelta = isHarmful ? 0.08 : isBetrayal ? 0.12 : isSupportive ? -0.04 : 0.01;
+  const fearDelta = isHarmful ? 0.05 * (1 + dyad.powerAsymmetry) : 0;
+
+  return {
+    agentId,
+    willDelta,
+    burnoutDelta,
+    stressDelta,
+    fatigueDelta,
+    shameDelta,
+    tomObservation: { actionId: action.id, socialTags: action.socialTags, success: isSupportive ? 0.5 : isHarmful ? -0.5 : 0 },
+    trustDelta,
+    bondDelta,
+    conflictDelta,
+    fearDelta,
+  };
+}
+
+function applyStateUpdate(agent: AgentState, otherId: string, update: StateUpdate): void {
+  const state = (agent as any).state;
+  if (state) {
+    state.will = Math.max(0, Math.min(100, (state.will ?? 50) + update.willDelta));
+    state.burnout_risk = clamp01((state.burnout_risk ?? 0) + update.burnoutDelta);
+  }
+
+  const acute = (agent as any).body?.acute;
+  if (acute) {
+    acute.stress = Math.max(0, Math.min(100, (acute.stress ?? 0) + update.stressDelta));
+    acute.fatigue = Math.max(0, Math.min(100, (acute.fatigue ?? 0) + update.fatigueDelta));
+    acute.moral_injury = Math.max(0, Math.min(100, (acute.moral_injury ?? 0) + update.shameDelta * 10));
+  }
+
+  const rel = agent.relationships?.[otherId] as Record<string, number> | undefined;
+  if (rel) {
+    rel.trust = clamp01((rel.trust ?? 0.5) + update.trustDelta);
+    rel.bond = clamp01((rel.bond ?? 0.1) + update.bondDelta);
+    rel.conflict = clamp01((rel.conflict ?? 0.1) + update.conflictDelta);
+    rel.fear = clamp01((rel.fear ?? 0) + update.fearDelta);
+  } else {
+    if (!agent.relationships) (agent as any).relationships = {};
+    (agent as any).relationships[otherId] = {
+      trust: clamp01(0.5 + update.trustDelta),
+      align: 0.5,
+      respect: 0.5,
+      fear: clamp01(update.fearDelta),
+      bond: clamp01(0.1 + update.bondDelta),
+      conflict: clamp01(0.1 + update.conflictDelta),
+      history: [],
+    };
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════
