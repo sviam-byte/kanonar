@@ -1,4 +1,7 @@
-
+/**
+ * @deprecated compat-only legacy context contracts.
+ * New code must use `lib/context/v2/types.ts`.
+ */
 import type { AgentState, WorldState, AgentGoalState, AgentActionProfile, ActionStyleTag, GoalId, SocialActionId, CharacterGoalId, AgentId, ActionId, LocationId, Id } from '../../types';
 
 export type { AgentState, WorldState, AgentGoalState, AgentActionProfile, ActionStyleTag, GoalId, SocialActionId, CharacterGoalId, AgentId, ActionId, LocationId, Id };

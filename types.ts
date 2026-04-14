@@ -578,6 +578,10 @@ export interface PersonalEvent {
     effects?: any; // Unified effects
 }
 
+/**
+ * @deprecated legacy duplicate domain type.
+ * Keep only for backward compatibility; do not introduce new usages.
+ */
 export interface BiographicalEvent {
   id: string;
   time: number;              
@@ -592,6 +596,10 @@ export interface BiographicalEvent {
   trauma?: TraumaTag;
 }
 
+/**
+ * @deprecated legacy duplicate domain type.
+ * Keep only for backward compatibility; do not introduce new usages.
+ */
 export interface Biography {
     characterId: string;
     events: BiographicalEvent[]; 
@@ -640,12 +648,14 @@ export interface UserRelation {
 export type UserRelations = Record<string, Record<string, UserRelation>>;
 
 // TomState - relaxed definition for legacy/new mix
+// @deprecated compat-only duplicate; new code should consume canonical ToM types from `lib/context/v2/types.ts` and dedicated ToM modules.
 export interface TomState {
     [observerId: string]: Record<string, TomEntry> | any;
     // Legacy support
     views?: Record<string, Record<string, TomView>>;
 }
 
+// @deprecated compat-only duplicate; new code should consume canonical ToM types from `lib/context/v2/types.ts` and dedicated ToM modules.
 export interface TomView {
     observerId: string;
     targetId: string;
@@ -666,6 +676,7 @@ export interface TomView {
 
 export type TomRelView = TomView; // Alias
 
+// @deprecated compat-only duplicate; new code should consume canonical ToM types from `lib/context/v2/types.ts` and dedicated ToM modules.
 export interface TomEntry {
     goals: { goalIds: string[]; weights: number[] };
     traits: TomBeliefTraits;
@@ -1719,6 +1730,10 @@ export interface DomainEvent {
     tags?: string[];
 }
 
+/**
+ * @deprecated legacy duplicate event contract.
+ * Keep only for compatibility; prefer domain event contracts from the events layer.
+ */
 export type WorldEvent = {
   id: string;
   tick: number;
