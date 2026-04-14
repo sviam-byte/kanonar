@@ -230,6 +230,68 @@ const CoopCurveChart: React.FC<{
   );
 };
 
+/* ── Trust & DRME evolution chart ── */
+
+const TrustEvolutionChart: React.FC<{
+  game: DilemmaGameState;
+}> = ({ game }) => {
+  const rounds = game.rounds;
+  if (rounds.length < 2) return <div className="text-xs text-canon-muted italic">Нужно 2+ раунда</div>;
+  const [p0, p1] = game.players;
+
+  const W = 480; const H = 200;
+  const pad = { top: 20, right: 16, bottom: 28, left: 40 };
+  const iw = W - pad.left - pad.right;
+  const ih = H - pad.top - pad.bottom;
+  const n = rounds.length;
+  const xStep = n > 1 ? iw / (n - 1) : iw;
+  const toX = (i: number) => pad.left + (n > 1 ? i * xStep : iw / 2);
+
+  // Extract per-round data
+  const p0Trust = rounds.map((r) => r.traces[p0]?.trustComposite ?? 0.5);
+  const p1Trust = rounds.map((r) => r.traces[p1]?.trustComposite ?? 0.5);
+  const p0Shock = rounds.map((r) => r.traces[p0]?.betrayalShock ?? 0);
+  const p1Shock = rounds.map((r) => r.traces[p1]?.betrayalShock ?? 0);
+
+  // Scale: trust 0..1, shock 0..1
+  const toY = (v: number) => pad.top + ih * (1 - v);
+  const makeLine = (data: number[]) =>
+    data.map((v, i) => `${i === 0 ? 'M' : 'L'} ${toX(i).toFixed(1)} ${toY(v).toFixed(1)}`).join(' ');
+
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ maxHeight: 220 }}>
+      {/* Grid */}
+      {[0, 0.25, 0.5, 0.75, 1].map((v) => (
+        <g key={v}>
+          <line x1={pad.left} x2={W - pad.right} y1={toY(v)} y2={toY(v)} stroke="rgba(255,255,255,0.06)" strokeWidth={1} />
+          <text x={pad.left - 4} y={toY(v) + 3} textAnchor="end" fill="rgba(255,255,255,0.3)" fontSize={9} fontFamily="monospace">{pct(v)}</text>
+        </g>
+      ))}
+      {rounds.map((_, i) => (
+        <text key={i} x={toX(i)} y={H - 4} textAnchor="middle" fill="rgba(255,255,255,0.3)" fontSize={9} fontFamily="monospace">R{i + 1}</text>
+      ))}
+
+      {/* Trust lines */}
+      <path d={makeLine(p0Trust)} fill="none" stroke="#66d9ff" strokeWidth={2} opacity={0.9} />
+      <path d={makeLine(p1Trust)} fill="none" stroke="#9b87ff" strokeWidth={2} opacity={0.9} />
+      {p0Trust.map((v, i) => <circle key={`t0${i}`} cx={toX(i)} cy={toY(v)} r={2.5} fill="#66d9ff" />)}
+      {p1Trust.map((v, i) => <circle key={`t1${i}`} cx={toX(i)} cy={toY(v)} r={2.5} fill="#9b87ff" />)}
+
+      {/* Shock bars */}
+      {p0Shock.map((v, i) => (v > 0.01 ? <circle key={`s0${i}`} cx={toX(i) - 3} cy={toY(0) + 2} r={Math.min(4, v * 6)} fill="#ff5c7a" opacity={0.7} /> : null))}
+      {p1Shock.map((v, i) => (v > 0.01 ? <circle key={`s1${i}`} cx={toX(i) + 3} cy={toY(0) + 2} r={Math.min(4, v * 6)} fill="#ff5c7a" opacity={0.7} /> : null))}
+
+      {/* Legend */}
+      <line x1={pad.left + 8} y1={10} x2={pad.left + 20} y2={10} stroke="#66d9ff" strokeWidth={2} />
+      <text x={pad.left + 24} y={13} fill="rgba(255,255,255,0.5)" fontSize={8}>A trust</text>
+      <line x1={pad.left + 68} y1={10} x2={pad.left + 80} y2={10} stroke="#9b87ff" strokeWidth={2} />
+      <text x={pad.left + 84} y={13} fill="rgba(255,255,255,0.5)" fontSize={8}>B trust</text>
+      <circle cx={pad.left + 128} cy={10} r={3} fill="#ff5c7a" />
+      <text x={pad.left + 134} y={13} fill="rgba(255,255,255,0.5)" fontSize={8}>shock</text>
+    </svg>
+  );
+};
+
 /* ── Strategy bars ── */
 
 const StrategyBars: React.FC<{ scores: StrategyMatchScores; label: string }> = ({ scores, label }) => {
@@ -255,6 +317,65 @@ const StrategyBars: React.FC<{ scores: StrategyMatchScores; label: string }> = (
   );
 };
 
+/* ── Hesitation badge ── */
+
+const HesitationBadge: React.FC<{ qMargin: number }> = ({ qMargin }) => {
+  const abs = Math.abs(qMargin);
+  let label: string;
+  let color: string;
+  if (abs < 0.03) { label = 'колеблется'; color = 'text-yellow-400 bg-yellow-400/15'; }
+  else if (abs < 0.10) { label = 'неуверен'; color = 'text-orange-300 bg-orange-300/10'; }
+  else { label = 'уверен'; color = 'text-canon-good bg-canon-good/10'; }
+  return (
+    <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium ${color}`}>
+      {label} <span className="opacity-60">ΔQ={abs.toFixed(3)}</span>
+    </span>
+  );
+};
+
+/* ── Mini bar for a 0..1 value ── */
+
+const MiniBar: React.FC<{ value: number; label: string; color?: string; signed?: boolean }> = ({ value, label, color = '#66d9ff', signed }) => (
+  <div className="flex items-center gap-1.5 text-[9px]">
+    <span className="text-canon-faint w-16 text-right truncate">{label}</span>
+    <div className="flex-1 h-1.5 bg-canon-bg rounded-full overflow-hidden" style={{ maxWidth: 60 }}>
+      <div className="h-full rounded-full" style={{
+        width: `${Math.max(2, (signed ? Math.abs(value) : value) * 100)}%`,
+        backgroundColor: color,
+        opacity: 0.8,
+      }} />
+    </div>
+    <span className="font-mono text-canon-muted w-8 text-right">
+      {signed ? (value >= 0 ? '+' : '') + value.toFixed(2) : (value * 100).toFixed(0)}
+    </span>
+  </div>
+);
+
+/* ── DRME bar: a single signed value bar for the decomposition ── */
+
+const DRMEBar: React.FC<{ label: string; value: number; maxAbs?: number; color: string; desc?: string }> = ({ label, value, maxAbs = 0.6, color, desc }) => {
+  const pct = Math.abs(value) / maxAbs * 50;
+  const isPos = value >= 0;
+  return (
+    <div className="flex items-center gap-1.5 text-[9px]" title={desc}>
+      <span className="text-canon-faint w-5 text-right font-bold">{label}</span>
+      <div className="flex-1 h-2 bg-canon-bg rounded-full overflow-hidden relative" style={{ maxWidth: 100 }}>
+        {/* center line */}
+        <div className="absolute left-1/2 top-0 bottom-0 w-px bg-canon-border/50" />
+        <div className="absolute h-full rounded-full" style={{
+          width: `${Math.min(50, pct)}%`,
+          backgroundColor: color,
+          opacity: 0.85,
+          left: isPos ? '50%' : `${50 - Math.min(50, pct)}%`,
+        }} />
+      </div>
+      <span className={`font-mono w-10 text-right ${value > 0.01 ? 'text-canon-good' : value < -0.01 ? 'text-canon-bad' : 'text-canon-faint'}`}>
+        {value >= 0 ? '+' : ''}{value.toFixed(3)}
+      </span>
+    </div>
+  );
+};
+
 /* ── Single trace block ── */
 
 const TraceBlock: React.FC<{
@@ -265,37 +386,174 @@ const TraceBlock: React.FC<{
   if (!r) return null;
   const [p0, p1] = game.players;
 
-  const aLabel = (possId: string) => {
-    const actId = possIdToActionId(possId, spec);
-    if (!actId) return possId;
-    if (narrative && spec.framing.actionLabels[actId]) return spec.framing.actionLabels[actId];
-    return spec.actions.find((a) => a.id === actId)?.label ?? actId;
+  const aLabel = (actionId: string) => {
+    if (narrative && spec.framing.actionLabels[actionId]) return spec.framing.actionLabels[actionId];
+    return spec.actions.find((a) => a.id === actionId)?.label ?? actionId;
   };
 
-  const renderTrace = (pid: string) => {
+  const TRAIT_SHORT: Record<string, string> = {
+    A_Safety_Care: 'safety', A_Power_Sovereignty: 'power', A_Liberty_Autonomy: 'liberty',
+    A_Knowledge_Truth: 'truth', A_Tradition_Continuity: 'tradition', A_Legitimacy_Procedure: 'procedure',
+    C_reciprocity_index: 'reciproc.', C_betrayal_cost: 'betray₋cost', C_coalition_loyalty: 'coalition',
+    C_reputation_sensitivity: 'reput.', C_dominance_empathy: 'empathy',
+    B_exploration_rate: 'explore', B_tolerance_ambiguity: 'ambiguity', B_decision_temperature: 'temp',
+    B_goal_coherence: 'coherence', B_discount_rate: 'discount',
+  };
+
+  const renderTrace = (pid: string, accentClass: string) => {
     const t = r.traces[pid];
     if (!t || t.ranked.length === 0) {
       return <div className="text-[10px] text-canon-muted italic">Trace недоступен (manual mode)</div>;
     }
+
+    const sorted = [...t.ranked].sort((a, b) => b.q - a.q);
+    const chosen = t.ranked.find((a) => a.chosen);
+
+    const relEntries = t.relSnapshot
+      ? Object.entries(t.relSnapshot).filter(([, v]) => Math.abs(v) > 0.01)
+      : [];
+
     return (
-      <div className="space-y-1">
-        <div className="text-[10px] text-canon-muted">
-          trust = <span className="font-mono text-canon-accent">{f2(t.trustAtDecision)}</span>
+      <div className="space-y-2">
+        {/* Header: trust + hesitation + temperature */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="text-[10px] text-canon-muted">
+            trust = <span className={`font-mono ${accentClass}`}>{f2(t.trustComposite)}</span>
+          </div>
+          <HesitationBadge qMargin={t.qMargin} />
+          <span className="text-[9px] text-canon-faint font-mono">T={f2(t.temperature)}</span>
         </div>
-        {t.ranked.slice().sort((a, b) => b.q - a.q).map((e, i) => (
+
+        {/* Ranked actions with Q */}
+        {sorted.map((e, i) => (
           <div key={i} className={`flex items-center gap-2 text-[10px] px-1.5 py-0.5 rounded ${e.chosen ? 'bg-canon-accent/10 text-canon-accent' : 'text-canon-muted'}`}>
             <span className="font-mono w-14 text-right">Q={f2(e.q)}</span>
             <span className="flex-1 truncate">{aLabel(e.actionId)}</span>
             {e.chosen && <span className="text-[9px] text-canon-accent">◀</span>}
           </div>
         ))}
-        {t.dilemmaAtomIds.length > 0 && (
+
+        {/* D/R/M/E decomposition for chosen action */}
+        {chosen && (
+          <div className="mt-1 bg-canon-bg/50 rounded-lg p-2 space-y-0.5">
+            <div className="text-[9px] text-canon-muted font-semibold mb-1">
+              U({aLabel(chosen.actionId)}) = D + R + M + P + E
+            </div>
+            <DRMEBar label="D" value={chosen.D} color="#9b87ff"
+              desc={`Disposition: cooperative_disp = ${f2(t.cooperativeDisposition)}`} />
+            <DRMEBar label="R" value={chosen.R} color="#66d9ff"
+              desc={`Relational: trust_composite = ${f2(t.trustComposite)}`} />
+            <DRMEBar label="M" value={chosen.M} color="#42f5b3"
+              desc={`Momentum: opp_ema = ${f2(t.oppEma)}, trend = ${f2(t.oppTrend)}, inertia = ${t.myInertia}, shock = ${f2(t.betrayalShock)}`} />
+            <DRMEBar label="P" value={chosen.P} color="#ff79c6"
+              desc={`Payoff: EV = ${f2(t.evPerAction[chosen.actionId] ?? 0)}`} />
+            <DRMEBar label="E" value={chosen.E} color="#ffaa44"
+              desc={`Endgame: shadow = ${f2(t.effectiveShadow)}`} />
+          </div>
+        )}
+
+        {/* Compare D/R/M/E for ALL actions */}
+        {sorted.length > 1 && (
           <details className="text-[10px]">
             <summary className="text-canon-muted cursor-pointer hover:text-canon-text">
-              atoms ({t.dilemmaAtomIds.length})
+              сравнить все действия
             </summary>
-            <div className="mt-1 pl-2 space-y-0.5 text-canon-faint font-mono">
-              {t.dilemmaAtomIds.map((id) => <div key={id}>{id}</div>)}
+            <div className="mt-1 space-y-2">
+              {sorted.map((a) => (
+                <div key={a.actionId} className={`p-1.5 rounded ${a.chosen ? 'bg-canon-accent/5' : ''}`}>
+                  <div className="text-[9px] font-semibold text-canon-muted mb-0.5">
+                    {aLabel(a.actionId)} {a.chosen ? '◀' : ''} Q={f2(a.q)}
+                  </div>
+                  <div className="space-y-0.5">
+                    <DRMEBar label="D" value={a.D} color="#9b87ff" />
+                    <DRMEBar label="R" value={a.R} color="#66d9ff" />
+                    <DRMEBar label="M" value={a.M} color="#42f5b3" />
+                    <DRMEBar label="P" value={a.P} color="#ff79c6" />
+                    <DRMEBar label="E" value={a.E} color="#ffaa44" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </details>
+        )}
+
+        {/* Momentum details */}
+        <details className="text-[10px]">
+          <summary className="text-canon-muted cursor-pointer hover:text-canon-text">
+            📈 momentum
+          </summary>
+          <div className="mt-1 space-y-0.5 pl-1">
+            <MiniBar label="opp_ema" value={t.oppEma} color="#42f5b3" />
+            <MiniBar label="trend" value={t.oppTrend} color={t.oppTrend >= 0 ? '#42f5b3' : '#ff5c7a'} signed />
+            <div className="flex items-center gap-1.5 text-[9px]">
+              <span className="text-canon-faint w-16 text-right">inertia</span>
+              <span className={`font-mono ${t.myInertia > 0 ? 'text-canon-good' : t.myInertia < 0 ? 'text-canon-bad' : 'text-canon-faint'}`}>
+                {t.myInertia > 0 ? '→ coop' : t.myInertia < 0 ? '→ defect' : 'neutral'}
+              </span>
+            </div>
+            {t.betrayalShock > 0.01 && (
+              <MiniBar label="shock" value={t.betrayalShock} color="#ff5c7a" />
+            )}
+            <MiniBar label="shadow" value={t.effectiveShadow} color="#ffaa44" />
+          </div>
+        </details>
+
+        {/* EV per action */}
+        {Object.keys(t.evPerAction).length > 0 && (
+          <details className="text-[10px]">
+            <summary className="text-canon-muted cursor-pointer hover:text-canon-text">
+              📊 EV (payoff × prediction)
+            </summary>
+            <div className="mt-1 space-y-0.5 pl-1">
+              {Object.entries(t.evPerAction).map(([aid, ev]) => (
+                <MiniBar key={aid} label={aLabel(aid)} value={ev} color="#ff79c6" />
+              ))}
+              <div className="text-[8px] text-canon-faint mt-1">
+                P(opp coop) = {(t.oppEma * 100).toFixed(0)}%
+              </div>
+            </div>
+          </details>
+        )}
+
+        {/* Trust composite breakdown */}
+        <details className="text-[10px]">
+          <summary className="text-canon-muted cursor-pointer hover:text-canon-text">
+            🤝 trust composite = {(t.trustComposite * 100).toFixed(0)}
+          </summary>
+          <div className="mt-1 space-y-0.5 pl-1">
+            <MiniBar label="rel.trust" value={t.trustComponents.relTrust} color="#9b87ff" />
+            <MiniBar label="rel.bond" value={t.trustComponents.relBond} color="#9b87ff" />
+            <MiniBar label="1−conflict" value={1 - t.trustComponents.relConflict} color="#9b87ff" />
+            <MiniBar label="tom.trust" value={t.trustComponents.tomTrust} color="#ffaa44" />
+            <MiniBar label="tom.reliab" value={t.trustComponents.tomReliability} color="#ffaa44" />
+            <MiniBar label="2nd:trust" value={t.trustComponents.soPerceivedTrust} color="#ffaa44" />
+          </div>
+        </details>
+
+        {/* Relationship */}
+        {relEntries.length > 0 && (
+          <details className="text-[10px]">
+            <summary className="text-canon-muted cursor-pointer hover:text-canon-text">
+              rel ({relEntries.length})
+            </summary>
+            <div className="mt-1 space-y-0.5">
+              {relEntries.map(([k, v]) => (
+                <MiniBar key={k} label={k} value={v} color={k === 'conflict' || k === 'fear' ? '#ff5c7a' : '#9b87ff'} />
+              ))}
+            </div>
+          </details>
+        )}
+
+        {/* Traits */}
+        {t.traitSnapshot && Object.keys(t.traitSnapshot).length > 0 && (
+          <details className="text-[10px]">
+            <summary className="text-canon-muted cursor-pointer hover:text-canon-text">
+              🧬 traits ({Object.keys(t.traitSnapshot).length})
+            </summary>
+            <div className="mt-1 space-y-0.5">
+              {Object.entries(t.traitSnapshot).map(([k, v]) => (
+                <MiniBar key={k} label={TRAIT_SHORT[k] ?? k} value={v} color="#66d9ff" />
+              ))}
             </div>
           </details>
         )}
@@ -304,6 +562,16 @@ const TraceBlock: React.FC<{
   };
 
   const c0 = r.choices[p0]; const c1 = r.choices[p1];
+  const t0 = r.traces[p0];
+  const t1 = r.traces[p1];
+
+  const hesitIcon = (t: typeof t0) => {
+    if (!t) return '';
+    if (t.qMargin < 0.03) return '⚖';
+    if (t.qMargin < 0.10) return '~';
+    return '';
+  };
+
   return (
     <div className="border border-canon-border/50 rounded-lg bg-canon-card overflow-hidden">
       <button onClick={() => setOpen(!open)}
@@ -311,6 +579,13 @@ const TraceBlock: React.FC<{
         <div className="text-xs font-semibold text-canon-text flex items-center gap-2">
           <span className="text-canon-faint">{open ? '▾' : '▸'}</span>
           R{round + 1}
+          {(hesitIcon(t0) || hesitIcon(t1)) && (
+            <span className="text-[9px] text-yellow-400">
+              {hesitIcon(t0) && `A${hesitIcon(t0)}`}
+              {hesitIcon(t0) && hesitIcon(t1) && ' '}
+              {hesitIcon(t1) && `B${hesitIcon(t1)}`}
+            </span>
+          )}
         </div>
         <div className="text-[10px] text-canon-muted font-mono">
           {c0} × {c1} → <span className="text-canon-accent">{f2(r.payoffs[p0])}</span> / <span className="text-canon-accent-2">{f2(r.payoffs[p1])}</span>
@@ -320,11 +595,11 @@ const TraceBlock: React.FC<{
         <div className="px-3 pb-3 pt-1 grid grid-cols-2 gap-3 border-t border-canon-border/30">
           <div>
             <div className="text-[10px] font-semibold text-canon-accent mb-1">{p0}</div>
-            {renderTrace(p0)}
+            {renderTrace(p0, 'text-canon-accent')}
           </div>
           <div>
             <div className="text-[10px] font-semibold text-canon-accent-2 mb-1">{p1}</div>
-            {renderTrace(p1)}
+            {renderTrace(p1, 'text-canon-accent-2')}
           </div>
         </div>
       )}
@@ -364,8 +639,9 @@ export const DilemmaLabPage: React.FC = () => {
   const [totalRounds, setTotalRounds] = useState(10);
   const [p0, setP0] = useState('');
   const [p1, setP1] = useState('');
-  const [initialTrust, setInitialTrust] = useState(0.5);
+  const [initialTrust, setInitialTrust] = useState<number | null>(null); // null = auto pair-specific
   const [narrative, setNarrative] = useState(false);
+  const [seed, setSeed] = useState(42);
 
   // State
   const [mode, setMode] = useState<Mode>('idle');
@@ -451,8 +727,8 @@ export const DilemmaLabPage: React.FC = () => {
         players: [id0, id1],
         totalRounds: Math.max(1, Math.floor(totalRounds)),
         world,
-        initialTrust,
-        seed: 42,
+        initialTrust: initialTrust ?? undefined,
+        seed,
       });
       setGame(result.game);
       setMode('pipeline');
@@ -460,7 +736,7 @@ export const DilemmaLabPage: React.FC = () => {
       setPipelineError(e instanceof Error ? e.message : String(e));
       setMode('idle');
     }
-  }, [spec, p0, p1, totalRounds, initialTrust, allCharacters]);
+  }, [spec, p0, p1, totalRounds, initialTrust, seed, allCharacters]);
 
   const playManualRound = useCallback(() => {
     if (!game || isGameOver(game)) return;
@@ -513,7 +789,7 @@ export const DilemmaLabPage: React.FC = () => {
             </div>
           )}
 
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
             <label className="text-xs text-canon-muted">
               Player A
               {agentOptions.length > 0 ? (
@@ -548,20 +824,37 @@ export const DilemmaLabPage: React.FC = () => {
               </div>
             </label>
             <label className="text-xs text-canon-muted">
-              Initial Trust
+              Trust
+              <div className="flex items-center gap-1 mt-1">
+                <label className="flex items-center gap-1 cursor-pointer select-none">
+                  <input type="checkbox" checked={initialTrust === null}
+                    onChange={(e) => setInitialTrust(e.target.checked ? null : 0.5)}
+                    className="accent-canon-accent" />
+                  <span className="text-[9px]">auto</span>
+                </label>
+                {initialTrust !== null && (
+                  <>
+                    <input type="range" min={0} max={100} value={Math.round(initialTrust * 100)}
+                      onChange={(e) => setInitialTrust(Number(e.target.value) / 100)}
+                      className="flex-1 accent-canon-accent" />
+                    <span className="text-sm font-mono text-canon-text w-8 text-right">{f2(initialTrust)}</span>
+                  </>
+                )}
+              </div>
+            </label>
+            <label className="text-xs text-canon-muted">
+              Seed
               <div className="flex items-center gap-2 mt-1">
-                <input type="range" min={0} max={100} value={Math.round(initialTrust * 100)}
-                  onChange={(e) => setInitialTrust(Number(e.target.value) / 100)}
-                  className="flex-1 accent-canon-accent" />
-                <span className="text-sm font-mono text-canon-text w-10 text-right">{f2(initialTrust)}</span>
+                <input type="number" min={1} max={99999} value={seed}
+                  onChange={(e) => setSeed(Number(e.target.value) || 42)}
+                  className="w-full bg-canon-bg border border-canon-border rounded-lg p-2 text-sm font-mono text-canon-text" />
               </div>
             </label>
           </div>
 
           <div className="flex items-center gap-3 flex-wrap">
             <button onClick={startPipeline}
-              disabled={mode === 'pipeline' && game !== null}
-              className="px-4 py-2 rounded-lg bg-canon-accent text-canon-bg text-sm font-bold hover:brightness-110 transition disabled:opacity-40">
+              className="px-4 py-2 rounded-lg bg-canon-accent text-canon-bg text-sm font-bold hover:brightness-110 transition">
               ▶ Pipeline
             </button>
             <button onClick={startManual}
@@ -621,6 +914,19 @@ export const DilemmaLabPage: React.FC = () => {
                         {mode === 'pipeline' ? '🔧 Pipeline' : '✎ Manual'} · {spec.name}
                       </div>
                     </div>
+
+                    {mode === 'pipeline' && game.rounds.length > 0 && (() => {
+                      const r0 = game.rounds[0];
+                      const t0 = r0?.traces[game.players[0]];
+                      const t1 = r0?.traces[game.players[1]];
+                      return t0 && t1 ? (
+                        <div className="flex gap-4 text-[10px] text-canon-muted">
+                          <span>Init trust: <span className="text-canon-accent font-mono">{game.players[0].replace('character-', '')}</span>→ {(t0.relSnapshot?.trust ?? t0.trustComposite)?.toFixed?.(2) ?? '?'}</span>
+                          <span><span className="text-canon-accent-2 font-mono">{game.players[1].replace('character-', '')}</span>→ {(t1.relSnapshot?.trust ?? t1.trustComposite)?.toFixed?.(2) ?? '?'}</span>
+                          <span>D: <span className="text-canon-accent">{f2(t0.cooperativeDisposition)}</span> / <span className="text-canon-accent-2">{f2(t1.cooperativeDisposition)}</span></span>
+                        </div>
+                      ) : null;
+                    })()}
 
                     {mode === 'manual' && !isGameOver(game) && (
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
@@ -722,6 +1028,13 @@ export const DilemmaLabPage: React.FC = () => {
                       <div className="text-xs font-semibold text-canon-muted uppercase tracking-wider mb-2">Cooperation Curve</div>
                       <div className="bg-canon-card border border-canon-border/50 rounded-lg p-3">
                         <CoopCurveChart curve={analysis.cooperationCurve} players={game.players} game={game} spec={spec} />
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="text-xs font-semibold text-canon-muted uppercase tracking-wider mb-2">Trust Evolution</div>
+                      <div className="bg-canon-card border border-canon-border/50 rounded-lg p-3">
+                        <TrustEvolutionChart game={game} />
                       </div>
                     </div>
 

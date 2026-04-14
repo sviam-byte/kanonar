@@ -78,7 +78,24 @@ export function advanceGame(
 }
 
 function emptyTrace(): RoundTrace {
-  return { ranked: [], dilemmaAtomIds: [], trustAtDecision: 0.5 };
+  return {
+    ranked: [],
+    dilemmaAtomIds: [],
+    trustAtDecision: 0.5,
+    qMargin: 0,
+    temperature: 0.8,
+    cooperativeDisposition: 0,
+    trustComposite: 0.5,
+    trustComponents: { relTrust: 0.5, relBond: 0.3, relConflict: 0, tomTrust: 0.5, tomReliability: 0.5, soPerceivedTrust: 0.5 },
+    oppEma: 0.5,
+    oppTrend: 0,
+    myInertia: 0,
+    betrayalShock: 0,
+    evPerAction: {},
+    effectiveShadow: 0.5,
+    relSnapshot: {},
+    traitSnapshot: {},
+  };
 }
 
 // ── Equilibria (2×2 games, analytical) ──
