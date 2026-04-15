@@ -791,7 +791,14 @@ export const DilemmaLabPage: React.FC = () => {
     if (!game) return;
     const exportedAt = new Date().toISOString();
     const [id0, id1] = game.players;
-    const playerCharacters = allCharacters.filter((c) => c.entityId === id0 || c.entityId === id1);
+    /**
+     * Важно: фиксируем порядок участников строго по `game.players`,
+     * чтобы экспорт был стабильнее для diff/сравнения между прогонами.
+     */
+    const byId = new Map(allCharacters.map((c) => [c.entityId, c] as const));
+    const playerCharacters = [id0, id1]
+      .map((id) => byId.get(id))
+      .filter((c): c is CharacterEntity => Boolean(c));
     const payload = buildDilemmaSessionExport({
       exportedAt,
       config: {
