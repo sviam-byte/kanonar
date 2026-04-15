@@ -393,7 +393,13 @@ export const DilemmaLabPage: React.FC = () => {
           <MiniBar label="relational" value={scenario.stakes.relational} color="#9b87ff" />
           <MiniBar label="institutional" value={scenario.stakes.institutional} color="#ffaa44" />
           <MiniBar label="physical" value={scenario.stakes.physical} color="#ff5c7a" />
-          <div className="text-[10px] text-canon-faint">Видимость: {scenario.visibility} · Давл: {pct(instPressure ?? scenario.institutionalPressure)}</div>
+          <div className="text-[10px] text-canon-faint">
+            Видимость: {scenario.visibility.actionsVisible ? 'открыто' : 'скрыто'}
+            {scenario.visibility.audiencePresent ? ' + публика' : ''}
+            {scenario.visibility.consequencesDeferred ? ' + отложенные последствия' : ''}
+            {' · '}
+            Давл: {pct(instPressure ?? scenario.institutionalPressure)}
+          </div>
           <div className="border-t border-canon-border/30 pt-2 mt-2">
             <div className="text-xs font-semibold text-canon-muted uppercase tracking-wider mb-1">Действия</div>
             {scenario.actionPool.map(a => (
