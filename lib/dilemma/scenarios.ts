@@ -1,182 +1,325 @@
 // lib/dilemma/scenarios.ts
 //
-// Scenario catalog for DilemmaLab v2.
+// Scenario presets for DilemmaLab v2.
+// Each preset is a skin / parameterization over a small set of reusable mechanics.
 
-import type { ScenarioTemplate, ActionTemplate, DilemmaClass } from './types';
+import { getMechanic } from './mechanics';
+import type {
+  ActionPresetOverride,
+  ActionTemplate,
+  ScenarioPreset,
+  ScenarioStakes,
+  ScenarioTemplate,
+  ScenarioVisibility,
+} from './types';
 
-function action(
-  id: string,
-  label: string,
-  description: string,
-  socialTags: string[],
-  profile: ActionTemplate['profile'],
-  requires?: ActionTemplate['requires'],
-  payoffVs?: ActionTemplate['payoffVs'],
-): ActionTemplate {
-  return { id, label, description, socialTags, profile, requires, payoffVs };
+function mergeAction(base: ActionTemplate, override?: ActionPresetOverride): ActionTemplate | null {
+  if (override?.disabled) return null;
+  return {
+    ...base,
+    label: override?.label ?? base.label,
+    description: override?.description ?? base.description,
+    socialTags: override?.socialTags ?? base.socialTags,
+    requires: override?.requires ?? base.requires,
+    profile: {
+      ...base.profile,
+      ...(override?.profile ?? {}),
+    },
+    payoffVs: override?.payoffVs ?? base.payoffVs,
+  };
 }
 
-function scenario(
-  id: string,
-  name: string,
-  dilemmaClass: DilemmaClass,
-  setup: string,
-  cooperativeActionId: string,
-  institutionalPressure: number,
-  actionPool: ActionTemplate[],
-  stakes: ScenarioTemplate['stakes'],
-  visibility: ScenarioTemplate['visibility'],
-): ScenarioTemplate {
-  return { id, name, dilemmaClass, setup, cooperativeActionId, institutionalPressure, actionPool, stakes, visibility };
+function mergeStakes(base: ScenarioStakes, patch?: Partial<ScenarioStakes>): ScenarioStakes {
+  return { ...base, ...(patch ?? {}) };
 }
 
-export const TRUST_INTERROGATION = scenario(
-  'trust_interrogation',
-  'Допрос: раскрыть или молчать',
-  'trust',
-  'Два союзника допрашиваются раздельно после провала операции.',
-  'stay_silent',
-  0.3,
-  [
-    action('stay_silent', 'Молчать', 'Не выдавать партнёра.', ['support'], { goalFit: -0.2, relationalFit: 0.8, identityFit: 0.6, legitimacyFit: 0.3, safetyFit: -0.4, mirrorFit: 0.7, expectedCost: 0.5 }, undefined, { stay_silent: 0.9, give_testimony: -1.0, partial_truth: 0.2, disinform: 0.4 }),
-    action('give_testimony', 'Дать показания', 'Сдать напарника ради самосохранения.', ['betrayal'], { goalFit: 0.3, relationalFit: -0.9, identityFit: -0.3, legitimacyFit: -0.2, safetyFit: 0.7, mirrorFit: -0.8, expectedCost: 0.2 }, undefined, { stay_silent: 1.0, give_testimony: -0.2, partial_truth: 0.5, disinform: 0.3 }),
-    action('partial_truth', 'Частичная правда', 'Дать безопасную часть информации.', ['neutral'], { goalFit: 0.1, relationalFit: 0.2, identityFit: 0, legitimacyFit: -0.1, safetyFit: 0.3, mirrorFit: -0.1, expectedCost: 0.4 }, { minTrait: { axis: 'E_Skill_opsec_hacking', threshold: 0.5 } }, { stay_silent: 0.3, give_testimony: -0.6, partial_truth: 0.4, disinform: -0.1 }),
-    action('disinform', 'Дезинформация', 'Запутать следствие ложной версией.', ['deceive'], { goalFit: 0.4, relationalFit: 0.3, identityFit: -0.2, legitimacyFit: -0.6, safetyFit: 0.2, mirrorFit: 0.0, expectedCost: 0.6 }, undefined, { stay_silent: 0.4, give_testimony: -0.4, partial_truth: 0.1, disinform: 0.2 }),
-  ],
-  { personal: 0.8, relational: 0.7, institutional: 0.3, physical: 0.4 },
-  { actionsVisible: false, audiencePresent: false, consequencesDeferred: true },
-);
+function mergeVisibility(base: ScenarioVisibility, patch?: Partial<ScenarioVisibility>): ScenarioVisibility {
+  return { ...base, ...(patch ?? {}) };
+}
 
-export const PROTECTION_ORDER = scenario(
-  'protection_order',
-  'Приказ против защиты',
-  'protection',
-  'Легитимный приказ угрожает тому, кого нужно защищать.',
-  'protect_ward',
-  0.8,
-  [
-    action('execute_order', 'Выполнить приказ', 'Следовать процедуре.', ['hierarchical'], { goalFit: 0.3, relationalFit: -0.6, identityFit: -0.4, legitimacyFit: 0.9, safetyFit: 0.3, mirrorFit: -0.3, expectedCost: 0.3 }),
-    action('protect_ward', 'Защитить', 'Нарушить приказ ради защиты.', ['support'], { goalFit: 0.6, relationalFit: 0.9, identityFit: 0.7, legitimacyFit: -0.7, safetyFit: -0.3, mirrorFit: 0.5, expectedCost: 0.5 }),
-    action('negotiate_delay', 'Оттянуть', 'Формально принять приказ, но затянуть.', ['neutral'], { goalFit: 0.2, relationalFit: 0.3, identityFit: 0.1, legitimacyFit: -0.2, safetyFit: 0.1, mirrorFit: 0.1, expectedCost: 0.4 }, { minTrait: { axis: 'E_Skill_diplomacy_negotiation', threshold: 0.5 } }),
-    action('take_blame', 'Взять вину', 'Подставиться самому, чтобы защитить.', ['support'], { goalFit: 0.4, relationalFit: 0.7, identityFit: 0.5, legitimacyFit: 0, safetyFit: -0.8, mirrorFit: 0.6, expectedCost: 0.8 }, { minTrait: { axis: 'D_pain_tolerance', threshold: 0.6 } }),
-  ],
-  { personal: 0.5, relational: 0.9, institutional: 0.7, physical: 0.6 },
-  { actionsVisible: true, audiencePresent: true, consequencesDeferred: false },
-);
-
-export const AUTHORITY_JUDGMENT = scenario(
-  'authority_judgment',
-  'Суд командира',
-  'authority',
-  'Нарушение протокола помогло миссии; нужно решить, как наказать.',
-  'pardon',
-  0.9,
-  [
-    action('punish', 'Наказать', 'Применить санкцию по протоколу.', ['harm', 'punish'], { goalFit: 0.2, relationalFit: -0.5, identityFit: 0.3, legitimacyFit: 0.9, safetyFit: 0.2, mirrorFit: -0.4, expectedCost: 0.2 }, { roles: ['commander', 'caretaker', 'advisor'] }),
-    action('pardon', 'Помиловать', 'Простить с предупреждением.', ['support'], { goalFit: 0.3, relationalFit: 0.6, identityFit: 0, legitimacyFit: -0.5, safetyFit: -0.1, mirrorFit: 0.4, expectedCost: 0.1 }),
-    action('delegate', 'Делегировать', 'Передать решение инстанции.', ['neutral'], { goalFit: 0.0, relationalFit: 0.1, identityFit: -0.3, legitimacyFit: 0.4, safetyFit: 0.4, mirrorFit: -0.2, expectedCost: 0.1 }),
-  ],
-  { personal: 0.3, relational: 0.6, institutional: 0.8, physical: 0.1 },
-  { actionsVisible: true, audiencePresent: true, consequencesDeferred: false },
-);
-
-export const LOYALTY_CONFLICT = scenario(
-  'loyalty_conflict',
-  'Верность: институт или человек',
-  'loyalty',
-  'Институция требует выдать человека, которого ты защищаешь.',
-  'protect_individual',
-  1,
-  [
-    action('comply_institution', 'Выдать', 'Подчиниться институции.', ['betrayal'], { goalFit: 0.2, relationalFit: -0.9, identityFit: -0.5, legitimacyFit: 0.8, safetyFit: 0.5, mirrorFit: -0.7, expectedCost: 0.3 }, undefined, { comply_institution: -0.2, protect_individual: 1.0, negotiate_both: 0.2 }),
-    action('protect_individual', 'Защитить', 'Отказать институции, сохранить верность человеку.', ['support', 'protect'], { goalFit: 0.5, relationalFit: 0.9, identityFit: 0.6, legitimacyFit: -0.8, safetyFit: -0.4, mirrorFit: 0.6, expectedCost: 0.5 }, undefined, { comply_institution: -1.0, protect_individual: 0.8, negotiate_both: 0.4 }),
-    action('negotiate_both', 'Договориться', 'Искать компромисс.', ['neutral'], { goalFit: 0.4, relationalFit: 0.4, identityFit: 0.2, legitimacyFit: 0.2, safetyFit: 0.1, mirrorFit: 0.3, expectedCost: 0.6 }, { minTrait: { axis: 'E_Skill_diplomacy_negotiation', threshold: 0.6 } }, { comply_institution: -0.2, protect_individual: 0.4, negotiate_both: 0.5 }),
-  ],
-  { personal: 0.6, relational: 0.9, institutional: 0.9, physical: 0.3 },
-  { actionsVisible: true, audiencePresent: true, consequencesDeferred: false },
-);
-
-export const OPACITY_DEAL = scenario(
-  'opacity_deal',
-  'Торг в тумане',
-  'opacity',
-  'У каждого есть ценная информация и ограниченное доверие.',
-  'reveal_partial',
-  0.2,
-  [
-    action('reveal_full', 'Раскрыться полностью', 'Отдать всю информацию.', ['support'], { goalFit: 0.3, relationalFit: 0.6, identityFit: 0.2, legitimacyFit: 0, safetyFit: -0.7, mirrorFit: 0.5, expectedCost: 0.3 }, undefined, { reveal_full: 0.9, reveal_partial: 0.3, stay_opaque: -0.8 }),
-    action('reveal_partial', 'Частичная сделка', 'Обменять только часть.', ['neutral'], { goalFit: 0.5, relationalFit: 0.3, identityFit: 0, legitimacyFit: 0, safetyFit: 0.2, mirrorFit: 0.2, expectedCost: 0.3 }, undefined, { reveal_full: 0.6, reveal_partial: 0.5, stay_opaque: -0.4 }),
-    action('stay_opaque', 'Не раскрываться', 'Получать данные, не раскрываясь.', ['neutral'], { goalFit: 0.2, relationalFit: -0.3, identityFit: 0.1, legitimacyFit: 0, safetyFit: 0.5, mirrorFit: -0.3, expectedCost: 0.1 }, undefined, { reveal_full: 0.8, reveal_partial: 0.2, stay_opaque: -0.2 }),
-  ],
-  { personal: 0.5, relational: 0.3, institutional: 0.1, physical: 0.2 },
-  { actionsVisible: false, audiencePresent: false, consequencesDeferred: true },
-);
-
-export const MUTINY_ORDER = scenario(
-  'mutiny_order',
-  'Приказ, с которым нельзя согласиться',
-  'mutiny',
-  'Командир дал губительный приказ, есть шанс саботажа/перехвата.',
-  'obey',
-  0.95,
-  [
-    action('obey', 'Подчиниться', 'Выполнить приказ.', ['hierarchical'], { goalFit: -0.4, relationalFit: 0.3, identityFit: -0.5, legitimacyFit: 0.9, safetyFit: 0.2, mirrorFit: 0, expectedCost: 0.4 }),
-    action('sabotage', 'Саботировать', 'Сорвать выполнение скрытно.', ['betrayal'], { goalFit: 0.5, relationalFit: -0.4, identityFit: 0.2, legitimacyFit: -0.8, safetyFit: -0.2, mirrorFit: -0.3, expectedCost: 0.5 }, { minTrait: { axis: 'E_Skill_opsec_hacking', threshold: 0.4 } }),
-    action('seize_initiative', 'Перехватить', 'Открыто взять контроль.', ['harm'], { goalFit: 0.7, relationalFit: -0.8, identityFit: 0.6, legitimacyFit: -1, safetyFit: -0.6, mirrorFit: -0.5, expectedCost: 0.7 }, { minTrait: { axis: 'A_Power_Sovereignty', threshold: 0.7 } }),
-  ],
-  { personal: 0.7, relational: 0.8, institutional: 0.9, physical: 0.5 },
-  { actionsVisible: true, audiencePresent: true, consequencesDeferred: false },
-);
-
-export const CARE_ASYMMETRY = scenario(
-  'care_asymmetry',
-  'Помощь ценой статуса',
-  'care',
-  'Помощь слабому снижает твой политический капитал.',
-  'help_openly',
-  0.5,
-  [
-    action('help_openly', 'Помочь открыто', 'Помочь публично и принять издержки.', ['support', 'help'], { goalFit: 0.2, relationalFit: 0.8, identityFit: 0.5, legitimacyFit: -0.2, safetyFit: -0.3, mirrorFit: 0.6, expectedCost: 0.4 }),
-    action('help_covertly', 'Помочь скрытно', 'Снизить репутационные потери.', ['support'], { goalFit: 0.3, relationalFit: 0.5, identityFit: 0.2, legitimacyFit: -0.3, safetyFit: 0.1, mirrorFit: 0.0, expectedCost: 0.4 }, { minTrait: { axis: 'E_Skill_opsec_hacking', threshold: 0.4 } }),
-    action('refuse', 'Отказать', 'Сохранить позицию, не помогать.', ['neutral'], { goalFit: 0.0, relationalFit: -0.5, identityFit: -0.3, legitimacyFit: 0.3, safetyFit: 0.5, mirrorFit: -0.4, expectedCost: 0.0 }),
-  ],
-  { personal: 0.4, relational: 0.7, institutional: 0.5, physical: 0.1 },
-  { actionsVisible: true, audiencePresent: true, consequencesDeferred: false },
-);
-
-export const BARGAIN_RESOURCE = scenario(
-  'bargain_resource',
-  'Ресурсная передача',
-  'bargain',
-  'Ресурс нужно распределить между двумя сторонами.',
-  'share_fair',
-  0.3,
-  [
-    action('share_fair', 'Честный раздел', 'Разделить справедливо.', ['support'], { goalFit: 0.4, relationalFit: 0.6, identityFit: 0.3, legitimacyFit: 0.5, safetyFit: 0.0, mirrorFit: 0.5, expectedCost: 0.2 }, undefined, { share_fair: 0.8, take_all: -0.9, offer_more: 0.6 }),
-    action('take_all', 'Забрать всё', 'Максимизировать личную выгоду.', ['harm'], { goalFit: 0.6, relationalFit: -0.8, identityFit: -0.2, legitimacyFit: -0.6, safetyFit: 0.3, mirrorFit: -0.7, expectedCost: 0.1 }, undefined, { share_fair: 1.0, take_all: -0.3, offer_more: 1.1 }),
-    action('offer_more', 'Отдать больше', 'Показать добрую волю.', ['support'], { goalFit: 0.1, relationalFit: 0.8, identityFit: 0.4, legitimacyFit: 0.2, safetyFit: -0.2, mirrorFit: 0.8, expectedCost: 0.3 }, undefined, { share_fair: 0.7, take_all: -1.1, offer_more: 0.9 }),
-  ],
-  { personal: 0.6, relational: 0.5, institutional: 0.2, physical: 0.1 },
-  { actionsVisible: false, audiencePresent: false, consequencesDeferred: false },
-);
-
-export const SCENARIO_CATALOG: Record<string, ScenarioTemplate> = {
-  trust_interrogation: TRUST_INTERROGATION,
-  protection_order: PROTECTION_ORDER,
-  authority_judgment: AUTHORITY_JUDGMENT,
-  loyalty_conflict: LOYALTY_CONFLICT,
-  opacity_deal: OPACITY_DEAL,
-  mutiny_order: MUTINY_ORDER,
-  care_asymmetry: CARE_ASYMMETRY,
-  bargain_resource: BARGAIN_RESOURCE,
+export const SCENARIO_PRESETS: Record<string, ScenarioPreset> = {
+  trust_interrogation: {
+    id: 'trust_interrogation',
+    name: 'Допрос: раскрыть или молчать',
+    mechanicId: 'trust_exchange',
+    dilemmaClass: 'trust',
+    setup: 'Два союзника допрашиваются раздельно после провала операции.',
+    institutionalPressure: 0.3,
+    stakes: { personal: 0.8, relational: 0.7, institutional: 0.3, physical: 0.4 },
+    visibility: { actionsVisible: false, audiencePresent: false, consequencesDeferred: true },
+    actionOverrides: {
+      cooperate: {
+        label: 'Молчать',
+        description: 'Не выдавать партнёра.',
+        socialTags: ['support'],
+        profile: { goalFit: -0.2, relationalFit: 0.8, identityFit: 0.6, legitimacyFit: 0.3, safetyFit: -0.4, mirrorFit: 0.7, expectedCost: 0.5 },
+        payoffVs: { cooperate: 0.45, defect: -0.85, hedge: 0.05, manipulate: -0.6 },
+      },
+      defect: {
+        label: 'Дать показания',
+        description: 'Сдать напарника ради самосохранения.',
+        socialTags: ['betrayal'],
+        profile: { goalFit: 0.3, relationalFit: -0.9, identityFit: -0.3, legitimacyFit: -0.2, safetyFit: 0.7, mirrorFit: -0.8, expectedCost: 0.2 },
+        payoffVs: { cooperate: 0.85, defect: -0.15, hedge: 0.5, manipulate: 0.2 },
+      },
+      hedge: {
+        label: 'Частичная правда',
+        description: 'Дать безопасную часть информации.',
+        socialTags: ['neutral'],
+        requires: { minTrait: { axis: 'E_Skill_opsec_hacking', threshold: 0.5 } },
+        profile: { goalFit: 0.1, relationalFit: 0.2, identityFit: 0, legitimacyFit: -0.1, safetyFit: 0.3, mirrorFit: -0.1, expectedCost: 0.4 },
+        payoffVs: { cooperate: 0.1, defect: -0.25, hedge: 0.15, manipulate: -0.15 },
+      },
+      manipulate: {
+        label: 'Дезинформация',
+        description: 'Запутать следствие ложной версией.',
+        socialTags: ['deceive'],
+        profile: { goalFit: 0.4, relationalFit: 0.3, identityFit: -0.2, legitimacyFit: -0.6, safetyFit: 0.2, mirrorFit: 0.0, expectedCost: 0.6 },
+        payoffVs: { cooperate: 0.35, defect: -0.2, hedge: 0.15, manipulate: -0.1 },
+      },
+    },
+  },
+  opacity_deal: {
+    id: 'opacity_deal',
+    name: 'Торг в тумане',
+    mechanicId: 'trust_exchange',
+    dilemmaClass: 'opacity',
+    setup: 'У каждого есть ценная информация и ограниченное доверие.',
+    cooperativeActionId: 'hedge',
+    institutionalPressure: 0.2,
+    stakes: { personal: 0.5, relational: 0.3, institutional: 0.1, physical: 0.2 },
+    visibility: { actionsVisible: false, audiencePresent: false, consequencesDeferred: true },
+    actionOverrides: {
+      cooperate: {
+        label: 'Раскрыться полностью',
+        description: 'Отдать всю информацию.',
+        socialTags: ['support'],
+        profile: { goalFit: 0.3, relationalFit: 0.6, identityFit: 0.2, legitimacyFit: 0, safetyFit: -0.7, mirrorFit: 0.5, expectedCost: 0.3 },
+        payoffVs: { cooperate: 0.55, defect: -0.65, hedge: 0.15 },
+      },
+      hedge: {
+        label: 'Частичная сделка',
+        description: 'Обменять только часть.',
+        socialTags: ['neutral'],
+        profile: { goalFit: 0.5, relationalFit: 0.3, identityFit: 0, legitimacyFit: 0, safetyFit: 0.2, mirrorFit: 0.2, expectedCost: 0.3 },
+        payoffVs: { cooperate: 0.3, defect: -0.1, hedge: 0.35 },
+      },
+      defect: {
+        label: 'Не раскрываться',
+        description: 'Получать данные, не раскрываясь.',
+        socialTags: ['neutral'],
+        profile: { goalFit: 0.2, relationalFit: -0.3, identityFit: 0.1, legitimacyFit: 0, safetyFit: 0.5, mirrorFit: -0.3, expectedCost: 0.1 },
+        payoffVs: { cooperate: 0.45, defect: 0.1, hedge: 0.2 },
+      },
+      manipulate: {
+        disabled: true,
+      },
+    },
+  },
+  protection_order: {
+    id: 'protection_order',
+    name: 'Приказ против защиты',
+    mechanicId: 'authority_conflict',
+    dilemmaClass: 'protection',
+    setup: 'Легитимный приказ угрожает тому, кого нужно защищать.',
+    institutionalPressure: 0.8,
+    stakes: { personal: 0.5, relational: 0.9, institutional: 0.7, physical: 0.6 },
+    visibility: { actionsVisible: true, audiencePresent: true, consequencesDeferred: false },
+    actionOverrides: {
+      comply: {
+        label: 'Выполнить приказ',
+        description: 'Следовать процедуре.',
+        socialTags: ['hierarchical'],
+        profile: { goalFit: 0.3, relationalFit: -0.6, identityFit: -0.4, legitimacyFit: 0.9, safetyFit: 0.3, mirrorFit: -0.3, expectedCost: 0.3 },
+      },
+      protect: {
+        label: 'Защитить',
+        description: 'Нарушить приказ ради защиты.',
+        socialTags: ['support'],
+        profile: { goalFit: 0.6, relationalFit: 0.9, identityFit: 0.7, legitimacyFit: -0.7, safetyFit: -0.3, mirrorFit: 0.5, expectedCost: 0.5 },
+      },
+      delay: {
+        label: 'Оттянуть',
+        description: 'Формально принять приказ, но затянуть.',
+        socialTags: ['neutral'],
+        requires: { minTrait: { axis: 'E_Skill_diplomacy_negotiation', threshold: 0.5 } },
+        profile: { goalFit: 0.2, relationalFit: 0.3, identityFit: 0.1, legitimacyFit: -0.2, safetyFit: 0.1, mirrorFit: 0.1, expectedCost: 0.4 },
+      },
+      rupture: {
+        label: 'Взять вину',
+        description: 'Подставиться самому, чтобы защитить.',
+        socialTags: ['support'],
+        requires: { minTrait: { axis: 'D_pain_tolerance', threshold: 0.6 } },
+        profile: { goalFit: 0.4, relationalFit: 0.7, identityFit: 0.5, legitimacyFit: 0, safetyFit: -0.8, mirrorFit: 0.6, expectedCost: 0.8 },
+        payoffVs: { comply: 0.2, protect: 0.35, delay: 0.1, rupture: -0.05 },
+      },
+    },
+  },
+  loyalty_conflict: {
+    id: 'loyalty_conflict',
+    name: 'Верность: институт или человек',
+    mechanicId: 'authority_conflict',
+    dilemmaClass: 'loyalty',
+    setup: 'Институция требует выдать человека, которого ты защищаешь.',
+    institutionalPressure: 1,
+    stakes: { personal: 0.6, relational: 0.9, institutional: 0.9, physical: 0.3 },
+    visibility: { actionsVisible: true, audiencePresent: true, consequencesDeferred: false },
+    actionOverrides: {
+      comply: {
+        label: 'Выдать',
+        description: 'Подчиниться институции.',
+        socialTags: ['betrayal'],
+        profile: { goalFit: 0.2, relationalFit: -0.9, identityFit: -0.5, legitimacyFit: 0.8, safetyFit: 0.5, mirrorFit: -0.7, expectedCost: 0.3 },
+      },
+      protect: {
+        label: 'Защитить',
+        description: 'Отказать институции, сохранить верность человеку.',
+        socialTags: ['support', 'protect'],
+        profile: { goalFit: 0.5, relationalFit: 0.9, identityFit: 0.6, legitimacyFit: -0.8, safetyFit: -0.4, mirrorFit: 0.6, expectedCost: 0.5 },
+      },
+      delay: {
+        label: 'Договориться',
+        description: 'Искать компромисс.',
+        socialTags: ['neutral'],
+        requires: { minTrait: { axis: 'E_Skill_diplomacy_negotiation', threshold: 0.6 } },
+        profile: { goalFit: 0.4, relationalFit: 0.4, identityFit: 0.2, legitimacyFit: 0.2, safetyFit: 0.1, mirrorFit: 0.3, expectedCost: 0.6 },
+      },
+      rupture: {
+        disabled: true,
+      },
+    },
+  },
+  mutiny_order: {
+    id: 'mutiny_order',
+    name: 'Приказ, с которым нельзя согласиться',
+    mechanicId: 'authority_conflict',
+    dilemmaClass: 'mutiny',
+    setup: 'Командир дал губительный приказ, есть шанс саботажа или перехвата.',
+    cooperativeActionId: 'comply',
+    institutionalPressure: 0.95,
+    stakes: { personal: 0.7, relational: 0.8, institutional: 0.9, physical: 0.5 },
+    visibility: { actionsVisible: true, audiencePresent: true, consequencesDeferred: false },
+    actionOverrides: {
+      comply: {
+        label: 'Подчиниться',
+        description: 'Выполнить приказ.',
+        socialTags: ['hierarchical'],
+        profile: { goalFit: -0.4, relationalFit: 0.3, identityFit: -0.5, legitimacyFit: 0.9, safetyFit: 0.2, mirrorFit: 0, expectedCost: 0.4 },
+      },
+      protect: {
+        disabled: true,
+      },
+      delay: {
+        label: 'Саботировать',
+        description: 'Сорвать выполнение скрытно.',
+        socialTags: ['betrayal'],
+        requires: { minTrait: { axis: 'E_Skill_opsec_hacking', threshold: 0.4 } },
+        profile: { goalFit: 0.5, relationalFit: -0.4, identityFit: 0.2, legitimacyFit: -0.8, safetyFit: -0.2, mirrorFit: -0.3, expectedCost: 0.5 },
+        payoffVs: { comply: 0.25, delay: 0.15, rupture: 0.1 },
+      },
+      rupture: {
+        label: 'Перехватить',
+        description: 'Открыто взять контроль.',
+        socialTags: ['harm'],
+        requires: { minTrait: { axis: 'A_Power_Sovereignty', threshold: 0.7 } },
+        profile: { goalFit: 0.7, relationalFit: -0.8, identityFit: 0.6, legitimacyFit: -1, safetyFit: -0.6, mirrorFit: -0.5, expectedCost: 0.7 },
+      },
+    },
+  },
+  authority_judgment: {
+    id: 'authority_judgment',
+    name: 'Суд командира',
+    mechanicId: 'judgment_sanction',
+    dilemmaClass: 'authority',
+    setup: 'Нарушение протокола помогло миссии; нужно решить, как наказать.',
+    institutionalPressure: 0.9,
+    stakes: { personal: 0.3, relational: 0.6, institutional: 0.8, physical: 0.1 },
+    visibility: { actionsVisible: true, audiencePresent: true, consequencesDeferred: false },
+  },
+  bargain_resource: {
+    id: 'bargain_resource',
+    name: 'Ресурсная передача',
+    mechanicId: 'resource_split',
+    dilemmaClass: 'bargain',
+    setup: 'Ресурс нужно распределить между двумя сторонами.',
+    institutionalPressure: 0.3,
+    stakes: { personal: 0.6, relational: 0.5, institutional: 0.2, physical: 0.1 },
+    visibility: { actionsVisible: false, audiencePresent: false, consequencesDeferred: false },
+  },
+  care_asymmetry: {
+    id: 'care_asymmetry',
+    name: 'Помощь ценой статуса',
+    mechanicId: 'care_under_surveillance',
+    dilemmaClass: 'care',
+    setup: 'Помощь слабому снижает твой политический капитал.',
+    institutionalPressure: 0.5,
+    stakes: { personal: 0.4, relational: 0.7, institutional: 0.5, physical: 0.1 },
+    visibility: { actionsVisible: true, audiencePresent: true, consequencesDeferred: false },
+    disabled: true,
+    disabledReason: 'Этот сценарий на деле триадный: помощь, получатель помощи и наблюдающая инстанция. В dyad-v2 он пока искажает механику.',
+  },
 };
+
+/**
+ * Resolves a preset into an executable scenario template by applying action
+ * overrides on top of the selected mechanic base.
+ */
+function resolveScenarioPreset(preset: ScenarioPreset): ScenarioTemplate {
+  const mechanic = getMechanic(preset.mechanicId);
+  const actionPool = mechanic.actionPool
+    .map((a) => mergeAction(a, preset.actionOverrides?.[a.id]))
+    .filter((a): a is ActionTemplate => Boolean(a));
+
+  const cooperativeActionId = preset.cooperativeActionId ?? mechanic.defaultCooperativeActionId;
+  if (!actionPool.some((a) => a.id === cooperativeActionId)) {
+    throw new Error(`Scenario preset ${preset.id} points to missing cooperative action: ${cooperativeActionId}`);
+  }
+
+  return {
+    id: preset.id,
+    name: preset.name,
+    mechanicId: mechanic.id,
+    mechanicName: mechanic.name,
+    mechanicDescription: mechanic.description,
+    dilemmaClass: preset.dilemmaClass,
+    setup: preset.setup,
+    cooperativeActionId,
+    actionPool,
+    stakes: mergeStakes(mechanic.defaultStakes, preset.stakes),
+    visibility: mergeVisibility(mechanic.defaultVisibility, preset.visibility),
+    institutionalPressure: preset.institutionalPressure ?? mechanic.defaultInstitutionalPressure,
+    disabled: preset.disabled,
+    disabledReason: preset.disabledReason,
+  };
+}
+
+export const RESOLVED_SCENARIO_CATALOG: Record<string, ScenarioTemplate> = Object.fromEntries(
+  Object.values(SCENARIO_PRESETS).map((preset) => [preset.id, resolveScenarioPreset(preset)]),
+);
+
+export const SCENARIO_CATALOG: Record<string, ScenarioTemplate> = Object.fromEntries(
+  Object.values(RESOLVED_SCENARIO_CATALOG)
+    .filter((scenario) => !scenario.disabled)
+    .map((scenario) => [scenario.id, scenario]),
+);
 
 export function getScenario(id: string): ScenarioTemplate {
   const s = SCENARIO_CATALOG[id];
-  if (!s) throw new Error(`Unknown scenario: ${id}. Available: ${Object.keys(SCENARIO_CATALOG).join(', ')}`);
+  if (!s) throw new Error(`Unknown active scenario: ${id}. Available: ${Object.keys(SCENARIO_CATALOG).join(', ')}`);
   return s;
 }
 
-export function allScenarios(): ScenarioTemplate[] {
-  return Object.values(SCENARIO_CATALOG);
+export function getScenarioResolved(id: string): ScenarioTemplate {
+  const s = RESOLVED_SCENARIO_CATALOG[id];
+  if (!s) throw new Error(`Unknown scenario preset: ${id}. Available: ${Object.keys(RESOLVED_SCENARIO_CATALOG).join(', ')}`);
+  return s;
+}
+
+export function allScenarios(options?: { includeDisabled?: boolean }): ScenarioTemplate[] {
+  const includeDisabled = options?.includeDisabled ?? false;
+  return includeDisabled ? Object.values(RESOLVED_SCENARIO_CATALOG) : Object.values(SCENARIO_CATALOG);
+}
+
+export function allScenarioPresets(): ScenarioPreset[] {
+  return Object.values(SCENARIO_PRESETS);
 }
