@@ -3,6 +3,10 @@ import { CATALOG, getSpec, allSpecs } from '../lib/dilemma/catalog';
 import { advanceGame, createGame, isGameOver } from '../lib/dilemma/engine';
 import { analyzeGame, bestStrategy } from '../lib/dilemma/analysis';
 import { runDilemmaGame } from '../lib/dilemma/runner';
+import {
+  buildDilemmaSessionExport,
+  makeDilemmaSessionFileName,
+} from '../lib/dilemma/sessionExport';
 import type {
   DilemmaGameState,
   DilemmaSpec,
@@ -788,8 +792,7 @@ export const DilemmaLabPage: React.FC = () => {
     const exportedAt = new Date().toISOString();
     const [id0, id1] = game.players;
     const playerCharacters = allCharacters.filter((c) => c.entityId === id0 || c.entityId === id1);
-    const payload = {
-      schema: 'DilemmaLabSessionExportV1',
+    const payload = buildDilemmaSessionExport({
       exportedAt,
       config: {
         mode,
@@ -808,12 +811,13 @@ export const DilemmaLabPage: React.FC = () => {
        * помогает сравнивать сессии между разными версиями sandbox/world.
        */
       participants: playerCharacters,
-    };
-    const safeSpec = spec.id.replace(/[^a-z0-9_-]/gi, '_');
-    const safeP0 = id0.replace(/[^a-z0-9_-]/gi, '_');
-    const safeP1 = id1.replace(/[^a-z0-9_-]/gi, '_');
-    const stamp = exportedAt.replace(/[:.]/g, '-');
-    downloadJson(payload, `dilemma-lab__${safeSpec}__${safeP0}__${safeP1}__${stamp}.json`);
+    });
+    const fileName = makeDilemmaSessionFileName({
+      specId: spec.id,
+      players: game.players,
+      exportedAt,
+    });
+    downloadJson(payload, fileName);
   }, [game, mode, narrative, seed, initialTrust, spec, totalRounds, analysis, allCharacters]);
 
   return (
