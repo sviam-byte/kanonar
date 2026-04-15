@@ -1,7 +1,7 @@
 
 // lib/tom/api.ts
 import { WorldState, AgentState, ActionOutcome, CharacterGoalId, SocialActionId } from '../../types';
-import { TomState, TomView, TomEmotionVector, TomRoleDistribution, TomGoalBeliefs } from './types';
+import { TomState, TomView, TomEmotionVector, TomRoleDistribution, TomGoalBeliefs } from './compat';
 import { DomainEvent } from '../../types';
 import { ContextualGoalScore } from '../context/v2/types';
 import { updateTomGoals, GoalObservation } from "./update.goals";

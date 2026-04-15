@@ -1,4 +1,7 @@
-
+/**
+ * @deprecated compat-only event unification layer for legacy UI.
+ * New consumers should use strict contracts from `lib/events/types.ts`.
+ */
 import {
   SocialEventEntity,
   PersonalEvent,
