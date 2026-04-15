@@ -62,6 +62,22 @@ const pct = (v: number) => `${(v * 100).toFixed(0)}%`;
 const f2 = (v: number) => v.toFixed(2);
 
 /**
+ * Безопасно скачивает JSON как файл.
+ * Используем единый helper для экспорта полной сессии Dilemma Lab.
+ */
+function downloadJson(payload: unknown, fileName: string): void {
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+/**
  * Минимально валидное world-состояние для pipeline runner.
  * Держим структуру явной, чтобы не ломать границы API model -> runner.
  */
@@ -758,6 +774,48 @@ export const DilemmaLabPage: React.FC = () => {
     ? spec.framing.outcomeDescriptions[lastRound.choices[game.players[0]]]?.[lastRound.choices[game.players[1]]]
     : null;
 
+  /**
+   * Экспортирует полностью одну игровую сессию:
+   * - конфиг запуска,
+   * - спецификацию дилеммы,
+   * - все раунды + pipeline traces/расчёты,
+   * - агрегированную аналитику.
+   *
+   * Это позволяет воспроизвести и оффлайн разбирать конкретную игру.
+   */
+  const downloadSession = useCallback(() => {
+    if (!game) return;
+    const exportedAt = new Date().toISOString();
+    const [id0, id1] = game.players;
+    const playerCharacters = allCharacters.filter((c) => c.entityId === id0 || c.entityId === id1);
+    const payload = {
+      schema: 'DilemmaLabSessionExportV1',
+      exportedAt,
+      config: {
+        mode,
+        narrative,
+        seed,
+        initialTrust,
+        selectedSpecId: spec.id,
+        selectedPlayers: game.players,
+        totalRoundsRequested: totalRounds,
+      },
+      spec,
+      game,
+      analysis,
+      /**
+       * Снимок персонажей-участников в момент экспорта:
+       * помогает сравнивать сессии между разными версиями sandbox/world.
+       */
+      participants: playerCharacters,
+    };
+    const safeSpec = spec.id.replace(/[^a-z0-9_-]/gi, '_');
+    const safeP0 = id0.replace(/[^a-z0-9_-]/gi, '_');
+    const safeP1 = id1.replace(/[^a-z0-9_-]/gi, '_');
+    const stamp = exportedAt.replace(/[:.]/g, '-');
+    downloadJson(payload, `dilemma-lab__${safeSpec}__${safeP0}__${safeP1}__${stamp}.json`);
+  }, [game, mode, narrative, seed, initialTrust, spec, totalRounds, analysis, allCharacters]);
+
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-5">
       <div>
@@ -910,8 +968,17 @@ export const DilemmaLabPage: React.FC = () => {
                       <div className="text-sm font-semibold text-canon-text">
                         {isGameOver(game) ? `Игра завершена · ${game.totalRounds} раундов` : `Round ${game.currentRound + 1} / ${game.totalRounds}`}
                       </div>
-                      <div className="text-xs text-canon-muted font-mono">
-                        {mode === 'pipeline' ? '🔧 Pipeline' : '✎ Manual'} · {spec.name}
+                      <div className="flex items-center gap-2">
+                        <div className="text-xs text-canon-muted font-mono">
+                          {mode === 'pipeline' ? '🔧 Pipeline' : '✎ Manual'} · {spec.name}
+                        </div>
+                        <button
+                          onClick={downloadSession}
+                          className="px-2.5 py-1 rounded-md bg-canon-card border border-canon-border text-[11px] text-canon-text hover:border-canon-accent/50 transition"
+                          title="Скачать полную сессию (1 игра, все расчёты)"
+                        >
+                          ⬇ Session JSON
+                        </button>
                       </div>
                     </div>
 
