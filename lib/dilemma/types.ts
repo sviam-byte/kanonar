@@ -275,9 +275,11 @@ export interface ScenarioTemplate {
 export interface ActionScore {
   actionId: string;
   U: number;
-  G: number; R: number; I: number; L: number; S: number; M: number; X: number;
+  G: number; R: number; I: number; L: number; S: number; M: number; O: number; X: number;
   probability: number;
   chosen: boolean;
+  expectedOtherActionId?: string;
+  expectedOtherProbability?: number;
 }
 
 export interface StateUpdate {

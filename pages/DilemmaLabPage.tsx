@@ -34,6 +34,7 @@ const AXIS_META: Record<string, { label: string; color: string; desc: string }> 
   L: { label: 'L', color: '#ffaa44', desc: 'Legitimacy — процедурно' },
   S: { label: 'S', color: '#ff79c6', desc: 'Safety — снижение угрозы' },
   M: { label: 'M', color: '#c9a0ff', desc: 'Mirror — как выгляжу' },
+  O: { label: 'O', color: '#7ee787', desc: 'Other — ожидаемый ответ партнёра' },
   X: { label: 'X', color: '#ff5c7a', desc: 'Cost — цена (вычитается)' },
 };
 
@@ -190,8 +191,8 @@ const V2TraceBlock: React.FC<{ round: number; game: V2GameState; scenario: Scena
 
         {chosen && (
           <div className="mt-1 bg-canon-bg/50 rounded-lg p-2 space-y-0.5">
-            <div className="text-[9px] text-canon-muted font-semibold mb-1">U({aLbl(chosen.actionId)}) = G+R+I+L+S+M−X</div>
-            {(['G', 'R', 'I', 'L', 'S', 'M'] as const).map(a => <AxisBar key={a} axis={a} value={(chosen as any)[a]} />)}
+            <div className="text-[9px] text-canon-muted font-semibold mb-1">U({aLbl(chosen.actionId)}) = G+R+I+L+S+M+O−X</div>
+            {(['G', 'R', 'I', 'L', 'S', 'M', 'O'] as const).map(a => <AxisBar key={a} axis={a} value={(chosen as any)[a]} />)}
             <AxisBar axis="X" value={-(chosen as any).X} />
           </div>
         )}
@@ -203,7 +204,7 @@ const V2TraceBlock: React.FC<{ round: number; game: V2GameState; scenario: Scena
               {sorted.map(s => (
                 <div key={s.actionId} className={`p-1.5 rounded ${s.chosen ? 'bg-canon-accent/5' : ''}`}>
                   <div className="text-[9px] font-semibold text-canon-muted mb-0.5">{aLbl(s.actionId)} {s.chosen ? '◀' : ''} U={f2(s.U)}</div>
-                  {(['G', 'R', 'I', 'L', 'S', 'M'] as const).map(a => <AxisBar key={a} axis={a} value={(s as any)[a]} />)}
+                  {(['G', 'R', 'I', 'L', 'S', 'M', 'O'] as const).map(a => <AxisBar key={a} axis={a} value={(s as any)[a]} />)}
                   <AxisBar axis="X" value={-(s as any).X} />
                 </div>
               ))}
@@ -237,6 +238,7 @@ const V2TraceBlock: React.FC<{ round: number; game: V2GameState; scenario: Scena
           <summary className="text-canon-muted cursor-pointer hover:text-canon-text">📉 update</summary>
           <div className="mt-1 pl-1 text-[9px] font-mono space-y-0.5">
             <div>vs: {aLbl(t.stateUpdate.againstActionId)} · {t.stateUpdate.outcomeTag}</div>
+            {chosen?.expectedOtherActionId && <div>ожидался ответ: {aLbl(chosen.expectedOtherActionId)} ({pct(chosen.expectedOtherProbability ?? 0)})</div>}
             <div>will: {t.stateUpdate.willDelta >= 0 ? '+' : ''}{f2(t.stateUpdate.willDelta)}</div>
             <div>burnout: {t.stateUpdate.burnoutDelta >= 0 ? '+' : ''}{f3(t.stateUpdate.burnoutDelta)}</div>
             <div>stress: {t.stateUpdate.stressDelta >= 0 ? '+' : ''}{t.stateUpdate.stressDelta}</div>

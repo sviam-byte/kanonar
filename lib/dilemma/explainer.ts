@@ -53,12 +53,12 @@ export function explainDecision(ctx: ExplainContext): string {
   return parts.join('. ') + '.';
 }
 
-type AxisName = 'G' | 'R' | 'I' | 'L' | 'S' | 'M' | 'X';
+type AxisName = 'G' | 'R' | 'I' | 'L' | 'S' | 'M' | 'O' | 'X';
 
 function dominantAxis(score: ActionScore): AxisName | null {
   const axes: [AxisName, number][] = [
     ['G', score.G], ['R', score.R], ['I', score.I], ['L', score.L],
-    ['S', score.S], ['M', score.M], ['X', -score.X],
+    ['S', score.S], ['M', score.M], ['O', score.O], ['X', -score.X],
   ];
   axes.sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]));
   if (Math.abs(axes[0][1]) < 0.05) return null;
@@ -85,6 +85,8 @@ function dominantExplanation(axis: AxisName, agent: CompiledAgent, dyad: Compile
         : 'потому что снижение угрозы важнее остального';
     case 'M':
       return `потому что «как меня увидят» (mirror=${dyad.secondOrder.mirrorIndex.toFixed(2)}) перевешивает`;
+    case 'O':
+      return `потому что ожидаемый ответ ${dyad.toId} на это действие оказался самым выгодным`;
     case 'X':
       return 'потому что ожидаемая цена других вариантов слишком высока';
   }
