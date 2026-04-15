@@ -137,6 +137,11 @@ export interface CompiledAgent {
   roleRelations: { otherId: string; role: string }[];
   clearance: number;
   confidence: number;
+  /**
+   * Subjective scenario severity (0..1) computed from profile × scenario class.
+   * Used to sharpen sampling temperature and emphasize dominant utility axes.
+   */
+  perceivedStakes: number;
 }
 
 export interface UtilityWeights {
@@ -274,6 +279,8 @@ export interface V2RunConfig {
   totalRounds: number;
   world: WorldState;
   seed?: number;
+  /** Optional override for scenario institutional pressure (0..1). */
+  institutionalPressure?: number;
 }
 
 export interface V2RunResult {

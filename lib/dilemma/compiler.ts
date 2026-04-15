@@ -6,7 +6,7 @@
 // This keeps v2 dilemma scoring deterministic and auditable.
 
 import type { AgentState, V42Metrics, Relationship, TomEntry, TomBeliefTraits } from '../../types';
-import type { CompiledAgent, CompiledDyad, UtilityWeights } from './types';
+import type { CompiledAgent, CompiledDyad, UtilityWeights, ScenarioTemplate } from './types';
 import { flattenObject } from '../param-utils';
 import { calculateLatentsAndQuickStates } from '../metrics/latentsQuick';
 import { calculateV42Metrics, normalizeParamsForV42 } from '../character-metrics-v4.2';
@@ -127,7 +127,49 @@ export function compileAgent(agent: AgentState): CompiledAgent {
     roleRelations: roleRelations.map((r) => ({ otherId: r.other_id, role: r.role })),
     clearance,
     confidence,
+    perceivedStakes: 0.5,
   };
+}
+
+const CLASS_RESONANCE: Record<string, { axes: string[]; goalKeywords: string[] }> = {
+  trust: { axes: ['A_Knowledge_Truth', 'A_Transparency_Secrecy', 'C_betrayal_cost'], goalKeywords: ['truth', 'trust', 'reveal'] },
+  protection: { axes: ['A_Safety_Care', 'C_dominance_empathy'], goalKeywords: ['protect', 'save', 'guard', 'care'] },
+  authority: { axes: ['A_Power_Sovereignty', 'A_Legitimacy_Procedure', 'E_KB_civic'], goalKeywords: ['control', 'order', 'command'] },
+  loyalty: { axes: ['C_coalition_loyalty', 'A_Tradition_Continuity'], goalKeywords: ['serve', 'loyal', 'kingdom'] },
+  sacrifice: { axes: ['A_Safety_Care', 'C_dominance_empathy', 'G_Self_concept_strength'], goalKeywords: ['protect', 'sacrifice', 'save'] },
+  bargain: { axes: ['A_Liberty_Autonomy', 'B_exploration_rate', 'C_reciprocity_index'], goalKeywords: ['deal', 'trade', 'delivery'] },
+  opacity: { axes: ['A_Transparency_Secrecy', 'C_reputation_sensitivity'], goalKeywords: ['hide', 'disappear', 'anonymous'] },
+  mutiny: { axes: ['A_Power_Sovereignty', 'A_Liberty_Autonomy'], goalKeywords: ['seize', 'rebel', 'overthrow'] },
+  care: { axes: ['A_Safety_Care', 'C_dominance_empathy', 'A_Justice_Fairness'], goalKeywords: ['protect', 'care', 'help'] },
+};
+
+/**
+ * Computes subjective stakes perceived by this agent for a given scenario class.
+ * This preserves traceability while allowing character-specific salience.
+ */
+export function computePerceivedStakes(agent: CompiledAgent, scenario: ScenarioTemplate): number {
+  const classInfo = CLASS_RESONANCE[scenario.dilemmaClass];
+  if (!classInfo) return 0.5;
+
+  const axisResonance = classInfo.axes.length > 0
+    ? classInfo.axes.reduce((sum, axis) => sum + (agent.axes[axis] ?? 0.5), 0) / classInfo.axes.length
+    : 0.5;
+
+  let goalResonance = 0;
+  const goalKeys = Object.keys(agent.cognitive.wGoals);
+  const goalWeights = Object.values(agent.cognitive.wGoals);
+  for (let i = 0; i < goalKeys.length; i++) {
+    const key = goalKeys[i].toLowerCase();
+    for (const kw of classInfo.goalKeywords) {
+      if (key.includes(kw)) {
+        goalResonance = Math.max(goalResonance, goalWeights[i]);
+        break;
+      }
+    }
+  }
+
+  const objStakes = (scenario.stakes.personal + scenario.stakes.relational + scenario.stakes.institutional + scenario.stakes.physical) / 4;
+  return clamp01(0.4 * axisResonance + 0.3 * goalResonance + 0.3 * objStakes);
 }
 
 function deriveWeights(

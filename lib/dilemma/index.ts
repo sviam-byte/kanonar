@@ -7,7 +7,7 @@ export type { DilemmaRunConfig, DilemmaRunResult } from './runner';
 
 // v2
 export { runDilemmaV2 } from './runner';
-export { compileAgent, compileDyad } from './compiler';
+export { compileAgent, compileDyad, computePerceivedStakes } from './compiler';
 export { getScenario, allScenarios, SCENARIO_CATALOG } from './scenarios';
 export { explainDecision, summarizeGame } from './explainer';
 export type {

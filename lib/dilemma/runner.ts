@@ -16,7 +16,7 @@ import { createGame, advanceGame, isGameOver } from './engine';
 import { getSpec } from './catalog';
 import { analyzeGame } from './analysis';
 import { clamp01 } from '../util/math';
-import { compileAgent, compileDyad } from './compiler';
+import { compileAgent, compileDyad, computePerceivedStakes } from './compiler';
 import { getScenario } from './scenarios';
 import { explainDecision, summarizeGame } from './explainer';
 
@@ -449,10 +449,13 @@ export function runDilemmaV2(config: V2RunConfig): V2RunResult {
       const otherId = playerId === p0Id ? p1Id : p0Id;
       const compiled = compileAgent(agents[playerId]);
       const compiledOther = compileAgent(agents[otherId]);
+      compiled.perceivedStakes = computePerceivedStakes(compiled, scenario);
+      compiled.effectiveTemperature *= (1 - 0.4 * compiled.perceivedStakes);
       const dyad = compileDyad(compiled, compiledOther, agents[playerId], agents[otherId]);
 
       const { available, filteredOut } = filterActions(scenario, compiled);
-      const scores = scoreActions(available, scenario, compiled, dyad, round, config.totalRounds);
+      const instPressure = config.institutionalPressure ?? scenario.institutionalPressure;
+      const scores = scoreActions(available, scenario, compiled, dyad, round, config.totalRounds, instPressure);
       const chosenId = resolveAction(scores, compiled.effectiveTemperature, rngs[playerId]);
       choices[playerId] = chosenId;
 
@@ -548,20 +551,24 @@ function scoreActions(
   dyad: CompiledDyad,
   round: number,
   totalRounds: number,
+  instPressure: number,
 ): ActionScore[] {
   const w = agent.weights;
   const goalSalience = computeGoalSalience(agent, dyad, scenario);
   const remaining = totalRounds - round;
   const shadowRatio = totalRounds > 1 ? remaining / totalRounds : 1;
   const shadow = Math.pow(shadowRatio, 1.5) * (1 - (agent.axes.B_discount_rate ?? 0.5) * 0.5);
+  const stakesAmp = 1 + 0.5 * agent.perceivedStakes;
 
   return actions.map((action) => {
     const p = action.profile;
-    const G = w.wG * (p.goalFit ?? 0) * goalSalience;
+    const baseG = (p.goalFit ?? 0) * goalSalience;
+    const resonance = computeGoalActionResonance(agent, action);
+    const G = w.wG * (baseG + resonance) * stakesAmp;
     const trustComposite = 0.4 * dyad.rel.trust + 0.3 * dyad.rel.bond - 0.3 * dyad.rel.conflict;
     const R = w.wR * (p.relationalFit ?? 0) * (0.5 + 0.5 * trustComposite);
     const I = w.wI * (p.identityFit ?? 0);
-    const L = w.wL * (p.legitimacyFit ?? 0) * (0.5 + 0.5 * scenario.institutionalPressure);
+    const L = w.wL * (p.legitimacyFit ?? 0) * (0.5 + 0.5 * instPressure);
     const safetyBoost = 1 + agent.state.burnoutRisk + (agent.acute.stress / 100) * 0.5;
     const S = w.wS * (p.safetyFit ?? 0) * safetyBoost;
     const M = w.wM * (p.mirrorFit ?? 0) * (0.5 + 0.5 * dyad.secondOrder.mirrorIndex);
@@ -570,6 +577,37 @@ function scoreActions(
 
     return { actionId: action.id, U, G, R, I, L, S, M, X, probability: 0, chosen: false };
   });
+}
+
+/**
+ * Adds direct semantic resonance between named goals and action tags.
+ * Example: protect_* goals bias actions tagged as protect/support.
+ */
+function computeGoalActionResonance(agent: CompiledAgent, action: ActionTemplate): number {
+  if (action.socialTags.length === 0) return 0;
+  const goals = agent.cognitive.wGoals;
+  if (Object.keys(goals).length === 0) return 0;
+
+  let maxResonance = 0;
+  for (const [goalKey, goalWeight] of Object.entries(goals)) {
+    const gk = goalKey.toLowerCase();
+    for (const tag of action.socialTags) {
+      const tg = tag.toLowerCase();
+      if (gk.includes(tg) || tg.includes(gk)) {
+        maxResonance = Math.max(maxResonance, goalWeight * 0.5);
+      }
+    }
+  }
+
+  const fallback = agent.cognitive.fallbackPolicy.toLowerCase();
+  for (const tag of action.socialTags) {
+    const tg = tag.toLowerCase();
+    if (fallback.includes(tg) || tg.includes(fallback)) {
+      maxResonance = Math.max(maxResonance, 0.25);
+    }
+  }
+
+  return maxResonance;
 }
 
 function computeGoalSalience(
