@@ -11,8 +11,9 @@ function action(
   socialTags: string[],
   profile: ActionTemplate['profile'],
   requires?: ActionTemplate['requires'],
+  payoffVs?: ActionTemplate['payoffVs'],
 ): ActionTemplate {
-  return { id, label, description, socialTags, profile, requires };
+  return { id, label, description, socialTags, profile, requires, payoffVs };
 }
 
 function scenario(
@@ -37,10 +38,10 @@ export const TRUST_INTERROGATION = scenario(
   'stay_silent',
   0.3,
   [
-    action('stay_silent', 'Молчать', 'Не выдавать партнёра.', ['support'], { goalFit: -0.2, relationalFit: 0.8, identityFit: 0.6, legitimacyFit: 0.3, safetyFit: -0.4, mirrorFit: 0.7, expectedCost: 0.5 }),
-    action('give_testimony', 'Дать показания', 'Сдать напарника ради самосохранения.', ['betrayal'], { goalFit: 0.3, relationalFit: -0.9, identityFit: -0.3, legitimacyFit: -0.2, safetyFit: 0.7, mirrorFit: -0.8, expectedCost: 0.2 }),
-    action('partial_truth', 'Частичная правда', 'Дать безопасную часть информации.', ['neutral'], { goalFit: 0.1, relationalFit: 0.2, identityFit: 0, legitimacyFit: -0.1, safetyFit: 0.3, mirrorFit: -0.1, expectedCost: 0.4 }, { minTrait: { axis: 'E_Skill_opsec_hacking', threshold: 0.5 } }),
-    action('disinform', 'Дезинформация', 'Запутать следствие ложной версией.', ['deceive'], { goalFit: 0.4, relationalFit: 0.3, identityFit: -0.2, legitimacyFit: -0.6, safetyFit: 0.2, mirrorFit: 0.0, expectedCost: 0.6 }),
+    action('stay_silent', 'Молчать', 'Не выдавать партнёра.', ['support'], { goalFit: -0.2, relationalFit: 0.8, identityFit: 0.6, legitimacyFit: 0.3, safetyFit: -0.4, mirrorFit: 0.7, expectedCost: 0.5 }, undefined, { stay_silent: 0.9, give_testimony: -1.0, partial_truth: 0.2, disinform: 0.4 }),
+    action('give_testimony', 'Дать показания', 'Сдать напарника ради самосохранения.', ['betrayal'], { goalFit: 0.3, relationalFit: -0.9, identityFit: -0.3, legitimacyFit: -0.2, safetyFit: 0.7, mirrorFit: -0.8, expectedCost: 0.2 }, undefined, { stay_silent: 1.0, give_testimony: -0.2, partial_truth: 0.5, disinform: 0.3 }),
+    action('partial_truth', 'Частичная правда', 'Дать безопасную часть информации.', ['neutral'], { goalFit: 0.1, relationalFit: 0.2, identityFit: 0, legitimacyFit: -0.1, safetyFit: 0.3, mirrorFit: -0.1, expectedCost: 0.4 }, { minTrait: { axis: 'E_Skill_opsec_hacking', threshold: 0.5 } }, { stay_silent: 0.3, give_testimony: -0.6, partial_truth: 0.4, disinform: -0.1 }),
+    action('disinform', 'Дезинформация', 'Запутать следствие ложной версией.', ['deceive'], { goalFit: 0.4, relationalFit: 0.3, identityFit: -0.2, legitimacyFit: -0.6, safetyFit: 0.2, mirrorFit: 0.0, expectedCost: 0.6 }, undefined, { stay_silent: 0.4, give_testimony: -0.4, partial_truth: 0.1, disinform: 0.2 }),
   ],
   { personal: 0.8, relational: 0.7, institutional: 0.3, physical: 0.4 },
   { actionsVisible: false, audiencePresent: false, consequencesDeferred: true },
@@ -87,9 +88,9 @@ export const LOYALTY_CONFLICT = scenario(
   'protect_individual',
   1,
   [
-    action('comply_institution', 'Выдать', 'Подчиниться институции.', ['betrayal'], { goalFit: 0.2, relationalFit: -0.9, identityFit: -0.5, legitimacyFit: 0.8, safetyFit: 0.5, mirrorFit: -0.7, expectedCost: 0.3 }),
-    action('protect_individual', 'Защитить', 'Отказать институции, сохранить верность человеку.', ['support', 'protect'], { goalFit: 0.5, relationalFit: 0.9, identityFit: 0.6, legitimacyFit: -0.8, safetyFit: -0.4, mirrorFit: 0.6, expectedCost: 0.5 }),
-    action('negotiate_both', 'Договориться', 'Искать компромисс.', ['neutral'], { goalFit: 0.4, relationalFit: 0.4, identityFit: 0.2, legitimacyFit: 0.2, safetyFit: 0.1, mirrorFit: 0.3, expectedCost: 0.6 }, { minTrait: { axis: 'E_Skill_diplomacy_negotiation', threshold: 0.6 } }),
+    action('comply_institution', 'Выдать', 'Подчиниться институции.', ['betrayal'], { goalFit: 0.2, relationalFit: -0.9, identityFit: -0.5, legitimacyFit: 0.8, safetyFit: 0.5, mirrorFit: -0.7, expectedCost: 0.3 }, undefined, { comply_institution: -0.2, protect_individual: 1.0, negotiate_both: 0.2 }),
+    action('protect_individual', 'Защитить', 'Отказать институции, сохранить верность человеку.', ['support', 'protect'], { goalFit: 0.5, relationalFit: 0.9, identityFit: 0.6, legitimacyFit: -0.8, safetyFit: -0.4, mirrorFit: 0.6, expectedCost: 0.5 }, undefined, { comply_institution: -1.0, protect_individual: 0.8, negotiate_both: 0.4 }),
+    action('negotiate_both', 'Договориться', 'Искать компромисс.', ['neutral'], { goalFit: 0.4, relationalFit: 0.4, identityFit: 0.2, legitimacyFit: 0.2, safetyFit: 0.1, mirrorFit: 0.3, expectedCost: 0.6 }, { minTrait: { axis: 'E_Skill_diplomacy_negotiation', threshold: 0.6 } }, { comply_institution: -0.2, protect_individual: 0.4, negotiate_both: 0.5 }),
   ],
   { personal: 0.6, relational: 0.9, institutional: 0.9, physical: 0.3 },
   { actionsVisible: true, audiencePresent: true, consequencesDeferred: false },
@@ -103,9 +104,9 @@ export const OPACITY_DEAL = scenario(
   'reveal_partial',
   0.2,
   [
-    action('reveal_full', 'Раскрыться полностью', 'Отдать всю информацию.', ['support'], { goalFit: 0.3, relationalFit: 0.6, identityFit: 0.2, legitimacyFit: 0, safetyFit: -0.7, mirrorFit: 0.5, expectedCost: 0.3 }),
-    action('reveal_partial', 'Частичная сделка', 'Обменять только часть.', ['neutral'], { goalFit: 0.5, relationalFit: 0.3, identityFit: 0, legitimacyFit: 0, safetyFit: 0.2, mirrorFit: 0.2, expectedCost: 0.3 }),
-    action('stay_opaque', 'Не раскрываться', 'Получать данные, не раскрываясь.', ['neutral'], { goalFit: 0.2, relationalFit: -0.3, identityFit: 0.1, legitimacyFit: 0, safetyFit: 0.5, mirrorFit: -0.3, expectedCost: 0.1 }),
+    action('reveal_full', 'Раскрыться полностью', 'Отдать всю информацию.', ['support'], { goalFit: 0.3, relationalFit: 0.6, identityFit: 0.2, legitimacyFit: 0, safetyFit: -0.7, mirrorFit: 0.5, expectedCost: 0.3 }, undefined, { reveal_full: 0.9, reveal_partial: 0.3, stay_opaque: -0.8 }),
+    action('reveal_partial', 'Частичная сделка', 'Обменять только часть.', ['neutral'], { goalFit: 0.5, relationalFit: 0.3, identityFit: 0, legitimacyFit: 0, safetyFit: 0.2, mirrorFit: 0.2, expectedCost: 0.3 }, undefined, { reveal_full: 0.6, reveal_partial: 0.5, stay_opaque: -0.4 }),
+    action('stay_opaque', 'Не раскрываться', 'Получать данные, не раскрываясь.', ['neutral'], { goalFit: 0.2, relationalFit: -0.3, identityFit: 0.1, legitimacyFit: 0, safetyFit: 0.5, mirrorFit: -0.3, expectedCost: 0.1 }, undefined, { reveal_full: 0.8, reveal_partial: 0.2, stay_opaque: -0.2 }),
   ],
   { personal: 0.5, relational: 0.3, institutional: 0.1, physical: 0.2 },
   { actionsVisible: false, audiencePresent: false, consequencesDeferred: true },
@@ -151,9 +152,9 @@ export const BARGAIN_RESOURCE = scenario(
   'share_fair',
   0.3,
   [
-    action('share_fair', 'Честный раздел', 'Разделить справедливо.', ['support'], { goalFit: 0.4, relationalFit: 0.6, identityFit: 0.3, legitimacyFit: 0.5, safetyFit: 0.0, mirrorFit: 0.5, expectedCost: 0.2 }),
-    action('take_all', 'Забрать всё', 'Максимизировать личную выгоду.', ['harm'], { goalFit: 0.6, relationalFit: -0.8, identityFit: -0.2, legitimacyFit: -0.6, safetyFit: 0.3, mirrorFit: -0.7, expectedCost: 0.1 }),
-    action('offer_more', 'Отдать больше', 'Показать добрую волю.', ['support'], { goalFit: 0.1, relationalFit: 0.8, identityFit: 0.4, legitimacyFit: 0.2, safetyFit: -0.2, mirrorFit: 0.8, expectedCost: 0.3 }),
+    action('share_fair', 'Честный раздел', 'Разделить справедливо.', ['support'], { goalFit: 0.4, relationalFit: 0.6, identityFit: 0.3, legitimacyFit: 0.5, safetyFit: 0.0, mirrorFit: 0.5, expectedCost: 0.2 }, undefined, { share_fair: 0.8, take_all: -0.9, offer_more: 0.6 }),
+    action('take_all', 'Забрать всё', 'Максимизировать личную выгоду.', ['harm'], { goalFit: 0.6, relationalFit: -0.8, identityFit: -0.2, legitimacyFit: -0.6, safetyFit: 0.3, mirrorFit: -0.7, expectedCost: 0.1 }, undefined, { share_fair: 1.0, take_all: -0.3, offer_more: 1.1 }),
+    action('offer_more', 'Отдать больше', 'Показать добрую волю.', ['support'], { goalFit: 0.1, relationalFit: 0.8, identityFit: 0.4, legitimacyFit: 0.2, safetyFit: -0.2, mirrorFit: 0.8, expectedCost: 0.3 }, undefined, { share_fair: 0.7, take_all: -1.1, offer_more: 0.9 }),
   ],
   { personal: 0.6, relational: 0.5, institutional: 0.2, physical: 0.1 },
   { actionsVisible: false, audiencePresent: false, consequencesDeferred: false },

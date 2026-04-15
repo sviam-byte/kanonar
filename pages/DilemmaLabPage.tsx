@@ -198,11 +198,14 @@ const V2TraceBlock: React.FC<{ round: number; game: V2GameState; scenario: Scena
         <details className="text-[10px]">
           <summary className="text-canon-muted cursor-pointer hover:text-canon-text">📉 update</summary>
           <div className="mt-1 pl-1 text-[9px] font-mono space-y-0.5">
+            <div>vs: {aLbl(t.stateUpdate.againstActionId)} · {t.stateUpdate.outcomeTag}</div>
             <div>will: {t.stateUpdate.willDelta >= 0 ? '+' : ''}{f2(t.stateUpdate.willDelta)}</div>
-            <div>burnout: +{f3(t.stateUpdate.burnoutDelta)}</div>
+            <div>burnout: {t.stateUpdate.burnoutDelta >= 0 ? '+' : ''}{f3(t.stateUpdate.burnoutDelta)}</div>
             <div>stress: {t.stateUpdate.stressDelta >= 0 ? '+' : ''}{t.stateUpdate.stressDelta}</div>
             <div>Δtrust: {t.stateUpdate.trustDelta >= 0 ? '+' : ''}{f2(t.stateUpdate.trustDelta)}</div>
+            <div>Δbond: {t.stateUpdate.bondDelta >= 0 ? '+' : ''}{f2(t.stateUpdate.bondDelta)}</div>
             <div>Δconflict: {t.stateUpdate.conflictDelta >= 0 ? '+' : ''}{f2(t.stateUpdate.conflictDelta)}</div>
+            <div>Δfear: {t.stateUpdate.fearDelta >= 0 ? '+' : ''}{f2(t.stateUpdate.fearDelta)}</div>
           </div>
         </details>
       </div>

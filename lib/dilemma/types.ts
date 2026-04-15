@@ -230,6 +230,8 @@ export interface ActionScore {
 
 export interface StateUpdate {
   agentId: string;
+  againstActionId: string;
+  outcomeTag: string;
   willDelta: number;
   burnoutDelta: number;
   stressDelta: number;
