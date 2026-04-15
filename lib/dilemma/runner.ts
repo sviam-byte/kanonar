@@ -498,6 +498,8 @@ export function runDilemmaV2(config: V2RunConfig): V2RunResult {
       otherId: string;
       compiled: CompiledAgent;
       dyad: CompiledDyad;
+      compiledOther: CompiledAgent;
+      reverseDyad: CompiledDyad;
       availableActions: string[];
       filteredOut: string[];
       scores: ActionScore[];
@@ -513,10 +515,11 @@ export function runDilemmaV2(config: V2RunConfig): V2RunResult {
       compiled.perceivedStakes = computePerceivedStakes(compiled, scenario);
       compiled.effectiveTemperature *= (1 - 0.4 * compiled.perceivedStakes);
       const dyad = compileDyad(compiled, compiledOther, agents[playerId], agents[otherId]);
+      const reverseDyad = compileDyad(compiledOther, compiled, agents[otherId], agents[playerId]);
 
-      const { available, filteredOut } = filterActions(scenario, compiled);
+      const { available, filteredOut } = filterActions(scenario, compiled, compiledOther, dyad);
       const instPressure = config.institutionalPressure ?? scenario.institutionalPressure;
-      const scores = scoreActions(available, scenario, compiled, dyad, round, config.totalRounds, instPressure);
+      const scores = scoreActions(available, scenario, compiled, compiledOther, dyad, reverseDyad, round, config.totalRounds, instPressure);
       const chosenId = resolveAction(scores, compiled.effectiveTemperature, rngs[playerId]);
       choices[playerId] = chosenId;
 
@@ -533,6 +536,8 @@ export function runDilemmaV2(config: V2RunConfig): V2RunResult {
         otherId,
         compiled,
         dyad,
+        compiledOther,
+        reverseDyad,
         availableActions: available.map((a) => a.id),
         filteredOut,
         scores,
@@ -583,8 +588,11 @@ export function runDilemmaV2(config: V2RunConfig): V2RunResult {
 function filterActions(
   scenario: ScenarioTemplate,
   agent: CompiledAgent,
+  other: CompiledAgent,
+  dyad: CompiledDyad,
 ): { available: ActionTemplate[]; filteredOut: string[] } {
-  const available: ActionTemplate[] = [];
+  const structuralAvailable: ActionTemplate[] = [];
+  const gatedAvailable: ActionTemplate[] = [];
   const filteredOut: string[] = [];
 
   for (const action of scenario.actionPool) {
@@ -592,10 +600,17 @@ function filterActions(
       filteredOut.push(action.id);
       continue;
     }
-    available.push(action);
+    structuralAvailable.push(action);
+    if (shouldFilterPairAction(action, agent, other, dyad, scenario)) {
+      filteredOut.push(action.id);
+      continue;
+    }
+    gatedAvailable.push(action);
   }
 
-  return available.length < 2 ? { available: scenario.actionPool, filteredOut: [] } : { available, filteredOut };
+  if (gatedAvailable.length >= 2) return { available: gatedAvailable, filteredOut };
+  if (structuralAvailable.length >= 2) return { available: structuralAvailable, filteredOut: [] };
+  return { available: scenario.actionPool, filteredOut: [] };
 }
 
 function meetsRequirements(action: ActionTemplate, agent: CompiledAgent): boolean {
@@ -618,15 +633,145 @@ function meetsRequirements(action: ActionTemplate, agent: CompiledAgent): boolea
   return true;
 }
 
+type PartnerSignature = {
+  vulnerability: number;
+  threat: number;
+  unpredictability: number;
+  moralWeight: number;
+  dependence: number;
+};
+
+type OpponentEstimate = {
+  probabilities: Record<string, number>;
+  bestActionId: string;
+  bestProbability: number;
+};
+
+function buildPartnerSignature(other: CompiledAgent, dyad: CompiledDyad): PartnerSignature {
+  // Counterpart "signature" is a compact contextual profile used by both
+  // action gating and utility shaping so that both systems stay aligned.
+  const vulnerability = clamp01(
+    0.30 * (1 - other.state.will / 100)
+    + 0.25 * other.state.burnoutRisk
+    + 0.20 * (other.acute.stress / 100)
+    + 0.15 * (other.acute.fatigue / 100)
+    + 0.10 * Math.max(0, -dyad.powerAsymmetry),
+  );
+
+  const threat = clamp01(
+    0.45 * (other.axes.A_Power_Sovereignty ?? 0.5)
+    + 0.20 * clamp01(other.clearance / 5)
+    + 0.20 * (other.acute.arousal ?? 0.5)
+    + 0.15 * (other.axes.C_reputation_sensitivity ?? 0.5),
+  );
+
+  const unpredictability = clamp01(
+    0.45 * (other.axes.B_exploration_rate ?? 0.5)
+    + 0.25 * (1 - (other.axes.B_goal_coherence ?? 0.5))
+    + 0.15 * (1 - dyad.secondOrder.perceivedAlign)
+    + 0.15 * (1 - dyad.rel.trust),
+  );
+
+  const moralWeight = clamp01(
+    0.30 * dyad.rel.bond
+    + 0.25 * dyad.rel.respect
+    + 0.20 * dyad.rel.trust
+    + 0.15 * dyad.sharedHistoryDensity
+    + 0.10 * (other.axes.A_Safety_Care ?? 0.5),
+  );
+
+  const dependence = clamp01(
+    0.45 * dyad.rel.bond
+    + 0.30 * dyad.sharedHistoryDensity
+    + 0.15 * (1 - (other.axes.A_Liberty_Autonomy ?? 0.5))
+    + 0.10 * (other.state.loyalty / 100),
+  );
+
+  return { vulnerability, threat, unpredictability, moralWeight, dependence };
+}
+
+function shouldFilterPairAction(
+  action: ActionTemplate,
+  agent: CompiledAgent,
+  other: CompiledAgent,
+  dyad: CompiledDyad,
+  scenario: ScenarioTemplate,
+): boolean {
+  // Hard pair-level gates remove socially implausible options before sampling.
+  // A fallback in `filterActions` restores structural options if gating becomes too strict.
+  const tags = new Set(action.socialTags.map((t) => t.toLowerCase()));
+  const isSupportive = tags.has('support') || tags.has('help') || tags.has('protect') || action.id === scenario.cooperativeActionId;
+  const isHarmful = tags.has('harm') || tags.has('punish') || action.id === 'rupture';
+  const isBetrayal = tags.has('deceive') || tags.has('betrayal') || tags.has('lie') || action.id === 'defect' || action.id === 'take_all';
+  const sig = buildPartnerSignature(other, dyad);
+  const betrayalCost = agent.axes.C_betrayal_cost ?? 0.5;
+  const reciprocity = agent.axes.C_reciprocity_index ?? 0.5;
+  const care = agent.axes.A_Safety_Care ?? 0.5;
+  const power = agent.axes.A_Power_Sovereignty ?? 0.5;
+
+  if (isBetrayal && dyad.rel.trust > 0.72 && dyad.rel.bond > 0.66 && (betrayalCost > 0.58 || sig.moralWeight > 0.72)) {
+    return true;
+  }
+  if ((isHarmful || action.id === 'rupture') && dyad.rel.fear > 0.40 && dyad.powerAsymmetry < -0.15 && sig.threat > 0.70 && power < 0.75) {
+    return true;
+  }
+  if (tags.has('deceive') && dyad.rel.trust > 0.68 && sig.unpredictability < 0.28 && betrayalCost > 0.55) {
+    return true;
+  }
+  if (isSupportive && dyad.rel.conflict > 0.88 && dyad.rel.trust < 0.10 && reciprocity < 0.45 && care < 0.55) {
+    return true;
+  }
+
+  return false;
+}
+
 function scoreActions(
   actions: ActionTemplate[],
   scenario: ScenarioTemplate,
   agent: CompiledAgent,
+  other: CompiledAgent,
   dyad: CompiledDyad,
+  reverseDyad: CompiledDyad,
   round: number,
   totalRounds: number,
   instPressure: number,
 ): ActionScore[] {
+  const oppEstimate = estimateOpponentResponse(scenario, agent, other, dyad, reverseDyad, round, totalRounds, instPressure);
+
+  return actions.map((action) => {
+    const base = computeActionBaseTerms(action, scenario, agent, other, dyad, round, totalRounds, instPressure);
+    const O = computeExpectedResponseUtility(action, scenario, agent, other, dyad, reverseDyad, oppEstimate);
+    const U = base.G + base.R + base.I + base.L + base.S + base.M + O - base.X;
+
+    return {
+      actionId: action.id,
+      U,
+      G: base.G,
+      R: base.R,
+      I: base.I,
+      L: base.L,
+      S: base.S,
+      M: base.M,
+      O,
+      X: base.X,
+      probability: 0,
+      chosen: false,
+      expectedOtherActionId: oppEstimate.bestActionId,
+      expectedOtherProbability: oppEstimate.bestProbability,
+    };
+  });
+}
+
+function computeActionBaseTerms(
+  action: ActionTemplate,
+  scenario: ScenarioTemplate,
+  agent: CompiledAgent,
+  other: CompiledAgent,
+  dyad: CompiledDyad,
+  round: number,
+  totalRounds: number,
+  instPressure: number,
+): { G: number; R: number; I: number; L: number; S: number; M: number; X: number } {
   const w = agent.weights;
   const goalSalience = computeGoalSalience(agent, dyad, scenario);
   const remaining = totalRounds - round;
@@ -634,38 +779,131 @@ function scoreActions(
   const shadow = Math.pow(shadowRatio, 1.5) * (1 - (agent.axes.B_discount_rate ?? 0.5) * 0.5);
   const stakesAmp = 1 + 0.5 * agent.perceivedStakes;
 
-  return actions.map((action) => {
-    const p = reweightActionProfile(action, agent, dyad, scenario);
-    const baseG = (p.goalFit ?? 0) * goalSalience;
-    const resonance = computeGoalActionResonance(agent, action);
-    const G = w.wG * (baseG + resonance) * stakesAmp;
-    const trustComposite = clamp01(
-      0.30 * dyad.rel.trust
-      + 0.20 * dyad.rel.bond
-      + 0.15 * dyad.rel.align
-      + 0.10 * dyad.rel.respect
-      - 0.20 * dyad.rel.conflict
-      - 0.15 * dyad.rel.fear,
-    );
-    const mirrorComposite = clamp01(
-      0.35 * dyad.secondOrder.perceivedTrust
-      + 0.35 * dyad.secondOrder.perceivedAlign
-      + 0.15 * (1 - Math.abs(dyad.secondOrder.perceivedDominance - 0.5) * 2)
-      + 0.15 * dyad.secondOrder.mirrorIndex,
-    );
-    const historyAmp = 0.7 + 0.3 * dyad.sharedHistoryDensity;
-    const powerPenalty = 1 - 0.2 * Math.max(0, -dyad.powerAsymmetry);
-    const R = w.wR * (p.relationalFit ?? 0) * (0.45 + 0.55 * trustComposite) * historyAmp;
-    const I = w.wI * (p.identityFit ?? 0);
-    const L = w.wL * (p.legitimacyFit ?? 0) * (0.5 + 0.5 * instPressure);
-    const safetyBoost = 1 + agent.state.burnoutRisk + (agent.acute.stress / 100) * 0.5;
-    const S = w.wS * (p.safetyFit ?? 0) * safetyBoost * powerPenalty;
-    const M = w.wM * (p.mirrorFit ?? 0) * (0.4 + 0.6 * mirrorComposite);
-    const X = w.wX * (p.expectedCost ?? 0) * shadow;
-    const U = G + R + I + L + S + M - X;
+  const p = reweightActionProfile(action, agent, other, dyad, scenario);
+  const baseG = (p.goalFit ?? 0) * goalSalience;
+  const resonance = computeGoalActionResonance(agent, action);
+  const G = w.wG * (baseG + resonance) * stakesAmp;
+  const trustComposite = clamp01(
+    0.30 * dyad.rel.trust
+    + 0.20 * dyad.rel.bond
+    + 0.15 * dyad.rel.align
+    + 0.10 * dyad.rel.respect
+    - 0.20 * dyad.rel.conflict
+    - 0.15 * dyad.rel.fear,
+  );
+  const mirrorComposite = clamp01(
+    0.35 * dyad.secondOrder.perceivedTrust
+    + 0.35 * dyad.secondOrder.perceivedAlign
+    + 0.15 * (1 - Math.abs(dyad.secondOrder.perceivedDominance - 0.5) * 2)
+    + 0.15 * dyad.secondOrder.mirrorIndex,
+  );
+  const historyAmp = 0.7 + 0.3 * dyad.sharedHistoryDensity;
+  const powerPenalty = 1 - 0.2 * Math.max(0, -dyad.powerAsymmetry);
+  const partnerSig = buildPartnerSignature(other, dyad);
+  const R = w.wR * (p.relationalFit ?? 0) * (0.45 + 0.55 * trustComposite) * historyAmp * (0.85 + 0.15 * partnerSig.moralWeight);
+  const I = w.wI * (p.identityFit ?? 0);
+  const L = w.wL * (p.legitimacyFit ?? 0) * (0.5 + 0.5 * instPressure);
+  const safetyBoost = 1 + agent.state.burnoutRisk + (agent.acute.stress / 100) * 0.5;
+  const S = w.wS * (p.safetyFit ?? 0) * safetyBoost * powerPenalty;
+  const M = w.wM * (p.mirrorFit ?? 0) * (0.4 + 0.6 * mirrorComposite);
+  const X = w.wX * (p.expectedCost ?? 0) * shadow;
+  return { G, R, I, L, S, M, X };
+}
 
-    return { actionId: action.id, U, G, R, I, L, S, M, X, probability: 0, chosen: false };
+function estimateOpponentResponse(
+  scenario: ScenarioTemplate,
+  agent: CompiledAgent,
+  other: CompiledAgent,
+  dyad: CompiledDyad,
+  reverseDyad: CompiledDyad,
+  round: number,
+  totalRounds: number,
+  instPressure: number,
+): OpponentEstimate {
+  // Lightweight one-step ToM: estimate counterpart choice distribution from their own utility.
+  const { available } = filterActions(scenario, other, agent, reverseDyad);
+  const baseScores = available.map((action) => {
+    const base = computeActionBaseTerms(action, scenario, other, agent, reverseDyad, round, totalRounds, instPressure);
+    return { actionId: action.id, U: base.G + base.R + base.I + base.L + base.S + base.M - base.X };
   });
+
+  const maxU = Math.max(...baseScores.map((s) => s.U));
+  const exps = baseScores.map((s) => Math.exp((s.U - maxU) / Math.max(0.01, other.effectiveTemperature)));
+  const sumExp = exps.reduce((a, b) => a + b, 0);
+  const probabilities: Record<string, number> = {};
+  let bestActionId = baseScores[0]?.actionId ?? '';
+  let bestProbability = 0;
+
+  for (let i = 0; i < baseScores.length; i++) {
+    const p = exps[i] / Math.max(1e-9, sumExp);
+    probabilities[baseScores[i].actionId] = p;
+    if (p > bestProbability) {
+      bestProbability = p;
+      bestActionId = baseScores[i].actionId;
+    }
+  }
+
+  return { probabilities, bestActionId, bestProbability };
+}
+
+function computeExpectedResponseUtility(
+  action: ActionTemplate,
+  scenario: ScenarioTemplate,
+  agent: CompiledAgent,
+  other: CompiledAgent,
+  dyad: CompiledDyad,
+  reverseDyad: CompiledDyad,
+  estimate: OpponentEstimate,
+): number {
+  // O-term evaluates expected interaction quality conditioned on predicted counterpart responses.
+  const partnerSig = buildPartnerSignature(other, dyad);
+  const care = agent.axes.A_Safety_Care ?? 0.5;
+  const reciprocity = agent.axes.C_reciprocity_index ?? 0.5;
+  const betrayalCost = agent.axes.C_betrayal_cost ?? 0.5;
+  const ownPower = agent.axes.A_Power_Sovereignty ?? 0.5;
+
+  let O = 0;
+  for (const [otherActionId, prob] of Object.entries(estimate.probabilities)) {
+    const otherAction = scenario.actionPool.find((a) => a.id === otherActionId);
+    if (!otherAction || prob <= 0) continue;
+
+    const myPayoff = action.payoffVs?.[otherAction.id] ?? 0;
+    const IHelp = isSupportiveAction(action, scenario);
+    const TheyHelp = isSupportiveAction(otherAction, scenario);
+    const IHarm = isHarmfulAction(action) || isBetrayalAction(action);
+    const TheyHarm = isHarmfulAction(otherAction) || isBetrayalAction(otherAction);
+
+    let pairSignal = myPayoff;
+
+    if (IHelp && TheyHelp) {
+      pairSignal += 0.18 * (0.5 + 0.5 * dyad.rel.trust) + 0.12 * partnerSig.moralWeight + 0.08 * reciprocity;
+    }
+    if (IHelp && TheyHarm) {
+      pairSignal -= (0.22 + 0.30 * dyad.rel.trust + 0.18 * dyad.rel.bond) * (0.75 + 0.25 * partnerSig.unpredictability);
+    }
+    if (IHelp && partnerSig.vulnerability > 0.55) {
+      pairSignal += 0.22 * partnerSig.vulnerability * care;
+    }
+    if (IHarm) {
+      pairSignal -= 0.18 * partnerSig.moralWeight * (0.5 + betrayalCost);
+      pairSignal -= 0.16 * partnerSig.vulnerability * care;
+      if (TheyHarm) pairSignal -= 0.18 * partnerSig.threat;
+      if (dyad.powerAsymmetry < -0.15) pairSignal -= 0.12 * partnerSig.threat * (1 - ownPower);
+    }
+    if (action.id === 'manipulate') {
+      pairSignal -= 0.18 * (1 - partnerSig.unpredictability) * (0.5 + dyad.rel.trust * 0.5);
+    }
+    if (action.id === 'rupture') {
+      pairSignal -= 0.15 * reverseDyad.rel.conflict * partnerSig.threat;
+    }
+    if (action.id === 'protect') {
+      pairSignal += 0.15 * partnerSig.dependence + 0.10 * partnerSig.vulnerability;
+    }
+
+    O += prob * pairSignal;
+  }
+
+  return O * (0.8 + 0.4 * agent.perceivedStakes);
 }
 
 /**
@@ -731,35 +969,52 @@ function resolveAction(scores: ActionScore[], temperature: number, rng: () => nu
 
 function reweightActionProfile(
   action: ActionTemplate,
-  _agent: CompiledAgent,
+  agent: CompiledAgent,
+  other: CompiledAgent,
   dyad: CompiledDyad,
   scenario: ScenarioTemplate,
 ): ActionTemplate['profile'] {
   // Dynamic profile shaping keeps static scenario templates simple while
-  // making per-round scoring sensitive to current relationship context.
+  // making per-round scoring sensitive to current relationship context and
+  // to the identity of the specific counterpart.
   const p = { ...action.profile };
   const tags = new Set(action.socialTags.map((t) => t.toLowerCase()));
   const isSupportive = tags.has('support') || tags.has('help') || tags.has('protect') || action.id === scenario.cooperativeActionId;
-  const isHarmful = tags.has('harm') || tags.has('punish');
-  const isBetrayal = tags.has('deceive') || tags.has('betrayal') || tags.has('lie');
+  const isHarmful = tags.has('harm') || tags.has('punish') || action.id === 'rupture';
+  const isBetrayal = tags.has('deceive') || tags.has('betrayal') || tags.has('lie') || action.id === 'defect' || action.id === 'take_all';
+  const sig = buildPartnerSignature(other, dyad);
+  const care = agent.axes.A_Safety_Care ?? 0.5;
+  const reciprocity = agent.axes.C_reciprocity_index ?? 0.5;
+  const betrayalCost = agent.axes.C_betrayal_cost ?? 0.5;
 
   if (isSupportive) {
-    p.goalFit = (p.goalFit ?? 0) + 0.25 * dyad.rel.align + 0.20 * dyad.sharedHistoryDensity;
-    p.relationalFit = (p.relationalFit ?? 0) + 0.35 * dyad.rel.trust + 0.25 * dyad.rel.bond;
-    p.expectedCost = Math.max(0, (p.expectedCost ?? 0) + 0.15 * dyad.rel.fear + 0.10 * Math.max(0, -dyad.powerAsymmetry));
-    p.mirrorFit = (p.mirrorFit ?? 0) + 0.20 * dyad.secondOrder.perceivedTrust;
+    p.goalFit = (p.goalFit ?? 0) + 0.20 * dyad.rel.align + 0.18 * dyad.sharedHistoryDensity + 0.18 * sig.vulnerability * care;
+    p.relationalFit = (p.relationalFit ?? 0) + 0.30 * dyad.rel.trust + 0.24 * dyad.rel.bond + 0.12 * sig.moralWeight;
+    p.expectedCost = Math.max(0, (p.expectedCost ?? 0) + 0.12 * dyad.rel.fear + 0.08 * Math.max(0, -dyad.powerAsymmetry));
+    p.mirrorFit = (p.mirrorFit ?? 0) + 0.18 * dyad.secondOrder.perceivedTrust + 0.10 * sig.dependence;
   }
 
   if (isBetrayal) {
-    p.relationalFit = (p.relationalFit ?? 0) - 0.55 * dyad.rel.trust - 0.35 * dyad.rel.bond;
-    p.identityFit = (p.identityFit ?? 0) - 0.15 * dyad.rel.respect;
-    p.mirrorFit = (p.mirrorFit ?? 0) - 0.35 * dyad.secondOrder.perceivedTrust - 0.20 * dyad.secondOrder.perceivedAlign;
+    p.relationalFit = (p.relationalFit ?? 0) - 0.48 * dyad.rel.trust - 0.34 * dyad.rel.bond - 0.18 * sig.moralWeight;
+    p.identityFit = (p.identityFit ?? 0) - 0.18 * dyad.rel.respect - 0.12 * betrayalCost;
+    p.mirrorFit = (p.mirrorFit ?? 0) - 0.32 * dyad.secondOrder.perceivedTrust - 0.18 * dyad.secondOrder.perceivedAlign;
+    p.expectedCost = Math.max(0, (p.expectedCost ?? 0) + 0.14 * sig.vulnerability * care + 0.12 * sig.dependence * reciprocity);
   }
 
   if (isHarmful) {
-    p.relationalFit = (p.relationalFit ?? 0) - 0.25 * dyad.rel.respect - 0.25 * dyad.rel.bond;
-    p.legitimacyFit = (p.legitimacyFit ?? 0) + 0.25 * Math.max(0, dyad.secondOrder.perceivedDominance - 0.5);
-    p.expectedCost = Math.max(0, (p.expectedCost ?? 0) + 0.10 * dyad.sharedHistoryDensity);
+    p.relationalFit = (p.relationalFit ?? 0) - 0.22 * dyad.rel.respect - 0.22 * dyad.rel.bond;
+    p.legitimacyFit = (p.legitimacyFit ?? 0) + 0.22 * Math.max(0, dyad.secondOrder.perceivedDominance - 0.5);
+    p.expectedCost = Math.max(0, (p.expectedCost ?? 0) + 0.10 * dyad.sharedHistoryDensity + 0.14 * sig.threat * Math.max(0, -dyad.powerAsymmetry));
+  }
+
+  if (action.id === 'protect' || action.id === 'give_more' || action.id === 'pardon') {
+    p.goalFit = (p.goalFit ?? 0) + 0.18 * sig.vulnerability + 0.10 * sig.dependence;
+  }
+  if (action.id === 'rupture' || action.id === 'take_all') {
+    p.expectedCost = Math.max(0, (p.expectedCost ?? 0) + 0.18 * sig.threat + 0.10 * sig.moralWeight);
+  }
+  if (action.id === 'manipulate' && sig.unpredictability < 0.35) {
+    p.expectedCost = Math.max(0, (p.expectedCost ?? 0) + 0.18 * (0.35 - sig.unpredictability));
   }
 
   return p;
@@ -876,14 +1131,103 @@ function classifyPairOutcome(aAction: ActionTemplate, bAction: ActionTemplate, s
   return 'mixed';
 }
 
+function perspectiveOutcomeTag(
+  baseTag: string,
+  viewerDyad: CompiledDyad,
+  other: CompiledAgent,
+  ownAction: ActionTemplate,
+  otherAction: ActionTemplate,
+  scenario: ScenarioTemplate,
+): string {
+  // Outcome tags are viewer-relative: same pair event can be interpreted differently by each side.
+  const sig = buildPartnerSignature(other, viewerDyad);
+  const bonded = viewerDyad.rel.bond > 0.62 || viewerDyad.sharedHistoryDensity > 0.55;
+  const dominantOther = viewerDyad.powerAsymmetry < -0.15 && sig.threat > 0.65;
+  const valuedOther = viewerDyad.rel.respect > 0.62 || sig.moralWeight > 0.65;
+  const ownCoop = isSupportiveAction(ownAction, scenario);
+  const otherCoop = isSupportiveAction(otherAction, scenario);
+  const otherHarm = isBetrayalAction(otherAction) || isHarmfulAction(otherAction);
+
+  if (baseTag === 'mutual_cooperation' && bonded) return 'mutual_cooperation_bonded';
+  if (baseTag === 'mutual_cooperation' && valuedOther) return 'mutual_cooperation_respectful';
+  if (ownCoop && otherHarm && bonded) return dominantOther ? 'betrayed_by_bonded_dominant' : 'betrayed_by_bonded_other';
+  if (ownCoop && otherHarm && dominantOther) return 'exploited_by_dominant';
+  if (!ownCoop && otherCoop && bonded) return 'betrayed_bonded_other';
+  if (!ownCoop && otherCoop && valuedOther) return 'betrayed_respected_other';
+  if (baseTag === 'mutual_defection' && dominantOther) return 'mutual_defection_under_dominance';
+  return baseTag;
+}
+
+function applyPerspectiveOutcomeMods(
+  update: StateUpdate,
+  tag: string,
+  viewer: CompiledAgent,
+  viewerDyad: CompiledDyad,
+  other: CompiledAgent,
+): void {
+  // Apply extra affective/relational modifiers derived from perspective-specific outcome tags.
+  const sig = buildPartnerSignature(other, viewerDyad);
+  const shameSens = viewer.cognitive.shameGuiltSensitivity / 100;
+
+  switch (tag) {
+    case 'mutual_cooperation_bonded':
+      addUpdate(update, { trustDelta: 0.05, bondDelta: 0.04, stressDelta: -1 });
+      break;
+    case 'mutual_cooperation_respectful':
+      addUpdate(update, { trustDelta: 0.03, conflictDelta: -0.02 });
+      break;
+    case 'betrayed_by_bonded_other':
+      addUpdate(update, {
+        trustDelta: -0.08 - 0.08 * viewerDyad.rel.bond,
+        bondDelta: -0.04 - 0.04 * viewerDyad.sharedHistoryDensity,
+        conflictDelta: 0.05 + 0.04 * sig.moralWeight,
+        stressDelta: 2 + Math.round(3 * sig.moralWeight),
+      });
+      break;
+    case 'betrayed_by_bonded_dominant':
+      addUpdate(update, {
+        trustDelta: -0.09 - 0.07 * viewerDyad.rel.bond,
+        bondDelta: -0.05,
+        conflictDelta: 0.05,
+        fearDelta: 0.04 + 0.04 * sig.threat,
+        stressDelta: 3 + Math.round(3 * sig.threat),
+      });
+      break;
+    case 'exploited_by_dominant':
+      addUpdate(update, {
+        trustDelta: -0.05,
+        fearDelta: 0.05 + 0.03 * sig.threat,
+        stressDelta: 2 + Math.round(2 * sig.threat),
+      });
+      break;
+    case 'betrayed_bonded_other':
+      addUpdate(update, {
+        shameDelta: 0.08 * shameSens * (1 + viewerDyad.rel.bond + viewerDyad.rel.respect),
+        conflictDelta: 0.03,
+      });
+      break;
+    case 'betrayed_respected_other':
+      addUpdate(update, {
+        shameDelta: 0.07 * shameSens * (1 + viewerDyad.rel.respect),
+      });
+      break;
+    case 'mutual_defection_under_dominance':
+      addUpdate(update, {
+        fearDelta: 0.03 + 0.03 * sig.threat,
+        stressDelta: 1 + Math.round(2 * sig.threat),
+      });
+      break;
+  }
+}
+
 function computePairOutcome(
-  a: { playerId: string; otherId: string; chosenTemplate: ActionTemplate; compiled: CompiledAgent; dyad: CompiledDyad; },
-  b: { playerId: string; otherId: string; chosenTemplate: ActionTemplate; compiled: CompiledAgent; dyad: CompiledDyad; },
+  a: { playerId: string; otherId: string; chosenTemplate: ActionTemplate; compiled: CompiledAgent; dyad: CompiledDyad; compiledOther: CompiledAgent; reverseDyad: CompiledDyad; },
+  b: { playerId: string; otherId: string; chosenTemplate: ActionTemplate; compiled: CompiledAgent; dyad: CompiledDyad; compiledOther: CompiledAgent; reverseDyad: CompiledDyad; },
   scenario: ScenarioTemplate,
 ): Record<string, StateUpdate> {
   // Pair resolution is done after both decisions are known to avoid order bias:
   // each player gets (1) intrinsic self-effect, (2) observed opponent effect,
-  // (3) payoff matrix adjustments, and (4) outcome-class modifiers.
+  // (3) payoff matrix adjustments, and (4) perspective-specific outcome modifiers.
   const updates: Record<string, StateUpdate> = {
     [a.playerId]: blankStateUpdate(a.playerId, b.chosenTemplate.id, 'pending'),
     [b.playerId]: blankStateUpdate(b.playerId, a.chosenTemplate.id, 'pending'),
@@ -894,9 +1238,9 @@ function computePairOutcome(
   addUpdate(updates[a.playerId], computeObservedEffect(a.playerId, b.chosenTemplate, a.dyad, scenario));
   addUpdate(updates[b.playerId], computeObservedEffect(b.playerId, a.chosenTemplate, b.dyad, scenario));
 
-  const outcomeTag = classifyPairOutcome(a.chosenTemplate, b.chosenTemplate, scenario);
-  updates[a.playerId].outcomeTag = outcomeTag;
-  updates[b.playerId].outcomeTag = outcomeTag;
+  const baseOutcomeTag = classifyPairOutcome(a.chosenTemplate, b.chosenTemplate, scenario);
+  updates[a.playerId].outcomeTag = perspectiveOutcomeTag(baseOutcomeTag, a.dyad, a.compiledOther, a.chosenTemplate, b.chosenTemplate, scenario);
+  updates[b.playerId].outcomeTag = perspectiveOutcomeTag(baseOutcomeTag, b.dyad, b.compiledOther, b.chosenTemplate, a.chosenTemplate, scenario);
 
   const aPayoff = a.chosenTemplate.payoffVs?.[b.chosenTemplate.id] ?? 0;
   const bPayoff = b.chosenTemplate.payoffVs?.[a.chosenTemplate.id] ?? 0;
@@ -906,7 +1250,7 @@ function computePairOutcome(
   updates[a.playerId].stressDelta += -aPayoff * 2.0;
   updates[b.playerId].stressDelta += -bPayoff * 2.0;
 
-  switch (outcomeTag) {
+  switch (baseOutcomeTag) {
     case 'mutual_cooperation':
       addUpdate(updates[a.playerId], { trustDelta: 0.08, bondDelta: 0.05, conflictDelta: -0.04, stressDelta: -2 });
       addUpdate(updates[b.playerId], { trustDelta: 0.08, bondDelta: 0.05, conflictDelta: -0.04, stressDelta: -2 });
@@ -928,6 +1272,9 @@ function computePairOutcome(
       addUpdate(updates[b.playerId], { conflictDelta: 0.01 });
       break;
   }
+
+  applyPerspectiveOutcomeMods(updates[a.playerId], updates[a.playerId].outcomeTag, a.compiled, a.dyad, a.compiledOther);
+  applyPerspectiveOutcomeMods(updates[b.playerId], updates[b.playerId].outcomeTag, b.compiled, b.dyad, b.compiledOther);
 
   return updates;
 }
