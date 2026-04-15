@@ -204,28 +204,67 @@ const data: CharacterEntity = {
     compute: { compute_budget: 100, decision_deadline_s: 0.5, tom_depth: 4 },
     historicalEvents: [
         {
-            id: 'personal-murder-morbrand',
-            name: 'Убийство Морбранда',
-            t: Date.now() - (0.5 * 365 * 24 * 60 * 60 * 1000), // approx 0.5 years ago
-            years_ago: 0.5,
-            domain: 'power_grab',
-            tags: ['harm', 'betrayal', 'dark'],
-            valence: 0.1,
-            intensity: 1.0,
-            duration_days: 1,
-            surprise: 0.2,
-            controllability: 1.0,
-            responsibility_self: 1.0,
-            secrecy: 'private',
-            dark_payload: 0.8,
-            security: { requiredLevel: 5 } // Requires Clearance Level 5 (Chronicle 5) to see
+            id: 'hist-maera-childhood', name: 'Детство при дворе Морбранда', t: 0, years_ago: 15,
+            domain: 'upbringing', tags: ['learning', 'observation', 'court'],
+            valence: 0.3, intensity: 0.5, duration_days: 3650,
+            surprise: 0, controllability: 0.2, responsibility_self: 0.1, secrecy: 'public',
         },
         {
-            id: 'hist-maera-2', name: 'Реформа образования', t: 0, years_ago: 2, domain: 'achievement',
-            tags: ['leadership', 'change'], valence: 1, intensity: 0.7, duration_days: 365,
-            surprise: 0, controllability: 1, responsibility_self: 1, secrecy: 'public',
-            lifeGoalWeights: { pursue_long_term_project: 0.8 }
-        }
+            id: 'hist-maera-first-manipulation', name: 'Первая успешная манипуляция (15 лет)', t: 0, years_ago: 7,
+            domain: 'achievement', tags: ['deception', 'competence', 'power'],
+            valence: 0.6, intensity: 0.6, duration_days: 14,
+            surprise: 0.3, controllability: 0.8, responsibility_self: 1.0, secrecy: 'private',
+        },
+        {
+            id: 'hist-maera-morbrand-abuse', name: 'Насилие Морбранда', t: 0, years_ago: 4,
+            domain: 'trauma', tags: ['abuse_physical', 'harm', 'power_asymmetry'],
+            valence: -1, intensity: 0.9, duration_days: 730,
+            surprise: 0.2, controllability: 0.1, responsibility_self: 0, secrecy: 'private',
+            trauma: { domain: 'others', severity: 0.8, kind: 'sustained_abuse' },
+        },
+        {
+            id: 'hist-maera-alliance-vestar', name: 'Тайный союз с Вестаром', t: 0, years_ago: 2,
+            domain: 'bonding', tags: ['alliance', 'secrecy', 'strategy'],
+            valence: 0.4, intensity: 0.7, duration_days: 30,
+            surprise: 0.4, controllability: 0.6, responsibility_self: 0.7, secrecy: 'classified',
+            participants: ['character-vestar'],
+        },
+        {
+            id: 'personal-murder-morbrand', name: 'Убийство Морбранда', t: 0, years_ago: 0.5,
+            domain: 'power_grab', tags: ['harm', 'betrayal', 'dark'],
+            valence: 0.1, intensity: 1.0, duration_days: 1,
+            surprise: 0.2, controllability: 1.0, responsibility_self: 1.0, secrecy: 'private',
+            dark_payload: 0.8,
+            security: { requiredLevel: 5 },
+        },
+        {
+            id: 'hist-maera-coronation', name: 'Коронация', t: 0, years_ago: 0.4,
+            domain: 'achievement', tags: ['power', 'leadership', 'public'],
+            valence: 0.7, intensity: 0.9, duration_days: 3,
+            surprise: 0.1, controllability: 0.9, responsibility_self: 0.9, secrecy: 'public',
+        },
+        {
+            id: 'hist-maera-reform-education', name: 'Реформа образования', t: 0, years_ago: 0.3,
+            domain: 'achievement', tags: ['leadership', 'change', 'institutional'],
+            valence: 0.8, intensity: 0.7, duration_days: 120,
+            surprise: 0, controllability: 0.9, responsibility_self: 1.0, secrecy: 'public',
+            lifeGoalWeights: { pursue_long_term_project: 0.8 },
+        },
+        {
+            id: 'hist-maera-first-erasure-order', name: 'Первый санкционированный приказ на стирание', t: 0, years_ago: 0.2,
+            domain: 'power_grab', tags: ['erasure', 'dark', 'institutional_violence', 'SMSB'],
+            valence: -0.3, intensity: 0.9, duration_days: 1,
+            surprise: 0.1, controllability: 1.0, responsibility_self: 1.0, secrecy: 'classified',
+            dark_payload: 0.9,
+            security: { requiredLevel: 5 },
+            trauma: { domain: 'self', severity: 0.4, kind: 'moral_compromise' },
+        },
+        {
+            id: 'hist-maera-burnout-onset', name: 'Начало burnout', t: 0, years_ago: 0.1,
+            domain: 'crisis', tags: ['burnout', 'exhaustion', 'isolation'],
+            valence: -0.5, intensity: 0.8, duration_days: 30,
+            surprise: 0.3, controllability: 0.2, responsibility_self: 0.5, secrecy: 'private',
+        },
     ],
 };
 export default data;
