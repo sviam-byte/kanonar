@@ -175,6 +175,26 @@ export type DilemmaClass =
   | 'trust' | 'protection' | 'authority' | 'loyalty'
   | 'sacrifice' | 'opacity' | 'mutiny' | 'care' | 'bargain';
 
+export type MechanicId =
+  | 'trust_exchange'
+  | 'authority_conflict'
+  | 'judgment_sanction'
+  | 'resource_split'
+  | 'care_under_surveillance';
+
+export interface ScenarioStakes {
+  personal: number;
+  relational: number;
+  institutional: number;
+  physical: number;
+}
+
+export interface ScenarioVisibility {
+  actionsVisible: boolean;
+  audiencePresent: boolean;
+  consequencesDeferred: boolean;
+}
+
 export interface ActionTemplate {
   id: string;
   label: string;
@@ -199,25 +219,57 @@ export interface ActionTemplate {
   payoffVs?: Record<string, number>;
 }
 
+export interface MechanicTemplate {
+  id: MechanicId;
+  name: string;
+  description: string;
+  defaultCooperativeActionId: string;
+  actionPool: ActionTemplate[];
+  defaultStakes: ScenarioStakes;
+  defaultVisibility: ScenarioVisibility;
+  defaultInstitutionalPressure: number;
+}
+
+export interface ActionPresetOverride {
+  label?: string;
+  description?: string;
+  socialTags?: string[];
+  requires?: ActionTemplate['requires'];
+  profile?: Partial<ActionTemplate['profile']>;
+  payoffVs?: Record<string, number>;
+  disabled?: boolean;
+}
+
+export interface ScenarioPreset {
+  id: string;
+  name: string;
+  mechanicId: MechanicId;
+  dilemmaClass: DilemmaClass;
+  setup: string;
+  cooperativeActionId?: string;
+  institutionalPressure?: number;
+  stakes?: Partial<ScenarioStakes>;
+  visibility?: Partial<ScenarioVisibility>;
+  actionOverrides?: Record<string, ActionPresetOverride>;
+  disabled?: boolean;
+  disabledReason?: string;
+}
+
 export interface ScenarioTemplate {
   id: string;
   name: string;
+  mechanicId: MechanicId;
+  mechanicName: string;
+  mechanicDescription: string;
   dilemmaClass: DilemmaClass;
   setup: string;
   cooperativeActionId: string;
   actionPool: ActionTemplate[];
-  stakes: {
-    personal: number;
-    relational: number;
-    institutional: number;
-    physical: number;
-  };
-  visibility: {
-    actionsVisible: boolean;
-    audiencePresent: boolean;
-    consequencesDeferred: boolean;
-  };
+  stakes: ScenarioStakes;
+  visibility: ScenarioVisibility;
   institutionalPressure: number;
+  disabled?: boolean;
+  disabledReason?: string;
 }
 
 export interface ActionScore {
@@ -230,6 +282,8 @@ export interface ActionScore {
 
 export interface StateUpdate {
   agentId: string;
+  againstActionId: string;
+  outcomeTag: string;
   willDelta: number;
   burnoutDelta: number;
   stressDelta: number;

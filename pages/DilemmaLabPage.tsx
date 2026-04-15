@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { runDilemmaV2 } from '../lib/dilemma/runner';
-import { SCENARIO_CATALOG, allScenarios, getScenario } from '../lib/dilemma/scenarios';
+import { allScenarios, getScenario } from '../lib/dilemma/scenarios';
+import { allMechanics } from '../lib/dilemma/mechanics';
 import type {
-  ScenarioTemplate, V2GameState, V2RoundTrace, V2RunResult,
+  ScenarioTemplate, V2GameState, V2RoundTrace, V2RunResult, MechanicTemplate,
 } from '../lib/dilemma/types';
 import type { WorldState, AgentState, CharacterEntity } from '../types';
 import { useSandbox } from '../contexts/SandboxContext';
@@ -16,6 +17,14 @@ import { Tabs } from '../components/Tabs';
 const CLASS_ICONS: Record<string, string> = {
   trust: '🔍', protection: '🛡', authority: '⚖', loyalty: '🏛',
   sacrifice: '🩸', opacity: '🌫', mutiny: '⚔', care: '💊', bargain: '🤝',
+};
+
+const MECHANIC_ICONS: Record<string, string> = {
+  trust_exchange: '🔐',
+  authority_conflict: '⚔',
+  judgment_sanction: '⚖',
+  resource_split: '🤝',
+  care_under_surveillance: '👁',
 };
 
 const AXIS_META: Record<string, { label: string; color: string; desc: string }> = {
@@ -64,12 +73,15 @@ function buildMinimalWorld(chars: { entityId: string; [k: string]: unknown }[]):
 // ═══════════════════════════════════════════════════════════════
 
 const ScenarioCard: React.FC<{
-  s: ScenarioTemplate; selected: boolean; onClick: () => void;
-}> = ({ s, selected, onClick }) => (
-  <button onClick={onClick}
-    className={`text-left p-3 rounded-lg border transition-all ${selected
-      ? 'border-canon-accent bg-canon-accent/10 shadow-canon-1'
-      : 'border-canon-border bg-canon-card hover:border-canon-accent/40'}`}>
+  s: ScenarioTemplate; selected: boolean; disabled?: boolean; onClick?: () => void;
+}> = ({ s, selected, disabled = false, onClick }) => (
+  <button onClick={disabled ? undefined : onClick}
+    disabled={disabled}
+    className={`text-left p-3 rounded-lg border transition-all ${disabled
+      ? 'border-canon-border/40 bg-canon-bg/40 opacity-55 cursor-not-allowed'
+      : selected
+        ? 'border-canon-accent bg-canon-accent/10 shadow-canon-1'
+        : 'border-canon-border bg-canon-card hover:border-canon-accent/40'}`}>
     <div className="flex items-center gap-2">
       <span className="text-lg">{CLASS_ICONS[s.dilemmaClass] ?? '◆'}</span>
       <span className={`text-sm font-semibold ${selected ? 'text-canon-accent' : 'text-canon-text'}`}>{s.name}</span>
@@ -77,8 +89,34 @@ const ScenarioCard: React.FC<{
     <div className="text-[10px] text-canon-muted mt-1 line-clamp-2">
       {s.dilemmaClass} · {s.actionPool.length} действий · давл. {pct(s.institutionalPressure)}
     </div>
+    {disabled && s.disabledReason && <div className="text-[10px] text-canon-faint mt-2 line-clamp-3">{s.disabledReason}</div>}
   </button>
 );
+
+const MechanicSection: React.FC<{
+  mechanic: MechanicTemplate;
+  scenarios: ScenarioTemplate[];
+  selectedScenarioId: string;
+  onSelect: (scenarioId: string) => void;
+}> = ({ mechanic, scenarios, selectedScenarioId, onSelect }) => {
+  if (scenarios.length === 0) return null;
+  return (
+    <div className="rounded-lg border border-canon-border/60 bg-canon-card p-3 space-y-3">
+      <div>
+        <div className="flex items-center gap-2">
+          <span className="text-lg">{MECHANIC_ICONS[mechanic.id] ?? '◆'}</span>
+          <div className="text-sm font-semibold text-canon-text">{mechanic.name}</div>
+        </div>
+        <div className="text-[10px] text-canon-muted mt-1">{mechanic.description}</div>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+        {scenarios.map((s) => (
+          <ScenarioCard key={s.id} s={s} selected={selectedScenarioId === s.id} onClick={() => onSelect(s.id)} />
+        ))}
+      </div>
+    </div>
+  );
+};
 
 const ConfBadge: React.FC<{ value: number; label?: string }> = ({ value, label }) => {
   const c = value >= 0.7 ? 'text-canon-good bg-canon-good/10' : value >= 0.4 ? 'text-yellow-400 bg-yellow-400/10' : 'text-canon-bad bg-canon-bad/10';
@@ -198,11 +236,14 @@ const V2TraceBlock: React.FC<{ round: number; game: V2GameState; scenario: Scena
         <details className="text-[10px]">
           <summary className="text-canon-muted cursor-pointer hover:text-canon-text">📉 update</summary>
           <div className="mt-1 pl-1 text-[9px] font-mono space-y-0.5">
+            <div>vs: {aLbl(t.stateUpdate.againstActionId)} · {t.stateUpdate.outcomeTag}</div>
             <div>will: {t.stateUpdate.willDelta >= 0 ? '+' : ''}{f2(t.stateUpdate.willDelta)}</div>
-            <div>burnout: +{f3(t.stateUpdate.burnoutDelta)}</div>
+            <div>burnout: {t.stateUpdate.burnoutDelta >= 0 ? '+' : ''}{f3(t.stateUpdate.burnoutDelta)}</div>
             <div>stress: {t.stateUpdate.stressDelta >= 0 ? '+' : ''}{t.stateUpdate.stressDelta}</div>
             <div>Δtrust: {t.stateUpdate.trustDelta >= 0 ? '+' : ''}{f2(t.stateUpdate.trustDelta)}</div>
+            <div>Δbond: {t.stateUpdate.bondDelta >= 0 ? '+' : ''}{f2(t.stateUpdate.bondDelta)}</div>
             <div>Δconflict: {t.stateUpdate.conflictDelta >= 0 ? '+' : ''}{f2(t.stateUpdate.conflictDelta)}</div>
+            <div>Δfear: {t.stateUpdate.fearDelta >= 0 ? '+' : ''}{f2(t.stateUpdate.fearDelta)}</div>
           </div>
         </details>
       </div>
@@ -238,7 +279,10 @@ const V2TraceBlock: React.FC<{ round: number; game: V2GameState; scenario: Scena
 
 export const DilemmaLabPage: React.FC = () => {
   const { characters } = useSandbox();
-  const scenarioIds = useMemo(() => Object.keys(SCENARIO_CATALOG), []);
+  const scenarios = useMemo(() => allScenarios(), []);
+  const disabledScenarios = useMemo(() => allScenarios({ includeDisabled: true }).filter((s) => s.disabled), []);
+  const mechanics = useMemo(() => allMechanics(), []);
+  const scenarioIds = useMemo(() => scenarios.map((s) => s.id), [scenarios]);
   const [scenarioId, setScenarioId] = useState(scenarioIds[0] ?? 'trust_interrogation');
   const [totalRounds, setTotalRounds] = useState(10);
   const [p0, setP0] = useState('');
@@ -249,6 +293,14 @@ export const DilemmaLabPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
 
   const scenario = getScenario(scenarioId);
+  const scenariosByMechanic = useMemo(() => {
+    const grouped: Record<string, ScenarioTemplate[]> = {};
+    for (const s of scenarios) {
+      if (!grouped[s.mechanicId]) grouped[s.mechanicId] = [];
+      grouped[s.mechanicId].push(s);
+    }
+    return grouped;
+  }, [scenarios]);
   const game = result?.game ?? null;
 
   const allChars = useMemo(() => {
@@ -337,14 +389,36 @@ export const DilemmaLabPage: React.FC = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
         <div className="lg:col-span-3 bg-canon-panel border border-canon-border rounded-lg p-4 space-y-4">
-          <div>
-            <div className="text-xs font-semibold text-canon-muted uppercase tracking-wider mb-2">Сценарий</div>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-              {allScenarios().map(s => <ScenarioCard key={s.id} s={s} selected={scenarioId === s.id} onClick={() => { setScenarioId(s.id); reset(); }} />)}
-            </div>
+          <div className="space-y-3">
+            <div className="text-xs font-semibold text-canon-muted uppercase tracking-wider mb-2">Механика → пресет</div>
+            <div className="text-[11px] text-canon-muted">Свернули каталог до нескольких реальных механик. Ниже не “разные дилеммы”, а разные пресеты поверх общего каркаса.</div>
+            {mechanics
+              .filter((mechanic) => (scenariosByMechanic[mechanic.id] ?? []).length > 0)
+              .map((mechanic) => (
+                <MechanicSection
+                  key={mechanic.id}
+                  mechanic={mechanic}
+                  scenarios={scenariosByMechanic[mechanic.id] ?? []}
+                  selectedScenarioId={scenarioId}
+                  onSelect={(id) => { setScenarioId(id); reset(); }}
+                />
+              ))}
+            {disabledScenarios.length > 0 && (
+              <div className="rounded-lg border border-canon-border/40 bg-canon-bg/30 p-3 space-y-2">
+                <div className="text-xs font-semibold text-canon-muted uppercase tracking-wider">Вне dyad-ядра</div>
+                <div className="text-[10px] text-canon-faint">Эти пресеты пока убраны из активного каталога, потому что механически они не чистые dyad-сцены.</div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  {disabledScenarios.map((s) => (
+                    <ScenarioCard key={s.id} s={s} selected={false} disabled />
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
           <div className="text-xs text-canon-muted bg-canon-card border border-canon-border/50 rounded-lg p-3 italic">{scenario.setup}</div>
-          <div className="text-[10px] text-canon-faint">Действия: {scenario.actionPool.map(a => a.label).join(' · ')}</div>
+          <div className="text-[10px] text-canon-faint">
+            Механика: <span className="text-canon-text">{scenario.mechanicName}</span> · класс: {scenario.dilemmaClass} · действия: {scenario.actionPool.map(a => a.label).join(' · ')}
+          </div>
 
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
             <label className="text-xs text-canon-muted">A
@@ -388,7 +462,8 @@ export const DilemmaLabPage: React.FC = () => {
         </div>
 
         <div className="bg-canon-panel border border-canon-border rounded-lg p-4 space-y-3">
-          <div className="text-xs font-semibold text-canon-muted uppercase tracking-wider">Ставки</div>
+          <div className="text-xs font-semibold text-canon-muted uppercase tracking-wider">Ставки и каркас</div>
+          <div className="text-[10px] text-canon-faint">{scenario.mechanicDescription}</div>
           <MiniBar label="personal" value={scenario.stakes.personal} color="#ff79c6" />
           <MiniBar label="relational" value={scenario.stakes.relational} color="#9b87ff" />
           <MiniBar label="institutional" value={scenario.stakes.institutional} color="#ffaa44" />
@@ -430,7 +505,7 @@ export const DilemmaLabPage: React.FC = () => {
                     {game.players.map(pid => (
                       <div key={pid}>
                         <div className="text-[10px] font-semibold text-canon-muted mb-1">{pid.replace('character-', '')}</div>
-                        {Object.entries(actionCounts[pid] ?? {}).sort((a, b) => b[1] - a[1]).map(([aid, cnt]) => (
+                        {(Object.entries(actionCounts[pid] ?? {}) as Array<[string, number]>).sort((a, b) => b[1] - a[1]).map(([aid, cnt]) => (
                           <div key={aid} className="flex items-center gap-1 text-[10px]">
                             <span className="text-canon-text flex-1 truncate">{scenario.actionPool.find(a => a.id === aid)?.label ?? aid}</span>
                             <div className="h-2 bg-canon-accent/30 rounded" style={{ width: `${cnt / game.totalRounds * 60}px` }} />
