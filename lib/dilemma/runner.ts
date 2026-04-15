@@ -11,7 +11,7 @@ import type {
   ActionScore, StateUpdate, CompiledAgent, CompiledDyad,
   ScenarioTemplate, ActionTemplate,
 } from './types';
-import type { AgentState, WorldState, Relationship, TomEntry, TomBeliefTraits } from '../../types';
+import type { AgentState, WorldState, Relationship, TomEntry, TomBeliefTraits, CharacterEntity } from '../../types';
 import { createGame, advanceGame, isGameOver } from './engine';
 import { getSpec } from './catalog';
 import { analyzeGame } from './analysis';
@@ -19,6 +19,7 @@ import { clamp01 } from '../util/math';
 import { compileAgent, compileDyad, computePerceivedStakes } from './compiler';
 import { getScenario } from './scenarios';
 import { explainDecision, summarizeGame } from './explainer';
+import { initTomForCharacters } from '../tom/init';
 
 export type DilemmaRunConfig = {
   specId: string;
@@ -424,6 +425,54 @@ export function runDilemmaV2(config: V2RunConfig): V2RunResult {
   const agents = cloneAgents(config.world, [p0Id, p1Id]);
   if (!agents[p0Id] || !agents[p1Id]) {
     throw new Error(`Agent not found: ${!agents[p0Id] ? p0Id : p1Id}`);
+  }
+
+  /**
+   * Инициализация отношений для v2:
+   * 1) сначала пробуем биографическую/ToM инициализацию;
+   * 2) если ToM недоступен для пары — откатываемся на computePairTrust.
+   *
+   * Это повышает совместимость с существующим контентом персонажей:
+   * ToM-данные учитывают историю и dyad-конфиги, а fallback сохраняет
+   * детерминированный baseline для старых/неполных карточек.
+   */
+  const chars = Object.values(agents) as CharacterEntity[];
+  const minWorld: WorldState = {
+    tick: 0,
+    agents: chars as unknown as AgentState[],
+    locations: [],
+    leadership: { leaderId: null } as WorldState['leadership'],
+    initialRelations: {},
+  };
+  const tomState = initTomForCharacters(chars, minWorld);
+
+  for (const pid of config.players) {
+    const oid = pid === p0Id ? p1Id : p0Id;
+    const tomEntry = tomState?.[pid]?.[oid];
+    const existing = agents[pid].relationships?.[oid] as Partial<Relationship> | undefined;
+
+    if (tomEntry?.traits) {
+      if (!agents[pid].relationships) agents[pid].relationships = {} as AgentState['relationships'];
+      agents[pid].relationships[oid] = {
+        trust: clamp01(tomEntry.traits.trust ?? existing?.trust ?? 0.5),
+        align: clamp01(tomEntry.traits.align ?? existing?.align ?? 0.5),
+        respect: clamp01(tomEntry.traits.respect ?? existing?.respect ?? 0.5),
+        fear: clamp01(tomEntry.traits.fear ?? existing?.fear ?? 0),
+        bond: clamp01(tomEntry.traits.bond ?? existing?.bond ?? 0.1),
+        conflict: clamp01(tomEntry.traits.conflict ?? existing?.conflict ?? 0.1),
+        history: existing?.history ?? [],
+      } as Relationship;
+    } else {
+      const pairTrust = computePairTrust(agents[pid], agents[oid]);
+      ensureRelationship(agents[pid], oid, pairTrust);
+    }
+
+    /**
+     * compileDyad / trust-composite читают ToM из агента; кладем сюда
+     * инициализированный срез для self-view (pid -> target).
+     */
+    if (!(agents[pid] as any).tom) (agents[pid] as any).tom = {};
+    if (tomState[pid]) (agents[pid] as any).tom[pid] = tomState[pid];
   }
 
   const rngs: Record<string, () => number> = {
