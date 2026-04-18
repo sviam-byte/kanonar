@@ -180,7 +180,10 @@ export type MechanicId =
   | 'authority_conflict'
   | 'judgment_sanction'
   | 'resource_split'
-  | 'care_under_surveillance';
+  | 'care_under_surveillance'
+  | 'ultimatum_split'
+  | 'volunteer_sacrifice'
+  | 'signaling_trust';
 
 export interface ScenarioStakes {
   personal: number;
@@ -329,6 +332,17 @@ export interface V2GameState {
   totalRounds: number;
 }
 
+/**
+ * Pressure schedule: how institutional pressure changes over rounds.
+ * 'flat' — constant (default). 'rising' — starts at floor, ends at base.
+ * 'falling' — starts at base, ends at floor. 'spike' — peaks at peakRound.
+ */
+export type PressureSchedule =
+  | { shape: 'flat' }
+  | { shape: 'rising'; floor: number }
+  | { shape: 'falling'; floor: number }
+  | { shape: 'spike'; peakRound: number; floor: number };
+
 export interface V2RunConfig {
   scenarioId: string;
   players: readonly [string, string];
@@ -337,6 +351,8 @@ export interface V2RunConfig {
   seed?: number;
   /** Optional override for scenario institutional pressure (0..1). */
   institutionalPressure?: number;
+  /** Optional schedule for pressure variation across rounds. */
+  pressureSchedule?: PressureSchedule;
 }
 
 export interface V2RunResult {

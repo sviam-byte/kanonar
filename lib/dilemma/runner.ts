@@ -9,7 +9,7 @@ import type {
   RoundTrace, ActionDecomposition,
   V2RunConfig, V2RunResult, V2GameState, V2RoundTrace,
   ActionScore, StateUpdate, CompiledAgent, CompiledDyad,
-  ScenarioTemplate, ActionTemplate,
+  ScenarioTemplate, ActionTemplate, PressureSchedule,
 } from './types';
 import type { AgentState, WorldState, Relationship, TomEntry, TomBeliefTraits, CharacterEntity } from '../../types';
 import { createGame, advanceGame, isGameOver } from './engine';
@@ -419,6 +419,35 @@ export function runDilemmaGame(config: DilemmaRunConfig): DilemmaRunResult {
 // v2 pipeline runner
 // ═══════════════════════════════════════════════════════════════
 
+// ═══════════════════════════════════════════════════════════════
+// Pressure schedule
+// ═══════════════════════════════════════════════════════════════
+
+function computeScheduledPressure(
+  base: number,
+  schedule: PressureSchedule | undefined,
+  round: number,
+  totalRounds: number,
+): number {
+  if (!schedule || schedule.shape === 'flat') return base;
+  const t = totalRounds > 1 ? round / (totalRounds - 1) : 0;
+  switch (schedule.shape) {
+    case 'rising':
+      return clamp01(schedule.floor + (base - schedule.floor) * t);
+    case 'falling':
+      return clamp01(base + (schedule.floor - base) * t);
+    case 'spike': {
+      const peak = schedule.peakRound / Math.max(1, totalRounds - 1);
+      const dist = Math.abs(t - peak);
+      const spread = 0.25;
+      const envelope = Math.exp(-(dist * dist) / (2 * spread * spread));
+      return clamp01(schedule.floor + (base - schedule.floor) * envelope);
+    }
+    default:
+      return base;
+  }
+}
+
 export function runDilemmaV2(config: V2RunConfig): V2RunResult {
   const scenario = getScenario(config.scenarioId);
   const [p0Id, p1Id] = config.players;
@@ -518,7 +547,8 @@ export function runDilemmaV2(config: V2RunConfig): V2RunResult {
       const reverseDyad = compileDyad(compiledOther, compiled, agents[otherId], agents[playerId]);
 
       const { available, filteredOut } = filterActions(scenario, compiled, compiledOther, dyad);
-      const instPressure = config.institutionalPressure ?? scenario.institutionalPressure;
+      const basePressure = config.institutionalPressure ?? scenario.institutionalPressure;
+      const instPressure = computeScheduledPressure(basePressure, config.pressureSchedule, round, config.totalRounds);
       const scores = scoreActions(available, scenario, compiled, compiledOther, dyad, reverseDyad, round, config.totalRounds, instPressure);
       const chosenId = resolveAction(scores, compiled.effectiveTemperature, rngs[playerId]);
       choices[playerId] = chosenId;

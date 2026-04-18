@@ -3,7 +3,7 @@ import { runDilemmaV2 } from '../lib/dilemma/runner';
 import { allScenarios, getScenario } from '../lib/dilemma/scenarios';
 import { allMechanics } from '../lib/dilemma/mechanics';
 import type {
-  ScenarioTemplate, V2GameState, V2RoundTrace, V2RunResult, MechanicTemplate,
+  ScenarioTemplate, V2GameState, V2RoundTrace, V2RunResult, MechanicTemplate, PressureSchedule,
 } from '../lib/dilemma/types';
 import type { WorldState, AgentState, CharacterEntity } from '../types';
 import { useSandbox } from '../contexts/SandboxContext';
@@ -25,6 +25,9 @@ const MECHANIC_ICONS: Record<string, string> = {
   judgment_sanction: '⚖',
   resource_split: '🤝',
   care_under_surveillance: '👁',
+  ultimatum_split: '🪓',
+  volunteer_sacrifice: '🩸',
+  signaling_trust: '📡',
 };
 
 const AXIS_META: Record<string, { label: string; color: string; desc: string }> = {
@@ -290,6 +293,7 @@ export const DilemmaLabPage: React.FC = () => {
   const [p0, setP0] = useState('');
   const [p1, setP1] = useState('');
   const [instPressure, setInstPressure] = useState<number | null>(null);
+  const [pressureSchedule, setPressureSchedule] = useState<PressureSchedule | undefined>(undefined);
   const [seed, setSeed] = useState(42);
   const [result, setResult] = useState<V2RunResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -351,13 +355,14 @@ export const DilemmaLabPage: React.FC = () => {
         world,
         seed,
         institutionalPressure: instPressure ?? undefined,
+        pressureSchedule,
       });
       setResult(res);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
       setResult(null);
     }
-  }, [scenarioId, p0, p1, totalRounds, seed, instPressure, allChars]);
+  }, [scenarioId, p0, p1, totalRounds, seed, instPressure, pressureSchedule, allChars]);
 
   const download = useCallback(() => {
     if (!game || !result) return;
@@ -450,6 +455,29 @@ export const DilemmaLabPage: React.FC = () => {
                   <span className="text-sm font-mono text-canon-text w-8 text-right">{f2(instPressure)}</span>
                 </>}
               </div>
+              <div className="flex items-center gap-1 mt-1">
+                <select value={pressureSchedule?.shape ?? 'flat'} onChange={e => {
+                  const v = e.target.value;
+                  if (v === 'flat') setPressureSchedule(undefined);
+                  else if (v === 'rising') setPressureSchedule({ shape: 'rising', floor: 0.1 });
+                  else if (v === 'falling') setPressureSchedule({ shape: 'falling', floor: 0.1 });
+                  else if (v === 'spike') setPressureSchedule({ shape: 'spike', peakRound: Math.floor(totalRounds / 2), floor: 0.1 });
+                }} className="bg-canon-bg border border-canon-border rounded px-1 py-0.5 text-[10px] text-canon-text">
+                  <option value="flat">▬ плоское</option>
+                  <option value="rising">↗ нарастание</option>
+                  <option value="falling">↘ спад</option>
+                  <option value="spike">⌒ пик</option>
+                </select>
+                {pressureSchedule && 'floor' in pressureSchedule && <>
+                  <span className="text-[9px] text-canon-faint ml-1">мин:</span>
+                  <input type="range" min={0} max={100} value={Math.round(pressureSchedule.floor * 100)} onChange={e => setPressureSchedule({ ...pressureSchedule, floor: Number(e.target.value) / 100 })} className="flex-1 accent-canon-accent" style={{ maxWidth: 60 }} />
+                  <span className="text-[9px] font-mono text-canon-faint">{f2(pressureSchedule.floor)}</span>
+                </>}
+                {pressureSchedule?.shape === 'spike' && <>
+                  <span className="text-[9px] text-canon-faint ml-1">пик:</span>
+                  <input type="number" min={0} max={totalRounds - 1} value={pressureSchedule.peakRound} onChange={e => setPressureSchedule({ ...pressureSchedule, peakRound: Number(e.target.value) })} className="bg-canon-bg border border-canon-border rounded px-1 py-0.5 text-[10px] text-canon-text w-10" />
+                </>}
+              </div>
             </label>
             <label className="text-xs text-canon-muted">Seed
               <input type="number" min={1} max={99999} value={seed} onChange={e => setSeed(Number(e.target.value) || 42)} className="w-full mt-1 bg-canon-bg border border-canon-border rounded-lg p-2 text-sm font-mono text-canon-text" />
@@ -475,7 +503,7 @@ export const DilemmaLabPage: React.FC = () => {
             {scenario.visibility.audiencePresent ? ' + публика' : ''}
             {scenario.visibility.consequencesDeferred ? ' + отложенные последствия' : ''}
             {' · '}
-            Давл: {pct(instPressure ?? scenario.institutionalPressure)}
+            Давл: {pct(instPressure ?? scenario.institutionalPressure)}{pressureSchedule ? ` (${pressureSchedule.shape})` : ''}
           </div>
           <div className="border-t border-canon-border/30 pt-2 mt-2">
             <div className="text-xs font-semibold text-canon-muted uppercase tracking-wider mb-1">Действия</div>

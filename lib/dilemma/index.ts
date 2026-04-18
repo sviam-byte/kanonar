@@ -27,5 +27,5 @@ export type {
   ScenarioTemplate, ScenarioPreset, MechanicTemplate,
   ScenarioStakes, ScenarioVisibility,
   ActionTemplate, ActionPresetOverride, ActionScore,
-  StateUpdate, DilemmaClass, MechanicId,
+  StateUpdate, DilemmaClass, MechanicId, PressureSchedule,
 } from './types';
