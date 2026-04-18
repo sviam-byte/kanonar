@@ -64,7 +64,6 @@ export function updateAfterDayElimination(
 
     for (const vote of lastDay.votes) {
       if (vote.voterId === observerId) continue;
-      if (!state.alive.has(vote.voterId)) continue;
 
       const votedForElim = vote.targetId === eliminatedId;
 
@@ -82,7 +81,6 @@ export function updateAfterDayElimination(
 
     for (const claim of lastDay.claims) {
       if (claim.actorId === observerId) continue;
-      if (!state.alive.has(claim.actorId)) continue;
 
       let delta = 0;
       if (claim.kind === 'accuse' && claim.targetId === eliminatedId) {
@@ -145,6 +143,55 @@ export function updateAfterNightKill(
       const credibilityShift = asRole === 'mafia' ? +0.20 : -0.08;
       state.suspicion[observerId][targetId] = clamp01(
         state.suspicion[observerId][targetId] + learningRate * credibilityShift
+      );
+    }
+  }
+}
+
+export function updateFromPublicClaim(
+  state: MafiaGameState,
+  agents: Record<string, AgentState>,
+  claim: PublicClaim
+): void {
+  // Fast social learning from public claims inside the same day.
+  // This keeps claim order meaningful and traceable before elimination feedback kicks in.
+  const actorId = claim.actorId;
+
+  for (const observerId of state.alive) {
+    if (observerId === actorId) continue;
+    const observer = agents[observerId];
+    if (!observer) continue;
+
+    const learningRate = updateRate(observer);
+    const rel = readRel(observer, actorId);
+    const truthNeed = vb(observer, 'A_Knowledge_Truth');
+    const belief = clamp01(0.18 + 0.45 * rel.trust + 0.20 * truthNeed);
+
+    if (claim.kind === 'accuse' && claim.targetId && claim.targetId !== observerId) {
+      const targetId = claim.targetId;
+      const targetDelta = 0.05 + 0.12 * belief;
+      state.suspicion[observerId][targetId] = clamp01(
+        state.suspicion[observerId][targetId] + learningRate * targetDelta
+      );
+
+      const observerPrior = state.suspicion[observerId][targetId] ?? 0.5;
+      const actorDelta = observerPrior >= 0.55 ? -0.03 : +0.04;
+      state.suspicion[observerId][actorId] = clamp01(
+        state.suspicion[observerId][actorId] + learningRate * actorDelta
+      );
+    }
+
+    if (claim.kind === 'defend' && claim.targetId && claim.targetId !== observerId) {
+      const targetId = claim.targetId;
+      const targetPrior = state.suspicion[observerId][targetId] ?? 0.5;
+      const targetDelta = -(0.03 + 0.08 * belief);
+      state.suspicion[observerId][targetId] = clamp01(
+        state.suspicion[observerId][targetId] + learningRate * targetDelta
+      );
+
+      const actorDelta = targetPrior >= 0.6 ? +0.08 : -0.02;
+      state.suspicion[observerId][actorId] = clamp01(
+        state.suspicion[observerId][actorId] + learningRate * actorDelta
       );
     }
   }

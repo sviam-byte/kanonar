@@ -82,6 +82,8 @@ export const SCENARIO_PRESETS: Record<string, ScenarioPreset> = {
   opacity_deal: {
     id: 'opacity_deal',
     name: 'Торг в тумане',
+    disabled: true,
+    disabledReason: 'Убран из активной лабы как дубль trust_interrogation: тот же trust_exchange, та же скрытая двусторонняя торговля информацией, отличается только скин и мягкие веса.',
     mechanicId: 'trust_exchange',
     dilemmaClass: 'opacity',
     setup: 'У каждого есть ценная информация и ограниченное доверие.',
@@ -291,6 +293,8 @@ export const SCENARIO_PRESETS: Record<string, ScenarioPreset> = {
   volunteer_report: {
     id: 'volunteer_report',
     name: 'Кто доложит',
+    disabled: true,
+    disabledReason: 'Убран из активной лабы как дубль volunteer_mission: та же volunteer_sacrifice-механика и та же структура кто берёт риск на себя, только перефразирована под рапорт.',
     mechanicId: 'volunteer_sacrifice',
     dilemmaClass: 'opacity',
     setup: 'Оба знают о нарушении в цепочке снабжения. Доклад несёт персональный риск, молчание — коллективный.',

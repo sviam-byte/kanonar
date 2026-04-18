@@ -96,11 +96,13 @@ const characters: AgentState[] = [
 
 const world: WorldState = { agents: characters } as WorldState;
 const players = characters.map(c => c.id!);
+const roleDistribution = { mafia: 2, sheriff: 1, doctor: 1, citizen: 3 } as const;
 
 console.log('═══ SINGLE GAME ═══');
 const result = runMafiaGame({
   players,
   roleAssignment: 'random',
+  roleDistribution,
   world,
   seed: 42,
 });
@@ -110,7 +112,7 @@ console.log(`Winner: ${result.analysis.winner}`);
 console.log('\n═══ BATCH (100 games) ═══');
 const batch = runMafiaBatch({
   players,
-  roleDistribution: { mafia: 2, sheriff: 1, doctor: 1, citizen: 3 },
+  roleDistribution,
   nGames: 100,
   world,
   baseSeed: 1000,
@@ -120,8 +122,8 @@ console.log(`Town wins:   ${(batch.aggregate.townWinRate * 100).toFixed(1)}%`);
 console.log(`Mafia wins:  ${(batch.aggregate.mafiaWinRate * 100).toFixed(1)}%`);
 
 console.log('\n═══ DETERMINISM CHECK ═══');
-const r1 = runMafiaGame({ players, roleAssignment: 'random', world, seed: 777 });
-const r2 = runMafiaGame({ players, roleAssignment: 'random', world, seed: 777 });
+const r1 = runMafiaGame({ players, roleAssignment: 'random', roleDistribution, world, seed: 777 });
+const r2 = runMafiaGame({ players, roleAssignment: 'random', roleDistribution, world, seed: 777 });
 const same =
   r1.analysis.winner === r2.analysis.winner &&
   r1.analysis.cycles === r2.analysis.cycles &&

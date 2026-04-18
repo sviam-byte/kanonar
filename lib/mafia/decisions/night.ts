@@ -32,6 +32,7 @@ export function decideMafiaKill(
 
   const aggregate: Record<string, number> = {};
   const traces: NightTrace[] = [];
+  const leaderId = [...mafiaIds].sort((a, b) => (vb(agents[b], 'A_Power_Sovereignty', 0.5) + vb(agents[b], 'C_coalition_loyalty', 0.5)) - (vb(agents[a], 'A_Power_Sovereignty', 0.5) + vb(agents[a], 'C_coalition_loyalty', 0.5)))[0] ?? mafiaIds[0];
 
   for (const actorId of mafiaIds) {
     const actor = agents[actorId];
@@ -41,7 +42,9 @@ export function decideMafiaKill(
     for (const targetId of candidates) {
       const dec = scoreKill(state, actor, actorId, targetId);
       decompositions.push(dec);
-      aggregate[targetId] = (aggregate[targetId] ?? 0) + dec.u;
+      const callerWeight = actorId === leaderId ? 1.0 : 0.55;
+      const coordinationNoise = 0.08 * avgTemperature(agents, mafiaIds) * (hashNoise(`${actorId}:coord`, targetId) - 0.5);
+      aggregate[targetId] = (aggregate[targetId] ?? 0) + callerWeight * dec.u + coordinationNoise;
     }
 
     decompositions.sort((a, b) => b.u - a.u);

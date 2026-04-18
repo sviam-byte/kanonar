@@ -37,12 +37,16 @@ export function decideVote(
     : [];
 
   const accusationCounts: Record<string, number> = {};
+  const defenseCounts: Record<string, number> = {};
   for (const c of currentDayClaims) {
     if (c.kind === 'accuse' && c.targetId) {
       accusationCounts[c.targetId] = (accusationCounts[c.targetId] ?? 0) + 1;
     }
+    if (c.kind === 'defend' && c.targetId) {
+      defenseCounts[c.targetId] = (defenseCounts[c.targetId] ?? 0) + 1;
+    }
   }
-  const maxAcc = Math.max(1, ...Object.values(accusationCounts));
+  const maxSignal = Math.max(1, ...Object.values(accusationCounts), ...Object.values(defenseCounts));
 
   const sheriffAccusations = new Map<string, Array<{ claimer: string; target: string }>>();
   for (const c of currentDayClaims) {
@@ -63,14 +67,16 @@ export function decideVote(
   const truthNeed = vb(voter, 'A_Knowledge_Truth');
   const conformism = 1 - autonomy;
 
-  const abstainScore = -0.1;
+  const abstainScore = -0.35;
 
   for (const targetId of candidates) {
     const suspicion = state.suspicion[voterId]?.[targetId] ?? 0.5;
     const rel = readRel(voter, targetId);
 
     const targetAcc = accusationCounts[targetId] ?? 0;
-    const bandwagon = conformism * (targetAcc / maxAcc);
+    const targetDef = defenseCounts[targetId] ?? 0;
+    const publicPressure = (targetAcc - 0.7 * targetDef) / maxSignal;
+    const bandwagon = conformism * publicPressure;
 
     const bondPenalty = loyalty * rel.bond;
 
@@ -91,15 +97,15 @@ export function decideVote(
       if (accByClaims && accByClaims.length > 0) {
         const claimer = accByClaims[0].claimer;
         const claimerRel = readRel(voter, claimer);
-        const sheriffTrustBonus = 0.7 * truthNeed * claimerRel.trust;
+        const sheriffTrustBonus = (0.9 * truthNeed * claimerRel.trust) + 0.15 * accByClaims.length;
         claimBonus += sheriffTrustBonus;
       }
     }
 
     const u =
-      1.5 * suspicion
-      + 0.7 * bandwagon
-      - 0.6 * bondPenalty
+      1.45 * suspicion
+      + 1.05 * bandwagon
+      - 0.55 * bondPenalty
       + teamProtection
       + claimBonus;
 

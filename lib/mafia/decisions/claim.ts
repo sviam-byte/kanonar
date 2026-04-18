@@ -138,22 +138,30 @@ export function decideClaim(
       const hasConfirmedMafia =
         isSheriff && Object.values(mySheriffInfo).some(r => r === 'mafia');
       const cycleUrgency = clamp01(state.cycle / 4);
+      const selfHeat = (accCountsToday[actorId] ?? 0) / Math.max(1, others.length);
       const realInfoValue = hasConfirmedMafia
-        ? (0.9 + 0.4 * cycleUrgency) * truthNeed / (1 + rivalClaimers)
-        : (0.35 + 0.25 * cycleUrgency) * truthNeed / (1 + rivalClaimers);
+        ? (1.35 + 0.55 * cycleUrgency + 0.35 * selfHeat) * truthNeed / (1 + 0.7 * rivalClaimers)
+        : (0.45 + 0.30 * cycleUrgency + 0.20 * selfHeat) * truthNeed / (1 + rivalClaimers);
       informationValue = isReal
         ? realInfoValue
-        : 0.5 * power / (1 + rivalClaimers);
-      visibilityCost = 1.0;
-      socialRisk = isReal ? 0.1 : 1.2;
-      majorityAlignment = 0;
+        : 0.45 * power / (1 + rivalClaimers);
+      visibilityCost = isReal ? 0.7 : 1.15;
+      socialRisk = isReal ? 0.05 : 1.35;
+      majorityAlignment = isReal ? 0.1 * selfHeat : 0;
     }
 
+    const hasMafiaResult = cand.kind === 'claim_sheriff' && cand.claimedCheck?.asRole === 'mafia';
+    const silencePenalty = cand.kind === 'stay_silent' && hasUnrevealedInfo
+      ? ((Object.values(mySheriffInfo).some(r => r === 'mafia') ? 0.85 : 0.35) * truthNeed)
+      : 0;
+
     const u =
-      1.0 * informationValue
-      - (imMafia ? 0.8 : 0.3) * visibilityCost
-      - 0.5 * socialRisk
-      + 0.3 * majorityAlignment;
+      1.05 * informationValue
+      - (imMafia ? 0.75 : 0.22) * visibilityCost
+      - 0.48 * socialRisk
+      + 0.3 * majorityAlignment
+      + (hasMafiaResult && isSheriff ? 0.45 : 0)
+      - silencePenalty;
 
     decs.push({
       kind: cand.kind,
