@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { runDilemmaV2 } from '../lib/dilemma/runner';
 import { allScenarios, getScenario } from '../lib/dilemma/scenarios';
 import { allMechanics } from '../lib/dilemma/mechanics';
@@ -392,6 +393,15 @@ export const DilemmaLabPage: React.FC = () => {
           <span className="text-canon-accent">◆</span> DilemmaLab v2
         </h1>
         <p className="text-xs text-canon-muted mt-1">Асимметричные сценарии · 7-осевой utility · субъективные ставки · объяснения</p>
+        <div className="mt-2">
+          <Link
+            to="/access"
+            className="inline-flex items-center gap-1 rounded-md border border-canon-border bg-canon-card px-2 py-1 text-[11px] text-canon-text hover:border-canon-accent/50 hover:text-canon-accent transition"
+            title="Перейти в модуль доступа к Lab"
+          >
+            🔐 Доступ в Lab
+          </Link>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
