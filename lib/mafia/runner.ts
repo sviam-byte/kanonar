@@ -36,6 +36,7 @@ import { decideClaim } from './decisions/claim';
 import {
   updateAfterDayElimination,
   updateAfterNightKill,
+  updateFromPublicClaim,
   updateFromSheriffClaim,
 } from './suspicion';
 
@@ -112,6 +113,7 @@ function runDayPhase(
     const { claim } = decideClaim(state, agents, speakerId, claims, rng);
     claims.push(claim);
 
+    updateFromPublicClaim(state, agents, claim);
     if (claim.kind === 'claim_sheriff') {
       updateFromSheriffClaim(state, agents, claim);
     }
