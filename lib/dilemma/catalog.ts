@@ -162,64 +162,13 @@ export const CHICKEN: DilemmaSpec = {
   },
 };
 
-export const TRUST_GAME: DilemmaSpec = {
-  id: 'trust_game',
-  name: 'Игра доверия',
-  cooperativeActionId: 'cooperate',
-  actions: [
-    {
-      id: 'cooperate',
-      label: 'Довериться',
-      description: 'Передать ресурс / вернуть справедливую долю.',
-    },
-    {
-      id: 'exploit',
-      label: 'Эксплуатировать',
-      description: 'Оставить всё себе / забрать переданное.',
-    },
-  ],
-  payoffs: {
-    cooperate: {
-      cooperate: [0.8, 0.8] as const,
-      exploit: [0.0, 1.0] as const,
-    },
-    exploit: {
-      cooperate: [1.0, 0.0] as const,
-      exploit: [0.3, 0.3] as const,
-    },
-  },
-  nashEquilibria: [['exploit', 'exploit']],
-  paretoOptimal: [['cooperate', 'cooperate']],
-  scoringMap: {
-    cooperate: { idPrefix: 'off:help', kind: 'off' },
-    exploit: { idPrefix: 'aff:confront', kind: 'aff' },
-  },
-  framing: {
-    setup:
-      'Ресурсная передача через Опекуна. '
-      + 'Можно довериться и разделить, или попытаться забрать всё.',
-    actionLabels: {
-      cooperate: 'Передать ресурс / вернуть справедливую долю',
-      exploit: 'Оставить всё себе',
-    },
-    outcomeDescriptions: {
-      cooperate: {
-        cooperate: 'Оба доверились. Ресурс удвоился и поделён. Оптимальный результат.',
-        exploit: 'Ты доверился. Он забрал всё. Ты с пустыми руками.',
-      },
-      exploit: {
-        cooperate: 'Он доверился. Ты забрал всё.',
-        exploit: 'Никто не доверился. Ресурс пропал в накладных.',
-      },
-    },
-  },
-};
+// TRUST_GAME removed — structurally isomorphic to PRISONERS_DILEMMA
+// (same Nash [defect,defect], same Pareto [cooperate,cooperate], identical incentive structure).
 
 export const CATALOG: Record<string, DilemmaSpec> = {
   prisoners_dilemma: PRISONERS_DILEMMA,
   stag_hunt: STAG_HUNT,
   chicken: CHICKEN,
-  trust_game: TRUST_GAME,
 };
 
 export function getSpec(id: string): DilemmaSpec {

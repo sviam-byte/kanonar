@@ -116,12 +116,67 @@ export const CARE_UNDER_SURVEILLANCE = mechanic(
   0.5,
 );
 
+export const ULTIMATUM_SPLIT = mechanic(
+  'ultimatum_split',
+  'Ультиматум',
+  'Асимметричная власть: один предлагает раздел, другой принимает или отвергает. '
+    + 'Отказ уничтожает ресурс для обоих.',
+  'offer_fair',
+  [
+    action('offer_fair', 'Честное предложение', 'Предложить равный или близкий к равному раздел.', ['support'], { goalFit: 0.3, relationalFit: 0.7, identityFit: 0.4, legitimacyFit: 0.5, safetyFit: 0.1, mirrorFit: 0.6, expectedCost: 0.3 }, undefined, { offer_fair: 0.4, offer_skewed: -0.1, accept: 0.45, reject: -0.15 }),
+    action('offer_skewed', 'Перекос в свою пользу', 'Предложить минимально приемлемый раздел: почти всё себе.', ['harm'], { goalFit: 0.7, relationalFit: -0.6, identityFit: -0.1, legitimacyFit: -0.3, safetyFit: 0.2, mirrorFit: -0.5, expectedCost: 0.1 }, undefined, { offer_fair: 0.6, offer_skewed: -0.15, accept: 0.15, reject: -0.5 }),
+    action('accept', 'Принять', 'Согласиться с предложенным, сохранить отношения.', ['neutral'], { goalFit: 0.2, relationalFit: 0.4, identityFit: -0.1, legitimacyFit: 0.2, safetyFit: 0.3, mirrorFit: 0.0, expectedCost: 0.1 }, undefined, { offer_fair: 0.35, offer_skewed: -0.1, accept: 0.2, reject: -0.05 }),
+    action('reject', 'Отвергнуть', 'Уничтожить ресурс, чтобы наказать несправедливость.', ['harm', 'punish'], { goalFit: -0.3, relationalFit: -0.4, identityFit: 0.3, legitimacyFit: -0.1, safetyFit: -0.4, mirrorFit: 0.1, expectedCost: 0.7 }, undefined, { offer_fair: -0.2, offer_skewed: -0.3, accept: -0.1, reject: -0.35 }),
+  ],
+  { personal: 0.5, relational: 0.6, institutional: 0.3, physical: 0.1 },
+  { actionsVisible: true, audiencePresent: false, consequencesDeferred: false },
+  0.3,
+);
+
+export const VOLUNTEER_SACRIFICE = mechanic(
+  'volunteer_sacrifice',
+  'Жертва добровольца',
+  'Кто-то должен взять на себя цену. Если никто не вызвался — катастрофа для всех. '
+    + 'Если оба — цена делится, но удваивается.',
+  'volunteer',
+  [
+    action('volunteer', 'Вызваться', 'Принять риск/цену на себя.', ['support', 'protect'], { goalFit: 0.3, relationalFit: 0.7, identityFit: 0.6, legitimacyFit: 0.2, safetyFit: -0.7, mirrorFit: 0.5, expectedCost: 0.7 }, undefined, { volunteer: 0.2, wait: 0.45, push_other: -0.3 }),
+    action('wait', 'Ждать', 'Надеяться, что вызовется другой.', ['neutral'], { goalFit: 0.1, relationalFit: -0.2, identityFit: -0.3, legitimacyFit: 0.0, safetyFit: 0.5, mirrorFit: -0.4, expectedCost: 0.0 }, undefined, { volunteer: 0.6, wait: -0.8, push_other: 0.1 }),
+    action('push_other', 'Указать на другого', 'Открыто заявить, что это его задача, не моя.', ['harm', 'betrayal'], { goalFit: 0.2, relationalFit: -0.7, identityFit: -0.2, legitimacyFit: -0.3, safetyFit: 0.3, mirrorFit: -0.6, expectedCost: 0.2 }, undefined, { volunteer: 0.4, wait: -0.3, push_other: -0.5 }),
+  ],
+  { personal: 0.7, relational: 0.6, institutional: 0.4, physical: 0.6 },
+  { actionsVisible: true, audiencePresent: true, consequencesDeferred: false },
+  0.4,
+);
+
+export const SIGNALING_TRUST = mechanic(
+  'signaling_trust',
+  'Сигнал и интерпретация',
+  'Один передаёт сигнал (дорогой, дешёвый или пустой). Другой решает, верить ли. '
+    + 'Дорогой сигнал надёжнее, но стоит больше.',
+  'costly_signal',
+  [
+    action('costly_signal', 'Дорогой сигнал', 'Передать достоверный сигнал с высокой ценой для себя.', ['support'], { goalFit: 0.2, relationalFit: 0.8, identityFit: 0.5, legitimacyFit: 0.3, safetyFit: -0.3, mirrorFit: 0.7, expectedCost: 0.6 }, undefined, { costly_signal: 0.15, cheap_signal: 0.1, silence: -0.1, trust_signal: 0.55, test_signal: 0.1, ignore_signal: -0.4 }),
+    action('cheap_signal', 'Дешёвый сигнал', 'Передать сигнал, который легко подделать.', ['deceive', 'neutral'], { goalFit: 0.4, relationalFit: 0.2, identityFit: -0.1, legitimacyFit: -0.2, safetyFit: 0.2, mirrorFit: -0.1, expectedCost: 0.1 }, undefined, { costly_signal: 0.1, cheap_signal: 0.05, silence: 0.0, trust_signal: 0.3, test_signal: -0.1, ignore_signal: -0.1 }),
+    action('silence', 'Молчание', 'Не давать сигнала. Пусть другой решает без информации.', ['neutral'], { goalFit: 0.1, relationalFit: -0.3, identityFit: 0.0, legitimacyFit: 0.0, safetyFit: 0.4, mirrorFit: -0.3, expectedCost: 0.0 }, undefined, { costly_signal: -0.1, cheap_signal: 0.0, silence: 0.05, trust_signal: -0.3, test_signal: 0.1, ignore_signal: 0.2 }),
+    action('trust_signal', 'Поверить', 'Принять сигнал и действовать в соответствии.', ['support'], { goalFit: 0.3, relationalFit: 0.6, identityFit: 0.1, legitimacyFit: 0.1, safetyFit: -0.3, mirrorFit: 0.3, expectedCost: 0.3 }, undefined, { costly_signal: 0.5, cheap_signal: -0.2, silence: -0.3, trust_signal: 0.2, test_signal: 0.1, ignore_signal: -0.1 }),
+    action('test_signal', 'Проверить', 'Потратить время и ресурсы на верификацию.', ['neutral'], { goalFit: 0.2, relationalFit: 0.0, identityFit: 0.2, legitimacyFit: 0.3, safetyFit: 0.1, mirrorFit: 0.0, expectedCost: 0.4 }, undefined, { costly_signal: 0.2, cheap_signal: 0.15, silence: 0.1, trust_signal: 0.1, test_signal: 0.1, ignore_signal: 0.05 }),
+    action('ignore_signal', 'Проигнорировать', 'Не тратить ресурсы, действовать по умолчанию.', ['neutral'], { goalFit: 0.0, relationalFit: -0.4, identityFit: -0.1, legitimacyFit: 0.0, safetyFit: 0.3, mirrorFit: -0.3, expectedCost: 0.0 }, undefined, { costly_signal: -0.2, cheap_signal: 0.05, silence: 0.15, trust_signal: -0.1, test_signal: 0.0, ignore_signal: 0.1 }),
+  ],
+  { personal: 0.5, relational: 0.7, institutional: 0.3, physical: 0.3 },
+  { actionsVisible: false, audiencePresent: false, consequencesDeferred: true },
+  0.2,
+);
+
 export const MECHANIC_CATALOG: Record<MechanicId, MechanicTemplate> = {
   trust_exchange: TRUST_EXCHANGE,
   authority_conflict: AUTHORITY_CONFLICT,
   judgment_sanction: JUDGMENT_SANCTION,
   resource_split: RESOURCE_SPLIT,
   care_under_surveillance: CARE_UNDER_SURVEILLANCE,
+  ultimatum_split: ULTIMATUM_SPLIT,
+  volunteer_sacrifice: VOLUNTEER_SACRIFICE,
+  signaling_trust: SIGNALING_TRUST,
 };
 
 export function getMechanic(id: MechanicId): MechanicTemplate {

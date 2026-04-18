@@ -13,7 +13,6 @@ import {
   PRISONERS_DILEMMA,
   STAG_HUNT,
   CHICKEN,
-  TRUST_GAME,
 } from '../../lib/dilemma/catalog';
 
 describe('engine: createGame', () => {
@@ -95,9 +94,9 @@ describe('engine: findPureNash', () => {
     expect(nash).toContainEqual(['dove', 'hawk']);
   });
 
-  it('Trust Game: exploit/exploit is unique Nash', () => {
-    const nash = findPureNash(TRUST_GAME);
-    expect(nash).toEqual([['exploit', 'exploit']]);
+  it('Canonical trust-like matrix remains covered by PD Nash', () => {
+    const nash = findPureNash(PRISONERS_DILEMMA);
+    expect(nash).toEqual([['defect', 'defect']]);
   });
 });
 

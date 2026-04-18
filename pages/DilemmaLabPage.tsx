@@ -1,14 +1,16 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { runDilemmaV2 } from '../lib/dilemma/runner';
 import { allScenarios, getScenario } from '../lib/dilemma/scenarios';
 import { allMechanics } from '../lib/dilemma/mechanics';
 import type {
-  ScenarioTemplate, V2GameState, V2RoundTrace, V2RunResult, MechanicTemplate,
+  ScenarioTemplate, V2GameState, V2RoundTrace, V2RunResult, MechanicTemplate, PressureSchedule,
 } from '../lib/dilemma/types';
 import type { WorldState, AgentState, CharacterEntity } from '../types';
 import { useSandbox } from '../contexts/SandboxContext';
 import { getAllCharactersWithRuntime } from '../data';
 import { Tabs } from '../components/Tabs';
+import { runMafiaBatch, runMafiaGame } from '../lib/mafia';
 
 // ═══════════════════════════════════════════════════════════════
 // Constants
@@ -25,6 +27,9 @@ const MECHANIC_ICONS: Record<string, string> = {
   judgment_sanction: '⚖',
   resource_split: '🤝',
   care_under_surveillance: '👁',
+  ultimatum_split: '🪓',
+  volunteer_sacrifice: '🩸',
+  signaling_trust: '📡',
 };
 
 const AXIS_META: Record<string, { label: string; color: string; desc: string }> = {
@@ -290,9 +295,21 @@ export const DilemmaLabPage: React.FC = () => {
   const [p0, setP0] = useState('');
   const [p1, setP1] = useState('');
   const [instPressure, setInstPressure] = useState<number | null>(null);
+  const [pressureSchedule, setPressureSchedule] = useState<PressureSchedule | undefined>(undefined);
   const [seed, setSeed] = useState(42);
   const [result, setResult] = useState<V2RunResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [mafiaSeed, setMafiaSeed] = useState(42);
+  const [mafiaBatchGames, setMafiaBatchGames] = useState(30);
+  const [mafiaSummary, setMafiaSummary] = useState<{
+    singleWinner: string | null;
+    singleCycles: number;
+    townWinRate: number;
+    mafiaWinRate: number;
+    drawRate: number;
+    avgCycles: number;
+    playerCount: number;
+  } | null>(null);
 
   const scenario = getScenario(scenarioId);
   const scenariosByMechanic = useMemo(() => {
@@ -351,13 +368,14 @@ export const DilemmaLabPage: React.FC = () => {
         world,
         seed,
         institutionalPressure: instPressure ?? undefined,
+        pressureSchedule,
       });
       setResult(res);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
       setResult(null);
     }
-  }, [scenarioId, p0, p1, totalRounds, seed, instPressure, allChars]);
+  }, [scenarioId, p0, p1, totalRounds, seed, instPressure, pressureSchedule, allChars]);
 
   const download = useCallback(() => {
     if (!game || !result) return;
@@ -380,6 +398,49 @@ export const DilemmaLabPage: React.FC = () => {
     return c;
   }, [game]);
 
+  /**
+   * Быстрый режим MafiaLab внутри DilemmaLab:
+   * - 1 single-run для читаемого результата;
+   * - 1 batch-run для устойчивых частот.
+   * Важно: используем один и тот же world-builder для совместимости с остальными lab-раннерами.
+   */
+  const runMafiaLab = useCallback(() => {
+    const mafiaPlayers = allChars.map((c) => c.entityId).slice(0, 7);
+    if (mafiaPlayers.length < 4) {
+      setError('Для режима MafiaLab нужно минимум 4 персонажа');
+      return;
+    }
+    setError(null);
+    try {
+      const world = buildMinimalWorld(allChars);
+      const single = runMafiaGame({
+        players: mafiaPlayers,
+        roleAssignment: 'random',
+        world,
+        seed: mafiaSeed,
+      });
+      const batch = runMafiaBatch({
+        players: mafiaPlayers,
+        roleDistribution: { mafia: 2, sheriff: 1, doctor: 1, citizen: Math.max(0, mafiaPlayers.length - 4) },
+        nGames: Math.max(1, Math.floor(mafiaBatchGames)),
+        world,
+        baseSeed: mafiaSeed * 17,
+      });
+      setMafiaSummary({
+        singleWinner: single.analysis.winner,
+        singleCycles: single.analysis.cycles,
+        townWinRate: batch.aggregate.townWinRate,
+        mafiaWinRate: batch.aggregate.mafiaWinRate,
+        drawRate: batch.aggregate.drawRate,
+        avgCycles: batch.aggregate.avgCycles,
+        playerCount: mafiaPlayers.length,
+      });
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
+      setMafiaSummary(null);
+    }
+  }, [allChars, mafiaBatchGames, mafiaSeed]);
+
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-5">
       <div>
@@ -387,6 +448,53 @@ export const DilemmaLabPage: React.FC = () => {
           <span className="text-canon-accent">◆</span> DilemmaLab v2
         </h1>
         <p className="text-xs text-canon-muted mt-1">Асимметричные сценарии · 7-осевой utility · субъективные ставки · объяснения</p>
+        <div className="mt-2">
+          <Link
+            to="/access"
+            className="inline-flex items-center gap-1 rounded-md border border-canon-border bg-canon-card px-2 py-1 text-[11px] text-canon-text hover:border-canon-accent/50 hover:text-canon-accent transition"
+            title="Перейти в модуль доступа к Lab"
+          >
+            🔐 Доступ в Lab
+          </Link>
+        </div>
+        <div className="mt-2 rounded-lg border border-canon-border/60 bg-canon-card px-3 py-2">
+          <div className="text-[11px] text-canon-muted mb-1">Нужен режим MafiaLab прямо здесь? Добавил быстрый запуск ниже:</div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <label className="text-[10px] text-canon-muted">seed
+              <input
+                type="number"
+                value={mafiaSeed}
+                min={1}
+                max={99999}
+                onChange={(e) => setMafiaSeed(Number(e.target.value) || 42)}
+                className="ml-1 w-20 bg-canon-bg border border-canon-border rounded px-1 py-0.5 text-[10px] text-canon-text font-mono"
+              />
+            </label>
+            <label className="text-[10px] text-canon-muted">batch
+              <input
+                type="number"
+                value={mafiaBatchGames}
+                min={1}
+                max={500}
+                onChange={(e) => setMafiaBatchGames(Number(e.target.value) || 30)}
+                className="ml-1 w-16 bg-canon-bg border border-canon-border rounded px-1 py-0.5 text-[10px] text-canon-text font-mono"
+              />
+            </label>
+            <button
+              onClick={runMafiaLab}
+              className="px-2 py-1 rounded bg-canon-accent/20 border border-canon-accent/30 text-[11px] text-canon-accent hover:bg-canon-accent/30 transition"
+            >
+              ▶ Запустить MafiaLab
+            </button>
+          </div>
+          {mafiaSummary && (
+            <div className="mt-2 text-[10px] text-canon-muted">
+              Игроков: {mafiaSummary.playerCount} · single: {mafiaSummary.singleWinner ?? '—'} за {mafiaSummary.singleCycles} циклов ·
+              batch town {pct(mafiaSummary.townWinRate)} / mafia {pct(mafiaSummary.mafiaWinRate)} / draw {pct(mafiaSummary.drawRate)} ·
+              avg {f2(mafiaSummary.avgCycles)} циклов
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
@@ -450,6 +558,29 @@ export const DilemmaLabPage: React.FC = () => {
                   <span className="text-sm font-mono text-canon-text w-8 text-right">{f2(instPressure)}</span>
                 </>}
               </div>
+              <div className="flex items-center gap-1 mt-1">
+                <select value={pressureSchedule?.shape ?? 'flat'} onChange={e => {
+                  const v = e.target.value;
+                  if (v === 'flat') setPressureSchedule(undefined);
+                  else if (v === 'rising') setPressureSchedule({ shape: 'rising', floor: 0.1 });
+                  else if (v === 'falling') setPressureSchedule({ shape: 'falling', floor: 0.1 });
+                  else if (v === 'spike') setPressureSchedule({ shape: 'spike', peakRound: Math.floor(totalRounds / 2), floor: 0.1 });
+                }} className="bg-canon-bg border border-canon-border rounded px-1 py-0.5 text-[10px] text-canon-text">
+                  <option value="flat">▬ плоское</option>
+                  <option value="rising">↗ нарастание</option>
+                  <option value="falling">↘ спад</option>
+                  <option value="spike">⌒ пик</option>
+                </select>
+                {pressureSchedule && 'floor' in pressureSchedule && <>
+                  <span className="text-[9px] text-canon-faint ml-1">мин:</span>
+                  <input type="range" min={0} max={100} value={Math.round(pressureSchedule.floor * 100)} onChange={e => setPressureSchedule({ ...pressureSchedule, floor: Number(e.target.value) / 100 })} className="flex-1 accent-canon-accent" style={{ maxWidth: 60 }} />
+                  <span className="text-[9px] font-mono text-canon-faint">{f2(pressureSchedule.floor)}</span>
+                </>}
+                {pressureSchedule?.shape === 'spike' && <>
+                  <span className="text-[9px] text-canon-faint ml-1">пик:</span>
+                  <input type="number" min={0} max={totalRounds - 1} value={pressureSchedule.peakRound} onChange={e => setPressureSchedule({ ...pressureSchedule, peakRound: Number(e.target.value) })} className="bg-canon-bg border border-canon-border rounded px-1 py-0.5 text-[10px] text-canon-text w-10" />
+                </>}
+              </div>
             </label>
             <label className="text-xs text-canon-muted">Seed
               <input type="number" min={1} max={99999} value={seed} onChange={e => setSeed(Number(e.target.value) || 42)} className="w-full mt-1 bg-canon-bg border border-canon-border rounded-lg p-2 text-sm font-mono text-canon-text" />
@@ -475,7 +606,7 @@ export const DilemmaLabPage: React.FC = () => {
             {scenario.visibility.audiencePresent ? ' + публика' : ''}
             {scenario.visibility.consequencesDeferred ? ' + отложенные последствия' : ''}
             {' · '}
-            Давл: {pct(instPressure ?? scenario.institutionalPressure)}
+            Давл: {pct(instPressure ?? scenario.institutionalPressure)}{pressureSchedule ? ` (${pressureSchedule.shape})` : ''}
           </div>
           <div className="border-t border-canon-border/30 pt-2 mt-2">
             <div className="text-xs font-semibold text-canon-muted uppercase tracking-wider mb-1">Действия</div>

@@ -155,40 +155,9 @@ export const SCENARIO_PRESETS: Record<string, ScenarioPreset> = {
       },
     },
   },
-  loyalty_conflict: {
-    id: 'loyalty_conflict',
-    name: 'Верность: институт или человек',
-    mechanicId: 'authority_conflict',
-    dilemmaClass: 'loyalty',
-    setup: 'Институция требует выдать человека, которого ты защищаешь.',
-    institutionalPressure: 1,
-    stakes: { personal: 0.6, relational: 0.9, institutional: 0.9, physical: 0.3 },
-    visibility: { actionsVisible: true, audiencePresent: true, consequencesDeferred: false },
-    actionOverrides: {
-      comply: {
-        label: 'Выдать',
-        description: 'Подчиниться институции.',
-        socialTags: ['betrayal'],
-        profile: { goalFit: 0.2, relationalFit: -0.9, identityFit: -0.5, legitimacyFit: 0.8, safetyFit: 0.5, mirrorFit: -0.7, expectedCost: 0.3 },
-      },
-      protect: {
-        label: 'Защитить',
-        description: 'Отказать институции, сохранить верность человеку.',
-        socialTags: ['support', 'protect'],
-        profile: { goalFit: 0.5, relationalFit: 0.9, identityFit: 0.6, legitimacyFit: -0.8, safetyFit: -0.4, mirrorFit: 0.6, expectedCost: 0.5 },
-      },
-      delay: {
-        label: 'Договориться',
-        description: 'Искать компромисс.',
-        socialTags: ['neutral'],
-        requires: { minTrait: { axis: 'E_Skill_diplomacy_negotiation', threshold: 0.6 } },
-        profile: { goalFit: 0.4, relationalFit: 0.4, identityFit: 0.2, legitimacyFit: 0.2, safetyFit: 0.1, mirrorFit: 0.3, expectedCost: 0.6 },
-      },
-      rupture: {
-        disabled: true,
-      },
-    },
-  },
+  // loyalty_conflict removed — structurally near-identical to protection_order
+  // (same mechanic, same core actions: comply/protect/delay, similar stakes).
+  // Merged into protection_order by raising its pressure ceiling.
   mutiny_order: {
     id: 'mutiny_order',
     name: 'Приказ, с которым нельзя согласиться',
@@ -257,6 +226,140 @@ export const SCENARIO_PRESETS: Record<string, ScenarioPreset> = {
     visibility: { actionsVisible: true, audiencePresent: true, consequencesDeferred: false },
     disabled: true,
     disabledReason: 'Этот сценарий на деле триадный: помощь, получатель помощи и наблюдающая инстанция. В dyad-v2 он пока искажает механику.',
+  },
+  // ── Ultimatum ──
+  ultimatum_ration: {
+    id: 'ultimatum_ration',
+    name: 'Раздел пайка',
+    mechanicId: 'ultimatum_split',
+    dilemmaClass: 'bargain',
+    setup: 'Единственный комплект снаряжения. Один решает, как делить; другой может только принять или уничтожить.',
+    institutionalPressure: 0.2,
+    stakes: { personal: 0.7, relational: 0.5, institutional: 0.2, physical: 0.5 },
+    visibility: { actionsVisible: true, audiencePresent: false, consequencesDeferred: false },
+    actionOverrides: {
+      offer_fair: {
+        label: 'Поровну',
+        description: 'Предложить равный раздел.',
+        socialTags: ['support'],
+      },
+      offer_skewed: {
+        label: 'Себе больше',
+        description: 'Оставить большую часть себе.',
+        socialTags: ['harm'],
+      },
+      accept: {
+        label: 'Принять',
+        description: 'Согласиться с предложенным.',
+        socialTags: ['neutral'],
+      },
+      reject: {
+        label: 'Уничтожить',
+        description: 'Ни мне, ни тебе.',
+        socialTags: ['harm', 'punish'],
+      },
+    },
+  },
+  // ── Volunteer ──
+  volunteer_mission: {
+    id: 'volunteer_mission',
+    name: 'Опасная вылазка',
+    mechanicId: 'volunteer_sacrifice',
+    dilemmaClass: 'sacrifice',
+    setup: 'Кто-то должен идти первым в нестабильную зону. Если никто не пойдёт — конвой стоит и теряет окно.',
+    institutionalPressure: 0.5,
+    stakes: { personal: 0.8, relational: 0.5, institutional: 0.5, physical: 0.8 },
+    visibility: { actionsVisible: true, audiencePresent: true, consequencesDeferred: false },
+    actionOverrides: {
+      volunteer: {
+        label: 'Пойти первым',
+        description: 'Принять риск на себя.',
+        socialTags: ['support', 'protect'],
+      },
+      wait: {
+        label: 'Ждать',
+        description: 'Надеяться, что пойдёт другой.',
+        socialTags: ['neutral'],
+      },
+      push_other: {
+        label: 'Указать на него',
+        description: 'Открыто заявить: это его задача.',
+        socialTags: ['harm', 'betrayal'],
+      },
+    },
+  },
+  volunteer_report: {
+    id: 'volunteer_report',
+    name: 'Кто доложит',
+    mechanicId: 'volunteer_sacrifice',
+    dilemmaClass: 'opacity',
+    setup: 'Оба знают о нарушении в цепочке снабжения. Доклад несёт персональный риск, молчание — коллективный.',
+    institutionalPressure: 0.7,
+    stakes: { personal: 0.6, relational: 0.7, institutional: 0.8, physical: 0.2 },
+    visibility: { actionsVisible: false, audiencePresent: false, consequencesDeferred: true },
+    actionOverrides: {
+      volunteer: {
+        label: 'Доложить',
+        description: 'Подать рапорт и принять последствия.',
+        socialTags: ['support'],
+        profile: { goalFit: 0.4, relationalFit: 0.3, identityFit: 0.7, legitimacyFit: 0.6, safetyFit: -0.5, mirrorFit: 0.4, expectedCost: 0.6 },
+      },
+      wait: {
+        label: 'Молчать',
+        description: 'Считать, что не моё дело.',
+        socialTags: ['neutral'],
+      },
+      push_other: {
+        label: 'Намекнуть ему',
+        description: 'Дать понять, что он должен доложить.',
+        socialTags: ['neutral'],
+        profile: { goalFit: 0.3, relationalFit: -0.3, identityFit: 0.0, legitimacyFit: -0.1, safetyFit: 0.2, mirrorFit: -0.2, expectedCost: 0.1 },
+      },
+    },
+  },
+  // ── Signaling ──
+  signal_distress: {
+    id: 'signal_distress',
+    name: 'Сигнал бедствия',
+    mechanicId: 'signaling_trust',
+    dilemmaClass: 'trust',
+    setup: 'Пришёл сигнал бедствия с неизвестного маршрута. Один может подать сигнал, другой — решить, реагировать ли.',
+    institutionalPressure: 0.3,
+    stakes: { personal: 0.5, relational: 0.6, institutional: 0.2, physical: 0.7 },
+    visibility: { actionsVisible: false, audiencePresent: false, consequencesDeferred: true },
+    actionOverrides: {
+      costly_signal: {
+        label: 'Маркер с привязкой',
+        description: 'Передать координаты и подтвердить присутствие — раскрыть себя.',
+        socialTags: ['support'],
+      },
+      cheap_signal: {
+        label: 'Анонимный маркер',
+        description: 'Передать сигнал без привязки к себе.',
+        socialTags: ['neutral'],
+      },
+      silence: {
+        label: 'Молчать',
+        description: 'Не подавать сигнала.',
+        socialTags: ['neutral'],
+      },
+      trust_signal: {
+        label: 'Выдвинуться',
+        description: 'Довериться сигналу и направить ресурсы.',
+        socialTags: ['support', 'protect'],
+      },
+      test_signal: {
+        label: 'Разведка',
+        description: 'Отправить разведку для подтверждения.',
+        socialTags: ['neutral'],
+        requires: { minTrait: { axis: 'E_Skill_ops_fieldcraft', threshold: 0.4 } },
+      },
+      ignore_signal: {
+        label: 'Проигнорировать',
+        description: 'Не тратить ресурсы на непроверенное.',
+        socialTags: ['neutral'],
+      },
+    },
   },
 };
 
