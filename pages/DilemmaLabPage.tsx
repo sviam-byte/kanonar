@@ -10,6 +10,7 @@ import type { WorldState, AgentState, CharacterEntity } from '../types';
 import { useSandbox } from '../contexts/SandboxContext';
 import { getAllCharactersWithRuntime } from '../data';
 import { Tabs } from '../components/Tabs';
+import { runMafiaBatch, runMafiaGame } from '../lib/mafia';
 
 // ═══════════════════════════════════════════════════════════════
 // Constants
@@ -298,6 +299,17 @@ export const DilemmaLabPage: React.FC = () => {
   const [seed, setSeed] = useState(42);
   const [result, setResult] = useState<V2RunResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [mafiaSeed, setMafiaSeed] = useState(42);
+  const [mafiaBatchGames, setMafiaBatchGames] = useState(30);
+  const [mafiaSummary, setMafiaSummary] = useState<{
+    singleWinner: string | null;
+    singleCycles: number;
+    townWinRate: number;
+    mafiaWinRate: number;
+    drawRate: number;
+    avgCycles: number;
+    playerCount: number;
+  } | null>(null);
 
   const scenario = getScenario(scenarioId);
   const scenariosByMechanic = useMemo(() => {
@@ -386,6 +398,49 @@ export const DilemmaLabPage: React.FC = () => {
     return c;
   }, [game]);
 
+  /**
+   * Быстрый режим MafiaLab внутри DilemmaLab:
+   * - 1 single-run для читаемого результата;
+   * - 1 batch-run для устойчивых частот.
+   * Важно: используем один и тот же world-builder для совместимости с остальными lab-раннерами.
+   */
+  const runMafiaLab = useCallback(() => {
+    const mafiaPlayers = allChars.map((c) => c.entityId).slice(0, 7);
+    if (mafiaPlayers.length < 4) {
+      setError('Для режима MafiaLab нужно минимум 4 персонажа');
+      return;
+    }
+    setError(null);
+    try {
+      const world = buildMinimalWorld(allChars);
+      const single = runMafiaGame({
+        players: mafiaPlayers,
+        roleAssignment: 'random',
+        world,
+        seed: mafiaSeed,
+      });
+      const batch = runMafiaBatch({
+        players: mafiaPlayers,
+        roleDistribution: { mafia: 2, sheriff: 1, doctor: 1, citizen: Math.max(0, mafiaPlayers.length - 4) },
+        nGames: Math.max(1, Math.floor(mafiaBatchGames)),
+        world,
+        baseSeed: mafiaSeed * 17,
+      });
+      setMafiaSummary({
+        singleWinner: single.analysis.winner,
+        singleCycles: single.analysis.cycles,
+        townWinRate: batch.aggregate.townWinRate,
+        mafiaWinRate: batch.aggregate.mafiaWinRate,
+        drawRate: batch.aggregate.drawRate,
+        avgCycles: batch.aggregate.avgCycles,
+        playerCount: mafiaPlayers.length,
+      });
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
+      setMafiaSummary(null);
+    }
+  }, [allChars, mafiaBatchGames, mafiaSeed]);
+
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-5">
       <div>
@@ -401,6 +456,44 @@ export const DilemmaLabPage: React.FC = () => {
           >
             🔐 Доступ в Lab
           </Link>
+        </div>
+        <div className="mt-2 rounded-lg border border-canon-border/60 bg-canon-card px-3 py-2">
+          <div className="text-[11px] text-canon-muted mb-1">Нужен режим MafiaLab прямо здесь? Добавил быстрый запуск ниже:</div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <label className="text-[10px] text-canon-muted">seed
+              <input
+                type="number"
+                value={mafiaSeed}
+                min={1}
+                max={99999}
+                onChange={(e) => setMafiaSeed(Number(e.target.value) || 42)}
+                className="ml-1 w-20 bg-canon-bg border border-canon-border rounded px-1 py-0.5 text-[10px] text-canon-text font-mono"
+              />
+            </label>
+            <label className="text-[10px] text-canon-muted">batch
+              <input
+                type="number"
+                value={mafiaBatchGames}
+                min={1}
+                max={500}
+                onChange={(e) => setMafiaBatchGames(Number(e.target.value) || 30)}
+                className="ml-1 w-16 bg-canon-bg border border-canon-border rounded px-1 py-0.5 text-[10px] text-canon-text font-mono"
+              />
+            </label>
+            <button
+              onClick={runMafiaLab}
+              className="px-2 py-1 rounded bg-canon-accent/20 border border-canon-accent/30 text-[11px] text-canon-accent hover:bg-canon-accent/30 transition"
+            >
+              ▶ Запустить MafiaLab
+            </button>
+          </div>
+          {mafiaSummary && (
+            <div className="mt-2 text-[10px] text-canon-muted">
+              Игроков: {mafiaSummary.playerCount} · single: {mafiaSummary.singleWinner ?? '—'} за {mafiaSummary.singleCycles} циклов ·
+              batch town {pct(mafiaSummary.townWinRate)} / mafia {pct(mafiaSummary.mafiaWinRate)} / draw {pct(mafiaSummary.drawRate)} ·
+              avg {f2(mafiaSummary.avgCycles)} циклов
+            </div>
+          )}
         </div>
       </div>
 
