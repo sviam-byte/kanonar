@@ -4,6 +4,8 @@ import { useSandbox } from '../contexts/SandboxContext';
 import { getAllCharactersWithRuntime } from '../data';
 import type { AgentState, CharacterEntity, WorldState } from '../types';
 import {
+  buildMafiaFlatTimeline,
+  buildMafiaReplayExport,
   defaultDistribution,
   runMafiaBatch,
   runMafiaGame,
@@ -11,6 +13,7 @@ import {
   type MafiaGameResult,
   type RoleId,
 } from '../lib/mafia';
+import { MafiaTracePanel } from '../components/MafiaTracePanel';
 
 const f2 = (v: number) => v.toFixed(2);
 const pct = (v: number) => `${(v * 100).toFixed(1)}%`;
@@ -34,6 +37,24 @@ function buildMinimalWorld(chars: { entityId: string; [k: string]: unknown }[]):
     leadership: { leaderId: null } as WorldState['leadership'],
     initialRelations: {},
   };
+}
+
+function downloadJson(payload: unknown, fileName: string): void {
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = fileName;
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a); URL.revokeObjectURL(url);
+}
+
+function downloadText(text: string, fileName: string, mime = 'text/plain;charset=utf-8'): void {
+  const blob = new Blob([text], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = fileName;
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a); URL.revokeObjectURL(url);
 }
 
 export const MafiaLabPage: React.FC = () => {
@@ -135,6 +156,27 @@ export const MafiaLabPage: React.FC = () => {
       setSingle(null);
       setBatch(null);
     }
+  };
+
+  const exportReplay = () => {
+    if (!single) return;
+    const payload = buildMafiaReplayExport(single);
+    const ts = payload.exportedAt.replace(/[:.]/g, '-');
+    downloadJson(payload, `mafia-replay__${ts}.json`);
+  };
+
+  const exportTimeline = () => {
+    if (!single) return;
+    const ts = new Date().toISOString().replace(/[:.]/g, '-');
+    const payload = buildMafiaFlatTimeline(single);
+    downloadJson(payload, `mafia-timeline__${ts}.json`);
+  };
+
+  const exportTimelineNdjson = () => {
+    if (!single) return;
+    const ts = new Date().toISOString().replace(/[:.]/g, '-');
+    const lines = buildMafiaFlatTimeline(single).map((row) => JSON.stringify(row));
+    downloadText(lines.join('\n'), `mafia-timeline__${ts}.ndjson`, 'application/x-ndjson;charset=utf-8');
   };
 
   return (
@@ -247,6 +289,26 @@ export const MafiaLabPage: React.FC = () => {
             <div className="text-xs font-semibold text-canon-muted uppercase tracking-wider">Одна партия</div>
             <div className="text-sm text-canon-text">Победитель: <span className="text-canon-accent">{single.analysis.winner ?? '—'}</span></div>
             <div className="text-xs text-canon-muted">Циклов: {single.analysis.cycles}</div>
+            <div className="flex items-center gap-2 flex-wrap pt-1">
+              <button
+                onClick={exportReplay}
+                className="px-2 py-1 rounded border border-canon-border text-[11px] text-canon-text hover:border-canon-accent/50"
+              >
+                ⭳ replay JSON
+              </button>
+              <button
+                onClick={exportTimeline}
+                className="px-2 py-1 rounded border border-canon-border text-[11px] text-canon-text hover:border-canon-accent/50"
+              >
+                ⭳ timeline JSON
+              </button>
+              <button
+                onClick={exportTimelineNdjson}
+                className="px-2 py-1 rounded border border-canon-border text-[11px] text-canon-text hover:border-canon-accent/50"
+              >
+                ⭳ timeline NDJSON
+              </button>
+            </div>
             <div className="space-y-2 pt-2 border-t border-canon-border/40">
               {players.map((id) => (
                 <div key={id} className="rounded-lg border border-canon-border/50 bg-canon-card px-3 py-2">
@@ -263,55 +325,9 @@ export const MafiaLabPage: React.FC = () => {
           </div>
 
           <div className="xl:col-span-2 bg-canon-panel border border-canon-border rounded-lg p-4 space-y-3">
-            <div className="text-xs font-semibold text-canon-muted uppercase tracking-wider">Таймлайн</div>
-            <div className="space-y-3 max-h-[700px] overflow-y-auto pr-1">
-              {single.state.history.days.map((day, idx) => {
-                const night = single.state.history.nights[idx];
-                return (
-                  <div key={day.cycle} className="rounded-lg border border-canon-border bg-canon-card p-3 space-y-3">
-                    <div>
-                      <div className="text-sm font-semibold text-canon-text">Day {day.cycle}</div>
-                      <div className="text-[11px] text-canon-faint">Eliminated: {day.eliminatedId ?? 'none'}</div>
-                    </div>
-                    <div>
-                      <div className="text-[11px] uppercase tracking-wider text-canon-muted mb-1">Claims</div>
-                      <div className="space-y-1">
-                        {day.claims.map((claim, i) => (
-                          <div key={`${claim.actorId}-${i}`} className="text-xs text-canon-text">
-                            <span className="text-canon-accent">{claim.actorId}</span> · {claim.kind}
-                            {claim.targetId ? ` → ${claim.targetId}` : ''}
-                            {claim.claimedCheck ? ` (${claim.claimedCheck.targetId} = ${claim.claimedCheck.asRole})` : ''}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-[11px] uppercase tracking-wider text-canon-muted mb-1">Votes</div>
-                      <div className="space-y-1">
-                        {day.votes.map((vote, i) => (
-                          <div key={`${vote.voterId}-${i}`} className="text-xs text-canon-text">
-                            <span className="text-canon-accent">{vote.voterId}</span> → {vote.targetId ?? 'abstain'}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                    {night && (
-                      <div className="pt-2 border-t border-canon-border/40">
-                        <div className="text-sm font-semibold text-canon-text">Night {night.cycle}</div>
-                        <div className="text-[11px] text-canon-faint">Killed: {night.killedId ?? 'nobody'}</div>
-                        <div className="space-y-1 mt-1">
-                          {night.actions.map((action, i) => (
-                            <div key={`${action.actorId}-${action.kind}-${i}`} className="text-xs text-canon-text">
-                              <span className="text-canon-accent">{action.actorId}</span> · {action.kind} → {action.targetId}
-                              {action.resolved?.info ? ` (${action.resolved.info})` : ''}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+            <div className="text-xs font-semibold text-canon-muted uppercase tracking-wider">Explainability</div>
+            <div className="max-h-[700px] overflow-y-auto pr-1">
+              <MafiaTracePanel result={single} />
             </div>
           </div>
         </div>

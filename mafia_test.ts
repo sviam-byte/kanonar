@@ -1,7 +1,7 @@
 // test.ts — smoke test for MafiaLab.
 // Runs one game with 7 synthetic characters + a 30-game batch.
 
-import { runMafiaGame, runMafiaBatch } from './lib/mafia';
+import { buildMafiaReplayExport, runMafiaGame, runMafiaBatch } from './lib/mafia';
 import type { AgentState, WorldState } from './types';
 
 function mkAgent(id: string, traits: Record<string, number>, rels: Record<string, Partial<{ trust: number; bond: number; conflict: number; familiarity: number }>> = {}): AgentState {
@@ -130,3 +130,7 @@ const same =
   JSON.stringify(r1.state.roles) === JSON.stringify(r2.state.roles) &&
   r1.state.history.days.length === r2.state.history.days.length;
 console.log(same ? '✓ Deterministic — same seed produces identical game' : '✗ NON-DETERMINISTIC');
+
+console.log('\n═══ EXPORT CHECK ═══');
+const replay = buildMafiaReplayExport(result);
+console.log(replay.schema, replay.flatTimeline.length > 0 ? '✓ timeline' : '✗ no timeline');
