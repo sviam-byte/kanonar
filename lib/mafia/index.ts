@@ -56,4 +56,14 @@ export {
 
 export type { MafiaGameResult } from './runner';
 
+export {
+  buildMafiaReplayExport,
+  buildMafiaFlatTimeline,
+} from './export';
+
+export type {
+  MafiaReplayExport,
+  MafiaFlatEvent,
+} from './export';
+
 export { initSuspicion } from './suspicion';

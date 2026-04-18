@@ -134,21 +134,36 @@ For a chosen action, the UI must allow reconstructing this chain:
 If any step is impossible, explainability is incomplete.
 
 
-## 5) Experimental local explainability surfaces
+## 5) Experimental local explainability surface: MafiaLab
 
-Some experimental modes may bypass the canonical atom pipeline.
-This is allowed only if the surface is explicitly marked experimental and ships a local explainability contract.
+Status:
+- NOT canonical atom-pipeline explainability
+- Experimental local surface for `lib/mafia/*`
+- Must NOT be described as `ctx -> goal -> util -> action` explainability
 
-### 5.1 MafiaLab (experimental)
+Local contract for each recorded MafiaLab decision:
+1) perception snapshot before choice
+2) candidate audit:
+   - which options were legal / included
+   - which were filtered out
+   - why
+3) ranked utility decomposition
+4) sampling trace:
+   - scores
+   - probabilities
+   - temperature
+   - rng draw
+   - chosen key
 
-MafiaLab does NOT emit `ctx:*`, `goal:*`, `util:*`, `action:*` atoms.
-Therefore its explainability is local to `lib/mafia/*` and must expose, for every recorded decision:
+Additional contract:
+- all `suspicion[observer][target]` mutations must emit a provenance ledger entry
+- night decisions must be preserved in history, not only returned transiently from scorer
+- export surface must include full replay JSON with history + suspicion ledger + flat timeline
 
-- actor role and phase
-- perception snapshot (`aliveOrder`, per-target suspicion, relation/ToM slices, public day field, private role knowledge if any)
-- candidate audit (included vs filtered candidates with reasons)
-- ranked decompositions
-- stochastic sampling trace (`temperature`, per-candidate probabilities, RNG draw, chosen key)
-- suspicion ledger deltas for belief updates
-
-Hard rule: if MafiaLab returns only the chosen action without these artifacts, explainability is incomplete on that surface.
+Acceptance:
+- from UI/export one must be able to answer:
+  - how the actor saw the field,
+  - between whom they were choosing,
+  - what was filtered out,
+  - why a non-top option could still be chosen,
+  - how suspicion shifted over time.

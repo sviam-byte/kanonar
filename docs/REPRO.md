@@ -133,3 +133,29 @@ For MafiaLab bugs, a minimal repro must include:
 - relevant `suspicionLedger` entries for the same cycle
 
 If any of these are missing, the decision is not fully auditable.
+
+---
+
+## 6) MafiaLab replay export
+
+Status:
+- experimental replay/debug artifact
+- schema: `Kanonar.MafiaLab.Replay.v1`
+
+Required fields:
+- config (players, seed, role-assignment mode, role distribution)
+- participant snapshots for selected players
+- hidden state needed for replay/debug:
+  - roles
+  - alive
+  - eliminations
+  - sheriffKnowledge
+  - final suspicion matrix
+  - suspicionLedger
+- full history:
+  - day claims + vote traces
+  - night actions + night traces
+- flat timeline for easier external inspection
+
+Determinism note:
+- replay export is auditable only if sampling trace includes temperature + probabilities + rngDraw.

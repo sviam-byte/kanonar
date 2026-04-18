@@ -4,6 +4,8 @@ import { useSandbox } from '../contexts/SandboxContext';
 import { getAllCharactersWithRuntime } from '../data';
 import type { AgentState, CharacterEntity, WorldState } from '../types';
 import {
+  buildMafiaFlatTimeline,
+  buildMafiaReplayExport,
   defaultDistribution,
   runMafiaBatch,
   runMafiaGame,
@@ -35,6 +37,24 @@ function buildMinimalWorld(chars: { entityId: string; [k: string]: unknown }[]):
     leadership: { leaderId: null } as WorldState['leadership'],
     initialRelations: {},
   };
+}
+
+function downloadJson(payload: unknown, fileName: string): void {
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = fileName;
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a); URL.revokeObjectURL(url);
+}
+
+function downloadText(text: string, fileName: string, mime = 'text/plain;charset=utf-8'): void {
+  const blob = new Blob([text], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = fileName;
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a); URL.revokeObjectURL(url);
 }
 
 export const MafiaLabPage: React.FC = () => {
@@ -136,6 +156,27 @@ export const MafiaLabPage: React.FC = () => {
       setSingle(null);
       setBatch(null);
     }
+  };
+
+  const exportReplay = () => {
+    if (!single) return;
+    const payload = buildMafiaReplayExport(single);
+    const ts = payload.exportedAt.replace(/[:.]/g, '-');
+    downloadJson(payload, `mafia-replay__${ts}.json`);
+  };
+
+  const exportTimeline = () => {
+    if (!single) return;
+    const ts = new Date().toISOString().replace(/[:.]/g, '-');
+    const payload = buildMafiaFlatTimeline(single);
+    downloadJson(payload, `mafia-timeline__${ts}.json`);
+  };
+
+  const exportTimelineNdjson = () => {
+    if (!single) return;
+    const ts = new Date().toISOString().replace(/[:.]/g, '-');
+    const lines = buildMafiaFlatTimeline(single).map((row) => JSON.stringify(row));
+    downloadText(lines.join('\n'), `mafia-timeline__${ts}.ndjson`, 'application/x-ndjson;charset=utf-8');
   };
 
   return (
@@ -248,6 +289,26 @@ export const MafiaLabPage: React.FC = () => {
             <div className="text-xs font-semibold text-canon-muted uppercase tracking-wider">Одна партия</div>
             <div className="text-sm text-canon-text">Победитель: <span className="text-canon-accent">{single.analysis.winner ?? '—'}</span></div>
             <div className="text-xs text-canon-muted">Циклов: {single.analysis.cycles}</div>
+            <div className="flex items-center gap-2 flex-wrap pt-1">
+              <button
+                onClick={exportReplay}
+                className="px-2 py-1 rounded border border-canon-border text-[11px] text-canon-text hover:border-canon-accent/50"
+              >
+                ⭳ replay JSON
+              </button>
+              <button
+                onClick={exportTimeline}
+                className="px-2 py-1 rounded border border-canon-border text-[11px] text-canon-text hover:border-canon-accent/50"
+              >
+                ⭳ timeline JSON
+              </button>
+              <button
+                onClick={exportTimelineNdjson}
+                className="px-2 py-1 rounded border border-canon-border text-[11px] text-canon-text hover:border-canon-accent/50"
+              >
+                ⭳ timeline NDJSON
+              </button>
+            </div>
             <div className="space-y-2 pt-2 border-t border-canon-border/40">
               {players.map((id) => (
                 <div key={id} className="rounded-lg border border-canon-border/50 bg-canon-card px-3 py-2">

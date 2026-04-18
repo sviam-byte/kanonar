@@ -7,6 +7,7 @@ import type {
   MafiaCandidateAudit,
   MafiaGameState,
   MafiaPerceptionSnapshot,
+  MafiaPublicFieldSnapshot,
   MafiaSamplingTrace,
   PublicClaim,
   RoleId,
@@ -218,7 +219,7 @@ export function readTom(
   };
 }
 
-export function buildPublicFieldSnapshot(currentDayClaims: readonly PublicClaim[]) {
+export function buildPublicFieldSnapshot(currentDayClaims: readonly PublicClaim[]): MafiaPublicFieldSnapshot {
   const accusationCounts: Record<string, number> = {};
   const defenseCounts: Record<string, number> = {};
   const sheriffClaims: Array<{ claimerId: string; targetId: string; asRole: RoleId }> = [];
@@ -247,6 +248,22 @@ export function buildPublicFieldSnapshot(currentDayClaims: readonly PublicClaim[
   };
 }
 
+function roleKnowledgeFor(
+  state: MafiaGameState,
+  actorId: string,
+  role: RoleId,
+  targetId: string
+): MafiaPerceptionSnapshot['byTarget'][string]['roleKnowledge'] {
+  if (targetId === actorId) return 'self';
+  if (role === 'mafia' && state.roles[targetId] === 'mafia') return 'known_mafia';
+  if (role === 'sheriff') {
+    const knowledge = state.sheriffKnowledge[actorId]?.[targetId];
+    if (knowledge === 'mafia') return 'known_mafia';
+    if (knowledge) return 'known_town';
+  }
+  return 'unknown';
+}
+
 export function buildPerceptionSnapshot(
   state: MafiaGameState,
   agents: Record<string, AgentState>,
@@ -261,30 +278,12 @@ export function buildPerceptionSnapshot(
   const aliveOrder = [...state.alive];
   const publicField = buildPublicFieldSnapshot(currentDayClaims);
   const byTarget: MafiaPerceptionSnapshot['byTarget'] = {};
-  const sheriffKnowledge = state.sheriffKnowledge[actorId] ?? {};
-
   for (const targetId of aliveOrder) {
-    if (targetId === actorId) {
-      byTarget[targetId] = {
-        suspicion: 0,
-        publicSignal: {
-          accusedBy: publicField.accusationCounts[targetId] ?? 0,
-          defendedBy: publicField.defenseCounts[targetId] ?? 0,
-          sheriffClaimsMafia: publicField.sheriffClaims.filter(c => c.targetId === targetId && c.asRole === 'mafia').length,
-          sheriffClaimsTown: publicField.sheriffClaims.filter(c => c.targetId === targetId && c.asRole !== 'mafia').length,
-        },
-        roleKnowledge: 'self',
-      };
-      continue;
-    }
-
-    let roleKnowledge: 'known_mafia' | 'known_town' | 'unknown' = 'unknown';
-    if (sheriffKnowledge[targetId] === 'mafia') roleKnowledge = 'known_mafia';
-    else if (sheriffKnowledge[targetId] && sheriffKnowledge[targetId] !== 'mafia') roleKnowledge = 'known_town';
+    const targetSignals = publicField.sheriffClaims.filter(c => c.targetId === targetId);
 
     byTarget[targetId] = {
-      suspicion: state.suspicion[actorId]?.[targetId] ?? 0.5,
-      rel: (() => {
+      suspicion: state.suspicion[actorId]?.[targetId] ?? (targetId === actorId ? 0 : 0.5),
+      rel: targetId !== actorId ? (() => {
         const rel = readRel(actor, targetId);
         return {
           trust: rel.trust,
@@ -293,8 +292,8 @@ export function buildPerceptionSnapshot(
           fear: rel.fear,
           familiarity: rel.familiarity,
         };
-      })(),
-      tom: (() => {
+      })() : undefined,
+      tom: targetId !== actorId ? (() => {
         const tom = readTom(actor, actorId, targetId);
         return {
           trust: tom.trust,
@@ -304,14 +303,14 @@ export function buildPerceptionSnapshot(
           vulnerability: tom.vulnerability,
           uncertainty: tom.uncertainty,
         };
-      })(),
+      })() : undefined,
       publicSignal: {
         accusedBy: publicField.accusationCounts[targetId] ?? 0,
         defendedBy: publicField.defenseCounts[targetId] ?? 0,
-        sheriffClaimsMafia: publicField.sheriffClaims.filter(c => c.targetId === targetId && c.asRole === 'mafia').length,
-        sheriffClaimsTown: publicField.sheriffClaims.filter(c => c.targetId === targetId && c.asRole !== 'mafia').length,
+        sheriffClaimsMafia: targetSignals.filter(s => s.asRole === 'mafia').length,
+        sheriffClaimsTown: targetSignals.filter(s => s.asRole !== 'mafia').length,
       },
-      roleKnowledge,
+      roleKnowledge: roleKnowledgeFor(state, actorId, role, targetId),
     };
   }
 

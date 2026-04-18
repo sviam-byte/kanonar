@@ -1,188 +1,194 @@
-import React from 'react';
-import type {
-  ClaimTrace,
-  MafiaGameResult,
-  MafiaPerceptionSnapshot,
-  NightTrace,
-  VoteTrace,
-} from '../lib/mafia';
+import React, { useMemo, useState } from 'react';
+import type { ClaimTrace, MafiaGameResult, NightTrace, VoteTrace } from '../lib/mafia';
 
 const f2 = (v: number) => Number(v ?? 0).toFixed(2);
 const pct = (v: number) => `${(Number(v ?? 0) * 100).toFixed(0)}%`;
-const labelId = (id: string | null | undefined) => (id ?? '—').replace(/^character-/, '');
 
-function topSuspicion(perception: MafiaPerceptionSnapshot, limit = 4) {
-  return Object.entries(perception.byTarget)
-    .filter(([id]) => id !== perception.actorId)
-    .sort((a, b) => b[1].suspicion - a[1].suspicion)
-    .slice(0, limit);
-}
-
-function SamplingCard({ trace }: { trace: { sampling: { temperature: number; rngDraw: number; chosenKey: string; probabilities: Record<string, number> } } }) {
-  const top = Object.entries(trace.sampling.probabilities)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 5);
-  return (
-    <div className="rounded border border-canon-border/40 bg-canon-bg/30 p-2 space-y-1">
-      <div className="text-[10px] text-canon-muted">sampling</div>
-      <div className="text-[10px] font-mono text-canon-text">T={f2(trace.sampling.temperature)} · r={f2(trace.sampling.rngDraw)} · chosen={trace.sampling.chosenKey}</div>
-      <div className="space-y-0.5 text-[10px] font-mono">
-        {top.map(([key, prob]) => <div key={key} className="text-canon-faint">{key}: {pct(prob)}</div>)}
-      </div>
-    </div>
-  );
-}
-
-function PerceptionCard({ perception }: { perception: MafiaPerceptionSnapshot }) {
-  const top = topSuspicion(perception);
-  return (
-    <div className="rounded border border-canon-border/40 bg-canon-bg/30 p-2 space-y-1">
-      <div className="text-[10px] text-canon-muted">как видел мир</div>
-      <div className="text-[10px] text-canon-faint">живы: {perception.aliveOrder.map(labelId).join(', ')}</div>
-      <div className="text-[10px] text-canon-faint">
-        day-field: claims {perception.publicField.claimCount} · accuse {Object.values(perception.publicField.accusationCounts).reduce((a, b) => a + b, 0)} · defend {Object.values(perception.publicField.defenseCounts).reduce((a, b) => a + b, 0)}
-      </div>
-      <div className="space-y-1">
-        {top.map(([targetId, view]) => (
-          <div key={targetId} className="rounded border border-canon-border/20 px-2 py-1 text-[10px]">
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-canon-text">{labelId(targetId)}</span>
-              <span className="font-mono text-canon-accent">sus {f2(view.suspicion)}</span>
-            </div>
-            <div className="text-canon-faint">
-              trust {f2(view.rel?.trust ?? 0)} · bond {f2(view.rel?.bond ?? 0)} · reliability {f2(view.tom?.reliability ?? 0)} · pub a/d {view.publicSignal.accusedBy}/{view.publicSignal.defendedBy} · knowledge {view.roleKnowledge}
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function CandidatesCard({ candidates }: { candidates: Array<{ label: string; included: boolean; reason: string }> }) {
-  return (
-    <div className="rounded border border-canon-border/40 bg-canon-bg/30 p-2 space-y-1">
-      <div className="text-[10px] text-canon-muted">между кем выбирал</div>
-      <div className="space-y-0.5 text-[10px]">
-        {candidates.map((c) => (
-          <div key={`${c.label}:${c.reason}`} className={c.included ? 'text-canon-text' : 'text-canon-faint'}>
-            {c.included ? '•' : '×'} {c.label} — {c.reason}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function RankedCard({ ranked }: { ranked: Array<Record<string, unknown>> }) {
-  return (
-    <div className="rounded border border-canon-border/40 bg-canon-bg/30 p-2 space-y-1">
-      <div className="text-[10px] text-canon-muted">оценки вариантов</div>
-      <div className="space-y-1 text-[10px] font-mono">
-        {ranked.slice(0, 6).map((row, idx) => {
-          const label = labelId(String(row.targetId ?? row.kind ?? row.targetId ?? idx));
-          const extras = Object.entries(row)
-            .filter(([k]) => !['targetId', 'kind', 'u', 'chosen'].includes(k))
-            .slice(0, 5)
-            .map(([k, v]) => `${k}=${typeof v === 'number' ? f2(v) : String(v)}`)
-            .join(' · ');
-          return (
-            <div key={`${label}:${idx}`} className={`rounded px-2 py-1 ${row.chosen ? 'bg-canon-accent/10 text-canon-accent' : 'bg-canon-bg/50 text-canon-text'}`}>
-              <div>{row.kind ?? 'target'} {label} · u={f2(Number(row.u ?? 0))}{row.chosen ? ' · chosen' : ''}</div>
-              {extras && <div className="text-canon-faint">{extras}</div>}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function DecisionCard({
-  title,
-  actorId,
-  trace,
-}: {
-  title: string;
-  actorId: string;
+type TraceEntry = {
+  key: string;
+  cycle: number;
+  phase: 'day' | 'night';
+  kind: 'claim' | 'vote' | 'kill' | 'check' | 'heal';
   trace: ClaimTrace | VoteTrace | NightTrace;
-}) {
-  return (
-    <div className="rounded-lg border border-canon-border/50 bg-canon-card p-3 space-y-2">
-      <div className="text-[11px] font-semibold text-canon-text">{title} · {labelId(actorId)}</div>
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-2">
-        <PerceptionCard perception={trace.perception} />
-        <CandidatesCard candidates={trace.candidates} />
-        <RankedCard ranked={trace.ranked as Array<Record<string, unknown>>} />
-        <SamplingCard trace={trace} />
-      </div>
-    </div>
-  );
+  targetId?: string | null;
+};
+
+function scoreRows(trace: ClaimTrace | VoteTrace | NightTrace): Array<{ label: string; u: number; chosen: boolean }> {
+  if ('voterId' in trace) {
+    return trace.ranked.map(r => ({ label: r.targetId ?? 'abstain', u: r.u, chosen: r.chosen }));
+  }
+  if ('chosenKind' in trace) {
+    return trace.ranked.map(r => ({ label: `${r.kind}${r.targetId ? ` → ${r.targetId}` : ''}`, u: r.u, chosen: r.chosen }));
+  }
+  return trace.ranked.map(r => ({ label: r.targetId, u: r.u, chosen: r.chosen }));
 }
 
-export const MafiaTracePanel: React.FC<{ result: MafiaGameResult | null }> = ({ result }) => {
-  if (!result) return null;
-  const { state } = result;
+const TraceCard: React.FC<{ entry: TraceEntry }> = ({ entry }) => {
+  const t = entry.trace;
+  const perceptionTargets = (Object.entries(t.perception.byTarget) as Array<[string, NonNullable<typeof t.perception.byTarget[string]>]>)
+    .sort((a, b) => (b[1].suspicion ?? 0) - (a[1].suspicion ?? 0));
+
   return (
-    <div className="rounded-lg border border-canon-border bg-canon-panel p-4 space-y-3">
-      <div>
-        <div className="text-sm font-semibold text-canon-text">MafiaLab explainability</div>
-        <div className="text-[11px] text-canon-muted mt-1">
-          seed {state.config.seed ?? 42} · winner {state.winner ?? '—'} · роли: {state.config.players.map(pid => `${labelId(pid)}=${state.roles[pid]}`).join(', ')}
+    <details className="rounded-lg border border-canon-border/50 bg-canon-card p-3" open>
+      <summary className="cursor-pointer flex items-center justify-between gap-2">
+        <div className="text-sm text-canon-text font-semibold">
+          {entry.phase} · цикл {entry.cycle} · {entry.kind}
+          {entry.targetId ? <span className="text-canon-muted font-normal"> → {entry.targetId}</span> : null}
+        </div>
+        <div className="text-[10px] text-canon-faint font-mono">
+          τ={f2(t.sampling.temperature)} · r={f2(t.sampling.rngDraw)} · chosen={t.sampling.chosenKey}
+        </div>
+      </summary>
+
+      <div className="mt-3 grid grid-cols-1 xl:grid-cols-2 gap-3 text-[11px]">
+        <div className="space-y-2">
+          <div className="text-canon-muted uppercase tracking-wider text-[10px]">Как видел мир</div>
+          <div className="rounded border border-canon-border/40 bg-canon-bg/40 p-2 space-y-1 max-h-72 overflow-auto">
+            {perceptionTargets.map(([targetId, v]) => (
+              <div key={targetId} className="rounded border border-canon-border/30 px-2 py-1">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-canon-text font-medium">{targetId}</div>
+                  <div className="font-mono text-canon-muted">sus {f2(v.suspicion)}</div>
+                </div>
+                <div className="text-canon-faint mt-1 flex flex-wrap gap-x-3 gap-y-1">
+                  <span>knowledge: {v.roleKnowledge}</span>
+                  <span>acc {v.publicSignal.accusedBy}</span>
+                  <span>def {v.publicSignal.defendedBy}</span>
+                  <span>sheriff→mafia {v.publicSignal.sheriffClaimsMafia}</span>
+                  <span>sheriff→town {v.publicSignal.sheriffClaimsTown}</span>
+                </div>
+                {v.rel && (
+                  <div className="text-canon-faint mt-1 flex flex-wrap gap-x-3 gap-y-1">
+                    <span>trust {f2(v.rel.trust)}</span>
+                    <span>bond {f2(v.rel.bond)}</span>
+                    <span>conflict {f2(v.rel.conflict)}</span>
+                    <span>fear {f2(v.rel.fear)}</span>
+                    <span>fam {f2(v.rel.familiarity)}</span>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <div className="text-canon-muted uppercase tracking-wider text-[10px]">Между кем выбирал</div>
+          <div className="rounded border border-canon-border/40 bg-canon-bg/40 p-2 space-y-1 max-h-40 overflow-auto">
+            {t.candidates.map((c) => (
+              <div key={c.key} className={`rounded px-2 py-1 border ${c.included ? 'border-canon-accent/30 bg-canon-accent/5' : 'border-canon-border/20'}`}>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-canon-text">{c.label}</div>
+                  <div className={`text-[10px] ${c.included ? 'text-canon-accent' : 'text-canon-faint'}`}>{c.included ? 'included' : 'filtered'}</div>
+                </div>
+                <div className="text-canon-faint text-[10px] mt-0.5">{c.reason}</div>
+              </div>
+            ))}
+          </div>
+
+          <div className="text-canon-muted uppercase tracking-wider text-[10px] mt-2">Как оценивал варианты</div>
+          <div className="rounded border border-canon-border/40 bg-canon-bg/40 p-2 space-y-1 max-h-44 overflow-auto">
+            {scoreRows(t).map((row) => {
+              const p = t.sampling.probabilities[row.label] ?? t.sampling.probabilities[row.label.replace(/^.*→ /, '')] ?? undefined;
+              return (
+                <div key={row.label} className={`flex items-center justify-between gap-2 rounded px-2 py-1 ${row.chosen ? 'bg-canon-accent/10' : ''}`}>
+                  <div className="text-canon-text">{row.label}</div>
+                  <div className="flex items-center gap-3 font-mono text-[10px]">
+                    <span className="text-canon-muted">U={f2(row.u)}</span>
+                    {p !== undefined ? <span className="text-canon-faint">p={pct(p)}</span> : null}
+                    {row.chosen ? <span className="text-canon-accent">chosen</span> : null}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </details>
+  );
+};
+
+export const MafiaTracePanel: React.FC<{ result: MafiaGameResult }> = ({ result }) => {
+  const players = result.state.config.players;
+  const [selectedActor, setSelectedActor] = useState<string>(players[0] ?? '');
+  const [selectedCycle, setSelectedCycle] = useState<number | 'all'>('all');
+
+  const entries = useMemo<TraceEntry[]>(() => {
+    const out: TraceEntry[] = [];
+    for (const day of result.state.history.days) {
+      const claim = day.claims.find(c => c.actorId === selectedActor);
+      if (claim) out.push({ key: `d${day.cycle}:claim`, cycle: day.cycle, phase: 'day', kind: 'claim', trace: claim.reasoning, targetId: claim.targetId });
+      const vote = day.votes.find(v => v.voterId === selectedActor);
+      if (vote) out.push({ key: `d${day.cycle}:vote`, cycle: day.cycle, phase: 'day', kind: 'vote', trace: vote.reasoning, targetId: vote.targetId });
+    }
+    for (const night of result.state.history.nights) {
+      const trace = night.traces.find(t => t.actorId === selectedActor);
+      if (trace) out.push({ key: `n${night.cycle}:${trace.kind}`, cycle: night.cycle, phase: 'night', kind: trace.kind, trace, targetId: trace.chosenTargetId });
+    }
+    return out.filter(e => selectedCycle === 'all' || e.cycle === selectedCycle);
+  }, [result, selectedActor, selectedCycle]);
+
+  const relevantLedger = useMemo(() => (
+    result.state.suspicionLedger.filter(d =>
+      (d.observerId === selectedActor || d.targetId === selectedActor) &&
+      (selectedCycle === 'all' || d.cycle === selectedCycle)
+    )
+  ), [result, selectedActor, selectedCycle]);
+
+  const cycleOptions = useMemo(() => {
+    const all = new Set<number>();
+    result.state.history.days.forEach(d => all.add(d.cycle));
+    result.state.history.nights.forEach(n => all.add(n.cycle));
+    return [...all].sort((a, b) => a - b);
+  }, [result]);
+
+  return (
+    <div className="rounded-xl border border-canon-border bg-canon-panel p-4 space-y-3">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div>
+          <div className="text-sm font-semibold text-canon-text">MafiaLab Trace</div>
+          <div className="text-[11px] text-canon-muted">Показывает perception snapshot, candidate audit, sampling trace и ledger подозрений.</div>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap text-[11px]">
+          <label className="text-canon-muted">Актёр
+            <select value={selectedActor} onChange={(e) => setSelectedActor(e.target.value)} className="ml-1 bg-canon-bg border border-canon-border rounded px-2 py-1 text-canon-text">
+              {players.map((id) => <option key={id} value={id}>{id}</option>)}
+            </select>
+          </label>
+          <label className="text-canon-muted">Цикл
+            <select value={selectedCycle} onChange={(e) => setSelectedCycle(e.target.value === 'all' ? 'all' : Number(e.target.value))} className="ml-1 bg-canon-bg border border-canon-border rounded px-2 py-1 text-canon-text">
+              <option value="all">all</option>
+              {cycleOptions.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </label>
         </div>
       </div>
 
-      {state.history.days.map((day) => {
-        const dayLedger = state.suspicionLedger.filter((d) => d.cycle === day.cycle && d.phase === 'day');
-        const night = state.history.nights.find((n) => n.cycle === day.cycle);
-        const nightLedger = state.suspicionLedger.filter((d) => d.cycle === day.cycle && d.phase === 'night');
-        return (
-          <details key={`cycle-${day.cycle}`} className="rounded border border-canon-border/50 bg-canon-bg/20 p-3" open={day.cycle === 1}>
-            <summary className="cursor-pointer text-sm font-semibold text-canon-text">Цикл {day.cycle} · day elim {labelId(day.eliminatedId)}</summary>
-            <div className="mt-3 space-y-3">
-              <div className="space-y-2">
-                <div className="text-[11px] uppercase tracking-wide text-canon-muted">claims</div>
-                {day.claims.map((claim, idx) => (
-                  <DecisionCard key={`claim-${day.cycle}-${idx}`} title={`${claim.kind}${claim.targetId ? ` → ${labelId(claim.targetId)}` : ''}`} actorId={claim.actorId} trace={claim.reasoning} />
-                ))}
-              </div>
+      <div className="grid grid-cols-1 xl:grid-cols-[2fr,1fr] gap-3">
+        <div className="space-y-2">
+          {entries.length === 0 ? (
+            <div className="text-[11px] text-canon-muted italic rounded border border-canon-border/40 bg-canon-bg/40 p-3">Для выбранного актёра в этом цикле нет trace-событий.</div>
+          ) : entries.map((entry) => <TraceCard key={entry.key} entry={entry} />)}
+        </div>
 
-              <div className="space-y-2">
-                <div className="text-[11px] uppercase tracking-wide text-canon-muted">votes</div>
-                {day.votes.map((vote, idx) => (
-                  <DecisionCard key={`vote-${day.cycle}-${idx}`} title={`vote → ${labelId(vote.targetId)}`} actorId={vote.voterId} trace={vote.reasoning} />
-                ))}
-              </div>
-
-              <div className="rounded border border-canon-border/40 bg-canon-bg/30 p-2">
-                <div className="text-[10px] text-canon-muted mb-1">suspicion deltas после дня</div>
-                <div className="space-y-0.5 text-[10px] font-mono">
-                  {dayLedger.slice(-20).map((d, idx) => (
-                    <div key={`d-${idx}`} className="text-canon-faint">{labelId(d.observerId)} → {labelId(d.targetId)}: {f2(d.before)} {d.delta >= 0 ? '+' : ''}{f2(d.delta)} = {f2(d.after)} · {d.reason}</div>
-                  ))}
-                </div>
-              </div>
-
-              {night && (
-                <div className="space-y-2 pt-2 border-t border-canon-border/30">
-                  <div className="text-[11px] uppercase tracking-wide text-canon-muted">night · killed {labelId(night.killedId)}</div>
-                  {night.traces.map((trace, idx) => (
-                    <DecisionCard key={`night-${day.cycle}-${idx}`} title={`${trace.kind} → ${labelId(trace.chosenTargetId)}`} actorId={trace.actorId} trace={trace} />
-                  ))}
-                  <div className="rounded border border-canon-border/40 bg-canon-bg/30 p-2">
-                    <div className="text-[10px] text-canon-muted mb-1">suspicion deltas после ночи</div>
-                    <div className="space-y-0.5 text-[10px] font-mono">
-                      {nightLedger.slice(-20).map((d, idx) => (
-                        <div key={`n-${idx}`} className="text-canon-faint">{labelId(d.observerId)} → {labelId(d.targetId)}: {f2(d.before)} {d.delta >= 0 ? '+' : ''}{f2(d.delta)} = {f2(d.after)} · {d.reason}</div>
-                      ))}
-                    </div>
+        <div className="space-y-2">
+          <div className="rounded-lg border border-canon-border/50 bg-canon-card p-3">
+            <div className="text-[10px] uppercase tracking-wider text-canon-muted mb-2">Suspicion ledger</div>
+            <div className="space-y-1 max-h-[36rem] overflow-auto text-[10px]">
+              {relevantLedger.length === 0 ? (
+                <div className="text-canon-faint italic">Нет delta-записей для выбранного фильтра.</div>
+              ) : relevantLedger.map((d, idx) => (
+                <div key={`${d.cycle}:${idx}`} className="rounded border border-canon-border/30 px-2 py-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-canon-text">{d.phase} {d.cycle}: {d.observerId} → {d.targetId}</div>
+                    <div className="font-mono text-canon-muted">{f2(d.before)} {d.delta >= 0 ? '+' : ''}{f2(d.delta)} → {f2(d.after)}</div>
                   </div>
+                  <div className="text-canon-faint mt-0.5">{d.reason}</div>
                 </div>
-              )}
+              ))}
             </div>
-          </details>
-        );
-      })}
+          </div>
+        </div>
+      </div>
     </div>
   );
 };
