@@ -3,6 +3,14 @@
 // Utility: seeded RNG, trait reader, math.
 
 import type { AgentState, WorldState } from '../../types';
+import type {
+  MafiaCandidateAudit,
+  MafiaGameState,
+  MafiaPerceptionSnapshot,
+  MafiaSamplingTrace,
+  PublicClaim,
+  RoleId,
+} from './types';
 
 // ═══════════════════════════════════════════════════════════════
 // Math
@@ -56,17 +64,24 @@ export function shuffle<T>(rng: RngState, arr: readonly T[]): T[] {
   return out;
 }
 
-/** Softmax-sample from {id: score} with temperature. Returns chosen id. */
-export function sampleSoftmax(
+export function sampleSoftmaxWithTrace(
   rng: RngState,
   scores: Record<string, number>,
   temperature: number
-): string {
+): MafiaSamplingTrace {
   const keys = Object.keys(scores);
-  if (keys.length === 0) throw new Error('sampleSoftmax: empty');
-  if (keys.length === 1) return keys[0];
-
   const T = Math.max(1e-4, temperature);
+  if (keys.length === 0) throw new Error('sampleSoftmaxWithTrace: empty');
+  if (keys.length === 1) {
+    return {
+      temperature: T,
+      scores: { ...scores },
+      probabilities: { [keys[0]]: 1 },
+      rngDraw: 0,
+      chosenKey: keys[0],
+    };
+  }
+
   const vals = keys.map(k => scores[k]);
   const maxV = Math.max(...vals);
   const exps = vals.map(v => Math.exp((v - maxV) / T));
@@ -74,12 +89,32 @@ export function sampleSoftmax(
   const probs = exps.map(e => e / sum);
 
   const r = nextFloat(rng);
+  let chosenKey = keys[keys.length - 1];
   let acc = 0;
+  const probabilityMap: Record<string, number> = {};
   for (let i = 0; i < keys.length; i++) {
+    probabilityMap[keys[i]] = probs[i];
     acc += probs[i];
-    if (r < acc) return keys[i];
+    if (r < acc && chosenKey === keys[keys.length - 1]) {
+      chosenKey = keys[i];
+    }
   }
-  return keys[keys.length - 1];
+
+  return {
+    temperature: T,
+    scores: { ...scores },
+    probabilities: probabilityMap,
+    rngDraw: r,
+    chosenKey,
+  };
+}
+
+export function sampleSoftmax(
+  rng: RngState,
+  scores: Record<string, number>,
+  temperature: number
+): string {
+  return sampleSoftmaxWithTrace(rng, scores, temperature).chosenKey;
 }
 
 /** Argmax with deterministic tie-break (first wins). */
@@ -181,4 +216,119 @@ export function readTom(
     uncertainty: clamp01(Number(t.uncertainty ?? 0.5)),
     vulnerability: clamp01(Number(t.vulnerability ?? 0.5)),
   };
+}
+
+export function buildPublicFieldSnapshot(currentDayClaims: readonly PublicClaim[]) {
+  const accusationCounts: Record<string, number> = {};
+  const defenseCounts: Record<string, number> = {};
+  const sheriffClaims: Array<{ claimerId: string; targetId: string; asRole: RoleId }> = [];
+
+  for (const claim of currentDayClaims) {
+    if (claim.kind === 'accuse' && claim.targetId) {
+      accusationCounts[claim.targetId] = (accusationCounts[claim.targetId] ?? 0) + 1;
+    }
+    if (claim.kind === 'defend' && claim.targetId) {
+      defenseCounts[claim.targetId] = (defenseCounts[claim.targetId] ?? 0) + 1;
+    }
+    if (claim.kind === 'claim_sheriff' && claim.claimedCheck) {
+      sheriffClaims.push({
+        claimerId: claim.actorId,
+        targetId: claim.claimedCheck.targetId,
+        asRole: claim.claimedCheck.asRole,
+      });
+    }
+  }
+
+  return {
+    accusationCounts,
+    defenseCounts,
+    sheriffClaims,
+    claimCount: currentDayClaims.length,
+  };
+}
+
+export function buildPerceptionSnapshot(
+  state: MafiaGameState,
+  agents: Record<string, AgentState>,
+  actorId: string,
+  phase: 'day' | 'night',
+  role: RoleId,
+  currentDayClaims: readonly PublicClaim[] = []
+): MafiaPerceptionSnapshot {
+  const actor = agents[actorId];
+  if (!actor) throw new Error(`Actor ${actorId} missing for perception snapshot`);
+
+  const aliveOrder = [...state.alive];
+  const publicField = buildPublicFieldSnapshot(currentDayClaims);
+  const byTarget: MafiaPerceptionSnapshot['byTarget'] = {};
+  const sheriffKnowledge = state.sheriffKnowledge[actorId] ?? {};
+
+  for (const targetId of aliveOrder) {
+    if (targetId === actorId) {
+      byTarget[targetId] = {
+        suspicion: 0,
+        publicSignal: {
+          accusedBy: publicField.accusationCounts[targetId] ?? 0,
+          defendedBy: publicField.defenseCounts[targetId] ?? 0,
+          sheriffClaimsMafia: publicField.sheriffClaims.filter(c => c.targetId === targetId && c.asRole === 'mafia').length,
+          sheriffClaimsTown: publicField.sheriffClaims.filter(c => c.targetId === targetId && c.asRole !== 'mafia').length,
+        },
+        roleKnowledge: 'self',
+      };
+      continue;
+    }
+
+    let roleKnowledge: 'known_mafia' | 'known_town' | 'unknown' = 'unknown';
+    if (sheriffKnowledge[targetId] === 'mafia') roleKnowledge = 'known_mafia';
+    else if (sheriffKnowledge[targetId] && sheriffKnowledge[targetId] !== 'mafia') roleKnowledge = 'known_town';
+
+    byTarget[targetId] = {
+      suspicion: state.suspicion[actorId]?.[targetId] ?? 0.5,
+      rel: (() => {
+        const rel = readRel(actor, targetId);
+        return {
+          trust: rel.trust,
+          bond: rel.bond,
+          conflict: rel.conflict,
+          fear: rel.fear,
+          familiarity: rel.familiarity,
+        };
+      })(),
+      tom: (() => {
+        const tom = readTom(actor, actorId, targetId);
+        return {
+          trust: tom.trust,
+          competence: tom.competence,
+          reliability: tom.reliability,
+          dominance: tom.dominance,
+          vulnerability: tom.vulnerability,
+          uncertainty: tom.uncertainty,
+        };
+      })(),
+      publicSignal: {
+        accusedBy: publicField.accusationCounts[targetId] ?? 0,
+        defendedBy: publicField.defenseCounts[targetId] ?? 0,
+        sheriffClaimsMafia: publicField.sheriffClaims.filter(c => c.targetId === targetId && c.asRole === 'mafia').length,
+        sheriffClaimsTown: publicField.sheriffClaims.filter(c => c.targetId === targetId && c.asRole !== 'mafia').length,
+      },
+      roleKnowledge,
+    };
+  }
+
+  return {
+    actorId,
+    role,
+    cycle: state.cycle,
+    phase,
+    aliveOrder,
+    publicField,
+    byTarget,
+  };
+}
+
+export function sortCandidateAudit(candidates: MafiaCandidateAudit[]): MafiaCandidateAudit[] {
+  return [...candidates].sort((a, b) => {
+    if (a.included !== b.included) return a.included ? -1 : 1;
+    return a.label.localeCompare(b.label);
+  });
 }

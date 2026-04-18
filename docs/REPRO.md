@@ -121,3 +121,15 @@ Setup:
 
 Expected:
 - `goal:` not present in action trace.
+
+
+### 5.4 MafiaLab local repro
+
+For MafiaLab bugs, a minimal repro must include:
+- seed
+- role assignment or role distribution
+- day/night history up to the failing decision
+- the recorded `perception`, `candidates`, `sampling` trace for that decision
+- relevant `suspicionLedger` entries for the same cycle
+
+If any of these are missing, the decision is not fully auditable.

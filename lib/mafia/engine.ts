@@ -9,11 +9,10 @@ import type {
   RoleAssignment,
   RoleId,
   Team,
-  DayState,
-  NightState,
   PublicClaim,
   DayVote,
   NightAction,
+  NightTrace,
 } from './types';
 import {
   makeRng,
@@ -24,11 +23,7 @@ import {
   validateDistribution,
   defaultDistribution,
 } from './roles';
-import { initSuspicion } from './suspicion';
-
-// ═══════════════════════════════════════════════════════════════
-// Game creation
-// ═══════════════════════════════════════════════════════════════
+import { initSuspicion, seedInitialSuspicionLedger } from './suspicion';
 
 export function createGame(
   config: MafiaGameConfig,
@@ -40,7 +35,6 @@ export function createGame(
 
   const rng = makeRng(config.seed ?? 42);
 
-  // Assign roles
   let roles: RoleAssignment;
   if (config.roleAssignment === 'random') {
     const dist = config.roleDistribution ?? defaultDistribution(nPlayers);
@@ -48,7 +42,6 @@ export function createGame(
     roles = assignRolesRandomly(playerIds, dist, rng);
   } else {
     roles = { ...config.roleAssignment };
-    // Validate all players have a role
     for (const p of playerIds) {
       if (!roles[p]) throw new Error(`Player ${p} has no role assignment`);
     }
@@ -58,16 +51,18 @@ export function createGame(
     config,
     roles,
     alive: new Set(playerIds),
-    phase: 'day',    // starts with day (no pre-night kill)
+    phase: 'day',
     cycle: 1,
     history: { days: [], nights: [] },
     eliminations: [],
     sheriffKnowledge: {},
     suspicion: initSuspicion(playerIds, agents),
+    suspicionLedger: [],
     winner: null,
     rngState: rng.s,
   };
 
+  seedInitialSuspicionLedger(state);
   return state;
 }
 
@@ -86,10 +81,6 @@ function assignRolesRandomly(
   return out;
 }
 
-// ═══════════════════════════════════════════════════════════════
-// Win condition
-// ═══════════════════════════════════════════════════════════════
-
 export function checkWin(state: MafiaGameState): Team | 'draw' | null {
   let mafiaAlive = 0;
   let townAlive = 0;
@@ -107,16 +98,11 @@ export function isGameOver(state: MafiaGameState): boolean {
   return state.winner !== null || state.phase === 'ended';
 }
 
-// ═══════════════════════════════════════════════════════════════
-// Phase resolution (pure: applies decisions → new state fragments)
-// ═══════════════════════════════════════════════════════════════
-
 export function applyDayResult(
   state: MafiaGameState,
   claims: PublicClaim[],
   votes: DayVote[]
 ): void {
-  // Tally votes
   const tally: Record<string, number> = {};
   for (const v of votes) {
     if (v.targetId === null) continue;
@@ -127,18 +113,16 @@ export function applyDayResult(
   let eliminatedId: string | null = null;
   if (entries.length > 0) {
     const [topId, topCount] = entries[0];
-    // Require plurality; on tie → no elimination
     const tied = entries.filter(([, c]) => c === topCount).length > 1;
     if (!tied) eliminatedId = topId;
   }
 
-  const dayState: DayState = {
+  state.history.days.push({
     cycle: state.cycle,
     claims,
     votes,
     eliminatedId,
-  };
-  state.history.days.push(dayState);
+  });
 
   if (eliminatedId) {
     state.alive.delete(eliminatedId);
@@ -150,22 +134,20 @@ export function applyDayResult(
     });
   }
 
-  // Check win
   state.winner = checkWin(state);
   if (state.winner) {
     state.phase = 'ended';
     return;
   }
 
-  // Advance to night
   state.phase = 'night';
 }
 
 export function applyNightResult(
   state: MafiaGameState,
-  actions: NightAction[]
+  actions: NightAction[],
+  traces: NightTrace[] = []
 ): void {
-  // Resolve: kill target, heal target, sheriff check
   let killId: string | null = null;
   const healTargets = new Set<string>();
 
@@ -173,11 +155,9 @@ export function applyNightResult(
     if (a.kind === 'kill') killId = a.targetId;
     else if (a.kind === 'heal') healTargets.add(a.targetId);
     else if (a.kind === 'check') {
-      // Record sheriff knowledge
       const sheriff = a.actorId;
       if (!state.sheriffKnowledge[sheriff]) state.sheriffKnowledge[sheriff] = {};
       state.sheriffKnowledge[sheriff][a.targetId] = state.roles[a.targetId];
-      // Attach to action for trace
       a.resolved = { success: true, info: state.roles[a.targetId] };
     }
   }
@@ -185,12 +165,12 @@ export function applyNightResult(
   const saved = killId !== null && healTargets.has(killId);
   const killedId = saved ? null : killId;
 
-  const nightState: NightState = {
+  state.history.nights.push({
     cycle: state.cycle,
     actions,
     killedId,
-  };
-  state.history.nights.push(nightState);
+    traces,
+  });
 
   if (killedId) {
     state.alive.delete(killedId);
@@ -198,18 +178,15 @@ export function applyNightResult(
       playerId: killedId,
       cycle: state.cycle,
       phase: 'night',
-      // Night eliminations: role not publicly revealed (classic variant)
     });
   }
 
-  // Check win
   state.winner = checkWin(state);
   if (state.winner) {
     state.phase = 'ended';
     return;
   }
 
-  // Advance to next day
   state.phase = 'day';
   state.cycle += 1;
 }

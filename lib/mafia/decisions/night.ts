@@ -1,9 +1,10 @@
 // lib/mafia/decisions/night.ts
 //
-// Night decision models for mafia, sheriff, doctor.
+// Night decision models for mafia, sheriff, doctor with explicit explainability traces.
 
 import type { AgentState } from '../../../types';
 import type {
+  MafiaCandidateAudit,
   MafiaGameState,
   KillDecomposition,
   CheckDecomposition,
@@ -15,7 +16,9 @@ import {
   clamp01,
   readRel,
   readTom,
-  sampleSoftmax,
+  buildPerceptionSnapshot,
+  sampleSoftmaxWithTrace,
+  sortCandidateAudit,
   type RngState,
 } from '../helpers';
 
@@ -32,36 +35,62 @@ export function decideMafiaKill(
 
   const aggregate: Record<string, number> = {};
   const traces: NightTrace[] = [];
-  const leaderId = [...mafiaIds].sort((a, b) => (vb(agents[b], 'A_Power_Sovereignty', 0.5) + vb(agents[b], 'C_coalition_loyalty', 0.5)) - (vb(agents[a], 'A_Power_Sovereignty', 0.5) + vb(agents[a], 'C_coalition_loyalty', 0.5)))[0] ?? mafiaIds[0];
+  const leaderId = [...mafiaIds].sort((a, b) => (
+    vb(agents[b]!, 'A_Power_Sovereignty', 0.5) + vb(agents[b]!, 'C_coalition_loyalty', 0.5)
+  ) - (
+    vb(agents[a]!, 'A_Power_Sovereignty', 0.5) + vb(agents[a]!, 'C_coalition_loyalty', 0.5)
+  ))[0] ?? mafiaIds[0];
 
   for (const actorId of mafiaIds) {
     const actor = agents[actorId];
     if (!actor) continue;
 
     const decompositions: KillDecomposition[] = [];
+    const localScores: Record<string, number> = {};
     for (const targetId of candidates) {
       const dec = scoreKill(state, actor, actorId, targetId);
       decompositions.push(dec);
+      localScores[targetId] = dec.u;
       const callerWeight = actorId === leaderId ? 1.0 : 0.55;
       const coordinationNoise = 0.08 * avgTemperature(agents, mafiaIds) * (hashNoise(`${actorId}:coord`, targetId) - 0.5);
       aggregate[targetId] = (aggregate[targetId] ?? 0) + callerWeight * dec.u + coordinationNoise;
     }
 
     decompositions.sort((a, b) => b.u - a.u);
+    const perception = buildPerceptionSnapshot(state, agents, actorId, 'night', 'mafia');
+    const audit: MafiaCandidateAudit[] = candidates.map(targetId => ({
+      key: targetId,
+      label: `kill:${targetId}`,
+      kind: 'kill',
+      targetId,
+      included: true,
+      reason: 'all living non-mafia players are legal kill targets',
+    }));
     traces.push({
       actorId,
       role: 'mafia',
       kind: 'kill',
       ranked: decompositions,
       chosenTargetId: '',
+      perception,
+      candidates: sortCandidateAudit(audit),
+      sampling: {
+        temperature: 0,
+        scores: localScores,
+        probabilities: {},
+        rngDraw: 0,
+        chosenKey: '',
+      },
     });
   }
 
   const temperature = avgTemperature(agents, mafiaIds);
-  const chosen = sampleSoftmax(rng, aggregate, temperature);
+  const sampling = sampleSoftmaxWithTrace(rng, aggregate, temperature);
+  const chosen = sampling.chosenKey;
 
   for (const tr of traces) {
     tr.chosenTargetId = chosen;
+    tr.sampling = sampling;
     for (const d of tr.ranked) {
       (d as KillDecomposition).chosen = d.targetId === chosen;
     }
@@ -99,14 +128,10 @@ function scoreKill(
   const paranoia = vb(actor, 'C_betrayal_cost');
   const randomize = paranoia * 0.15;
 
-  const W_THREAT = 1.0;
-  const W_COALITION = 0.6;
-  const W_VISIBILITY = 0.3;
-
   const u =
-    W_THREAT * threat
-    - W_COALITION * coalitionCost
-    + W_VISIBILITY * visibility * 0.2
+    1.0 * threat
+    - 0.6 * coalitionCost
+    + 0.3 * visibility * 0.2
     + randomize * (hashNoise(actorId, targetId) - 0.5);
 
   return {
@@ -162,7 +187,8 @@ export function decideSheriffCheck(
   }
 
   const temp = temperatureOf(sheriff);
-  const chosen = sampleSoftmax(rng, scores, temp);
+  const sampling = sampleSoftmaxWithTrace(rng, scores, temp);
+  const chosen = sampling.chosenKey;
 
   decs.sort((a, b) => b.u - a.u);
   for (const d of decs) d.chosen = d.targetId === chosen;
@@ -175,6 +201,16 @@ export function decideSheriffCheck(
       kind: 'check',
       ranked: decs,
       chosenTargetId: chosen,
+      perception: buildPerceptionSnapshot(state, agents, sheriffId, 'night', 'sheriff'),
+      candidates: sortCandidateAudit(candidates.map(targetId => ({
+        key: targetId,
+        label: `check:${targetId}`,
+        kind: 'check',
+        targetId,
+        included: true,
+        reason: 'all living non-self players are legal sheriff checks',
+      }))),
+      sampling,
     },
   };
 }
@@ -198,7 +234,7 @@ export function decideDoctorHeal(
     const perceivedThreat = clamp01(0.4 * vocality + 0.6 * (claimedSheriff ? 1 : 0));
 
     const rel = targetId === doctorId
-      ? { bond: 0.9 } as any
+      ? { bond: 0.9 } as { bond: number }
       : readRel(doctor, targetId);
 
     const selfPres = vb(doctor, 'A_Safety_Care');
@@ -221,7 +257,8 @@ export function decideDoctorHeal(
   }
 
   const temp = temperatureOf(doctor);
-  const chosen = sampleSoftmax(rng, scores, temp);
+  const sampling = sampleSoftmaxWithTrace(rng, scores, temp);
+  const chosen = sampling.chosenKey;
 
   decs.sort((a, b) => b.u - a.u);
   for (const d of decs) d.chosen = d.targetId === chosen;
@@ -234,6 +271,16 @@ export function decideDoctorHeal(
       kind: 'heal',
       ranked: decs,
       chosenTargetId: chosen,
+      perception: buildPerceptionSnapshot(state, agents, doctorId, 'night', 'doctor'),
+      candidates: sortCandidateAudit(candidates.map(targetId => ({
+        key: targetId,
+        label: `heal:${targetId}`,
+        kind: 'heal',
+        targetId,
+        included: true,
+        reason: targetId === doctorId ? 'self-heal allowed in this ruleset' : 'all living players are legal heal targets',
+      }))),
+      sampling,
     },
   };
 }

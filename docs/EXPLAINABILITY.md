@@ -132,3 +132,23 @@ For a chosen action, the UI must allow reconstructing this chain:
 5) Which character traits/body state caused the delta (lens trace to feat:char:* atoms)
 
 If any step is impossible, explainability is incomplete.
+
+
+## 5) Experimental local explainability surfaces
+
+Some experimental modes may bypass the canonical atom pipeline.
+This is allowed only if the surface is explicitly marked experimental and ships a local explainability contract.
+
+### 5.1 MafiaLab (experimental)
+
+MafiaLab does NOT emit `ctx:*`, `goal:*`, `util:*`, `action:*` atoms.
+Therefore its explainability is local to `lib/mafia/*` and must expose, for every recorded decision:
+
+- actor role and phase
+- perception snapshot (`aliveOrder`, per-target suspicion, relation/ToM slices, public day field, private role knowledge if any)
+- candidate audit (included vs filtered candidates with reasons)
+- ranked decompositions
+- stochastic sampling trace (`temperature`, per-candidate probabilities, RNG draw, chosen key)
+- suspicion ledger deltas for belief updates
+
+Hard rule: if MafiaLab returns only the chosen action without these artifacts, explainability is incomplete on that surface.
