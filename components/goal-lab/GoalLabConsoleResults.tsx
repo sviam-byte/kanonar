@@ -1002,7 +1002,10 @@ const ConsoleWorldTab: React.FC<WorldTabProps> = (props: WorldTabProps) => {
 };
 
 export const GoalLabConsoleResults: React.FC<Props> = (props) => {
-  const [tab, setTab] = useState<TabId>('pipeline');
+  const [tab, setTab] = useState<TabId>(() => {
+    // Console should open in the most actionable view by default.
+    return 'pipeline';
+  });
 
   return (
     <div className="h-full min-h-0 w-full rounded border border-slate-800 bg-slate-950/40 flex flex-col">
