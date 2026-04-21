@@ -8,6 +8,7 @@ These files are written for fast onboarding of an LLM/agent that must:
 - validate changes with tests.
 
 ## Read order
+0) `SYSTEM_OVERVIEW_FOR_CODEX.md` (root control plane entrypoint)
 1) 10_ARCHITECTURE.md
 2) 20_MATH_MODEL.md
 3) 30_WORKFLOWS.md

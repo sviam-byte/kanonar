@@ -1,0 +1,77 @@
+{
+  "controlPlaneVersion": "1.0.0",
+  "entrypoint": "SYSTEM_OVERVIEW_FOR_CODEX.md",
+  "companionDocs": {
+    "canonicalPaths": "CANONICAL_PATHS.md",
+    "statusMap": "STATUS_MAP.md",
+    "trustMap": "TRUST_MAP.md",
+    "domainMap": "DOMAIN_MAP.md"
+  },
+  "canonical": {
+    "docs": [
+      "docs/PIPELINE.md",
+      "docs/INVARIANTS.md",
+      "docs/IDS_AND_NAMESPACES.md",
+      "docs/EXPLAINABILITY.md",
+      "docs/REPRO.md",
+      "docs/agents/00_README.md"
+    ],
+    "code": [
+      "lib/context/v2/*",
+      "lib/goal-lab/pipeline/*",
+      "lib/decision/*",
+      "lib/core/noise.ts",
+      "lib/config/formulaConfig.ts",
+      "lib/goals/*",
+      "lib/simkit/*"
+    ],
+    "tests": [
+      "tests/pipeline/*",
+      "tests/decision/*",
+      "tests/simkit/*",
+      "tests/lens/*"
+    ]
+  },
+  "variabilityModules": [
+    "lib/core/noise.ts",
+    "lib/decision/decide.ts",
+    "lib/decision/actionCandidateUtils.ts",
+    "lib/simkit/*"
+  ],
+  "doNotTrustAsSoleTruth": [
+    "archive/*",
+    "components/*",
+    "pages/*",
+    "types.ts",
+    "components/GoalSandbox/GoalSandbox.tsx"
+  ],
+  "statusBuckets": {
+    "canonical": [
+      "docs/PIPELINE.md",
+      "docs/INVARIANTS.md",
+      "lib/context/v2/*",
+      "lib/goal-lab/pipeline/*",
+      "lib/decision/*",
+      "lib/core/noise.ts",
+      "lib/config/formulaConfig.ts",
+      "lib/goals/*",
+      "lib/simkit/*"
+    ],
+    "compat": [
+      "documented adapters/fallbacks between canonical domain shape and legacy or UI consumers"
+    ],
+    "legacy": [
+      "older route/lab variants and historical namespace paths retained for tolerance"
+    ],
+    "archive": [
+      "archive/*"
+    ]
+  },
+  "patchProtocol": [
+    "identify canonical layer first",
+    "check invariants before modification",
+    "run tests for behavior changes",
+    "update docs if stage or invariant contract changes",
+    "label unresolved mismatch as contract drift"
+  ]
+}
