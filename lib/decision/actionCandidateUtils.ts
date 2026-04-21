@@ -10,6 +10,10 @@ import { getCtx } from '../context/layers';
 import { familyOfActionKind } from '../behavior/actionPattern';
 import { computeActionCost } from './costModel';
 
+/**
+ * Extracts canonical action key from possibility id.
+ * Expected ids: `poss:<actionKey>` or `<actionKey>`.
+ */
 function keyFromPossibilityId(id: string): string {
   const parts = String(id || '').split(':');
   return parts[1] || parts[0] || '';
@@ -37,10 +41,15 @@ type PossibilityRuntime = Possibility & {
   };
 };
 
+/**
+ * Runtime-only cast helper for compatibility payloads.
+ * Keep usage local and explicit so we can gradually tighten `Possibility`.
+ */
 const asRuntimePossibility = (p: Possibility): PossibilityRuntime => p as PossibilityRuntime;
 const goalWeight = (weights: Record<string, number> | undefined, goalId: string): number =>
   Number(weights?.[goalId] ?? 1);
 
+/** Creates mutable `why` draft that accumulates explainability metadata. */
 function makeWhyDraft(seedParts?: Record<string, any>): WhyDraft {
   return {
     usedAtomIds: new Set<string>(),
@@ -51,6 +60,7 @@ function makeWhyDraft(seedParts?: Record<string, any>): WhyDraft {
   };
 }
 
+/** Deduplicated provenance collector: only non-empty string ids are tracked. */
 function pushUsed(draft: WhyDraft, ...ids: Array<string | null | undefined>) {
   for (const id of ids) {
     if (typeof id !== 'string' || !id) continue;
@@ -58,6 +68,7 @@ function pushUsed(draft: WhyDraft, ...ids: Array<string | null | undefined>) {
   }
 }
 
+/** Keeps note collection strict and explicit (no non-string noise). */
 function pushNotes(draft: WhyDraft, ...notes: Array<string | null | undefined>) {
   for (const note of notes) {
     if (typeof note !== 'string' || !note) continue;
@@ -65,12 +76,14 @@ function pushNotes(draft: WhyDraft, ...notes: Array<string | null | undefined>) 
   }
 }
 
+/** Adds modifier and merges its provenance into the parent trace draft. */
 function pushModifier(draft: WhyDraft, modifier: ActionWhyModifier | null | undefined) {
   if (!modifier || typeof modifier !== 'object') return;
   draft.modifiers.push(modifier);
   for (const id of arr<string>(modifier.usedAtomIds)) pushUsed(draft, id);
 }
 
+/** Merges partial traces without dropping metadata from nested explainability paths. */
 function mergeWhyDraft(draft: WhyDraft, why?: ActionWhyTrace | null) {
   if (!why || typeof why !== 'object') return;
   pushUsed(draft, ...arr<string>(why.usedAtomIds));
@@ -82,6 +95,7 @@ function mergeWhyDraft(draft: WhyDraft, why?: ActionWhyTrace | null) {
   }
 }
 
+/** Produces immutable trace payload consumed by action ranking / UI explainers. */
 function finalizeWhy(draft: WhyDraft): ActionWhyTrace {
   return {
     usedAtomIds: Array.from(draft.usedAtomIds),
@@ -92,6 +106,12 @@ function finalizeWhy(draft: WhyDraft): ActionWhyTrace {
   };
 }
 
+/**
+ * Reads a context axis through canonical layer resolution (`getCtx`) and returns:
+ * - normalized value (0..1),
+ * - provenance ids,
+ * - picked atom for debug trace parts.
+ */
 function readCtxSignal(atoms: ContextAtom[], selfId: string, axis: string, fallback = 0) {
   const picked = getCtx(atoms, selfId, axis, fallback);
   const value = clamp01(Number(picked?.magnitude ?? fallback));
@@ -99,6 +119,7 @@ function readCtxSignal(atoms: ContextAtom[], selfId: string, axis: string, fallb
   return { value, usedAtomIds, picked };
 }
 
+/** Returns first finite numeric signal among candidate atom ids with provenance. */
 function readFirstFinite(atoms: ContextAtom[], ids: string[], fallback = 0) {
   for (const id of ids) {
     const atom = getAtom(atoms, id);
@@ -110,6 +131,11 @@ function readFirstFinite(atoms: ContextAtom[], ids: string[], fallback = 0) {
   return { value: fallback, usedAtomIds: [], atomId: null as string | null };
 }
 
+/**
+ * Builds current goal-energy map used to estimate action utility:
+ * 1) prefers `util:activeGoal:<selfId>:*` (post-S3 canonical);
+ * 2) falls back to legacy `goal:domain:*:<selfId>` if active goals are absent.
+ */
 function buildGoalEnergyMap(atoms: ContextAtom[], selfId: string): Record<string, number> {
   const out: Record<string, number> = {};
   const activePrefix = `util:activeGoal:${selfId}:`;
@@ -134,6 +160,13 @@ function buildGoalEnergyMap(atoms: ContextAtom[], selfId: string): Record<string
   return out;
 }
 
+/**
+ * Derives per-goal deltas for a candidate action.
+ * Priority:
+ * 1) explicit hint atoms (`util:hint:allow:*` / `goal:hint:allow:*`);
+ * 2) feature projection table fallback.
+ * Then applies contextual modifiers (danger/fatigue) with full traceability.
+ */
 function buildDeltaGoals(
   atoms: ContextAtom[],
   selfId: string,
