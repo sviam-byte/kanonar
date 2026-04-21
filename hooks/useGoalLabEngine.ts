@@ -15,15 +15,16 @@ import type { AtomOverrideLayer } from '../lib/context/overrides/types';
 import type { ContextualMindReport } from '../lib/tom/contextual/types';
 import type { GoalLabSnapshotV1 } from '../lib/goal-lab/snapshotTypes';
 import type { AtomDiff } from '../lib/snapshot/diffAtoms';
+import type { PipelineRun } from '../lib/goal-lab/pipeline/contracts';
 
 import { buildGoalLabContext } from '../lib/goals/goalLabContext';
 import { scoreContextualGoals } from '../lib/context/v2/scoring';
 import { computeLocationGoalsForAgent } from '../lib/context/v2/locationGoals';
 import { computeTomGoalsForAgent } from '../lib/context/v2/tomGoals';
 import { computeContextualMind } from '../lib/tom/contextual/engine';
-import { adaptToSnapshotV1, normalizeSnapshot } from '../lib/goal-lab/snapshotAdapter';
 import { runGoalLabPipelineV1 } from '../lib/goal-lab/pipeline/runPipelineV1';
 import { adaptPipelineV1ToContract } from '../lib/goal-lab/pipeline/adaptV1ToContract';
+import { buildCanonicalGoalLabContract } from '../lib/goal-lab/pipeline/buildCanonicalContract';
 import { buildDebugFrameFromSnapshot } from '../lib/goal-lab/debugFrameFromSnapshot';
 import { getCanonicalAtomsFromSnapshot } from '../lib/goal-lab/atoms/canonical';
 import { buildGoalLabSceneDumpV2, downloadJson } from '../lib/goal-lab/sceneDump';
@@ -56,6 +57,7 @@ export interface GoalLabEngineResult {
   snapshot: any | null;
   snapshotV1: GoalLabSnapshotV1 | null;
   pipelineV1: any | null;
+  pipelineRun: PipelineRun | null;
   pipelineFrame: any | null;
   goals: any[];
   situation: any | null;
@@ -82,6 +84,7 @@ export type GoalLabVM = {
   sceneDump: any;
   snapshotV1: any;
   pipelineV1: any;
+  pipelineRun: any;
   pipelineFrame: any;
   pipelineStageId: string;
   perspectiveId: string;
@@ -312,6 +315,11 @@ export function useGoalLabEngine(
     return { location, tags, axes };
   }, [getSelectedLocationEntity]);
 
+  const activeEvents = useMemo(
+    () => eventRegistry.getAll().filter(e => selectedEventIds.has(e.id)),
+    [selectedEventIds],
+  );
+
   const devValidateAtoms = typeof import.meta !== 'undefined' && (import.meta as any).env?.DEV;
 
   const glCtx = useMemo(() => {
@@ -323,7 +331,6 @@ export function useGoalLabEngine(
     const agent = worldForCtx.agents.find(a => a.entityId === perspectiveId);
     if (!agent) return null;
     try {
-      const activeEvents = eventRegistry.getAll().filter(e => selectedEventIds.has(e.id));
       return buildGoalLabContext(worldForCtx, perspectiveId, {
         snapshotOptions: {
           activeEvents, participantIds, overrideLocation: location,
@@ -338,7 +345,7 @@ export function useGoalLabEngine(
       setError(String(e?.message || e));
       return null;
     }
-  }, [worldState, perspectiveId, labLocationCtx, manualAtoms, selectedEventIds, activeMap,
+  }, [worldState, perspectiveId, labLocationCtx, manualAtoms, activeEvents, activeMap,
     atomOverridesLayer, injectedEvents, sceneControl, affectOverrides, decisionNonce, participantIds, devValidateAtoms, placementBlocked]);
 
   const computed = useMemo(() => {
@@ -373,16 +380,29 @@ export function useGoalLabEngine(
     }
   }, [glCtx, worldState, needs.contextualMind, labLocationCtx]);
 
-  const snapshotV1 = useMemo<GoalLabSnapshotV1 | null>(() => {
-    if (!glCtx) return null;
-    return normalizeSnapshot(adaptToSnapshotV1(glCtx as any, { selfId: perspectiveId } as any));
-  }, [glCtx, perspectiveId]);
-
   const pipelineV1 = useMemo(() => {
-    if (!snapshotV1) return null;
-    const stages = arr((snapshotV1 as any)?.meta?.pipelineDeltas);
-    return { schema: 'GoalLabPipelineV1', agentId: perspectiveId, selfId: perspectiveId, tick: (snapshotV1 as any)?.meta?.tick ?? 0, stages };
-  }, [snapshotV1, perspectiveId]);
+    if (!worldState || !perspectiveId || placementBlocked) return null;
+    try {
+      return runGoalLabPipelineV1({
+        world: worldState as any,
+        agentId: perspectiveId,
+        participantIds: participantIds as any,
+        manualAtoms: manualAtoms as any,
+        injectedEvents: [...activeEvents, ...injectedEvents],
+        sceneControl,
+        affectOverrides,
+        tickOverride: Number((worldState as any)?.tick ?? 0),
+        observeLiteParams,
+      });
+    } catch (e) {
+      console.error('[useGoalLabEngine] canonical pipeline failed', e);
+      return null;
+    }
+  }, [worldState, perspectiveId, participantIds, manualAtoms, activeEvents, injectedEvents, sceneControl, affectOverrides, observeLiteParams, placementBlocked]);
+
+  const canonicalContract = useMemo(() => buildCanonicalGoalLabContract(pipelineV1 as any), [pipelineV1]);
+  const snapshotV1 = canonicalContract?.snapshotV1 ?? null;
+  const pipelineRun = canonicalContract?.pipelineRun ?? null;
 
   const pipelineStageOptions = useMemo(() => {
     if (pipelineV1?.stages?.length) {
@@ -401,6 +421,20 @@ export function useGoalLabEngine(
     return getCanonicalAtomsFromSnapshot(snapshotV1 as any, resolvedStageId);
   }, [snapshotV1, resolvedStageId]);
 
+  const surfaceSnapshot = useMemo(() => {
+    if (!snapshotV1 && !computed.snapshot) return null;
+    if (!snapshotV1) return computed.snapshot;
+    return {
+      ...(computed.snapshot || {}),
+      ...snapshotV1,
+      atoms: snapshotV1.atoms,
+      decision: snapshotV1.decision,
+      meta: snapshotV1.meta,
+      tick: snapshotV1.tick,
+      selfId: snapshotV1.selfId,
+    };
+  }, [computed.snapshot, snapshotV1]);
+
   const passportAtoms = useMemo(() => arr(canonicalAtoms?.atoms), [canonicalAtoms]);
 
   const pipelineFrame = useMemo(() => {
@@ -414,7 +448,7 @@ export function useGoalLabEngine(
     try {
       const res = buildGoalLabContext(worldState, agentId, {
         snapshotOptions: {
-          activeEvents: eventRegistry.getAll().filter(e => selectedEventIds.has(e.id)),
+          activeEvents,
           participantIds, overrideLocation: getSelectedLocationEntity(),
           manualAtoms, gridMap: activeMap, atomOverridesLayer,
           overrideEvents: injectedEvents, sceneControl, affectOverrides, decisionNonce,
@@ -426,7 +460,7 @@ export function useGoalLabEngine(
     } catch {
       return { id: agentId, label: (char as any)?.title || agentId, snapshot: null };
     }
-  }, [worldState, participantIds, selectedEventIds, getSelectedLocationEntity, manualAtoms, activeMap, atomOverridesLayer, injectedEvents, sceneControl, affectOverrides, decisionNonce, placementBlocked]);
+  }, [worldState, participantIds, activeEvents, getSelectedLocationEntity, manualAtoms, activeMap, atomOverridesLayer, injectedEvents, sceneControl, affectOverrides, decisionNonce, placementBlocked]);
 
   const castRows = useMemo(() => {
     if (!needs.castRows || !worldState) return [];
@@ -446,12 +480,12 @@ export function useGoalLabEngine(
         world: debouncedWorld as any, agentId,
         participantIds: participantIds as any,
         manualAtoms: manualAtoms as any,
-        injectedEvents, sceneControl,
+        injectedEvents: [...activeEvents, ...injectedEvents], sceneControl,
         tickOverride: Number((debouncedWorld as any)?.tick ?? 0),
         observeLiteParams,
       });
     } catch (e) { console.error('[useGoalLabEngine] POMDP pipeline failed', e); return null; }
-  }, [needs.pomdpPipeline, debouncedWorld, perspectiveId, selectedAgentId, participantIds, manualAtoms, injectedEvents, sceneControl, observeLiteParams, placementBlocked]);
+  }, [needs.pomdpPipeline, debouncedWorld, perspectiveId, selectedAgentId, participantIds, manualAtoms, activeEvents, injectedEvents, sceneControl, observeLiteParams, placementBlocked]);
 
   const pomdpRun = useMemo(() => adaptPipelineV1ToContract(pomdpPipelineV1 as any), [pomdpPipelineV1]);
 
@@ -475,7 +509,7 @@ export function useGoalLabEngine(
   }, [sceneDump, participantIds]);
 
   const vm = useMemo<GoalLabVM>(() => ({
-    sceneDump, snapshotV1: snapshotV1 as any, pipelineV1, pipelineFrame,
+    sceneDump, snapshotV1: snapshotV1 as any, pipelineV1, pipelineRun, pipelineFrame,
     pipelineStageId: resolvedStageId, perspectiveId,
     castRows, passportAtoms: passportAtoms as any, passportMeta: canonicalAtoms as any,
     contextualMind: computed.contextualMind, locationScores: computed.locationScores,
@@ -486,11 +520,13 @@ export function useGoalLabEngine(
     onSetPerspectiveId: world.setPerspectiveAgentId,
     onDownloadScene: downloadScene,
     onChangeManualAtoms: () => {},
-  }), [sceneDump, snapshotV1, pipelineV1, pipelineFrame, resolvedStageId, perspectiveId,
+  }), [sceneDump, snapshotV1, pipelineV1, pipelineRun, pipelineFrame, resolvedStageId, perspectiveId,
     castRows, passportAtoms, canonicalAtoms, computed, worldState, atomDiff, manualAtoms, downloadScene, world]);
 
   return {
-    snapshot: computed.snapshot, snapshotV1, pipelineV1, pipelineFrame,
+    // v2-facing surface snapshot: legacy-compatible envelope with canonical
+    // pipeline-derived atoms/decision/meta taking precedence.
+    snapshot: surfaceSnapshot, snapshotV1, pipelineV1, pipelineRun, pipelineFrame,
     goals: computed.goals, situation: computed.situation, goalPreview: computed.goalPreview,
     contextualMind: computed.contextualMind, locationScores: computed.locationScores,
     tomScores: computed.tomScores,

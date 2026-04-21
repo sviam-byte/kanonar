@@ -1,0 +1,164 @@
+{
+  "project_name": "KANONAR 4.0",
+  "official_entrypoint": "docs/unified/README.md",
+  "canonical_roots": [
+    "lib/goal-lab/pipeline",
+    "lib/context/v2",
+    "lib/config/formulaConfig.ts",
+    "lib/goal-lab/atoms/canonical.ts",
+    "docs/PIPELINE.md",
+    "docs/INVARIANTS.md",
+    "tests/pipeline",
+    "tests/decision"
+  ],
+  "secondary_roots": [
+    "pages/GoalLabPageV2.tsx",
+    "pages/GoalLabConsolePageV2.tsx",
+    "components/goal-lab-v2",
+    "contexts/GoalLabContext.tsx",
+    "hooks/useGoalLabEngine.ts",
+    "hooks/useGoalLabWorld.ts",
+    "lib/simkit",
+    "lib/config/formulaConfigSim.ts",
+    "docs/ARCHITECTURE.md",
+    "data/index.ts"
+  ],
+  "legacy_roots": [
+    "components/GoalSandbox",
+    "pages/GoalLabPage.tsx",
+    "pages/GoalLabConsolePage.tsx",
+    "pages/ConsolePage.tsx",
+    "docs/agent"
+  ],
+  "archive_roots": [
+    "archive"
+  ],
+  "key_docs": [
+    "docs/unified/README.md",
+    "docs/unified/01_CONTROL_PLANE.md",
+    "docs/unified/02_AGENT_QUICKSTART.md",
+    "docs/unified/03_SYSTEM_MAP.md",
+    "docs/unified/04_CONTROL_PLANE_VALIDATION.md",
+    "docs/unified/05_CODEBASE_NOTES.md",
+    "docs/PIPELINE.md",
+    "docs/INVARIANTS.md",
+    "docs/ARCHITECTURE.md"
+  ],
+  "trust_order": [
+    "lib/goal-lab/pipeline/runPipelineV1.ts",
+    "docs/PIPELINE.md",
+    "docs/INVARIANTS.md",
+    "lib/context/v2/types.ts",
+    "lib/goal-lab/atoms/canonical.ts",
+    "lib/config/formulaConfig.ts",
+    "tests/pipeline/* and tests/decision/*",
+    "docs/ARCHITECTURE.md",
+    "v2 UI engine files",
+    "compat adapters",
+    "docs/agents/*",
+    "docs/agent/*",
+    "archive/*"
+  ],
+  "main_execution_paths": [
+    {
+      "name": "canonical_logic_path",
+      "status": "canonical",
+      "files": [
+        "lib/goal-lab/pipeline/runPipelineV1.ts",
+        "lib/context/pipeline/stage0.ts",
+        "lib/context/axes/deriveAxes.ts",
+        "lib/context/lens/characterLens.ts",
+        "lib/emotion",
+        "lib/tom",
+        "lib/drivers/deriveDrivers.ts",
+        "lib/goals/goalAtoms.ts",
+        "lib/decision"
+      ]
+    },
+    {
+      "name": "v2_ui_path",
+      "status": "active_but_secondary",
+      "files": [
+        "App.tsx",
+        "pages/GoalLabPageV2.tsx",
+        "contexts/GoalLabContext.tsx",
+        "hooks/useGoalLabEngine.ts",
+        "components/goal-lab-v2"
+      ]
+    },
+    {
+      "name": "legacy_goalsandbox_path",
+      "status": "legacy",
+      "files": [
+        "pages/GoalLabPage.tsx",
+        "pages/GoalLabConsolePage.tsx",
+        "pages/ConsolePage.tsx",
+        "components/GoalSandbox/GoalSandbox.tsx"
+      ]
+    },
+    {
+      "name": "simkit_bridge_path",
+      "status": "active_but_secondary",
+      "files": [
+        "lib/simkit/plugins/goalLabDeciderPlugin.ts",
+        "lib/simkit/plugins/orchestratorPlugin.ts",
+        "lib/simkit/core/simulator.ts"
+      ]
+    }
+  ],
+  "variability_modules": [
+    "lib/core/noise.ts",
+    "lib/decision/decide.ts",
+    "lib/config/formulaConfigSim.ts",
+    "lib/simkit/core/repetitionDamper.ts",
+    "lib/simkit/plugins/goalLabDeciderPlugin.ts",
+    "lib/simkit/plugins/orchestratorPlugin.ts",
+    "hooks/useGoalLabWorld.ts",
+    "components/sim/LiveSimulator.tsx",
+    "pages/DiagnosticsPage.tsx"
+  ],
+  "type_hotspots": [
+    "hooks/useGoalLabEngine.ts",
+    "lib/goals/goalLabContext.ts",
+    "lib/goal-lab/pipeline/runPipelineV1.ts",
+    "types.ts",
+    "components/GoalSandbox/GoalSandbox.tsx",
+    "lib/simkit/plugins/goalLabDeciderPlugin.ts",
+    "lib/simkit/plugins/orchestratorPlugin.ts",
+    "lib/possibilities/defs.ts",
+    "lib/simkit/actions/specs.ts",
+    "data/index.ts"
+  ],
+  "critical_invariants": [
+    "S0 must not emit ctx:* atoms",
+    "S2 may emit ctx:* but not ctx:final:*",
+    "S3 must produce ctx:final:*",
+    "Goal derivation must consume ctx:final:* rather than raw ctx:*",
+    "Action selection must not consume goal:* directly; bridge must be explicit via util:* or equivalent projection",
+    "Canonical UI/export atom source is pipelineV1.stages[*].atoms; snapshot.atoms is fallback only",
+    "All numeric coefficients for S0-S9 should be centralized in lib/config/formulaConfig.ts",
+    "beliefPersist must preserve prediction and surprise atoms for feedback loop continuity"
+  ],
+  "unsafe_assumptions_for_agents": [
+    "Do not assume HomePage links reflect real active routes",
+    "Do not assume docs/agents/* is fresher than docs/PIPELINE.md",
+    "Do not assume src/ is the primary code root",
+    "Do not assume GoalLab v2 UI path is a pure projection of canonical pipeline truth",
+    "Do not assume deterministic behavior from UI surfaces without checking seed sources",
+    "Do not treat compat adapters as canonical spec"
+  ],
+  "first_files_to_read": [
+    "docs/unified/README.md",
+    "docs/unified/01_CONTROL_PLANE.md",
+    "docs/unified/02_AGENT_QUICKSTART.md",
+    "docs/unified/03_SYSTEM_MAP.md",
+    "docs/unified/04_CONTROL_PLANE_VALIDATION.md",
+    "docs/PIPELINE.md",
+    "docs/INVARIANTS.md",
+    "docs/ARCHITECTURE.md",
+    "lib/goal-lab/pipeline/runPipelineV1.ts",
+    "lib/context/v2/types.ts",
+    "lib/goal-lab/atoms/canonical.ts",
+    "lib/config/formulaConfig.ts"
+  ]
+}
