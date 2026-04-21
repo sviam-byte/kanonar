@@ -1,8 +1,9 @@
 import { clamp01 } from '../util/math';
 import type { ContextAtom } from '../context/v2/types';
 import { uniq } from '../util/collections';
+import { GOAL_LAB_REL_GRAPH_SCHEMA_VERSION } from './versioning';
 
-type RelEdge = {
+export type RelEdge = {
   a: string;
   b: string;
   tags: string[];
@@ -22,8 +23,8 @@ type RelEdge = {
   bioVector?: Record<string, number>; // raw signed [-1..+1]
 };
 
-type RelGraph = {
-  schemaVersion: number;
+export type RelGraph = {
+  schemaVersion: typeof GOAL_LAB_REL_GRAPH_SCHEMA_VERSION;
   edges: RelEdge[];
 };
 
@@ -239,5 +240,5 @@ export function buildRelGraphFromAtoms(atoms: ContextAtom[]): RelGraph {
     e.tags = uniq([...(e.tags || []), 'rel']);
   }
 
-  return { schemaVersion: 1, edges: Array.from(map.values()) };
+  return { schemaVersion: GOAL_LAB_REL_GRAPH_SCHEMA_VERSION, edges: Array.from(map.values()) };
 }

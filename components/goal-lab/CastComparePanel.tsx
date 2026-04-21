@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import type { ContextSnapshot } from '../../lib/context/v2/types';
+import type { ContextSnapshot } from '../../lib/goal-lab/types';
 import { diffAtoms } from '../../lib/snapshot/diffAtoms';
 import { getCanonicalAtomsFromSnapshot } from '../../lib/goal-lab/atoms/canonical';
 

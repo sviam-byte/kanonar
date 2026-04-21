@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { ContextAtom } from '@/lib/context/v2/types';
+import type { ContextAtom } from '@/lib/goal-lab/types';
 import { buildActionCandidates } from '@/lib/decision/actionCandidateUtils';
 import type { Possibility } from '@/lib/possibilities/catalog';
 

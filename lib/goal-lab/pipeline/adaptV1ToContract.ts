@@ -1,6 +1,7 @@
 import type { GoalLabPipelineV1, GoalLabStageFrame } from './runPipelineV1';
 import type { ArtifactRef, PipelineRun, PipelineStage, Provenance } from './contracts';
 import { arr } from '../../utils/arr';
+import { GOAL_LAB_PIPELINE_RUN_SCHEMA_VERSION, makeGoalLabVersionStamp } from '../versioning';
 
 const TYPED_V1_KEYS = new Set([
   'obsAtomsCount',
@@ -335,6 +336,7 @@ function buildArtifactsFromFrame(frame: GoalLabStageFrame, run: GoalLabPipelineV
 
 export function adaptPipelineV1ToContract(p: GoalLabPipelineV1 | null): PipelineRun | null {
   if (!p) return null;
+  const versionStamp = makeGoalLabVersionStamp('goal-lab-pipeline-run', GOAL_LAB_PIPELINE_RUN_SCHEMA_VERSION);
   const stages: PipelineStage[] = arr<GoalLabStageFrame>(p.stages).map((s) => {
     const stats =
       s.stats && typeof s.stats === 'object'
@@ -356,7 +358,8 @@ export function adaptPipelineV1ToContract(p: GoalLabPipelineV1 | null): Pipeline
   });
 
   return {
-    schemaVersion: 2,
+    ...versionStamp,
+    versionStamp,
     selfId: String(p.selfId),
     tick: Number(p.tick ?? 0),
     participantIds: arr<string>(p.participantIds),

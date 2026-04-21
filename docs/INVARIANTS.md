@@ -23,6 +23,13 @@
 Если атом вычислен из других атомов, он должен указывать зависимости в:
 - `trace.usedAtomIds`
 
+## Versioning invariants
+
+- Single source of system version truth: `lib/goal-lab/versioning.ts` -> `KANONAR_SYSTEM_VERSION`.
+- GoalLab contracts may keep local `schemaVersion` values for wire compatibility, but they MUST carry the same top-level `systemVersion`.
+- New control-plane contracts MUST import version constants/helpers from `lib/goal-lab/versioning.ts`; new inline `schemaVersion: <number>` literals in contract code count as tech debt.
+- `schemaVersion` identifies payload shape compatibility; `systemVersion` identifies the Kanonar build semantics that produced the payload. These roles must stay separate.
+
 ## Documentation discipline
 
 Если меняется:

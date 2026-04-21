@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { ContextAtom, ContextAtomKind } from '../../lib/context/v2/types';
+import type { ContextAtom, ContextAtomKind } from '../../lib/goal-lab/types';
 import { arr } from '../../lib/utils/arr';
 
 interface Props {

@@ -4,6 +4,7 @@ This file formalizes atom id conventions so invariants and tooling can be strict
 
 Sources of truth:
 - atom type: `lib/context/v2/types.ts`
+- GoalLab-facing type entrypoint: `lib/goal-lab/types.ts`
 - ctx access helper: `lib/context/layers.ts` (`getCtx` depends on id patterns)
 - pipeline outputs: `docs/PIPELINE.md`
 

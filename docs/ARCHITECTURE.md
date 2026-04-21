@@ -13,6 +13,7 @@
 - Pipeline runner: `lib/goal-lab/pipeline/runPipelineV1.ts`
 - Stage implementations: `lib/goal-lab/pipeline/*`
 - Atom type/trace: `lib/context/v2/types.ts`
+- GoalLab-facing consolidated type entrypoint: `lib/goal-lab/types.ts`
 - Character lens: `lib/context/lens/characterLens.ts`
 - Goal derivation/projection: `lib/goals/*`
 - Decision graph builder: `lib/graph/GraphAdapter.ts`

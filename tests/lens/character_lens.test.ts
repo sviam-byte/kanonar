@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { applyCharacterLens } from '@/lib/context/lens/characterLens';
-import type { ContextAtom } from '@/lib/context/v2/types';
+import type { ContextAtom } from '@/lib/goal-lab/types';
 
 function mkAtom(id: string, magnitude: number): ContextAtom {
   return {

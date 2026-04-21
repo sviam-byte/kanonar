@@ -4,6 +4,11 @@
 // Strategy: do NOT rewrite the existing pipeline yet; instead, adapt V1 to this contract.
 
 import type { ContextAtom } from '../../context/v2/types';
+import {
+  GOAL_LAB_PIPELINE_RUN_SCHEMA_VERSION,
+  type GoalLabVersionStamp,
+  type KanonarSystemVersion,
+} from '../versioning';
 
 export type ArtifactKind =
   | 'truth'
@@ -73,7 +78,10 @@ export type PipelineStage = {
 };
 
 export type PipelineRun = {
-  schemaVersion: 2;
+  schemaVersion: typeof GOAL_LAB_PIPELINE_RUN_SCHEMA_VERSION;
+  systemVersion: KanonarSystemVersion;
+  contractId: 'goal-lab-pipeline-run';
+  versionStamp: GoalLabVersionStamp<'goal-lab-pipeline-run', typeof GOAL_LAB_PIPELINE_RUN_SCHEMA_VERSION>;
   selfId: string;
   tick: number;
   participantIds: string[];

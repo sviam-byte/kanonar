@@ -2,6 +2,10 @@ import type { AtomOverrideLayer } from '../context/overrides/types';
 import type { WorldState } from '../../types';
 import { buildGoalLabExplain } from './explain';
 import { arr } from '../utils/arr';
+import {
+  GOAL_LAB_SCENE_DUMP_SCHEMA_VERSION,
+  makeGoalLabVersionStamp,
+} from './versioning';
 
 type PipelineStageDeltaLite = {
   id: string;
@@ -131,6 +135,7 @@ export function buildGoalLabSceneDumpV2(input: SceneDumpInput) {
     tomMatrixForPerspective,
     castRows,
   } = input;
+  const versionStamp = makeGoalLabVersionStamp('goal-lab-scene-dump', GOAL_LAB_SCENE_DUMP_SCHEMA_VERSION);
 
   const quality = (() => {
     try {
@@ -203,7 +208,8 @@ export function buildGoalLabSceneDumpV2(input: SceneDumpInput) {
     : null;
 
   return {
-    schemaVersion: 3,
+    ...versionStamp,
+    versionStamp,
     exportedAt,
     quality,
     tick: (world as any)?.tick ?? 0,

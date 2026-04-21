@@ -1,5 +1,5 @@
 import React from 'react';
-import type { ContextAtom } from '../../lib/context/v2/types';
+import type { ContextAtom } from '../../lib/goal-lab/types';
 import { describeAtom } from '../../lib/context/v2/describeAtom';
 import { AtomDependencyGraph } from './AtomDependencyGraph';
 import { resolveAtomSpec } from '../../lib/context/catalog/atomSpecs';

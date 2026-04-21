@@ -6,7 +6,7 @@
 
 ## 7.1. Базовые понятия
 
-- **Atom** — минимальная единица знания/сигнала (см. `lib/context/v2/types.ts`).
+- **Atom** — минимальная единица знания/сигнала (см. `lib/context/v2/types.ts`; GoalLab-facing entrypoint: `lib/goal-lab/types.ts`).
 - **Trace** — объяснимость: `trace.usedAtomIds` задаёт зависимость derived-атомов.
 - **Stage** — детерминированный шаг обработки набора атомов.
 

@@ -1,8 +1,16 @@
 
 import { ContextAtom } from '../context/v2/types';
+import {
+  GOAL_LAB_SNAPSHOT_SCHEMA_VERSION,
+  type GoalLabVersionStamp,
+  type KanonarSystemVersion,
+} from './versioning';
 
 export type GoalLabSnapshotV1 = {
-  schemaVersion: 1;
+  schemaVersion: typeof GOAL_LAB_SNAPSHOT_SCHEMA_VERSION;
+  systemVersion: KanonarSystemVersion;
+  contractId: 'goal-lab-snapshot-v1';
+  versionStamp: GoalLabVersionStamp<'goal-lab-snapshot-v1', typeof GOAL_LAB_SNAPSHOT_SCHEMA_VERSION>;
   tick: number;
   selfId: string;
 

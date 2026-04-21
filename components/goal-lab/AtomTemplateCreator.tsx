@@ -3,7 +3,7 @@
 import React, { useMemo, useState } from 'react';
 import { getCatalogTemplates } from '../../lib/context/catalog/catalogTemplates';
 import { AtomOverrideLayer } from '../../lib/context/overrides/types';
-import { ContextAtom } from '../../lib/context/v2/types';
+import type { ContextAtom } from '../../lib/goal-lab/types';
 import { arr } from '../../lib/utils/arr';
 
 type Props = {

@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { atomizeDilemma, buildDilemmaPossibilities, extractDilemmaActionId } from '../../lib/dilemma/bridge';
 import { createGame, advanceGame } from '../../lib/dilemma/engine';
 import { PRISONERS_DILEMMA, STAG_HUNT, CHICKEN } from '../../lib/dilemma/catalog';
-import type { ContextAtom } from '../../lib/context/v2/types';
+import type { ContextAtom } from '../../lib/goal-lab/types';
 
 function makeTrait(selfId: string, trait: string, value: number): ContextAtom {
   return {

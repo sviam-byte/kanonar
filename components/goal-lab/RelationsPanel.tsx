@@ -1,5 +1,6 @@
 // components/goal-lab/RelationsPanel.tsx
 import React, { useMemo, useState } from 'react';
+import type { RelGraph } from '../../lib/goal-lab/types';
 import { arr } from '../../lib/utils/arr';
 
 type RelEdge = {
@@ -14,11 +15,6 @@ type RelEdge = {
 
   bioAspects?: Record<string, number>;
   bioVector?: Record<string, number>;
-};
-
-type RelGraph = {
-  schemaVersion: number;
-  edges: RelEdge[];
 };
 
 type Props = {

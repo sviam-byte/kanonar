@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import ReactFlow, { Background, Controls, type Edge, type Node } from 'reactflow';
 import 'reactflow/dist/style.css';
 
-import type { ContextAtom } from '../../lib/context/v2/types';
+import type { ContextAtom } from '../../lib/goal-lab/types';
 import { arr } from '../../lib/utils/arr';
 import { layoutWithDagre } from '../../lib/graph/layout';
 import { clamp01 } from '../../lib/util/math';

@@ -7,7 +7,7 @@
  * Data: decision.ranked[] from pipeline S8 artifacts (via GoalLabShell).
  */
 import React, { useMemo, useState } from 'react';
-import type { ContextAtom } from '../../lib/context/v2/types';
+import type { ContextAtom } from '../../lib/goal-lab/types';
 import { arr } from '../../lib/utils/arr';
 
 const cl = (x: number) => Math.max(0, Math.min(1, Number.isFinite(x) ? x : 0));

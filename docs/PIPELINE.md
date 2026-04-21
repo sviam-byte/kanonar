@@ -7,6 +7,11 @@
 - `GoalLabPipelineV1.step`: явный снимок шага (tick/seed/events), чтобы фиксировать время и входные события.
 - `GoalLabPipelineV1.beliefPersist`: результат post-S9 персиста убеждений (`beliefAtoms`, `surpriseAtoms`, debug) для записи в `agent.memory.beliefAtoms` вызывающим слоем.
 
+Additional version rule:
+- `schemaVersion` stays per payload shape.
+- `systemVersion` is shared across GoalLab control-plane payloads and must come from `lib/goal-lab/versioning.ts`.
+- New contracts should add a new payload schema only when the wire shape changes; they must not invent a separate system version source.
+
 ## Naming conventions (atoms)
 
 - `ctx:<axis>:<agentId>` — объективная ось контекста (base)

@@ -3,7 +3,7 @@
 import React from 'react';
 import { CharacterEntity, LocationEntity, LocalActorRef } from '../../types';
 import { Event } from '../../lib/events/types';
-import { ContextAtom, ContextAtomKind } from '../../lib/context/v2/types';
+import type { ContextAtom, ContextAtomKind } from '../../lib/goal-lab/types';
 import { Slider } from '../Slider';
 import { AffectState } from '../../types';
 import { TEST_SCENES, ScenePreset } from '../../data/presets/scenes';

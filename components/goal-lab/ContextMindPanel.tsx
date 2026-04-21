@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { computeContextMindScoreboard } from '../../lib/contextMind/scoreboard';
-import { ContextAtom } from '../../lib/context/v2/types';
+import type { ContextAtom } from '../../lib/goal-lab/types';
 import { arr } from '../../lib/utils/arr';
 
 export const ContextMindPanel: React.FC<{ cm?: any; atoms: ContextAtom[]; selfId?: string }> = ({ cm, atoms, selfId = 'unknown' }) => {

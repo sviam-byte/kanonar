@@ -56,6 +56,12 @@ import type { AppraisalView, RecentEventView } from '../../goals/specs/evalTypes
 import { deriveActionSchemaCandidatesV1 } from '../../actions/specs/evaluateActionSchema';
 import { groundSchemasToOffers } from '../../simkit/plugins/groundSchemasToOffers';
 import { validatePlacement, type PlacementValidationResult } from '../../simkit/placement/validatePlacement';
+import {
+  GOAL_LAB_PIPELINE_SCHEMA_VERSION,
+  type GoalLabVersionStamp,
+  type KanonarSystemVersion,
+  makeGoalLabVersionStamp,
+} from '../versioning';
 
 export type GoalLabStageId = 'S0'|'S1'|'S2'|'S3'|'S4'|'S5'|'S6'|'S7'|'S8'|'S9';
 
@@ -75,7 +81,10 @@ export type GoalLabStageFrame = {
 };
 
 export type GoalLabPipelineV1 = {
-  schemaVersion: 1;
+  schemaVersion: typeof GOAL_LAB_PIPELINE_SCHEMA_VERSION;
+  systemVersion: KanonarSystemVersion;
+  contractId: 'goal-lab-pipeline-v1';
+  versionStamp: GoalLabVersionStamp<'goal-lab-pipeline-v1', typeof GOAL_LAB_PIPELINE_SCHEMA_VERSION>;
   selfId: string;
   tick: number;
   /** Explicit step record (tick + seed + events). */
@@ -631,8 +640,10 @@ export function runGoalLabPipelineV1(input: {
 
   // Hard gate: even direct pipeline calls must not proceed with incomplete placement.
   if (!placementValidation.isComplete) {
+    const versionStamp = makeGoalLabVersionStamp('goal-lab-pipeline-v1', GOAL_LAB_PIPELINE_SCHEMA_VERSION);
     return {
-      schemaVersion: 1,
+      ...versionStamp,
+      versionStamp,
       selfId,
       tick,
       step,
@@ -1498,5 +1509,15 @@ export function runGoalLabPipelineV1(input: {
     });
   }
 
-  return { schemaVersion: 1, selfId, tick, step, participantIds: participantIds.slice(), stages, beliefPersist: beliefPersistResult };
+  const versionStamp = makeGoalLabVersionStamp('goal-lab-pipeline-v1', GOAL_LAB_PIPELINE_SCHEMA_VERSION);
+  return {
+    ...versionStamp,
+    versionStamp,
+    selfId,
+    tick,
+    step,
+    participantIds: participantIds.slice(),
+    stages,
+    beliefPersist: beliefPersistResult,
+  };
 }

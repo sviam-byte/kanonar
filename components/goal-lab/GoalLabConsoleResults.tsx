@@ -4,7 +4,7 @@ import { PomdpConsolePanel } from './PomdpConsolePanel';
 import { allScenarioDefs } from '../../data/scenarios/index';
 import { ScenePanel } from './ScenePanel';
 import { SCENE_PRESETS } from '../../lib/scene/presets';
-import type { PipelineRun } from '../../lib/goal-lab/pipeline/contracts';
+import type { PipelineRun } from '../../lib/goal-lab/types';
 
 function arr<T>(x: any): T[] { return Array.isArray(x) ? x : []; }
 

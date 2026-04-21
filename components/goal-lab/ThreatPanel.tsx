@@ -1,6 +1,6 @@
 
 import React, { useMemo } from 'react';
-import { ContextAtom } from '../../lib/context/v2/types';
+import type { ContextAtom } from '../../lib/goal-lab/types';
 import { MetricBar } from '../tom/MetricBar';
 
 export const ThreatPanel: React.FC<{

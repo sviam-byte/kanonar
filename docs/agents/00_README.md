@@ -1,6 +1,7 @@
 # Docs for agents: Character → Lens → ToM → Goal Lab
 
-Эта подпапка — **канонический том** про «агента» в Kanonar/Goal Lab. Она задумывалась как документация *для ИИ-агента*, поэтому:
+Эта подпапка — глубокая модельная документация про «агента» в Kanonar/Goal Lab.
+Для repo-level trust order сначала нужно читать `docs/unified/*`, а уже потом этот том.
 
 - описывает **контракты** (что где лежит, какие диапазоны и зависимости допустимы);
 - фиксирует **матмодели** (формулы, нелинейности, нормировки);
@@ -18,7 +19,7 @@
 
 ## Источники истины (в коде)
 
-- Atom types / trace: `lib/context/v2/types.ts`, `lib/context/v2/infer.ts`
+- Atom types / trace: `lib/context/v2/types.ts`, `lib/goal-lab/types.ts`, `lib/context/v2/infer.ts`
 - Оси персонажа (schema): `data/character-schema.ts`
 - Персонажи: `data/entities/character-*.ts`
 - Character lens: `lib/context/lens/characterLens.ts` (`applyCharacterLens`)

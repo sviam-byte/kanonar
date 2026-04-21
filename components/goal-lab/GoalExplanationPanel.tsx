@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 
-import type { ContextualGoalContribution, ContextualGoalScore } from '../../lib/context/v2/types';
+import type { ContextualGoalContribution, ContextualGoalScore } from '../../lib/goal-lab/types';
 import { describeGoal } from '../../lib/goals/goalCatalog';
 import { arr } from '../../lib/utils/arr';
 

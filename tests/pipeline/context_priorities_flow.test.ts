@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { deriveContextPriorities } from '@/lib/context/priorities/deriveContextPriorities';
-import type { ContextAtom } from '@/lib/context/v2/types';
+import type { ContextAtom } from '@/lib/goal-lab/types';
 
 /**
  * Regression guard for S6 priorities derivation:

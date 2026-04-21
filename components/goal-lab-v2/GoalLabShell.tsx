@@ -20,7 +20,7 @@ import { allLocations } from '../../data/locations';
 import { allScenarioDefs } from '../../data/scenarios/index';
 import { eventRegistry } from '../../data/events-registry';
 import { SCENE_PRESETS } from '../../lib/scene/presets';
-import type { ContextAtom } from '../../lib/context/v2/types';
+import type { ContextAtom } from '../../lib/goal-lab/types';
 import { WorldModelPanel } from './WorldModelPanel';
 import { DecisionAnatomyPanel } from './DecisionAnatomyPanel';
 import { CurvesPanel } from './CurvesPanel';

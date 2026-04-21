@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { ContextAtom } from '../../lib/context/v2/types';
+import type { ContextAtom } from '../../lib/goal-lab/types';
 import { AtomBrowser } from './AtomBrowser';
 
 export const AtomsPanel: React.FC<{ atoms: ContextAtom[] }> = ({ atoms }) => {

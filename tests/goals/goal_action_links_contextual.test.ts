@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { ContextAtom } from '@/lib/context/v2/types';
+import type { ContextAtom } from '@/lib/goal-lab/types';
 import { deriveGoalActionLinkAtoms } from '@/lib/goals/goalActionLinksAtoms';
 import { GOAL_DEFS } from '@/lib/goals/space';
 import { mapGoalActionToPossibilityKeys } from '@/lib/goals/actionVocabularyBridge';

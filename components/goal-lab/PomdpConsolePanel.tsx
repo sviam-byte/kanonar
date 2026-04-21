@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import type { ArtifactRef, PipelineRun, PipelineStage } from '../../lib/goal-lab/pipeline/contracts';
+import type { ArtifactRef, PipelineRun, PipelineStage } from '../../lib/goal-lab/types';
 import { buildPredictedWorldSummary } from '../../lib/goal-lab/pipeline/lookahead';
 
 function arr<T>(x: any): T[] {

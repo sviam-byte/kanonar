@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { ContextAtom } from '@/lib/context/v2/types';
+import type { ContextAtom } from '@/lib/goal-lab/types';
 import { deriveGoalAtoms } from '@/lib/goals/goalAtoms';
 
 function mkCtx(id: string, magnitude: number): ContextAtom {

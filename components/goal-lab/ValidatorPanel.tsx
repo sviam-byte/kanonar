@@ -1,7 +1,7 @@
 
 // components/goal-lab/ValidatorPanel.tsx
 import React, { useMemo } from 'react';
-import { ValidationReport } from '../../lib/context/v2/types';
+import type { ValidationReport } from '../../lib/goal-lab/types';
 import { arr } from '../../lib/utils/arr';
 
 type Props = {

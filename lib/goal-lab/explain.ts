@@ -1,6 +1,7 @@
 // lib/goal-lab/explain.ts
 import type { ContextSnapshot } from '../context/v2/types';
 import { clamp01 } from '../util/math';
+import { GOAL_LAB_EXPLAIN_SCHEMA_VERSION, makeGoalLabVersionStamp } from './versioning';
 
 function topMetric(snapshot: any, key: string) {
   const metrics = snapshot?.contextMind?.metrics || [];
@@ -16,6 +17,7 @@ function getAtomMag(atoms: any[], id: string, fb = 0) {
 
 export function buildGoalLabExplain(snapshot: ContextSnapshot | null) {
   if (!snapshot) return null;
+  const versionStamp = makeGoalLabVersionStamp('goal-lab-explain', GOAL_LAB_EXPLAIN_SCHEMA_VERSION);
 
   const threat = topMetric(snapshot as any, 'threat');
   const pressure = topMetric(snapshot as any, 'pressure');
@@ -71,7 +73,8 @@ export function buildGoalLabExplain(snapshot: ContextSnapshot | null) {
   feels.push(emoLine);
 
   return {
-    schemaVersion: 1,
+    ...versionStamp,
+    versionStamp,
     what: whatHappens,
     think: thinks,
     feel: feels,

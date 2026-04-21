@@ -9,7 +9,7 @@ The repo is organized around several overlapping families:
 - `pages/*`: route entry points
 - `tests/*`: invariants and behavioral coverage
 - `docs/*`: several generations of documentation
-- `kanonar_control_plane/*`: new high-level audit notes, currently not yet integrated
+- `docs/unified/*`: integrated control-plane, hotspot, and variability notes
 
 ## Runtime Core
 

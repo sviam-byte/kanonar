@@ -3,7 +3,7 @@ import ReactFlow, { Background, Controls, type EdgeTypes, type NodeTypes } from 
 import 'reactflow/dist/style.css';
 
 import type { AgentContextFrame } from '../../lib/context/frame/types';
-import type { ContextualGoalContribution, ContextualGoalScore } from '../../lib/context/v2/types';
+import type { ContextualGoalContribution, ContextualGoalScore } from '../../lib/goal-lab/types';
 import { buildDecisionTripletGraph } from '../../lib/graph/GraphAdapter';
 import { applyDecisionGraphEnergy, type EdgeLabelMode } from '../../lib/graph/decisionGraphEnergy';
 import { arr } from '../../lib/utils/arr';

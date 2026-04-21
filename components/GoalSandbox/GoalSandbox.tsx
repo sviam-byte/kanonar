@@ -59,6 +59,7 @@ import { buildFullDebugDump } from '../../lib/debug/buildFullDebugDump';
 import { allScenarioDefs } from '../../data/scenarios/index';
 import { useAccess } from '../../contexts/AccessContext';
 import { filterCharactersForActiveModule } from '../../lib/modules/visibility';
+import { isSupportedGoalLabSceneDumpSchemaVersion } from '../../lib/goal-lab/versioning';
 
 // Pipeline Imports
 import type { ScenePreset } from '../../data/presets/scenes';
@@ -1516,7 +1517,7 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
     (dump: any) => {
       try {
         if (!dump || typeof dump !== 'object') throw new Error('Invalid dump: not an object');
-        if (dump.schemaVersion !== 2) {
+        if (!isSupportedGoalLabSceneDumpSchemaVersion(dump.schemaVersion)) {
           throw new Error(`Unsupported schemaVersion: ${String(dump.schemaVersion)}`);
         }
         if (!dump.world) throw new Error('Dump has no world');
@@ -2358,8 +2359,8 @@ export const GoalSandbox: React.FC<GoalSandboxProps> = ({ render, uiMode: forced
       try {
         const text = await file.text();
         const payload = JSON.parse(text);
-        if (!payload || ![2, 3].includes(payload.schemaVersion)) {
-          throw new Error('Invalid scene dump: expected schemaVersion=2 or 3');
+        if (!payload || !isSupportedGoalLabSceneDumpSchemaVersion(payload.schemaVersion)) {
+          throw new Error('Invalid scene dump: expected a supported GoalLab scene dump schemaVersion');
         }
         handleImportSceneDumpV2(payload);
       } catch (e: any) {

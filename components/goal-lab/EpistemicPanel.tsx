@@ -1,7 +1,7 @@
 
 // components/goal-lab/EpistemicPanel.tsx
 import React, { useMemo, useState } from 'react';
-import { ContextAtom } from '../../lib/context/v2/types';
+import type { ContextAtom } from '../../lib/goal-lab/types';
 import { arr } from '../../lib/utils/arr';
 
 type Layer = 'world' | 'obs' | 'belief' | 'override' | 'derived';

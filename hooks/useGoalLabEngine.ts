@@ -10,12 +10,10 @@
 
 import { useMemo, useCallback, useState, useEffect, useRef } from 'react';
 import type { WorldState, AffectState, AgentState, LocationEntity } from '../types';
-import type { ContextAtom, ContextualGoalScore } from '../lib/context/v2/types';
+import type { ContextAtom, ContextualGoalScore, GoalLabSnapshotV1, PipelineRun } from '../lib/goal-lab/types';
 import type { AtomOverrideLayer } from '../lib/context/overrides/types';
 import type { ContextualMindReport } from '../lib/tom/contextual/types';
-import type { GoalLabSnapshotV1 } from '../lib/goal-lab/snapshotTypes';
 import type { AtomDiff } from '../lib/snapshot/diffAtoms';
-import type { PipelineRun } from '../lib/goal-lab/pipeline/contracts';
 
 import { buildGoalLabContext } from '../lib/goals/goalLabContext';
 import { scoreContextualGoals } from '../lib/context/v2/scoring';

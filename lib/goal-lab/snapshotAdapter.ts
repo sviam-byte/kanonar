@@ -3,6 +3,7 @@ import { GoalLabSnapshotV1 } from './snapshotTypes';
 import { ContextAtom } from '../context/v2/types';
 import { normalizeAtom } from '../context/v2/infer';
 import { arr } from '../utils/arr';
+import { GOAL_LAB_SNAPSHOT_SCHEMA_VERSION, makeGoalLabVersionStamp } from './versioning';
 
 function safeTick(x: any) {
   const t = Number(x);
@@ -55,9 +56,11 @@ export function adaptToSnapshotV1(raw: any, args: { selfId: string }): GoalLabSn
     0;
     
   const snapshot = raw?.snapshot || {};
+  const versionStamp = makeGoalLabVersionStamp('goal-lab-snapshot-v1', GOAL_LAB_SNAPSHOT_SCHEMA_VERSION);
 
   const adapted: GoalLabSnapshotV1 = {
-    schemaVersion: 1,
+    ...versionStamp,
+    versionStamp,
     tick,
     selfId: args.selfId,
     atoms: normalizedAtoms,

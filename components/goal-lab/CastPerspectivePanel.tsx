@@ -1,5 +1,5 @@
 import React from 'react';
-import { ContextSnapshot } from '../../lib/context/v2/types';
+import type { ContextSnapshot } from '../../lib/goal-lab/types';
 
 type CastRow = {
   id: string;

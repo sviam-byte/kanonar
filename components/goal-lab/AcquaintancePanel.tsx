@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 
-import type { ContextAtom } from '../../lib/context/v2/types';
+import type { ContextAtom } from '../../lib/goal-lab/types';
 import { arr } from '../../lib/utils/arr';
 
 type Row = {

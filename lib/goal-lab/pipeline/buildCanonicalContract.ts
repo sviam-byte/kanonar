@@ -3,6 +3,7 @@ import { adaptPipelineV1ToContract } from './adaptV1ToContract';
 import type { PipelineRun } from './contracts';
 import type { GoalLabSnapshotV1 } from '../snapshotTypes';
 import { arr } from '../../utils/arr';
+import { GOAL_LAB_SNAPSHOT_SCHEMA_VERSION, makeGoalLabVersionStamp } from '../versioning';
 
 export type CanonicalGoalLabContract = {
   pipelineV1: GoalLabPipelineV1;
@@ -42,9 +43,11 @@ export function buildCanonicalGoalLabContract(pipelineV1: GoalLabPipelineV1 | nu
 
   const decisionSnapshot = firstArtifact<any>(stages, ['S8'], 'decisionSnapshot');
   const transitionSnapshot = firstArtifact<any>(stages, ['S9'], 'transitionSnapshot');
+  const versionStamp = makeGoalLabVersionStamp('goal-lab-snapshot-v1', GOAL_LAB_SNAPSHOT_SCHEMA_VERSION);
 
   const snapshotV1: GoalLabSnapshotV1 = {
-    schemaVersion: 1,
+    ...versionStamp,
+    versionStamp,
     tick: Number(pipelineV1.tick ?? 0),
     selfId: String(pipelineV1.selfId),
     atoms: finalAtoms,

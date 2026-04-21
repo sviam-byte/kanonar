@@ -1,7 +1,7 @@
 
 // components/goal-lab/AtomBrowser.tsx
 import React, { useMemo, useState } from 'react';
-import { ContextAtom, AtomNamespace, AtomOrigin } from '../../lib/context/v2/types';
+import type { ContextAtom, AtomNamespace, AtomOrigin } from '../../lib/goal-lab/types';
 import { inferAtomNamespace, inferAtomOrigin, normalizeAtom } from '../../lib/context/v2/infer';
 import { arr } from '../../lib/utils/arr';
 

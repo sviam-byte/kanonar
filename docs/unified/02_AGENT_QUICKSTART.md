@@ -26,6 +26,7 @@ That spine is backed by:
 - `docs/PIPELINE.md`
 - `docs/INVARIANTS.md`
 - `lib/context/v2/types.ts`
+- `lib/goal-lab/types.ts`
 - `lib/goal-lab/atoms/canonical.ts`
 - `lib/config/formulaConfig.ts`
 - `tests/pipeline/*`

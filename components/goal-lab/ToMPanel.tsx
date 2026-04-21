@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { ContextAtom } from '../../lib/context/v2/types';
+import type { ContextAtom } from '../../lib/goal-lab/types';
 
 export const ToMPanel: React.FC<{ atoms: ContextAtom[] }> = ({ atoms }) => {
     const parseDyad = (id: string) => {

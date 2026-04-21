@@ -1,6 +1,13 @@
 
 import React, { useEffect, useState, useMemo } from 'react';
-import type { ContextSnapshot, ContextualGoalScore, ContextAtom, TemporalContextConfig, ContextualGoalContribution } from '../../lib/context/v2/types';
+import type { TemporalContextConfig } from '../../lib/context/v2/types';
+import type {
+  ContextSnapshot,
+  ContextualGoalScore,
+  ContextAtom,
+  ContextualGoalContribution,
+  GoalLabSnapshotV1,
+} from '../../lib/goal-lab/types';
 import { validateAtoms } from '../../lib/context/validate/frameValidator';
 import { GOAL_DEFS } from '../../lib/goals/space'; 
 import { describeGoal } from '../../lib/goals/goalCatalog';
@@ -29,7 +36,6 @@ import { ToMPanel } from './ToMPanel';
 import { CoveragePanel } from './CoveragePanel';
 import { DecisionGraphView } from './DecisionGraphView';
 import { GoalActionGraphView } from './GoalActionGraphView';
-import { GoalLabSnapshotV1 } from '../../lib/goal-lab/snapshotTypes';
 import { AtomInspector } from './AtomInspector';
 import { EmotionExplainPanel } from './EmotionExplainPanel';
 import { PipelinePanel } from './PipelinePanel';

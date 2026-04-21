@@ -1,30 +1,15 @@
 // lib/goal-lab/pipeline/pipelineTypes.ts
-// Canonical type for GoalLab pipeline result (runGoalLabPipelineV1 return).
+// Compat helpers over the canonical GoalLab pipeline result.
+// Canonical runtime types live in `runPipelineV1.ts`.
 
-export interface PipelineStageResult {
-  stage: string;        // 'S0' | 'S1' | ... | 'S9'
-  title?: string;
-  atoms?: unknown[];
-  atomsAddedIds?: string[];
-  warnings?: string[];
-  stats?: Record<string, unknown>;
-  artifacts?: Record<string, unknown>;
-  error?: { message: string; stack?: string };
-}
+import type { BeliefPersistOutput } from './beliefPersist';
+import type { GoalLabPipelineV1, GoalLabStageFrame } from './runPipelineV1';
 
-export interface BeliefPersistResult {
-  beliefAtoms?: unknown[];
-}
+export type PipelineStageResult = GoalLabStageFrame;
 
-export interface GoalLabPipelineResult {
-  schemaVersion: number;
-  selfId: string;
-  tick: number;
-  step: number;
-  participantIds: string[];
-  stages: PipelineStageResult[];
-  beliefPersist?: BeliefPersistResult;
-}
+export type BeliefPersistResult = BeliefPersistOutput;
+
+export type GoalLabPipelineResult = GoalLabPipelineV1;
 
 /** Typed accessor for finding a pipeline stage by id. */
 export function findStage(pipeline: GoalLabPipelineResult | null | undefined, stageId: string): PipelineStageResult | undefined {

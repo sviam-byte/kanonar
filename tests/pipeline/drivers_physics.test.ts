@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { deriveDriversAtoms } from '@/lib/drivers/deriveDrivers';
-import type { ContextAtom } from '@/lib/context/v2/types';
+import type { ContextAtom } from '@/lib/goal-lab/types';
 
 function mkCtx(selfId: string, code: string, magnitude: number): ContextAtom {
   return {

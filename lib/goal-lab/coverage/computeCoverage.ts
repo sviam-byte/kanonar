@@ -2,6 +2,7 @@
 // lib/goal-lab/coverage/computeCoverage.ts
 import { ContextAtom } from '../../context/v2/types';
 import { CoverageGroup, DEFAULT_COVERAGE_GROUPS, Expectation } from './expectations';
+import { GOAL_LAB_COVERAGE_SCHEMA_VERSION } from '../versioning';
 
 export type CoverageHit = {
   expectationId: string;
@@ -12,7 +13,7 @@ export type CoverageHit = {
 };
 
 export type CoverageReport = {
-  schemaVersion: 1;
+  schemaVersion: typeof GOAL_LAB_COVERAGE_SCHEMA_VERSION;
   total: number;
   ok: number;
   missing: number;
@@ -61,7 +62,7 @@ export function computeCoverageReport(atoms: ContextAtom[], groups?: CoverageGro
   const ok = flat.filter(h => h.ok).length;
 
   return {
-    schemaVersion: 1,
+    schemaVersion: GOAL_LAB_COVERAGE_SCHEMA_VERSION,
     total: flat.length,
     ok,
     missing: flat.length - ok,

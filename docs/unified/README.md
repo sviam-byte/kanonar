@@ -3,8 +3,7 @@
 This folder is the current high-signal entrypoint for humans and agents working in this repo.
 It does not replace deep domain docs in `docs/PIPELINE.md` or `docs/INVARIANTS.md`.
 It tells you what to read first, what is actually live in code, and where the risky mixed layers are.
-It is also the official replacement for using `kanonar_control_plane/*` as a standalone entrypoint.
-That folder remains useful as source material, but `docs/unified/*` is the integrated repo-facing version.
+It is also the official repo-level home for the control-plane material that previously lived outside `docs/`.
 
 ## Read Order
 
@@ -13,12 +12,14 @@ That folder remains useful as source material, but `docs/unified/*` is the integ
 3. `docs/unified/03_SYSTEM_MAP.md`
 4. `docs/unified/05_CODEBASE_NOTES.md`
 5. `docs/unified/04_CONTROL_PLANE_VALIDATION.md`
-6. `docs/unified/AI_CONTEXT_MANIFEST.json`
-7. `docs/PIPELINE.md`
-8. `docs/INVARIANTS.md`
-9. `docs/ARCHITECTURE.md`
-10. `lib/goal-lab/pipeline/runPipelineV1.ts`
-11. `lib/config/formulaConfig.ts`
+6. `docs/unified/07_TYPE_AND_CONTRACT_HOTSPOTS.md`
+7. `docs/unified/08_VARIABILITY_MAP.md`
+8. `docs/unified/AI_CONTEXT_MANIFEST.json`
+9. `docs/PIPELINE.md`
+10. `docs/INVARIANTS.md`
+11. `docs/ARCHITECTURE.md`
+12. `lib/goal-lab/pipeline/runPipelineV1.ts`
+13. `lib/config/formulaConfig.ts`
 
 ## Trust Order
 
@@ -54,7 +55,7 @@ In practical terms:
 
 - where the real pipeline spine lives
 - how UI, pipeline, SimKit, and legacy surfaces relate
-- what in `kanonar_control_plane` is valid, useful, or currently wrong
+- the integrated hotspot and variability notes that support the control plane
 - what an agent should and should not treat as source of truth
 - a repo-root-safe AI context manifest: `docs/unified/AI_CONTEXT_MANIFEST.json`
 

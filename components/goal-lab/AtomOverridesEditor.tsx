@@ -1,7 +1,7 @@
 
 // components/goal-lab/AtomOverridesEditor.tsx
 import React, { useMemo, useState } from 'react';
-import { ContextAtom } from '../../lib/context/v2/types';
+import type { ContextAtom } from '../../lib/goal-lab/types';
 import { normalizeAtom } from '../../lib/context/v2/infer';
 import { AtomOverrideLayer, AtomOverrideOp } from '../../lib/context/overrides/types';
 import { arr } from '../../lib/utils/arr';

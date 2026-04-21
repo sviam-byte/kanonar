@@ -2,17 +2,23 @@
 
 ## Scope
 
-This report validates the new folder:
+This report originally validated the standalone `kanonar_control_plane/*` folder
+against the checked-out codebase.
 
-- `kanonar_control_plane/*`
+Status update:
 
-against the current checked-out codebase.
+- the useful parts of that audit layer have now been integrated into `docs/unified/*`
+- the separate `kanonar_control_plane/` directory has been removed
 
 ## Overall Verdict
 
-The folder is useful.
-Its strongest claims about the staged pipeline, mixed UI layers, and reproducibility risks are broadly correct.
-But it is not yet ready to be used as a drop-in canonical control plane without fixes.
+The original audit was directionally correct:
+
+- staged pipeline is the strongest truth layer
+- mixed UI/compat boundaries are real
+- UI-level reproducibility risks are real
+
+The repo no longer needs the separate folder because the validated parts now live under `docs/unified/*`.
 
 ## Confirmed
 
@@ -32,51 +38,15 @@ But it is not yet ready to be used as a drop-in canonical control plane without 
 - The claim that `docs/agent/*` is partly stale is correct in at least one concrete way:
   `docs/agent/00_INDEX.md` still directs discovery toward `src`, while most live logic is under `lib`, `components`, `pages`, and `hooks`.
 
-## Problems Found
+## Integration Result
 
-### Manifest path errors
+The previous problems have been resolved by integration rather than by preserving the extra folder:
 
-`kanonar_control_plane/AI_CONTEXT_MANIFEST.json` contains root-level `key_docs` and `first_files_to_read` entries that do not resolve from the repo root:
-
-- `SYSTEM_OVERVIEW_FOR_AI.md`
-- `TYPE_AND_CONTRACT_HOTSPOTS.md`
-- `VARIABILITY_MAP.md`
-
-These files exist only under:
-
-- `kanonar_control_plane/SYSTEM_OVERVIEW_FOR_AI.md`
-- `kanonar_control_plane/TYPE_AND_CONTRACT_HOTSPOTS.md`
-- `kanonar_control_plane/VARIABILITY_MAP.md`
-
-So the manifest currently overstates its own portability.
-
-### Governance conflict
-
-There is a real instruction conflict:
-
-- repo root `AGENTS.md` says to read `docs/agent/*` first
-- `kanonar_control_plane` says agents should not start there
-
-The folder is directionally right that `docs/agent/*` is not fully current, but it is still in conflict with the active repo-level instruction layer.
-
-### Not yet integrated
-
-- `git status` shows `kanonar_control_plane/` as untracked
-- none of its files are referenced from the main `docs/` tree or root onboarding docs
-
-That means it is currently an external advisory layer, not part of the established repo doc contract.
+- unified docs are now the stable entrypoint
+- hotspot notes now live in `docs/unified/07_TYPE_AND_CONTRACT_HOTSPOTS.md`
+- variability notes now live in `docs/unified/08_VARIABILITY_MAP.md`
+- the standalone advisory layer has been removed to avoid a parallel source of truth
 
 ## Recommended Status
 
-Treat `kanonar_control_plane` as:
-
-- `useful audit notes`
-- `high-value orientation material`
-- `not yet canonical`
-
-## Recommended Next Steps
-
-1. Fix manifest paths so they work from repo root.
-2. Add one stable entrypoint under `docs/` that links to the validated parts.
-3. Reconcile repo-level `AGENTS.md` with the newer trust order.
-4. Keep the folder as an audit/control-plane input until those governance conflicts are resolved.
+Treat `docs/unified/*` as the only repo-level control-plane layer.
