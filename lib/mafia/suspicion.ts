@@ -1,23 +1,18 @@
 // lib/mafia/suspicion.ts
 //
 // Suspicion is per-observer, per-target probability that target is mafia.
-// Parallel to baseTrust (read-only input). Game-local, updated each phase.
-//
-// Initialization: prior = 1 - baseTrust (low trust → high suspicion baseline),
-// modulated by C_betrayal_cost (paranoid players start more suspicious).
+// Game-local hidden belief state with explicit ledger for explainability.
 
 import type { AgentState } from '../../types';
 import type {
   MafiaGameState,
+  MafiaSuspicionDelta,
   PublicClaim,
   RoleId,
+  SuspicionDeltaReason,
 } from './types';
 import { vb, clamp01, readRel, readTom } from './helpers';
 
-/**
- * Build initial suspicion matrix at game start.
- * Each observer starts with prior suspicion = f(baseTrust, tomTrust, paranoia).
- */
 export function initSuspicion(
   playerIds: readonly string[],
   agents: Record<string, AgentState>
@@ -43,6 +38,25 @@ export function initSuspicion(
     }
   }
   return out;
+}
+
+export function seedInitialSuspicionLedger(state: MafiaGameState): void {
+  for (const [observerId, row] of Object.entries(state.suspicion)) {
+    for (const [targetId, after] of Object.entries(row)) {
+      if (observerId === targetId) continue;
+      state.suspicionLedger.push({
+        cycle: 0,
+        phase: 'day',
+        observerId,
+        targetId,
+        before: 0.5,
+        delta: after - 0.5,
+        after,
+        reason: 'init_prior',
+        sourceRefs: [{ kind: 'init' }],
+      });
+    }
+  }
 }
 
 export function updateAfterDayElimination(
@@ -74,9 +88,14 @@ export function updateAfterDayElimination(
         delta = votedForElim ? +0.18 : -0.04;
       }
 
-      state.suspicion[observerId][vote.voterId] = clamp01(
-        state.suspicion[observerId][vote.voterId] + learningRate * delta
-      );
+      applySuspicionDelta(state, {
+        observerId,
+        targetId: vote.voterId,
+        delta: learningRate * delta,
+        reason: 'day_vote_alignment',
+        phase: 'day',
+        sourceRefs: [{ kind: 'vote', actorId: vote.voterId, targetId: vote.targetId ?? undefined }],
+      });
     }
 
     for (const claim of lastDay.claims) {
@@ -90,9 +109,14 @@ export function updateAfterDayElimination(
       }
 
       if (delta !== 0) {
-        state.suspicion[observerId][claim.actorId] = clamp01(
-          state.suspicion[observerId][claim.actorId] + learningRate * delta
-        );
+        applySuspicionDelta(state, {
+          observerId,
+          targetId: claim.actorId,
+          delta: learningRate * delta,
+          reason: 'day_claim_alignment',
+          phase: 'day',
+          sourceRefs: [{ kind: 'claim', actorId: claim.actorId, targetId: claim.targetId }],
+        });
       }
     }
   }
@@ -118,9 +142,14 @@ export function updateAfterNightKill(
     for (const accused of killedAccusations) {
       if (!state.alive.has(accused)) continue;
       if (accused === observerId) continue;
-      state.suspicion[observerId][accused] = clamp01(
-        state.suspicion[observerId][accused] + learningRate * 0.12
-      );
+      applySuspicionDelta(state, {
+        observerId,
+        targetId: accused,
+        delta: learningRate * 0.12,
+        reason: 'night_kill_inference',
+        phase: 'night',
+        sourceRefs: [{ kind: 'night_action', actorId: killedId, targetId: accused }],
+      });
     }
   }
 
@@ -141,9 +170,14 @@ export function updateAfterNightKill(
 
       const learningRate = updateRate(observer);
       const credibilityShift = asRole === 'mafia' ? +0.20 : -0.08;
-      state.suspicion[observerId][targetId] = clamp01(
-        state.suspicion[observerId][targetId] + learningRate * credibilityShift
-      );
+      applySuspicionDelta(state, {
+        observerId,
+        targetId,
+        delta: learningRate * credibilityShift,
+        reason: 'dead_sheriff_posthumous_signal',
+        phase: 'night',
+        sourceRefs: [{ kind: 'role_reveal', actorId: killedId, targetId }],
+      });
     }
   }
 }
@@ -153,8 +187,6 @@ export function updateFromPublicClaim(
   agents: Record<string, AgentState>,
   claim: PublicClaim
 ): void {
-  // Fast social learning from public claims inside the same day.
-  // This keeps claim order meaningful and traceable before elimination feedback kicks in.
   const actorId = claim.actorId;
 
   for (const observerId of state.alive) {
@@ -169,30 +201,48 @@ export function updateFromPublicClaim(
 
     if (claim.kind === 'accuse' && claim.targetId && claim.targetId !== observerId) {
       const targetId = claim.targetId;
-      const targetDelta = 0.05 + 0.12 * belief;
-      state.suspicion[observerId][targetId] = clamp01(
-        state.suspicion[observerId][targetId] + learningRate * targetDelta
-      );
+      applySuspicionDelta(state, {
+        observerId,
+        targetId,
+        delta: learningRate * (0.05 + 0.12 * belief),
+        reason: 'public_accusation',
+        phase: 'day',
+        sourceRefs: [{ kind: 'claim', actorId, targetId }],
+      });
 
       const observerPrior = state.suspicion[observerId][targetId] ?? 0.5;
       const actorDelta = observerPrior >= 0.55 ? -0.03 : +0.04;
-      state.suspicion[observerId][actorId] = clamp01(
-        state.suspicion[observerId][actorId] + learningRate * actorDelta
-      );
+      applySuspicionDelta(state, {
+        observerId,
+        targetId: actorId,
+        delta: learningRate * actorDelta,
+        reason: 'public_accusation',
+        phase: 'day',
+        sourceRefs: [{ kind: 'claim', actorId, targetId }],
+      });
     }
 
     if (claim.kind === 'defend' && claim.targetId && claim.targetId !== observerId) {
       const targetId = claim.targetId;
       const targetPrior = state.suspicion[observerId][targetId] ?? 0.5;
-      const targetDelta = -(0.03 + 0.08 * belief);
-      state.suspicion[observerId][targetId] = clamp01(
-        state.suspicion[observerId][targetId] + learningRate * targetDelta
-      );
+      applySuspicionDelta(state, {
+        observerId,
+        targetId,
+        delta: learningRate * (-(0.03 + 0.08 * belief)),
+        reason: 'public_defense',
+        phase: 'day',
+        sourceRefs: [{ kind: 'claim', actorId, targetId }],
+      });
 
       const actorDelta = targetPrior >= 0.6 ? +0.08 : -0.02;
-      state.suspicion[observerId][actorId] = clamp01(
-        state.suspicion[observerId][actorId] + learningRate * actorDelta
-      );
+      applySuspicionDelta(state, {
+        observerId,
+        targetId: actorId,
+        delta: learningRate * actorDelta,
+        reason: 'public_defense',
+        phase: 'day',
+        sourceRefs: [{ kind: 'claim', actorId, targetId }],
+      });
     }
   }
 }
@@ -232,9 +282,14 @@ export function updateFromSheriffClaim(
 
     const shift = asRole === 'mafia' ? +0.35 : -0.20;
     if (state.alive.has(targetId) && targetId !== observerId) {
-      state.suspicion[observerId][targetId] = clamp01(
-        state.suspicion[observerId][targetId] + belief * shift
-      );
+      applySuspicionDelta(state, {
+        observerId,
+        targetId,
+        delta: belief * shift,
+        reason: 'sheriff_public_claim',
+        phase: 'day',
+        sourceRefs: [{ kind: 'claim', actorId: claimerId, targetId }],
+      });
     }
   }
 }
@@ -244,4 +299,31 @@ function updateRate(observer: AgentState): number {
   const truthNeed = vb(observer, 'A_Knowledge_Truth');
   const power = vb(observer, 'A_Power_Sovereignty');
   return clamp01(0.6 + 0.5 * paranoia + 0.3 * truthNeed + 0.2 * power);
+}
+
+type SuspicionDeltaInput = {
+  observerId: string;
+  targetId: string;
+  delta: number;
+  reason: SuspicionDeltaReason;
+  phase: 'day' | 'night';
+  sourceRefs: MafiaSuspicionDelta['sourceRefs'];
+};
+
+function applySuspicionDelta(state: MafiaGameState, input: SuspicionDeltaInput): void {
+  if (!state.suspicion[input.observerId]) state.suspicion[input.observerId] = {};
+  const before = state.suspicion[input.observerId][input.targetId] ?? 0.5;
+  const after = clamp01(before + input.delta);
+  state.suspicion[input.observerId][input.targetId] = after;
+  state.suspicionLedger.push({
+    cycle: state.cycle,
+    phase: input.phase,
+    observerId: input.observerId,
+    targetId: input.targetId,
+    before,
+    delta: after - before,
+    after,
+    reason: input.reason,
+    sourceRefs: input.sourceRefs,
+  });
 }

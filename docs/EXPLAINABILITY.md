@@ -132,3 +132,38 @@ For a chosen action, the UI must allow reconstructing this chain:
 5) Which character traits/body state caused the delta (lens trace to feat:char:* atoms)
 
 If any step is impossible, explainability is incomplete.
+
+
+## 5) Experimental local explainability surface: MafiaLab
+
+Status:
+- NOT canonical atom-pipeline explainability
+- Experimental local surface for `lib/mafia/*`
+- Must NOT be described as `ctx -> goal -> util -> action` explainability
+
+Local contract for each recorded MafiaLab decision:
+1) perception snapshot before choice
+2) candidate audit:
+   - which options were legal / included
+   - which were filtered out
+   - why
+3) ranked utility decomposition
+4) sampling trace:
+   - scores
+   - probabilities
+   - temperature
+   - rng draw
+   - chosen key
+
+Additional contract:
+- all `suspicion[observer][target]` mutations must emit a provenance ledger entry
+- night decisions must be preserved in history, not only returned transiently from scorer
+- export surface must include full replay JSON with history + suspicion ledger + flat timeline
+
+Acceptance:
+- from UI/export one must be able to answer:
+  - how the actor saw the field,
+  - between whom they were choosing,
+  - what was filtered out,
+  - why a non-top option could still be chosen,
+  - how suspicion shifted over time.

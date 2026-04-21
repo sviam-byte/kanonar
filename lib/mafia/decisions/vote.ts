@@ -1,9 +1,10 @@
 // lib/mafia/decisions/vote.ts
 //
-// Day vote decision. U(candidate) = suspicion + bandwagon - bond + team_protection + claim_bonus
+// Day vote decision with explicit worldview snapshot and stochastic audit.
 
 import type { AgentState } from '../../../types';
 import type {
+  MafiaCandidateAudit,
   MafiaGameState,
   VoteDecomposition,
   VoteTrace,
@@ -13,7 +14,9 @@ import {
   vb,
   clamp01,
   readRel,
-  sampleSoftmax,
+  buildPerceptionSnapshot,
+  sampleSoftmaxWithTrace,
+  sortCandidateAudit,
   type RngState,
 } from '../helpers';
 import { isMafia } from '../roles';
@@ -61,11 +64,13 @@ export function decideVote(
   const candidates = [...state.alive].filter(p => p !== voterId);
   const decs: VoteDecomposition[] = [];
   const scores: Record<string, number> = {};
+  const audit: MafiaCandidateAudit[] = [];
 
   const autonomy = vb(voter, 'A_Liberty_Autonomy');
   const loyalty = vb(voter, 'C_coalition_loyalty');
   const truthNeed = vb(voter, 'A_Knowledge_Truth');
   const conformism = 1 - autonomy;
+  const perception = buildPerceptionSnapshot(state, agents, voterId, 'day', myRole, currentDayClaims);
 
   const abstainScore = -0.35;
 
@@ -120,6 +125,14 @@ export function decideVote(
       claimBonus,
     });
     scores[targetId] = u;
+    audit.push({
+      key: targetId,
+      label: `vote:${targetId}`,
+      kind: 'vote',
+      targetId,
+      included: true,
+      reason: 'all living non-self players are legal vote targets',
+    });
   }
 
   scores.__ABSTAIN__ = abstainScore;
@@ -133,10 +146,17 @@ export function decideVote(
     teamProtection: 0,
     claimBonus: 0,
   });
+  audit.push({
+    key: '__ABSTAIN__',
+    label: 'abstain',
+    kind: 'abstain',
+    included: true,
+    reason: 'legal fallback when no target clears utility threshold',
+  });
 
   const temperature = clamp01(0.1 + 0.9 * vb(voter, 'B_decision_temperature', 0.3));
-  const chosenKey = sampleSoftmax(rng, scores, temperature);
-  const chosenTargetId = chosenKey === '__ABSTAIN__' ? null : chosenKey;
+  const sampling = sampleSoftmaxWithTrace(rng, scores, temperature);
+  const chosenTargetId = sampling.chosenKey === '__ABSTAIN__' ? null : sampling.chosenKey;
 
   decs.sort((a, b) => b.u - a.u);
   for (const d of decs) {
@@ -165,6 +185,9 @@ export function decideVote(
       ranked: decs,
       suspicionSnapshot,
       traitSnapshot,
+      perception,
+      candidates: sortCandidateAudit(audit),
+      sampling,
     },
   };
 }

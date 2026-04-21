@@ -14,6 +14,7 @@ import type {
   PublicClaim,
   DayVote,
   RoleId,
+  NightTrace,
 } from './types';
 import {
   cloneAgents,
@@ -53,14 +54,14 @@ export type MafiaGameResult = {
     nights: Array<{
       cycle: number;
       actions: NightAction[];
+      traces: NightTrace[];
       killedId: string | null;
     }>;
+    suspicionLedger: MafiaGameState['suspicionLedger'];
   };
 };
 
-export function runMafiaGame(
-  config: MafiaGameConfig
-): MafiaGameResult {
+export function runMafiaGame(config: MafiaGameConfig): MafiaGameResult {
   const agents = cloneAgents(config.world, config.players);
   const state = createGame(config, agents);
 
@@ -94,8 +95,10 @@ export function runMafiaGame(
     nights: state.history.nights.map(n => ({
       cycle: n.cycle,
       actions: n.actions,
+      traces: n.traces,
       killedId: n.killedId,
     })),
+    suspicionLedger: state.suspicionLedger,
   };
 
   return { state, analysis, trace };
@@ -141,13 +144,15 @@ function runNightPhase(
   rng: RngState
 ): void {
   const actions: NightAction[] = [];
+  const nightTraces: NightTrace[] = [];
 
   const mafiaIds = [...state.alive].filter(p => state.roles[p] === 'mafia');
   const sheriffIds = [...state.alive].filter(p => state.roles[p] === 'sheriff');
   const doctorIds = [...state.alive].filter(p => state.roles[p] === 'doctor');
 
   if (mafiaIds.length > 0) {
-    const { targetId } = decideMafiaKill(state, agents, mafiaIds, rng);
+    const { targetId, traces } = decideMafiaKill(state, agents, mafiaIds, rng);
+    nightTraces.push(...traces);
     actions.push({
       actorId: mafiaIds[0],
       role: 'mafia',
@@ -157,26 +162,30 @@ function runNightPhase(
   }
 
   for (const sid of sheriffIds) {
-    const { targetId } = decideSheriffCheck(state, agents, sid, rng);
+    const { targetId, trace } = decideSheriffCheck(state, agents, sid, rng);
+    nightTraces.push(trace);
     actions.push({
       actorId: sid,
       role: 'sheriff',
       kind: 'check',
       targetId,
+      reasoning: trace,
     });
   }
 
   for (const did of doctorIds) {
-    const { targetId } = decideDoctorHeal(state, agents, did, rng);
+    const { targetId, trace } = decideDoctorHeal(state, agents, did, rng);
+    nightTraces.push(trace);
     actions.push({
       actorId: did,
       role: 'doctor',
       kind: 'heal',
       targetId,
+      reasoning: trace,
     });
   }
 
-  applyNightResult(state, actions);
+  applyNightResult(state, actions, nightTraces);
 
   const lastNight = state.history.nights[state.history.nights.length - 1];
   if (lastNight?.killedId) {
@@ -246,7 +255,7 @@ function analyzeGame(state: MafiaGameState): MafiaAnalysis {
 }
 
 export function runMafiaBatch(config: MafiaBatchConfig): MafiaBatchResult {
-  const results: MafiaAnalysis[] = [];
+  const results: MafiaGameResult[] = [];
   const byPlayer: MafiaBatchResult['aggregate']['byPlayer'] = {};
   const byRole: MafiaBatchResult['aggregate']['byRole'] = {
     mafia: { games: 0, wins: 0, winRate: 0 },
@@ -281,8 +290,9 @@ export function runMafiaBatch(config: MafiaBatchConfig): MafiaBatchResult {
       seed,
     };
 
-    const { state, analysis } = runMafiaGame(gameConfig);
-    results.push(analysis);
+    const game = runMafiaGame(gameConfig);
+    const { state, analysis } = game;
+    results.push(game);
 
     if (analysis.winner === 'town') townWins++;
     else if (analysis.winner === 'mafia') mafiaWins++;
@@ -320,10 +330,10 @@ export function runMafiaBatch(config: MafiaBatchConfig): MafiaBatchResult {
   return {
     games: results,
     aggregate: {
-      townWinRate: townWins / config.nGames,
-      mafiaWinRate: mafiaWins / config.nGames,
-      drawRate: draws / config.nGames,
-      avgCycles: totalCycles / config.nGames,
+      townWinRate: townWins / Math.max(1, config.nGames),
+      mafiaWinRate: mafiaWins / Math.max(1, config.nGames),
+      drawRate: draws / Math.max(1, config.nGames),
+      avgCycles: totalCycles / Math.max(1, config.nGames),
       byPlayer,
       byRole,
     },
