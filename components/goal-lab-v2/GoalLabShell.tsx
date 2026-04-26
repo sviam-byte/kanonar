@@ -252,20 +252,32 @@ const CausalChain: React.FC = () => {
   });
   const toggleSec = (k: string) => setOpenSections(p => ({ ...p, [k]: !p[k] }));
 
+  const stageAtoms = useMemo(() => {
+    const stagesRaw = (engine.pipelineV1 as any)?.stages;
+    const stages = Array.isArray(stagesRaw) ? stagesRaw : [];
+    const selected =
+      stages.find((s: any) => String(s?.id || s?.stage || '') === engine.pipelineStageId) ||
+      stages[stages.length - 1];
+    const atoms = Array.isArray(selected?.atoms) ? selected.atoms : engine.passportAtoms;
+    return Array.isArray(atoms) ? atoms : [];
+  }, [engine.pipelineV1, engine.pipelineStageId, engine.passportAtoms]);
+
   const stages = useMemo(() => {
-    const raw = (engine.snapshotV1 as any)?.meta?.pipelineDeltas;
+    const raw = Array.isArray((engine.pipelineV1 as any)?.stages)
+      ? (engine.pipelineV1 as any).stages
+      : (engine.snapshotV1 as any)?.meta?.pipelineDeltas;
     if (!Array.isArray(raw)) return [];
     return raw.map((s: any, i: number) => ({
-      id: s?.id || `S${i}`,
-      label: s?.label || s?.id || `S${i}`,
-      atomCount: s?.atomCount || (Array.isArray(s?.full) ? s.full.length : 0),
-      addedCount: Array.isArray(s?.added) ? s.added.length : 0,
-      changedCount: Array.isArray(s?.changed) ? s.changed.length : 0,
+      id: s?.id || s?.stage || `S${i}`,
+      label: s?.label || s?.id || s?.stage || `S${i}`,
+      atomCount: Number(s?.atomCount ?? s?.stats?.atomCount ?? (Array.isArray(s?.atoms) ? s.atoms.length : 0) ?? (Array.isArray(s?.full) ? s.full.length : 0)),
+      addedCount: Number(s?.addedCount ?? s?.stats?.addedCount ?? (Array.isArray(s?.atomsAddedIds) ? s.atomsAddedIds.length : 0) ?? (Array.isArray(s?.added) ? s.added.length : 0)),
+      changedCount: Number(s?.changedCount ?? (Array.isArray(s?.changed) ? s.changed.length : 0)),
     }));
-  }, [engine.snapshotV1]);
+  }, [engine.pipelineV1, engine.snapshotV1]);
 
   const atomCategories = useMemo(() => {
-    const atoms: ContextAtom[] = engine.passportAtoms || [];
+    const atoms: ContextAtom[] = stageAtoms || [];
     const cats: Record<string, { count: number; topMag: number; examples: string[] }> = {};
     for (const atom of atoms) {
       const id = String((atom as any).id || '');
@@ -279,10 +291,10 @@ const CausalChain: React.FC = () => {
     return Object.entries(cats)
       .sort((a, b) => b[1].count - a[1].count)
       .slice(0, 15);
-  }, [engine.passportAtoms]);
+  }, [stageAtoms]);
 
   const energyChannels = useMemo(() => {
-    const atoms: any[] = engine.passportAtoms || [];
+    const atoms: any[] = stageAtoms || [];
     const channels: Array<{ name: string; raw: number; felt: number }> = [];
     const prefixes = ['threat', 'norm', 'attachment', 'curiosity', 'status', 'autonomy'];
 
@@ -299,16 +311,16 @@ const CausalChain: React.FC = () => {
     }
 
     return channels;
-  }, [engine.passportAtoms]);
+  }, [stageAtoms]);
 
   const drivers = useMemo(() => {
-    const atoms: any[] = engine.passportAtoms || [];
+    const atoms: any[] = stageAtoms || [];
     return atoms
       .filter(a => String(a?.id).startsWith('drv:'))
       .map(a => ({ id: String(a.id), mag: Number(a.magnitude ?? 0), label: String(a.label || a.id) }))
       .sort((a, b) => b.mag - a.mag)
       .slice(0, 8);
-  }, [engine.passportAtoms]);
+  }, [stageAtoms]);
 
   const decision = useMemo(() => {
     const d = (engine.snapshotV1 as any)?.decision;

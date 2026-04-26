@@ -1,62 +1,31 @@
-
-import React, { Suspense, lazy } from 'react';
-import { HashRouter, Routes, Route } from 'react-router-dom';
+import React, { lazy, Suspense } from 'react';
+import { HashRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { Header } from './components/Header';
-import { HomePage } from './pages/HomePage';
-import { EntityListPage } from './pages/EntityListPage';
-import { EntityDetailPage } from './pages/EntityDetailPage';
-import { LinterPage } from './pages/LinterPage';
+import { AccessProvider } from './contexts/AccessContext';
 import { BranchProvider } from './contexts/BranchContext';
 import { SandboxProvider } from './contexts/SandboxContext';
-import { AccessProvider } from './contexts/AccessContext';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { EntityDetailPage } from './pages/EntityDetailPage';
+import { EntityListPage } from './pages/EntityListPage';
+import { HomePage } from './pages/HomePage';
 
-// Eagerly loaded (small, frequently visited)
-import { ScenariosPage } from './pages/ScenariosPage';
-import { PresetsPage } from './pages/PresetsPage';
-
-// Lazy loaded (heavy pages — only fetched when navigated to)
-const ComparePage = lazy(() => import('./pages/ComparePage').then(m => ({ default: m.CompareSimPage })));
-const SolverPage = lazy(() => import('./pages/SolverPage').then(m => ({ default: m.SolverPage })));
-const ArchetypesPage = lazy(() => import('./pages/ArchetypesPage').then(m => ({ default: m.ArchetypesPage })));
-const SocialEventsListPage = lazy(() => import('./pages/SocialEventsListPage').then(m => ({ default: m.SocialEventsListPage })));
-const EventsPage = lazy(() => import('./pages/EventsPage').then(m => ({ default: m.EventsPage })));
-const ArchetypeRelationsPage = lazy(() => import('./pages/ArchetypeRelationsPage').then(m => ({ default: m.ArchetypeRelationsPage })));
-const SimulationInspectorPage = lazy(() => import('./pages/SimulationInspectorPage').then(m => ({ default: m.SimulationInspectorPage })));
-const CharacterBuilderPage = lazy(() => import('./pages/CharacterBuilderPage').then(m => ({ default: m.CharacterBuilderPage })));
-const CharacterLabPage = lazy(() => import('./pages/CharacterLabPage').then(m => ({ default: m.CharacterLabPage })));
-const MassNetworkPage = lazy(() => import('./pages/MassNetworkPage').then(m => ({ default: m.MassNetworkPage })));
-const AccessModulePage = lazy(() => import('./pages/AccessModulePage').then(m => ({ default: m.AccessModulePage })));
-const PlanningLabPage = lazy(() => import('./pages/PlanningLabPage').then(m => ({ default: m.PlanningLabPage })));
-const DialogueLabPage = lazy(() => import('./pages/DialogueLabPage').then(m => ({ default: m.DialogueLabPage })));
-const DialogueLabV2Page = lazy(() => import('./pages/DialogueLabV2Page').then(m => ({ default: m.DialogueLabV2Page })));
-const DialogueLabV3Page = lazy(() => import('./pages/DialogueLabV3Page').then(m => ({ default: m.DialogueLabV3Page })));
-const BiographyLabPage = lazy(() => import('./pages/BiographyLabPage').then(m => ({ default: m.BiographyLabPage })));
-const NarrativePage = lazy(() => import('./pages/NarrativePage').then(m => ({ default: m.NarrativePage })));
-const RelationsLabPage = lazy(() => import('./pages/RelationsLabPage').then(m => ({ default: m.RelationsLabPage })));
-const LocationConstructorPage = lazy(() => import('./pages/LocationConstructorPage').then(m => ({ default: m.LocationConstructorPage })));
-const DiagnosticsPage = lazy(() => import('./pages/DiagnosticsPage').then(m => ({ default: m.DiagnosticsPage })));
-const SimulatorPage = lazy(() => import('./pages/SimulatorPage').then(m => ({ default: m.SimulatorPage })));
-const DilemmaLabPage = lazy(() => import('./pages/DilemmaLabPage').then(m => ({ default: m.DilemmaLabPage })));
-const MafiaLabPage = lazy(() => import('./pages/MafiaLabPage').then(m => ({ default: m.MafiaLabPage })));
-// GoalLab legacy routes stay mounted for compatibility.
-// V2 is the primary UI surface exposed by home/header navigation.
-const GoalLabPage = lazy(() => import('./pages/GoalLabPage').then(m => ({ default: m.GoalLabPage })));
-const GoalLabConsolePage = lazy(() => import('./pages/GoalLabConsolePage').then(m => ({ default: m.GoalLabConsolePage })));
-
-// GoalLab v2 (new architecture)
-const GoalLabPageV2 = lazy(() => import('./pages/GoalLabPageV2').then(m => ({ default: m.GoalLabPageV2 })));
-const GoalLabConsolePageV2 = lazy(() => import('./pages/GoalLabConsolePageV2').then(m => ({ default: m.GoalLabConsolePageV2 })));
-
-// Console (uses GoalSandbox VM — kept for now, will migrate later)
-const ConsolePage = lazy(() => import('./pages/ConsolePage').then(m => ({ default: m.ConsolePage })));
+const AccessModulePage = lazy(() => import('./pages/AccessModulePage').then((m) => ({ default: m.AccessModulePage })));
+const ArchetypeRelationsPage = lazy(() => import('./pages/ArchetypeRelationsPage').then((m) => ({ default: m.ArchetypeRelationsPage })));
+const ArchetypesPage = lazy(() => import('./pages/ArchetypesPage').then((m) => ({ default: m.ArchetypesPage })));
+const CharacterBuilderPage = lazy(() => import('./pages/CharacterBuilderPage').then((m) => ({ default: m.CharacterBuilderPage })));
+const ConflictLabPage = lazy(() => import('./pages/ConflictLabPage').then((m) => ({ default: m.ConflictLabPage })));
+const GoalLabConsolePageV2 = lazy(() => import('./pages/GoalLabConsolePageV2').then((m) => ({ default: m.GoalLabConsolePageV2 })));
+const GoalLabPageV2 = lazy(() => import('./pages/GoalLabPageV2').then((m) => ({ default: m.GoalLabPageV2 })));
+const LocationConstructorPage = lazy(() => import('./pages/LocationConstructorPage').then((m) => ({ default: m.LocationConstructorPage })));
+const NarrativePage = lazy(() => import('./pages/NarrativePage').then((m) => ({ default: m.NarrativePage })));
+const RelationsLabPage = lazy(() => import('./pages/RelationsLabPage').then((m) => ({ default: m.RelationsLabPage })));
+const SimulatorPage = lazy(() => import('./pages/SimulatorPage').then((m) => ({ default: m.SimulatorPage })));
 
 const PageLoader = () => (
   <div className="flex items-center justify-center h-[60vh]">
-    <div className="text-sm text-slate-500 animate-pulse font-mono uppercase tracking-widest">Loading…</div>
+    <div className="text-sm text-slate-500 animate-pulse font-mono uppercase tracking-widest">Loading...</div>
   </div>
 );
-
 
 function App() {
   return (
@@ -69,42 +38,28 @@ function App() {
                 <Header />
                 <main className="flex-grow">
                   <Suspense fallback={<PageLoader />}>
-                  <Routes>
-                    <Route path="/" element={<HomePage />} />
-                    <Route path="/linter" element={<LinterPage />} />
-                    <Route path="/archetypes" element={<ArchetypesPage />} />
-                    <Route path="/archetype-relations" element={<ArchetypeRelationsPage />} />
-                    <Route path="/compare" element={<ComparePage />} />
-                    <Route path="/scenarios" element={<ScenariosPage />} />
-                    <Route path="/inspector" element={<SimulationInspectorPage />} />
-                    <Route path="/social-events" element={<SocialEventsListPage />} />
-                    <Route path="/events" element={<EventsPage />} />
-                    <Route path="/social_event" element={<SocialEventsListPage />} />
-                    <Route path="/solver" element={<SolverPage />} />
-                    <Route path="/builder" element={<CharacterBuilderPage />} />
-                    <Route path="/presets" element={<PresetsPage />} />
-                    <Route path="/character-lab" element={<CharacterLabPage />} />
-                    <Route path="/mass" element={<MassNetworkPage />} />
-                    <Route path="/access" element={<AccessModulePage />} />
-                    <Route path="/planning-lab" element={<PlanningLabPage />} />
-                    <Route path="/dialogue-lab" element={<DialogueLabPage />} />
-                    <Route path="/dialogue-lab-v2" element={<DialogueLabV2Page />} />
-                    <Route path="/dialogue-lab-v3" element={<DialogueLabV3Page />} />
-                    <Route path="/goal-lab" element={<GoalLabPage />} />
-                    <Route path="/goal-lab-console" element={<GoalLabConsolePage />} />
-                    <Route path="/goal-lab-v2" element={<GoalLabPageV2 />} />
-                    <Route path="/goal-lab-console-v2" element={<GoalLabConsolePageV2 />} />
-                    <Route path="/console" element={<ConsolePage />} />
-                    <Route path="/simulator" element={<SimulatorPage />} />
-                    <Route path="/dilemma-lab" element={<DilemmaLabPage />} />
-                    <Route path="/mafia-lab" element={<MafiaLabPage />} />
-                    <Route path="/relations-lab" element={<RelationsLabPage />} />
-                    <Route path="/biography-lab" element={<BiographyLabPage />} />
-                    <Route path="/location-constructor" element={<LocationConstructorPage />} />
-                    <Route path="/narrative" element={<NarrativePage />} />
-                    <Route path="/:entityType" element={<EntityListPage />} />
-                    <Route path="/:entityType/:entityId" element={<EntityDetailPage />} />
-                  </Routes>
+                    <Routes>
+                      <Route path="/" element={<HomePage />} />
+                      <Route path="/access" element={<AccessModulePage />} />
+                      <Route path="/archetypes" element={<ArchetypesPage />} />
+                      <Route path="/archetype-relations" element={<ArchetypeRelationsPage />} />
+                      <Route path="/builder" element={<CharacterBuilderPage />} />
+                      <Route path="/location-constructor" element={<LocationConstructorPage />} />
+                      <Route path="/goal-lab-v2" element={<GoalLabPageV2 />} />
+                      <Route path="/goal-lab-console-v2" element={<GoalLabConsolePageV2 />} />
+                      <Route path="/conflict-lab" element={<ConflictLabPage />} />
+                      <Route path="/simulator" element={<SimulatorPage />} />
+                      <Route path="/relations-lab" element={<RelationsLabPage />} />
+                      <Route path="/narrative" element={<NarrativePage />} />
+
+                      <Route path="/goal-lab" element={<Navigate to="/goal-lab-v2" replace />} />
+                      <Route path="/goal-lab-console" element={<Navigate to="/goal-lab-console-v2" replace />} />
+                      <Route path="/dilemma-lab" element={<Navigate to="/conflict-lab?tab=dilemma" replace />} />
+                      <Route path="/mafia-lab" element={<Navigate to="/conflict-lab?tab=mafia" replace />} />
+
+                      <Route path="/:entityType" element={<EntityListPage />} />
+                      <Route path="/:entityType/:entityId" element={<EntityDetailPage />} />
+                    </Routes>
                   </Suspense>
                 </main>
               </div>

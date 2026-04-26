@@ -1,15 +1,15 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { runDilemmaV2 } from '../lib/dilemma/runner';
-import { allScenarios, getScenario } from '../lib/dilemma/scenarios';
-import { allMechanics } from '../lib/dilemma/mechanics';
+import { runDilemmaV2 } from '../../lib/dilemma/runner';
+import { allScenarios, getScenario } from '../../lib/dilemma/scenarios';
+import { allMechanics } from '../../lib/dilemma/mechanics';
 import type {
   ScenarioTemplate, V2GameState, V2RoundTrace, V2RunResult, MechanicTemplate, PressureSchedule,
-} from '../lib/dilemma/types';
-import type { WorldState, AgentState, CharacterEntity } from '../types';
-import { useSandbox } from '../contexts/SandboxContext';
-import { getAllCharactersWithRuntime } from '../data';
-import { Tabs } from '../components/Tabs';
+} from '../../lib/dilemma/types';
+import type { WorldState, AgentState, CharacterEntity } from '../../types';
+import { useSandbox } from '../../contexts/SandboxContext';
+import { getAllCharactersWithRuntime } from '../../data';
+import { Tabs } from '../Tabs';
 
 // ═══════════════════════════════════════════════════════════════
 // Constants
@@ -283,7 +283,7 @@ const V2TraceBlock: React.FC<{ round: number; game: V2GameState; scenario: Scena
 // Main
 // ═══════════════════════════════════════════════════════════════
 
-export const DilemmaLabPage: React.FC = () => {
+export const DilemmaLabPanel: React.FC = () => {
   const { characters } = useSandbox();
   const scenarios = useMemo(() => allScenarios(), []);
   const disabledScenarios = useMemo(() => allScenarios({ includeDisabled: true }).filter((s) => s.disabled), []);
@@ -408,7 +408,7 @@ export const DilemmaLabPage: React.FC = () => {
             <div className="text-[10px] text-canon-faint mt-1">Там отдельный фронт, нормальный конфиг ролей, single/batch и таймлайн по дням/ночам.</div>
           </div>
           <Link
-            to="/mafia-lab"
+            to="/conflict-lab?tab=mafia"
             className="inline-flex items-center gap-1 rounded-md border border-canon-accent/40 bg-canon-accent/10 px-3 py-1.5 text-[11px] text-canon-accent hover:bg-canon-accent/20 transition"
           >
             ◈ Открыть Mafia Lab

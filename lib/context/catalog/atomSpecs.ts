@@ -108,7 +108,7 @@ export const ATOM_SPECS: AtomSpec[] = [
     meaning: p => `Текущий дискретный тик симуляции (якорь воспроизводимости и временных правил).`,
     scale: { min: 0, max: 1, lowMeans: '—', highMeans: '—' },
     producedBy: ['lib/context/pipeline/worldFacts.ts'],
-    consumedBy: ['lib/goals/*', 'components/GoalLab/*'],
+    consumedBy: ['lib/goals/*', 'components/goal-lab/*', 'components/goal-lab-v2/*'],
     tags: ['world','time']
   },
   {

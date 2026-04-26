@@ -215,11 +215,11 @@ export function buildGoalLabSceneDumpV2(input: SceneDumpInput) {
     tick: (world as any)?.tick ?? 0,
     provenance: {
       inputPaths: {
-        perspectiveId: 'components/GoalSandbox/GoalSandbox.tsx::perspectiveId',
-        participantIds: 'components/GoalSandbox/GoalSandbox.tsx::participantIds',
-        manualAtoms: 'components/GoalSandbox/GoalSandbox.tsx::manualAtoms',
-        injectedEvents: 'components/GoalSandbox/GoalSandbox.tsx::selectedEventIds + world.eventRegistry',
-        overrides: 'components/GoalSandbox/GoalSandbox.tsx::{atomOverridesLayer,sceneControl,affectOverrides}'
+        perspectiveId: 'contexts/GoalLabContext.tsx::selectedAgentId',
+        participantIds: 'hooks/useGoalLabWorld.ts::participantIds',
+        manualAtoms: 'contexts/GoalLabContext.tsx::manualAtoms',
+        injectedEvents: 'contexts/GoalLabContext.tsx::selectedEventIds + world.eventRegistry',
+        overrides: 'contexts/GoalLabContext.tsx::{atomOverridesLayer,sceneControl,affectOverrides}'
       },
       worldPaths: {
         agents: 'worldState.agents',
