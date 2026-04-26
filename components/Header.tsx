@@ -129,11 +129,13 @@ export const Header: React.FC = () => {
 
             <NavDropdown
               label="Narrative"
-              active={isGroupActive(['/narrative'])}
+              active={isGroupActive(['/narrative', '/archetypes', '/archetype-relations'])}
               colorClass="text-purple-400"
             >
               <NavItem to="/narrative" label="Нарративный холст" active={isActive('/narrative') && !location.hash} />
               <NavItem to="/narrative#homeostasis" label="Протокол гомеостаза" active={isHomeostasisActive} />
+              <NavItem to="/archetypes" label="Куб архетипов" active={isActive('/archetypes')} />
+              <NavItem to="/archetype-relations" label="Граф архетипов" active={isActive('/archetype-relations')} />
             </NavDropdown>
           </nav>
         </div>

@@ -26,10 +26,10 @@ export function getCanonicalAtomsFromSnapshot(
   if (stages.length) {
     // если stageId не задан — берём последний (обычно S8)
     const wanted = stageId
-      ? stages.find(s => String(s?.id || '') === stageId)
+      ? stages.find(s => String(s?.id || s?.stage || '') === stageId)
       : stages[stages.length - 1];
 
-    const id = String(wanted?.id || (stageId || 'S?'));
+    const id = String(wanted?.id || wanted?.stage || (stageId || 'S?'));
     const atoms = arr<ContextAtom>(wanted?.atoms);
 
     if (!atoms.length) warnings.push(`pipelineV1 stage "${id}" has 0 atoms`);

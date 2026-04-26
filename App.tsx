@@ -10,6 +10,8 @@ import { EntityListPage } from './pages/EntityListPage';
 import { HomePage } from './pages/HomePage';
 
 const AccessModulePage = lazy(() => import('./pages/AccessModulePage').then((m) => ({ default: m.AccessModulePage })));
+const ArchetypeRelationsPage = lazy(() => import('./pages/ArchetypeRelationsPage').then((m) => ({ default: m.ArchetypeRelationsPage })));
+const ArchetypesPage = lazy(() => import('./pages/ArchetypesPage').then((m) => ({ default: m.ArchetypesPage })));
 const CharacterBuilderPage = lazy(() => import('./pages/CharacterBuilderPage').then((m) => ({ default: m.CharacterBuilderPage })));
 const ConflictLabPage = lazy(() => import('./pages/ConflictLabPage').then((m) => ({ default: m.ConflictLabPage })));
 const GoalLabConsolePageV2 = lazy(() => import('./pages/GoalLabConsolePageV2').then((m) => ({ default: m.GoalLabConsolePageV2 })));
@@ -39,6 +41,8 @@ function App() {
                     <Routes>
                       <Route path="/" element={<HomePage />} />
                       <Route path="/access" element={<AccessModulePage />} />
+                      <Route path="/archetypes" element={<ArchetypesPage />} />
+                      <Route path="/archetype-relations" element={<ArchetypeRelationsPage />} />
                       <Route path="/builder" element={<CharacterBuilderPage />} />
                       <Route path="/location-constructor" element={<LocationConstructorPage />} />
                       <Route path="/goal-lab-v2" element={<GoalLabPageV2 />} />
