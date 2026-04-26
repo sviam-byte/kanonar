@@ -17,7 +17,7 @@ import type { AgentState, WorldState } from '../../types';
 // Roles
 // ═══════════════════════════════════════════════════════════════
 
-export type RoleId = 'mafia' | 'citizen' | 'sheriff' | 'doctor';
+export type RoleId = 'mafia' | 'citizen' | 'sheriff' | 'doctor' | 'blocker';
 
 export type Team = 'mafia' | 'town';
 
@@ -54,11 +54,13 @@ export type MafiaGameConfig = {
 
 export type Phase = 'day' | 'night' | 'ended';
 
+export type NightActionKind = 'kill' | 'check' | 'heal' | 'block';
+
 export type NightAction = {
   actorId: string;
   role: RoleId;
-  /** What they tried to do: kill | check | heal */
-  kind: 'kill' | 'check' | 'heal';
+  /** What they tried to do */
+  kind: NightActionKind;
   targetId: string;
   /** For sheriff: result of check (revealed to sheriff only) */
   resolved?: {
@@ -99,6 +101,12 @@ export type NightState = {
 // Game state
 // ═══════════════════════════════════════════════════════════════
 
+/** Sheriff's private check results: sheriffId → targetId → role */
+export type SheriffKnowledgeMap = Record<string, Record<string, RoleId>>;
+
+/** Per-observer suspicion: suspicion[observerId][targetId] = P(target is mafia) */
+export type SuspicionMatrix = Record<string, Record<string, number>>;
+
 export type MafiaGameState = {
   config: MafiaGameConfig;
   roles: RoleAssignment;
@@ -116,12 +124,12 @@ export type MafiaGameState = {
     phase: 'day' | 'night';
     revealedRole?: RoleId;           // on day-elimination, role is revealed
   }>;
-  /** Sheriff's private check results: sheriffId → targetId → role */
-  sheriffKnowledge: Record<string, Record<string, RoleId>>;
-  /** Per-observer suspicion: suspicion[observerId][targetId] = P(target is mafia) */
-  suspicion: Record<string, Record<string, number>>;
+  /** Sheriff's private check results */
+  sheriffKnowledge: SheriffKnowledgeMap;
+  /** Per-observer suspicion */
+  suspicion: SuspicionMatrix;
   winner: Team | 'draw' | null;
-  rngState: number;
+  rngState: number; // For seeded determinism
 };
 
 // ═══════════════════════════════════════════════════════════════
@@ -136,6 +144,8 @@ export type KillDecomposition = {
   coalitionCost: number; // ally penalty
   visibility: number;    // how "loud" / noticeable target is
   randomize: number;     // paranoia-driven dispersion
+  usedAtomIds?: string[];
+  notes?: string[];
 };
 
 export type CheckDecomposition = {
@@ -146,6 +156,8 @@ export type CheckDecomposition = {
   familiarity: number;
   already: number;       // already-checked penalty
   truthNeed: number;
+  usedAtomIds?: string[];
+  notes?: string[];
 };
 
 export type HealDecomposition = {
@@ -155,6 +167,8 @@ export type HealDecomposition = {
   perceivedThreat: number; // how likely doctor thinks target is next victim
   bond: number;
   selfPreservation: number; // heal self bias
+  usedAtomIds?: string[];
+  notes?: string[];
 };
 
 export type VoteDecomposition = {
@@ -166,6 +180,8 @@ export type VoteDecomposition = {
   bondPenalty: number;
   teamProtection: number;   // mafia protecting mafia
   claimBonus: number;       // sheriff-claimer targeting
+  usedAtomIds?: string[];
+  notes?: string[];
 };
 
 export type ClaimDecomposition = {
@@ -177,12 +193,14 @@ export type ClaimDecomposition = {
   visibilityCost: number;
   socialRisk: number;
   majorityAlignment: number;
+  usedAtomIds?: string[];
+  notes?: string[];
 };
 
 export type NightTrace = {
   actorId: string;
   role: RoleId;
-  kind: 'kill' | 'check' | 'heal';
+  kind: NightActionKind;
   ranked: Array<KillDecomposition | CheckDecomposition | HealDecomposition>;
   chosenTargetId: string;
 };
