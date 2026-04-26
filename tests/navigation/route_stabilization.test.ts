@@ -29,6 +29,7 @@ describe('navigation stabilization', () => {
       '/conflict-lab',
       '/simulator',
       '/relations-lab',
+      '/narrative',
     ];
 
     for (const route of activeRoutes) {
@@ -37,6 +38,7 @@ describe('navigation stabilization', () => {
 
     expect(source).toContain('label="Lab"');
     expect(source).toContain('Инспектор целей');
+    expect(source).toContain('label="Narrative"');
     expect(source).not.toContain('label="Simulation"');
     expect(source).not.toContain('to="/inspector"');
     expect(source).not.toContain('GoalLab legacy (debug)');
@@ -58,6 +60,7 @@ describe('navigation stabilization', () => {
       '/conflict-lab',
       '/simulator',
       '/relations-lab',
+      '/narrative',
       '/:entityType',
       '/:entityType/:entityId',
     ];

@@ -15,6 +15,7 @@ const ConflictLabPage = lazy(() => import('./pages/ConflictLabPage').then((m) =>
 const GoalLabConsolePageV2 = lazy(() => import('./pages/GoalLabConsolePageV2').then((m) => ({ default: m.GoalLabConsolePageV2 })));
 const GoalLabPageV2 = lazy(() => import('./pages/GoalLabPageV2').then((m) => ({ default: m.GoalLabPageV2 })));
 const LocationConstructorPage = lazy(() => import('./pages/LocationConstructorPage').then((m) => ({ default: m.LocationConstructorPage })));
+const NarrativePage = lazy(() => import('./pages/NarrativePage').then((m) => ({ default: m.NarrativePage })));
 const RelationsLabPage = lazy(() => import('./pages/RelationsLabPage').then((m) => ({ default: m.RelationsLabPage })));
 const SimulatorPage = lazy(() => import('./pages/SimulatorPage').then((m) => ({ default: m.SimulatorPage })));
 
@@ -45,6 +46,7 @@ function App() {
                       <Route path="/conflict-lab" element={<ConflictLabPage />} />
                       <Route path="/simulator" element={<SimulatorPage />} />
                       <Route path="/relations-lab" element={<RelationsLabPage />} />
+                      <Route path="/narrative" element={<NarrativePage />} />
 
                       <Route path="/goal-lab" element={<Navigate to="/goal-lab-v2" replace />} />
                       <Route path="/goal-lab-console" element={<Navigate to="/goal-lab-console-v2" replace />} />

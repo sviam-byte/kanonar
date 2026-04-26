@@ -253,16 +253,18 @@ const CausalChain: React.FC = () => {
   const toggleSec = (k: string) => setOpenSections(p => ({ ...p, [k]: !p[k] }));
 
   const stages = useMemo(() => {
-    const raw = (engine.snapshotV1 as any)?.meta?.pipelineDeltas;
+    const raw = Array.isArray((engine.pipelineV1 as any)?.stages)
+      ? (engine.pipelineV1 as any).stages
+      : (engine.snapshotV1 as any)?.meta?.pipelineDeltas;
     if (!Array.isArray(raw)) return [];
     return raw.map((s: any, i: number) => ({
-      id: s?.id || `S${i}`,
-      label: s?.label || s?.id || `S${i}`,
-      atomCount: s?.atomCount || (Array.isArray(s?.full) ? s.full.length : 0),
-      addedCount: Array.isArray(s?.added) ? s.added.length : 0,
-      changedCount: Array.isArray(s?.changed) ? s.changed.length : 0,
+      id: s?.id || s?.stage || `S${i}`,
+      label: s?.label || s?.id || s?.stage || `S${i}`,
+      atomCount: Number(s?.atomCount ?? s?.stats?.atomCount ?? (Array.isArray(s?.atoms) ? s.atoms.length : 0) ?? (Array.isArray(s?.full) ? s.full.length : 0)),
+      addedCount: Number(s?.addedCount ?? s?.stats?.addedCount ?? (Array.isArray(s?.atomsAddedIds) ? s.atomsAddedIds.length : 0) ?? (Array.isArray(s?.added) ? s.added.length : 0)),
+      changedCount: Number(s?.changedCount ?? (Array.isArray(s?.changed) ? s.changed.length : 0)),
     }));
-  }, [engine.snapshotV1]);
+  }, [engine.pipelineV1, engine.snapshotV1]);
 
   const atomCategories = useMemo(() => {
     const atoms: ContextAtom[] = engine.passportAtoms || [];

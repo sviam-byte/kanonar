@@ -60,6 +60,7 @@ export const Header: React.FC = () => {
   const location = useLocation();
   const isActive = (path: string) => location.pathname === path;
   const isGroupActive = (paths: string[]) => paths.some((p) => location.pathname.startsWith(p));
+  const isHomeostasisActive = location.pathname === '/narrative' && location.hash === '#homeostasis';
 
   const handleAdminToggle = () => {
     if (isAdmin) {
@@ -124,6 +125,15 @@ export const Header: React.FC = () => {
               <NavItem to="/conflict-lab" label="Conflict Lab" active={isActive('/conflict-lab')} />
               <NavItem to="/simulator" label="Live Sim" active={isActive('/simulator')} />
               <NavItem to="/relations-lab" label="Relations Lab" active={isActive('/relations-lab')} />
+            </NavDropdown>
+
+            <NavDropdown
+              label="Narrative"
+              active={isGroupActive(['/narrative'])}
+              colorClass="text-purple-400"
+            >
+              <NavItem to="/narrative" label="Нарративный холст" active={isActive('/narrative') && !location.hash} />
+              <NavItem to="/narrative#homeostasis" label="Протокол гомеостаза" active={isHomeostasisActive} />
             </NavDropdown>
           </nav>
         </div>
