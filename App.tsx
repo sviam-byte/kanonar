@@ -39,8 +39,8 @@ const DiagnosticsPage = lazy(() => import('./pages/DiagnosticsPage').then(m => (
 const SimulatorPage = lazy(() => import('./pages/SimulatorPage').then(m => ({ default: m.SimulatorPage })));
 const DilemmaLabPage = lazy(() => import('./pages/DilemmaLabPage').then(m => ({ default: m.DilemmaLabPage })));
 const MafiaLabPage = lazy(() => import('./pages/MafiaLabPage').then(m => ({ default: m.MafiaLabPage })));
-// GoalLab legacy routes stay default for compatibility.
-// V2 is exposed on explicit /goal-lab-v2 routes until parity is confirmed.
+// GoalLab legacy routes stay mounted for compatibility.
+// V2 is the primary UI surface exposed by home/header navigation.
 const GoalLabPage = lazy(() => import('./pages/GoalLabPage').then(m => ({ default: m.GoalLabPage })));
 const GoalLabConsolePage = lazy(() => import('./pages/GoalLabConsolePage').then(m => ({ default: m.GoalLabConsolePage })));
 

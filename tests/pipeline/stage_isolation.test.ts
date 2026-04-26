@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { runGoalLabPipelineV1 } from '@/lib/goal-lab/pipeline/runPipelineV1';
+import { validateAtomContracts } from '@/lib/context/v2/validateAtomContract';
 import { arr } from '@/lib/utils/arr';
 
 import { mockAgent, mockWorld } from './fixtures';
@@ -90,6 +91,54 @@ describe('Pipeline: Stage isolation invariants', () => {
     const s0 = stageAtoms(p, 'S0');
     const ctxAtoms = s0.filter(a => String(a.id).startsWith('ctx:'));
     expect(ctxAtoms.length).toBe(0);
+  });
+
+  it('S0 atoms must not emit downstream decision namespaces', () => {
+    const p = runGoalLabPipelineV1({ world: mockWorld(), agentId: 'A', participantIds: ['A'] });
+    const s0 = stageAtoms(p, 'S0');
+    const downstreamAtoms = s0.filter((a) => {
+      const id = String(a?.id ?? '');
+      return id.startsWith('action:') || id.startsWith('util:') || id.startsWith('drv:');
+    });
+    expect(downstreamAtoms.map((a) => String(a.id))).toEqual([]);
+  });
+
+  it('S0 profile goal priors are transitional, not active decision goals', () => {
+    const p = runGoalLabPipelineV1({ world: mockWorld(), agentId: 'A', participantIds: ['A'] });
+    const s0 = stageAtoms(p, 'S0');
+    const goalAtoms = s0.filter((a) => String(a?.id ?? '').startsWith('goal:'));
+    const unexpected = goalAtoms.filter((a) => {
+      const id = String(a?.id ?? '');
+      return !id.startsWith('goal:life:') && !id.startsWith('goal:lifeDomain:');
+    });
+    expect(unexpected.map((a) => String(a.id))).toEqual([]);
+  });
+
+  it('Pipeline atoms use canonical namespaces or documented transitional warnings', () => {
+    const p = runGoalLabPipelineV1({ world: mockWorld([mockAgent('A'), mockAgent('B')]), agentId: 'A', participantIds: ['A', 'B'] });
+    const atoms = arr(p?.stages).flatMap((stage: any) => arr(stage?.atoms));
+    const namespaceErrors = validateAtomContracts(atoms).filter((w) =>
+      w.code === 'missing_ns' || w.code === 'unknown_namespace'
+    );
+    expect(namespaceErrors).toEqual([]);
+  });
+
+  it('Canonical decision-stage prefixes agree with atom namespaces', () => {
+    const p = runGoalLabPipelineV1({ world: mockWorld([mockAgent('A'), mockAgent('B')]), agentId: 'A', participantIds: ['A', 'B'] });
+    const atoms = arr(p?.stages).flatMap((stage: any) => arr(stage?.atoms));
+    const required: Record<string, string> = {
+      'action:': 'action',
+      'drv:': 'drv',
+      'app:': 'app',
+      'belief:': 'belief',
+    };
+
+    for (const [prefix, ns] of Object.entries(required)) {
+      const matching = atoms.filter((a: any) => String(a?.id ?? '').startsWith(prefix));
+      for (const atom of matching) {
+        expect(atom?.ns).toBe(ns);
+      }
+    }
   });
 
   it('S2 must create ctx:* but not ctx:final:*', () => {

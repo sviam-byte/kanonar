@@ -3,6 +3,8 @@
 ## Namespace / stage invariants
 
 - S0: запрещены `ctx:*`
+- S0: запрещены `action:*`, `util:*`, `drv:*`
+- Atom namespaces must be canonical or documented legacy aliases in `lib/context/v2/namespaces.ts`.
 - S0: до запуска downstream стадий должна быть выполнена валидация размещения (`placementValidation`); невалидная сцена должна быть явно помечена в артефактах/фактах.
 - S2: разрешены `ctx:*`, запрещены `ctx:final:*`
 - S3: обязаны появиться `ctx:final:*`

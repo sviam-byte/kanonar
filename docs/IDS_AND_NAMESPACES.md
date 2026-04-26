@@ -29,6 +29,29 @@ Examples:
 
 If any atom violates this, document it and ensure filters/UI handle it.
 
+### 1.3 Canonical namespace registry
+
+The source of truth is `lib/context/v2/namespaces.ts`.
+
+Canonical namespaces:
+- `world`, `scene`, `map`, `norm`, `obs`, `soc`, `self`, `profile`
+- `ctx`, `aff`, `con`, `off`, `cap`, `access`, `cost`
+- `tom`, `emo`, `app`, `mind`, `drv`
+- `goal`, `util`, `action`, `belief`
+- `threat`, `rel`, `event`, `speech`, `lens`, `trace`, `misc`, `feat`
+
+Legacy namespace aliases:
+- `act -> action`
+- `affect -> emo`
+- `loc -> world`
+- `ener -> util`
+- `memory -> belief`
+- `sum -> misc`
+- `social -> soc`
+- `sim -> misc`
+
+Aliases are transitional. Validators may warn on them, but this first stabilization patch does not silently rewrite producer output.
+
 ---
 
 ## 2) Grammar (BNF-like)

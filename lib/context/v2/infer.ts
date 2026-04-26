@@ -112,8 +112,13 @@ export function inferAtomNamespace(atom: Pick<ContextAtom, 'kind' | 'id' | 'sour
   if (tags.includes('rel')) return 'rel'; // Check for rel tag
   if (tags.includes('threat')) return 'threat';
   if (tags.includes('affect') || tags.includes('emo')) return 'emo';
+  if (tags.includes('app')) return 'app';
+  if (tags.includes('mind')) return 'mind';
+  if (tags.includes('drv')) return 'drv';
   if (tags.includes('goal')) return 'goal';
   if (tags.includes('util')) return 'util';
+  if (tags.includes('action')) return 'action';
+  if (tags.includes('belief')) return 'belief';
 
   if (k.startsWith('tom_') || k === 'tom_belief') return 'tom';
   if (k.startsWith('rel_') || k === 'relationship_label') return 'rel';
@@ -127,6 +132,11 @@ export function inferAtomNamespace(atom: Pick<ContextAtom, 'kind' | 'id' | 'sour
 
   if (id.startsWith('manual:') || s === 'manual') return 'misc';
   if (id.startsWith('emotion:')) return 'emo';
+  if (id.startsWith('app:')) return 'app';
+  if (id.startsWith('mind:')) return 'mind';
+  if (id.startsWith('drv:')) return 'drv';
+  if (id.startsWith('action:')) return 'action';
+  if (id.startsWith('belief:')) return 'belief';
   if (id.startsWith('target_presence:')) return 'obs';
   if (id.startsWith('ctx:')) return 'ctx';
   if (id.startsWith('util:')) return 'util';

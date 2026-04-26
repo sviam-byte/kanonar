@@ -2,8 +2,10 @@
 // lib/context/v2/types.ts
 
 import type { CharacterGoalId, ContextAxesVector, ContextTuning } from '../../../types';
+import type { AtomNamespace } from './namespaces';
 
 export type { ContextAxesVector, ContextTuning };
+export type { AtomNamespace };
 
 export type KnownContextSource =
   | 'life'
@@ -93,33 +95,6 @@ export type ContextAtomLike = {
 };
 
 // --- Atom v2+ ---
-
-export type AtomNamespace =
-  | 'world'   // Objective facts (time, location id)
-  | 'scene'   // Scene metrics (threat, chaos)
-  | 'map'     // Grid, cells, navigation
-  | 'norm'    // Norms, mandates
-  | 'obs'     // Perception, nearby agents
-  | 'soc'     // Social layer (proximity + social situation flags)
-  | 'self'    // Body, resources
-  | 'profile' // Character traits, bio
-  | 'ctx'     // High-level context axes (danger, intimacy)
-  | 'aff'     // Affordances
-  | 'con'     // Constraints
-  | 'off'     // Offers
-  | 'cap'     // Capabilities
-  | 'access'  // Access decisions
-  | 'cost'    // Costs / tradeoffs
-  | 'tom'     // Theory of Mind (beliefs, relations)
-  | 'emo'     // Affect / Emotions
-  | 'util'    // Precomputed utilities / projections (for Action layer)
-  | 'goal'    // Active goals
-  | 'threat'  // Threat / Risk analysis
-  | 'rel'     // Relationships (static/memory)
-  | 'event'   // Events / Timeline
-  | 'speech'  // Speech/communication events (proto)
-  | 'misc'    // Fallback
-  | 'feat';   // Features
 
 export type AtomOrigin =
   | 'world'    // Hard fact from world state

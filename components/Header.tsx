@@ -139,8 +139,8 @@ export const Header: React.FC = () => {
                 <NavItem to="/builder" label="Конструктор Персонажа" active={isActive('/builder')} />
                 <NavItem to="/location-constructor" label="Конструктор Локаций" active={isActive('/location-constructor')} />
                 <NavItem to="/character-lab" label="Инспектор ToM (Dyad)" active={isActive('/character-lab')} />
-                <NavItem to="/goal-lab" label="Лаборатория Целей" active={isActive('/goal-lab')} />
-                <NavItem to="/goal-lab-console" label="Goal Lab Console" active={isActive('/goal-lab-console')} />
+                <NavItem to="/goal-lab-v2" label="Лаборатория Целей" active={isActive('/goal-lab-v2')} />
+                <NavItem to="/goal-lab-console-v2" label="Goal Lab Console" active={isActive('/goal-lab-console-v2')} />
                 <NavItem to="/dilemma-lab" label="Dilemma Lab" active={isActive('/dilemma-lab')} />
                 <NavItem to="/mafia-lab" label="Mafia Lab" active={isActive('/mafia-lab')} />
                 <NavItem to="/simulator" label="▶ Live Sim" active={isActive('/simulator')} />
@@ -152,6 +152,8 @@ export const Header: React.FC = () => {
                 <NavItem to="/dialogue-lab" label="Dialogue v1 (legacy)" active={isActive('/dialogue-lab')} />
                 <NavItem to="/biography-lab" label="Лаборатория Биографии" active={isActive('/biography-lab')} />
                 <div className="border-t border-canon-border my-1"></div>
+                <NavItem to="/goal-lab" label="GoalLab legacy (debug)" active={isActive('/goal-lab')} />
+                <NavItem to="/goal-lab-console" label="GoalLab Console legacy" active={isActive('/goal-lab-console')} />
                 <NavItem to="/presets" label="Редактор Пресетов" active={isActive('/presets')} />
                 <NavItem to="/linter" label="Линтер & Справка" active={isActive('/linter')} />
             </NavDropdown>

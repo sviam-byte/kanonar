@@ -10,7 +10,7 @@ const entryPoints = [
     { type: EntityType.Concept, name: "Концепты", description: "Культурные и системные абстракции." },
     { type: "events", name: "Система Событий", description: "Управление потоком времени, социальными интеракциями и системными триггерами.", link: "/events" },
     { type: "goal-lab-v2", name: "GoalLab", description: "Лаборатория контекста: pipeline, POMDP, граф целей, анализ решений.", link: "/goal-lab-v2" },
-    { type: "simulation-hub", name: "Симуляция", description: "Оркестратор сценариев: SimKit, запуск тиков, каталог готовых симуляций.", link: "/simulation-hub" },
+    { type: "simulation-hub", name: "Симуляция", description: "Оркестратор сценариев: SimKit, запуск тиков, каталог готовых симуляций.", link: "/simulator" },
     { type: EntityType.Protocol, name: "Протоколы", description: "Правила, связывающие реальность." },
     // Legacy GoalLab kept for backward compatibility — hidden from main grid.
     // { type: "goal-lab", name: "GoalLab (legacy)", description: "Старая версия.", link: "/goal-lab" },

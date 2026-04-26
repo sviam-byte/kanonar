@@ -32,6 +32,12 @@ Outputs:
 Forbidden:
 - любые `ctx:*`
 
+Transitional profile-goal prior:
+- Current S0 may still emit `goal:life:*` and `goal:lifeDomain:*` from stable agent profile data.
+- These atoms are profile-derived priors, not active decision goals.
+- S8 must not consume them directly; the only legal Goal -> Action bridge remains `util:*`.
+- Planned migration target: rename these priors to `profile:lifeGoal:*` and `profile:lifeDomain:*`, then convert them into active `goal:*` only in S7.
+
 ## S1 — Normalize → Quarks
 
 Outputs:

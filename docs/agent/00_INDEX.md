@@ -28,6 +28,7 @@ This `docs/agent/*` folder remains useful, but it is no longer the only onboardi
 6) `30_WORKFLOWS.md`
 7) `40_TESTING.md`
 8) `50_CONTRIBUTING_AGENT.md`
+9) `60_STABILIZATION_MEMORY.md`
 
 ## Where to look in code
 Because repo layouts vary, use ripgrep to map concepts to current code.
