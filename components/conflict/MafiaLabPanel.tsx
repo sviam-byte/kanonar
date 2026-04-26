@@ -1,8 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useSandbox } from '../contexts/SandboxContext';
-import { getAllCharactersWithRuntime } from '../data';
-import type { AgentState, CharacterEntity, WorldState } from '../types';
+import { useSandbox } from '../../contexts/SandboxContext';
+import { getAllCharactersWithRuntime } from '../../data';
+import type { AgentState, CharacterEntity, WorldState } from '../../types';
 import {
   defaultDistribution,
   runMafiaBatch,
@@ -10,7 +10,7 @@ import {
   type MafiaBatchResult,
   type MafiaGameResult,
   type RoleId,
-} from '../lib/mafia';
+} from '../../lib/mafia';
 
 const f2 = (v: number) => v.toFixed(2);
 const pct = (v: number) => `${(v * 100).toFixed(1)}%`;
@@ -36,7 +36,7 @@ function buildMinimalWorld(chars: { entityId: string; [k: string]: unknown }[]):
   };
 }
 
-export const MafiaLabPage: React.FC = () => {
+export const MafiaLabPanel: React.FC = () => {
   const { characters } = useSandbox();
   const allChars = useMemo(() => {
     const base = getAllCharactersWithRuntime();
@@ -149,7 +149,7 @@ export const MafiaLabPage: React.FC = () => {
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          <Link to="/dilemma-lab" className="rounded-md border border-canon-border bg-canon-card px-3 py-1.5 text-xs text-canon-text hover:border-canon-accent/40 transition">
+          <Link to="/conflict-lab?tab=dilemma" className="rounded-md border border-canon-border bg-canon-card px-3 py-1.5 text-xs text-canon-text hover:border-canon-accent/40 transition">
             ← Назад в Dilemma Lab
           </Link>
           <button
@@ -327,4 +327,4 @@ const MetricCard: React.FC<{ label: string; value: string }> = ({ label, value }
   </div>
 );
 
-export default MafiaLabPage;
+export default MafiaLabPanel;
