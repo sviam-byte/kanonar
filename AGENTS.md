@@ -1,153 +1,162 @@
-# Agent Entry Point (read first)
+# AGENTS.md
 
-This repo is an agent-simulation / decision system (Goal Lab / SimKit style).
-Your job as an agent is to make changes safely: preserve invariants, keep outputs interpretable, and keep tests green.
+This repo is an agent-simulation and decision-system codebase. Treat it as a
+GoalLab + SimKit runtime, not as a plain React app. Make changes cautiously:
+preserve determinism, provenance, scoring semantics, and UI resilience.
 
-## 1) Read order (15-25 minutes total)
+## Read First
+
+Use this order when you need broad context:
+
 1. `docs/unified/README.md`
 2. `docs/unified/01_CONTROL_PLANE.md`
 3. `docs/unified/02_AGENT_QUICKSTART.md`
 4. `docs/unified/03_SYSTEM_MAP.md`
 5. `docs/unified/04_CONTROL_PLANE_VALIDATION.md`
-6. `docs/agent/00_INDEX.md`
-7. `docs/agent/10_ARCHITECTURE.md`
-8. `docs/agent/20_MATH_MODEL.md`
-9. `docs/agent/30_WORKFLOWS.md`
-10. `docs/agent/40_TESTING.md`
-11. `docs/agent/50_CONTRIBUTING_AGENT.md`
+6. `docs/PIPELINE.md`
+7. `docs/INVARIANTS.md`
+8. `docs/agent/00_INDEX.md`
+9. `docs/agents/00_README.md`
 
-## 2) Non-negotiable invariants (do not break)
-These are conceptual invariants; map them to code with ripgrep (`rg`) as needed.
+For a narrow fix, read only the relevant canonical docs plus nearby code.
+
+## Trust Order
+
+1. Pipeline truth: `lib/goal-lab/pipeline/runPipelineV1.ts`
+2. Pipeline contracts: `docs/PIPELINE.md`, `docs/INVARIANTS.md`
+3. Atom contracts: `lib/context/v2/types.ts`, `lib/goal-lab/atoms/canonical.ts`
+4. Coefficients: `lib/config/formulaConfig.ts`, `lib/config/formulaConfigSim.ts`
+5. Active UI: `pages/GoalLabPageV2.tsx`, `contexts/GoalLabContext.tsx`, `components/goal-lab-v2/*`
+6. Deep GoalLab panels still used by v2: `components/goal-lab/*`
+7. Transitional adapters: `hooks/useGoalLabEngine.ts`, `lib/goals/goalLabContext.ts`, snapshot adapters
+8. Legacy/archive code: useful for reference only, never canonical
+
+If docs and code disagree, prefer the canonical runtime and tests, then update
+docs if the change introduces a new invariant or knob.
+
+## Hard Invariants
 
 ### Determinism
-- If the system exposes seeding/temperature/noise: runs must be reproducible under the same seed and config.
-- Any randomness must flow through a single RNG utility. No `Math.random()` in core logic.
+
+- Seeded runs must be reproducible under the same config.
+- Do not use `Math.random()` in core logic.
+- Any stochastic behavior must go through the repo RNG/noise utilities.
+- Wall-clock timestamps are acceptable for UI/export metadata, but do not use
+  them for decision logic or deterministic comparisons.
 
 ### Traceability
-- Every derived decision/goal hypothesis should be explainable.
-- Carry a trace / provenance (`usedAtomIds`, `parts`, `notes`) or equivalent.
-- Never silently drop metadata when transforming.
 
-### Energy / scoring semantics
-- "Energy" is a unitless internal scoring mass used for comparisons.
-- Propagation must conserve mass up to explicit decay/cost terms.
-- Gating (MoE / modes) must be explicit and logged/traceable.
+- Every derived decision, goal, atom, or hypothesis must remain explainable.
+- Preserve provenance fields such as `usedAtomIds`, `parts`, `notes`, `trace`,
+  and equivalent local structures.
+- Never silently drop metadata when adapting between GoalLab, SimKit, or UI
+  contracts.
 
-### Safety checks
-- Never crash UI/graph views on undefined arrays. Guard every `map` / `forEach` on optional data.
-- Validate inputs at boundaries (API -> model; model -> view).
+### Energy And Scoring
 
-## 3) Fast orientation commands (copy/paste)
-Use these to find the truth in the codebase:
+- Energy is unitless internal scoring mass used for ranking/comparison.
+- Propagation should conserve mass except for explicit decay, cost, or gating.
+- MoE/mode/decision gates must be explicit and inspectable.
+- Numeric coefficients for pipeline behavior belong in
+  `lib/config/formulaConfig.ts`; SimKit-specific coefficients belong in
+  `lib/config/formulaConfigSim.ts`.
 
-### Find core concepts
-- `rg -n "Energy|spreadEnergy|propagat|channel" lib components pages tests`
-- `rg -n "Mixture|MoE|expert|mode|gate" lib components pages tests`
-- `rg -n "hyster|inertia|threshold" lib components pages tests`
-- `rg -n "trace|usedAtomIds|proven" lib components pages tests`
-- `rg -n "seed|RNG|random|temperature" lib components pages tests`
+### Namespaces
 
-### Find UI graph views
-- `rg -n "DecisionGraph|ForceGraph|react-force-graph|AFRAME" components lib`
+- After S3, consumers should prefer `ctx:final:*`.
+- Reading plain `ctx:*` after S3 is a bug unless a documented fallback says so.
+- `action:*` must not read `goal:*` directly; action selection consumes `util:*`
+  or explicit projected action candidates.
 
-## 4) When you submit a change
-You must provide:
-1) A short intent summary ("what + why")
-2) The patch (`git diff`)
-3) The validation you ran (tests / typecheck / build)
-4) Any changes to `docs/agent/*` or `docs/unified/*` if you introduced new invariants or knobs
+### UI Safety
 
-# Agent Playbook (Kanonar / Goal Lab)
+- Guard optional arrays before `map`, `forEach`, and table rendering.
+- Validate model-to-view boundaries.
+- Debug/lab panels must degrade gracefully when data is partial.
 
-Этот файл предназначен для агента, чтобы быстро и одинаково работать с репо.
+## Current Code Map
 
-## Canonical docs
+- Pipeline: `lib/goal-lab/pipeline/*`
+- Context atoms and lens: `lib/context/*`
+- Drivers: `lib/drivers/*`
+- Goals and goal atoms: `lib/goals/*`
+- Decision scoring: `lib/decision/*`
+- SimKit runtime: `lib/simkit/*`
+- SimKit comparison labs: `lib/simkit/compare/*`
+- GoalLab UI panels: `components/goal-lab/*`
+- GoalLab v2 shell: `components/goal-lab-v2/*`, `pages/GoalLabPageV2.tsx`
+- Tests: `tests/pipeline/*`, `tests/decision/*`, `tests/simkit/*`, `tests/lens/*`
 
-The detailed formula-level documentation for the agent model lives in `docs/agents/00_README.md`.
-The repo-level control-plane layer now lives in `docs/unified/*`.
+## ProConflict / SimKit Notes
 
-## Commands (copy-paste)
+- `SimSnapshot` does not carry `world.facts`; do not read live facts from
+  `snapshot.facts`.
+- For per-tick compare metrics, use explicit record data such as
+  `RunResult.pipelineHistory`, `trace.actionsApplied`, `stressHistory`, and
+  `tensionHistory`.
+- `sim:pipeline:<id>` and `sim:trace:<id>` are world facts during a tick and can
+  be reconstructed from `trace.deltas.facts`.
+- Full record byte equality is not a valid determinism check while snapshots
+  include wall-clock `time`; compare semantic fields instead.
+
+## Commands
 
 Install:
+
 ```bash
 npm i
 ```
 
-Dev:
+Run:
+
 ```bash
 npm run dev
-```
-
-Tests:
-```bash
 npm test
-```
-
-Watch:
-```bash
-npm run test:watch
-```
-
-Build:
-```bash
+npm run typecheck
 npm run build
 ```
 
-Preview:
-```bash
-npm run preview
-```
+Optional:
 
-Optional maintenance:
 ```bash
+npm run test:watch
 npm run unused
 npm run prune:stubs
 ```
 
-## Rules (hard)
+This Windows environment may not always expose `node`/`npm`/`rg` in PATH. If
+`rg` is unavailable, use `Get-ChildItem -Recurse -File | Select-String ...`.
+If `npm` is unavailable, report that validation could not run.
 
-1) Any change to pipeline stage behavior (S0...S9) requires:
-- update `docs/PIPELINE.md`
-- add or update tests in `tests/pipeline/*` when needed
+## Search Recipes
 
-2) Any new law / invariant requires:
-- update `docs/INVARIANTS.md`
-- add a test or runtime-check in the pipeline
+Prefer `rg` when available:
 
-3) Goal / Action isolation:
-- `action:*` does not read `goal:*` directly; only `util:*`
+```bash
+rg -n "Energy|spreadEnergy|propagat|channel" lib components pages tests
+rg -n "Mixture|MoE|expert|mode|gate" lib components pages tests
+rg -n "hyster|inertia|threshold" lib components pages tests
+rg -n "trace|usedAtomIds|proven" lib components pages tests
+rg -n "seed|RNG|random|temperature" lib components pages tests
+rg -n "DecisionGraph|ForceGraph|react-force-graph|AFRAME" components lib
+```
 
-4) Namespace discipline:
-- after S3, consumers should read `ctx:final:*`
-- reading plain `ctx:*` after S3 is considered a bug except for documented fallbacks
+PowerShell fallback:
 
-5) Patches:
-- send only `git diff`
-- do not do formatting-only drive-bys
+```powershell
+Get-ChildItem -Path lib,components,pages,tests -Recurse -File |
+  Select-String -Pattern "trace|usedAtomIds|proven"
+```
 
-6) FormulaConfig:
-- all numeric coefficients in pipeline logic (S0...S9) belong in `lib/config/formulaConfig.ts`
-- local constants like `const RISK_COEFF = 0.4` are not allowed
-- when adding a new coefficient: add it to `FC` and consume it through `FC.section.param`
+## Change Policy
 
-## Debug routine (standard)
-
-When reasoning looks wrong:
-1) Find the stage where the strange atom first appears through Pipeline panels or stage snapshots.
-2) Open `trace.usedAtomIds` on the problematic atom and verify:
-- whether the stage is reading allowed namespaces
-3) If the issue is in DecisionGraph:
-- check `components/goal-lab/DecisionGraphView.tsx`
-- check edge assembly in `lib/graph/GraphAdapter.ts`
-4) If the issue is in the personality lens:
-- check `lib/context/lens/characterLens.ts`
-- tests: `tests/lens/*`
-
-## Where is the truth
-
-- Pipeline: `lib/goal-lab/pipeline/*`
-- Atom types: `lib/context/v2/types.ts`
-- Goal catalog: `lib/goals/*`
-- Graph building: `lib/graph/*`
-- GoalLab UI: `components/goal-lab/*`
-- Unified agent docs: `docs/unified/*`
+- Keep patches scoped. Do not do formatting-only drive-bys.
+- Do not revert unrelated dirty-worktree changes.
+- Pipeline stage behavior changes require `docs/PIPELINE.md` updates and
+  targeted tests under `tests/pipeline/*` when behavior changes.
+- New laws/invariants require `docs/INVARIANTS.md` updates and either tests or
+  runtime checks.
+- New coefficients require config entries, not local magic constants.
+- When finishing, provide intent, validation, and any docs touched. Include the
+  useful diff summary; full `git diff` is preferred when the user asks for a
+  patch.
