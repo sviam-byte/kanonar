@@ -1,61 +1,72 @@
-# CANONICAL PATHS
+# CANONICAL_PATHS.md
 
-This file maps execution responsibilities to concrete modules.  
-If behavior and UI disagree, **these paths win** unless explicitly superseded by updated canonical docs.
+Concrete paths that define behavior. If a UI projection or old doc disagrees
+with these paths, prefer these paths unless a newer canonical doc says otherwise.
 
-## 1) Context + pipeline path
+## Context And Pipeline
 
-1. Context types and normalization contracts:
-   - `lib/context/v2/types.ts`
-   - `lib/context/v2/infer.ts`
-2. Pipeline orchestration:
-   - `lib/goal-lab/pipeline/runPipelineV1.ts`
-   - supporting stage files under `lib/goal-lab/pipeline/*`
-3. Pipeline contract docs:
-   - `docs/PIPELINE.md`
-   - `docs/IDS_AND_NAMESPACES.md`
+- Context types: `lib/context/v2/types.ts`
+- Context normalization: `lib/context/v2/infer.ts`
+- Pipeline orchestration: `lib/goal-lab/pipeline/runPipelineV1.ts`
+- Pipeline helpers: `lib/goal-lab/pipeline/*`
+- Canonical atom extraction: `lib/goal-lab/atoms/canonical.ts`
+- Pipeline docs: `docs/PIPELINE.md`, `docs/INVARIANTS.md`
 
-## 2) Decision path (goal → utility → action)
+## Decision Path
 
-1. Candidate assembly and modifiers:
-   - `lib/decision/actionCandidateUtils.ts`
-   - `lib/decision/actionProjection.ts`
-   - `lib/decision/costModel.ts`
-2. Final choice mechanics:
-   - `lib/decision/decide.ts`
-3. Goal sources:
-   - `lib/goals/*`
+- Candidate assembly: `lib/decision/actionCandidateUtils.ts`
+- Projection: `lib/decision/actionProjection.ts`
+- Cost model: `lib/decision/costModel.ts`
+- Final choice: `lib/decision/decide.ts`
+- Goal sources: `lib/goals/*`
+- Goal/action bridge rule: actions consume projected utility/action candidates,
+  not raw `goal:*` atoms directly.
 
-## 3) Variability + reproducibility path
+## Formula And Coefficients
 
-1. Deterministic RNG/noise channels:
-   - `lib/core/noise.ts`
-2. Selection variability controls:
-   - `lib/decision/decide.ts`
-3. Temporal behavior controls:
-   - `lib/simkit/*`
-4. Repro contract:
-   - `docs/REPRO.md`
+- GoalLab pipeline coefficients: `lib/config/formulaConfig.ts`
+- SimKit coefficients: `lib/config/formulaConfigSim.ts`
+- Policy: no hidden scoring constants in pipeline stages or runtime gates.
 
-## 4) Explainability/provenance path
+## Simulation Runtime
 
-1. Trace-carrying atom contracts:
-   - `lib/context/v2/types.ts`
-2. Explainability specification:
-   - `docs/EXPLAINABILITY.md`
-3. Decision trace assembly:
-   - `lib/decision/*`
+- Simulator core: `lib/simkit/core/simulator.ts`
+- World and snapshots: `lib/simkit/core/world.ts`
+- RNG: `lib/simkit/core/rng.ts`
+- Sim actions/rules: `lib/simkit/core/rules.ts`, `lib/simkit/actions/*`
+- GoalLab decider bridge: `lib/simkit/plugins/goalLabDeciderPlugin.ts`
+- GoalLab world adapter: `lib/simkit/plugins/goalLabWorldState.ts`
+- Compare runner/labs: `lib/simkit/compare/*`
 
-## 5) Formula/coefficients control plane
+## Explainability And Provenance
 
-- Canonical coefficient registry:
-  - `lib/config/formulaConfig.ts`
-- Policy:
-  - no new hidden scoring coefficients in pipeline stages outside FormulaConfig.
+- Atom trace contract: `lib/context/v2/types.ts`
+- Pipeline stage artifacts: `lib/goal-lab/pipeline/pipelineTypes.ts`
+- Decision trace assembly: `lib/decision/*`
+- SimKit per-agent trace: `world.facts['sim:trace:<agentId>']`
+- SimKit pipeline summary: `world.facts['sim:pipeline:<agentId>']`
 
-## 6) Tests by behavior surface
+## UI Surfaces
 
-- Pipeline behavior: `tests/pipeline/*`
-- Decision behavior: `tests/decision/*`
-- Simulation/runtime behavior: `tests/simkit/*`
-- Lens/context behavior: `tests/lens/*`
+- Active route: `pages/GoalLabPageV2.tsx`
+- Active context: `contexts/GoalLabContext.tsx`
+- Active v2 components: `components/goal-lab-v2/*`
+- Deep debug/lab panels: `components/goal-lab/*`
+- Legacy routes: `pages/GoalLabPage.tsx`, `pages/GoalLabConsolePage.tsx`
+
+## Tests By Surface
+
+- Pipeline: `tests/pipeline/*`
+- Decision: `tests/decision/*`
+- SimKit: `tests/simkit/*`
+- Lens/context: `tests/lens/*`
+- Goals: `tests/goals/*`
+
+## Known Compare-Lab Contract
+
+- `RunResult.records` contains semantic tick records, but snapshots do not store
+  live `world.facts`.
+- `RunResult.pipelineHistory` is the compact per-tick source for mode, driver,
+  and goal-score comparison.
+- Deterministic pair runs should compare semantic data, not snapshot timestamp
+  strings.

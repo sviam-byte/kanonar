@@ -14,8 +14,19 @@ import { makeGoalLabPipelinePlugin } from '../plugins/goalLabPipelinePlugin';
 import { makePerceptionMemoryPlugin } from '../plugins/perceptionMemoryPlugin';
 import type { CharacterEntity, LocationEntity } from '../../../types';
 import type { NarrativeBeat } from '../narrative/beatDetector';
+import { applyPerturbations, type PerturbationVector } from './perturbationVector';
 
 type ActionCounts = Record<string, Record<string, number>>;
+
+export type PipelineTickState = {
+  tick: number;
+  mode: string;
+  decisionMode: string;
+  goalScores: Record<string, number>;
+  drivers: Record<string, number>;
+};
+
+export type PipelineHistory = Record<string, Array<PipelineTickState | null>>;
 
 export type RunConfig = {
   label: string;
@@ -24,6 +35,12 @@ export type RunConfig = {
   placements: Record<string, string>;
   seed: number;
   maxTicks: number;
+  /**
+   * Optional pure transform applied to the freshly built SimWorld before the
+   * simulator is constructed. Used by ProConflict Lab to inject epsilon perturbations.
+   * Must not touch RNG state.
+   */
+  worldTransform?: (world: SimWorld) => SimWorld;
 };
 
 export type RunResult = {
@@ -37,15 +54,75 @@ export type RunResult = {
   agentTraces: Record<string, any>;
   stressHistory: Record<string, number[]>;
   actionCounts: ActionCounts;
+  pipelineHistory: PipelineHistory;
 };
 
+function asNumberMap(value: unknown): Record<string, number> {
+  if (!value || typeof value !== 'object') return {};
+  const out: Record<string, number> = {};
+  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    const n = Number(v);
+    if (Number.isFinite(n)) out[k] = n;
+  }
+  return out;
+}
+
+function readDeltaAfter(rec: SimTickRecord, key: string): any {
+  return (rec.trace?.deltas?.facts as any)?.[key]?.after;
+}
+
+function firstNonEmptyMap(...maps: Array<Record<string, number> | undefined>): Record<string, number> {
+  for (const map of maps) {
+    if (map && Object.keys(map).length) return map;
+  }
+  return {};
+}
+
+function buildPipelineHistory(records: SimTickRecord[], agentIds: string[]): PipelineHistory {
+  const history: PipelineHistory = {};
+  const current: Record<string, PipelineTickState | null> = {};
+
+  for (const id of agentIds) {
+    history[id] = [];
+    current[id] = null;
+  }
+
+  records.forEach((rec, index) => {
+    for (const id of agentIds) {
+      const pipelineFact = readDeltaAfter(rec, `sim:pipeline:${id}`);
+      const traceFact = readDeltaAfter(rec, `sim:trace:${id}`);
+      const prev = current[id];
+      const pipelineGoalScores = asNumberMap((pipelineFact as any)?.goalScores);
+      const traceGoalScores = asNumberMap((traceFact as any)?.goalScores);
+      const traceDrivers = asNumberMap((traceFact as any)?.drivers);
+      const next: PipelineTickState | null = (pipelineFact || traceFact || prev)
+        ? {
+            tick: Number((pipelineFact as any)?.tick ?? (traceFact as any)?.tick ?? rec.trace?.tickIndex ?? index),
+            mode: String((pipelineFact as any)?.mode ?? (traceFact as any)?.mode ?? prev?.mode ?? ''),
+            decisionMode: String(
+              (pipelineFact as any)?.decisionMode ?? (traceFact as any)?.decisionMode ?? prev?.decisionMode ?? '',
+            ),
+            goalScores: firstNonEmptyMap(pipelineGoalScores, traceGoalScores, prev?.goalScores),
+            drivers: firstNonEmptyMap(traceDrivers, prev?.drivers),
+          }
+        : null;
+
+      current[id] = next;
+      history[id].push(next ? { ...next, goalScores: { ...next.goalScores }, drivers: { ...next.drivers } } : null);
+    }
+  });
+
+  return history;
+}
+
 export function runBatch(config: RunConfig): RunResult {
-  const world = makeSimWorldFromSelection({
+  const baseWorld = makeSimWorldFromSelection({
     seed: config.seed,
     locations: config.locations,
     characters: config.characters,
     placements: config.placements,
   });
+  const world = config.worldTransform ? config.worldTransform(baseWorld) : baseWorld;
 
   const sim = new SimKitSimulator({
     scenarioId: 'compare:batch',
@@ -61,6 +138,7 @@ export function runBatch(config: RunConfig): RunResult {
 
   const records = sim.run(config.maxTicks);
   const agentIds = Object.keys(sim.world.characters || {}).sort();
+  const pipelineHistory = buildPipelineHistory(records, agentIds);
 
   const stressHistory: Record<string, number[]> = {};
   const actionCounts: ActionCounts = {};
@@ -99,6 +177,7 @@ export function runBatch(config: RunConfig): RunResult {
     agentTraces,
     stressHistory,
     actionCounts,
+    pipelineHistory,
   };
 }
 
@@ -132,5 +211,55 @@ export function compareRuns(a: RunResult, b: RunResult): CompareResult {
     firstDivergenceTick: firstDiv,
     uniqueActionsA: [...allA].filter((k) => !allB.has(k)).sort(),
     uniqueActionsB: [...allB].filter((k) => !allA.has(k)).sort(),
+  };
+}
+
+export type PerturbationRunPair = {
+  runA: RunResult;
+  runB: RunResult;
+  perturbations: PerturbationVector[];
+  applied: PerturbationVector[];
+  skipped: Array<{ vec: PerturbationVector; reason: string }>;
+  firstDivergenceTick: number | null;
+};
+
+/**
+ * Run a base trajectory and an epsilon-perturbed trajectory with identical seed.
+ * The perturbation is applied to the freshly built SimWorld via worldTransform,
+ * so RNG channels remain seeded identically. Divergence is attributable
+ * to state perturbation propagating through trait/archetype gates.
+ */
+export function runPair(
+  config: RunConfig,
+  perturbations: PerturbationVector[],
+): PerturbationRunPair {
+  const baseLabel = config.label || 'pair';
+  const baseTransform = config.worldTransform;
+  const runA = runBatch({ ...config, label: `${baseLabel}:A` });
+
+  let appliedReport: { applied: PerturbationVector[]; skipped: Array<{ vec: PerturbationVector; reason: string }> } = {
+    applied: [],
+    skipped: [],
+  };
+  const runB = runBatch({
+    ...config,
+    label: `${baseLabel}:B`,
+    worldTransform: (w) => {
+      const transformed = baseTransform ? baseTransform(w) : w;
+      const r = applyPerturbations(transformed, perturbations);
+      appliedReport = { applied: r.applied, skipped: r.skipped };
+      return r.world;
+    },
+  });
+
+  const cmp = compareRuns(runA, runB);
+
+  return {
+    runA,
+    runB,
+    perturbations,
+    applied: appliedReport.applied,
+    skipped: appliedReport.skipped,
+    firstDivergenceTick: cmp.firstDivergenceTick,
   };
 }

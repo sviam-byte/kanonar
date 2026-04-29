@@ -47,6 +47,7 @@ import { materializeStageAtoms } from './materializePipeline';
 import { arr } from '../../lib/utils/arr';
 import { OrchestratorLab } from '../../lib/goal-lab/labs/OrchestratorLab';
 import { SimulatorLab } from '../../lib/goal-lab/labs/SimulatorLab';
+import { ProConflictLab } from '../../lib/goal-lab/labs/ProConflictLab';
 import { defaultProducers } from '../../lib/orchestrator/defaultProducers';
 import { generateGoalLabReportMarkdown } from '../../lib/goal-lab/reporting/generateGoalLabReport';
 import { GoalLabTestsPanel } from './GoalLabTestsPanel';
@@ -1314,6 +1315,7 @@ export const GoalLabResults: React.FC<Props> = ({
         />
     );
     const OrchestratorTab = () => <OrchestratorLab snapshot={snapshotV1 ?? null} />;
+    const ProConflictTab = () => <ProConflictLab />;
     // Simulator uses SimKit; pass real producers to wire up orchestrator output.
     const SimulatorTab = () => <SimulatorLab orchestratorRegistry={defaultProducers} />;
     const explainStats = {
@@ -1559,6 +1561,7 @@ export const GoalLabResults: React.FC<Props> = ({
       { key: 'debug', label: 'Debug', render: () => <DebugTab />, devOnly: true },
       { key: 'orchestrator', label: 'Orchestrator', render: () => <OrchestratorTab />, devOnly: true },
       { key: 'simulator', label: 'Simulation', render: () => <SimulatorTab />, devOnly: true },
+      { key: 'pro-conflict', label: 'ProConflict', render: () => <ProConflictTab />, devOnly: true },
       { key: 'tests', label: 'Tests', render: () => <GoalLabTestsPanel selfId={focusId || ''} actorLabels={actorLabels as any} />, devOnly: true },
       { key: 'value', label: 'Value', render: () => <ValueTab />, devOnly: true },
     ];
@@ -1575,7 +1578,7 @@ export const GoalLabResults: React.FC<Props> = ({
       { label: 'Atoms', key: null, children: ['atoms', 'context-lens', 'diff', 'coverage', 'validator'], devOnly: true },
       { label: 'Pipeline', key: null, children: ['pipeline', 'pipeline-flow', 'propagation'], devOnly: true },
       { label: 'Agents', key: null, children: ['cast', 'mind', 'possibilities', 'access'], devOnly: true },
-      { label: 'Labs', key: null, children: ['orchestrator', 'simulator', 'tests', 'value'], devOnly: true },
+      { label: 'Labs', key: null, children: ['orchestrator', 'simulator', 'pro-conflict', 'tests', 'value'], devOnly: true },
       { label: 'Debug', key: 'debug', devOnly: true },
       { label: 'Explain', key: 'explain', devOnly: true },
     ];
