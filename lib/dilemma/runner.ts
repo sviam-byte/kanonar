@@ -20,6 +20,21 @@ import { compileAgent, compileDyad, computePerceivedStakes } from './compiler';
 import { getScenario } from './scenarios';
 import { explainDecision, summarizeGame } from './explainer';
 import { initTomForCharacters } from '../tom/init';
+import { DILEMMA_LEARNING_FORMULA } from '../config/formulaConfig';
+import {
+  cloneConflictMemory,
+  createConflictLearningStore,
+  getConflictMemory,
+  getLearnedActionValue,
+  mostLikelyPredictedResponse,
+  predictedResponseProb,
+  responseCountKey,
+  updateConflictMemory,
+  type ActionImpact,
+  type ConflictLearningMemory,
+  type ConflictRelationSnapshot,
+  type ConflictReward,
+} from './learningMemory';
 
 export type DilemmaRunConfig = {
   specId: string;
@@ -470,7 +485,14 @@ export function runDilemmaV2(config: V2RunConfig): V2RunResult {
     tick: 0,
     agents: chars as unknown as AgentState[],
     locations: [],
-    leadership: { leaderId: null } as WorldState['leadership'],
+    leadership: {
+      currentLeaderId: null,
+      leaderScore: 0,
+      lastChangeTick: 0,
+      changeCount: 0,
+      legitimacy: 0.5,
+      contestLevel: 0,
+    },
     initialRelations: {},
   };
   const tomState = initTomForCharacters(chars, minWorld);
@@ -518,6 +540,8 @@ export function runDilemmaV2(config: V2RunConfig): V2RunResult {
   };
 
   const allTraces: Record<string, V2RoundTrace[]> = { [p0Id]: [], [p1Id]: [] };
+  const learningStore = createConflictLearningStore();
+  const allActionIds = scenario.actionPool.map((action) => action.id);
 
   for (let round = 0; round < config.totalRounds; round++) {
     const choices: Record<string, string> = {};
@@ -529,6 +553,7 @@ export function runDilemmaV2(config: V2RunConfig): V2RunResult {
       dyad: CompiledDyad;
       compiledOther: CompiledAgent;
       reverseDyad: CompiledDyad;
+      memoryBefore: ConflictLearningMemory;
       availableActions: string[];
       filteredOut: string[];
       scores: ActionScore[];
@@ -545,11 +570,13 @@ export function runDilemmaV2(config: V2RunConfig): V2RunResult {
       compiled.effectiveTemperature *= (1 - 0.4 * compiled.perceivedStakes);
       const dyad = compileDyad(compiled, compiledOther, agents[playerId], agents[otherId]);
       const reverseDyad = compileDyad(compiledOther, compiled, agents[otherId], agents[playerId]);
+      const memory = getConflictMemory(learningStore, playerId, otherId);
+      const memoryBefore = cloneConflictMemory(memory);
 
       const { available, filteredOut } = filterActions(scenario, compiled, compiledOther, dyad);
       const basePressure = config.institutionalPressure ?? scenario.institutionalPressure;
       const instPressure = computeScheduledPressure(basePressure, config.pressureSchedule, round, config.totalRounds);
-      const scores = scoreActions(available, scenario, compiled, compiledOther, dyad, reverseDyad, round, config.totalRounds, instPressure);
+      const scores = scoreActions(available, scenario, compiled, compiledOther, dyad, reverseDyad, round, config.totalRounds, instPressure, memoryBefore);
       const chosenId = resolveAction(scores, compiled.effectiveTemperature, rngs[playerId]);
       choices[playerId] = chosenId;
 
@@ -568,6 +595,7 @@ export function runDilemmaV2(config: V2RunConfig): V2RunResult {
         dyad,
         compiledOther,
         reverseDyad,
+        memoryBefore,
         availableActions: available.map((a) => a.id),
         filteredOut,
         scores,
@@ -577,23 +605,83 @@ export function runDilemmaV2(config: V2RunConfig): V2RunResult {
       };
     }
 
-    const pairUpdates = computePairOutcome(pending[p0Id], pending[p1Id], scenario);
+    const pairUpdates = computePairOutcome(pending[p0Id], pending[p1Id], scenario, allActionIds);
 
     for (const playerId of config.players) {
       const update = pairUpdates[playerId];
+      const pendingChoice = pending[playerId];
+      const otherPending = pending[pendingChoice.otherId];
+      const memory = getConflictMemory(learningStore, playerId, pendingChoice.otherId);
+      const relationBefore = snapshotRelation(agents[playerId], pendingChoice.otherId);
+      const predicted = mostLikelyPredictedResponse(pendingChoice.memoryBefore, pendingChoice.chosenId, allActionIds);
+      const observedProbability = predictedResponseProb(
+        pendingChoice.memoryBefore,
+        pendingChoice.chosenId,
+        otherPending.chosenId,
+        allActionIds,
+      );
+      const predictionError = 1 - observedProbability;
+      const ownImpact = computeActionImpact(pendingChoice.chosenTemplate, scenario);
+      const observedImpact = computeActionImpact(otherPending.chosenTemplate, scenario);
+      const reward = computeConflictReward(
+        pendingChoice.compiled,
+        pendingChoice.chosenTemplate,
+        otherPending.chosenTemplate,
+        update,
+        ownImpact,
+        observedImpact,
+      );
+      const memoryAfter = cloneConflictMemory(updateConflictMemory({
+        memory,
+        myActionId: pendingChoice.chosenId,
+        otherActionId: otherPending.chosenId,
+        reward,
+        predictionError,
+        observedImpact,
+        ownImpact,
+        relationBefore,
+      }));
+      const chosenScore = pendingChoice.scores.find((score) => score.actionId === pendingChoice.chosenId);
       const trace: V2RoundTrace = {
-        compiled: { agent: pending[playerId].compiled, dyad: pending[playerId].dyad },
-        availableActions: pending[playerId].availableActions,
-        filteredOut: pending[playerId].filteredOut,
-        scores: pending[playerId].scores,
-        chosenActionId: pending[playerId].chosenId,
+        compiled: { agent: pendingChoice.compiled, dyad: pendingChoice.dyad },
+        availableActions: pendingChoice.availableActions,
+        filteredOut: pendingChoice.filteredOut,
+        scores: pendingChoice.scores,
+        chosenActionId: pendingChoice.chosenId,
         stateUpdate: update,
-        explanation: pending[playerId].explanation,
+        learning: {
+          tick: round,
+          agentId: playerId,
+          otherId: pendingChoice.otherId,
+          actionId: pendingChoice.chosenId,
+          otherActionId: otherPending.chosenId,
+          utility: {
+            baseU: chosenScore?.baseU ?? 0,
+            learnedQ: chosenScore?.learnedQ ?? 0,
+            expectedResponse: chosenScore?.learnedExpectedResponse ?? 0,
+            finalU: chosenScore?.U ?? 0,
+          },
+          prediction: {
+            expectedOtherActionId: predicted.actionId,
+            observedOtherActionId: otherPending.chosenId,
+            predictedProbability: observedProbability,
+            predictionError,
+          },
+          reward,
+          memoryBefore: pendingChoice.memoryBefore,
+          memoryAfter,
+          relationBefore,
+          relationAfter: relationBefore,
+        },
+        explanation: pendingChoice.explanation,
       };
 
       traces[playerId] = trace;
       allTraces[playerId].push(trace);
-      applyStateUpdate(agents[playerId], pending[playerId].otherId, update);
+      applyStateUpdate(agents[playerId], pendingChoice.otherId, update);
+      if (trace.learning) {
+        trace.learning.relationAfter = snapshotRelation(agents[playerId], pendingChoice.otherId);
+      }
     }
 
     game.rounds.push({ index: round, choices, traces });
@@ -765,13 +853,28 @@ function scoreActions(
   round: number,
   totalRounds: number,
   instPressure: number,
+  memory: ConflictLearningMemory,
 ): ActionScore[] {
   const oppEstimate = estimateOpponentResponse(scenario, agent, other, dyad, reverseDyad, round, totalRounds, instPressure);
+  const learningCfg = DILEMMA_LEARNING_FORMULA.scoring;
+  const allActionIds = scenario.actionPool.map((candidate) => candidate.id);
 
   return actions.map((action) => {
     const base = computeActionBaseTerms(action, scenario, agent, other, dyad, round, totalRounds, instPressure);
     const O = computeExpectedResponseUtility(action, scenario, agent, other, dyad, reverseDyad, oppEstimate);
-    const U = base.G + base.R + base.I + base.L + base.S + base.M + O - base.X;
+    const baseU = base.G + base.R + base.I + base.L + base.S + base.M + O - base.X;
+    const learnedQ = getLearnedActionValue(memory, action.id);
+    const learnedExpectedResponse = estimateLearnedOpponentResponseValue(memory, action, scenario, allActionIds);
+    const volatilityPenalty = memory.volatility * riskyActionWeight(action, scenario);
+    const habitBias = Math.log1p(memory.actionCount[action.id] ?? 0);
+    const betrayalDebtPenalty = memory.betrayalDebt * trustSensitiveActionPenalty(action, scenario);
+    const U =
+      baseU
+      + learningCfg.learnedQWeight * learnedQ
+      + learningCfg.expectedResponseWeight * learnedExpectedResponse
+      + learningCfg.habitBiasWeight * habitBias
+      - learningCfg.volatilityPenaltyWeight * volatilityPenalty
+      - learningCfg.betrayalDebtPenaltyWeight * betrayalDebtPenalty;
 
     return {
       actionId: action.id,
@@ -784,6 +887,12 @@ function scoreActions(
       M: base.M,
       O,
       X: base.X,
+      baseU,
+      learnedQ,
+      learnedExpectedResponse,
+      volatilityPenalty,
+      habitBias,
+      betrayalDebtPenalty,
       probability: 0,
       chosen: false,
       expectedOtherActionId: oppEstimate.bestActionId,
@@ -1096,6 +1205,135 @@ function isBetrayalAction(action: ActionTemplate): boolean {
   return action.socialTags.includes('deceive') || action.socialTags.includes('betrayal') || action.socialTags.includes('lie');
 }
 
+function computeActionImpact(action: ActionTemplate, scenario: ScenarioTemplate): ActionImpact {
+  const tags = new Set(action.socialTags.map((tag) => tag.toLowerCase()));
+  const p = action.profile;
+  const supportTag = tags.has('support') || tags.has('help') || tags.has('protect') || action.id === scenario.cooperativeActionId;
+  const harmTag = tags.has('harm') || tags.has('punish') || action.id === 'reject' || action.id === 'take_all';
+  const betrayalTag = tags.has('betrayal') || tags.has('deceive') || tags.has('lie') || action.id === 'defect' || action.id === 'take_all' || action.id === 'stay_opaque';
+  const protectTag = tags.has('protect') || action.id === 'protect' || action.id === 'rupture';
+  const repairTag = tags.has('repair') || tags.has('forgive') || tags.has('pardon') || action.id === 'pardon' || action.id === 'give_more';
+  const dominanceTag = tags.has('hierarchical') || tags.has('punish') || action.id === 'rupture' || action.id === 'offer_skewed';
+  const submissionTag = action.id === 'comply' || action.id === 'accept' || tags.has('submit');
+  const withdrawalTag = action.id === 'delay' || action.id === 'hedge' || action.id === 'stay_opaque' || tags.has('withdraw');
+  const relationalUpside = Math.max(0, p.relationalFit ?? 0);
+  const relationalDamage = Math.max(0, -(p.relationalFit ?? 0));
+  const legitimacy = Math.max(0, p.legitimacyFit ?? 0);
+
+  const support = clamp01((supportTag ? 0.55 : 0) + relationalUpside * 0.25 + Math.max(0, p.mirrorFit ?? 0) * 0.15);
+  const harm = clamp01((harmTag ? 0.55 : 0) + relationalDamage * 0.24 + Math.max(0, -(p.safetyFit ?? 0)) * 0.12);
+  const betrayal = clamp01((betrayalTag ? 0.60 : 0) + (tags.has('betrayal') ? 0.20 : 0) + relationalDamage * 0.18);
+  const deception = clamp01((tags.has('deceive') || tags.has('lie') ? 0.65 : 0) + (action.id === 'manipulate' ? 0.25 : 0));
+  const repair = clamp01((repairTag ? 0.55 : 0) + support * 0.35 + relationalUpside * 0.18);
+  const dominance = clamp01((dominanceTag ? 0.48 : 0) + harm * 0.25 + legitimacy * 0.12);
+  const submission = clamp01((submissionTag ? 0.50 : 0) + (action.id === 'offer_fair' ? 0.15 : 0));
+  const withdrawal = clamp01((withdrawalTag ? 0.50 : 0) + Math.max(0, p.safetyFit ?? 0) * 0.12);
+  const humiliation = clamp01((tags.has('punish') ? 0.45 : 0) + (scenario.visibility.audiencePresent ? harm * 0.25 : harm * 0.08));
+  const protection = clamp01((protectTag ? 0.60 : 0) + support * 0.25 + Math.max(0, p.safetyFit ?? 0) * 0.15);
+
+  return { support, harm, betrayal, deception, repair, dominance, submission, withdrawal, humiliation, protection };
+}
+
+function estimateLearnedOpponentResponseValue(
+  memory: ConflictLearningMemory,
+  action: ActionTemplate,
+  scenario: ScenarioTemplate,
+  allActionIds: readonly string[],
+): number {
+  const evidence = allActionIds.reduce((sum, otherActionId) => {
+    return sum + (memory.opponentResponseCount[responseCountKey(action.id, otherActionId)] ?? 0);
+  }, 0);
+  if (evidence <= 0) return 0;
+
+  let value = 0;
+  for (const otherActionId of allActionIds) {
+    const otherAction = scenario.actionPool.find((candidate) => candidate.id === otherActionId);
+    if (!otherAction) continue;
+    const p = predictedResponseProb(memory, action.id, otherActionId, allActionIds);
+    value += p * observedActionResponseValue(otherAction, scenario);
+  }
+  return value;
+}
+
+function observedActionResponseValue(action: ActionTemplate, scenario: ScenarioTemplate): number {
+  const impact = computeActionImpact(action, scenario);
+  return (
+    0.70 * impact.support
+    + 0.45 * impact.repair
+    + 0.35 * impact.protection
+    - 0.75 * impact.harm
+    - 0.85 * impact.betrayal
+    - 0.45 * impact.deception
+    - 0.30 * impact.dominance
+    - 0.35 * impact.humiliation
+  );
+}
+
+function riskyActionWeight(action: ActionTemplate, scenario: ScenarioTemplate): number {
+  const impact = computeActionImpact(action, scenario);
+  return clamp01(
+    0.45 * impact.betrayal
+    + 0.30 * impact.harm
+    + 0.20 * impact.deception
+    + 0.15 * impact.dominance
+    + 0.10 * (action.profile.expectedCost ?? 0),
+  );
+}
+
+function trustSensitiveActionPenalty(action: ActionTemplate, scenario: ScenarioTemplate): number {
+  const impact = computeActionImpact(action, scenario);
+  return clamp01(
+    0.55 * impact.support
+    + 0.35 * impact.repair
+    + 0.20 * impact.submission
+    + 0.10 * impact.withdrawal
+    - 0.25 * impact.harm,
+  );
+}
+
+function computeConflictReward(
+  agent: CompiledAgent,
+  ownAction: ActionTemplate,
+  otherAction: ActionTemplate,
+  update: StateUpdate,
+  ownImpact: ActionImpact,
+  observedImpact: ActionImpact,
+): ConflictReward {
+  const cfg = DILEMMA_LEARNING_FORMULA.reward;
+  const payoff = ownAction.payoffVs?.[otherAction.id] ?? 0;
+  const goalGain = payoff + 0.20 * (ownAction.profile.goalFit ?? 0);
+  const safetyGain =
+    0.35 * (ownAction.profile.safetyFit ?? 0)
+    + 0.25 * ownImpact.protection
+    - 0.25 * observedImpact.harm
+    - 0.18 * observedImpact.dominance
+    - cfg.stressScale * Math.max(0, update.stressDelta);
+  const relationGain =
+    cfg.relationScale
+    * (update.trustDelta + 0.65 * update.bondDelta - 0.70 * update.conflictDelta - 0.50 * update.fearDelta);
+  const powerGain =
+    ownImpact.dominance
+    + 0.45 * ownImpact.deception
+    + 0.20 * ownImpact.withdrawal
+    - 0.40 * observedImpact.dominance
+    - 0.20 * ownImpact.submission;
+  const moralCost =
+    cfg.moralCostScale
+    * (ownImpact.betrayal + 0.65 * ownImpact.harm + 0.35 * ownImpact.deception)
+    * (agent.cognitive.shameGuiltSensitivity / 100);
+  const stressCost = Math.max(0, update.stressDelta) * cfg.stressScale + Math.max(0, update.fatigueDelta) * 0.05;
+  const powerWeight = cfg.powerWeightBase + cfg.powerWeightScale * (agent.axes.A_Power_Sovereignty ?? 0.5);
+  const total =
+    agent.weights.wG * goalGain
+    + agent.weights.wS * safetyGain
+    + agent.weights.wR * relationGain
+    + powerWeight * powerGain
+    - agent.weights.wM * moralCost
+    - agent.weights.wX * stressCost;
+
+  return { total, goalGain, safetyGain, relationGain, powerGain, moralCost, stressCost };
+}
+
 function computeIntrinsicSelfEffect(agentId: string, action: ActionTemplate, agent: CompiledAgent): StateUpdate {
   const cost = action.profile.expectedCost ?? 0;
   const isSupportive = action.socialTags.includes('support') || action.socialTags.includes('help') || action.socialTags.includes('protect');
@@ -1125,11 +1363,51 @@ function computeObservedEffect(
   observedAction: ActionTemplate,
   observerDyad: CompiledDyad,
   scenario: ScenarioTemplate,
+  memory?: ConflictLearningMemory,
+  predictionError = 0,
 ): StateUpdate {
   const isSupportive = isSupportiveAction(observedAction, scenario);
   const isHarmful = isHarmfulAction(observedAction);
   const isBetrayal = isBetrayalAction(observedAction);
   const vulnerability = Math.max(0, -observerDyad.powerAsymmetry);
+  const impact = computeActionImpact(observedAction, scenario);
+  const behavesAsBetrayal = isBetrayal || impact.betrayal > 0 || impact.deception > 0;
+  const behavesAsHarm = isHarmful || impact.harm > 0 || impact.dominance > 0;
+  const surprise = clamp01(predictionError);
+  const betrayalDebt = memory?.betrayalDebt ?? 0;
+  const repairCredit = memory?.repairCredit ?? 0;
+  const conflictMomentum = memory?.conflictMomentum ?? 0;
+  const fearTrace = memory?.fearTrace ?? 0;
+  const volatility = memory?.volatility ?? 0;
+  const trustSensitivity = 0.5 + observerDyad.rel.trust;
+  const repairCredibility = clamp01(1 - 0.35 * volatility + 0.15 * observerDyad.rel.respect);
+
+  let trustDelta = isSupportive ? 0.10 : behavesAsBetrayal ? -0.18 : behavesAsHarm ? -0.12 : observedAction.id === scenario.cooperativeActionId ? 0.05 : -0.01;
+  let bondDelta = isSupportive ? 0.05 : behavesAsBetrayal ? -0.06 : behavesAsHarm ? -0.03 : 0;
+  let conflictDelta = isSupportive ? -0.05 : behavesAsBetrayal ? 0.15 : behavesAsHarm ? 0.10 : 0.01;
+  let fearDelta = behavesAsHarm ? 0.06 * (1 + vulnerability) : behavesAsBetrayal ? 0.02 * (1 + vulnerability * 0.5) : 0;
+  let stressDelta = isSupportive ? -2 : behavesAsHarm ? 6 : behavesAsBetrayal ? 5 : 0;
+
+  if (behavesAsBetrayal) {
+    trustDelta -= 0.08 * surprise * trustSensitivity + 0.035 * betrayalDebt;
+    bondDelta -= 0.025 * surprise * observerDyad.rel.bond;
+    conflictDelta += 0.04 * surprise + 0.035 * conflictMomentum;
+    stressDelta += Math.round(2 * surprise * trustSensitivity);
+  }
+
+  if (behavesAsHarm) {
+    fearDelta += 0.02 * fearTrace + 0.03 * impact.dominance * (1 + vulnerability);
+    conflictDelta += 0.02 * conflictMomentum;
+  }
+
+  if (isSupportive || impact.repair > 0) {
+    const repairContext = clamp01(observerDyad.rel.conflict + 0.5 * repairCredit);
+    trustDelta += 0.035 * repairCredibility * repairContext + 0.018 * repairCredit;
+    bondDelta += 0.02 * repairCredibility * repairContext;
+    conflictDelta -= 0.04 * repairCredibility * repairContext + 0.025 * repairCredit;
+    fearDelta -= 0.015 * repairCredibility * repairContext;
+    stressDelta -= Math.round(2 * repairCredibility * repairContext);
+  }
 
   return {
     agentId: observerId,
@@ -1137,14 +1415,14 @@ function computeObservedEffect(
     outcomeTag: 'observed_action',
     willDelta: 0,
     burnoutDelta: 0,
-    stressDelta: isSupportive ? -2 : isHarmful ? 6 : isBetrayal ? 5 : 0,
+    stressDelta,
     fatigueDelta: 0,
     shameDelta: 0,
-    tomObservation: { actionId: observedAction.id, socialTags: observedAction.socialTags, success: isSupportive ? 0.6 : isHarmful || isBetrayal ? -0.7 : 0 },
-    trustDelta: isSupportive ? 0.10 : isBetrayal ? -0.18 : isHarmful ? -0.12 : observedAction.id === scenario.cooperativeActionId ? 0.05 : -0.01,
-    bondDelta: isSupportive ? 0.05 : isBetrayal ? -0.06 : isHarmful ? -0.03 : 0,
-    conflictDelta: isSupportive ? -0.05 : isBetrayal ? 0.15 : isHarmful ? 0.10 : 0.01,
-    fearDelta: isHarmful ? 0.06 * (1 + vulnerability) : isBetrayal ? 0.02 * (1 + vulnerability * 0.5) : 0,
+    tomObservation: { actionId: observedAction.id, socialTags: observedAction.socialTags, success: isSupportive ? 0.6 : behavesAsHarm || behavesAsBetrayal ? -0.7 : 0 },
+    trustDelta,
+    bondDelta,
+    conflictDelta,
+    fearDelta,
   };
 }
 
@@ -1251,9 +1529,10 @@ function applyPerspectiveOutcomeMods(
 }
 
 function computePairOutcome(
-  a: { playerId: string; otherId: string; chosenTemplate: ActionTemplate; compiled: CompiledAgent; dyad: CompiledDyad; compiledOther: CompiledAgent; reverseDyad: CompiledDyad; },
-  b: { playerId: string; otherId: string; chosenTemplate: ActionTemplate; compiled: CompiledAgent; dyad: CompiledDyad; compiledOther: CompiledAgent; reverseDyad: CompiledDyad; },
+  a: { playerId: string; otherId: string; chosenId: string; chosenTemplate: ActionTemplate; compiled: CompiledAgent; dyad: CompiledDyad; compiledOther: CompiledAgent; reverseDyad: CompiledDyad; memoryBefore: ConflictLearningMemory; },
+  b: { playerId: string; otherId: string; chosenId: string; chosenTemplate: ActionTemplate; compiled: CompiledAgent; dyad: CompiledDyad; compiledOther: CompiledAgent; reverseDyad: CompiledDyad; memoryBefore: ConflictLearningMemory; },
   scenario: ScenarioTemplate,
+  allActionIds: readonly string[],
 ): Record<string, StateUpdate> {
   // Pair resolution is done after both decisions are known to avoid order bias:
   // each player gets (1) intrinsic self-effect, (2) observed opponent effect,
@@ -1265,8 +1544,22 @@ function computePairOutcome(
 
   addUpdate(updates[a.playerId], computeIntrinsicSelfEffect(a.playerId, a.chosenTemplate, a.compiled));
   addUpdate(updates[b.playerId], computeIntrinsicSelfEffect(b.playerId, b.chosenTemplate, b.compiled));
-  addUpdate(updates[a.playerId], computeObservedEffect(a.playerId, b.chosenTemplate, a.dyad, scenario));
-  addUpdate(updates[b.playerId], computeObservedEffect(b.playerId, a.chosenTemplate, b.dyad, scenario));
+  addUpdate(updates[a.playerId], computeObservedEffect(
+    a.playerId,
+    b.chosenTemplate,
+    a.dyad,
+    scenario,
+    a.memoryBefore,
+    1 - predictedResponseProb(a.memoryBefore, a.chosenId, b.chosenId, allActionIds),
+  ));
+  addUpdate(updates[b.playerId], computeObservedEffect(
+    b.playerId,
+    a.chosenTemplate,
+    b.dyad,
+    scenario,
+    b.memoryBefore,
+    1 - predictedResponseProb(b.memoryBefore, b.chosenId, a.chosenId, allActionIds),
+  ));
 
   const baseOutcomeTag = classifyPairOutcome(a.chosenTemplate, b.chosenTemplate, scenario);
   updates[a.playerId].outcomeTag = perspectiveOutcomeTag(baseOutcomeTag, a.dyad, a.compiledOther, a.chosenTemplate, b.chosenTemplate, scenario);
@@ -1323,7 +1616,7 @@ function applyStateUpdate(agent: AgentState, otherId: string, update: StateUpdat
     acute.moral_injury = Math.max(0, Math.min(100, (acute.moral_injury ?? 0) + update.shameDelta * 10));
   }
 
-  const rel = agent.relationships?.[otherId] as Record<string, number> | undefined;
+  const rel = agent.relationships?.[otherId] as Partial<Relationship> | undefined;
   if (rel) {
     rel.trust = clamp01((rel.trust ?? 0.5) + update.trustDelta);
     rel.bond = clamp01((rel.bond ?? 0.1) + update.bondDelta);
@@ -1344,6 +1637,16 @@ function applyStateUpdate(agent: AgentState, otherId: string, update: StateUpdat
 }
 
 // ═══════════════════════════════════════════════════════════════
+function snapshotRelation(agent: AgentState, otherId: string): ConflictRelationSnapshot {
+  const rel = agent.relationships?.[otherId] as Partial<Relationship> | undefined;
+  return {
+    trust: clamp01(Number(rel?.trust ?? 0.5)),
+    bond: clamp01(Number(rel?.bond ?? 0.1)),
+    conflict: clamp01(Number(rel?.conflict ?? 0.1)),
+    fear: clamp01(Number(rel?.fear ?? 0)),
+  };
+}
+
 function cloneAgents(world: WorldState, ids: readonly string[]): Record<string, AgentState> {
   const r: Record<string, AgentState> = {};
   for (const id of ids) {

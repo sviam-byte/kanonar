@@ -625,6 +625,35 @@ export const LOOKAHEAD = {
 
 // ─── Shorthand ────────────────────────────────────────────────────────────
 
+// ConflictLab learning loop coefficients.
+export const DILEMMA_LEARNING_FORMULA = {
+  scoring: {
+    learnedQWeight: 0.35,
+    expectedResponseWeight: 0.22,
+    volatilityPenaltyWeight: 0.18,
+    habitBiasWeight: 0.06,
+    betrayalDebtPenaltyWeight: 0.20,
+  },
+  memory: {
+    learningRateBase: 0.28,
+    countDecay: 0.96,
+    betrayalDebtDecay: 0.88,
+    repairCreditDecay: 0.86,
+    conflictMomentumDecay: 0.82,
+    fearTraceDecay: 0.86,
+    shameTraceDecay: 0.88,
+    volatilityDecay: 0.78,
+    responseAlpha: 1,
+  },
+  reward: {
+    relationScale: 2.4,
+    stressScale: 0.10,
+    powerWeightBase: 0.35,
+    powerWeightScale: 0.65,
+    moralCostScale: 0.75,
+  },
+} as const;
+
 export const FC = {
   drivers: DRIVERS_FORMULA,
   goal: GOAL_FORMULA,
@@ -640,6 +669,7 @@ export const FC = {
   tomMod: TOM_MODULATION,
   goalState: GOAL_STATE,
   lookahead: LOOKAHEAD,
+  dilemmaLearning: DILEMMA_LEARNING_FORMULA,
 } as const;
 
 export type FormulaConfig = typeof FC;

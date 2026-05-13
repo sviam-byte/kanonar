@@ -19,6 +19,16 @@ export {
   SCENARIO_PRESETS,
 } from './scenarios';
 export { explainDecision, summarizeGame } from './explainer';
+export {
+  createConflictLearningMemory,
+  createConflictLearningStore,
+  getConflictMemory,
+  getLearnedActionValue,
+  mostLikelyPredictedResponse,
+  predictedResponseProb,
+  updateActionValue,
+  updateConflictMemory,
+} from './learningMemory';
 export type {
   DilemmaSpec, DilemmaGameState, DilemmaRound, DilemmaAnalysis,
   ActionDecomposition, RoundTrace,
@@ -29,3 +39,11 @@ export type {
   ActionTemplate, ActionPresetOverride, ActionScore,
   StateUpdate, DilemmaClass, MechanicId, PressureSchedule,
 } from './types';
+export type {
+  ActionImpact,
+  ConflictLearningMemory,
+  ConflictLearningStore,
+  ConflictLearningTrace,
+  ConflictRelationSnapshot,
+  ConflictReward,
+} from './learningMemory';

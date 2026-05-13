@@ -4,6 +4,7 @@
 // v1 types are preserved for backward compatibility; v2 types are appended below.
 
 import type { WorldState, V42Metrics, TomBeliefTraits, Relationship } from '../../types';
+import type { ConflictLearningTrace } from './learningMemory';
 
 // ═══════════════════════════════════════════════════════════════
 // v1 types (used by catalog/engine/analysis/bridge/legacy runner)
@@ -279,6 +280,12 @@ export interface ActionScore {
   actionId: string;
   U: number;
   G: number; R: number; I: number; L: number; S: number; M: number; O: number; X: number;
+  baseU?: number;
+  learnedQ?: number;
+  learnedExpectedResponse?: number;
+  volatilityPenalty?: number;
+  habitBias?: number;
+  betrayalDebtPenalty?: number;
   probability: number;
   chosen: boolean;
   expectedOtherActionId?: string;
@@ -315,6 +322,7 @@ export interface V2RoundTrace {
   scores: ActionScore[];
   chosenActionId: string;
   stateUpdate: StateUpdate;
+  learning?: ConflictLearningTrace;
   explanation: string;
 }
 
