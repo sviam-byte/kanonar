@@ -334,7 +334,7 @@ const CoreDynamicsBlock: React.FC<{ core: V2RunResult['conflictCore'] }> = ({ co
             <div className="flex items-center justify-between gap-2">
               <div>
                 <div className="text-[10px] uppercase tracking-wider text-canon-faint">directed pair</div>
-                <div className="text-sm font-semibold text-canon-text">{from.replace('character-', '')} -> {to.replace('character-', '')}</div>
+                <div className="text-sm font-semibold text-canon-text">{from.replace('character-', '')}{' -> '}{to.replace('character-', '')}</div>
               </div>
               {regime && (
                 <span className={`rounded-full border px-2 py-1 text-[10px] font-semibold ${REGIME_CLASS[regime.regime] ?? 'border-canon-border text-canon-muted'}`}>
@@ -382,7 +382,7 @@ const CoreDynamicsBlock: React.FC<{ core: V2RunResult['conflictCore'] }> = ({ co
                 <span className="text-canon-faint">vs</span>
                 <span className="text-canon-accent-2">{actionLabel(frame.otherActionId)}</span>
                 <span className={`ml-auto rounded-full border px-1.5 py-0.5 ${REGIME_CLASS[frame.regimeAfter.regime] ?? 'border-canon-border text-canon-muted'}`}>
-                  {frame.regimeBefore.regime} -> {frame.regimeAfter.regime}
+                  {frame.regimeBefore.regime}{' -> '}{frame.regimeAfter.regime}
                 </span>
               </div>
               <div className="mt-2 grid grid-cols-2 md:grid-cols-4 gap-2 text-[9px]">

@@ -34,6 +34,7 @@ export function computeRelationDelta(input: RelationDeltaInput): RelationDelta {
   const protection = clamp01(observed.protection + own.protection);
   const withdrawal = clamp01(observed.withdrawal + 0.35 * own.withdrawal);
   const momentum = Math.min(2, memory.conflictMomentum);
+  const betrayalShock = betrayal * relation.trust * (0.5 + relation.bond) * (0.5 + pe);
 
   const trust =
     0.13 * support * (1 - relation.trust)
@@ -54,6 +55,7 @@ export function computeRelationDelta(input: RelationDeltaInput): RelationDelta {
   const conflict =
     0.18 * harm * (1 - relation.conflict)
     + 0.22 * betrayal * (1 - relation.conflict)
+    + 0.10 * betrayalShock * (1 - relation.conflict)
     + 0.13 * humiliation * (1 - relation.conflict)
     + 0.05 * withdrawal * (1 - relation.conflict)
     + 0.08 * momentum * (1 - relation.conflict)
