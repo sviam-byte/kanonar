@@ -8,12 +8,12 @@ export function finiteOrZero(value: number): number {
   return Number.isFinite(value) ? value : 0;
 }
 
-export function boundedLogitShift(current: number, drive: number, retention: number): number {
+export function boundedLogitShift(current: number, drive: number, driveScale: number): number {
   const eps = cfg.transition.epsilon;
   const safeCurrent = Math.min(1 - eps, Math.max(eps, clamp01(current)));
-  const safeRetention = Number.isFinite(retention) ? retention : 1;
+  const safeDriveScale = Number.isFinite(driveScale) ? driveScale : 1;
   const safeDrive = finiteOrZero(drive);
-  return clamp01(invLogit(logit(safeCurrent) + safeRetention * safeDrive));
+  return clamp01(invLogit(logit(safeCurrent) + safeDriveScale * safeDrive));
 }
 
 export function normalizeActionProbabilities(

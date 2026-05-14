@@ -28,6 +28,7 @@ export type ActionImpact = {
   withdrawal: number;
   humiliation: number;
   protection: number;
+  threat?: number;
 };
 
 export type ConflictReward = {
@@ -204,7 +205,7 @@ export function updateConflictMemory(input: ConflictMemoryUpdateInput): Conflict
 
   memory.betrayalDebt =
     cfg.betrayalDebtDecay * memory.betrayalDebt
-    + betrayalEvent * predictionError * clamp01(input.relationBefore.trust);
+    + betrayalEvent * predictionError * clamp01(input.relationBefore.trust) * (0.5 + clamp01(input.relationBefore.bond));
   memory.repairCredit =
     cfg.repairCreditDecay * memory.repairCredit
     + repairEvent * (1 - 0.5 * predictionError) * clamp01(input.relationBefore.conflict);

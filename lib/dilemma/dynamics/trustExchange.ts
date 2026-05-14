@@ -1,5 +1,9 @@
 import { CONFLICT_LAB_DYNAMICS_FORMULA } from '../../config/formulaConfig';
 import { clamp01 } from '../../util/math';
+import {
+  computeExpectedResponseUtility,
+  learnedActionValue,
+} from './learningDynamics';
 import type {
   ActionUtilityBreakdown,
   AgentDelta,
@@ -18,6 +22,13 @@ import type {
 const cfg = CONFLICT_LAB_DYNAMICS_FORMULA;
 
 export const TRUST_EXCHANGE_ACTION_ORDER = ['trust', 'withhold', 'betray'] as const satisfies readonly ConflictActionId[];
+
+type TrustExchangeRelationMode =
+  | 'mutual_trust'
+  | 'betrayal_victim'
+  | 'betrayal_actor'
+  | 'mutual_betrayal'
+  | 'guarded';
 
 export function createTrustExchangeProtocol(players: readonly [ConflictPlayerId, ConflictPlayerId]): ConflictProtocol {
   const roles: Record<ConflictPlayerId, ConflictRole> = {
@@ -47,11 +58,11 @@ export function resolveTrustExchangeOutcome(
   const bAction = actions[b];
 
   if (aAction === 'trust' && bAction === 'trust') {
-    return symmetricOutcome(state, 'mutual_trust', actions, cfg.trustExchange.mutualTrust.payoff, cfg.trustExchange.mutualTrust.agent, cfg.trustExchange.mutualTrust.relation, ['trust_reinforced']);
+    return symmetricOutcome(state, 'mutual_trust', actions, cfg.trustExchange.mutualTrust.payoff, cfg.trustExchange.mutualTrust.agent, cfg.trustExchange.mutualTrust.relation, 'mutual_trust', ['trust_reinforced']);
   }
 
   if (aAction === 'betray' && bAction === 'betray') {
-    return symmetricOutcome(state, 'mutual_betrayal', actions, cfg.trustExchange.mutualBetray.payoff, cfg.trustExchange.mutualBetray.agent, cfg.trustExchange.mutualBetray.relation, ['betrayal', 'mutual_defection']);
+    return symmetricOutcome(state, 'mutual_betrayal', actions, cfg.trustExchange.mutualBetray.payoff, cfg.trustExchange.mutualBetray.agent, cfg.trustExchange.mutualBetray.relation, 'mutual_betrayal', ['betrayal', 'mutual_defection']);
   }
 
   if (aAction === 'trust' && bAction === 'betray') {
@@ -67,6 +78,8 @@ export function resolveTrustExchangeOutcome(
       cfg.trustExchange.trustVsBetray.betrayerAgent,
       cfg.trustExchange.trustVsBetray.victimRelation,
       cfg.trustExchange.trustVsBetray.betrayerRelation,
+      'betrayal_victim',
+      'betrayal_actor',
       ['betrayal', 'exploitation'],
     );
   }
@@ -84,6 +97,8 @@ export function resolveTrustExchangeOutcome(
       cfg.trustExchange.trustVsBetray.betrayerAgent,
       cfg.trustExchange.trustVsBetray.victimRelation,
       cfg.trustExchange.trustVsBetray.betrayerRelation,
+      'betrayal_victim',
+      'betrayal_actor',
       ['betrayal', 'exploitation'],
     );
   }
@@ -101,6 +116,8 @@ export function resolveTrustExchangeOutcome(
       cfg.trustExchange.trustVsWithhold.withholdingAgent,
       cfg.trustExchange.trustVsWithhold.trustingRelation,
       cfg.trustExchange.trustVsWithhold.withholdingRelation,
+      'guarded',
+      'guarded',
       ['guarded_response'],
     );
   }
@@ -118,6 +135,8 @@ export function resolveTrustExchangeOutcome(
       cfg.trustExchange.trustVsWithhold.withholdingAgent,
       cfg.trustExchange.trustVsWithhold.trustingRelation,
       cfg.trustExchange.trustVsWithhold.withholdingRelation,
+      'guarded',
+      'guarded',
       ['guarded_response'],
     );
   }
@@ -135,6 +154,8 @@ export function resolveTrustExchangeOutcome(
       cfg.trustExchange.betrayVsWithhold.betrayerAgent,
       cfg.trustExchange.betrayVsWithhold.withholdingRelation,
       cfg.trustExchange.betrayVsWithhold.betrayerRelation,
+      'betrayal_victim',
+      'betrayal_actor',
       ['blocked_betrayal'],
     );
   }
@@ -152,11 +173,13 @@ export function resolveTrustExchangeOutcome(
       cfg.trustExchange.betrayVsWithhold.betrayerAgent,
       cfg.trustExchange.betrayVsWithhold.withholdingRelation,
       cfg.trustExchange.betrayVsWithhold.betrayerRelation,
+      'betrayal_victim',
+      'betrayal_actor',
       ['blocked_betrayal'],
     );
   }
 
-  return symmetricOutcome(state, 'mutual_withhold', actions, cfg.trustExchange.guarded.payoff, cfg.trustExchange.guarded.agent, cfg.trustExchange.guarded.relation, ['guarded_stasis']);
+  return symmetricOutcome(state, 'mutual_withhold', actions, cfg.trustExchange.guarded.payoff, cfg.trustExchange.guarded.agent, cfg.trustExchange.guarded.relation, 'guarded', ['guarded_stasis']);
 }
 
 function scoreTrustExchangeAction(
@@ -168,6 +191,7 @@ function scoreTrustExchangeAction(
   const mod = cfg.utility.modulation;
   const self = observation.self;
   const relation = observation.relationToOther;
+  const memory = observation.memoryToOther;
   const env = observation.environment;
 
   const relationQuality = clamp01(
@@ -203,7 +227,7 @@ function scoreTrustExchangeAction(
   const I = profile.identity + cooperativeIdentity * (actionId === 'betray' ? mod.identity.betray : mod.identity.other);
   const P = profile.prediction + relation.trust - relation.perceivedThreat;
   const C = profile.cost + self.stress * mod.cost.stress + env.visibility * (actionId === 'betray' ? mod.cost.betrayVisibility : mod.cost.otherVisibility);
-  const U =
+  const baseU =
     weights.goal * G
     + weights.relation * R
     + weights.security * S
@@ -211,8 +235,19 @@ function scoreTrustExchangeAction(
     + weights.identity * I
     + weights.prediction * P
     - weights.cost * C;
+  const learnedQ = learnedActionValue(memory, actionId);
+  const expectedResponse = computeExpectedResponseUtility(memory, actionId, TRUST_EXCHANGE_ACTION_ORDER);
+  const volatilityPenalty = memory.volatility * (actionId === 'trust' ? 0.35 : actionId === 'betray' ? 0.25 : 0.10);
+  const betrayalDebtPenalty = memory.betrayalDebt * (actionId === 'trust' ? 0.45 : actionId === 'withhold' ? 0.16 : 0.08);
+  const learning = cfg.learningUtility;
+  const U =
+    baseU
+    + learning.learnedQWeight * learnedQ
+    + learning.expectedResponseWeight * expectedResponse
+    - learning.volatilityPenaltyWeight * volatilityPenalty
+    - learning.betrayalDebtPenaltyWeight * betrayalDebtPenalty;
 
-  return { actionId, U, G, R, S, L, I, P, C };
+  return { actionId, U, baseU, learnedQ, expectedResponse, volatilityPenalty, betrayalDebtPenalty, G, R, S, L, I, P, C };
 }
 
 function symmetricOutcome(
@@ -222,6 +257,7 @@ function symmetricOutcome(
   payoff: number,
   agentDelta: AgentDelta,
   relationDelta: RelationDelta,
+  relationMode: TrustExchangeRelationMode,
   eventTags: readonly string[],
 ): ConflictOutcome {
   const [a, b] = state.players;
@@ -231,7 +267,10 @@ function symmetricOutcome(
     actions,
     payoffs: { [a]: payoff, [b]: payoff },
     agentDeltas: { [a]: agentDelta, [b]: agentDelta },
-    relationDeltas: { [a]: { [b]: relationDelta }, [b]: { [a]: relationDelta } },
+    relationDeltas: {
+      [a]: { [b]: computeTrustExchangeRelationDelta(state, a, b, relationDelta, relationMode) },
+      [b]: { [a]: computeTrustExchangeRelationDelta(state, b, a, relationDelta, relationMode) },
+    },
     environmentDelta: {},
     eventTags,
   };
@@ -249,6 +288,8 @@ function asymmetricOutcome(
   secondAgentDelta: AgentDelta,
   firstRelationDelta: RelationDelta,
   secondRelationDelta: RelationDelta,
+  firstRelationMode: TrustExchangeRelationMode,
+  secondRelationMode: TrustExchangeRelationMode,
   eventTags: readonly string[],
 ): ConflictOutcome {
   return {
@@ -257,9 +298,61 @@ function asymmetricOutcome(
     actions,
     payoffs: { [firstPlayer]: firstPayoff, [secondPlayer]: secondPayoff },
     agentDeltas: { [firstPlayer]: firstAgentDelta, [secondPlayer]: secondAgentDelta },
-    relationDeltas: { [firstPlayer]: { [secondPlayer]: firstRelationDelta }, [secondPlayer]: { [firstPlayer]: secondRelationDelta } },
+    relationDeltas: {
+      [firstPlayer]: { [secondPlayer]: computeTrustExchangeRelationDelta(state, firstPlayer, secondPlayer, firstRelationDelta, firstRelationMode) },
+      [secondPlayer]: { [firstPlayer]: computeTrustExchangeRelationDelta(state, secondPlayer, firstPlayer, secondRelationDelta, secondRelationMode) },
+    },
     environmentDelta: {},
     eventTags,
+  };
+}
+
+function computeTrustExchangeRelationDelta(
+  state: ConflictState,
+  fromId: ConflictPlayerId,
+  toId: ConflictPlayerId,
+  baseDelta: RelationDelta,
+  mode: TrustExchangeRelationMode,
+): RelationDelta {
+  const relationBefore = state.relations[fromId][toId];
+  const dynamics = cfg.transitionDynamics.trustExchange;
+  const pressure = clamp01(
+    0.5 * state.environment.resourceScarcity
+    + 0.3 * state.environment.externalPressure
+    + 0.2 * state.environment.visibility,
+  );
+
+  const scale = mode === 'mutual_trust'
+    ? 1
+      + dynamics.repairLowTrustAmplifier * (1 - relationBefore.trust)
+      + dynamics.repairLowBondAmplifier * (1 - relationBefore.bond)
+      + dynamics.repairConflictAmplifier * relationBefore.conflict
+    : mode === 'betrayal_victim'
+      ? 1
+        + dynamics.betrayalTrustAmplifier * relationBefore.trust
+        + dynamics.betrayalBondAmplifier * relationBefore.bond
+        + dynamics.betrayalPressureAmplifier * pressure
+      : mode === 'mutual_betrayal'
+        ? 1
+          + 0.5 * dynamics.betrayalTrustAmplifier * relationBefore.trust
+          + dynamics.betrayalPressureAmplifier * pressure
+        : mode === 'guarded'
+          ? 1
+            + dynamics.guardedConflictAmplifier * relationBefore.conflict
+            + dynamics.guardedScarcityAmplifier * state.environment.resourceScarcity
+          : 1;
+
+  return scaleRelationDelta(baseDelta, scale);
+}
+
+function scaleRelationDelta(delta: RelationDelta, scale: number): RelationDelta {
+  const safeScale = Number.isFinite(scale) ? Math.max(0, scale) : 1;
+  return {
+    ...(delta.trust !== undefined ? { trust: delta.trust * safeScale } : {}),
+    ...(delta.bond !== undefined ? { bond: delta.bond * safeScale } : {}),
+    ...(delta.perceivedThreat !== undefined ? { perceivedThreat: delta.perceivedThreat * safeScale } : {}),
+    ...(delta.conflict !== undefined ? { conflict: delta.conflict * safeScale } : {}),
+    ...(delta.perceivedLegitimacy !== undefined ? { perceivedLegitimacy: delta.perceivedLegitimacy * safeScale } : {}),
   };
 }
 
@@ -284,6 +377,7 @@ export function defaultConflictRelationState(patch?: Partial<ConflictRelationSta
     perceivedThreat: 0.2,
     conflict: 0.2,
     perceivedLegitimacy: 0.5,
+    volatility: 0,
     ...(patch ?? {}),
   };
 }

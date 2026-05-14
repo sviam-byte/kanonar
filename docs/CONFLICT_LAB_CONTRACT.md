@@ -116,6 +116,27 @@ Current repo reality: `lib/dilemma/mechanics.ts` currently defines
 `MechanicTemplate` entries with `actionPool` and `payoffVs`. Treat that as a
 transitional catalog, not the final mechanic-kernel architecture.
 
+Canonical core direction:
+
+- `lib/dilemma/dynamics/*` is the canonical deterministic math core for new
+  Conflict Lab protocol work.
+- `lib/dilemma/runner.ts` / `runDilemmaV2` remains a legacy/experimental
+  scenario runner with learning traces and UI-facing scenario behavior.
+- Do not duplicate new mechanic rules in both systems. New protocol kernels
+  should land in `dynamics/*` first, then legacy/UI integration can adapt to
+  them explicitly.
+- If legacy runner behavior and `dynamics/*` disagree, document the bridge or
+  migration decision instead of silently treating both as canonical.
+- New canonical protocol kernels must include memory, nonlinear relation
+  dynamics, regime/hysteresis, and trajectory-frame tests. A protocol that only
+  validates action labels and payoff tables is not complete.
+- UI surfaces must not present an unsupported protocol as canonical dynamics.
+  In v1.5 the executable canonical runtime is trust-only: `trust_exchange` may
+  report `canonical_dynamics`, while other protocol cards must show an explicit
+  `unsupported_kernel` / kernel-pending status until their typed roles, phases,
+  observation, payoff, transition, memory, relation, regime, and trajectory
+  tests exist.
+
 ## Type Discipline
 
 Use strict TypeScript domain modeling.

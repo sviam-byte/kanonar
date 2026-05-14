@@ -4,7 +4,7 @@ import { runDilemmaV2 } from '../../lib/dilemma/runner';
 import { allScenarios, getScenario } from '../../lib/dilemma/scenarios';
 import { allMechanics } from '../../lib/dilemma/mechanics';
 import type {
-  ScenarioTemplate, V2GameState, V2RoundTrace, V2RunResult, MechanicTemplate, PressureSchedule,
+  ScenarioTemplate, V2GameState, V2RoundTrace, V2RunResult, MechanicTemplate, PressureSchedule, ProtocolCardView,
 } from '../../lib/dilemma/types';
 import type { WorldState, AgentState, CharacterEntity } from '../../types';
 import { useSandbox } from '../../contexts/SandboxContext';
@@ -29,6 +29,18 @@ const MECHANIC_ICONS: Record<string, string> = {
   ultimatum_split: '🪓',
   volunteer_sacrifice: '🩸',
   signaling_trust: '📡',
+};
+
+const TIMING_LABELS: Record<ProtocolCardView['timing'], string> = {
+  simultaneous: 'simultaneous',
+  sequential: 'sequential',
+  multi_phase: 'multi-phase',
+};
+
+const INFO_LABELS: Record<ProtocolCardView['information'], string> = {
+  complete: 'complete info',
+  hidden_type: 'hidden type',
+  partial_observation: 'partial observation',
 };
 
 const AXIS_META: Record<string, { label: string; color: string; desc: string }> = {
@@ -79,24 +91,108 @@ function buildMinimalWorld(chars: { entityId: string; [k: string]: unknown }[]):
 
 const ScenarioCard: React.FC<{
   s: ScenarioTemplate; selected: boolean; disabled?: boolean; onClick?: () => void;
-}> = ({ s, selected, disabled = false, onClick }) => (
-  <button onClick={disabled ? undefined : onClick}
-    disabled={disabled}
-    className={`text-left p-3 rounded-lg border transition-all ${disabled
-      ? 'border-canon-border/40 bg-canon-bg/40 opacity-55 cursor-not-allowed'
-      : selected
-        ? 'border-canon-accent bg-canon-accent/10 shadow-canon-1'
-        : 'border-canon-border bg-canon-card hover:border-canon-accent/40'}`}>
-    <div className="flex items-center gap-2">
-      <span className="text-lg">{CLASS_ICONS[s.dilemmaClass] ?? '◆'}</span>
-      <span className={`text-sm font-semibold ${selected ? 'text-canon-accent' : 'text-canon-text'}`}>{s.name}</span>
+}> = ({ s, selected, disabled = false, onClick }) => {
+  const protocol = s.protocol;
+  return (
+    <button onClick={disabled ? undefined : onClick}
+      disabled={disabled}
+      className={`text-left p-3 rounded-lg border transition-all ${disabled
+        ? 'border-canon-border/40 bg-canon-bg/40 opacity-55 cursor-not-allowed'
+        : selected
+          ? 'border-canon-accent bg-canon-accent/10 shadow-canon-1'
+          : 'border-canon-border bg-canon-card hover:border-canon-accent/40'}`}>
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-lg">{CLASS_ICONS[s.dilemmaClass] ?? '◆'}</span>
+          <span className={`text-sm font-semibold truncate ${selected ? 'text-canon-accent' : 'text-canon-text'}`}>{s.name}</span>
+        </div>
+        <span className="shrink-0 rounded-full border border-canon-border/50 px-1.5 py-0.5 text-[8px] text-canon-faint">{protocol.kernel}</span>
+      </div>
+      <div className="mt-2 flex flex-wrap gap-1">
+        <span className="rounded bg-canon-bg/70 px-1.5 py-0.5 text-[9px] text-canon-muted">{protocol.typeLabel}</span>
+        <span className="rounded bg-canon-bg/70 px-1.5 py-0.5 text-[9px] text-canon-muted">{protocol.symmetry}</span>
+        <span className="rounded bg-canon-bg/70 px-1.5 py-0.5 text-[9px] text-canon-muted">{INFO_LABELS[protocol.information]}</span>
+      </div>
+      <div className="mt-2 grid grid-cols-2 gap-1">
+        {protocol.roles.map((role) => (
+          <div key={role.id} className="rounded border border-canon-border/30 bg-canon-bg/35 px-2 py-1">
+            <div className="text-[9px] font-semibold text-canon-text truncate">{role.label}</div>
+            <div className="text-[8px] text-canon-faint line-clamp-1">{role.description}</div>
+          </div>
+        ))}
+      </div>
+      <div className="mt-2 space-y-1">
+        {protocol.phases.slice(0, 3).map((phase, index) => (
+          <div key={phase.id} className="flex items-center gap-1.5 text-[9px] text-canon-muted">
+            <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-canon-accent/10 font-mono text-[8px] text-canon-accent">{index + 1}</span>
+            <span className="truncate">{phase.label}</span>
+          </div>
+        ))}
+        {protocol.phases.length > 3 && <div className="pl-5 text-[8px] text-canon-faint">+{protocol.phases.length - 3} phase</div>}
+      </div>
+      <div className="mt-2 text-[9px] text-canon-faint line-clamp-2">
+        main: {protocol.primaryParameter}; secondary pressure {pct(s.institutionalPressure)}
+      </div>
+      {disabled && s.disabledReason && <div className="text-[10px] text-canon-faint mt-2 line-clamp-3">{s.disabledReason}</div>}
+    </button>
+  );
+};
+
+const ProtocolSkeleton: React.FC<{ protocol: ProtocolCardView; compact?: boolean }> = ({ protocol, compact = false }) => {
+  const lineClass = protocol.timing === 'sequential'
+    ? 'border-l border-canon-accent/30 pl-3'
+    : protocol.timing === 'multi_phase'
+      ? 'border-l border-dashed border-canon-accent-2/40 pl-3'
+      : 'grid grid-cols-1 sm:grid-cols-2 gap-2';
+
+  return (
+    <div className={`rounded-lg border border-canon-border/50 bg-canon-bg/35 p-3 ${compact ? 'space-y-2' : 'space-y-3'}`}>
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <div className="text-[10px] uppercase tracking-wider text-canon-faint">protocol kernel</div>
+          <div className="text-sm font-semibold text-canon-text">{protocol.title}</div>
+        </div>
+        <div className="text-right">
+          <div className="text-[9px] text-canon-accent">{TIMING_LABELS[protocol.timing]}</div>
+          <div className="text-[8px] text-canon-faint">{INFO_LABELS[protocol.information]}</div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        {protocol.roles.map((role) => (
+          <div key={role.id} className="rounded-md border border-canon-border/40 bg-canon-card/60 p-2">
+            <div className="text-[10px] font-semibold text-canon-text">{role.label}</div>
+            <div className="text-[9px] text-canon-muted">{role.description}</div>
+          </div>
+        ))}
+      </div>
+
+      <div className={lineClass}>
+        {protocol.phases.map((phase, index) => (
+          <div key={phase.id} className={`rounded-md border border-canon-border/30 bg-canon-card/40 p-2 ${protocol.timing === 'simultaneous' ? '' : 'mb-2 last:mb-0'}`}>
+            <div className="flex items-center gap-2">
+              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-canon-accent/10 font-mono text-[9px] text-canon-accent">{index + 1}</span>
+              <span className="text-[10px] font-semibold text-canon-text">{phase.label}</span>
+              <span className="ml-auto rounded bg-canon-bg px-1.5 py-0.5 text-[8px] text-canon-faint">{phase.actor}</span>
+            </div>
+            <div className="mt-1 text-[9px] text-canon-muted">{phase.description}</div>
+          </div>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[9px]">
+        <div className="rounded-md bg-canon-card/50 p-2">
+          <div className="text-canon-faint">payoff rule</div>
+          <div className="text-canon-muted">{protocol.coreRule}</div>
+        </div>
+        <div className="rounded-md bg-canon-card/50 p-2">
+          <div className="text-canon-faint">observation</div>
+          <div className="text-canon-muted">{protocol.observation}</div>
+        </div>
+      </div>
     </div>
-    <div className="text-[10px] text-canon-muted mt-1 line-clamp-2">
-      {s.dilemmaClass} · {s.actionPool.length} действий · давл. {pct(s.institutionalPressure)}
-    </div>
-    {disabled && s.disabledReason && <div className="text-[10px] text-canon-faint mt-2 line-clamp-3">{s.disabledReason}</div>}
-  </button>
-);
+  );
+};
 
 const MechanicSection: React.FC<{
   mechanic: MechanicTemplate;
@@ -158,6 +254,150 @@ const MiniBar: React.FC<{ value: number; label: string; color?: string }> = ({ v
     <span className="font-mono text-canon-muted w-8 text-right">{f2(value)}</span>
   </div>
 );
+
+const REGIME_CLASS: Record<string, string> = {
+  secure: 'text-canon-good bg-canon-good/10 border-canon-good/20',
+  strained: 'text-yellow-300 bg-yellow-300/10 border-yellow-300/20',
+  volatile: 'text-orange-300 bg-orange-300/10 border-orange-300/20',
+  hostile: 'text-canon-bad bg-canon-bad/10 border-canon-bad/20',
+  ruptured: 'text-red-300 bg-red-300/10 border-red-300/20',
+};
+
+const CoreDynamicsBlock: React.FC<{ core: V2RunResult['conflictCore'] }> = ({ core }) => {
+  if (!core) {
+    return (
+      <div className="p-4 text-xs text-canon-muted">
+        Canonical dynamics report is not available for this run.
+      </div>
+    );
+  }
+
+  if (core.runtime === 'unsupported_kernel') {
+    return (
+      <div className="p-4 space-y-3">
+        <div className="rounded-lg border border-canon-border/50 bg-canon-card p-3">
+          <div className="text-[10px] uppercase tracking-wider text-canon-faint">canonical runtime</div>
+          <div className="mt-1 text-sm font-semibold text-canon-text">Kernel pending</div>
+          <div className="mt-2 text-xs text-canon-muted">{core.reason}</div>
+          <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2 text-[10px]">
+            <div className="rounded bg-canon-bg/50 p-2">
+              <span className="text-canon-faint">mechanic</span>
+              <span className="float-right text-canon-text">{core.mechanicId}</span>
+            </div>
+            <div className="rounded bg-canon-bg/50 p-2">
+              <span className="text-canon-faint">protocol kernel</span>
+              <span className="float-right text-canon-text">{core.protocolKernel ?? 'unknown'}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const [a, b] = core.players;
+  const directions = [
+    { from: a, to: b, relation: core.finalState.relations[a]?.[b], memory: core.finalState.memories[a]?.[b], regime: core.finalState.regimes[a]?.[b] },
+    { from: b, to: a, relation: core.finalState.relations[b]?.[a], memory: core.finalState.memories[b]?.[a], regime: core.finalState.regimes[b]?.[a] },
+  ];
+  const frames = core.frames.slice(-Math.min(24, core.frames.length));
+  const actionLabel = (id: keyof typeof core.actionLabels | string) => core.actionLabels[id as keyof typeof core.actionLabels] ?? id;
+
+  return (
+    <div className="p-4 space-y-4">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+        <div className="rounded-lg border border-canon-border/50 bg-canon-card p-3">
+          <div className="text-[10px] uppercase tracking-wider text-canon-faint">canonical runtime</div>
+          <div className="mt-1 text-sm font-semibold text-canon-text">{core.runtime}</div>
+          <div className="mt-1 text-[10px] text-canon-muted">protocol: {core.protocolId}</div>
+          <div className="mt-3 text-[10px] text-canon-faint">trust-only canonical kernel; legacy action cards are not replayed here.</div>
+        </div>
+        <div className="rounded-lg border border-canon-border/50 bg-canon-card p-3">
+          <div className="text-[10px] uppercase tracking-wider text-canon-faint">trajectory metrics</div>
+          <MiniBar label="distance" value={core.metrics.distanceFromStart} color="#66d9ff" />
+          <MiniBar label="collapse" value={core.metrics.collapseScore} color="#ff5c7a" />
+          <MiniBar label="repair cap" value={core.metrics.repairCapacity} color="#42f5b3" />
+          {core.metrics.cyclePeriod !== undefined && <div className="text-[9px] text-canon-muted mt-1">cycle period: {core.metrics.cyclePeriod}</div>}
+        </div>
+        <div className="rounded-lg border border-canon-border/50 bg-canon-card p-3">
+          <div className="text-[10px] uppercase tracking-wider text-canon-faint">action vocabulary</div>
+          <div className="mt-2 space-y-1 text-[10px]">
+            <div><span className="text-canon-accent">trust</span><span className="text-canon-faint"> = {core.actionLabels.trust}</span></div>
+            <div><span className="text-canon-accent">withhold</span><span className="text-canon-faint"> = {core.actionLabels.withhold}</span></div>
+            <div><span className="text-canon-accent">betray</span><span className="text-canon-faint"> = {core.actionLabels.betray}</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+        {directions.map(({ from, to, relation, memory, regime }) => (
+          <div key={`${from}-${to}`} className="rounded-lg border border-canon-border/50 bg-canon-card p-3 space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <div className="text-[10px] uppercase tracking-wider text-canon-faint">directed pair</div>
+                <div className="text-sm font-semibold text-canon-text">{from.replace('character-', '')} -> {to.replace('character-', '')}</div>
+              </div>
+              {regime && (
+                <span className={`rounded-full border px-2 py-1 text-[10px] font-semibold ${REGIME_CLASS[regime.regime] ?? 'border-canon-border text-canon-muted'}`}>
+                  {regime.regime}
+                </span>
+              )}
+            </div>
+
+            {relation ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
+                <MiniBar label="T trust" value={relation.trust} color="#42f5b3" />
+                <MiniBar label="B bond" value={relation.bond} color="#9b87ff" />
+                <MiniBar label="C conflict" value={relation.conflict} color="#ff5c7a" />
+                <MiniBar label="F fear" value={relation.perceivedThreat} color="#ffaa44" />
+                <MiniBar label="V volatility" value={relation.volatility} color="#66d9ff" />
+              </div>
+            ) : <div className="text-[10px] text-canon-faint">No relation vector.</div>}
+
+            {memory ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 border-t border-canon-border/40 pt-2">
+                <MiniBar label="betray debt" value={memory.betrayalDebt} color="#ff5c7a" />
+                <MiniBar label="repair" value={memory.repairCredit} color="#42f5b3" />
+                <MiniBar label="momentum" value={memory.conflictMomentum} color="#ffaa44" />
+                <MiniBar label="fear trace" value={memory.fearTrace} color="#ff79c6" />
+                <MiniBar label="volatility" value={memory.volatility} color="#66d9ff" />
+              </div>
+            ) : <div className="text-[10px] text-canon-faint">No learning memory.</div>}
+          </div>
+        ))}
+      </div>
+
+      <div className="rounded-lg border border-canon-border/50 bg-canon-card p-3">
+        <div className="flex items-center justify-between">
+          <div className="text-[10px] uppercase tracking-wider text-canon-faint">trajectory frames</div>
+          <div className="text-[9px] text-canon-muted">{core.frames.length} frames</div>
+        </div>
+        <div className="mt-3 space-y-2 max-h-[480px] overflow-y-auto pr-1">
+          {frames.map((frame, index) => (
+            <div key={`${frame.tick}-${frame.agentId}-${index}`} className="rounded-md border border-canon-border/30 bg-canon-bg/35 p-2 text-[10px]">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-mono text-canon-faint">t{frame.tick}</span>
+                <span className="text-canon-text">{frame.agentId.replace('character-', '')}</span>
+                <span className="text-canon-faint">chose</span>
+                <span className="text-canon-accent">{actionLabel(frame.actionId)}</span>
+                <span className="text-canon-faint">vs</span>
+                <span className="text-canon-accent-2">{actionLabel(frame.otherActionId)}</span>
+                <span className={`ml-auto rounded-full border px-1.5 py-0.5 ${REGIME_CLASS[frame.regimeAfter.regime] ?? 'border-canon-border text-canon-muted'}`}>
+                  {frame.regimeBefore.regime} -> {frame.regimeAfter.regime}
+                </span>
+              </div>
+              <div className="mt-2 grid grid-cols-2 md:grid-cols-4 gap-2 text-[9px]">
+                <div><span className="text-canon-faint">PE</span> <span className="font-mono text-canon-text">{f3(frame.prediction.predictionError)}</span></div>
+                <div><span className="text-canon-faint">reward</span> <span className="font-mono text-canon-text">{f3(frame.reward.total)}</span></div>
+                <div><span className="text-canon-faint">U</span> <span className="font-mono text-canon-text">{f3(frame.utility.finalU)}</span></div>
+                <div><span className="text-canon-faint">margin</span> <span className="font-mono text-canon-text">{f3(frame.utility.marginFromSecondBest)}</span></div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
 
 /* ── V2 trace block ── */
 
@@ -419,8 +659,8 @@ export const DilemmaLabPanel: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
         <div className="lg:col-span-3 bg-canon-panel border border-canon-border rounded-lg p-4 space-y-4">
           <div className="space-y-3">
-            <div className="text-xs font-semibold text-canon-muted uppercase tracking-wider mb-2">Механика → пресет</div>
-            <div className="text-[11px] text-canon-muted">Свернули каталог до нескольких реальных механик. Ниже не “разные дилеммы”, а разные пресеты поверх общего каркаса.</div>
+            <div className="text-xs font-semibold text-canon-muted uppercase tracking-wider mb-2">Protocol kernel → preset</div>
+            <div className="text-[11px] text-canon-muted">Карточки показывают не только имя пресета, а роли, фазы, observability и payoff-правило механики. Давление остаётся вторичным параметром.</div>
             {mechanics
               .filter((mechanic) => (scenariosByMechanic[mechanic.id] ?? []).length > 0)
               .map((mechanic) => (
@@ -445,6 +685,7 @@ export const DilemmaLabPanel: React.FC = () => {
             )}
           </div>
           <div className="text-xs text-canon-muted bg-canon-card border border-canon-border/50 rounded-lg p-3 italic">{scenario.setup}</div>
+          <ProtocolSkeleton protocol={scenario.protocol} />
           <div className="text-[10px] text-canon-faint">
             Механика: <span className="text-canon-text">{scenario.mechanicName}</span> · класс: {scenario.dilemmaClass} · действия: {scenario.actionPool.map(a => a.label).join(' · ')}
           </div>
@@ -514,8 +755,38 @@ export const DilemmaLabPanel: React.FC = () => {
         </div>
 
         <div className="bg-canon-panel border border-canon-border rounded-lg p-4 space-y-3">
-          <div className="text-xs font-semibold text-canon-muted uppercase tracking-wider">Ставки и каркас</div>
+          <div className="text-xs font-semibold text-canon-muted uppercase tracking-wider">Ставки и протокол</div>
           <div className="text-[10px] text-canon-faint">{scenario.mechanicDescription}</div>
+          <div className="rounded-lg border border-canon-border/40 bg-canon-bg/35 p-2 space-y-1 text-[10px]">
+            <div className="flex justify-between gap-2">
+              <span className="text-canon-faint">kernel</span>
+              <span className="text-canon-text text-right">{scenario.protocol.kernel}</span>
+            </div>
+            <div className="flex justify-between gap-2">
+              <span className="text-canon-faint">type</span>
+              <span className="text-canon-text text-right">{scenario.protocol.typeLabel}</span>
+            </div>
+            <div className="flex justify-between gap-2">
+              <span className="text-canon-faint">main parameter</span>
+              <span className="text-canon-text text-right">{scenario.protocol.primaryParameter}</span>
+            </div>
+            <div>
+              <div className="text-canon-faint">state</div>
+              <div className="mt-1 flex flex-wrap gap-1">
+                {scenario.protocol.stateVariables.map((v) => (
+                  <span key={v} className="rounded bg-canon-card px-1.5 py-0.5 text-[9px] text-canon-muted">{v}</span>
+                ))}
+              </div>
+            </div>
+            <div>
+              <div className="text-canon-faint">attractor risk</div>
+              <div className="mt-1 flex flex-wrap gap-1">
+                {scenario.protocol.attractorRisks.map((risk) => (
+                  <span key={risk} className="rounded bg-canon-bad/10 px-1.5 py-0.5 text-[9px] text-canon-muted">{risk}</span>
+                ))}
+              </div>
+            </div>
+          </div>
           <MiniBar label="personal" value={scenario.stakes.personal} color="#ff79c6" />
           <MiniBar label="relational" value={scenario.stakes.relational} color="#9b87ff" />
           <MiniBar label="institutional" value={scenario.stakes.institutional} color="#ffaa44" />
@@ -584,9 +855,14 @@ export const DilemmaLabPanel: React.FC = () => {
               ),
             },
             {
-              label: 'Traces', content: (
+              label: 'Core Dynamics', content: (
+                <CoreDynamicsBlock core={result.conflictCore} />
+              ),
+            },
+            {
+              label: 'Legacy V2 Trace', content: (
                 <div className="p-4 space-y-3">
-                  <div className="text-xs text-canon-muted">7-осевой utility · confidence · объяснения · state updates</div>
+                  <div className="text-xs text-canon-muted">Legacy/experimental runner trace: 7-осевой utility · confidence · объяснения · state updates</div>
                   <div className="space-y-2 max-h-[600px] overflow-y-auto pr-1">
                     {game.rounds.map((_, i) => <V2TraceBlock key={i} round={i} game={game} scenario={scenario} />)}
                   </div>

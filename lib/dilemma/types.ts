@@ -5,6 +5,7 @@
 
 import type { WorldState, V42Metrics, TomBeliefTraits, Relationship } from '../../types';
 import type { ConflictLearningTrace } from './learningMemory';
+import type { ConflictCoreRunReport } from './dynamics/types';
 
 // ═══════════════════════════════════════════════════════════════
 // v1 types (used by catalog/engine/analysis/bridge/legacy runner)
@@ -199,6 +200,40 @@ export interface ScenarioVisibility {
   consequencesDeferred: boolean;
 }
 
+export type MechanicSymmetry = 'symmetric' | 'asymmetric';
+export type MechanicTiming = 'simultaneous' | 'sequential' | 'multi_phase';
+export type MechanicInformation = 'complete' | 'hidden_type' | 'partial_observation';
+
+export interface RoleView {
+  id: string;
+  label: string;
+  description: string;
+}
+
+export interface PhaseView {
+  id: string;
+  label: string;
+  description: string;
+  actor: 'A' | 'B' | 'both' | 'system';
+}
+
+export interface ProtocolCardView {
+  title: string;
+  kernel: MechanicId;
+  symmetry: MechanicSymmetry;
+  timing: MechanicTiming;
+  information: MechanicInformation;
+  typeLabel: string;
+  roles: readonly RoleView[];
+  phases: readonly PhaseView[];
+  observation: string;
+  primaryParameter: string;
+  secondaryParameter: string;
+  coreRule: string;
+  stateVariables: readonly string[];
+  attractorRisks: readonly string[];
+}
+
 export interface ActionTemplate {
   id: string;
   label: string;
@@ -227,6 +262,7 @@ export interface MechanicTemplate {
   id: MechanicId;
   name: string;
   description: string;
+  protocol: ProtocolCardView;
   defaultCooperativeActionId: string;
   actionPool: ActionTemplate[];
   defaultStakes: ScenarioStakes;
@@ -265,6 +301,7 @@ export interface ScenarioTemplate {
   mechanicId: MechanicId;
   mechanicName: string;
   mechanicDescription: string;
+  protocol: ProtocolCardView;
   dilemmaClass: DilemmaClass;
   setup: string;
   cooperativeActionId: string;
@@ -367,4 +404,5 @@ export interface V2RunResult {
   game: V2GameState;
   confidence: Record<string, number>;
   summaries: Record<string, string>;
+  conflictCore?: ConflictCoreRunReport;
 }

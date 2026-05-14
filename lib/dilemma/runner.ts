@@ -21,6 +21,7 @@ import { getScenario } from './scenarios';
 import { explainDecision, summarizeGame } from './explainer';
 import { initTomForCharacters } from '../tom/init';
 import { DILEMMA_LEARNING_FORMULA } from '../config/formulaConfig';
+import { runCanonicalConflictLab } from './dynamics/bridge';
 import {
   cloneConflictMemory,
   createConflictLearningStore,
@@ -526,6 +527,18 @@ export function runDilemmaV2(config: V2RunConfig): V2RunResult {
     if (tomState[pid]) (agents[pid] as any).tom[pid] = tomState[pid];
   }
 
+  const conflictCore = runCanonicalConflictLab({
+    scenario,
+    players: config.players,
+    totalRounds: config.totalRounds,
+    world: {
+      ...config.world,
+      agents: Object.values(agents) as AgentState[],
+    },
+    institutionalPressure: config.institutionalPressure,
+    pressureSchedule: config.pressureSchedule,
+  });
+
   const rngs: Record<string, () => number> = {
     [p0Id]: makeRng(config.seed ?? 42),
     [p1Id]: makeRng((config.seed ?? 42) * 2654435761),
@@ -700,7 +713,7 @@ export function runDilemmaV2(config: V2RunConfig): V2RunResult {
     );
   }
 
-  return { game, confidence, summaries };
+  return { game, confidence, summaries, conflictCore };
 }
 
 function filterActions(

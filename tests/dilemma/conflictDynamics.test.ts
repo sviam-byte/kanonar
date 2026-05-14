@@ -7,6 +7,7 @@ import {
   detectCyclePeriod,
   estimateDivergenceRate,
   getObservationForPlayer,
+  normalizeConflictState,
   repairCapacity,
   resolveProtocolStep,
   runConflictTrajectory,
@@ -159,6 +160,104 @@ describe('Conflict Lab deterministic dynamics scaffold', () => {
 
     expect(guarded.value.outcome.outcomeTag).toBe('mutual_withhold');
     expect(guarded.value.state.relations.a.b.conflict).toBeGreaterThan(makeState().relations.a.b.conflict);
+  });
+
+  it('makes betrayal impact state-dependent on current trust, bond, and pressure', () => {
+    const protocol = createTrustExchangeProtocol(['a', 'b'] as const);
+    const lowTrustState = makeState({
+      relations: {
+        a: { b: defaultConflictRelationState({ trust: 0.22, bond: 0.15, conflict: 0.15 }) },
+        b: { a: defaultConflictRelationState({ trust: 0.22, bond: 0.15, conflict: 0.15 }) },
+      },
+      environment: {
+        resourceScarcity: 0.1,
+        externalPressure: 0.1,
+        visibility: 0.1,
+        institutionalPressure: 0.45,
+      },
+    });
+    const highTrustState = makeState({
+      relations: {
+        a: { b: defaultConflictRelationState({ trust: 0.82, bond: 0.72, conflict: 0.15 }) },
+        b: { a: defaultConflictRelationState({ trust: 0.82, bond: 0.72, conflict: 0.15 }) },
+      },
+      environment: {
+        resourceScarcity: 0.8,
+        externalPressure: 0.6,
+        visibility: 0.7,
+        institutionalPressure: 0.45,
+      },
+    });
+    const low = resolveProtocolStep(lowTrustState, protocol, forced('trust', 'betray'));
+    const high = resolveProtocolStep(highTrustState, protocol, forced('trust', 'betray'));
+
+    expect(low.ok && high.ok).toBe(true);
+    if (!low.ok || !high.ok) return;
+
+    const lowTrustLoss = lowTrustState.relations.a.b.trust - low.value.state.relations.a.b.trust;
+    const highTrustLoss = highTrustState.relations.a.b.trust - high.value.state.relations.a.b.trust;
+    const lowConflictGain = low.value.state.relations.a.b.conflict - lowTrustState.relations.a.b.conflict;
+    const highConflictGain = high.value.state.relations.a.b.conflict - highTrustState.relations.a.b.conflict;
+
+    expect(highTrustLoss).toBeGreaterThan(lowTrustLoss);
+    expect(highConflictGain).toBeGreaterThan(lowConflictGain);
+  });
+
+  it('treats forced joint actions as external intervention by default', () => {
+    const state = makeState();
+    const protocol = createTrustExchangeProtocol(state.players);
+    const forcedStep = resolveProtocolStep(state, protocol, forced('betray', 'betray'));
+    const learningForcedStep = resolveProtocolStep(state, protocol, {
+      forcedJointActions: forced('betray', 'betray'),
+      forcedActionStrategyMode: 'learn_from_utility',
+    });
+    const autonomousStep = resolveProtocolStep(state, protocol);
+
+    expect(forcedStep.ok).toBe(true);
+    expect(learningForcedStep.ok).toBe(true);
+    expect(autonomousStep.ok).toBe(true);
+    if (!forcedStep.ok || !learningForcedStep.ok || !autonomousStep.ok) return;
+
+    expect(forcedStep.value.intervention?.forced).toBe(true);
+    expect(forcedStep.value.intervention?.strategyMode).toBe('freeze');
+    expect(forcedStep.value.actions).toEqual({ a: 'betray', b: 'betray' });
+    expect(forcedStep.value.strategyProfiles).toEqual(state.strategyProfiles);
+    expect(forcedStep.value.state.strategyProfiles).toEqual(state.strategyProfiles);
+    expect(forcedStep.value.state.memories).toEqual(normalizeConflictState(state).memories);
+
+    expect(learningForcedStep.value.intervention?.strategyMode).toBe('learn_from_utility');
+    expect(learningForcedStep.value.strategyProfiles).toEqual(autonomousStep.value.strategyProfiles);
+  });
+
+  it('autonomous steps update memory, prediction trace, reward, relation, and regime', () => {
+    const state = makeState({
+      relations: {
+        a: { b: defaultConflictRelationState({ trust: 0.8, bond: 0.7, conflict: 0.2 }) },
+        b: { a: defaultConflictRelationState({ trust: 0.25, bond: 0.2, conflict: 0.68 }) },
+      },
+      agents: {
+        a: defaultConflictAgentState({ cooperationTendency: 0.9, loyalty: 0.8, dominanceNeed: 0.1 }),
+        b: defaultConflictAgentState({ cooperationTendency: 0.1, loyalty: 0.1, dominanceNeed: 0.95, goalPressure: 0.95 }),
+      },
+      environment: {
+        resourceScarcity: 0.9,
+        externalPressure: 0.7,
+        visibility: 0.4,
+        institutionalPressure: 0.2,
+      },
+    });
+    const step = resolveProtocolStep(state, createTrustExchangeProtocol(state.players));
+
+    expect(step.ok).toBe(true);
+    if (!step.ok) return;
+
+    expect(step.value.state.memories?.a?.b).toBeDefined();
+    expect(step.value.state.regimes?.a?.b).toBeDefined();
+    expect(step.value.state.trace).toHaveLength(2);
+    expect(step.value.state.trace?.[0].prediction.predictionError).toBeGreaterThanOrEqual(0);
+    expect(Number.isFinite(step.value.state.trace?.[0].reward.total ?? NaN)).toBe(true);
+    expect(step.value.state.trace?.[0].memoryAfter).toEqual(step.value.state.memories?.a?.b);
+    expect(step.value.state.trace?.[0].regimeAfter).toEqual(step.value.state.regimes?.a?.b);
   });
 
   it('keeps replicator profiles finite, normalized, deterministic, and tie-stable', () => {

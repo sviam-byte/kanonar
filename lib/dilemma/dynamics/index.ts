@@ -7,6 +7,11 @@ export {
   trajectoryMetrics,
 } from './analysis';
 export {
+  buildCanonicalInitialState,
+  computeScheduledPressure,
+  runCanonicalConflictLab,
+} from './bridge';
+export {
   applyConflictTransition,
   evaluateActionUtilities,
   getAvailableActions,
@@ -18,6 +23,28 @@ export {
   validateJointAction,
 } from './engine';
 export {
+  actionImpactForTrustExchange,
+  ZERO_ACTION_IMPACT,
+} from './actionImpact';
+export {
+  computePredictionError,
+  computeReward,
+  updateActionValue,
+  updateConflictMemory,
+  updateOpponentModel,
+} from './learningDynamics';
+export {
+  applyRegimeHysteresis,
+  applyRelationDelta,
+  classifyRegime,
+  computeRelationDelta,
+} from './relationDynamics';
+export {
+  defaultConflictRegimeState,
+  normalizeConflictState,
+  normalizeRelationState,
+} from './state';
+export {
   createTrustExchangeProtocol,
   defaultConflictAgentState,
   defaultConflictRelationState,
@@ -26,9 +53,15 @@ export {
 export type {
   ActionUtilityBreakdown,
   AgentDelta,
+  CanonicalConflictState,
   ConflictAction,
   ConflictActionId,
   ConflictAgentState,
+  ConflictCoreActionLabels,
+  ConflictCoreRunReport,
+  ConflictCoreRunSupportedReport,
+  ConflictCoreRunUnsupportedReport,
+  ConflictCoreRuntime,
   ConflictEnvironmentKey,
   ConflictEnvironmentState,
   ConflictHistoryEvent,
@@ -39,12 +72,22 @@ export type {
   ConflictProtocolId,
   ConflictRelationKey,
   ConflictRelationState,
+  ConflictRegime,
+  ConflictRegimeState,
   ConflictRole,
   ConflictScalarKey,
+  ConflictStepOptions,
   ConflictState,
   ConflictStepResult,
   ConflictValidationError,
   ConflictValidationErrorCode,
+  ConflictInterventionTrace,
+  ConflictTrajectoryFrame,
+  ConflictUtilityTrace,
+  ConflictPredictionTrace,
+  DirectedMemoryMap,
+  DirectedRegimeMap,
+  ForcedActionStrategyMode,
   ConflictOutcome,
   RelationDelta,
   Result,
@@ -52,4 +95,3 @@ export type {
   TrajectoryMetrics,
   TrustExchangeActionId,
 } from './types';
-

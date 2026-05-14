@@ -388,6 +388,7 @@ function resolveScenarioPreset(preset: ScenarioPreset): ScenarioTemplate {
     mechanicId: mechanic.id,
     mechanicName: mechanic.name,
     mechanicDescription: mechanic.description,
+    protocol: mechanic.protocol,
     dilemmaClass: preset.dilemmaClass,
     setup: preset.setup,
     cooperativeActionId,

@@ -662,7 +662,9 @@ export const CONFLICT_LAB_DYNAMICS_FORMULA = {
   },
   transition: {
     epsilon: 1e-6,
-    agentRetention: {
+    // Logit-space drive multipliers, not decay/EMA retention.
+    // With zero drive, boundedLogitShift preserves the current scalar.
+    agentDriveScale: {
       goalPressure: 0.90,
       fear: 0.88,
       stress: 0.86,
@@ -672,19 +674,42 @@ export const CONFLICT_LAB_DYNAMICS_FORMULA = {
       cooperationTendency: 0.90,
       will: 0.92,
     },
-    relationRetention: {
+    relationDriveScale: {
       trust: 0.90,
       bond: 0.92,
       perceivedThreat: 0.88,
       conflict: 0.88,
       perceivedLegitimacy: 0.90,
+      volatility: 0.88,
     },
-    environmentRetention: {
+    environmentDriveScale: {
       resourceScarcity: 0.98,
       externalPressure: 0.98,
       visibility: 1.00,
       institutionalPressure: 1.00,
     },
+  },
+  transitionDynamics: {
+    trustExchange: {
+      betrayalTrustAmplifier: 0.55,
+      betrayalBondAmplifier: 0.35,
+      betrayalPressureAmplifier: 0.25,
+      repairLowTrustAmplifier: 0.35,
+      repairLowBondAmplifier: 0.25,
+      repairConflictAmplifier: 0.30,
+      guardedConflictAmplifier: 0.20,
+      guardedScarcityAmplifier: 0.15,
+      volatilityDecay: 0.78,
+      volatilityPredictionErrorWeight: 0.14,
+      volatilityConflictDeltaWeight: 0.30,
+      volatilityTrustDeltaWeight: 0.22,
+    },
+  },
+  learningUtility: {
+    learnedQWeight: 0.35,
+    expectedResponseWeight: 0.22,
+    volatilityPenaltyWeight: 0.18,
+    betrayalDebtPenaltyWeight: 0.20,
   },
   utility: {
     weights: {

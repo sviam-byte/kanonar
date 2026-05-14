@@ -1,5 +1,5 @@
 // lib/goal-lab/labs/ProConflictLab.tsx
-// ProConflict Lab: deterministic chaos visualizer.
+// ProConflict Lab: deterministic sensitivity probe.
 //
 // Runs two trajectories with identical seed, one perturbed by epsilon on a chosen
 // state field. Shows tension(A) vs tension(B), composite divergence D(t), and
@@ -210,7 +210,7 @@ export const ProConflictLab: React.FC = () => {
   return (
     <div className="p-3 text-sm">
       <div className="mb-3 text-canon-text-light/80 text-[12px] leading-snug">
-        Deterministic chaos probe. Both runs use the same RNG seed; only one state field
+        Deterministic sensitivity probe. Both runs use the same RNG seed; only one state field
         receives an epsilon perturbation. Divergence exposes character-specific
         trait/archetype gates in the pipeline.
       </div>

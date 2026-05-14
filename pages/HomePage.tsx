@@ -14,6 +14,12 @@ const entryPoints = [
     link: '/goal-lab-v2',
   },
   {
+    type: 'conflict-lab',
+    name: 'Conflict Lab',
+    description: 'Canonical dynamics, Dilemma protocols, trajectory frames, regimes, memory and relation analysis.',
+    link: '/conflict-lab?tab=dilemma',
+  },
+  {
     type: 'live-sim',
     name: 'Live Sim',
     description: 'Последняя версия симулятора: персонажи, локация, тики, действия и trace решений.',

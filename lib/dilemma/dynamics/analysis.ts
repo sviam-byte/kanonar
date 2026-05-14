@@ -1,21 +1,24 @@
 import { CONFLICT_LAB_DYNAMICS_FORMULA } from '../../config/formulaConfig';
 import type { ConflictAgentState, ConflictRelationState, ConflictState, TrajectoryMetrics } from './types';
+import { normalizeConflictState } from './state';
 
 const cfg = CONFLICT_LAB_DYNAMICS_FORMULA;
 
 export function stateDistance(a: ConflictState, b: ConflictState): number {
-  const [p0, p1] = a.players;
+  const ca = normalizeConflictState(a);
+  const cb = normalizeConflictState(b);
+  const [p0, p1] = ca.players;
   const agentDistance =
-    squaredAgentDistance(a.agents[p0], b.agents[p0])
-    + squaredAgentDistance(a.agents[p1], b.agents[p1]);
+    squaredAgentDistance(ca.agents[p0], cb.agents[p0])
+    + squaredAgentDistance(ca.agents[p1], cb.agents[p1]);
   const relationDistance =
-    squaredRelationDistance(a.relations[p0][p1], b.relations[p0][p1])
-    + squaredRelationDistance(a.relations[p1][p0], b.relations[p1][p0]);
+    squaredRelationDistance(ca.relations[p0][p1], cb.relations[p0][p1])
+    + squaredRelationDistance(ca.relations[p1][p0], cb.relations[p1][p0]);
   const envDistance =
-    square(a.environment.resourceScarcity - b.environment.resourceScarcity)
-    + square(a.environment.externalPressure - b.environment.externalPressure)
-    + square(a.environment.visibility - b.environment.visibility)
-    + square(a.environment.institutionalPressure - b.environment.institutionalPressure);
+    square(ca.environment.resourceScarcity - cb.environment.resourceScarcity)
+    + square(ca.environment.externalPressure - cb.environment.externalPressure)
+    + square(ca.environment.visibility - cb.environment.visibility)
+    + square(ca.environment.institutionalPressure - cb.environment.institutionalPressure);
 
   return Math.sqrt(
     cfg.trajectory.distanceWeights.agent * agentDistance
@@ -25,12 +28,13 @@ export function stateDistance(a: ConflictState, b: ConflictState): number {
 }
 
 export function collapseScore(state: ConflictState): number {
-  const [a, b] = state.players;
-  const ab = state.relations[a][b];
-  const ba = state.relations[b][a];
-  const resentment = average(state.agents[a].resentment, state.agents[b].resentment);
-  const fear = average(state.agents[a].fear, state.agents[b].fear);
-  const stress = average(state.agents[a].stress, state.agents[b].stress);
+  const canonical = normalizeConflictState(state);
+  const [a, b] = canonical.players;
+  const ab = canonical.relations[a][b];
+  const ba = canonical.relations[b][a];
+  const resentment = average(canonical.agents[a].resentment, canonical.agents[b].resentment);
+  const fear = average(canonical.agents[a].fear, canonical.agents[b].fear);
+  const stress = average(canonical.agents[a].stress, canonical.agents[b].stress);
   const trust = average(ab.trust, ba.trust);
   const conflict = average(ab.conflict, ba.conflict);
   const w = cfg.trajectory.collapseWeights;
@@ -45,15 +49,16 @@ export function collapseScore(state: ConflictState): number {
 }
 
 export function repairCapacity(state: ConflictState): number {
-  const [a, b] = state.players;
-  const ab = state.relations[a][b];
-  const ba = state.relations[b][a];
+  const canonical = normalizeConflictState(state);
+  const [a, b] = canonical.players;
+  const ab = canonical.relations[a][b];
+  const ba = canonical.relations[b][a];
   const w = cfg.trajectory.repairCapacityWeights;
   const trust = average(ab.trust, ba.trust);
   const bond = average(ab.bond, ba.bond);
   const legitimacy = average(ab.perceivedLegitimacy, ba.perceivedLegitimacy);
-  const resentment = average(state.agents[a].resentment, state.agents[b].resentment);
-  const fear = average(state.agents[a].fear, state.agents[b].fear);
+  const resentment = average(canonical.agents[a].resentment, canonical.agents[b].resentment);
+  const fear = average(canonical.agents[a].fear, canonical.agents[b].fear);
 
   return clampFinite01(
     w.trust * trust
@@ -121,7 +126,8 @@ function squaredRelationDistance(a: ConflictRelationState, b: ConflictRelationSt
     + square(a.bond - b.bond)
     + square(a.perceivedThreat - b.perceivedThreat)
     + square(a.conflict - b.conflict)
-    + square(a.perceivedLegitimacy - b.perceivedLegitimacy);
+    + square(a.perceivedLegitimacy - b.perceivedLegitimacy)
+    + square(a.volatility - b.volatility);
 }
 
 function square(value: number): number {
@@ -136,4 +142,3 @@ function clampFinite01(value: number): number {
   if (!Number.isFinite(value)) return 0;
   return value < 0 ? 0 : value > 1 ? 1 : value;
 }
-
