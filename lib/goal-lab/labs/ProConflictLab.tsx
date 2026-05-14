@@ -1,10 +1,10 @@
 // lib/goal-lab/labs/ProConflictLab.tsx
 // ProConflict Lab: deterministic chaos visualizer.
 //
-// Runs two trajectories with identical seed, one perturbed by ε on a chosen
+// Runs two trajectories with identical seed, one perturbed by epsilon on a chosen
 // state field. Shows tension(A) vs tension(B), composite divergence D(t), and
-// the Lyapunov-style growth rate λ. The amplifier is always character — same
-// equations, same RNG, but trait/archetype gates inside the pipeline turn ε
+// the Lyapunov-style growth rate lambda. The amplifier is always character:
+// same equations, same RNG, but trait/archetype gates inside the pipeline turn epsilon
 // into characteristic divergence.
 
 import React, { useMemo, useState } from 'react';
@@ -166,7 +166,7 @@ export const ProConflictLab: React.FC = () => {
         agentId: perturbAgentId,
         target,
         delta,
-        label: 'ε',
+        label: 'epsilon',
       };
 
       const result = runPair(
@@ -210,11 +210,12 @@ export const ProConflictLab: React.FC = () => {
   return (
     <div className="p-3 text-sm">
       <div className="mb-3 text-canon-text-light/80 text-[12px] leading-snug">
-        Дет. хаос. То же зерно RNG в обоих прогонах; только ε в одном поле состояния.
-        Расхождение раскрывает характер агента через trait/archetype-гейты пайплайна.
+        Deterministic chaos probe. Both runs use the same RNG seed; only one state field
+        receives an epsilon perturbation. Divergence exposes character-specific
+        trait/archetype gates in the pipeline.
       </div>
 
-      {/* ── Setup ── */}
+      {/* Setup */}
       <div className="grid grid-cols-2 gap-3 mb-4">
         <div>
           <div className="text-[11px] uppercase tracking-wider text-canon-text-light/60 mb-1">Scene</div>
@@ -276,7 +277,7 @@ export const ProConflictLab: React.FC = () => {
 
         <div>
           <div className="text-[11px] uppercase tracking-wider text-canon-text-light/60 mb-1">
-            Perturbation ε
+            Perturbation epsilon
           </div>
           <label className="block text-xs mb-1">
             Agent:
@@ -335,7 +336,7 @@ export const ProConflictLab: React.FC = () => {
                   onChange={(e) => setTomToId(e.target.value)}
                   className="ml-1 px-1 bg-canon-bg-light border border-canon-border rounded"
                 >
-                  <option value="">—</option>
+                  <option value="">-</option>
                   {selectedCharIds
                     .filter((id) => id !== perturbAgentId)
                     .map((id) => (
@@ -407,14 +408,14 @@ export const ProConflictLab: React.FC = () => {
             disabled={running}
             className="mt-2 px-3 py-1 bg-amber-500/80 text-canon-bg rounded text-xs disabled:opacity-50"
           >
-            {running ? 'Running…' : 'Run pair'}
+            {running ? 'Running...' : 'Run pair'}
           </button>
         </div>
       </div>
 
-      {error && <div className="text-red-400 text-xs mb-2">⚠ {error}</div>}
+      {error && <div className="text-red-400 text-xs mb-2">Warning: {error}</div>}
 
-      {/* ── Results ── */}
+      {/* Results */}
       {pair && (
         <div className="space-y-3">
           {pair.skipped.length > 0 && (
@@ -424,14 +425,14 @@ export const ProConflictLab: React.FC = () => {
           )}
 
           <div className="grid grid-cols-3 gap-2 text-xs">
-            <Stat label="λ Lyapunov" value={lyapunov.toFixed(4)} hint="(1/T)·log(D(T)/D(0))" />
+            <Stat label="lambda Lyapunov" value={lyapunov.toFixed(4)} hint="(1/T) * log(D(T)/D(0))" />
             <Stat
               label="first divergence"
-              value={firstTick == null ? '—' : `tick ${firstTick}`}
+              value={firstTick == null ? '-' : `tick ${firstTick}`}
               hint="composite > 1e-3"
             />
             <Stat
-              label="ε applied"
+              label="epsilon applied"
               value={pair.applied.length ? describePerturbation(pair.applied[0]) : 'none'}
             />
           </div>
@@ -489,7 +490,7 @@ function AmplifierTable({
   if (!events.length) {
     return (
       <div className="text-[11px] text-canon-text-light/50 italic">
-        No amplifier events detected. Try a larger ε or more ticks.
+        No amplifier events detected. Try a larger epsilon or more ticks.
       </div>
     );
   }
@@ -501,7 +502,7 @@ function AmplifierTable({
             <th className="px-2 py-1 text-left">tick</th>
             <th className="px-2 py-1 text-left">agent</th>
             <th className="px-2 py-1 text-left">gate</th>
-            <th className="px-2 py-1 text-left">A → B</th>
+            <th className="px-2 py-1 text-left">A {'->'} B</th>
             <th className="px-2 py-1 text-left">evidence</th>
           </tr>
         </thead>
@@ -521,7 +522,7 @@ function AmplifierTable({
                   <span className={`px-1 rounded ${GATE_COLOR[e.gate]}`}>{e.gate}</span>
                 </td>
                 <td className="px-2 py-1 whitespace-nowrap">
-                  {e.baseline} → {e.perturbed}
+                  {e.baseline} {'->'} {e.perturbed}
                 </td>
                 <td className="px-2 py-1 text-canon-text-light/70">{e.evidence}</td>
               </tr>

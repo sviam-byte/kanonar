@@ -1,5 +1,5 @@
 // tests/simkit/perturbation_runner.test.ts
-// ProConflict Lab unit tests: ε-perturbation primitive must be pure, clamping,
+// ProConflict Lab unit tests: epsilon-perturbation primitive must be pure, clamping,
 // and target-correct. Full runPair semantic determinism is covered separately
 // because it requires a full CharacterEntity/LocationEntity fixture.
 
