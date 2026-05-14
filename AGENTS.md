@@ -4,6 +4,54 @@ This repo is an agent-simulation and decision-system codebase. Treat it as a
 GoalLab + SimKit runtime, not as a plain React app. Make changes cautiously:
 preserve determinism, provenance, scoring semantics, and UI resilience.
 
+## Conflict Lab Non-Negotiable Rule
+
+Conflict Lab is a deterministic nonlinear conflict dynamics lab, not a UI card
+catalog. Do not add mechanics as cosmetic presets or renamed action pools.
+
+Every new Conflict Lab mechanic must be represented as typed domain logic with
+explicit roles, phases, available actions, observation model, payoff rule,
+state transition, validation, and unit tests independent of React. Character
+psychology may score actions, but it must not replace mechanic rules.
+
+The deterministic core must preserve:
+
+```text
+same state + same params + same active mechanic => same next state
+```
+
+No hidden `Math.random()`, broad `try/catch`, silent fallback, type weakening,
+implicit `any`, or UI-only enforcement of domain rules is acceptable in
+mechanic or transition logic. If stochastic behavior is required, it must be an
+explicit seeded mode with traceable RNG wiring.
+
+Conflict Lab work is incomplete unless `npm run typecheck`, lint if configured,
+and relevant tests pass. If any validation cannot run or cannot pass, stop and
+report the blocker rather than treating the task as done. The canonical contract
+for this area is `docs/CONFLICT_LAB_CONTRACT.md`.
+
+### Conflict Lab Work Order
+
+When a task touches Conflict Lab, classify it before editing:
+
+1. contract/docs only;
+2. mechanic kernel;
+3. agent utility or memory;
+4. system dynamics or trajectory analysis;
+5. UI visualization.
+
+For mechanic, dynamics, or trajectory work, execute in this order:
+
+```text
+mathematical model -> domain types -> pure engine -> tests -> UI
+```
+
+Do not start from `components/conflict/*`, scenario labels, or preset card data.
+If the current architecture cannot represent the mechanic as roles/phases/
+observation/payoff/transition/validation, refactor the domain/engine layer
+first. If that refactor is out of scope, stop and report the architectural
+blocker.
+
 ## Read First
 
 Use this order when you need broad context:

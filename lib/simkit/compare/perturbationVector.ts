@@ -1,5 +1,5 @@
 // lib/simkit/compare/perturbationVector.ts
-// ProConflict Lab: ε-perturbation vectors for deterministic chaos analysis.
+// ProConflict Lab: epsilon-perturbation vectors for deterministic chaos analysis.
 //
 // applyPerturbations is a pure function: deep-clones the world, applies signed
 // deltas to specific state fields, returns the new world. RNG channels are not
@@ -91,7 +91,7 @@ function applyOne(world: SimWorld, vec: PerturbationVector): { ok: boolean; reas
 }
 
 /**
- * Apply ε-perturbations to a deep-cloned world. The original world is not mutated.
+ * Apply epsilon-perturbations to a deep-cloned world. The original world is not mutated.
  * Returns the new world plus a report of which vectors applied/skipped.
  */
 export function applyPerturbations(

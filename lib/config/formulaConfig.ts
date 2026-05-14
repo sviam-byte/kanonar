@@ -654,6 +654,154 @@ export const DILEMMA_LEARNING_FORMULA = {
   },
 } as const;
 
+// Conflict Lab deterministic dynamics coefficients.
+export const CONFLICT_LAB_DYNAMICS_FORMULA = {
+  replicator: {
+    eta: 1.15,
+    minProbability: 1e-9,
+  },
+  transition: {
+    epsilon: 1e-6,
+    agentRetention: {
+      goalPressure: 0.90,
+      fear: 0.88,
+      stress: 0.86,
+      resentment: 0.92,
+      loyalty: 0.94,
+      dominanceNeed: 0.92,
+      cooperationTendency: 0.90,
+      will: 0.92,
+    },
+    relationRetention: {
+      trust: 0.90,
+      bond: 0.92,
+      perceivedThreat: 0.88,
+      conflict: 0.88,
+      perceivedLegitimacy: 0.90,
+    },
+    environmentRetention: {
+      resourceScarcity: 0.98,
+      externalPressure: 0.98,
+      visibility: 1.00,
+      institutionalPressure: 1.00,
+    },
+  },
+  utility: {
+    weights: {
+      goal: 0.95,
+      relation: 1.05,
+      security: 0.90,
+      legitimacy: 0.70,
+      identity: 0.65,
+      prediction: 0.80,
+      cost: 1.00,
+    },
+    trustExchange: {
+      trust: {
+        goal: 0.20,
+        relation: 0.70,
+        security: -0.35,
+        legitimacy: 0.20,
+        identity: 0.35,
+        prediction: 0.35,
+        cost: 0.30,
+      },
+      withhold: {
+        goal: 0.15,
+        relation: -0.05,
+        security: 0.25,
+        legitimacy: 0.05,
+        identity: -0.05,
+        prediction: 0.10,
+        cost: 0.12,
+      },
+      betray: {
+        goal: 0.45,
+        relation: -0.80,
+        security: 0.30,
+        legitimacy: -0.45,
+        identity: -0.35,
+        prediction: -0.30,
+        cost: 0.22,
+      },
+    },
+    modulation: {
+      relationQuality: { trust: 0.45, bond: 0.30, legitimacy: 0.25 },
+      danger: { perceivedThreat: 0.45, resourceScarcity: 0.30, fear: 0.25 },
+      conflictPressure: { conflict: 0.50, resentment: 0.25, stress: 0.25 },
+      cooperativeIdentity: { cooperationTendency: 0.55, loyalty: 0.25, antiDominance: 0.20 },
+      opportunityPressure: { goalPressure: 0.45, resourceScarcity: 0.35, will: 0.20 },
+      goalOpportunity: { betray: 0.30, other: 0.12 },
+      withholdSafetyBonus: 0.20,
+      institutional: { betray: -0.35, other: 0.15 },
+      identity: { betray: -0.50, other: 0.35 },
+      cost: { stress: 0.18, betrayVisibility: 0.22, otherVisibility: 0.04 },
+    },
+  },
+  trustExchange: {
+    mutualTrust: {
+      payoff: 0.55,
+      agent: { fear: -0.08, stress: -0.10, resentment: -0.06, loyalty: 0.04, cooperationTendency: 0.06, will: 0.03 },
+      relation: { trust: 0.16, bond: 0.12, perceivedThreat: -0.10, conflict: -0.09, perceivedLegitimacy: 0.07 },
+    },
+    trustVsBetray: {
+      victimPayoff: -0.55,
+      betrayerPayoff: 0.78,
+      victimAgent: { fear: 0.16, stress: 0.18, resentment: 0.22, loyalty: -0.08, cooperationTendency: -0.12, will: -0.06 },
+      betrayerAgent: { fear: 0.03, stress: 0.06, resentment: 0.03, loyalty: -0.05, cooperationTendency: -0.06, will: 0.06 },
+      victimRelation: { trust: -0.24, bond: -0.16, perceivedThreat: 0.18, conflict: 0.20, perceivedLegitimacy: -0.16 },
+      betrayerRelation: { trust: -0.08, bond: -0.05, perceivedThreat: 0.06, conflict: 0.08, perceivedLegitimacy: -0.07 },
+    },
+    mutualBetray: {
+      payoff: -0.28,
+      agent: { fear: 0.10, stress: 0.13, resentment: 0.12, loyalty: -0.06, cooperationTendency: -0.09, will: -0.03 },
+      relation: { trust: -0.14, bond: -0.08, perceivedThreat: 0.13, conflict: 0.15, perceivedLegitimacy: -0.10 },
+    },
+    guarded: {
+      payoff: 0.02,
+      agent: { fear: 0.02, stress: 0.04, resentment: 0.03, loyalty: -0.01, cooperationTendency: -0.01, will: 0.00 },
+      relation: { trust: -0.02, bond: -0.01, perceivedThreat: 0.03, conflict: 0.03, perceivedLegitimacy: -0.01 },
+    },
+    trustVsWithhold: {
+      trustingPayoff: 0.12,
+      withholdingPayoff: 0.16,
+      trustingAgent: { fear: 0.02, stress: 0.04, resentment: 0.05, loyalty: -0.02, cooperationTendency: -0.02, will: -0.01 },
+      withholdingAgent: { fear: 0.01, stress: 0.02, resentment: 0.01, loyalty: 0.00, cooperationTendency: -0.01, will: 0.01 },
+      trustingRelation: { trust: -0.05, bond: -0.02, perceivedThreat: 0.04, conflict: 0.04, perceivedLegitimacy: -0.03 },
+      withholdingRelation: { trust: -0.02, bond: -0.01, perceivedThreat: 0.02, conflict: 0.02, perceivedLegitimacy: -0.01 },
+    },
+    betrayVsWithhold: {
+      betrayerPayoff: 0.20,
+      withholdingPayoff: -0.06,
+      betrayerAgent: { fear: 0.03, stress: 0.05, resentment: 0.04, loyalty: -0.04, cooperationTendency: -0.05, will: 0.02 },
+      withholdingAgent: { fear: 0.07, stress: 0.08, resentment: 0.09, loyalty: -0.03, cooperationTendency: -0.04, will: -0.02 },
+      betrayerRelation: { trust: -0.06, bond: -0.03, perceivedThreat: 0.06, conflict: 0.07, perceivedLegitimacy: -0.05 },
+      withholdingRelation: { trust: -0.10, bond: -0.05, perceivedThreat: 0.09, conflict: 0.10, perceivedLegitimacy: -0.07 },
+    },
+  },
+  trajectory: {
+    distanceWeights: {
+      agent: 1.00,
+      relation: 1.20,
+      environment: 0.60,
+    },
+    collapseWeights: {
+      antiTrust: 0.28,
+      conflict: 0.24,
+      resentment: 0.20,
+      fear: 0.16,
+      stress: 0.12,
+    },
+    repairCapacityWeights: {
+      trust: 0.32,
+      bond: 0.26,
+      legitimacy: 0.22,
+      resentment: 0.12,
+      fear: 0.08,
+    },
+  },
+} as const;
+
 export const FC = {
   drivers: DRIVERS_FORMULA,
   goal: GOAL_FORMULA,
@@ -670,6 +818,7 @@ export const FC = {
   goalState: GOAL_STATE,
   lookahead: LOOKAHEAD,
   dilemmaLearning: DILEMMA_LEARNING_FORMULA,
+  conflictLabDynamics: CONFLICT_LAB_DYNAMICS_FORMULA,
 } as const;
 
 export type FormulaConfig = typeof FC;

@@ -9,6 +9,7 @@ That distinction matters because the repo already contains:
 - seeded deterministic core logic
 - controlled stochastic choice
 - heuristic mode switching
+- deterministic nonlinear Conflict Lab dynamics
 - UI-layer wall-clock seeds and compat-driven variability
 
 ## Stable categories
@@ -57,6 +58,30 @@ Examples:
 - ToM enable/disable gates
 - driver shaping
 - cooldown/family-repeat penalties
+
+### Paired-run sensitivity probes
+
+Compare labs such as ProConflict are deterministic analysis surfaces, not new
+policy controllers. They run two trajectories with the same seed/config and one
+explicit state perturbation, then compare semantic observables. The math contract
+for this class of probe is documented in `docs/PROCONFLICT_MATH.md`.
+
+### Conflict Lab deterministic dynamics
+
+Conflict Lab mechanics should be deterministic transition kernels, not visual
+card presets. Sensitivity, cycles, bifurcations, or chaotic-looking trajectories
+must come from explicit nonlinear feedback, memory, thresholds, and state
+coupling, not from hidden randomness.
+
+The local contract is documented in `docs/CONFLICT_LAB_CONTRACT.md`. In
+deterministic mode, the rule is:
+
+```text
+same state + same params + same active mechanic => same next state
+```
+
+If stochastic Conflict Lab behavior is introduced, it must be an explicit seeded
+mode with traceable RNG wiring and tests that compare semantic fields.
 
 ## Risk categories
 
