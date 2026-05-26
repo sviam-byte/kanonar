@@ -1,87 +1,284 @@
-# CharacterEntity — модель персонажа (контракт)
+# 1) Персонаж и локация как входные сущности модели
 
-**Источник истины:** `types.ts` (`interface CharacterEntity`), `data/entities/character-*.ts`, `data/character-schema.ts`.
+**Источники истины:**
 
-## 1) Роль CharacterEntity в пайплайне
+- типы: `types.ts` (`CharacterEntity`, `LocationEntity`, `BodyModel`, `LocationMap`)
+- schema осей и физических параметров: `data/character-schema.ts`
+- character features: `lib/features/extractCharacter.ts`
+- location features: `lib/features/extractLocation.ts`
+- stage0 wiring: `lib/context/pipeline/stage0.ts`
 
-Персонаж — это *профиль агента*, который модулирует вычисления в пайплайне (S0…S8):
+Этот документ фиксирует нижний слой модели: как репозиторий представляет персонажа и локацию до того, как начинается `ctx:*`, психика, ToM и GoalLab scoring.
 
-- **субъективность**: `CharacterLens` превращает сырой контекст `ctx:*` в субъективный `ctx:final:*`;
-- **Theory of Mind**: dyad-метрики «A о B» (`tom:dyad:*`) опираются на оси `vector_base` и конфиги восприятия;
-- **Goal Lab**: цели/режимы/утилиты опираются на `ctx:final:*`, драйверы `drv:*` и личные приоритеты `ctx:prio:*`.
+## 1.1. Главный принцип
 
-Ключевой принцип: `CharacterEntity` не хранит весь мир и не “делает выбор”. Выбор делает пайплайн, а персонаж задаёт параметры, которые влияют на все промежуточные сигналы.
+`CharacterEntity` и `LocationEntity` не являются сами по себе decision-моделью. Они задают:
 
-## 2) Состав CharacterEntity (то, что реально используется)
+- стабильный профиль персонажа;
+- состояние тела и ресурсов;
+- геометрию и свойства локации;
+- сырьё, из которого stage0 и S2 построят feature- и context-atoms.
 
-Тип (`types.ts`):
+Выбор действия делает не `CharacterEntity`, а staged pipeline.
 
-- `entityId`, `type`, `title` — идентификация;
-- `vector_base?: Record<string, number>` — **вектор осей** (обычно [0,1]);
-- `body: BodyModel` — телесная модель (структура для сенсоров);
-- опциональные блоки: `identity`, `social`, `relationships`, `tom`, `resources`, `authority`, `evidence`, `observation`, `compute`, `lifeGoals`.
+## 1.2. `CharacterEntity`
 
-Важно: часть этих полей в текущем проекте “физически” живёт не в объекте, а в **атомах** (`world:*`, `feat:char:*`, `ctx:*`). Поэтому следует разделять:
+### Purpose
 
-- **профиль** (сущность персонажа, сравнительно стабилен);
-- **состояние эпизода** (атомы, быстро меняются и объяснимы через trace).
+`CharacterEntity` хранит стабильный профиль агента и его медленно/быстро меняющиеся внутренние параметры, из которых downstream layers извлекают traits, body state, priorities и ToM-relevant biases.
 
-## 3) `vector_base`: пространство психологических осей
+### Structure
 
-`vector_base` — отображение
+В текущем runtime реально важны:
 
-\[
-\mathrm{vector\_base}: \mathcal{A} \to [0,1],
-\]
+- `entityId`, `type`, `title`
+- `vector_base?: Record<string, number>`
+- `body: BodyModel`
+- `locationId?: string`
+- `memory`
+- `lifeGoals`
+- опциональные блоки `identity`, `context`, `resources`, `authority`, `evidence`, `observation`, `compute`
 
-где \(\mathcal{A}\) — множество осей из `data/character-schema.ts`.
+### Variables
 
-Конвенции:
+- `vector_base[axis]` — психо-поведенческая ось, обычно в `[0,1]`
+- `body.acute.*` — острое телесное состояние, часто в физических единицах или шкалах `0..100`
+- `body.reserves.*` — запас ресурсов и homeostasis-параметры
+- `body.regulation.*` — регуляторные параметры вроде arousal / HPA axis
+- `locationId` — текущая локация агента
 
-- **0.5** — нейтральная точка;
-- отсутствие оси трактуется как **0.5** во многих формулах (например ToM использует `aVec[axis] ?? 0.5`).
+### Source of truth
 
-Инварианты:
+- implementation: `types.ts`
+- schema: `data/character-schema.ts`
+- feature extraction: `lib/features/extractCharacter.ts`
+- stage usage: `lib/context/pipeline/stage0.ts`
+- tests: `tests/pipeline/fixtures.ts`
 
-1) значения должны быть конечными числами;
-2) клиппинг в [0,1] обязателен на этапе использования (см. `clamp01` в разных модулях);
-3) добавленная ось начинает влиять на поведение только когда её начинают читать веса/конфиги (ToM, Lens, Goal Lab).
+### Invariants
 
-Подробно про математику осей и метрики похожести — `02_AXIS_SPACE.md`.
+- `vector_base` не обязан быть полным; отсутствие оси обычно трактуется как нейтраль `0.5`
+- физические поля могут жить не в `[0,1]`, но downstream feature-extraction должен нормализовать их
+- решение не должно опираться напрямую на необработанный `CharacterEntity`; сначала он должен быть материализован в atoms/features
 
-## 4) Traits/body как атомы `feat:char:*`
+## 1.3. `vector_base` как психологическое пространство
 
-Линза субъективности читает **черты** и **текущее состояние** из атомов вида:
+`vector_base` — это отображение
 
-- `feat:char:<selfId>:trait.paranoia`
-- `feat:char:<selfId>:trait.sensitivity`
-- `feat:char:<selfId>:trait.experience`
-- `feat:char:<selfId>:trait.ambiguityTolerance`
-- `feat:char:<selfId>:trait.hpaReactivity`
-- `feat:char:<selfId>:trait.normSensitivity`
-- `feat:char:<selfId>:body.stress`
-- `feat:char:<selfId>:body.fatigue`
+```text
+vector_base: axis_id -> scalar
+```
 
-Источник истины: `lib/context/lens/characterLens.ts` (`getMag(...)` + fallbacks).
+где большинство осей живут в `[0,1]`, а `0.5` играет роль нейтрали.
 
-Контракт: если модуль начинает читать новую `feat:char:*` фичу, она обязана быть сгенерирована **раньше** этой стадии (см. `07_PIPELINE_SPEC.md`).
+Ключевой контракт:
 
-## 5) Минимальный профиль персонажа, чтобы система была “не усреднённой”
+- если ось не указана, многие модели читают `axis ?? 0.5`
+- сама по себе добавленная ось не меняет поведение системы
+- ось начинает влиять на runtime только когда её начинают читать `extractCharacterFeatures`, `characterLens`, ToM-конфиги или GoalLab
 
-Чтобы агент получался отличимым, должны существовать (как минимум):
+Семантика и диапазоны осей задаются в `data/character-schema.ts`.
 
-1) `vector_base` с неплоскими значениями;
-2) набор ключевых `feat:char:*:trait.*` (иначе линза возьмёт дефолты и сгладит поведение);
-3) (опционально, но желательно) личные приоритеты `ctx:prio:*` (Goal Lab усиливает важные контекстные оси именно для этого агента).
+## 1.4. `LocationEntity`
 
-## 6) Где описывать параметры (важно для документации)
+### Purpose
 
-- **Ось характера** (психология) → `data/character-schema.ts` (A–G) + значения в `vector_base`.
-- **Телесный/ресурсный параметр с единицами** → в schema как блок с `path` (например `body.reserves.sleep_debt_h`) и далее как атомы `world:*`/`feat:char:*`.
-- **Линза/ToM/Goals** → всегда документировать вместе с формулой и ссылкой на место в коде.
+`LocationEntity` хранит пространственные, нормативные и affordance-свойства среды, из которых stage0 и S2 получают сигналы приватности, контроля, crowding, normative pressure, access gating и hazard geometry.
 
-Связанные документы:
-- `03_CHARACTER_LENS.md` (оператор субъективности)
-- `04_TOM_DYAD_MODEL.md` (A о B)
-- `05_GOAL_LAB_MATH.md` (цели/режимы/гистерезис)
-- `07_PIPELINE_SPEC.md` (стадии и обязательные namespaces)
+### Structure
+
+В текущем runtime реально важны:
+
+- `entityId`, `type`, `title`
+- `map?: LocationMap`
+- `properties?: {...}`
+- `state?: {...}`
+- `tags?: string[]`
+- `ownership?: {...}`
+- `access?: ...`
+- `hazards?: any[]`
+- `geometry?: any`
+
+### Variables
+
+- `properties.privacy` — категориальная privacy-семантика
+- `properties.visibility`, `properties.noise`, `properties.normative_pressure`, `properties.control_level` — скаляры среды
+- `state.crowd_level` — текущее crowding-состояние
+- `map.width`, `map.height`, `cells`, `exits` — геометрия и навигация
+- `tags` — дискретные environment hints (`public`, `private`, `safe_hub`, ...)
+
+### Source of truth
+
+- implementation: `types.ts`
+- feature extraction: `lib/features/extractLocation.ts`
+- stage usage: `lib/context/pipeline/stage0.ts`
+- access gating: `lib/access/deriveAccess.ts`
+- tests: `tests/pipeline/fixtures.ts`
+
+### Invariants
+
+- `LocationEntity` не должен напрямую “создавать” decision outputs; он сначала материализуется в `world:*`, `feat:loc:*`, `loc:*`
+- access semantics должны быть явными и traceable
+- hazard / geometry signals должны появляться до тех стадий, которые читают danger / control / escape
+
+## 1.5. Обязательный мост: сущности -> features
+
+Нижний слой Kanonar не должен читать “сырые” поля хаотично по всему коду. Канонический мост — это feature extraction.
+
+## Character feature extraction
+
+### Purpose
+
+Превратить разнородные поля персонажа (`vector_base`, `body`, `identity`, `context`) в компактный нормализованный словарь признаков `feat:char:*`, который downstream stages читают единообразно.
+
+### Formula
+
+```text
+feature = clamp01(raw_value)
+feature = mapRange01(raw_value, min_raw, max_raw)    for body-like quantities
+feature = fallback-composition(...)                   for derived traits
+```
+
+### Variables
+
+- `acute.pain`, `acute.fatigue`, `acute.stress` — телесные/аффективные raw поля
+- `reserves.sleep_debt_h`, `reserves.energy` — ресурсные raw поля
+- `vector_base.*` — устойчивые психо-поведенческие оси
+- `context.age` — proxy для `trait.experience`
+
+### Source of truth
+
+- implementation: `lib/features/extractCharacter.ts`
+- types: `types.ts`
+- schema: `data/character-schema.ts`
+- trace/UI: `feat:char:<selfId>:*` atoms in stage0
+
+### Invariants
+
+- все feature values после extraction должны быть в `[0,1]`
+- `trait.normSensitivity` сейчас derived из `formalism` и `order`
+- `trait.care` имеет backward-compatible fallback через `A_Safety_Care` и `A_Power_Sovereignty`
+
+### Minimal example
+
+Input:
+
+```text
+body.acute.stress = 30
+body.acute.fatigue = 20
+vector_base.C_betrayal_cost = 0.8
+context.age = 42
+```
+
+Calculation:
+
+```text
+body.stress = mapRange01(30, 0, 100) = 0.30
+body.fatigue = mapRange01(20, 0, 100) = 0.20
+trait.paranoia = clamp01(0.8) = 0.8
+trait.experience = clamp01((42 - 18) / 60) = 0.4
+```
+
+Output:
+
+```text
+feat:char:A:body.stress = 0.30
+feat:char:A:body.fatigue = 0.20
+feat:char:A:trait.paranoia = 0.80
+feat:char:A:trait.experience = 0.40
+```
+
+### Failure modes
+
+- feature extraction silently emits values outside `[0,1]`
+- downstream docs claim a trait exists but `extractCharacterFeatures` never builds it
+- docs refer to a direct `vector_base` read while runtime actually reads `feat:char:*`
+
+## Location feature extraction
+
+### Purpose
+
+Превратить дискретные и смешанные свойства локации в нормализованный набор `feat:loc:*`, из которого S2 и access logic могут выводить психологически значимые context axes.
+
+### Formula
+
+```text
+loc.privacy      = 1 if properties.privacy == "private" else 0
+loc.visibility   = clamp01(properties.visibility)
+loc.normPressure = clamp01(properties.normative_pressure)
+loc.controlLevel = clamp01(properties.control_level)
+loc.crowd        = clamp01(state.crowd_level)
+tag.<name>       = 1 if tag present else 0
+```
+
+### Variables
+
+- `properties.*` — статические/environment-level scalars
+- `state.*` — текущее состояние локации
+- `tags` — категориальные флаги
+- `map.*` — упрощённые геометрические proxies
+
+### Source of truth
+
+- implementation: `lib/features/extractLocation.ts`
+- types: `types.ts`
+- stage wiring: `lib/context/pipeline/stage0.ts`
+- downstream use: `lib/context/axes/deriveAxes.ts`, `lib/access/deriveAccess.ts`
+
+### Invariants
+
+- location features тоже обязаны быть нормализованы в `[0,1]`
+- `privacy` сейчас бинаризуется грубо; это контракт текущей реализации, а не общая истина о среде
+- tags не должны подменять собой геометрию или access contract, а только дополнять её
+
+### Minimal example
+
+Input:
+
+```text
+properties.privacy = "private"
+properties.visibility = 0.8
+properties.control_level = 0.6
+state.crowd_level = 0.25
+tags = ["safe_hub"]
+```
+
+Calculation:
+
+```text
+loc.privacy = 1
+loc.visibility = 0.8
+loc.controlLevel = 0.6
+loc.crowd = 0.25
+tag.safeHub = 1
+```
+
+Output:
+
+```text
+feat:loc:...:loc.privacy = 1
+feat:loc:...:loc.visibility = 0.8
+feat:loc:...:loc.controlLevel = 0.6
+feat:loc:...:loc.crowd = 0.25
+feat:loc:...:tag.safeHub = 1
+```
+
+### Failure modes
+
+- docs treat `LocationEntity` as if it already were `ctx:*`
+- location tags are documented as canonical risk/legitimacy values even though runtime only uses them as hints
+- access rules are described without the actual `loc:<id>:access:*` atoms
+
+## 1.6. Что смотреть дальше
+
+После этого входного слоя следующий канонический переход такой:
+
+```text
+CharacterEntity / LocationEntity / world
+-> features in stage0
+-> base context axes in S2
+-> subjective context in S3
+-> ToM dyads in S5
+```
+
+Следующий документ для этого перехода: `03_CHARACTER_LENS.md`.

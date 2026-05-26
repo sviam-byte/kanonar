@@ -1,141 +1,330 @@
-# 3) Character Lens: оператор субъективности `ctx:* → ctx:final:*`
+# 3) Психика и начальные расчёты: `feat:* -> ctx:* -> ctx:final:*`
 
-**Источник истины:** `lib/context/lens/characterLens.ts` (`applyCharacterLens`).
+**Источники истины:**
 
-Линза делает две ключевые вещи:
-1) создаёт **субъективные** контекстные оси `ctx:final:<axis>:<selfId>` из “сырых” `ctx:<axis>:<selfId>`;
-2) (частично) создаёт **субъективные** ToM-метрики dyad (если подключено; см. `mkDyadDerived`).
+- feature extraction: `lib/features/extractCharacter.ts`, `lib/features/extractLocation.ts`, `lib/features/registry.ts`
+- stage0 input layer: `lib/context/pipeline/stage0.ts`
+- base context axes: `lib/context/axes/deriveAxes.ts`
+- subjective lens: `lib/context/lens/characterLens.ts`
+- contracts: `docs/PIPELINE.md`, `docs/INVARIANTS.md`
+- tests: `tests/lens/character_lens.test.ts`, `tests/pipeline/stage_isolation.test.ts`
 
-## 3.1. Инварианты линзы
+Этот документ описывает первый настоящий психический путь в Kanonar:
 
-1) **Не трогать world/obs факты.** Линза не должна перетирать `world:*`/`obs:*`.
-2) **Не перетирать `ctx:*`.** Она добавляет `ctx:final:*`.
-3) **Никаких self-cycles в trace.** `trace.usedAtomIds` очищается (см. `sanitizeUsedAtomIds`).
-4) **Клиппинг:** все magnitudes линзы в [0,1] (`clamp01`).
-5) **Base copy:** перед override создаётся “base copy” атома (см. `ensureBaseCopy`), чтобы explainability сохранялась.
+```text
+CharacterEntity / LocationEntity / world
+-> feat:char:* / feat:loc:* / feat:scene:*
+-> ctx:*
+-> ctx:final:*
+```
 
-## 3.2. Входы линзы
+## 3.1. Что здесь считается "психикой"
 
-Линза читает:
+В текущем pipeline "психика" не лежит в одном объекте. Она собирается по слоям:
 
-### (A) Трейты / тело (feat:char)
+- устойчивые черты и телесное состояние materialize как `feat:char:*`
+- среда materialize как `feat:loc:*` и `world:*`
+- stage S2 собирает из этого base-context `ctx:*`
+- stage S3 делает subjective override `ctx:final:*`
 
-Пусть:
-- \(p\) = paranoia, \(s\) = sensitivity, \(e\) = experience,
-- \(a\) = ambiguityTolerance,
-- \(h\) = hpaReactivity,
-- \(n\) = normSensitivity,
-- \(\sigma\) = stress, \(f\) = fatigue.
+То есть психика здесь — это не один класс, а переход от profile/body/environment к субъективным оценкам ситуации.
 
-Значения берутся из атомов `feat:char:<selfId>:trait.*` и `feat:char:<selfId>:body.*`.
+## 3.2. Stage0: materialization into features
 
-### (B) Сырой контекст `ctx:*`
+Stage0 не должен создавать `ctx:*` как конечную истину субъективности. Его задача — собрать нормализованные признаки и миро-факты, из которых следующие стадии построят контекст.
 
-Для каждого контекстного канала берётся базовое значение \(x_0\) из `ctx:<axis>:<selfId>` (fallback = 0).
+Реально важные группы:
 
-В текущем коде участвуют (минимум):
-- danger, uncertainty, normPressure, publicness,
-- surveillance (fallback на `world:loc:control_level:*`),
-- intimacy, crowd,
-- control, timePressure, secrecy, legitimacy, hierarchy, privacy.
+- `feat:char:*` — traits и body state
+- `feat:loc:*` — свойства локации
+- `feat:scene:*` — свойства сцены
+- `world:*`, `obs:*`, `mem:*`, `rel:*`, `life:*`
 
-## 3.3. Центральная формула: modulate(x, bias, sensitivity)
+Контракт stage isolation:
 
-Линза задаётся функцией:
+- S0 не должен выдавать `ctx:final:*`
+- S0 не должен перескакивать к `goal:*` или `action:*`
 
-1) базовое смещение:
-\[
-x'=\mathrm{clamp01}(x+b)
-\]
-2) центрирование около 0.5:
-\[
-z=x'-0.5
-\]
-3) усиление:
-\[
-z' = k\cdot z
-\]
-4) возврат в [0,1]:
-\[
-\mathrm{modulate}(x,b,k)=\mathrm{clamp01}(0.5+z')
-\]
+Тестовый anchor:
 
-> Важное отличие от «чистого amplify»: здесь есть **bias**, который сдвигает базовую оценку даже при \(x\approx0.5\).
+- `tests/pipeline/stage_isolation.test.ts`
 
-## 3.4. Откуда берутся bias и k (пример: danger)
+## 3.3. S2: base context axes
 
-### 3.4.1. Сжатая подозрительность (diagnostic)
+S2 создаёт `ctx:*` — "сырой" или интерсубъективный контекст, ещё без личной субъективной линзы.
 
-Линза вычисляет «подозрительность»:
-\[
-\mathrm{suspicion}=\mathrm{clamp01}\big(0.55p + 0.20\sigma + 0.15\,surv_0 + 0.10\,danger_0\big)
-\]
-(используется как объяснимый агрегат; важно для дебага).
+Основные оси в текущем runtime:
 
-### 3.4.2. Коэффициенты усиления (k)
+- `danger`
+- `control`
+- `intimacy`
+- `hierarchy`
+- `publicness`
+- `normPressure`
+- `surveillance`
+- `scarcity`
+- `timePressure`
+- `uncertainty`
+- `legitimacy`
+- `secrecy`
+- `grief`
+- `pain`
 
-Для danger в коде:
-\[
-k_{danger}=1 + 1.2(p-0.5) + 0.6(\sigma-0.5) + 0.45(h-0.5)
-\]
-Смысл: паранойя/стресс/реактивность HPA повышают *чувствительность* восприятия опасности.
+## 3.4. Блок формул для S2
 
-### 3.4.3. Смещения (b)
+## Privacy / publicness / surveillance
 
-Три линейных вклада:
-\[
-\begin{aligned}
-+b_{paranoia}&=0.7(p-0.5)\\
-+b_{stress}&=0.25(\sigma-0.5)\\
-+b_{exp}&=-0.30(e-0.5)\\
-+b_{danger}&=b_{paranoia}+b_{stress}+b_{exp}
-\end{aligned}
-\]
-Смысл: опыт снижает систематическую переоценку угрозы.
+### Purpose
 
-И затем:
-\[
-danger=\mathrm{modulate}(danger_0,b_{danger},k_{danger})
-\]
+Построить социально-пространственные оси приватности, публичности и наблюдаемости, которые downstream layers используют как часть социальной и threat-sensitive интерпретации среды.
 
-Аналогичные пары \((b,k)\) заданы для uncertainty/norm/publicness/surveillance/… (см. `characterLens.ts`).
+### Formula
 
-## 3.5. Выходы линзы: `ctx:final:*`
+```text
+privacy      = clamp01(0.7 * locPrivacy + 0.3 * normPrivacy)
+publicness   = clamp01(0.7 * (1 - locPrivacy) + 0.3 * normPublicExposure)
+surveillance = clamp01(0.55 * control + 0.20 * publicness + 0.25 * normSurveillance)
+```
 
-Для каждого axis создаётся derived-атом:
+### Variables
 
-- `id = ctx:final:<axis>:<selfId>`
-- `origin = derived`, `source = character_lens`
-- `magnitude = clamp01(result)`
-- `trace.usedAtomIds` включает:
-  - входные `feat:char:*` и `ctx:*`,
-  - **base copy** для соответствующей `ctx:*` оси.
+- `locPrivacy ∈ [0,1]` — приватность локации
+- `normPrivacy ∈ [0,1]` — нормативная приватность
+- `normPublicExposure ∈ [0,1]` — нормативная публичность
+- `control ∈ [0,1]` — environmental control proxy
+- `normSurveillance ∈ [0,1]` — нормативная наблюдаемость
 
-### Почему нужен base copy
+### Source of truth
 
-Если мы создаём `ctx:final:*` как override-слой, важно уметь показать пользователю:
-- чему равнялось сырьё до линзы,
-- какие именно черты дали смещение.
+- implementation: `lib/context/axes/deriveAxes.ts`
+- inputs: `world:*`, `ctx:src:norm:*`, `feat:loc:*`
+- tests: `tests/pipeline/stage_isolation.test.ts`
+- trace/UI: `ctx:privacy:*`, `ctx:publicness:*`, `ctx:surveillance:*`
 
-`ensureBaseCopy(...)` создаёт атом вроде:
-- `ctx:base:danger:<selfId>`
-с `trace.notes = ['base copy before override', ...]` и ссылками на исходные usedAtomIds.
+### Invariants
 
-## 3.6. Инварианты trace (самый частый источник багов)
+- все величины клиппятся в `[0,1]`
+- `publicness` и `privacy` не обязаны быть строго комплементарны после всех смешений
+- derived atoms обязаны писать `trace.parts.formula`
 
-Линза санитизирует зависимости:
+### Minimal example
 
-- удаляет ссылки на самого себя (`x === outId`);
-- удаляет нестроки/пустые;
-- дедуплицирует.
+Input:
 
-Это важно, потому что граф атомов (`AtomGraph`) строится по `trace.usedAtomIds` и любая петля → плохо для визуализации/объяснимости.
+```text
+locPrivacy = 0.8
+normPrivacy = 0.4
+normPublicExposure = 0.6
+control = 0.5
+normSurveillance = 0.7
+```
 
-## 3.7. Как расширять линзу (контракт)
+Calculation:
 
-Если ты добавляешь новую ось контекста, на которую должна влиять субъективность:
+```text
+privacy = 0.7 * 0.8 + 0.3 * 0.4 = 0.68
+publicness = 0.7 * 0.2 + 0.3 * 0.6 = 0.32
+surveillance = 0.55 * 0.5 + 0.20 * 0.32 + 0.25 * 0.7 = 0.514
+```
 
-1) обеспечить её существование на сыром уровне `ctx:<axis>:<id>` до стадии применения линзы;
-2) добавить чтение \(x_0\) в `characterLens.ts`;
-3) задать \((b,k)\) из trait/body/ctx так, чтобы при (traits=0.5) линза была почти тождественной;
-4) добавить выход `ctx:final:<axis>:<id>` и включить зависимости в `usedCtx`.
+Output:
+
+```text
+ctx:privacy:* = 0.68
+ctx:publicness:* = 0.32
+ctx:surveillance:* = 0.514
+```
+
+### Failure modes
+
+- axis documented as direct location property even though runtime mixes multiple inputs
+- docs omit `trace.parts` and make the axis look like a magic scalar
+- publicness/privacy described as raw synonyms of `properties.privacy`
+
+## Danger / control / normPressure
+
+### Purpose
+
+Построить оси угрозы, управляемости и нормативного давления как сжатые оценки состояния среды, пригодные для later appraisal, drivers and goals.
+
+### Formula
+
+```text
+vulnFactor   = clamp01(0.85 + 0.10 * (1 - escape) + 0.05 * (1 - cover))
+dangerBase   = clamp01(danger * vulnFactor)
+dangerSocial = clamp01(0.55 * sceneHostility + 0.45 * sceneThreat)
+ctxDanger    = clamp01(0.75 * dangerBase + 0.25 * dangerSocial)
+
+ctxControl   = clamp01(0.45 * controlLevel + 0.20 * escape + 0.15 * cover + 0.20 * resourceAccess)
+ctxNorm      = clamp01(0.45 * locNormPressure + 0.30 * surveillance + 0.15 * publicness + 0.10 * proceduralStrict)
+```
+
+### Variables
+
+- `danger ∈ [0,1]` — агрегированный физический/environment hazard
+- `escape ∈ [0,1]` — возможность выхода/эвакуации
+- `cover ∈ [0,1]` — защитное укрытие
+- `sceneHostility ∈ [0,1]`, `sceneThreat ∈ [0,1]` — социальная угроза сцены
+- `controlLevel ∈ [0,1]` — контроль над ситуацией
+- `resourceAccess ∈ [0,1]` — доступ к ресурсам
+- `locNormPressure ∈ [0,1]`, `proceduralStrict ∈ [0,1]` — нормативные входы
+
+### Source of truth
+
+- implementation: `lib/context/axes/deriveAxes.ts`
+- tests: `tests/pipeline/stage_isolation.test.ts`
+- trace/UI: `ctx:danger:*`, `ctx:control:*`, `ctx:normPressure:*`
+
+### Invariants
+
+- danger combines physical and social inputs, а не только карту/хазарды
+- `ctx:control` не равен просто `control_level`; это смесь control/escape/cover/resources
+- `ctx:normPressure` после построения уже зависит от surveillance/publicness
+
+### Minimal example
+
+Input:
+
+```text
+danger = 0.7
+escape = 0.4
+cover = 0.5
+sceneHostility = 0.6
+sceneThreat = 0.4
+controlLevel = 0.5
+resourceAccess = 0.3
+locNormPressure = 0.8
+surveillance = 0.5
+publicness = 0.2
+proceduralStrict = 0.7
+```
+
+Calculation:
+
+```text
+vulnFactor = 0.85 + 0.10 * 0.6 + 0.05 * 0.5 = 0.935
+dangerBase = 0.7 * 0.935 = 0.6545
+dangerSocial = 0.55 * 0.6 + 0.45 * 0.4 = 0.51
+ctxDanger = 0.75 * 0.6545 + 0.25 * 0.51 = 0.618
+
+ctxControl = 0.45 * 0.5 + 0.20 * 0.4 + 0.15 * 0.5 + 0.20 * 0.3 = 0.44
+ctxNorm = 0.45 * 0.8 + 0.30 * 0.5 + 0.15 * 0.2 + 0.10 * 0.7 = 0.61
+```
+
+### Failure modes
+
+- docs treat `ctx:danger` as a direct read from one atom
+- formulas omit escape/cover/resource terms and mislead later model work
+- trace omits the actual multi-source origin of the axis
+
+## 3.5. S3: subjective lens
+
+S3 не создаёт новый "объективный" мир. Он превращает `ctx:*` в субъективное восприятие конкретного агента.
+
+Main contract:
+
+- `ctx:*` не перезаписывается
+- появляется `ctx:final:*`
+- после S3 downstream layers должны предпочитать `ctx:final:*`
+
+## Subjective modulation
+
+### Purpose
+
+Сместить и усилить base-context в зависимости от traits/body state персонажа так, чтобы одинаковая ситуация по-разному переживалась разными агентами.
+
+### Formula
+
+```text
+shifted   = clamp01(x + bias)
+centered  = shifted - 0.5
+amplified = centered * sensitivity
+result    = clamp01(0.5 + amplified)
+```
+
+или кратко:
+
+```text
+modulate(x, bias, sensitivity) = clamp01(0.5 + (clamp01(x + bias) - 0.5) * sensitivity)
+```
+
+### Variables
+
+- `x ∈ [0,1]` — base context axis from `ctx:*`
+- `bias` — baseline shift from traits/body/context
+- `sensitivity` — multiplicative gain around the neutral point `0.5`
+
+### Source of truth
+
+- implementation: `lib/context/lens/characterLens.ts`
+- tests: `tests/lens/character_lens.test.ts`
+- trace/UI: `ctx:final:*`, `ctx:base:*`
+
+### Invariants
+
+- при нейтральных traits/body (`0.5`) линза должна быть почти identity
+- линза не должна создавать self-cycles в trace
+- все outputs клиппятся в `[0,1]`
+
+### Minimal example
+
+Input:
+
+```text
+x = 0.30
+bias = 0.20
+sensitivity = 1.30
+```
+
+Calculation:
+
+```text
+shifted = clamp01(0.30 + 0.20) = 0.50
+centered = 0.50 - 0.5 = 0
+amplified = 0 * 1.30 = 0
+result = 0.50
+```
+
+Output:
+
+```text
+ctx:final:<axis>:A = 0.50
+```
+
+### Failure modes
+
+- docs describe the lens as pure multiplier and ignore bias
+- traces point only to `ctx:*`, but not to `feat:char:*`
+- docs imply the lens mutates `ctx:*`, while runtime actually writes `ctx:final:*`
+
+## 3.6. Example: subjective danger
+
+Current runtime uses:
+
+```text
+kDanger = 1 + 1.2 * (paranoia - 0.5) + 0.6 * (stress - 0.5) + 0.45 * (hpaReactivity - 0.5)
+bDanger = 0.7 * (paranoia - 0.5) + 0.25 * (stress - 0.5) - 0.30 * (experience - 0.5)
+danger  = modulate(danger0, bDanger, kDanger)
+```
+
+Это означает:
+
+- паранойя повышает и baseline shift, и gain
+- стресс тоже усиливает danger-perception
+- опыт снижает систематическую переоценку угрозы
+
+Тестовые anchors:
+
+- `tests/lens/character_lens.test.ts`
+- high paranoia must increase perceived danger
+- neutral traits must keep danger almost unchanged
+
+## 3.7. Что считать завершённой документацией для этого слоя
+
+Слой `features -> ctx:* -> ctx:final:*` считается задокументированным только если:
+
+- указаны реальные source paths;
+- формулы S2 и S3 привязаны к коду;
+- описано, какие величины base, а какие subjective;
+- есть test anchors;
+- trace surfaces названы явно.
