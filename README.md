@@ -1,23 +1,37 @@
 # Kanonar
 
-Kanonar — исследовательская лаборатория детерминированной агентной симуляции и explainable decision pipelines. Репозиторий объединяет staged GoalLab pipeline, SimKit runtime, слои выбора действий, traceable goal/action derivation и экспериментальные conflict/dilemma surfaces.
+Kanonar — исследовательская лаборатория детерминированной агентной симуляции и explainable decision pipelines. Проект описывает staged runtime: от входных сущностей и контекстных атомов до драйверов, целей, утилит, действий, trace и сравнений симуляционных сценариев.
 
-## Что делает проект
+Kanonar не является психологической, клинической, диагностической или поведенчески предсказательной моделью реальных людей. Метрики вроде `trust`, `fear`, `stress`, `dominance`, `affiliationNeed`, `controlNeed` — внутренние simulation scalars.
 
-- Прогоняет staged pipeline от world/context atoms к `ctx:*`, `ctx:final:*`, `drv:*`, `goal:*`, `util:*` и `action:*`.
-- Моделирует субъективный контекст через character lens, а не только через «объективные» сигналы мира.
-- Поддерживает explainability через `trace.usedAtomIds`, stage snapshots и decision artifacts.
-- Даёт площадку для deterministic simulation, conflict/dilemma сценариев и sensitivity/divergence analysis в SimKit-слое.
+## Что моделирует проект
 
-## Почему это важно
+- `GoalLab` pipeline: `world/obs/mem/rel/life -> ctx:* -> ctx:final:* -> drv:* -> goal:* -> util:* -> action:*`.
+- `SimKit` runtime: запуск и сравнение детерминированных сценариев.
+- `Dilemma/conflict` surfaces: экспериментальные игровые и конфликтные протоколы.
+- Explainability: `trace.usedAtomIds`, stage snapshots, decision artifacts, graph attribution.
+- Metric system: входные параметры, features, context axes, ToM, latents, v4.2, derived metrics, drivers/goals/utilities.
 
-Проект полезен как демонстрация:
+## Читать как книгу
 
-- staged decision architecture с явными контрактами стадий;
-- детерминированного симуляционного пайплайна с управляемыми коэффициентами;
-- explainable goal/action selection без скрытых переходов `goal -> action`;
-- нелинейной динамики драйверов, гистерезиса и decision scoring;
-- сравнения поведения и trajectory divergence в simulation runtime.
+Главный вход в документацию:
+
+1. `docs/MATH_INDEX.md` — единый корешок книги: идея, runtime, модельные слои, статусы canonical/reference/legacy.
+2. `docs/ENTITY_AND_METRIC_INDEX.md` — энциклопедия сущностей и метрик: смысл, диапазоны, source paths, формулы или статус raw/input.
+3. `docs/WALKTHROUGH_ONE_TICK.md` — один минимальный тик через pipeline.
+4. `docs/DOCUMENTATION_STANDARD.md` — правила, как поддерживать документацию дальше.
+
+Глубокие главы книги живут в `docs/agents/*`. Repo/control-plane reference живёт в `docs/unified/*`. UI/visualization reference живёт в `docs/VISUALIZATION.md`.
+
+## Canonical runtime
+
+- Pipeline: `lib/goal-lab/pipeline/runPipelineV1.ts`
+- Atom/trace types: `lib/context/v2/types.ts`
+- Formula config: `lib/config/formulaConfig.ts`
+- SimKit config: `lib/config/formulaConfigSim.ts`
+- Metric inventory: `docs/ENTITY_AND_METRIC_INDEX.md`
+- Pipeline contract: `docs/PIPELINE.md`
+- Invariants: `docs/INVARIANTS.md`
 
 ## Quick start
 
@@ -28,86 +42,16 @@ npm test
 npm run build
 ```
 
-## Архитектура в 10 строк
-
-```text
-world / obs / mem / rel / life
--> S0 canonicalization
--> S1 normalization / helper derivations
--> S2 base context axes (ctx:*)
--> S3 subjective lens (ctx:final:*)
--> S4 appraisal / emotions
--> S5 ToM / dyadic policy
--> S6 drivers / priorities
--> S7 goals / planning / util projection
--> S8 decision / action artifacts
-```
-
-Источник истины для этого spine:
-
-- runtime: `lib/goal-lab/pipeline/runPipelineV1.ts`
-- stage contract: `docs/PIPELINE.md`
-- invariants: `docs/INVARIANTS.md`
-- atom/trace types: `lib/context/v2/types.ts`
-
-## Карта документации
-
-### Внешний вход
-
-- `README.md` — быстрый вход в проект и его ограничения.
-- `docs/MATH_INDEX.md` — карта математики, runtime paths и test anchors.
-- `docs/WALKTHROUGH_ONE_TICK.md` — один минимальный тик от S0 до S8.
-- `docs/DOCUMENTATION_STANDARD.md` — контракт, как документировать новые механизмы.
-
-### Канонические repo-level docs
-
-- `docs/unified/README.md` — high-signal индекс по control-plane слою.
-- `docs/PIPELINE.md` — контракт стадий `S0...S9`.
-- `docs/INVARIANTS.md` — правила, которые нельзя ломать.
-- `docs/ORACLES.md` — oracle/check expectations для моделей и explainability.
-- `docs/EXPLAINABILITY.md` — что именно UI и trace обязаны показывать.
-
-### Глубокая модельная документация
-
-- `docs/agents/00_README.md` — навигация по model docs.
-- `docs/agents/03_CHARACTER_LENS.md` — субъективный `ctx:* -> ctx:final:*`.
-- `docs/agents/05_GOAL_LAB_MATH.md` — goals, utilities, modes, hysteresis.
-- `docs/agents/06_ENERGY_PROPAGATION.md` — explainability energy/graph layer.
-- `docs/agents/07_PIPELINE_SPEC.md` — детальная спецификация стадий.
-
-### Live runtime areas
-
-- GoalLab pipeline: `lib/goal-lab/pipeline/*`
-- Drivers: `lib/drivers/*`
-- Goals and planning: `lib/goals/*`
-- Decision layer: `lib/decision/*`
-- SimKit runtime: `lib/simkit/*`
-- Dilemma runtime: `lib/dilemma/*`
-- Tests: `tests/pipeline/*`, `tests/decision/*`, `tests/simkit/*`, `tests/dilemma/*`
-
-## Текущее состояние
-
-Репозиторий содержит сильный внутренний модельный и контрактный слой, но внешний вход только формируется. Корневой `README.md` и docs-entry слой в этой волне добавляются именно для того, чтобы внешний ревьюер быстрее увидел:
-
-- где канонический runtime;
-- где математика;
-- где tests/oracles;
-- что в проекте уже зафиксировано контрактами, а что остаётся исследовательским.
-
 ## Assumptions and limitations
 
-Kanonar — research/prototype simulation system. Переменные вроде trust, fear, stress, resentment, affiliation need или control need — это внутренние симуляционные скаляры. Они не являются клиническими, психометрическими или экспериментально откалиброванными измерениями.
+Kanonar is a research/prototype simulation system. Variables such as trust, fear,
+stress, resentment, affiliation need, or control need are internal simulation
+scalars. They are not clinical, psychometric, or experimentally calibrated
+measurements.
 
-Система полезна для:
+The system is useful for deterministic simulation, explainable decision
+pipelines, sensitivity analysis, comparing rule systems, and prototyping agent
+dynamics.
 
-- deterministic simulation;
-- explainable decision pipelines;
-- sensitivity analysis;
-- сравнения rule systems;
-- прототипирования agent dynamics.
-
-Система не должна описываться как:
-
-- validated psychological model;
-- инструмент диагностики реальных людей;
-- надёжный предиктор реального социального поведения без внешней валидации.
+The system must not be presented as a validated psychological, diagnostic, or
+real-world behavioral prediction model without external validation.

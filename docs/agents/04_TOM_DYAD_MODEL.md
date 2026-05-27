@@ -328,7 +328,7 @@ tom:dyad:final:<selfId>:<otherId>:trust
 
 ## 4.6. Tests and validation status
 
-У этого dyad-ядра сейчас нет отдельного узкого unit-test файла уровня `tests/tom/dyad_metrics.test.ts`.
+У этого dyad-ядра сейчас нет отдельного узкого unit-test файла для `lib/tom/dyad-metrics.ts`.
 
 Поэтому test anchors нужно описывать честно:
 

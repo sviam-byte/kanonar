@@ -1,8 +1,10 @@
 # Unified Docs Index
 
-This folder is the current high-signal entrypoint for humans and agents working in this repo.
+Status: repo/control-plane reference. The main documentation book starts at `README.md` -> `docs/MATH_INDEX.md`.
+
+This folder is the high-signal reference for humans and agents working on repo control-plane questions.
 It does not replace deep domain docs in `docs/PIPELINE.md` or `docs/INVARIANTS.md`.
-It tells you what to read first, what is actually live in code, and where the risky mixed layers are.
+It tells you what is actually live in code and where the risky mixed layers are.
 It is also the official repo-level home for the control-plane material that previously lived outside `docs/`.
 
 ## Read Order

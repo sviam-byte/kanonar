@@ -1,6 +1,6 @@
 {
   "project_name": "KANONAR 4.0",
-  "official_entrypoint": "docs/unified/README.md",
+  "official_entrypoint": "docs/MATH_INDEX.md",
   "canonical_roots": [
     "lib/goal-lab/pipeline",
     "lib/context/v2",
@@ -34,6 +34,9 @@
     "archive"
   ],
   "key_docs": [
+    "README.md",
+    "docs/MATH_INDEX.md",
+    "docs/ENTITY_AND_METRIC_INDEX.md",
     "docs/unified/README.md",
     "docs/unified/01_CONTROL_PLANE.md",
     "docs/unified/02_AGENT_QUICKSTART.md",
@@ -148,13 +151,16 @@
     "Do not treat compat adapters as canonical spec"
   ],
   "first_files_to_read": [
+    "README.md",
+    "docs/MATH_INDEX.md",
+    "docs/ENTITY_AND_METRIC_INDEX.md",
+    "docs/PIPELINE.md",
+    "docs/INVARIANTS.md",
     "docs/unified/README.md",
     "docs/unified/01_CONTROL_PLANE.md",
     "docs/unified/02_AGENT_QUICKSTART.md",
     "docs/unified/03_SYSTEM_MAP.md",
     "docs/unified/04_CONTROL_PLANE_VALIDATION.md",
-    "docs/PIPELINE.md",
-    "docs/INVARIANTS.md",
     "docs/ARCHITECTURE.md",
     "lib/goal-lab/pipeline/runPipelineV1.ts",
     "lib/context/v2/types.ts",
