@@ -6,8 +6,23 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 .DS_Store
+.venv/
+__pycache__/
+*.pyc
 
 # Local Codex / agent working files
 AGENT.md
 MEMORY.md
 tasks/
+
+# Generated behavior-lab datasets
+data/raw/casino/
+data/processed/casino_*.parquet
+data/processed/casino_manifest.json
+kanonar_behavior_lab/data/processed/*.parquet
+kanonar_behavior_lab/data/processed/*.json
+kanonar_behavior_lab/data/processed/*.csv
+kanonar_behavior_lab/data/reports/*.md
+
+# Generated trait-validation datasets
+kanonar_trait_validation/

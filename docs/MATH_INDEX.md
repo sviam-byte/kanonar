@@ -31,7 +31,11 @@
 - formula config: `lib/config/formulaConfig.ts`
 - SimKit config: `lib/config/formulaConfigSim.ts`
 - metric encyclopedia: `docs/ENTITY_AND_METRIC_INDEX.md`
+- axis validation registry: `docs/axis_validation_registry.yaml`
 - docs standard: `docs/DOCUMENTATION_STANDARD.md`
+- experimental external-data layer: `docs/BEHAVIOR_LAB.md`
+- external data validation summary:
+  `docs/EXTERNAL_DATA_VALIDATION_SUMMARY.md`
 
 ## 0. Как читать книгу
 
@@ -44,6 +48,9 @@
 5. `docs/PIPELINE.md` — контракт стадий `S0...S9`.
 6. `docs/INVARIANTS.md` — правила, которые нельзя ломать.
 7. `docs/agents/00_README.md` — глубокие главы агентной модели.
+8. `docs/BEHAVIOR_LAB.md` — внешний CaSiNo/ConvoKit слой для проверяемых экспериментов.
+9. `docs/EXTERNAL_DATA_VALIDATION_SUMMARY.md` — сводка всех внешних датасетов,
+   локальных артефактов, схем, результатов и ограничений текущей validation wave.
 
 `docs/unified/*`, `docs/agent/*`, `docs/VISUALIZATION.md` и v69-style reference docs читать после canonical path, когда нужен control-plane, contributor, UI или legacy/reference контекст.
 

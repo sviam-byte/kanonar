@@ -1,0 +1,790 @@
+schema_version: 1
+purpose: >
+  Validation contract for Kanonar character axes and derived labels. This file
+  separates base vector_base axes from derived traits, and separates external
+  psychometric validation from internal simulation validation.
+
+source_paths:
+  base_axis_schema: data/character-schema.ts
+  derived_trait_runtime: lib/traits.ts
+  metric_inventory: docs/ENTITY_AND_METRIC_INDEX.md
+  behavior_lab: docs/BEHAVIOR_LAB.md
+  local_spi_export: kanonar_trait_validation/
+
+status_definitions:
+  external_validatable: >
+    A close real construct exists. Use convergent and discriminant validity
+    against external scales or public-domain item pools.
+  proxy_validatable: >
+    No exact external scale is assumed, but behavior, corpus data, or task
+    proxies can test the expected pattern.
+  world_internal: >
+    Kanonar/worldbuilding axis. Validate by deterministic scenario behavior,
+    perturbation, and in-world task success, not by treating it as a real
+    psychological scale.
+  derived: >
+    Not a base axis. Validate as a computed summary or fitted projection from
+    base axes to action ratings/behavior. Split or rename if it mixes distinct
+    mechanisms.
+
+global_rules:
+  - Do not validate every axis as Big Five or SPI.
+  - An axis is a working simulation axis only if it changes appraisal, goals,
+    choice, memory update, or world-task success.
+  - A pair of axes with stable correlation above 0.8 needs a duplication review.
+  - Derived traits must improve held-out action prediction over context-only and
+    previous-action baselines.
+  - Clinical names are forbidden unless the layer is explicitly clinical and
+    validated. Prefer defensive_suspicion over paranoia.
+
+validation_stages:
+  - assign_status
+  - define_nomological_map
+  - diagnostic_scenario_battery
+  - perturbation_tests
+  - discriminant_correlation_matrix
+  - external_anchor_comparison
+  - predictive_validity_against_baseline
+  - human_or_llm_assisted_action_ratings
+
+external_anchor_sets:
+  ipip_big_five:
+    use_for:
+      - openness
+      - conscientiousness
+      - agreeableness
+      - neuroticism_reversed
+      - extraversion
+    local_data:
+      - kanonar_trait_validation/raw_spi.csv
+      - kanonar_trait_validation/spi_dictionary.csv
+      - kanonar_trait_validation/spi_keys.csv
+  hexaco:
+    use_for:
+      - honesty_humility
+      - emotionality
+      - extraversion
+      - agreeableness
+      - conscientiousness
+      - openness
+  schwartz_values:
+    use_for:
+      - security
+      - benevolence
+      - universalism
+      - power
+      - self_direction
+      - stimulation
+      - tradition
+      - conformity
+  moral_foundations:
+    use_for:
+      - care_harm
+      - fairness
+      - authority
+      - loyalty
+      - sanctity
+  iri_empathy:
+    use_for:
+      - empathic_concern
+      - perspective_taking
+  ecr_r_attachment:
+    use_for:
+      - attachment_anxiety
+      - attachment_avoidance
+  ius:
+    use_for:
+      - intolerance_of_uncertainty_reversed
+  bis_bas:
+    use_for:
+      - behavioral_inhibition
+      - behavioral_activation
+
+dataset_targets:
+  spi:
+    status: downloaded
+    path: kanonar_trait_validation/
+    use_for:
+      - factor_structure_smoke_check
+      - derived_trait_big_five_projection
+      - discriminant_validity_first_pass
+    not_for:
+      - world_internal_axes
+      - scene_behavior_prediction
+  casino:
+    status: local_behavior_lab_available
+    path: kanonar_behavior_lab/
+    use_for:
+      - negotiation_behavior
+      - reciprocity
+      - fairness_proxy
+      - cooldown_under_reject
+      - power_sovereignty_proxy
+  esconv:
+    status: candidate_future_dataset
+    use_for:
+      - care_support
+      - empathy
+      - shame_reduction
+      - hope_control_restoration
+  social_chemistry:
+    status: candidate_future_dataset
+    use_for:
+      - norms
+      - moral_judgment
+      - legitimacy
+      - guilt_shame_triggers
+  moral_foundations_corpus:
+    status: candidate_future_dataset
+    use_for:
+      - moral_language_axes
+      - care_fairness_authority_loyalty
+
+base_axes:
+  A_Causality_Sanctity:
+    layer: base_value
+    validation_status: world_internal
+    external_constructs: []
+    should_predict: [resistance_to_causality_breaking, causal_repair_priority]
+    should_not_predict: [generic_religiosity, big_five_openness]
+    datasets: []
+    tests: [causal_break_scenarios, topology_repair_scenarios]
+  A_Memory_Fidelity:
+    layer: base_value
+    validation_status: proxy_validatable
+    external_constructs: [memory_accuracy_proxy, witness_reliability_proxy]
+    should_predict: [evidence_retention, low_report_drift]
+    should_not_predict: [moral_goodness, loyalty]
+    datasets: [social_chemistry]
+    tests: [witness_recall_scenarios]
+  A_Reversibility:
+    layer: base_value
+    validation_status: proxy_validatable
+    external_constructs: [option_value, reversibility_preference]
+    should_predict: [preference_for_reversible_actions, delayed_irreversible_commitment]
+    should_not_predict: [cowardice, low_agency]
+    datasets: [casino]
+    tests: [irreversible_choice_scenarios]
+  A_Legitimacy_Procedure:
+    layer: base_value
+    validation_status: external_validatable
+    external_constructs: [moral_foundations_authority, schwartz_conformity, procedural_justice]
+    should_predict: [procedure_following, rule_objection, authority_deference_when_legitimate]
+    should_not_predict: [low_autonomy_submission, fairness]
+    datasets: [social_chemistry, moral_foundations_corpus]
+    tests: [procedure_vs_outcome_scenarios]
+  A_Safety_Care:
+    layer: base_value
+    validation_status: external_validatable
+    external_constructs: [moral_foundations_care_harm, schwartz_benevolence, iri_empathic_concern]
+    should_predict: [harm_avoidance, rescue_choice, costly_help]
+    should_not_predict: [submission, low_agency]
+    datasets: [esconv, social_chemistry]
+    tests: [care_vs_efficiency_scenarios, costly_help_scenarios]
+  A_Liberty_Autonomy:
+    layer: base_value
+    validation_status: external_validatable
+    external_constructs: [schwartz_self_direction, autonomy_need]
+    should_predict: [resistance_to_imposed_choice, initiative_under_constraint]
+    should_not_predict: [selfishness, aggression]
+    datasets: [casino]
+    tests: [imposed_choice_scenarios]
+  A_Justice_Fairness:
+    layer: base_value
+    validation_status: external_validatable
+    external_constructs: [moral_foundations_fairness, schwartz_universalism, distributive_justice]
+    should_predict: [reject_unfair_deals, punish_unfairness_at_cost]
+    should_not_predict: [procedure_following, care]
+    datasets: [casino, social_chemistry, moral_foundations_corpus]
+    tests: [fairness_vs_profit_scenarios]
+  A_Power_Sovereignty:
+    layer: base_value
+    validation_status: external_validatable
+    external_constructs: [schwartz_power, dominance_status_motivation]
+    should_predict: [resistance_to_control_loss, demand_actions, self_favoring_offer]
+    should_not_predict: [competence, agency_as_capacity]
+    datasets: [casino]
+    tests: [control_loss_scenarios]
+  A_Knowledge_Truth:
+    layer: base_value
+    validation_status: external_validatable
+    external_constructs: [need_for_cognition, openness_intellect, epistemic_curiosity]
+    should_predict: [verify_actions, information_gathering, truth_preserving_choice]
+    should_not_predict: [risk_seeking, empathy]
+    datasets: [spi]
+    tests: [truth_vs_convenience_scenarios]
+  A_Tradition_Continuity:
+    layer: base_value
+    validation_status: external_validatable
+    external_constructs: [schwartz_tradition, schwartz_conformity]
+    should_predict: [status_quo_preference, continuity_preservation]
+    should_not_predict: [emotional_stability, submission]
+    datasets: [social_chemistry, moral_foundations_corpus]
+    tests: [tradition_vs_innovation_scenarios]
+  A_Transparency_Secrecy:
+    layer: base_value
+    validation_status: proxy_validatable
+    external_constructs: [honesty_humility_proxy, privacy_preference, secrecy_strategy]
+    should_predict: [withhold_sensitive_info, opsec_choice]
+    should_not_predict: [low_trust_by_itself, betrayal_memory]
+    datasets: [casino]
+    tests: [public_private_information_scenarios]
+  A_Aesthetic_Meaning:
+    layer: base_value
+    validation_status: external_validatable
+    external_constructs: [openness_aesthetics, meaning_orientation]
+    should_predict: [meaning_preserving_choice, symbolic_cost_sensitivity]
+    should_not_predict: [morality, skill]
+    datasets: [spi]
+    tests: [symbolic_meaning_scenarios]
+
+  B_discount_rate:
+    layer: decision_dynamic
+    validation_status: external_validatable
+    external_constructs: [delay_discounting, impulsive_choice]
+    should_predict: [short_term_reward_choice, future_cost_neglect]
+    should_not_predict: [aggression, low_empathy]
+    datasets: [casino]
+    tests: [delayed_reward_scenarios]
+  B_exploration_rate:
+    layer: decision_dynamic
+    validation_status: external_validatable
+    external_constructs: [openness, stimulation, behavioral_activation]
+    should_predict: [novel_option_sampling, exploration_under_uncertainty]
+    should_not_predict: [care, loyalty]
+    datasets: [spi, casino]
+    tests: [exploration_vs_exploitation_scenarios]
+  B_tolerance_ambiguity:
+    layer: decision_dynamic
+    validation_status: external_validatable
+    external_constructs: [intolerance_of_uncertainty_reversed]
+    should_predict: [ask_before_act, delayed_lock_in, clarification]
+    should_not_predict: [empathy, coalition_loyalty]
+    datasets: [casino]
+    tests: [ambiguous_signal_scenarios]
+  B_goal_coherence:
+    layer: decision_dynamic
+    validation_status: proxy_validatable
+    external_constructs: [goal_consistency, self_regulation_proxy]
+    should_predict: [stable_plan_following, fewer_goal_switches]
+    should_not_predict: [tradition, emotional_stability]
+    datasets: []
+    tests: [goal_conflict_scenarios]
+  B_cooldown_discipline:
+    layer: decision_dynamic
+    validation_status: external_validatable
+    external_constructs: [conscientiousness, self_control, emotion_regulation]
+    should_predict: [pause_after_provocation, repair_after_escalation, lower_immediate_retaliation]
+    should_not_predict: [submission, low_power]
+    datasets: [spi, casino]
+    tests: [provocation_cooldown_scenarios]
+  B_decision_temperature:
+    layer: decision_dynamic
+    validation_status: external_validatable
+    external_constructs: [bis_bas, impulsivity, decisional_noise]
+    should_predict: [variable_choices, fast_switching, riskier_action_sampling]
+    should_not_predict: [aggression, low_morality]
+    datasets: [casino]
+    tests: [same_state_choice_variance_scenarios]
+
+  C_reciprocity_index:
+    layer: social_parameter
+    validation_status: external_validatable
+    external_constructs: [reciprocity_norm, agreeableness_proxy]
+    should_predict: [concession_after_partner_concession, cooperation_after_fair_offer]
+    should_not_predict: [baseline_trust, empathic_care]
+    datasets: [casino]
+    tests: [reciprocal_offer_scenarios]
+  C_betrayal_cost:
+    layer: social_parameter
+    validation_status: proxy_validatable
+    external_constructs: [betrayal_sensitivity, trust_repair_cost]
+    should_predict: [strong_memory_weight_after_betrayal, lower_cooperation_after_intentional_betrayal]
+    should_not_predict: [aggression_by_itself, low_empathy]
+    datasets: [casino]
+    tests: [betrayal_repair_scenarios]
+  C_reputation_sensitivity:
+    layer: social_parameter
+    validation_status: external_validatable
+    external_constructs: [social_evaluative_concern, attachment_anxiety_proxy]
+    should_predict: [public_private_action_difference, shame_response]
+    should_not_predict: [high_morality, loyalty]
+    datasets: [esconv, social_chemistry]
+    tests: [public_vs_private_error_scenarios]
+  C_dominance_empathy:
+    layer: social_parameter
+    validation_status: external_validatable
+    external_constructs: [iri_perspective_taking, iri_empathic_concern, agreeableness_reversed_dominance]
+    should_predict: [perspective_taking, lower_coercion_when_empathy_side_high]
+    should_not_predict: [procedure_following, skill]
+    datasets: [spi, esconv]
+    tests: [empathy_vs_dominance_scenarios]
+  C_coalition_loyalty:
+    layer: social_parameter
+    validation_status: external_validatable
+    external_constructs: [moral_foundations_loyalty, schwartz_conformity]
+    should_predict: [ingroup_support, coalition_cost_absorption]
+    should_not_predict: [submission, care]
+    datasets: [social_chemistry, moral_foundations_corpus]
+    tests: [ingroup_outgroup_tradeoff_scenarios]
+
+  D_fine_motor:
+    layer: physiological_capacity
+    validation_status: proxy_validatable
+    external_constructs: [task_skill_proxy]
+    should_predict: [precision_action_success]
+    should_not_predict: [morality, social_trust]
+    datasets: []
+    tests: [precision_task_scenarios]
+  D_stamina_reserve:
+    layer: physiological_capacity
+    validation_status: proxy_validatable
+    external_constructs: [fatigue_resilience_proxy]
+    should_predict: [long_task_persistence, lower_exhaustion_risk]
+    should_not_predict: [goal_coherence, courage]
+    datasets: []
+    tests: [long_load_scenarios]
+  D_pain_tolerance:
+    layer: physiological_capacity
+    validation_status: proxy_validatable
+    external_constructs: [pain_tolerance_proxy]
+    should_predict: [continued_action_under_pain]
+    should_not_predict: [care, aggression]
+    datasets: []
+    tests: [pain_cost_scenarios]
+  D_HPA_reactivity:
+    layer: physiological_reactivity
+    validation_status: proxy_validatable
+    external_constructs: [stress_reactivity, behavioral_inhibition]
+    should_predict: [threat_bias_under_stress, faster_arousal_response]
+    should_not_predict: [moral_rigidity, betrayal_cost]
+    datasets: [esconv]
+    tests: [threat_stress_scenarios]
+  D_sleep_resilience:
+    layer: physiological_recovery
+    validation_status: proxy_validatable
+    external_constructs: [sleep_resilience_proxy, fatigue_recovery_proxy]
+    should_predict: [lower_sleep_debt_penalty, recovery_after_load]
+    should_not_predict: [discipline, conscientiousness]
+    datasets: []
+    tests: [sleep_debt_scenarios]
+
+  E_KB_stem:
+    layer: skill_knowledge
+    validation_status: proxy_validatable
+    external_constructs: [domain_knowledge_proxy]
+    should_predict: [stem_task_success, technical_diagnosis]
+    should_not_predict: [wisdom, morality]
+    datasets: []
+    tests: [stem_problem_scenarios]
+  E_KB_civic:
+    layer: skill_knowledge
+    validation_status: proxy_validatable
+    external_constructs: [civic_knowledge_proxy]
+    should_predict: [legal_procedure_reasoning, institutional_navigation]
+    should_not_predict: [legitimacy_value, obedience]
+    datasets: [social_chemistry]
+    tests: [civic_procedure_scenarios]
+  E_KB_topos:
+    layer: skill_knowledge
+    validation_status: world_internal
+    external_constructs: []
+    should_predict: [topological_anomaly_understanding]
+    should_not_predict: [openness, intelligence]
+    datasets: []
+    tests: [topos_anomaly_scenarios]
+  E_Model_calibration:
+    layer: skill_knowledge
+    validation_status: proxy_validatable
+    external_constructs: [calibration_accuracy, metacognitive_calibration]
+    should_predict: [better_prediction_error, lower_overconfidence]
+    should_not_predict: [knowledge_volume, confidence]
+    datasets: []
+    tests: [forecast_calibration_scenarios]
+  E_Skill_repair_topology:
+    layer: skill
+    validation_status: world_internal
+    external_constructs: []
+    should_predict: [topology_repair_success]
+    should_not_predict: [care, general_repair_skill]
+    datasets: []
+    tests: [topology_repair_scenarios]
+  E_Skill_causal_surgery:
+    layer: skill
+    validation_status: world_internal
+    external_constructs: []
+    should_predict: [causal_graph_intervention_success]
+    should_not_predict: [moral_authority, ordinary_surgery]
+    datasets: []
+    tests: [causal_surgery_scenarios]
+  E_Skill_chronicle_verify:
+    layer: skill
+    validation_status: proxy_validatable
+    external_constructs: [source_verification_skill]
+    should_predict: [detect_false_record, prefer_evidence_check]
+    should_not_predict: [truth_value, memory_fidelity]
+    datasets: [social_chemistry]
+    tests: [chronicle_verification_scenarios]
+  E_Skill_diplomacy_negotiation:
+    layer: skill
+    validation_status: proxy_validatable
+    external_constructs: [negotiation_skill_proxy]
+    should_predict: [mutual_gain_offer, deescalation_success]
+    should_not_predict: [prosocial_motivation, submission]
+    datasets: [casino]
+    tests: [negotiation_skill_scenarios]
+  E_Skill_ops_fieldcraft:
+    layer: skill
+    validation_status: proxy_validatable
+    external_constructs: [fieldcraft_task_skill_proxy]
+    should_predict: [stealth_or_field_success]
+    should_not_predict: [secrecy_value, paranoia]
+    datasets: []
+    tests: [fieldcraft_scenarios]
+  E_Skill_opsec_hacking:
+    layer: skill
+    validation_status: proxy_validatable
+    external_constructs: [opsec_skill_proxy]
+    should_predict: [secure_information_handling, intrusion_success]
+    should_not_predict: [secrecy_value, distrust]
+    datasets: []
+    tests: [opsec_scenarios]
+  E_Epi_volume:
+    layer: memory_capacity
+    validation_status: proxy_validatable
+    external_constructs: [episodic_memory_capacity_proxy]
+    should_predict: [more_recalled_events]
+    should_not_predict: [memory_accuracy, narrative_identity]
+    datasets: []
+    tests: [episodic_recall_volume_scenarios]
+  E_Epi_recency:
+    layer: memory_dynamics
+    validation_status: proxy_validatable
+    external_constructs: [recency_weighting]
+    should_predict: [recent_event_overweighting]
+    should_not_predict: [forgetting_noise, truthfulness]
+    datasets: []
+    tests: [recency_weight_scenarios]
+  E_Epi_schema_strength:
+    layer: memory_dynamics
+    validation_status: proxy_validatable
+    external_constructs: [schema_reliance, prototype_reliance]
+    should_predict: [schema_based_generalization]
+    should_not_predict: [accuracy, rigidity_by_itself]
+    datasets: []
+    tests: [schema_generalization_scenarios]
+
+  F_Plasticity:
+    layer: learning_plasticity
+    validation_status: external_validatable
+    external_constructs: [openness, learning_flexibility]
+    should_predict: [faster_policy_update, adaptation_to_feedback]
+    should_not_predict: [novelty_seeking_by_itself, low_identity]
+    datasets: [spi]
+    tests: [feedback_adaptation_scenarios]
+  F_Value_update_rate:
+    layer: learning_plasticity
+    validation_status: proxy_validatable
+    external_constructs: [value_learning_rate]
+    should_predict: [faster_value_shift_after_evidence]
+    should_not_predict: [low_loyalty, low_principles]
+    datasets: []
+    tests: [value_update_scenarios]
+  F_Extinction_rate:
+    layer: learning_plasticity
+    validation_status: proxy_validatable
+    external_constructs: [extinction_learning_rate]
+    should_predict: [faster_old_response_decay]
+    should_not_predict: [forgetfulness, forgiveness]
+    datasets: []
+    tests: [extinction_learning_scenarios]
+  F_Trauma_plasticity:
+    layer: learning_plasticity
+    validation_status: proxy_validatable
+    external_constructs: [stress_learning_sensitivity_proxy]
+    should_predict: [larger_profile_shift_after_trauma]
+    should_not_predict: [baseline_reactivity, weakness]
+    datasets: []
+    tests: [trauma_update_scenarios]
+  F_Skill_learning_rate:
+    layer: learning_plasticity
+    validation_status: proxy_validatable
+    external_constructs: [skill_learning_rate]
+    should_predict: [faster_task_skill_improvement]
+    should_not_predict: [value_update, intelligence]
+    datasets: []
+    tests: [skill_learning_scenarios]
+  F_Forgetting_noise:
+    layer: learning_plasticity
+    validation_status: proxy_validatable
+    external_constructs: [memory_noise]
+    should_predict: [noisier_recall, lower_trace_stability]
+    should_not_predict: [dishonesty, low_memory_volume]
+    datasets: []
+    tests: [memory_noise_scenarios]
+
+  G_Self_concept_strength:
+    layer: self_model
+    validation_status: external_validatable
+    external_constructs: [self_concept_clarity]
+    should_predict: [stable_self_description, lower_identity_drift]
+    should_not_predict: [rigidity, high_agency]
+    datasets: [spi]
+    tests: [self_concept_perturbation_scenarios]
+  G_Identity_rigidity:
+    layer: self_model
+    validation_status: external_validatable
+    external_constructs: [identity_rigidity, low_flexibility]
+    should_predict: [resistance_to_identity_update, black_white_self_narrative]
+    should_not_predict: [self_concept_strength, tradition]
+    datasets: [spi]
+    tests: [identity_update_scenarios]
+  G_Self_consistency_drive:
+    layer: self_model
+    validation_status: proxy_validatable
+    external_constructs: [cognitive_dissonance_sensitivity, self_consistency]
+    should_predict: [repair_after_value_behavior_gap]
+    should_not_predict: [morality, shame]
+    datasets: [social_chemistry]
+    tests: [self_consistency_scenarios]
+  G_Metacog_accuracy:
+    layer: self_model
+    validation_status: external_validatable
+    external_constructs: [metacognitive_accuracy, iri_perspective_taking_proxy]
+    should_predict: [accurate_self_uncertainty, better_model_revision]
+    should_not_predict: [intelligence, kindness]
+    datasets: [spi]
+    tests: [metacognitive_error_scenarios]
+  G_Narrative_agency:
+    layer: self_model
+    validation_status: proxy_validatable
+    external_constructs: [agency_belief, goal_persistence]
+    should_predict: [initiative_under_uncertainty, long_plan_persistence]
+    should_not_predict: [dominance, power_sovereignty]
+    datasets: [casino]
+    tests: [initiative_scenarios]
+
+derived_traits:
+  care:
+    layer: derived
+    validation_status: derived
+    recommended_name: care_orientation
+    current_formula_path: lib/traits.ts
+    status_note: usable_first_pass
+    should_predict: [care_action_under_cost, harm_avoidance, support_strategy]
+    should_not_predict: [submission, low_agency]
+    split_recommendation: []
+    external_constructs: [moral_foundations_care_harm, iri_empathic_concern]
+    datasets: [spi, esconv, social_chemistry]
+  harshness:
+    layer: derived
+    validation_status: derived
+    recommended_name: harshness_family
+    current_formula_path: lib/traits.ts
+    status_note: dirty_mixed_trait
+    should_predict: [punitive_action, coercive_response]
+    should_not_predict: [low_care_only, power_only, betrayal_cost_only]
+    split_recommendation:
+      - low_care_harshness
+      - punitive_harshness
+      - power_harshness
+      - defensive_harshness
+    external_constructs: []
+    datasets: [casino, social_chemistry]
+  agency:
+    layer: derived
+    validation_status: derived
+    recommended_name: action_agency
+    current_formula_path: lib/traits.ts
+    status_note: self_action_capacity_not_narrow_personality_trait
+    should_predict: [initiative, goal_persistence, resistance_to_helplessness]
+    should_not_predict: [dominance, power]
+    split_recommendation: []
+    external_constructs: [agency_belief, self_direction]
+    datasets: [casino]
+  submission:
+    layer: derived
+    validation_status: derived
+    recommended_name: remove_or_split_submission
+    current_formula_path: lib/traits.ts
+    status_note: dirty_mixed_trait
+    should_predict: [authority_deference_when_specific]
+    should_not_predict: [proceduralism, coalition_loyalty, low_autonomy_as_one_blob]
+    split_recommendation:
+      - proceduralism
+      - coalitional_loyalty
+      - low_autonomy_submission
+      - authority_deference
+    external_constructs: [authority_deference]
+    datasets: [social_chemistry]
+  trust:
+    layer: derived
+    validation_status: derived
+    recommended_name: trust_family
+    current_formula_path: lib/traits.ts
+    status_note: too_broad
+    should_predict: [cooperation_after_fair_signal, information_sharing]
+    should_not_predict: [reciprocity_alone, empathy]
+    split_recommendation:
+      - baseline_trust
+      - reciprocal_trust
+      - earned_trust
+    external_constructs: [trust_propensity, attachment_security]
+    datasets: [casino, esconv]
+  paranoia:
+    layer: derived
+    validation_status: derived
+    recommended_name: defensive_suspicion
+    current_formula_path: lib/traits.ts
+    status_note: rename_nonclinical
+    should_predict: [defensive_interpretation, secrecy_choice_after_ambiguous_signal]
+    should_not_predict: [anxiety_only, low_trust_only, secrecy_only]
+    split_recommendation:
+      - defensive_suspicion
+      - betrayal_sensitivity
+      - secrecy_orientation
+      - threat_bias
+    external_constructs: [trust_bias_reversed, attachment_anxiety_proxy]
+    datasets: [casino, esconv]
+  stability:
+    layer: derived
+    validation_status: derived
+    recommended_name: stability_family
+    current_formula_path: lib/traits.ts
+    status_note: too_broad
+    should_predict: [stable_behavior_when_subtype_defined]
+    should_not_predict: [all_forms_of_stability_as_one_score]
+    split_recommendation:
+      - goal_stability
+      - affective_stability
+      - cooldown_stability
+      - identity_stability
+    external_constructs: [conscientiousness, neuroticism_reversed]
+    datasets: [spi]
+  novelty_seeking:
+    layer: derived
+    validation_status: derived
+    recommended_name: novelty_seeking
+    current_formula_path: lib/traits.ts
+    status_note: usable_first_pass
+    should_predict: [novel_option_choice, exploration_under_uncertainty]
+    should_not_predict: [recklessness, low_tradition_only]
+    split_recommendation: []
+    external_constructs: [openness, stimulation, behavioral_activation]
+    datasets: [spi, casino]
+
+derived_trait_refactor_v1:
+  purpose: >
+    Offline validation-only split of dirty derived trait containers. These axes
+    are not runtime replacements until SPI Trait Validation v2 passes review and
+    a separate compatibility plan is accepted.
+  runtime_policy: do_not_change_lib_traits_or_trait_atoms
+  validation_runner: scripts/run_spi_trait_validation_v2.py
+  output_paths:
+    - kanonar_trait_validation/kanonar_trait_scores_v2.csv
+    - kanonar_trait_validation/trait_correlation_matrix_v2.csv
+    - kanonar_trait_validation/trait_anchor_correlations_v2.csv
+    - kanonar_trait_validation/trait_validation_checks_v2.json
+    - kanonar_trait_validation/trait_validation_report_v2.md
+  primary_traits:
+    low_care_harshness:
+      replaces_part_of: harshness
+      expected_effects: [low_compassion_care, irritability, lower_easy_goingness]
+      negative_controls: [power_only, betrayal_only]
+      external_or_proxy_anchors: [spi_compassion_reversed, spi_irritability, spi_easygoingness_reversed]
+      datasets: [spi]
+    punitive_harshness:
+      replaces_part_of: harshness
+      expected_effects: [punitive_response, authoritarian_punishment, weak_cooldown_after_provocation]
+      negative_controls: [generic_low_care]
+      external_or_proxy_anchors: [spi_authoritarianism, spi_irritability, spi_selfcontrol_reversed]
+      datasets: [spi, casino]
+    power_harshness:
+      replaces_part_of: harshness
+      expected_effects: [coercive_power_move, status_pressure, low_autonomy_cost_concern]
+      negative_controls: [suspicion, anxiety]
+      external_or_proxy_anchors: [spi_authoritarianism, spi_charisma, spi_anxiety_reversed]
+      datasets: [spi, casino]
+    defensive_harshness:
+      replaces_part_of: harshness
+      expected_effects: [threat_reactive_harsh_response, retaliatory_irritability, low_cooldown]
+      negative_controls: [dominance_only]
+      external_or_proxy_anchors: [spi_irritability, spi_anxiety, spi_impulsivity]
+      datasets: [spi, casino]
+    proceduralism:
+      replaces_part_of: submission
+      expected_effects: [procedure_following, order_preference, conformity_with_autonomy_intact]
+      negative_controls: [low_autonomy_submission]
+      external_or_proxy_anchors: [spi_conformity, spi_order, spi_selfcontrol]
+      datasets: [spi, social_chemistry]
+    authority_deference:
+      replaces_part_of: submission
+      expected_effects: [authority_deference, tradition_alignment, lower_autonomy]
+      negative_controls: [coalitional_loyalty]
+      external_or_proxy_anchors: [spi_authoritarianism, spi_conservatism, spi_sensationseeking_reversed]
+      datasets: [spi, social_chemistry]
+    coalitional_loyalty:
+      replaces_part_of: submission
+      expected_effects: [ingroup_support, coalition_cost_absorption, trust_within_group]
+      negative_controls: [proceduralism]
+      external_or_proxy_anchors: [spi_agreeableness, spi_trust, spi_conformity]
+      datasets: [spi, social_chemistry]
+    low_autonomy_submission:
+      replaces_part_of: submission
+      expected_effects: [low_autonomy, low_narrative_agency, constraint_deference]
+      negative_controls: [proceduralism]
+      external_or_proxy_anchors: [spi_sensationseeking_reversed, spi_openness_reversed, spi_industry_reversed]
+      datasets: [spi]
+    defensive_suspicion:
+      replaces_part_of: paranoia
+      expected_effects: [low_trust, secrecy_orientation, threat_bias, betrayal_exposure_sensitivity]
+      negative_controls: [clinical_paranoia, dominance_only]
+      source_components:
+        - C_betrayal_cost
+        - A_Transparency_Secrecy
+        - C_reputation_sensitivity
+        - spi_proxy_trust_bias
+        - spi_proxy_threat_bias
+        - spi_proxy_betrayal_exposure
+      external_or_proxy_anchors: [spi_trust_reversed, spi_honesty_reversed, spi_anxiety]
+      datasets: [spi, casino]
+    affective_stability:
+      replaces_part_of: stability
+      expected_effects: [emotional_stability, low_anxiety, wellbeing]
+      negative_controls: [goal_coherence]
+      external_or_proxy_anchors: [spi_emotionalstability, spi_neuroticism_reversed, spi_anxiety_reversed]
+      datasets: [spi]
+    goal_stability:
+      replaces_part_of: stability
+      expected_effects: [goal_coherence, plan_persistence, industry]
+      negative_controls: [affective_calm]
+      external_or_proxy_anchors: [spi_industry, spi_selfcontrol, spi_perfectionism]
+      datasets: [spi, casino]
+    cooldown_stability:
+      replaces_part_of: stability
+      expected_effects: [impulse_control, cooldown_discipline, lower_sensation_seeking]
+      negative_controls: [tradition_order]
+      external_or_proxy_anchors: [spi_impulsivity_reversed, spi_selfcontrol, spi_sensationseeking_reversed]
+      datasets: [spi, casino]
+    identity_stability:
+      replaces_part_of: stability
+      expected_effects: [self_concept_continuity, identity_consistency, moderate_identity_rigidity]
+      negative_controls: [emotional_stability_alone]
+      external_or_proxy_anchors: [spi_conservatism, spi_introspection, spi_adaptability_reversed]
+      datasets: [spi]
+
+first_wave_validation:
+  compute_now:
+    - spi_factor_analysis
+    - derived_trait_projection_against_spi_factors
+    - derived_trait_correlation_matrix
+    - dirty_trait_review_for_submission_harshness_paranoia_stability
+  do_not_claim:
+    - whole_kanonar_validated
+    - world_internal_axes_validated_by_spi
+    - clinical_paranoia_measurement
+  minimum_outputs:
+    - kanonar_trait_validation/item_factor_loadings.csv
+    - kanonar_trait_validation/kanonar_trait_scores.csv
+    - kanonar_trait_validation/trait_correlation_matrix.csv
+    - kanonar_trait_validation/trait_validation_report.md

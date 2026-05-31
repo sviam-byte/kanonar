@@ -1,0 +1,186 @@
+{
+  "prefixes": {
+    "0.2": {
+      "deal_outcome": {
+        "mode": "logistic_regression",
+        "target": "deal_outcome",
+        "classes": [
+          "deal",
+          "no_deal"
+        ],
+        "accuracy": 0.8488372093023255,
+        "balanced_accuracy": 0.5158730158730159,
+        "top_features": [
+          {
+            "feature": "concession_count",
+            "weight": -2.0086954289620005
+          },
+          {
+            "feature": "first_concession_time",
+            "weight": 1.3863524833400585
+          },
+          {
+            "feature": "trust_slope",
+            "weight": -0.8803273764026274
+          },
+          {
+            "feature": "mean_conflict",
+            "weight": -0.7798482899628155
+          },
+          {
+            "feature": "n_turns",
+            "weight": 0.7581757829591821
+          },
+          {
+            "feature": "max_conflict",
+            "weight": 0.6478737907408892
+          },
+          {
+            "feature": "accept_count",
+            "weight": -0.5134115296969606
+          },
+          {
+            "feature": "first_reject_time",
+            "weight": -0.412171536563253
+          }
+        ]
+      },
+      "attractor_label": {
+        "mode": "logistic_regression",
+        "target": "attractor_label",
+        "classes": [
+          "bargaining",
+          "cooperation",
+          "escalation"
+        ],
+        "accuracy": 0.4806201550387597,
+        "balanced_accuracy": 0.3653116531165312,
+        "top_features": [
+          {
+            "feature": "max_conflict",
+            "mean_abs_weight": 1.1295483396525337
+          },
+          {
+            "feature": "conflict_slope",
+            "mean_abs_weight": 1.0365569768007574
+          },
+          {
+            "feature": "utility_slope",
+            "mean_abs_weight": 0.831680854931664
+          },
+          {
+            "feature": "mean_conflict",
+            "mean_abs_weight": 0.7955437563327236
+          },
+          {
+            "feature": "time_to_accept",
+            "mean_abs_weight": 0.7152914559979408
+          },
+          {
+            "feature": "offer_count",
+            "mean_abs_weight": 0.70790031085583
+          },
+          {
+            "feature": "first_concession_time",
+            "mean_abs_weight": 0.6683046526659128
+          },
+          {
+            "feature": "accept_count",
+            "mean_abs_weight": 0.6634463308538384
+          }
+        ]
+      }
+    },
+    "0.4": {
+      "deal_outcome": {
+        "mode": "logistic_regression",
+        "target": "deal_outcome",
+        "classes": [
+          "deal",
+          "no_deal"
+        ],
+        "accuracy": 0.7751937984496124,
+        "balanced_accuracy": 0.5595238095238095,
+        "top_features": [
+          {
+            "feature": "trust_slope",
+            "weight": -2.2427739259273225
+          },
+          {
+            "feature": "conflict_slope",
+            "weight": -1.2158644664385931
+          },
+          {
+            "feature": "reject_count",
+            "weight": -1.164399118654203
+          },
+          {
+            "feature": "repair_count",
+            "weight": 1.1067956545472897
+          },
+          {
+            "feature": "mean_conflict",
+            "weight": 0.618717561741162
+          },
+          {
+            "feature": "pressure_count",
+            "weight": -0.5263420243008206
+          },
+          {
+            "feature": "n_turns",
+            "weight": 0.5178178173868591
+          },
+          {
+            "feature": "first_concession_time",
+            "weight": 0.3823806979178686
+          }
+        ]
+      },
+      "attractor_label": {
+        "mode": "logistic_regression",
+        "target": "attractor_label",
+        "classes": [
+          "bargaining",
+          "cooperation",
+          "escalation"
+        ],
+        "accuracy": 0.5465116279069767,
+        "balanced_accuracy": 0.6176151761517615,
+        "top_features": [
+          {
+            "feature": "max_conflict",
+            "mean_abs_weight": 1.4702795304701353
+          },
+          {
+            "feature": "conflict_slope",
+            "mean_abs_weight": 1.0490174192340562
+          },
+          {
+            "feature": "trust_slope",
+            "mean_abs_weight": 0.954409640603011
+          },
+          {
+            "feature": "pressure_count",
+            "mean_abs_weight": 0.6752685288772001
+          },
+          {
+            "feature": "repair_count",
+            "mean_abs_weight": 0.6044239447329558
+          },
+          {
+            "feature": "accept_count",
+            "mean_abs_weight": 0.5590180953569458
+          },
+          {
+            "feature": "reject_count",
+            "mean_abs_weight": 0.5586200312356842
+          },
+          {
+            "feature": "time_to_accept",
+            "mean_abs_weight": 0.5211635042504547
+          }
+        ]
+      }
+    }
+  }
+}

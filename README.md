@@ -21,7 +21,7 @@ Kanonar не является психологической, клиническ
 3. `docs/WALKTHROUGH_ONE_TICK.md` — один минимальный тик через pipeline.
 4. `docs/DOCUMENTATION_STANDARD.md` — правила, как поддерживать документацию дальше.
 
-Глубокие главы книги живут в `docs/agents/*`. Repo/control-plane reference живёт в `docs/unified/*`. UI/visualization reference живёт в `docs/VISUALIZATION.md`.
+Глубокие главы книги живут в `docs/agents/*`. Repo/control-plane reference живёт в `docs/unified/*`. UI/visualization reference живёт в `docs/VISUALIZATION.md`. Experimental external-data layer: `docs/BEHAVIOR_LAB.md`.
 
 ## Canonical runtime
 
@@ -32,6 +32,8 @@ Kanonar не является психологической, клиническ
 - Metric inventory: `docs/ENTITY_AND_METRIC_INDEX.md`
 - Pipeline contract: `docs/PIPELINE.md`
 - Invariants: `docs/INVARIANTS.md`
+- Axis validation registry: `docs/axis_validation_registry.yaml`
+- External data validation summary: `docs/EXTERNAL_DATA_VALIDATION_SUMMARY.md`
 
 ## Quick start
 
