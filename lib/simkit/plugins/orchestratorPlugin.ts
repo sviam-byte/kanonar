@@ -645,7 +645,7 @@ export function makeOrchestratorPlugin(opts: { registry?: any; onPushToGoalLab?:
       lastDecisionTrace = {
         tickIndex,
         tickId: `simkit:decide:${tickIndex}`,
-        T,
+        T: baseT,
         actorCount: Object.keys(perActor).length,
         perActor,
         explanations,
@@ -666,7 +666,7 @@ export function makeOrchestratorPlugin(opts: { registry?: any; onPushToGoalLab?:
         stages: [
           makeStage('S0', 'Input', {
             seed: world.seed ?? null,
-            T,
+            T: baseT,
             actors: actorIds,
             locations: Object.keys(world.locations || {}).sort(),
             eventsCount: Array.isArray(world.events) ? world.events.length : 0,

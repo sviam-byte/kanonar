@@ -7,7 +7,7 @@ type IntentLike = IntentState | Record<string, unknown> | null | undefined;
 const DIALOGUE_TRANSACTION_KINDS = new Set(['talk', 'question_about', 'negotiate']);
 
 export function originalActionOfIntent(activeIntent: IntentLike): { kind: string; targetId: string | null; meta?: any } | null {
-  const original = activeIntent?.intent?.originalAction;
+  const original = (activeIntent as any)?.intent?.originalAction;
   if (!original || typeof original !== 'object') return null;
   const kind = String((original as any).kind || '');
   if (!kind) return null;
@@ -19,8 +19,9 @@ export function originalActionOfIntent(activeIntent: IntentLike): { kind: string
 }
 
 export function intentStageKind(activeIntent: IntentLike): string {
-  const stageIndex = Math.max(0, Number(activeIntent?.stageIndex ?? 0));
-  return String(activeIntent?.intentScript?.stages?.[stageIndex]?.kind || '');
+  const intent = activeIntent as any;
+  const stageIndex = Math.max(0, Number(intent?.stageIndex ?? 0));
+  return String(intent?.intentScript?.stages?.[stageIndex]?.kind || '');
 }
 
 export function isCriticalIntentStage(activeIntent: IntentLike): boolean {

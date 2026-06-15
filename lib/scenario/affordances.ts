@@ -6,7 +6,7 @@ import {
   SocialActionId,
   LocationId,
   LocationEntity,
-} from "../types";
+} from "../../types";
 import { allScenarioDefs } from "../../data/scenarios/index";
 import { getAgentRole } from "../social/role_mechanics";
 import { computeAvailableActionIds } from "../actions/availability";

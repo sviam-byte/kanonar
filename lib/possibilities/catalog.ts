@@ -10,6 +10,7 @@ export type Possibility = {
   label: string;
   magnitude: number;
   confidence: number;
+  cost?: number;
   subjectId: string;
   targetId?: string;
   blockedBy?: string[];

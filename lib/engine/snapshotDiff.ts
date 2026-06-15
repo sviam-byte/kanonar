@@ -9,8 +9,8 @@ export function shallowAtomDiff(prevAtoms: any[] | any = [], nextAtoms: any[] | 
   const prev = arr(prevAtoms);
   const next = arr(nextAtoms);
 
-  const p = new Map(prev.map((a) => [a?.id, a]).filter(([id]) => id != null));
-  const n = new Map(next.map((a) => [a?.id, a]).filter(([id]) => id != null));
+  const p = new Map<any, any>(prev.map((a) => [a?.id, a] as [any, any]).filter(([id]) => id != null));
+  const n = new Map<any, any>(next.map((a) => [a?.id, a] as [any, any]).filter(([id]) => id != null));
 
   const changed: any[] = [];
   const added: any[] = [];

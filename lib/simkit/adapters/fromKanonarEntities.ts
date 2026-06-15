@@ -212,7 +212,7 @@ export function makeSimWorldFromSelection(args: {
       }
 
       // 2) Otherwise, scatter on map bounds (fallback 1024x768).
-      const runtimeLoc = loc as RuntimeLocation;
+      const runtimeLoc = loc as unknown as RuntimeLocation;
       const mapW = Number(loc?.map?.width ?? runtimeLoc?.width ?? 1024);
       const mapH = Number(loc?.map?.height ?? runtimeLoc?.height ?? 768);
       const w = Number.isFinite(mapW) ? mapW : 1024;
@@ -240,7 +240,7 @@ export function makeSimWorldFromSelection(args: {
         c.pos = { nodeId: String(n0.id), x: Number(n0.x), y: Number(n0.y) };
         continue;
       }
-      const runtimeLoc = loc as RuntimeLocation;
+      const runtimeLoc = loc as unknown as RuntimeLocation;
       const mapW = Number(loc?.map?.width ?? runtimeLoc?.width ?? 1024);
       const mapH = Number(loc?.map?.height ?? runtimeLoc?.height ?? 768);
       c.pos = {

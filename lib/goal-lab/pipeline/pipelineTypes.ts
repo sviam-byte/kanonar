@@ -17,6 +17,6 @@ export function findStage(pipeline: GoalLabPipelineResult | null | undefined, st
 }
 
 /** Typed accessor for stage artifacts. */
-export function stageArtifacts(pipeline: GoalLabPipelineResult | null | undefined, stageId: string): Record<string, unknown> {
+export function stageArtifacts(pipeline: GoalLabPipelineResult | null | undefined, stageId: string): Record<string, any> {
   return findStage(pipeline, stageId)?.artifacts ?? {};
 }

@@ -8,7 +8,7 @@ type AtomOrigin = 'world' | 'obs' | 'override' | 'derived';
 
 export function buildDebugFrameFromSnapshot(snapshot: GoalLabSnapshotV1, stageId?: string) {
   const resolvedStageId =
-    stageId || (snapshot as Record<string, unknown>)?.ui?.selectedStageId || (snapshot as Record<string, unknown>)?.meta?.ui?.selectedStageId;
+    stageId || (snapshot as any)?.ui?.selectedStageId || (snapshot as any)?.meta?.ui?.selectedStageId;
   const canon = getCanonicalAtomsFromSnapshot(snapshot, resolvedStageId);
   const rawAtoms: any[] = Array.isArray(canon.atoms) ? (canon.atoms as any[]) : [];
 

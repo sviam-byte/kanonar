@@ -586,7 +586,7 @@ const ConsoleWorldTab: React.FC<WorldTabProps> = (props: WorldTabProps) => {
                 value={Number.isFinite(runSeed) ? runSeed : 0}
                 onChange={(e) => onSetRunSeed(Number(e.target.value || 0))}
               />
-              <div className="mt-1 text-[11px] text-slate-500 font-mono">runId={run?.runId?.slice(0, 8) || '—'}</div>
+              <div className="mt-1 text-[11px] text-slate-500 font-mono">runId={(run as any)?.runId?.slice(0, 8) || '—'}</div>
             </div>
           </div>
 

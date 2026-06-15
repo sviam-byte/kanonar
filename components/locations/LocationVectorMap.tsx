@@ -9,11 +9,13 @@ interface Props {
     map: LocationMap;
     showGrid?: boolean;
     scale?: number;
+    cellSize?: number;
     highlightCells?: Array<{x: number, y: number, color: string, size?: number}>; // size is a multiplier of scale
     // Optional labeled markers (e.g., actors) rendered on top of the grid.
     // Coordinates are in CELL space (same as grid).
     markers?: Array<{ x: number; y: number; label: string; color: string; size?: number; title?: string }>;
     onCellClick?: (x: number, y: number) => void;
+    onCellHover?: (x: number, y: number) => void;
     // Suppress <text> visuals (and any textual content) from the vector layer.
     // Useful for placement maps where labels can look like "random letters".
     hideTextVisuals?: boolean;
@@ -49,12 +51,15 @@ const renderSvgShape = (shape: SvgShape, keyPrefix: string, hideText: boolean): 
 export const LocationVectorMap: React.FC<Props> = ({
     map,
     showGrid = true,
-    scale = 30,
+    scale: scaleProp = 30,
+    cellSize,
     highlightCells = [],
     markers = [],
     onCellClick,
+    onCellHover,
     hideTextVisuals = false,
 }) => {
+    const scale = cellSize ?? scaleProp;
     const { width, height, visuals, cells, exits } = map;
 
     // Grid Overlay - Always render interactive layer if onCellClick is present
@@ -119,7 +124,7 @@ export const LocationVectorMap: React.FC<Props> = ({
                  brightnessStyle.boxShadow = `inset 2px 2px 5px rgba(0,0,0,0.8)`;
             }
 
-            const isInteractive = !!onCellClick;
+            const isInteractive = !!onCellClick || !!onCellHover;
 
             return (
                 <div 
@@ -140,6 +145,7 @@ export const LocationVectorMap: React.FC<Props> = ({
                         e.stopPropagation(); 
                         onCellClick?.(cell.x, cell.y);
                     }}
+                    onMouseEnter={() => onCellHover?.(cell.x, cell.y)}
                     title={`(${cell.x},${cell.y}) W:${isWalkable ? 'Y' : 'N'} H:${elevation}`}
                 >
                     {/* Elevation Overlay */}
@@ -157,7 +163,7 @@ export const LocationVectorMap: React.FC<Props> = ({
                 </div>
             );
         });
-    }, [cells, showGrid, scale, onCellClick]);
+    }, [cells, showGrid, scale, onCellClick, onCellHover]);
 
     const highlightOverlay = useMemo(() => {
         return arr(highlightCells)

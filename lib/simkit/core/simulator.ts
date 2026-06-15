@@ -135,7 +135,7 @@ function applyHazardPoints(world: SimWorld) {
     if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
     let danger = 0;
     let safe = 0;
-    for (const p of points) {
+    for (const p of points as any[]) {
       if (p.locationId !== locId) continue;
       const dx = x - Number(p.x);
       const dy = y - Number(p.y);
@@ -563,7 +563,7 @@ export class SimKitSimulator {
           rejected: rejected.length,
           rejectedItems: rejected.slice(0, 12),
           // Store key info about accepted atoms for narrative display.
-          acceptedItems: accepted.slice(0, 8).map((a: Record<string, unknown>) => ({
+          acceptedItems: accepted.slice(0, 8).map((a: any) => ({
             id: String(a.id || '').replace(/:\d+$/, ''),
             mag: Number(a.magnitude ?? 0).toFixed(2),
             src: a.source || a.meta?.origin?.type || 'unknown',

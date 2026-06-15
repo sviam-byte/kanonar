@@ -7,6 +7,7 @@ interface MapViewerProps {
   map: LocationMap;
 
   onCellClick?: (x: number, y: number) => void;
+  onCellHover?: (x: number, y: number) => void;
   highlights?: Array<{ x: number; y: number; color: string; size?: number }>;
 
   /** If true, shows the editor UI instead of a pure viewer. */
@@ -31,6 +32,7 @@ interface MapViewerProps {
 export const MapViewer: React.FC<MapViewerProps> = ({
   map,
   onCellClick,
+  onCellHover,
   highlights,
   isEditor,
   onMapChange,
@@ -127,7 +129,8 @@ export const MapViewer: React.FC<MapViewerProps> = ({
           <LocationVectorMap
             map={map}
             onCellClick={onCellClick}
-            highlights={highlights}
+            onCellHover={onCellHover}
+            highlightCells={highlights}
             hideTextVisuals={hideTextVisuals}
             cellSize={cellPx}
           />

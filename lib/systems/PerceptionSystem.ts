@@ -24,7 +24,7 @@ export const PerceptionSystem = {
         // apply noise based on fatigue, stress, or cognitive biases.
         
         // Example of imperfect perception:
-        const observationNoise = agent.observation.noise || 0;
+        const observationNoise = Number(agent.observation.noise ?? 0);
         const rng = agent.rngChannels.perceive || agent.rngChannels.physio;
         if (rng.nextFloat() < observationNoise * (agent.body.acute.fatigue / 100)) {
             // Agent is tired and misses something

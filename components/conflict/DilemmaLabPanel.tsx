@@ -80,7 +80,7 @@ function buildMinimalWorld(chars: { entityId: string; [k: string]: unknown }[]):
     tick: 0,
     agents: chars as unknown as AgentState[],
     locations: [],
-    leadership: { leaderId: null } as WorldState['leadership'],
+    leadership: { leaderId: null } as unknown as WorldState['leadership'],
     initialRelations: {},
   };
 }

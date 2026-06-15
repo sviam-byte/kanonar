@@ -200,7 +200,7 @@ export const LocationMapEditor: React.FC<Props> = ({ map, onChange, cellSize = 1
           const cell = baseCells.find((c) => c.x === x && c.y === y);
           if (cell) handleCellClick(cell);
         }}
-        highlights={[...(highlightExits || [])]}
+        highlightCells={[...(highlightExits || [])]}
         cellSize={cellSize}
       />
     </div>

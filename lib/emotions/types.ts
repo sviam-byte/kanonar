@@ -15,6 +15,7 @@ export type EmotionId =
   | 'hope';
 
 export interface AffectState {
+  [key: string]: any;
   // core affect (0..1)
   valence: number;   // -1..+1
   arousal: number;   // 0..1

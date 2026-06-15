@@ -1,5 +1,5 @@
 import dagre from 'dagre';
-import type { Edge, Node } from 'reactflow';
+import { Position, type Edge, type Node } from 'reactflow';
 
 type DagreLayoutOptions = {
   direction?: 'LR' | 'TB';
@@ -47,8 +47,8 @@ export function layoutWithDagre(
         x: p.x - nodeWidth / 2,
         y: p.y - nodeHeight / 2,
       },
-      targetPosition: direction === 'LR' ? 'left' : 'top',
-      sourcePosition: direction === 'LR' ? 'right' : 'bottom',
+      targetPosition: direction === 'LR' ? Position.Left : Position.Top,
+      sourcePosition: direction === 'LR' ? Position.Right : Position.Bottom,
     };
   });
 

@@ -12,7 +12,8 @@ export interface MentalAtom {
 }
 
 export interface AgentMemory {
-  facts: Map<string, MentalAtom>;
+  [key: string]: any;
+  facts?: Map<string, MentalAtom>;
   // Fast lookup for object locations (so we do not scan all facts).
-  objectLocations: Map<string, { x: number; y: number; locId: string }>;
+  objectLocations?: Map<string, { x: number; y: number; locId: string }>;
 }

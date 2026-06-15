@@ -1,5 +1,5 @@
 import { socialActions } from '../../data/actions-social';
-import type { Action, LocationEntity } from '../types';
+import type { Action, LocationEntity } from '../../types';
 
 export interface ActionCatalog {
   all: Action[];

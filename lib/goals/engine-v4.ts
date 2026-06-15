@@ -341,7 +341,7 @@ export function snapshotGoals(
      let z_total = makeZeroGoalLogits();
      
      if (agent.goalEcology?.lifeGoalDebug) {
-         const { g_traits, g_bio, g_psych, g_distortion, weights, g_archetype_main } = agent.goalEcology.lifeGoalDebug;
+         const { g_traits, g_bio, g_psych, g_distortion, weights, g_archetype_main } = agent.goalEcology.lifeGoalDebug as any;
          const wA = 2.0; 
 
          for (const axis of GOAL_AXES) {

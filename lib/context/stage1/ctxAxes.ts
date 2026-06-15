@@ -124,7 +124,7 @@ export function deriveCtxAxes(agentId: string, resolved: Map<string, Atom>): Ato
           usedAtomIds: used(id_mapDanger, id_envHaz, id_escape, id_cover, id_safe),
           parts: dangerMix.parts.map(p => ({ name: p.name ?? 'part', value: p.value, weight: p.weight })).concat([
             { name: 'safe_zone_hint', value: safeHint, weight: 0.85 },
-            { name: 'post_safe_multiplier', value: (1 - 0.85 * safeHint) },
+            { name: 'post_safe_multiplier', value: (1 - 0.85 * safeHint), weight: 1 },
           ]),
           formulaId: 'ctx:danger@v1+safe_zone_hint',
         },

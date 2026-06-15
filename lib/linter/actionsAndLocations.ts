@@ -1,6 +1,6 @@
 import { socialActions } from '../../data/actions-social';
 import { allLocations } from '../../data/locations';
-import type { LocationEntity } from '../types';
+import type { LocationEntity } from '../../types';
 
 export type LintSeverity = 'error' | 'warn';
 

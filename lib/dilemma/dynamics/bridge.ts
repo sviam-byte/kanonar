@@ -60,7 +60,7 @@ export function runCanonicalConflictLab(config: CanonicalConflictLabRunConfig): 
       },
     });
     const step = resolveProtocolStep(scheduledState, protocol);
-    if (!step.ok) {
+    if (step.ok === false) {
       return {
         runtime: 'unsupported_kernel',
         mechanicId: config.scenario.mechanicId,

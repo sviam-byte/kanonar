@@ -34,7 +34,7 @@ export const RelationsPanel: React.FC<Props> = ({ selfId, graph, className, onSe
   const [tagFilter, setTagFilter] = useState<string>('all');
 
   const edges = useMemo(() => {
-    const all = arr(graph?.edges);
+    const all = arr<RelEdge>(graph?.edges);
     const out = all.filter(e => e.a === selfId);
     const s = q.trim().toLowerCase();
 
@@ -83,7 +83,7 @@ export const RelationsPanel: React.FC<Props> = ({ selfId, graph, className, onSe
       </div>
 
       <div className="flex-1 min-h-0 overflow-auto custom-scrollbar">
-        {arr(edges.filtered).map((e, idx) => (
+        {arr<RelEdge>(edges.filtered).map((e, idx) => (
           <div key={idx} className="p-3 border-b border-canon-border/50 hover:bg-canon-bg-light/20 transition-colors">
             <div className="flex items-center gap-2 mb-2">
               <button
@@ -98,7 +98,7 @@ export const RelationsPanel: React.FC<Props> = ({ selfId, graph, className, onSe
             </div>
 
             <div className="flex flex-wrap gap-1 mb-2">
-              {arr(e.tags).map(t => (
+              {arr<string>(e.tags).map(t => (
                 <span
                   key={t}
                   className="px-1.5 py-0.5 text-[10px] rounded border border-canon-border/40 bg-canon-bg-light/30 text-canon-text-light"
@@ -140,10 +140,10 @@ export const RelationsPanel: React.FC<Props> = ({ selfId, graph, className, onSe
               </div>
             )}
 
-            {arr(e.sources).length > 0 && (
+            {arr<NonNullable<RelEdge['sources']>[number]>(e.sources).length > 0 && (
               <div className="text-[9px] text-canon-text-light/70 bg-black/20 p-1.5 rounded">
                 sources:
-                {arr(e.sources)
+                {arr<NonNullable<RelEdge['sources']>[number]>(e.sources)
                   .slice(0, 6)
                   .map((s, i) => (
                     <span key={i} className="ml-1">

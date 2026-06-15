@@ -10,8 +10,8 @@ export type AtomDescription = {
   scale?: {
     min: number; max: number;
     unit?: string;
-    lowMeans: string;
-    highMeans: string;
+    lowMeans?: string;
+    highMeans?: string;
     typical?: string;
   };
   formula?: string;

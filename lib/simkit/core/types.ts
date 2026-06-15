@@ -31,6 +31,8 @@ export type SimLocation = {
   id: Id;
   name: string;
   title?: string;
+  width?: number;
+  height?: number;
 
   neighbors: Id[];              // граф перемещения
   hazards?: Record<string, number>;  // hazardKey -> 0..1
@@ -48,15 +50,7 @@ export type SimLocation = {
   entity?: Record<string, unknown>;
 };
 
-export type SimWorldFacts = Record<string, unknown> & {
-  spatial?: Record<string, unknown>;
-  inboxAtoms?: Record<string, unknown[]>;
-  [k: `agentAtoms:${string}`]: unknown[];
-  [k: `quarantineAtoms:${string}`]: unknown[];
-  [k: `intent:${string}`]: unknown;
-  [k: `observeBoost:${string}`]: number;
-  relations?: Record<string, Record<string, Record<string, unknown>>>;
-};
+export type SimWorldFacts = Record<string, any>;
 
 export type SimWorld = {
   tickIndex: number;
@@ -146,6 +140,7 @@ export type IntentState = {
       kind: string;
       targetId?: string | null;
       meta?: Record<string, unknown>;
+      payload?: any;
     };
     [k: string]: unknown;
   } | null;

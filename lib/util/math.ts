@@ -11,8 +11,8 @@ export function clamp(x: number, min: number, max: number): number {
  * Clamp to [0, 1].
  * This is the canonical normalization helper used across scoring code.
  */
-export function clamp01(x: number): number {
-  if (!Number.isFinite(x)) return 0;
+export function clamp01(x: number, fallback = 0): number {
+  if (!Number.isFinite(x)) return fallback;
   return x < 0 ? 0 : x > 1 ? 1 : x;
 }
 

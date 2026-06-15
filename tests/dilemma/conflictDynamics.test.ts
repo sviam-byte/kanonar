@@ -132,9 +132,9 @@ describe('Conflict Lab deterministic dynamics scaffold', () => {
     ]);
 
     expect(duplicate.ok).toBe(false);
-    if (!duplicate.ok) expect(duplicate.error.code).toBe('duplicate_player');
+    if (duplicate.ok === false) expect(duplicate.error.code).toBe('duplicate_player');
     expect(invalid.ok).toBe(false);
-    if (!invalid.ok) expect(invalid.error.code).toBe('invalid_action');
+    if (invalid.ok === false) expect(invalid.error.code).toBe('invalid_action');
   });
 
   it('updates intended directions for trust exchange outcomes', () => {

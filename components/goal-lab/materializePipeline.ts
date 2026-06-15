@@ -18,7 +18,7 @@ export function materializeStageAtoms(
 ): any[] {
   if (!Array.isArray(pipeline) || !pipeline.length) return [];
 
-  const byId = new Map(arr(pipeline).map(s => [s.id, s]));
+  const byId = new Map<string, PipelineStageDelta>(arr<PipelineStageDelta>(pipeline).map(s => [s.id, s]));
   const target = byId.get(stageId);
   if (!target) return [];
 
@@ -40,7 +40,7 @@ export function materializeStageAtoms(
 
   const m = new Map<string, any>(
     arr((s0 as any).full)
-      .map((a: Record<string, unknown>) => [String(a?.id), a])
+      .map((a: any) => [String(a?.id), a] as [string, any])
       .filter(([id]) => id)
   );
 

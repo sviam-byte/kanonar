@@ -67,7 +67,7 @@ export function mapCharacterToBehaviorParams(character: CharacterEntity): Charac
     // 6. CVaR Parameter λ_i^{CVaR}
     // Use optional chaining for cognitive block
     const risk_aversion = get(character.cognitive?.utility_shape, 'risk_aversion', 0.5); // This is 0-1, where 1 is risk-averse
-    const risk_budget = legacy.resources?.risk_budget_cvar || 0.5;
+    const risk_budget = Number(legacy.resources?.risk_budget_cvar ?? 0.5);
     const cvar_lambda = Math.min(1, Math.max(0, sigmoid(3 * (risk_aversion - 0.5)) + (1 - risk_budget) ));
 
     // 7. Prospect Theory Parameters

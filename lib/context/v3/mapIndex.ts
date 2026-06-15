@@ -1,5 +1,5 @@
 
-import type { WorldState, AgentState } from "../../types";
+import type { WorldState, AgentState } from "../../../types";
 
 export interface LocationMapCell {
   x: number;
@@ -8,10 +8,12 @@ export interface LocationMapCell {
   danger?: number;
   cover?: number;
   elevation?: number;
+  tags?: string[];
 }
 
 export interface LocationWithMap {
   id: string;
+  entityId?: string;
   name?: string;
   title?: string;
   tags?: string[];

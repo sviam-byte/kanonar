@@ -2,7 +2,7 @@
 // Shared helpers: map GoalLab/Orchestrator possibilities into SimKit actions.
 
 import type { Possibility } from '../../possibilities/catalog';
-import type { SimAction } from '../core/types';
+import type { ActionKind, SimAction } from '../core/types';
 
 export function keyFromPossibilityId(id: string): string {
   const parts = String(id || '').split(':');

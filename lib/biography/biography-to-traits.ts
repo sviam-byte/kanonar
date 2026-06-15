@@ -1,7 +1,7 @@
 
 // lib/biography/biography-to-traits.ts
 import type { BiographyState, BiographyLatent } from './types-biography';
-import type { VectorBase } from '../types';
+import type { VectorBase } from '../../types';
 
 // Matrix W_bio: How biography latent bends the 44-vector.
 // Refined weights for clearer impact.

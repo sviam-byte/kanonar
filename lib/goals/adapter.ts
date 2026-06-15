@@ -1,7 +1,7 @@
 
 import { GOAL_DEFS, CharacterGoalId } from './space';
 import { PlanningGoalDef, GoalDomainWeight } from '../types-goals';
-import { GoalDomainId } from '../types';
+import { GoalDomainId } from '../../types';
 import { arr } from '../utils/arr';
 
 export const getPlanningGoals = (): PlanningGoalDef[] => {

@@ -118,7 +118,7 @@ function collectLocationTags(location: LocationEntity | null | undefined): strin
 function deriveManualContextAxes(location: LocationEntity | null | undefined) {
   const tags = collectLocationTags(location);
   const tagSet = new Set(tags.map(t => t.toLowerCase()));
-  const props: Record<string, unknown> = (location as Record<string, unknown>)?.properties ?? {};
+  const props: Record<string, unknown> = (location as any)?.properties ?? {};
   return {
     privacy: clamp01(Number(props.privacy ?? (tagSet.has('private') || tagSet.has('bedroom') ? 1.0 : 0.1))),
     social: clamp01(Number(props.social ?? (tagSet.has('public') || tagSet.has('bar') ? 1.0 : 0.0))),

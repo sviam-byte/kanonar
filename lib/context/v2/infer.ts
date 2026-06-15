@@ -211,7 +211,7 @@ export function normalizeAtom(atom: Partial<ContextAtom>): ContextAtom {
     out.code = out.code ?? codeFromResolvedSpec(resolved.spec.specId, resolved.params);
   }
   if (!out.code) {
-    out.code = fallbackCodeFromId(ns, String(out.kind || ''), id);
+    out.code = fallbackCodeFromId(ns as any, String(out.kind || ''), id);
   }
 
   // Ensure trace exists with sensible defaults (prevents “empty air” in Debug Area)

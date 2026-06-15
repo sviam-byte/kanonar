@@ -14,7 +14,7 @@ import {
   EventParticipants,
   EntitySecurity,
   LocationId,
-} from '../types';
+} from '../../types';
 import { 
   Event, 
   EventCheck, 

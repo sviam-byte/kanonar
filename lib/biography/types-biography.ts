@@ -1,6 +1,6 @@
 
 // lib/biography/types-biography.ts
-import type { StoryTime, VectorAxisId, LocationId } from '../types';
+import type { StoryTime, VectorAxisId, LocationId } from '../../types';
 
 export type BiographicalEventValence = -1 | 0 | 1;
 

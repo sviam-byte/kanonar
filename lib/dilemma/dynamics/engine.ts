@@ -184,7 +184,7 @@ export function resolveProtocolStep(
 
   for (const playerId of canonicalState.players) {
     const observation = getObservationForPlayer(canonicalState, activeProtocol, playerId);
-    if (!observation.ok) return observation;
+    if (observation.ok === false) return { ok: false, error: observation.error };
     observations[playerId] = observation.value;
 
     const scored = evaluateActionUtilities(protocol, observation.value);
@@ -208,7 +208,7 @@ export function resolveProtocolStep(
       activeProtocol,
       canonicalState.players.map((playerId) => ({ playerId, actionId: chosen[playerId] as ConflictActionId })),
     );
-  if (!actions.ok) return actions;
+  if (actions.ok === false) return { ok: false, error: actions.error };
 
   const baseOutcome = resolveTrustExchangeOutcome(canonicalState, actions.value);
   const artifacts = buildLearningArtifacts(
@@ -471,9 +471,9 @@ export function runConflictTrajectory(
 
   for (let i = 0; i < steps; i++) {
     const step = resolveProtocolStep(state, protocol, forcedActionsByStep?.[i]);
-    if (!step.ok) return step;
+    if (step.ok === false) return { ok: false, error: step.error };
     results.push(step.value);
-    state = step.value.state;
+    state = normalizeConflictState(step.value.state);
   }
 
   return { ok: true, value: results };
@@ -495,9 +495,9 @@ function applyAgentDelta(agent: ConflictAgentState, delta: AgentDelta): Conflict
 function normalizeStepOptions(optionsOrForcedActions?: ConflictStepOptions | readonly ConflictAction[]): ConflictStepOptions {
   if (!optionsOrForcedActions) return {};
   if (Array.isArray(optionsOrForcedActions)) {
-    return { forcedJointActions: optionsOrForcedActions, forcedActionStrategyMode: 'freeze' };
+    return { forcedJointActions: optionsOrForcedActions as readonly ConflictAction[], forcedActionStrategyMode: 'freeze' };
   }
-  return optionsOrForcedActions;
+  return optionsOrForcedActions as ConflictStepOptions;
 }
 
 function otherPlayer(state: ConflictState, playerId: ConflictPlayerId): ConflictPlayerId | null {

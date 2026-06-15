@@ -85,7 +85,7 @@ function applyNormalizationFactors(latents: Record<string, number>, entity: Char
 function calculate_Pillar_N_inst({ entity, latents, state, shocks, quickStates }: SDEParams): number {
     const { SD = 0.5, EW = 0.5, CH = 0.5 } = latents;
 
-    const Opt_inst = sigmoid(normalize(entity.identity.clearance_level, 5) + normalize(entity.resources?.risk_budget_cvar) - shocks.Opt);
+    const Opt_inst = sigmoid(normalize(entity.identity.clearance_level, 5) + normalize(Number(entity.resources?.risk_budget_cvar ?? 0)) - shocks.Opt);
     
     const N_z = 0.40 * SD + 0.25 * EW + 0.20 * CH + 0.15 * Opt_inst;
     return sigmoid(2.5 * (N_z - 0.5));
@@ -136,8 +136,8 @@ function calculate_h_components({ entity, latents, state, shocks }: Pick<SDEPara
     
     const log_H_core = 0.8 * Vsigma + 0.8 * DS + 0.8 * C_causal + 0.4 * stress_norm + 0.2 * fatigue_norm;
     
-    const BP = (shocks.BP > 0) ? shocks.BP : (((entity.resources?.time_budget_h || 50) / 168) + (entity.resources?.risk_budget_cvar ?? 0)) / 2;
-    const Opt = sigmoid(normalize(entity.identity.clearance_level, 5) + normalize(entity.resources?.risk_budget_cvar) - shocks.Opt);
+    const BP = (shocks.BP > 0) ? shocks.BP : ((Number(entity.resources?.time_budget_h ?? 50) / 168) + Number(entity.resources?.risk_budget_cvar ?? 0)) / 2;
+    const Opt = sigmoid(normalize(entity.identity.clearance_level, 5) + normalize(Number(entity.resources?.risk_budget_cvar ?? 0)) - shocks.Opt);
 
     // Calculate misalignment based on body state
     let misalign = 0;

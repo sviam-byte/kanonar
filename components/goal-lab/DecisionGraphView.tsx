@@ -501,7 +501,7 @@ export const DecisionGraphView: React.FC<Props> = ({
         <div className="text-[10px] text-slate-300/80">
           {mode === 'overview'
             ? 'Overview: Context → Goals (collapsed)'
-            : mode === 'explain'
+            : false
               ? 'Goal explanations (catalog + current scores)'
               : mode === '3d'
                 ? '3D graph: layered (atom/lens/goal/action), contrib + flow'

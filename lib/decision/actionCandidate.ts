@@ -21,28 +21,29 @@ export type ActionWhyTrace = {
 };
 
 export type ActionCandidate = {
-  id: string;
-  kind: string;
-  actorId: string;
+  id?: string;
+  kind?: string;
+  actorId?: string;
 
   targetId?: string | null;
   targetNodeId?: string | null;
 
   /** Expected satisfaction change per goal (Δg). */
-  deltaGoals: Record<string, number>;
+  deltaGoals?: Record<string, number>;
 
   /** Explicit costs (energy, risk, social, etc). */
-  cost: number;
+  cost?: number;
 
   /** Confidence / feasibility in [0,1]. */
-  confidence: number;
+  confidence?: number;
 
   /** Atoms justifying this action. */
-  supportAtoms: ContextAtom[];
+  supportAtoms?: ContextAtom[];
 
   /** Explainability payload accumulated across the action-building/scoring chain. */
   why?: ActionWhyTrace;
 
   /** Optional payload for execution layer. */
   payload?: Record<string, any>;
+  meta?: Record<string, any>;
 };

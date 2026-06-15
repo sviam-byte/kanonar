@@ -41,7 +41,7 @@ type Props = {
 export const EasyModePanel: React.FC<Props> = ({ pipelineV1, agentLabel, onSwitchToDebug, onSwitchToConsole }) => {
   const data = useMemo(() => {
     if (!pipelineV1) return null;
-    const stages = arr(pipelineV1.stages);
+    const stages = arr<any>(pipelineV1.stages);
     const s8 = stages.find((s: any) => s?.stage === 'S8');
     const s9 = stages.find((s: any) => s?.stage === 'S9');
     if (!s8) return null;
@@ -49,7 +49,7 @@ export const EasyModePanel: React.FC<Props> = ({ pipelineV1, agentLabel, onSwitc
     return {
       digest: arts.decisionSnapshot?.digest || null,
       goalEnergy: arts.decisionSnapshot?.goalEnergy || {},
-      ranked: arr(arts.decisionSnapshot?.ranked || arts.decisionSnapshot?.rankedOverridden),
+      ranked: arr<any>(arts.decisionSnapshot?.ranked || arts.decisionSnapshot?.rankedOverridden),
       best: arts.decisionSnapshot?.best || arts.best || null,
       linearApprox: arts.decisionSnapshot?.linearApprox || null,
       featureVector: arts.decisionSnapshot?.featureVector || null,
@@ -66,7 +66,7 @@ export const EasyModePanel: React.FC<Props> = ({ pipelineV1, agentLabel, onSwitc
     .sort((a, b) => Math.abs(b.e) - Math.abs(a.e));
 
   const chosen = digest?.chosen || best || null;
-  const chosenEval = arr(transSnap?.perAction || linearApprox?.perAction).find(
+  const chosenEval = arr<any>(transSnap?.perAction || linearApprox?.perAction).find(
     (a: any) => safeStr(a?.actionId) === safeStr(chosen?.actionId || chosen?.id),
   );
   const z0 = featureVector?.z || transSnap?.z0?.z || null;

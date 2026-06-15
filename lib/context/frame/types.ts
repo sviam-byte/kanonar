@@ -105,6 +105,8 @@ export interface AgentContextFrame {
       cell: { x: number; y: number } | undefined;
       hazard: number;
       cover: number;
+      cellTags?: string[];
+      isSafeCell?: boolean;
       nearestHazardDist: number | null;
       exits: { x: number; y: number }[];
     };

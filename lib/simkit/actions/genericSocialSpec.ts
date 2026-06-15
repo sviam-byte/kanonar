@@ -6,7 +6,7 @@
 // otherwise minimal stress/trust defaults are applied.
 
 import type { ActionSpec, OfferCtx, ApplyCtx } from './specs';
-import type { SimEvent } from '../core/types';
+import type { ActionKind, SimEvent } from '../core/types';
 import { distSameLocation, getSpatialConfig } from '../core/spatial';
 import { clamp01 } from '../../util/math';
 import { actionEffectForKind } from '../../decision/actionProjection';

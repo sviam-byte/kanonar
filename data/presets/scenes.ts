@@ -1,4 +1,6 @@
 
+import type { DyadConfigForA } from '../../lib/tom/dyad-metrics';
+
 export interface ScenePreset {
     id: string;
     title: string;

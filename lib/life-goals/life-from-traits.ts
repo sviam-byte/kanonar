@@ -1,5 +1,5 @@
 // lib/life-goals/life-from-traits.ts
-import type { VectorBase, GoalAxisId } from '../types';
+import type { VectorBase, GoalAxisId } from '../../types';
 import { GOAL_AXES } from './v3-params';
 
 // High-level Traits derived from 44-vector

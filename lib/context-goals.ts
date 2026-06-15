@@ -2,6 +2,7 @@
 import { SituationContext, GoalDomainId, PlanningGoalDef } from './types-goals';
 import { AgentState, WorldState } from '../types';
 import { AffectState } from './emotions/types';
+import { clamp01 } from './util/math';
 import { curve01, CurvePreset } from './utils/curves';
 
 export interface ContextGoalProfile {

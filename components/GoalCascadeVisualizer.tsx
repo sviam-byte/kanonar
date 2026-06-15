@@ -125,12 +125,12 @@ const DISTORTION_LABELS: Record<string, string> = {
 
 
 export const GoalCascadeVisualizer: React.FC<Props> = ({ ecology }) => {
-    const debug = ecology.lifeGoalDebug;
+    const debug = ecology.lifeGoalDebug as any;
     if (!debug) return <div className="p-4 italic text-canon-text-light text-sm">Нет данных движка целей.</div>;
 
-    const { g_traits, g_bio, g_psych, g_archetype_main, weights, worldview, g_worldview, g_distortion, distortions } = debug;
+    const { g_traits = {}, g_bio = {}, g_psych = {}, g_archetype_main = {}, weights = {}, worldview, g_worldview, g_distortion, distortions } = debug;
     
-    const mapData = (logits: Record<string, number>) => {
+    const mapData = (logits: Record<string, number> | any) => {
         const data = Object.keys(GOAL_AXIS_NAMES).map(key => ({
             name: GOAL_AXIS_NAMES[key as GoalAxisId] || key,
             value: logits[key] || 0

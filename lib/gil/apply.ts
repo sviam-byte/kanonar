@@ -21,7 +21,7 @@ export function constructTom(agents: AgentState[]): TomState {
             const weights = new Array(goalIds.length).fill(1 / goalIds.length);
             
             // Safe access for competencies
-            const comp = j.competencies?.competence_core || 50;
+            const comp = Number(j.competencies?.competence_core ?? 50);
             const clear = j.identity.clearance_level || 0;
 
             const tomEntry: TomEntry = {

@@ -1,4 +1,4 @@
-import type { Action, LocationEntity } from '../types';
+import type { Action, LocationEntity } from '../../types';
 import { getActionCatalog, resolveActionTokenToIds } from './catalog';
 
 export interface ComputeAvailableActionsInput {

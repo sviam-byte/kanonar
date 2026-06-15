@@ -33,6 +33,13 @@ export const ROLES: Record<RoleId, RoleSpec> = {
     knowsTeammates: false,
     description: 'Each night heals one player; if target was mafia kill, they survive.',
   },
+  blocker: {
+    id: 'blocker',
+    team: 'town',
+    hasNightAction: true,
+    knowsTeammates: false,
+    description: 'Each night blocks one player from taking their night action.',
+  },
 };
 
 export function roleTeam(role: RoleId): Team {
@@ -67,6 +74,7 @@ export function defaultDistribution(nPlayers: number): Record<RoleId, number> {
     mafia: mafiaCount,
     sheriff: sheriffCount,
     doctor: doctorCount,
+    blocker: 0,
     citizen: citizenCount,
   };
 }

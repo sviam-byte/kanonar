@@ -371,6 +371,7 @@ export interface ContextRule {
 }
 
 export interface ScenarioConfig {
+  [key: string]: unknown;
   id: string;
   label: string;
   kind: string;
@@ -421,6 +422,7 @@ export interface LogEntry {
 export type AgentLocationTags = Record<string, LocationTagId[]>;
 
 export interface ContextSlice {
+  [key: string]: unknown;
   metrics: Metrics;
   locationOf: Record<AgentId, LocationId>;
   contextAtoms: Record<string, ContextAtom>;

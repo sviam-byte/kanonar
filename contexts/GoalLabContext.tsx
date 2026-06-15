@@ -105,7 +105,11 @@ export const GoalLabProvider: React.FC<{
   const [affectOverrides, setAffectOverrides] = useState<Partial<AffectState>>({});
   const [manualAtoms, setManualAtoms] = useState<ContextAtom[]>([]);
   const [selectedEventIds, setSelectedEventIds] = useState<Set<string>>(new Set());
-  const [atomOverridesLayer, setAtomOverridesLayer] = useState<AtomOverrideLayer>({ rules: [], label: 'default' });
+  const [atomOverridesLayer, setAtomOverridesLayer] = useState<AtomOverrideLayer>({
+    layerId: 'default',
+    updatedAt: 0,
+    ops: [],
+  });
   const [injectedEvents, setInjectedEventsRaw] = useState<any[]>([]);
   const setInjectedEvents = useCallback((updater: (prev: any[]) => any[]) => setInjectedEventsRaw(updater), []);
   // enablePredict defaults to false — toggled on via UI. POMDP panel shows prototype when off.

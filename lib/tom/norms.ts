@@ -1,5 +1,5 @@
 
-import { NormativeProfile, TomEntry } from './state';
+import { TomEntry } from './state';
 
 export function initNorms(entry: TomEntry, axes: string[]) {
     entry.norms = entry.norms || {

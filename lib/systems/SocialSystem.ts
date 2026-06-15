@@ -225,7 +225,7 @@ export const SocialSystem = {
                 }
                 break;
             case 'deceive':
-                if (observer.rngChannels.perceive.nextFloat() > (observer.competencies.OPSEC_literacy || 50) / 100) {
+                if (observer.rngChannels.perceive.nextFloat() > Number(observer.competencies.OPSEC_literacy ?? 50) / 100) {
                      if (action.targetId === observer.entityId) {
                         trustChange = -0.8;
                         conflictChange = 0.5;

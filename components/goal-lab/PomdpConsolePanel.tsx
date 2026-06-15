@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import type { ArtifactRef, PipelineRun, PipelineStage } from '../../lib/goal-lab/types';
 import { buildPredictedWorldSummary } from '../../lib/goal-lab/pipeline/lookahead';
 
-function arr<T>(x: any): T[] {
+function arr<T = any>(x: any): T[] {
   return Array.isArray(x) ? x : [];
 }
 
@@ -141,7 +141,7 @@ const SensitivityView: React.FC<{ sensitivity?: Record<string, number>; sensitiv
     .map(([k, v]) => ({ k, v: Math.abs(Number(v)) }))
     .sort((a, b) => b.v - a.v)
     .slice(0, 6);
-  if (!top.length && !arr(flipCandidates).length) return null;
+  if (!top.length && !arr<any>(flipCandidates).length) return null;
   return (
     <div className="rounded border border-slate-800 bg-black/20 p-2 space-y-1">
       <div className="text-[10px] text-slate-500 uppercase tracking-widest">Чувствительность решения</div>

@@ -1,5 +1,6 @@
 
 // types.ts
+import type { AffectState } from './lib/emotions/types';
 export type { AffectState } from './lib/emotions/types';
 
 import type { ContextualMindState } from './lib/tom/contextual/types';
@@ -138,9 +139,11 @@ export interface EntitySecurity {
 }
 
 export interface BaseEntity {
+  [key: string]: any;
   entityId: string;
   type: EntityType;
   title: string;
+  name?: string;
   subtitle?: string;
   description?: string;
   tags?: string[];
@@ -216,6 +219,7 @@ export interface LocationMap {
     width: number;
     height: number;
     cells: LocationMapCell[];
+    tags?: string[];
     visuals?: SvgShape[];
     exits?: LocationMapExit[];
     defaultWalkable?: boolean;
@@ -266,9 +270,9 @@ export type Vec3 = { x: number; y: number; z: number };
 export type Euler = { yaw: number; pitch: number; roll: number };
 
 export type VolumeShape =
-    | { kind: 'box'; size: Vec3 }
-    | { kind: 'sphere'; radius: number }
-    | { kind: 'cylinder'; radius: number; height: number };
+    | { kind: 'box'; size: Vec3; radius?: number; height?: number }
+    | { kind: 'sphere'; radius: number; size?: Vec3; height?: number }
+    | { kind: 'cylinder'; radius: number; height: number; size?: Vec3 };
 
 export type VolumeTransform = {
     pos: Vec3;
@@ -473,6 +477,7 @@ export interface BodyModel {
     fitness_index?: number;
     fragility_index?: number;
     hormonal_tension?: number;
+    fatigue?: number;
 }
 
 // PhysiologyState used in SDE loops
@@ -488,9 +493,13 @@ export interface PhysiologyState {
 // --- Character Interfaces ---
 
 export interface Oath {
-    key: string;
+    id?: string;
+    key?: string;
     description?: string;
+    target?: string;
     targetId?: string;
+    domain?: string;
+    weight?: number;
     level?: string;
 }
 
@@ -558,14 +567,14 @@ export interface PersonalEvent {
     t: number;
     years_ago?: number;
     domain: string;
-    tags: string[];
+    tags?: string[];
     valence: number;
     intensity: number;
-    duration_days: number;
-    surprise: number;
-    controllability: number;
-    responsibility_self: number;
-    secrecy: string;
+    duration_days?: number;
+    surprise?: number;
+    controllability?: number;
+    responsibility_self?: number;
+    secrecy?: string;
     participants?: string[];
     payload?: any;
     lifeGoalWeights?: Record<string, number>;
@@ -612,6 +621,8 @@ export interface Relationship {
     fear: number;
     bond: number;
     conflict: number;
+    dominance?: number;
+    legitimacy?: number;
     history: any[];
 }
 
@@ -630,6 +641,7 @@ export type AcquaintanceKind =
     | 'subordinate';
 
 export interface AcquaintanceEdge {
+    [key: string]: any;
     tier: AcquaintanceTier;      // recognition level
     kind: AcquaintanceKind;      // semantic relation kind
     familiarity: number;         // 0..1
@@ -780,10 +792,10 @@ export interface CharacterEntity extends BaseEntity {
   tom?: TomState;
   capabilities?: Record<string, number>;
   context?: { age?: number; faction?: string; social_history?: Record<string, unknown>[]; faction_relations?: Record<string, number> };
-  memory?: AgentMemory & { attention?: { E?: number }; beliefAtoms?: unknown[] };
-  resources?: Record<string, number | unknown[]>;
-  competencies?: Record<string, number>;
-  authority?: Record<string, number>;
+  memory?: { attention?: Record<string, number | undefined>; beliefAtoms?: unknown[]; [key: string]: any };
+  resources?: Record<string, unknown>;
+  competencies?: Record<string, number | string[] | unknown[] | undefined>;
+  authority?: Record<string, unknown>;
   evidence?: Record<string, unknown>;
   observation?: Record<string, unknown>;
   compute?: Record<string, number>;
@@ -819,11 +831,21 @@ export interface CharacterParams {
     rhoS: number;
     zeta_belief: number;
     phi_max: number;
-    phi_beta: number | Record<string, number>;
+    phi_beta: {
+        b0: number;
+        bAlign: number;
+        bMatch: number;
+        bTrust: number;
+        bPower: number;
+        bBond: number;
+        bLeadership: number;
+        bConflict: number;
+        [key: string]: number;
+    };
     lambda_soft_ban: number;
     shock_lambda: number;
     shock_profile_J: { stress: number; energy: number; injury: number; moral: number };
-    appraisal_weights: Record<string, number>;
+    appraisal_weights: Record<string, any>;
     yerkes_A_star: number;
     yerkes_sigma_A: number;
     kappa_T_sensitivity: number;
@@ -2443,6 +2465,7 @@ export interface AxisShift {
 
 // Life Goal Engine Types
 export interface LifeGoalComponents {
+    [key: string]: unknown;
     g_traits: Record<string, number>;
     g_bio: Record<string, number>;
     g_psych: Record<string, number>;

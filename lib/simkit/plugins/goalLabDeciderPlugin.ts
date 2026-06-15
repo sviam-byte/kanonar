@@ -3,7 +3,7 @@
 // for UI inspection in world.facts['sim:trace:<agentId>'].
 
 import type { SimPlugin } from '../core/simulator';
-import type { SimSnapshot, SimWorld, SimAction, ActionOffer, IntentState } from '../core/types';
+import type { SimSnapshot, SimWorld, SimAction, ActionOffer, IntentState, ActionKind } from '../core/types';
 import { getFact, setFact } from '../core/factsAccessors';
 import { atomId, atomMagnitude } from '../../context/v2/atomAccessors';
 import type { GoalLabPipelineResult } from '../../goal-lab/pipeline/pipelineTypes';
@@ -579,7 +579,7 @@ function extractAgentTrace(pipeline: GoalLabPipelineResult | null, actorId: stri
   const s8arts = stageArtifacts(pipeline, 'S8');
   const communicativeIntent = s8arts.communicativeIntent ?? null;
   const basedOnEvents = arr(s8arts.basedOnEvents).map((x: unknown) => String(x)).filter(Boolean);
-  const ranked = arr(s8arts.ranked).slice(0, 10).map((r: Record<string, unknown>) => ({
+  const ranked = arr<any>(s8arts.ranked).slice(0, 10).map((r) => ({
     action: String(r?.action?.id || r?.id || ''),
     kind: String(r?.action?.kind || r?.kind || ''),
     targetId: r?.action?.targetId || r?.targetId || null,
@@ -903,13 +903,13 @@ export function makeGoalLabDeciderPlugin(opts?: { storePipeline?: boolean; enabl
         }
 
         const trace = extractAgentTrace(pipeline, actorId, world, mode, gateResult);
-        if (trace?.best?.explanation) {
-          trace.best.explanation = buildExplanation(
-            trace.best,
-            trace.ranked || [],
-            trace.drivers || {},
-            trace.emotions || {},
-            trace.mode || '',
+        if ((trace as any)?.best?.explanation) {
+          (trace as any).best.explanation = buildExplanation(
+            (trace as any).best,
+            (trace as any).ranked || [],
+            (trace as any).drivers || {},
+            (trace as any).emotions || {},
+            (trace as any).mode || '',
             mode,
             trace,
           );
@@ -944,7 +944,7 @@ export function makeGoalLabDeciderPlugin(opts?: { storePipeline?: boolean; enabl
         //   - Allow abort if GoalLab wants a DIFFERENT kind of action (not just talk→talk loop)
         //   - Allow direct-execute actions to override stale intents (>3 ticks old)
         //   - Force continue only during approach/execute stages of scripted intents
-        const activeIntent = world.facts[`intent:${actorId}`];
+        const activeIntent = world.facts[`intent:${actorId}`] as any;
         if (activeIntent) {
           const isIntentAction = /^(continue_intent|abort_intent|wait)$/.test(rawAction.kind);
           if (!isIntentAction) {

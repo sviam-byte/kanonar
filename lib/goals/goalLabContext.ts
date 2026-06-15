@@ -397,7 +397,7 @@ function buildSituationContextForLab(
   const tags = new Set<string>((frame?.where?.locationTags ?? []) as any);
 
   const isPrivate = tags.has('private');
-  const isFormal = tags.has('formal') || (ctxV2 as Record<string, unknown>).scenarioKind === 'strategic_council';
+  const isFormal = tags.has('formal') || (ctxV2 as any).scenarioKind === 'strategic_council';
 
   const threatLevel =
     (typeof (snapshot.domains as any)?.danger === 'number' ? (snapshot.domains as any).danger : undefined) ??
@@ -487,11 +487,11 @@ export function buildGoalLabContext(
 
   // 3. Prepare Override Atoms (GoalLab Manual)
   const overridesLayer = opts.snapshotOptions?.atomOverridesLayer;
-  const manualAtomsRaw = arr(((opts.snapshotOptions ?? {}) as Record<string, unknown>).manualAtoms).map(normalizeAtom);
+  const manualAtomsRaw = arr((opts.snapshotOptions as any)?.manualAtoms).map(normalizeAtom);
   const { atoms: appliedOverrides } = extractApplied(manualAtomsRaw, overridesLayer);
 
   // Apply affect overrides from UI knobs (must affect ALL downstream calculations).
-  const affectOverrides = ((opts.snapshotOptions ?? {}) as Record<string, unknown>).affectOverrides;
+  const affectOverrides = (opts.snapshotOptions as any)?.affectOverrides;
   if (affectOverrides && typeof affectOverrides === 'object') {
     const prev = agent.affect || null;
     const merged = {
@@ -510,7 +510,7 @@ export function buildGoalLabContext(
   // Events
   const tick = world.tick ?? 0;
   const worldEvents = world.eventLog?.events || [];
-  const overrideEvents = ((opts.snapshotOptions ?? {}) as Record<string, unknown>).overrideEvents as unknown[] || [];
+  const overrideEvents = (opts.snapshotOptions as any)?.overrideEvents as unknown[] || [];
   const eventsAllRaw = [...overrideEvents, ...worldEvents];
   const eventsAll = adaptToWorldEvents({ events: eventsAllRaw, fallbackTick: tick });
 
@@ -522,7 +522,7 @@ export function buildGoalLabContext(
   const ctxCrowd = ctxCrowdAtom ? ctxCrowdAtom.magnitude : 0;
 
   // --- SCENE ENGINE INTEGRATION ---
-  const sc = ((opts.snapshotOptions ?? {}) as Record<string, unknown>).sceneControl;
+  const sc = (opts.snapshotOptions as any)?.sceneControl;
   let sceneInst: any = null;
 
   if (sc?.presetId) {
@@ -549,11 +549,11 @@ export function buildGoalLabContext(
       sceneInst.phaseEnteredAtTick = tick;
     }
   } else {
-    sceneInst = (world as Record<string, unknown>).sceneSnapshot;
+    sceneInst = (world as any).sceneSnapshot;
   }
 
   // --- Location override (GoalLab UI) ---
-  const overrideLocation = ((opts.snapshotOptions ?? {}) as Record<string, unknown>).overrideLocation as any;
+  const overrideLocation = (opts.snapshotOptions as any)?.overrideLocation;
   let worldForPipeline: any = world;
   let agentForPipeline: any = agent;
 
@@ -863,12 +863,12 @@ export function buildGoalLabContext(
     pushStage('S1a', 'S1a • access constraints', atomsAfterAccess);
 
     // Rumors
-    const worldSceneSnapshot = (world as Record<string, unknown>).sceneSnapshot as Record<string, unknown> | undefined;
+    const worldSceneSnapshot = (world as any).sceneSnapshot as Record<string, unknown> | undefined;
     const seed =
       Number.isFinite((sceneInst as any)?.seed) ? Number((sceneInst as any).seed) :
       Number.isFinite((sceneSnapshotForStage0 as any)?.seed) ? Number((sceneSnapshotForStage0 as any).seed) :
       Number.isFinite(worldSceneSnapshot?.seed) ? Number(worldSceneSnapshot?.seed) :
-      stableHashInt32(String((sceneInst as any)?.sceneId ?? (world as Record<string, unknown>)?.scenarioId ?? 'goal-lab') + '::' + String(selfId));
+      stableHashInt32(String((sceneInst as any)?.sceneId ?? (world as any)?.scenarioId ?? 'goal-lab') + '::' + String(selfId));
 
     const rumorBeliefs = generateRumorBeliefs({ atomsAfterAxes: atomsAfterAccess, selfId, tick, seed });
     const atomsAfterBeliefGen = [...atomsAfterAccess, ...rumorBeliefs];
@@ -1348,7 +1348,7 @@ export function buildGoalLabContext(
     });
 
     // Drivers -> goal ecology -> planning goals (goal layer)
-    const drvRes = deriveDriversAtoms({ selfId, atoms: atomsAfterEner, agent: agentForPipeline });
+    const drvRes = deriveDriversAtoms({ selfId, atoms: atomsAfterEner, agent: agentForPipeline } as any);
     const atomsAfterDrv = mergeKeepingOverrides(atomsAfterEner, drvRes.atoms).merged;
     pushStage('S3d', 'S3d • drivers derived (drv:*)', atomsAfterDrv, {
       meta: { drivers: drvRes.atoms.length },
@@ -1658,6 +1658,7 @@ export function buildGoalLabContext(
         selfId,
         goalEnergy: goalEnergy as any,
         actions: rankedLinear.slice(0, 10).map((r: any) => ({
+          id: String((r.action as any)?.id || ''),
           actionId: String((r.action as any)?.id || ''),
           kind: String((r.action as any)?.kind || ''),
           qNow: Number(r.qNow ?? 0),

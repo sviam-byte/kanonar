@@ -315,14 +315,12 @@ function buildArtifactsFromFrame(frame: GoalLabStageFrame, run: GoalLabPipelineV
 
 
   if (stageId === 'S9') {
-    stageArtifacts.push({
-      id: `${stageId}:transition`,
-      kind: 'transition',
-      label: 'Predict tick (linear lookahead)',
-      data: v1?.transitionSnapshot ?? { missing: true, reason: 'disabled or unavailable' },
-      provenance: arr(((v1.transitionSnapshot as Record<string, any> | undefined)?.z0 as Record<string, any> | undefined)?.provenanceByKey?.threat).slice(0, 2),
-      links: [{ rel: 'used_in', to: 'S8:decision' }],
-    });
+    push(
+      'transition',
+      'transition',
+      'Predict tick (linear lookahead)',
+      v1?.transitionSnapshot ?? { missing: true, reason: 'disabled or unavailable' },
+    );
   }
 
   // Pass through remaining raw V1 artifacts as debug (bounded by known typed key set).

@@ -145,7 +145,7 @@ export function initTomForCharacters(
       }
 
       // Safe access to competence_core with null check
-      const compCore = j.competencies?.competence_core || 50;
+      const compCore = Number(j.competencies?.competence_core ?? 50);
       const baseCompetence = compCore / 100;
       const baseReliability = 0.5;
       const discipline = i.vector_base?.B_cooldown_discipline ?? 0.5;

@@ -54,7 +54,7 @@ export const GoalExplanationPanel: React.FC<Props> = ({ goalScores, selectedGoal
     return cs;
   }, [selected]);
 
-  const def = selected ? describeGoal(String(selected.goalId)) : null;
+  const def = selected ? (describeGoal(String(selected.goalId)) as any) : null;
 
   return (
     <div className="w-full h-full flex">

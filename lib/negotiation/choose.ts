@@ -11,7 +11,7 @@ const getParam = (entity: CharacterEntity | EssenceEntity, key: string, defaultV
         case 'fatigue': return entity.body.acute.fatigue ?? defaultValue;
         case 'stress': return entity.body.acute.stress ?? defaultValue;
         // Safe access for competencies
-        case 'competence_core': return entity.competencies?.competence_core ?? defaultValue;
+        case 'competence_core': return Number(entity.competencies?.competence_core ?? defaultValue);
         case 'intel_access': return entity.memory.visibility_zone ?? defaultValue;
         case 'accountability': return (1 - (entity.cognitive?.utility_shape?.risk_aversion ?? 0.5)) * 100;
         case 'Vsigma': return (entity as any).derived?.Vsigma ?? defaultValue;

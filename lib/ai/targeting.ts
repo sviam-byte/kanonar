@@ -1,4 +1,4 @@
-import { WorldState } from "../types";
+import { WorldState } from "../../types";
 
 export interface TargetCandidate {
   id: string;

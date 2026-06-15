@@ -1,6 +1,6 @@
 
 import { AffectState, EmotionAppraisal, EmotionAtom, EmotionId, AppraisalTrace } from './types';
-import { AgentState, WorldState } from '../types';
+import { AgentState, WorldState } from '../../types';
 import { AgentContextFrame } from '../context/frame/types';
 import { normalizeAffectState } from '../affect/normalize';
 

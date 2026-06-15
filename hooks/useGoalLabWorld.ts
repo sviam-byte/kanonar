@@ -406,7 +406,7 @@ export function useGoalLabWorld(config: GoalLabWorldConfig): GoalLabWorldHandle 
       const w = createInitialWorld(Date.now(), participants, activeScenarioId, undefined, undefined, {
         runSeed: normSeed(simRef.current.runSeed),
         decisionTemperature: simRef.current.decisionTemperature,
-        decisionCurvePreset: simRef.current.decisionCurvePreset,
+        decisionCurvePreset: simRef.current.decisionCurvePreset as any,
       });
       if (!w) { setFatalError(`createInitialWorld returned null for scenario: ${activeScenarioId}`); return; }
       (w as any).decisionTemperature = simRef.current.decisionTemperature;

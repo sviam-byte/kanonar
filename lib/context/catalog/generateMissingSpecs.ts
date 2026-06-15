@@ -5,7 +5,7 @@
 // 2) Copy the list into console or use exported list, then call generateAtomSpecStubs(list)
 // 3) Paste result into lib/context/catalog/atomSpecs.ts (and refine meaning/formula/tags)
 
-import type { AtomSpec } from './types';
+import type { AtomSpec } from './atomSpecs';
 
 function esc(s: string) {
   return s.replace(/\\/g, '\\\\').replace(/`/g, '\\`');

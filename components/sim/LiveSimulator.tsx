@@ -443,7 +443,7 @@ export const LiveSimulator: React.FC = () => {
     const names = nameMap(sim.world);
     const actions = record.trace.actionsApplied || [];
 
-    const lines = actions.map((a: Record<string, unknown>) => describeAction(a, names, sim.world));
+    const lines = actions.map((a: any) => describeAction(a, names, sim.world));
 
     // ── Show position changes (intra-location movement) ──
     const deltasChars = record.trace?.deltas?.chars || [];
@@ -512,9 +512,9 @@ export const LiveSimulator: React.FC = () => {
 
       // Show transmitted atoms (what information was actually exchanged).
       const atoms = Array.isArray(p.atoms) ? p.atoms : [];
-      const sigAtoms = atoms.filter((a: Record<string, unknown>) => a && (a.magnitude ?? 0) > 0.2).slice(0, 4);
+      const sigAtoms = atoms.filter((a: any) => a && (a.magnitude ?? 0) > 0.2).slice(0, 4);
       if (sigAtoms.length) {
-        const atomStr = sigAtoms.map((a: Record<string, unknown>) => {
+        const atomStr = sigAtoms.map((a: any) => {
           const id = String(a.id || '').replace(/^ctx:/, '').replace(/:[\w-]+$/, '');
           const mag = Number(a.magnitude ?? 0).toFixed(2);
           const trueM = a.meta?.trueMagnitude != null ? ` [реал:${Number(a.meta.trueMagnitude).toFixed(2)}]` : '';

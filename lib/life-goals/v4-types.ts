@@ -153,7 +153,7 @@ export interface TargetedGoalDef {
 }
 
 export interface GoalContribDetail {
-    category: 'Base' | 'Trait/Archetype' | 'State/Metric' | 'Bio/History' | 'Relational' | 'Oath';
+    category: 'Base' | 'Trait/Archetype' | 'Trait Matrix' | 'State/Metric' | 'Bio/History' | 'Relational' | 'Oath' | 'Tuning';
     key: string;
     agentValue: number; // The value found in the agent state
     weight: number;     // The weight defined in the goal definition

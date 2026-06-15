@@ -1,4 +1,4 @@
-import { WorldState, AgentId, LocationId } from "../../types";
+import { WorldState, AgentId, LocationId } from "../../../types";
 import { hydrateLocation } from "../../adapters/rich-location";
 import { Location } from "../../location/types";
 import {

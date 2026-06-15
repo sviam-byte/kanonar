@@ -30,7 +30,7 @@ function mkAgent(id: string, traits: Record<string, number>, rels: Record<string
     },
     relationships,
     tom: {},
-  } as AgentState;
+  } as unknown as AgentState;
 }
 
 const rel = (trust: number, bond: number, conflict = 0, familiarity = 0.5) =>
@@ -96,7 +96,7 @@ const characters: AgentState[] = [
 
 const world: WorldState = { agents: characters } as WorldState;
 const players = characters.map(c => c.id!);
-const roleDistribution = { mafia: 2, sheriff: 1, doctor: 1, citizen: 3 } as const;
+const roleDistribution = { mafia: 2, sheriff: 1, doctor: 1, blocker: 0, citizen: 3 } as const;
 
 console.log('═══ SINGLE GAME ═══');
 const result = runMafiaGame({

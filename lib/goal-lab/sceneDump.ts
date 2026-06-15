@@ -20,7 +20,7 @@ type PipelineStageDeltaLite = {
 function materializeStageAtoms(pipeline: PipelineStageDeltaLite[] | any, stageId: string): any[] {
   if (!Array.isArray(pipeline) || !pipeline.length) return [];
 
-  const byId = new Map(arr(pipeline).map((s: any) => [s.id, s]));
+  const byId = new Map<string, PipelineStageDeltaLite>(arr<PipelineStageDeltaLite>(pipeline).map((s) => [s.id, s]));
   const target: PipelineStageDeltaLite | undefined = byId.get(stageId);
   if (!target) return [];
 
@@ -42,7 +42,7 @@ function materializeStageAtoms(pipeline: PipelineStageDeltaLite[] | any, stageId
 
   const m = new Map<string, any>(
     arr((s0 as any).full)
-      .map((a: Record<string, unknown>) => [String(a?.id), a])
+      .map((a: any) => [String(a?.id), a] as [string, any])
       .filter(([id]) => id)
   );
 

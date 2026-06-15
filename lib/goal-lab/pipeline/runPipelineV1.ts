@@ -121,7 +121,7 @@ function stageStats(atoms: ContextAtom[]) {
   for (const a of atoms) {
     if (!(a as Record<string, unknown>)?.code) missingCodeCount += 1;
     if ((a as Record<string, unknown>)?.origin === 'derived') {
-      const tr = (a as Record<string, unknown>)?.trace;
+      const tr = (a as any)?.trace;
       const used = Array.isArray(tr?.usedAtomIds) ? tr.usedAtomIds : [];
       const parts = tr?.parts;
       if (!used.length && (parts == null || (typeof parts === 'object' && Object.keys(parts).length === 0))) {
@@ -138,7 +138,7 @@ function cloneAsBaseCtxAtoms(ctxAtoms: ContextAtom[], selfId: string): ContextAt
     .filter(a => typeof a?.id === 'string' && String(a.id).startsWith('ctx:'))
     .map(a => {
       const id = String(a.id);
-      const used = arr((a as Record<string, unknown>)?.trace as Record<string, unknown>)?.usedAtomIds as string[] ?? [];
+      const used = arr<string>((a as any)?.trace?.usedAtomIds);
       return normalizeAtom({
         ...a,
         id: `ctx:base:${id.slice('ctx:'.length)}`,
@@ -170,12 +170,12 @@ function safeLogit01(p01: number): number {
 }
 
 function buildGoalLayerSnapshot(selfId: string, atomsAfterS7: ContextAtom[], goalRes: any, planRes: any) {
-  const domainAtoms = atomsAfterS7.filter((a: Record<string, unknown>) => a?.ns === 'goal' && typeof a?.id === 'string' && a.id.startsWith(`goal:domain:`) && a.id.endsWith(`:${selfId}`));
-  const activeDomainAtoms = atomsAfterS7.filter((a: Record<string, unknown>) => a?.ns === 'goal' && typeof a?.id === 'string' && a.id.startsWith(`goal:active:`) && a.id.endsWith(`:${selfId}`));
+  const domainAtoms = atomsAfterS7.filter((a: any) => a?.ns === 'goal' && typeof a?.id === 'string' && a.id.startsWith(`goal:domain:`) && a.id.endsWith(`:${selfId}`));
+  const activeDomainAtoms = atomsAfterS7.filter((a: any) => a?.ns === 'goal' && typeof a?.id === 'string' && a.id.startsWith(`goal:active:`) && a.id.endsWith(`:${selfId}`));
   const modeAtom = atomsAfterS7.find((a: ContextAtom) => a?.ns === 'goal' && typeof a?.id === 'string' && a.id === `goal:mode:${selfId}`) as any;
 
   const domains = domainAtoms
-    .map((a: Record<string, unknown>) => {
+    .map((a: any) => {
       const id: string = String(a.id);
       const domain = id.split(':')[2] || id;
       const score01 = Number(a.magnitude ?? 0);
@@ -187,16 +187,16 @@ function buildGoalLayerSnapshot(selfId: string, atomsAfterS7: ContextAtom[], goa
         logit: safeLogit01(score01),
         label: a?.label ?? null,
         parts,
-        usedAtomIds: arr(a?.trace?.usedAtomIds).slice(0, 50),
+        usedAtomIds: arr<string>(a?.trace?.usedAtomIds).slice(0, 50),
       };
     })
     .sort((x: any, y: any) => (y.score01 ?? 0) - (x.score01 ?? 0));
 
   const activeDomains = activeDomainAtoms
-    .map((a: Record<string, unknown>) => {
+    .map((a: any) => {
       const id: string = String(a.id);
       const domain = id.split(':')[2] || id;
-      return { id, domain, score01: Number(a.magnitude ?? 0), usedAtomIds: arr(a?.trace?.usedAtomIds).slice(0, 50) };
+      return { id, domain, score01: Number(a.magnitude ?? 0), usedAtomIds: arr<string>(a?.trace?.usedAtomIds).slice(0, 50) };
     })
     .sort((x: any, y: any) => (y.score01 ?? 0) - (x.score01 ?? 0));
 
@@ -510,7 +510,7 @@ export function runGoalLabPipelineV1(input: {
 
   const step = makeSimStep({
     t: tick,
-    seed: world.rngSeed ?? (world as Record<string, unknown>)?.rng_seed ?? 0,
+    seed: world.rngSeed ?? (world as any)?.rng_seed ?? 0,
     events: [
       ...arr(input.injectedEvents),
       ...arr(world.eventLog?.events),
@@ -539,7 +539,7 @@ export function runGoalLabPipelineV1(input: {
           pos: a.pos ?? { nodeId: null, x: null, y: null },
         };
       }
-      const locs = arr(world.locations ?? (world as Record<string, unknown>)?.worldLocations as unknown[]);
+      const locs = arr<any>(world.locations ?? (world as any)?.worldLocations);
       for (const l of locs) {
         const id = l?.entityId ?? l?.id;
         if (!id) continue;
@@ -560,7 +560,7 @@ export function runGoalLabPipelineV1(input: {
     beliefAtoms: arr(agent?.memory?.beliefAtoms),
     overrideAtoms: arr(input.manualAtoms).map(normalizeAtom),
     events: step.events,
-    sceneSnapshot: (world as Record<string, unknown>).sceneSnapshot,
+    sceneSnapshot: (world as any).sceneSnapshot,
     includeAxes: false
   });
   atoms = arr(s0?.mergedAtoms).map(normalizeAtom);
@@ -1164,7 +1164,7 @@ export function runGoalLabPipelineV1(input: {
       return bad;
     })();
 
-    const rankedActions = arr(decision?.ranked).map((r: Record<string, unknown>) => ({
+    const rankedActions = arr<any>(decision?.ranked).map((r) => ({
       ...(r?.action || {}),
       q: Number(r?.q ?? 0),
       qUsed: Number(r?.qUsed ?? r?.q ?? 0),
@@ -1242,7 +1242,7 @@ export function runGoalLabPipelineV1(input: {
       }
     }
 
-    const decisionWarnings = arr<string>(decision?.warnings);
+    const decisionWarnings = arr<string>((decision as any)?.warnings);
     const groundedSchemasV1 = groundSchemasToOffers(actionSchemaCandidatesV1, externalOffersLike, selfId).slice(0, 10);
     const communicativeIntent = (() => {
       // Prefer schema-layer communicative intent over legacy heuristic.
@@ -1378,7 +1378,7 @@ export function runGoalLabPipelineV1(input: {
             };
           })(),
           ranked: arr(decision?.ranked).slice(0, 10).map((r: any) => buildDecisionBreakdown(r?.action || {}, r?.q)),
-          rankedOverridden: rankedOverridden.slice(0, 10).map((a: Record<string, unknown>) => buildDecisionBreakdown(a, a?.q)),
+          rankedOverridden: rankedOverridden.slice(0, 10).map((a: any) => buildDecisionBreakdown(a, a?.q)),
           best: bestOverridden ? buildDecisionBreakdown(bestOverridden as any, (bestOverridden as any)?.q ?? 0) : null,
           forcedActionId: forcedActionId || null,
           note: 'Decision breakdown: Q(a)=Σ_g goalEnergy[g]*Δg(a) - cost(a), then *confidence(a). contribByGoal are pre-confidence.',

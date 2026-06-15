@@ -46,7 +46,7 @@ function applyNormalizationFactors(latents: Record<string, number>, entity: Char
 // These functions are extracted from lib/sde.ts to be reusable for static analysis
 function calculate_Pillar_N_inst(entity: CharacterEntity, latents: Record<string, number>, quickStates: Record<string, number>): number {
     const { SD = 0.5, EW = 0.5, CH = 0.5 } = latents;
-    const Opt_inst = sigmoid(normalize(entity.identity.clearance_level, 5) + normalize(entity.resources?.risk_budget_cvar));
+    const Opt_inst = sigmoid(normalize(entity.identity.clearance_level, 5) + normalize(Number(entity.resources?.risk_budget_cvar ?? 0)));
     const N_z = 0.40 * SD + 0.25 * EW + 0.20 * CH + 0.15 * Opt_inst;
     return sigmoid(2.5 * (N_z - 0.5));
 }
@@ -83,8 +83,8 @@ function calculate_h_components(entity: CharacterEntity, latents: Record<string,
     
     const log_H_core = 0.8 * Vsigma + 0.8 * DS + 0.8 * C_causal + 0.4 * stress_norm + 0.2 * fatigue_norm;
     
-    const BP = ((entity.resources?.time_budget_h || 50) / 168 + (entity.resources?.risk_budget_cvar ?? 0)) / 2;
-    const Opt = sigmoid(normalize(entity.identity.clearance_level, 5) + normalize(entity.resources?.risk_budget_cvar));
+    const BP = (Number(entity.resources?.time_budget_h ?? 50) / 168 + Number(entity.resources?.risk_budget_cvar ?? 0)) / 2;
+    const Opt = sigmoid(normalize(entity.identity.clearance_level, 5) + normalize(Number(entity.resources?.risk_budget_cvar ?? 0)));
 
     const misalign = (Math.abs(12 - (entity.body.reserves.circadian_phase_h ?? 12)) / 12 +
                    normalize(Math.abs(4.8 - (entity.body.reserves.glycemia_mmol ?? 4.8)), 5) +

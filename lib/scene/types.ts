@@ -23,7 +23,7 @@ export type SceneNorms = Record<SceneNormId, number>;     // 0..1
 
 export type SceneAtomInjection = {
   id: string;               // fully-qualified atom id
-  ns: 'scene' | 'norm' | 'off' | 'con' | 'event';
+  ns: 'scene' | 'norm' | 'off' | 'con' | 'event' | 'threat';
   kind: string;             // engine-facing atom kind
   magnitude: number;        // 0..1
   confidence?: number;      // default 1

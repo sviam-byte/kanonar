@@ -225,7 +225,7 @@ export function buildStage0Atoms(input: Stage0Input): Stage0Output {
   // 0. World Facts (Canonical)
   const locId = input.agent.locationId || input.world.agents.find(a => a.entityId === input.selfId)?.locationId;
   const loc = input.world.locations.find(l => l.entityId === locId);
-  const sceneSnapshot = input.sceneSnapshot || (input.world as Record<string, unknown>).sceneSnapshot || input.world.scene;
+  const sceneSnapshot = input.sceneSnapshot || (input.world as any).sceneSnapshot || input.world.scene;
 
   const worldFacts = buildWorldFactsAtoms({
       world: input.world,

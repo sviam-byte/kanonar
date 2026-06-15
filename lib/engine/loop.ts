@@ -175,7 +175,7 @@ export async function runSimulationTick(world: WorldState): Promise<SimulationEv
     const executedActions: { actorId: string, actionId: string }[] = [];
     
     for (const { agent, intention } of intentions) {
-        const outcome = ActionSystem.execute(agent, intention, world, world.allGoals || []);
+        const outcome = ActionSystem.execute(agent, intention, world, (world.allGoals || []) as any);
         outcomes.push({ agent, outcome });
         if (intention) {
             executedActions.push({ actorId: agent.entityId, actionId: intention.id });
@@ -224,9 +224,9 @@ export async function runSimulationTick(world: WorldState): Promise<SimulationEv
                 v42: observer.v42metrics!,
                 params: {
                     metacog: observer.vector_base?.G_Metacog_accuracy ?? 0.5,
-                    evidenceQuality: observer.evidence.evidence_quality,
-                    obsNoise: observer.observation.noise,
-                    reportNoise: observer.observation.report_noise,
+                    evidenceQuality: Number((observer.evidence as any).evidence_quality ?? 0.5),
+                    obsNoise: Number((observer.observation as any).noise ?? 0),
+                    reportNoise: Number((observer.observation as any).report_noise ?? 0),
                     darkExposure: (observer.state.dark_exposure ?? 0)/100,
                     modelCalibration: observer.vector_base?.E_Model_calibration ?? 0.5,
                     memoryFidelity: observer.vector_base?.A_Memory_Fidelity ?? 0.5,
@@ -258,7 +258,7 @@ export async function runSimulationTick(world: WorldState): Promise<SimulationEv
                     newTrust: entry.traits.trust, newBond: entry.traits.bond, newAlign: entry.traits.align,
                     newDominance: entry.traits.dominance, newVulnerability: entry.traits.vulnerability,
                     newUncertainty: entry.uncertainty
-                 }); // Simplified typing for log
+                 } as any); // Simplified typing for log
             }
             
             // Fallback to SocialSystem for legacy/simple fields not covered by Bayesian

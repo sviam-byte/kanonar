@@ -97,7 +97,7 @@ function annotateCanonicalAction(action: SimAction, world: SimWorld, extra?: Par
 }
 
 function writeIntentRuntimeEvent(world: SimWorld, actorId: string, event: Record<string, any>) {
-  const facts = world.facts || (world.facts = {} as Record<string, unknown>);
+  const facts = world.facts || (world.facts = {} as any);
   setFact(world, `sim:intent:last:${actorId}`, {
     tick: Number(world.tickIndex ?? 0),
     actorId,
@@ -339,7 +339,7 @@ function buildSpeechAtoms(
     magnitude: Number(a.magnitude ?? 0),
     confidence: Number(a.confidence ?? 0.6),
     meta: {
-      ...(a.meta || {}),
+      ...((a as any).meta || {}),
       from: speakerId,
       speechIntent: result.intent,
       ...(a.trueMagnitude != null ? { trueMagnitude: a.trueMagnitude } : {}),
@@ -814,9 +814,9 @@ const TalkSpec: ActionSpec = {
     }
     // Append key atom summaries for narrative readability.
     const topAtomSummaries = speechData.atoms
-      .filter((a: Record<string, unknown>) => a.magnitude > 0.3)
+      .filter((a: any) => a.magnitude > 0.3)
       .slice(0, 3)
-      .map((a: Record<string, unknown>) => {
+      .map((a: any) => {
         const short = String(a.id || '').replace(/^ctx:/, '').replace(/:.*$/, '');
         return `${short}:${a.magnitude.toFixed(1)}`;
       });
@@ -1221,9 +1221,9 @@ const NegotiateSpec: ActionSpec = {
     }
     // Show top atoms being negotiated about.
     const topNegAtoms = speechData.atoms
-      .filter((a: Record<string, unknown>) => a.magnitude > 0.2)
+      .filter((a: any) => a.magnitude > 0.2)
       .slice(0, 3)
-      .map((a: Record<string, unknown>) => {
+      .map((a: any) => {
         const short = String(a.id || '').replace(/^ctx:/, '').replace(new RegExp(`:${c.id}$`), '');
         return `${short}:${a.magnitude.toFixed(1)}`;
       });
@@ -1809,7 +1809,7 @@ const ContinueIntentSpec: ActionSpec = {
         notes.push(`${c.id} intent complete: no originalAction`);
       }
 
-      cur.lifecycleState = 'completed';
+      cur.lifecycleState = 'complete';
       annotateCanonicalAction(action, world, {
         transportKind: 'continue_intent',
         semanticKind: String(original?.kind || ''),
@@ -1911,7 +1911,7 @@ const ContinueIntentSpec: ActionSpec = {
       // ── Write intent cooldown (v0 path) ──
       const okV0 = cur?.intent?.originalAction;
       if (okV0) markIntentCooldown(world.facts as any, c.id, String(okV0.kind || ''), okV0.targetId ?? null, world.tickIndex);
-      cur.lifecycleState = 'completed';
+      cur.lifecycleState = 'complete';
       delete world.facts[key];
       events.push(mkActionEvent(world, 'action:intent_complete', {
         actorId: c.id,
@@ -2028,8 +2028,8 @@ const RetreatSpec: ActionSpec = {
     const facts: any = world.facts || {};
 
     // Move toward nearest exit or highest-cover cell.
-    const cells: any[] = loc?.entity?.map?.cells;
-    const exits: any[] = loc?.entity?.map?.exits;
+    const cells: any[] = (loc?.entity as any)?.map?.cells;
+    const exits: any[] = (loc?.entity as any)?.map?.exits;
     const pos = getCharXY(world, c.id);
     const cfg = getSpatialConfig(world);
 

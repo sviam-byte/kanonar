@@ -167,7 +167,7 @@ export const OathsAndTaboosEditor: React.FC<OathsAndTaboosEditorProps> = ({ char
                         <p className="text-xs text-canon-text-light italic">Не задано.</p>
                     )}
                     <AddItemForm 
-                        options={oathTemplates} 
+                        options={oathTemplates.map((oath) => ({ ...oath, key: oath.key ?? oath.id ?? oath.description }))}
                         onAdd={(item) => handleAdd('oaths', item)} 
                         label="Добавить клятву..." 
                         availableTargets={allCharacters}

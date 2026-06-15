@@ -1,5 +1,5 @@
 
-import { VectorBase } from './types';
+import { VectorBase } from '../types';
 
 export type TraitId =
   | 'care'

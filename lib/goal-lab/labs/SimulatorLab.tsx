@@ -132,7 +132,7 @@ function compactJson(value: any, opts?: { maxDepth?: number; maxKeys?: number; m
 }
 
 export const SimulatorLab: React.FC<Props> = ({ orchestratorRegistry, onPushToGoalLab }) => {
-  const { sandboxState } = useSandbox();
+  const { sandboxState } = useSandbox() as any;
   // --------- Entities (источник правды) ----------
   const locations = useMemo(() => getEntitiesByType(EntityType.Location) as any[], []);
   const charactersAll = useMemo(() => getAllCharactersWithRuntime() as any[], []);
@@ -483,7 +483,7 @@ export const SimulatorLab: React.FC<Props> = ({ orchestratorRegistry, onPushToGo
   function exportSession() {
     const sim = simRef.current;
     if (!sim) return;
-    const payload = buildExport(sim);
+    const payload = buildExport(sim as any);
     jsonDownload(`simkit_session_${Date.now()}.json`, payload);
   }
 

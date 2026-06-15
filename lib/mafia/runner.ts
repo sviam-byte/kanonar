@@ -203,6 +203,7 @@ function analyzeGame(state: MafiaGameState): MafiaAnalysis {
     citizen: { won: false, survivedToEnd: false },
     sheriff: { won: false, survivedToEnd: false },
     doctor: { won: false, survivedToEnd: false },
+    blocker: { won: false, survivedToEnd: false },
   };
 
   for (const p of players) {
@@ -253,13 +254,14 @@ export function runMafiaBatch(config: MafiaBatchConfig): MafiaBatchResult {
     citizen: { games: 0, wins: 0, winRate: 0 },
     sheriff: { games: 0, wins: 0, winRate: 0 },
     doctor: { games: 0, wins: 0, winRate: 0 },
+    blocker: { games: 0, wins: 0, winRate: 0 },
   };
 
   for (const p of config.players) {
     byPlayer[p] = {
       gamesPlayed: 0,
-      roleCounts: { mafia: 0, citizen: 0, sheriff: 0, doctor: 0 },
-      winsByRole: { mafia: 0, citizen: 0, sheriff: 0, doctor: 0 },
+      roleCounts: { mafia: 0, citizen: 0, sheriff: 0, doctor: 0, blocker: 0 },
+      winsByRole: { mafia: 0, citizen: 0, sheriff: 0, doctor: 0, blocker: 0 },
       avgSurvivalCycles: 0,
     };
   }

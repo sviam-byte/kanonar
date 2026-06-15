@@ -247,7 +247,7 @@ function computeRoleFitUtility(agent: AgentState, action: Action, world: WorldSt
 function computeSaturationPenalty(agent: AgentState, action: Action, world: WorldState): number {
     if (!action.satisfies) return 0;
     const { prop } = action.satisfies;
-    const fact = world.contextEx?.contextAtoms[prop];
+    const fact = world.contextEx?.contextAtoms[prop] as any;
     
     if (fact && fact.confidence > 0.5) {
         return 2.0; 

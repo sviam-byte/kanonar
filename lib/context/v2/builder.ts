@@ -10,12 +10,17 @@ export interface ContextBuildOptions {
   focusLocationId?: string;
   recentEventsWindow?: number;
   manualAtoms?: ContextAtom[];
-  activeEvents?: Event[];
+  activeEvents?: any[];
   overrideLocation?: LocationEntity | string;
   temporalConfig?: TemporalContextConfig;
   gridMap?: any;
   scenarioContext?: ScenarioContextState;
-  overrideEvents?: Event[];
+  overrideEvents?: any[];
+  participantIds?: string[];
+  sceneControl?: any;
+  affectOverrides?: any;
+  atomOverridesLayer?: any;
+  decisionNonce?: number;
 }
 
 // Simple atom builder for manual atoms or basic defaults

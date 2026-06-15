@@ -14,11 +14,12 @@ import {
 
 const f2 = (v: number) => v.toFixed(2);
 const pct = (v: number) => `${(v * 100).toFixed(1)}%`;
-const ROLE_ORDER: RoleId[] = ['mafia', 'sheriff', 'doctor', 'citizen'];
+const ROLE_ORDER: RoleId[] = ['mafia', 'sheriff', 'doctor', 'blocker', 'citizen'];
 const ROLE_LABEL: Record<RoleId, string> = {
   mafia: 'Mafia',
   sheriff: 'Sheriff',
   doctor: 'Doctor',
+  blocker: 'Blocker',
   citizen: 'Citizen',
 };
 
@@ -31,7 +32,7 @@ function buildMinimalWorld(chars: { entityId: string; [k: string]: unknown }[]):
     tick: 0,
     agents: chars as unknown as AgentState[],
     locations: [],
-    leadership: { leaderId: null } as WorldState['leadership'],
+    leadership: { leaderId: null } as unknown as WorldState['leadership'],
     initialRelations: {},
   };
 }

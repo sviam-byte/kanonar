@@ -120,6 +120,7 @@ export interface AtomTrace {
 export type ContextAtomKind = string; // Broadened for flexibility
 
 export interface ContextAtomBase {
+  [key: string]: any;
   id: string;
   kind: ContextAtomKind;
   source: ContextSource;
@@ -146,7 +147,7 @@ export interface ContextAtomBase {
   
   meta?: any;
 
-  ns?: AtomNamespace;
+  ns?: AtomNamespace | string;
   origin?: AtomOrigin;
   trace?: AtomTrace;
 

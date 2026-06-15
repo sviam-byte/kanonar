@@ -103,7 +103,7 @@ export const DecisionPanel: React.FC<Props> = ({ decision, selfId, castDecisions
     const bestQ = isNew ? Number(current?.q ?? 0) : Number(current?.score ?? 0);
     const alts = ranked.slice(0, 6).filter((_, i) => i !== sel).slice(0, 3);
 
-    const rows = alts.map((a: Record<string, unknown>) => {
+    const rows = alts.map((a: any) => {
       const node = isNew ? (a?.action || a) : a;
       const delta: Record<string, number> = isNew
         ? (node?.deltaGoals || {})

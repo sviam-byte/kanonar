@@ -102,7 +102,7 @@ export function atomizeFrame(frame: AgentContextFrame, t: number, world?: WorldS
           add('env_visibility', loc.properties?.visibility ?? 0.5, 'Visibility');
           add('env_noise', loc.properties?.noise ?? 0.5, 'Noise Level');
           // Structural integrity (if available in state or physics)
-          const structInt = (loc.state as Record<string, unknown>)?.structuralIntegrity ?? 1.0;
+          const structInt = (loc.state as any)?.structuralIntegrity ?? 1.0;
           add('env_structural_integrity', structInt, 'Structural Integrity');
 
           // 3) Navigation & Cover
@@ -245,7 +245,7 @@ export function atomizeFrame(frame: AgentContextFrame, t: number, world?: WorldS
   // ==================================================================================
   // 2. HOW: Detailed Interoception (Body & Affect)
   // ==================================================================================
-  const how = frame.how ?? {};
+  const how = (frame.how ?? {}) as any;
   const phys = how?.physical ?? {};
   
   const hpRaw = phys.hp ?? 100;
@@ -855,7 +855,7 @@ export function atomizeFrame(frame: AgentContextFrame, t: number, world?: WorldS
 
   // 7) Context Seed
   if (world && world.scenario?.contextConfig?.contextSeed) {
-      const seed = world.scenario.contextConfig.contextSeed;
+      const seed = world.scenario.contextConfig.contextSeed as any[];
       for (const fact of seed) {
           if (fact.id && !seenIds.has(fact.id)) {
               seenIds.add(fact.id);

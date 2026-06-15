@@ -108,7 +108,7 @@ export function updateGoalEcology(agent: AgentState, world: WorldState): void {
   if (ecologyDebug) {
       // Reconstruct z_total from debug components
       const z_total = makeZeroGoalLogits();
-      const { g_traits, g_bio, g_psych, g_distortion, weights } = ecologyDebug;
+      const { g_traits, g_bio, g_psych, g_distortion, weights } = ecologyDebug as any;
       
       for (const axis of GOAL_AXES) {
           z_total[axis] = 

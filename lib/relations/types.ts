@@ -79,6 +79,7 @@ export interface RelationshipEdge {
   trustPrior?: number;
   threatPrior?: number;
   exclusivity?: number;
+  bio?: any;
   updatedAtTick?: number;
   sources?: RelationshipEdgeSource[];
 }

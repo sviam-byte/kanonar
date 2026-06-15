@@ -1,4 +1,4 @@
-import { WorldState, AgentId, LocationId, LocationMapCell, LocationEntity } from "../types";
+import { WorldState, AgentId, LocationId, LocationMapCell, LocationEntity } from "../../types";
 
 /**
  * Находим LocationEntity для агента (по его locationId).

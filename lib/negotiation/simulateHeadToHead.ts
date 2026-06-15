@@ -88,7 +88,7 @@ export function createPerceivedCharacter(observer: CharacterEntity, observerMetr
         if (perceivedTarget.vector_base) {
             for (const key in perceivedTarget.vector_base) {
                 const originalValue = perceivedTarget.vector_base[key];
-                const u = (hashString32(`${getGlobalRunSeed()}:${p1.entityId}:${p2_perceived.entityId}:${key}`) >>> 0) / 4294967296;
+                const u = (hashString32(`${getGlobalRunSeed()}:${observer.entityId}:${target.entityId}:${key}`) >>> 0) / 4294967296;
                 const noise = (u - 0.5) * noiseLevel;
                 perceivedTarget.vector_base[key] = clamp01(originalValue + noise);
             }

@@ -116,6 +116,6 @@ export function decideSpeechContent(world: SimWorld, input: SpeechContentInput):
     omitted,
     distorted,
     deceptionCost,
-    trace: { selfControl, normSensitivity, trustToTarget, hasHiddenAgenda: agenda, deceptionQ, truthfulQ },
+    trace: { selfControl, normSensitivity, trustToTarget, hasHiddenAgenda: agenda, deceptionQ: deceptiveQ, truthfulQ },
   };
 }

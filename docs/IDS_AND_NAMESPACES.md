@@ -36,8 +36,8 @@ The source of truth is `lib/context/v2/namespaces.ts`.
 Canonical namespaces:
 - `world`, `scene`, `map`, `norm`, `obs`, `soc`, `self`, `profile`
 - `ctx`, `aff`, `con`, `off`, `cap`, `access`, `cost`
-- `tom`, `emo`, `app`, `mind`, `drv`
-- `goal`, `util`, `action`, `belief`
+- `tom`, `emo`, `app`, `cog`, `mind`, `drv`
+- `goal`, `util`, `action`, `exit`, `belief`
 - `threat`, `rel`, `event`, `speech`, `lens`, `trace`, `misc`, `feat`
 
 Legacy namespace aliases:
@@ -114,6 +114,24 @@ Action candidates/decision artifacts:
 - `action:<actionName>:<agentId>`
 
 If actions are global (no agentId), document and test separately.
+
+### 2.7 Cognitive options (cog)
+
+Cognitive/internal action options:
+- `cog:<optionName>:<agentId>`
+
+Known producers include `cog:wait`, `cog:monologue`, `cog:investigate`, and
+`cog:probe`. `cog:*` is distinct from `mind:*`: `cog` represents internal
+action candidates, while `mind` represents derived mind metrics and scoreboard
+signals.
+
+### 2.8 Exit options (exit)
+
+Exit/escape action options:
+- `exit:<optionName>:<agentId>`
+
+Known producers include `exit:escape:<agentId>` for Conflict Lab / GoalLab
+transition candidates.
 
 ---
 
