@@ -2,13 +2,14 @@ import { describe, expect, it } from 'vitest';
 
 import { runGoalLabPipelineV1 } from '@/lib/goal-lab/pipeline/runPipelineV1';
 import { validateAtomContracts } from '@/lib/context/v2/validateAtomContract';
+import type { ContextAtom } from '@/lib/context/v2/types';
 import { arr } from '@/lib/utils/arr';
 
 import { mockAgent, mockWorld } from './fixtures';
 
-function stageAtoms(p: any, stage: string) {
+function stageAtoms(p: any, stage: string): ContextAtom[] {
   const st = arr(p?.stages).find((s: any) => String(s?.stage) === String(stage));
-  return arr(st?.atoms);
+  return arr<ContextAtom>(st?.atoms);
 }
 
 function ids(xs: Array<{ id: string }>): string[] {
@@ -156,7 +157,7 @@ describe('Pipeline: Stage isolation invariants', () => {
     const finalDanger = s3.find(a => String(a.id).includes('ctx:final:danger:A'));
     expect(finalDanger).toBeDefined();
 
-    const used = arr((finalDanger as any)?.trace?.usedAtomIds).map(String);
+    const used = arr<string>(finalDanger?.trace?.usedAtomIds).map(String);
     expect(used.some((id) => id.startsWith('ctx:danger:'))).toBe(true);
   });
 
@@ -167,7 +168,7 @@ describe('Pipeline: Stage isolation invariants', () => {
     expect(goals.length).toBeGreaterThan(0);
 
     for (const g of goals) {
-      const used = arr((g as any)?.trace?.usedAtomIds).map(String);
+      const used = arr<string>(g?.trace?.usedAtomIds).map(String);
       const hasCtxWithoutFinal = used.some((id) =>
         id.startsWith('ctx:') &&
         !id.includes(':final:') &&
@@ -185,7 +186,7 @@ describe('Pipeline: Stage isolation invariants', () => {
     expect(actions.length).toBeGreaterThan(0);
 
     for (const a of actions) {
-      const used = arr((a as any)?.trace?.usedAtomIds).map(String);
+      const used = arr<string>(a?.trace?.usedAtomIds).map(String);
       expect(used.some((id) => id.startsWith('goal:'))).toBe(false);
     }
   });
@@ -193,8 +194,8 @@ describe('Pipeline: Stage isolation invariants', () => {
   it('Within-stage trace subgraph must be acyclic', () => {
     const p = runGoalLabPipelineV1({ world: mockWorld(), agentId: 'A', participantIds: ['A'] });
     for (const st of arr(p?.stages)) {
-      const atoms = arr(st?.atoms).filter((a) => {
-        const id = String((a as any)?.id ?? '');
+      const atoms = arr<ContextAtom>(st?.atoms).filter((a) => {
+        const id = String(a?.id ?? '');
         return id.startsWith('goal:') || id.startsWith('action:') || id.startsWith('util:');
       });
       const nodeIds = ids(atoms);
@@ -202,7 +203,7 @@ describe('Pipeline: Stage isolation invariants', () => {
       const set = new Set(nodeIds);
       const edges: Array<[string, string]> = [];
       for (const a of atoms) {
-        const used = arr((a as any)?.trace?.usedAtomIds).map(String);
+        const used = arr<string>(a?.trace?.usedAtomIds).map(String);
         for (const u of used) {
           if (set.has(u)) edges.push([String(a.id), u]);
         }

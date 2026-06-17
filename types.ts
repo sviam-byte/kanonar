@@ -6,6 +6,7 @@ export type { AffectState } from './lib/emotions/types';
 import type { ContextualMindState } from './lib/tom/contextual/types';
 export type { ContextualMindState };
 import type { AgentMemory } from './lib/core/mindTypes';
+import type { ContextAtom } from './lib/context/v2/types';
 import type { RNG } from './lib/core/noise';
 
 // --- Enums ---
@@ -792,7 +793,7 @@ export interface CharacterEntity extends BaseEntity {
   tom?: TomState;
   capabilities?: Record<string, number>;
   context?: { age?: number; faction?: string; social_history?: Record<string, unknown>[]; faction_relations?: Record<string, number> };
-  memory?: { attention?: Record<string, number | undefined>; beliefAtoms?: unknown[]; [key: string]: any };
+  memory?: { attention?: Record<string, number | undefined>; beliefAtoms?: ContextAtom[]; [key: string]: any };
   resources?: Record<string, unknown>;
   competencies?: Record<string, number | string[] | unknown[] | undefined>;
   authority?: Record<string, unknown>;

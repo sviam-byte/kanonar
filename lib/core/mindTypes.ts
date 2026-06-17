@@ -1,6 +1,8 @@
 // lib/core/mindTypes.ts
 // Persistent mental memory types (kept separate to avoid cyclical deps with types.ts).
 
+import type { ContextAtom } from '../context/v2/types';
+
 export type MentalFactConfidence = number; // 0..1
 
 export interface MentalAtom {
@@ -12,8 +14,10 @@ export interface MentalAtom {
 }
 
 export interface AgentMemory {
-  [key: string]: any;
   facts?: Map<string, MentalAtom>;
   // Fast lookup for object locations (so we do not scan all facts).
   objectLocations?: Map<string, { x: number; y: number; locId: string }>;
+  // Belief atoms carried across ticks. The pipeline returns these and the caller
+  // MUST write them back to agent.memory.beliefAtoms (see runPipelineV1).
+  beliefAtoms?: ContextAtom[];
 }

@@ -5,6 +5,66 @@
 Ты не должен(на) молча “достраивать” мир, склеивать противоречивые источники или подменять архитектурную дисциплину красивым текстом.
 
 ==================================================
+0. БЫСТРАЯ КАРТА ЦЕЛЕВОЙ АРХИТЕКТУРЫ
+==================================================
+
+Статус карты: PROPOSAL / orientation map. Это не canon и не runtime contract,
+а компактная проверочная схема: один канонический core как источник истины;
+SimKit, ConflictLab и UI потребляют его контракты и не переопределяют
+поведенческую семантику.
+
+```mermaid
+flowchart TB
+  subgraph Legend["Легенда"]
+    LCore["canonical core"]:::core
+    LRuntime["runtime surface"]:::runtime
+    LUi["UI"]:::ui
+    LFoundation["foundation / input"]:::foundation
+  end
+
+  Input["Входные сущности и сцена<br/>world · obs · mem · rel · life"]:::foundation
+
+  subgraph CoreBox["Канонический core (S0-S9)<br/>единый источник истины · одно поколение на слой"]
+    Ctx["Контекст<br/>ctx -> ctx:final"]:::core
+    Appraisal["Аппрейзал, ToM<br/>emotions · dyadic"]:::core
+    Drivers["Драйверы, цели<br/>priorities · util"]:::core
+    Decision["Решение<br/>action + trace"]:::core
+    Ctx --> Appraisal --> Drivers --> Decision
+  end
+
+  SimKit["SimKit runtime<br/>сравнение сценариев"]:::runtime
+  ConflictLab["ConflictLab<br/>dilemma · mafia"]:::runtime
+  LabUi["Lab UI<br/>только контракты"]:::ui
+
+  Foundation["Кросс-каттинг основания<br/>config (formulaConfig) · детерминизм (seeded RNG) · trace / explainability"]:::foundation
+
+  Input --> Ctx
+  Ctx --> SimKit
+  Drivers --> ConflictLab
+  Decision --> LabUi
+  SimKit --> Foundation
+  ConflictLab --> Foundation
+  LabUi --> Foundation
+
+  classDef core fill:#075b49,stroke:#22b99a,color:#d9fff4;
+  classDef runtime fill:#754000,stroke:#f59f22,color:#ffe3a5;
+  classDef ui fill:#453b95,stroke:#7d76dd,color:#ebe9ff;
+  classDef foundation fill:#444540,stroke:#aaa9a3,color:#eeeeea;
+```
+
+Проверочный смысл карты:
+
+1) входные сущности (`world / obs / mem / rel / life`) не содержат формул и не
+   подменяют derived-слои;
+2) canonical core `S0...S9` остаётся единственным источником поведенческой
+   семантики;
+3) runtime surfaces (`SimKit`, `ConflictLab`) запускают, сравнивают или
+   оборачивают сценарии, но не создают параллельный truth layer;
+4) UI визуализирует и редактирует только через доменные контракты;
+5) `formulaConfig`, seeded RNG и trace/explainability пересекают все слои как
+   основания, но не являются отдельной поведенческой семантикой.
+
+==================================================
 I. ОСНОВНАЯ МИССИЯ
 ==================================================
 

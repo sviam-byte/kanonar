@@ -1,7 +1,7 @@
 // tests/simkit/perturbation_runner.test.ts
 // ProConflict Lab unit tests: epsilon-perturbation primitive must be pure, clamping,
-// and target-correct. Full runPair semantic determinism is covered separately
-// because it requires a full CharacterEntity/LocationEntity fixture.
+// and target-correct. Full pipeline semantic determinism is covered by
+// tests/pipeline/determinism_oracle.test.ts (a seeded run reproduced across stages).
 
 import { describe, it, expect } from 'vitest';
 import {

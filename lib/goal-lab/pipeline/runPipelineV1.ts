@@ -121,7 +121,7 @@ function stageStats(atoms: ContextAtom[]) {
   for (const a of atoms) {
     if (!(a as Record<string, unknown>)?.code) missingCodeCount += 1;
     if ((a as Record<string, unknown>)?.origin === 'derived') {
-      const tr = (a as any)?.trace;
+      const tr = a?.trace;
       const used = Array.isArray(tr?.usedAtomIds) ? tr.usedAtomIds : [];
       const parts = tr?.parts;
       if (!used.length && (parts == null || (typeof parts === 'object' && Object.keys(parts).length === 0))) {
@@ -138,7 +138,7 @@ function cloneAsBaseCtxAtoms(ctxAtoms: ContextAtom[], selfId: string): ContextAt
     .filter(a => typeof a?.id === 'string' && String(a.id).startsWith('ctx:'))
     .map(a => {
       const id = String(a.id);
-      const used = arr<string>((a as any)?.trace?.usedAtomIds);
+      const used = arr<string>(a?.trace?.usedAtomIds);
       return normalizeAtom({
         ...a,
         id: `ctx:base:${id.slice('ctx:'.length)}`,
@@ -1242,7 +1242,6 @@ export function runGoalLabPipelineV1(input: {
       }
     }
 
-    const decisionWarnings = arr<string>((decision as any)?.warnings);
     const groundedSchemasV1 = groundSchemasToOffers(actionSchemaCandidatesV1, externalOffersLike, selfId).slice(0, 10);
     const communicativeIntent = (() => {
       // Prefer schema-layer communicative intent over legacy heuristic.
@@ -1308,7 +1307,9 @@ export function runGoalLabPipelineV1(input: {
       forced: forcedActionId || null,
       emptyGoalEnergy: !goalEnergy || Object.keys(goalEnergy).length === 0,
       useLookaheadForChoice: useLookaheadForChoice,
-      warnings: decisionWarnings || [],
+      // decideAction (DecisionResult) does not emit warnings; kept as an empty
+      // contract field for snapshot consumers. Populate via DecisionResult if added.
+      warnings: [] as string[],
     };
 
     stages.push({
