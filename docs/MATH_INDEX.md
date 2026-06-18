@@ -36,6 +36,16 @@
 - experimental external-data layer: `docs/BEHAVIOR_LAB.md`
 - external data validation summary:
   `docs/EXTERNAL_DATA_VALIDATION_SUMMARY.md`
+- validation ladder, Layer 1 (frozen d_eff estimator + synthetic calibration):
+  `docs/DYNAMICS_LAYER1_CALIBRATION.md` (code: `kanonar_behavior_lab/src/dynamics/`)
+- static-basis sign-audit harness (Step 0: probe / scenes / sign table):
+  `docs/GOAL_LAB_PROBE_HARNESS.md` (code: `lib/goal-lab/probe/`)
+- session worklog (Layer-1 estimator + basis sign-audit + real-roster + archetype):
+  `docs/WORKLOG_2026-06-18_BASIS_AND_DYNAMICS.md`
+- real-roster basis sweep (all ~52 axes × 24 chars): `lib/goal-lab/probe/realAgents.ts`
+  + `rosterSweep.ts` → `kanonar_behavior_lab/src/basis/roster_triage.py`
+- archetype / μ basis audit (effect vectors + λ blend + behavior):
+  `lib/goal-lab/probe/archetypeProbe.ts` + `archetypeSignTable.ts`
 
 ## 0. Как читать книгу
 

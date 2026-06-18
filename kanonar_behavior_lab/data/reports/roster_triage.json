@@ -1,0 +1,454 @@
+{
+  "n_characters_in_sweep": 24,
+  "axes": {
+    "A_Legitimacy_Procedure": {
+      "status": "LIVE",
+      "stable_signatures": [
+        {
+          "scene": "S_hierarchy",
+          "readout": "prior:B:apologize",
+          "n": 23,
+          "dominant_sign": 1,
+          "consistency": 1.0,
+          "mean_abs_slope": 0.0714
+        },
+        {
+          "scene": "S_threat",
+          "readout": "prior:B:apologize",
+          "n": 23,
+          "dominant_sign": 1,
+          "consistency": 1.0,
+          "mean_abs_slope": 0.0714
+        },
+        {
+          "scene": "S_vulnerable",
+          "readout": "prior:B:apologize",
+          "n": 23,
+          "dominant_sign": 1,
+          "consistency": 1.0,
+          "mean_abs_slope": 0.0714
+        },
+        {
+          "scene": "S_hierarchy",
+          "readout": "prior:B:accuse",
+          "n": 23,
+          "dominant_sign": 1,
+          "consistency": 1.0,
+          "mean_abs_slope": 0.0634
+        },
+        {
+          "scene": "S_vulnerable",
+          "readout": "prior:B:accuse",
+          "n": 23,
+          "dominant_sign": 1,
+          "consistency": 1.0,
+          "mean_abs_slope": 0.0634
+        },
+        {
+          "scene": "S_threat",
+          "readout": "prior:B:accuse",
+          "n": 23,
+          "dominant_sign": 1,
+          "consistency": 1.0,
+          "mean_abs_slope": 0.0623
+        }
+      ],
+      "sign_flips": []
+    },
+    "A_Power_Sovereignty": {
+      "status": "LIVE",
+      "stable_signatures": [
+        {
+          "scene": "S_hierarchy",
+          "readout": "prior:B:command",
+          "n": 23,
+          "dominant_sign": 1,
+          "consistency": 1.0,
+          "mean_abs_slope": 0.2533
+        },
+        {
+          "scene": "S_vulnerable",
+          "readout": "prior:B:command",
+          "n": 23,
+          "dominant_sign": 1,
+          "consistency": 1.0,
+          "mean_abs_slope": 0.2533
+        },
+        {
+          "scene": "S_threat",
+          "readout": "prior:B:command",
+          "n": 23,
+          "dominant_sign": 1,
+          "consistency": 1.0,
+          "mean_abs_slope": 0.2486
+        },
+        {
+          "scene": "S_hierarchy",
+          "readout": "prior:B:threaten",
+          "n": 23,
+          "dominant_sign": 1,
+          "consistency": 1.0,
+          "mean_abs_slope": 0.2365
+        },
+        {
+          "scene": "S_vulnerable",
+          "readout": "prior:B:threaten",
+          "n": 23,
+          "dominant_sign": 1,
+          "consistency": 1.0,
+          "mean_abs_slope": 0.2365
+        },
+        {
+          "scene": "S_threat",
+          "readout": "prior:B:threaten",
+          "n": 23,
+          "dominant_sign": 1,
+          "consistency": 1.0,
+          "mean_abs_slope": 0.2321
+        }
+      ],
+      "sign_flips": []
+    },
+    "A_Safety_Care": {
+      "status": "LIVE",
+      "stable_signatures": [
+        {
+          "scene": "S_hierarchy",
+          "readout": "prior:B:guard",
+          "n": 24,
+          "dominant_sign": 1,
+          "consistency": 1.0,
+          "mean_abs_slope": 0.1846
+        },
+        {
+          "scene": "S_threat",
+          "readout": "prior:B:guard",
+          "n": 24,
+          "dominant_sign": 1,
+          "consistency": 1.0,
+          "mean_abs_slope": 0.1846
+        },
+        {
+          "scene": "S_vulnerable",
+          "readout": "prior:B:guard",
+          "n": 24,
+          "dominant_sign": 1,
+          "consistency": 1.0,
+          "mean_abs_slope": 0.1846
+        },
+        {
+          "scene": "S_hierarchy",
+          "readout": "prior:B:call_backup",
+          "n": 24,
+          "dominant_sign": 1,
+          "consistency": 1.0,
+          "mean_abs_slope": 0.1734
+        },
+        {
+          "scene": "S_threat",
+          "readout": "prior:B:call_backup",
+          "n": 24,
+          "dominant_sign": 1,
+          "consistency": 1.0,
+          "mean_abs_slope": 0.1734
+        },
+        {
+          "scene": "S_vulnerable",
+          "readout": "prior:B:call_backup",
+          "n": 24,
+          "dominant_sign": 1,
+          "consistency": 1.0,
+          "mean_abs_slope": 0.1734
+        }
+      ],
+      "sign_flips": []
+    },
+    "A_Tradition_Continuity": {
+      "status": "LIVE",
+      "stable_signatures": [
+        {
+          "scene": "S_hierarchy",
+          "readout": "prior:B:apologize",
+          "n": 23,
+          "dominant_sign": 1,
+          "consistency": 1.0,
+          "mean_abs_slope": 0.0732
+        },
+        {
+          "scene": "S_threat",
+          "readout": "prior:B:apologize",
+          "n": 23,
+          "dominant_sign": 1,
+          "consistency": 1.0,
+          "mean_abs_slope": 0.0732
+        },
+        {
+          "scene": "S_vulnerable",
+          "readout": "prior:B:apologize",
+          "n": 23,
+          "dominant_sign": 1,
+          "consistency": 1.0,
+          "mean_abs_slope": 0.0732
+        },
+        {
+          "scene": "S_hierarchy",
+          "readout": "prior:B:accuse",
+          "n": 23,
+          "dominant_sign": 1,
+          "consistency": 1.0,
+          "mean_abs_slope": 0.0649
+        },
+        {
+          "scene": "S_vulnerable",
+          "readout": "prior:B:accuse",
+          "n": 23,
+          "dominant_sign": 1,
+          "consistency": 1.0,
+          "mean_abs_slope": 0.0649
+        },
+        {
+          "scene": "S_threat",
+          "readout": "prior:B:accuse",
+          "n": 23,
+          "dominant_sign": 1,
+          "consistency": 1.0,
+          "mean_abs_slope": 0.0637
+        }
+      ],
+      "sign_flips": []
+    },
+    "B_tolerance_ambiguity": {
+      "status": "LIVE",
+      "stable_signatures": [
+        {
+          "scene": "S_hierarchy",
+          "readout": "prior:B:verify",
+          "n": 23,
+          "dominant_sign": -1,
+          "consistency": 1.0,
+          "mean_abs_slope": 0.133
+        },
+        {
+          "scene": "S_threat",
+          "readout": "prior:B:verify",
+          "n": 23,
+          "dominant_sign": -1,
+          "consistency": 1.0,
+          "mean_abs_slope": 0.133
+        },
+        {
+          "scene": "S_vulnerable",
+          "readout": "prior:B:verify",
+          "n": 23,
+          "dominant_sign": -1,
+          "consistency": 1.0,
+          "mean_abs_slope": 0.133
+        },
+        {
+          "scene": "S_hierarchy",
+          "readout": "prior:B:investigate",
+          "n": 23,
+          "dominant_sign": -1,
+          "consistency": 1.0,
+          "mean_abs_slope": 0.0998
+        },
+        {
+          "scene": "S_threat",
+          "readout": "prior:B:investigate",
+          "n": 23,
+          "dominant_sign": -1,
+          "consistency": 1.0,
+          "mean_abs_slope": 0.0998
+        },
+        {
+          "scene": "S_vulnerable",
+          "readout": "prior:B:investigate",
+          "n": 23,
+          "dominant_sign": -1,
+          "consistency": 1.0,
+          "mean_abs_slope": 0.0998
+        }
+      ],
+      "sign_flips": []
+    },
+    "C_betrayal_cost": {
+      "status": "LIVE",
+      "stable_signatures": [
+        {
+          "scene": "S_threat",
+          "readout": "ctxDanger",
+          "n": 23,
+          "dominant_sign": 1,
+          "consistency": 1.0,
+          "mean_abs_slope": 0.4341
+        },
+        {
+          "scene": "S_threat",
+          "readout": "drv:affiliationNeed",
+          "n": 23,
+          "dominant_sign": -1,
+          "consistency": 1.0,
+          "mean_abs_slope": 0.3322
+        },
+        {
+          "scene": "S_threat",
+          "readout": "drv:safetyNeed",
+          "n": 23,
+          "dominant_sign": 1,
+          "consistency": 1.0,
+          "mean_abs_slope": 0.3182
+        },
+        {
+          "scene": "S_threat",
+          "readout": "drv:resolveNeed",
+          "n": 23,
+          "dominant_sign": 1,
+          "consistency": 1.0,
+          "mean_abs_slope": 0.3008
+        },
+        {
+          "scene": "S_hierarchy",
+          "readout": "drv:affiliationNeed",
+          "n": 23,
+          "dominant_sign": -1,
+          "consistency": 1.0,
+          "mean_abs_slope": 0.2523
+        },
+        {
+          "scene": "S_neutral",
+          "readout": "drv:affiliationNeed",
+          "n": 23,
+          "dominant_sign": -1,
+          "consistency": 1.0,
+          "mean_abs_slope": 0.2523
+        }
+      ],
+      "sign_flips": [
+        {
+          "scene": "S_hierarchy",
+          "readout": "prior:B:confront",
+          "n": 22,
+          "dominant_sign": -1,
+          "consistency": 0.636,
+          "mean_abs_slope": 0.0997
+        },
+        {
+          "scene": "S_vulnerable",
+          "readout": "prior:B:confront",
+          "n": 22,
+          "dominant_sign": -1,
+          "consistency": 0.636,
+          "mean_abs_slope": 0.0997
+        }
+      ]
+    },
+    "C_reputation_sensitivity": {
+      "status": "LIVE",
+      "stable_signatures": [
+        {
+          "scene": "S_threat",
+          "readout": "drv:statusNeed",
+          "n": 22,
+          "dominant_sign": 1,
+          "consistency": 1.0,
+          "mean_abs_slope": 0.0925
+        },
+        {
+          "scene": "S_hierarchy",
+          "readout": "drv:statusNeed",
+          "n": 21,
+          "dominant_sign": 1,
+          "consistency": 1.0,
+          "mean_abs_slope": 0.0923
+        },
+        {
+          "scene": "S_neutral",
+          "readout": "drv:statusNeed",
+          "n": 21,
+          "dominant_sign": 1,
+          "consistency": 1.0,
+          "mean_abs_slope": 0.0923
+        },
+        {
+          "scene": "S_vulnerable",
+          "readout": "drv:statusNeed",
+          "n": 21,
+          "dominant_sign": 1,
+          "consistency": 1.0,
+          "mean_abs_slope": 0.0923
+        },
+        {
+          "scene": "S_hierarchy",
+          "readout": "prior:B:apologize",
+          "n": 23,
+          "dominant_sign": 1,
+          "consistency": 1.0,
+          "mean_abs_slope": 0.0722
+        },
+        {
+          "scene": "S_hierarchy",
+          "readout": "prior:B:comfort",
+          "n": 23,
+          "dominant_sign": 1,
+          "consistency": 1.0,
+          "mean_abs_slope": 0.0722
+        }
+      ],
+      "sign_flips": []
+    },
+    "D_HPA_reactivity": {
+      "status": "LIVE",
+      "stable_signatures": [
+        {
+          "scene": "S_hierarchy",
+          "readout": "prior:B:call_backup",
+          "n": 23,
+          "dominant_sign": 1,
+          "consistency": 1.0,
+          "mean_abs_slope": 0.1099
+        },
+        {
+          "scene": "S_threat",
+          "readout": "prior:B:call_backup",
+          "n": 23,
+          "dominant_sign": 1,
+          "consistency": 1.0,
+          "mean_abs_slope": 0.1099
+        },
+        {
+          "scene": "S_vulnerable",
+          "readout": "prior:B:call_backup",
+          "n": 23,
+          "dominant_sign": 1,
+          "consistency": 1.0,
+          "mean_abs_slope": 0.1099
+        },
+        {
+          "scene": "S_hierarchy",
+          "readout": "prior:B:threaten",
+          "n": 23,
+          "dominant_sign": 1,
+          "consistency": 1.0,
+          "mean_abs_slope": 0.1025
+        },
+        {
+          "scene": "S_vulnerable",
+          "readout": "prior:B:threaten",
+          "n": 23,
+          "dominant_sign": 1,
+          "consistency": 1.0,
+          "mean_abs_slope": 0.1025
+        },
+        {
+          "scene": "S_threat",
+          "readout": "prior:B:threaten",
+          "n": 23,
+          "dominant_sign": 1,
+          "consistency": 1.0,
+          "mean_abs_slope": 0.1006
+        }
+      ],
+      "sign_flips": []
+    }
+  }
+}

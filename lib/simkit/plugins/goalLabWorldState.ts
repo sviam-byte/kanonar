@@ -88,7 +88,7 @@ function inferPolarity(kind: string): number {
  * Derive life-goal priors when explicit lifeGoals are absent.
  * Keeps adapter backward-compatible for older character payloads.
  */
-function deriveLifeGoals(entity: any): Record<string, number> {
+export function deriveLifeGoals(entity: any): Record<string, number> {
   const explicit = entity?.lifeGoals;
   if (explicit && typeof explicit === 'object' && Object.keys(explicit).length > 0) return explicit;
 
@@ -112,7 +112,7 @@ function deriveLifeGoals(entity: any): Record<string, number> {
 type SigmoidCurve = { type: 'sigmoid'; center: number; slope: number };
 
 /** Personality-dependent activation curves for driver physics. */
-function deriveDriverCurves(entity: any): Record<string, SigmoidCurve> | null {
+export function deriveDriverCurves(entity: any): Record<string, SigmoidCurve> | null {
   const vb = entity?.vector_base;
   if (!vb || typeof vb !== 'object') return null;
 
@@ -154,7 +154,7 @@ function deriveDriverCurves(entity: any): Record<string, SigmoidCurve> | null {
 }
 
 /** Personality-dependent inhibition matrix overrides for driver interactions. */
-function deriveInhibitionOverrides(entity: any): Record<string, Record<string, number>> | null {
+export function deriveInhibitionOverrides(entity: any): Record<string, Record<string, number>> | null {
   const vb = entity?.vector_base;
   if (!vb || typeof vb !== 'object') return null;
 
@@ -183,7 +183,7 @@ function deriveInhibitionOverrides(entity: any): Record<string, Record<string, n
 }
 
 /** Personality-dependent driver accumulation inertia (alpha) overrides. */
-function deriveDriverInertia(entity: any): Record<string, number> | null {
+export function deriveDriverInertia(entity: any): Record<string, number> | null {
   const vb = entity?.vector_base;
   if (!vb || typeof vb !== 'object') return null;
 
@@ -208,7 +208,7 @@ function deriveDriverInertia(entity: any): Record<string, number> | null {
 }
 
 /** Personality-dependent goal tuning (slope/bias/veto per domain). */
-function deriveGoalTuning(entity: any): Record<string, any> | null {
+export function deriveGoalTuning(entity: any): Record<string, any> | null {
   const vb = entity?.vector_base;
   if (!vb || typeof vb !== 'object') return null;
 

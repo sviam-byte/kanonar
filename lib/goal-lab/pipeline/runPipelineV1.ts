@@ -1139,7 +1139,14 @@ export function runGoalLabPipelineV1(input: {
       actions,
       goalEnergy,
       topK: 10,
-      rng: rng && typeof rng.next === 'function' ? () => rng.next() : () => 0.5,
+      // decideAction expects rng() in [0,1) for Gumbel noise. RNG.next() returns
+      // a raw uint32, which clamps the noise to a constant and silently disables
+      // exploration — use nextFloat(). Neutral 0.5 when no decide channel exists.
+      rng: rng && typeof rng.nextFloat === 'function'
+        ? () => rng.nextFloat()
+        : rng && typeof rng.next === 'function'
+          ? () => (rng.next() >>> 0) / 4294967296
+          : () => 0.5,
       temperature,
       qSamplingOverrides,
     });

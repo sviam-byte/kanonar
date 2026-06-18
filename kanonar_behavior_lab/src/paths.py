@@ -21,6 +21,10 @@ EPISODE_FEATURES = PROCESSED_DIR / "episode_features.parquet"
 PREDICTION_REPORT = PROCESSED_DIR / "prediction_metrics.json"
 BEHAVIOR_REPORT = REPORTS_DIR / "behavior_report.md"
 
+# Validation-ladder Layer 1: frozen d_eff estimator calibration.
+DYNAMICS_CALIBRATION_JSON = PROCESSED_DIR / "dynamics_calibration.json"
+DYNAMICS_CALIBRATION_CSV = REPORTS_DIR / "dynamics_calibration.csv"
+
 
 def ensure_output_dirs() -> None:
     PROCESSED_DIR.mkdir(parents=True, exist_ok=True)

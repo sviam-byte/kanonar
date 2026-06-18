@@ -7,6 +7,7 @@ import { buildSignalField } from './signalField';
 import { propagateAtomEnergy } from '../graph/atomEnergy';
 import { getAgentChannelCurve, type EnergyChannel } from '../agents/energyProfiles';
 import { curve01Param } from '../utils/curves';
+import { makeDerivedRNG } from '../core/noise';
 import { selectMode } from './modes';
 import { selectActiveGoalsWithHysteresis } from './selectActive';
 import { initGoalState, updateGoalState, type GoalState } from './goalState';
@@ -107,6 +108,39 @@ function amplifyByPrio(x: number, prio: number): number {
   const p = clamp01(prio);
   const k = FC.goal.amplifyByPrio.kBase + FC.goal.amplifyByPrio.kScale * p;
   return clamp01(0.5 + (x - 0.5) * k);
+}
+
+/**
+ * Sample a mode key from a tempered categorical over mode weights.
+ * - T <= ~0: deterministic argmax (first key wins on ties) — identity with legacy.
+ * - T = 1: sample ∝ weights. T > 1: flatter. 0 < T < 1: sharper.
+ * Pure given the supplied RNG; RNG must be seeded for replay-safety.
+ */
+function sampleTemperedMode(
+  weights: Record<string, number>,
+  T: number,
+  rng: { nextFloat(): number }
+): string {
+  const keys = Object.keys(weights);
+  if (keys.length === 0) return '';
+  let best = keys[0];
+  let bestV = Number(weights[best] ?? 0);
+  for (let i = 1; i < keys.length; i++) {
+    const v = Number(weights[keys[i]] ?? 0);
+    if (v > bestV) { best = keys[i]; bestV = v; }
+  }
+  if (!(T > 1e-4)) return best;
+  const inv = 1 / T;
+  const powered = keys.map((k) => Math.pow(Math.max(0, Number(weights[k] ?? 0)), inv));
+  const sum = powered.reduce((a, b) => a + b, 0);
+  if (!(sum > 0)) return best;
+  const r = rng.nextFloat();
+  let acc = 0;
+  for (let i = 0; i < keys.length; i++) {
+    acc += powered[i] / sum;
+    if (r < acc) return keys[i];
+  }
+  return keys[keys.length - 1];
 }
 
 // ---------------------------------
@@ -501,9 +535,47 @@ export function deriveGoalAtoms(selfId: string, atoms: ContextAtom[], opts?: { t
 
   const modeSel = selectMode(feltField as any, { careSignal });
 
+  // Read previous state (GoalLab memory) — needed early for tick-seeded variability.
+  const prevActive = readPrevActiveDomainsFromAtoms(selfId, atoms);
+  const prevStates = readGoalStateMapFromAtoms(selfId, atoms);
+  const tick = inferTickFromPrevState(prevStates);
+  __debug.tick = tick;
+
+  // ── Controlled stochastic variability (default OFF; identity when disabled) ──
+  // Temperament budget: higher decisionTemperature / ambiguityTolerance => more
+  // willingness to sample a non-dominant mode and sharpen the field toward it.
+  // Disciplined per docs/unified/08_VARIABILITY_MAP.md: seeded (selfId+tick),
+  // traceable, replay-safe. With the default config (FC.goal.variability) this
+  // block is a no-op: varMode == argmax, varWeights == modeSel.weights.
+  const VAR = FC.goal.variability;
+  const trDecisionTemp = getAny(atoms, [`feat:char:${selfId}:trait.decisionTemperature`], 0.5);
+  const trAmbiguityTol = getAny(atoms, [`feat:char:${selfId}:trait.ambiguityTolerance`], 0.5);
+  let varMode: string = modeSel.mode;
+  let varWeights: Record<string, number> = modeSel.weights as any;
+  let varSample: any = null;
+  if (VAR?.enabled) {
+    const temperament = clamp01(VAR.traitTemperatureScale * (0.5 * trDecisionTemp + 0.5 * trAmbiguityTol));
+    const T = Math.max(0, VAR.modeTemperatureBase + temperament);
+    const rng = makeDerivedRNG(`goal:mode:${selfId}:${tick}`);
+    const sampled = sampleTemperedMode(modeSel.weights as any, T, rng);
+    const sharpen = clamp01(VAR.modeSharpen);
+    if (sharpen > 0 && sampled && sampled in (modeSel.weights as any)) {
+      const sw: Record<string, number> = { ...(modeSel.weights as any) };
+      for (const m of Object.keys(sw)) {
+        sw[m] = m === sampled
+          ? clamp01(sharpen + (1 - sharpen) * (sw[m] ?? 0))
+          : clamp01((1 - sharpen) * (sw[m] ?? 0));
+      }
+      varWeights = sw;
+    }
+    if (sampled) varMode = sampled;
+    varSample = { T, temperament, sampled, sharpen, argmax: modeSel.mode };
+  }
+  __debug.variability = varSample;
+
   // Surprise mode override: strong prediction error triggers a 1-tick startle mode.
   const SMO = FC.goal.surpriseModeOverride;
-  let effectiveWeights = modeSel.weights;
+  let effectiveWeights = varWeights as typeof modeSel.weights;
   let surpriseOverrideMode: string | null = null;
   let maxSurprise = 0;
   let maxFeature = '';
@@ -522,10 +594,10 @@ export function deriveGoalAtoms(selfId: string, atoms: ContextAtom[], opts?: { t
 
     if (maxSurprise >= SMO.threshold && maxFeature) {
       const targetMode = (SMO.featureToMode as Record<string, string>)[maxFeature];
-      if (targetMode && targetMode in modeSel.weights) {
+      if (targetMode && targetMode in varWeights) {
         surpriseOverrideMode = targetMode;
         const mix = clamp01(SMO.overrideMix ?? 0.75);
-        const overrideWeights = { ...modeSel.weights } as Record<string, number>;
+        const overrideWeights = { ...varWeights } as Record<string, number>;
         for (const m of Object.keys(overrideWeights)) {
           if (m === targetMode) {
             overrideWeights[m] = clamp01(mix + (1 - mix) * (overrideWeights[m] ?? 0));
@@ -543,7 +615,7 @@ export function deriveGoalAtoms(selfId: string, atoms: ContextAtom[], opts?: { t
     : null;
 
   // Effective mode for this tick (may be overridden by surprise startle response).
-  const effectiveMode = surpriseOverrideMode ?? modeSel.mode;
+  const effectiveMode = surpriseOverrideMode ?? varMode;
 
   // Mode gating: bias domains based on mode mixture (Mixture-of-Experts).
   const W = effectiveWeights;
@@ -556,12 +628,6 @@ export function deriveGoalAtoms(selfId: string, atoms: ContextAtom[], opts?: { t
     }
     return sum;
   };
-
-  // Read previous state (GoalLab memory).
-  const prevActive = readPrevActiveDomainsFromAtoms(selfId, atoms);
-  const prevStates = readGoalStateMapFromAtoms(selfId, atoms);
-  const tick = inferTickFromPrevState(prevStates);
-  __debug.tick = tick;
 
   // Apply bias + anti-fatigue + anti-saturation to each domain.
   for (const e of ecology) {
@@ -730,6 +796,7 @@ export function deriveGoalAtoms(selfId: string, atoms: ContextAtom[], opts?: { t
     feltField,
     logits: modeSel.logits,
     surpriseOverride: __debug.surpriseOverride,
+    variability: varSample,
   });
 
   const goalAtoms = ecology.map(e => mkGoalAtom(selfId, e.domain, e.v, [...e.used, modeAtom.id], e.parts));

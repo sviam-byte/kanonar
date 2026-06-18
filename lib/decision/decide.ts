@@ -140,11 +140,17 @@ export function decideAction(args: {
   const topK = Math.max(1, Number.isFinite(args.topK as any) ? Number(args.topK) : rankedBase.length);
   const topRanked = rankedBase.slice(0, topK);
 
-  const rngNext = typeof args.rng === 'function'
-    ? args.rng
-    : (typeof (args.rng as any)?.next === 'function'
-      ? () => Number((args.rng as any).next())
-      : (() => 0.5));
+  // rng() must yield [0,1) for the Gumbel inverse-CDF below. When handed an RNG
+  // object, prefer nextFloat(); next() returns a raw uint32 and would clamp the
+  // noise to a constant (dead exploration).
+  const rngObj: any = args.rng;
+  const rngNext = typeof rngObj === 'function'
+    ? rngObj
+    : (typeof rngObj?.nextFloat === 'function'
+      ? () => Number(rngObj.nextFloat())
+      : (typeof rngObj?.next === 'function'
+        ? () => (Number(rngObj.next()) >>> 0) / 4294967296
+        : (() => 0.5)));
 
   const overrides = args.qSamplingOverrides;
 

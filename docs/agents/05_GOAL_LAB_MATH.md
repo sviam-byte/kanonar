@@ -73,6 +73,20 @@ v_{safety}=\mathrm{clamp01}(0.55\,base + 0.45\,L)
 Результат материализуется как атом:
 - `goal:mode:<selfId>` с `meta: { mode, weights }`.
 
+### 5.5.1. Controlled stochastic mode selection (вариативность)
+
+По умолчанию режим выбирается детерминированно как `argmax(weights)`.
+
+Опционально (config `FC.goal.variability`, по умолчанию `enabled:false` → полный no-op) активный режим *сэмплируется* из tempered-категориального распределения по `weights`, после чего поле весов «заостряется» к выбранному режиму (тем же приёмом, что и `surpriseModeOverride`).
+
+Свойства (см. `docs/unified/08_VARIABILITY_MAP.md`, категория *controlled stochasticity*):
+- **seeded**: RNG детерминируется `(selfId, tick)` через `makeDerivedRNG` → replay-safe;
+- **temperament budget**: температура `T = modeTemperatureBase + traitTemperatureScale · (0.5·decisionTemperature + 0.5·ambiguityTolerance)`, трейты читаются из `feat:char:<selfId>:trait.*`;
+- **traceable**: параметры сэмплинга пишутся в `goal:mode` → `trace.parts.variability = { T, temperament, sampled, sharpen, argmax }`;
+- `modeSharpen = 0` оставляет веса без изменений (меняется только метка режима), `1` → почти one-hot.
+
+Coefficients: `lib/config/formulaConfig.ts` (`GOAL_FORMULA.variability`). Tests: `tests/goals/goal_variability.test.ts`.
+
 ## 5.6. Гистерезис активных целей
 
 Функция выбора top-N: `selectActiveGoalsWithHysteresis` (`lib/goals/selectActive.ts`) + состояние `GoalState` (`lib/goals/goalState.ts`).

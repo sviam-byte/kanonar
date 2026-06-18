@@ -99,15 +99,24 @@ export interface GoalLabContextResult {
 // Energy channel state (inertia)
 // ---------------------------------
 // GoalLab is UI-driven and recomputes snapshots often; we keep a tiny in-memory cache
-// keyed by selfId to model inertia without перепахивание staged-атомов.
+// to model channel inertia without перепахивание staged-атомов.
+// IMPORTANT (determinism): the cache is keyed by (runSeed, selfId), not by selfId
+// alone. Keying by selfId alone let distinct scenarios/worlds that reuse the same
+// agent id bleed channel state into each other — accidental, non-replay-safe
+// variability (see docs/unified/08_VARIABILITY_MAP.md). Scoping by run seed keeps
+// intra-run inertia identical while isolating separate runs.
 const __ENERGY_STATE__: Map<string, Record<string, number>> = new Map();
 
+function energyStateKey(selfId: string): string {
+  return `${getGlobalRunSeed()}::${selfId}`;
+}
+
 function readEnergyState(selfId: string): Record<string, number> {
-  return __ENERGY_STATE__.get(selfId) || {};
+  return __ENERGY_STATE__.get(energyStateKey(selfId)) || {};
 }
 
 function writeEnergyState(selfId: string, next: Record<string, number>) {
-  __ENERGY_STATE__.set(selfId, next);
+  __ENERGY_STATE__.set(energyStateKey(selfId), next);
 }
 
 function clamp(x: number, min: number, max: number) {

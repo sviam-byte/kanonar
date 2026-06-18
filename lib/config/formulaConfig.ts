@@ -210,6 +210,30 @@ export const GOAL_FORMULA = {
     kBase: 0.6,
     kScale: 0.8,
   },
+  /**
+   * Controlled stochastic variability for MoE mode selection (S6/S7).
+   *
+   * Default = NO-OP (enabled:false): mode = argmax(weights), weights unchanged,
+   * behaviour is byte-identical to the legacy deterministic path.
+   *
+   * When enabled, the active mode for the tick is *sampled* (deterministically,
+   * seeded by selfId+tick) from a tempered categorical over the existing mode
+   * weights, then the weight field is sharpened toward the sampled mode. This is
+   * disciplined variability per docs/unified/08_VARIABILITY_MAP.md: seeded,
+   * parameterized, traceable (goal:mode trace.parts.variability), replay-safe.
+   *
+   *  - modeTemperatureBase: floor temperature. 0 => argmax even when enabled.
+   *  - traitTemperatureScale: how strongly agent temperament raises temperature.
+   *      temperament = 0.5*decisionTemperature + 0.5*ambiguityTolerance (trait atoms).
+   *  - modeSharpen: 0 => keep weights as-is (no behavioural change, only label);
+   *      1 => near one-hot toward the sampled mode.
+   */
+  variability: {
+    enabled: false as boolean,
+    modeTemperatureBase: 0,
+    traitTemperatureScale: 0,
+    modeSharpen: 0,
+  },
 } as const;
 
 // ─── Intent / Action Schema bridge (S7.5 → S8) ───────────────────────────

@@ -1,0 +1,255 @@
+{
+  "predictions": [
+    {
+      "axis": "A_Care_Compassion",
+      "scene": "S_vulnerable",
+      "direction": "up",
+      "readout": "goal:affiliation",
+      "confidence": "S",
+      "prereg": {
+        "readout": "goal:affiliation",
+        "verdict": "DEAD",
+        "rho": 1.0,
+        "delta": 0.02,
+        "range": 0.02,
+        "flags": [
+          "LEAK"
+        ],
+        "control_range": 0.02
+      },
+      "top_movers": [
+        {
+          "readout": "prior:B:treat",
+          "rho": 1.0,
+          "delta": 0.289,
+          "range": 0.289
+        },
+        {
+          "readout": "prior:B:comfort",
+          "rho": 1.0,
+          "delta": 0.253,
+          "range": 0.253
+        },
+        {
+          "readout": "prior:B:share_resource",
+          "rho": 1.0,
+          "delta": 0.217,
+          "range": 0.217
+        },
+        {
+          "readout": "prior:B:threaten",
+          "rho": -1.0,
+          "delta": -0.192,
+          "range": 0.192
+        },
+        {
+          "readout": "prior:B:praise",
+          "rho": 1.0,
+          "delta": 0.181,
+          "range": 0.181
+        },
+        {
+          "readout": "prior:B:escort",
+          "rho": 1.0,
+          "delta": 0.181,
+          "range": 0.181
+        }
+      ]
+    },
+    {
+      "axis": "A_Power_Sovereignty",
+      "scene": "S_hierarchy",
+      "direction": "up",
+      "readout": "act:dominate|assert",
+      "confidence": "S",
+      "prereg": {
+        "verdict": "READOUT_ABSENT",
+        "matched": []
+      },
+      "top_movers": [
+        {
+          "readout": "prior:B:command",
+          "rho": 1.0,
+          "delta": 0.384,
+          "range": 0.384
+        },
+        {
+          "readout": "prior:B:threaten",
+          "rho": 1.0,
+          "delta": 0.288,
+          "range": 0.288
+        },
+        {
+          "readout": "prior:B:accuse",
+          "rho": 1.0,
+          "delta": 0.192,
+          "range": 0.192
+        },
+        {
+          "readout": "prior:B:negotiate",
+          "rho": 1.0,
+          "delta": 0.1,
+          "range": 0.1
+        },
+        {
+          "readout": "prior:B:guard",
+          "rho": 1.0,
+          "delta": 0.072,
+          "range": 0.072
+        }
+      ]
+    },
+    {
+      "axis": "A_Safety_Care",
+      "scene": "S_threat",
+      "direction": "up",
+      "readout": "goal:safety",
+      "confidence": "S",
+      "prereg": {
+        "readout": "goal:safety",
+        "verdict": "DEAD",
+        "rho": 0.0,
+        "delta": 0.0,
+        "range": 0.0,
+        "flags": [],
+        "control_range": 0.0
+      },
+      "top_movers": [
+        {
+          "readout": "prior:B:call_backup",
+          "rho": 1.0,
+          "delta": 0.25,
+          "range": 0.25
+        },
+        {
+          "readout": "prior:B:guard",
+          "rho": 1.0,
+          "delta": 0.181,
+          "range": 0.181
+        },
+        {
+          "readout": "prior:B:escort",
+          "rho": 1.0,
+          "delta": 0.108,
+          "range": 0.108
+        },
+        {
+          "readout": "prior:B:signal",
+          "rho": 1.0,
+          "delta": 0.1,
+          "range": 0.1
+        }
+      ]
+    },
+    {
+      "axis": "A_Liberty_Autonomy",
+      "scene": "S_hierarchy",
+      "direction": "up",
+      "readout": "act:challenge_authority",
+      "confidence": "S",
+      "prereg": {
+        "verdict": "READOUT_ABSENT",
+        "matched": []
+      },
+      "top_movers": []
+    },
+    {
+      "axis": "C_betrayal_cost",
+      "scene": "S_threat",
+      "direction": "inverted_u",
+      "readout": "goal:safety",
+      "confidence": "W",
+      "prereg": {
+        "readout": "goal:safety",
+        "verdict": "MONOTONE(not-inv-U)",
+        "rho": 0.964,
+        "delta": 0.307,
+        "range": 0.314,
+        "flags": [],
+        "control_range": 0.055
+      },
+      "top_movers": [
+        {
+          "readout": "action_entropy",
+          "rho": -0.473,
+          "delta": -0.607,
+          "range": 1.201
+        },
+        {
+          "readout": "ctxDanger",
+          "rho": 0.893,
+          "delta": 0.53,
+          "range": 0.554
+        },
+        {
+          "readout": "drv:affiliationNeed",
+          "rho": -1.0,
+          "delta": -0.431,
+          "range": 0.431
+        },
+        {
+          "readout": "q:aff:negotiate:A:B",
+          "rho": -0.75,
+          "delta": -0.471,
+          "range": 0.53
+        },
+        {
+          "readout": "prior:A:escape",
+          "rho": 0.964,
+          "delta": 0.378,
+          "range": 0.396
+        },
+        {
+          "readout": "goal:safety",
+          "rho": 0.964,
+          "delta": 0.307,
+          "range": 0.314
+        }
+      ]
+    },
+    {
+      "axis": "B_decision_temperature",
+      "scene": "S_neutral",
+      "direction": "variance",
+      "readout": "action_entropy",
+      "confidence": "S",
+      "prereg": {
+        "readout": "action_entropy",
+        "verdict": "PASS",
+        "rho": 0.612,
+        "delta": 1.906,
+        "range": 1.906,
+        "flags": [
+          "BUG?",
+          "LEAK"
+        ],
+        "control_range": 1.906
+      },
+      "top_movers": [
+        {
+          "readout": "action_entropy",
+          "rho": 0.612,
+          "delta": 1.906,
+          "range": 1.906
+        },
+        {
+          "readout": "act:cog:monologue:A",
+          "rho": -0.612,
+          "delta": -0.75,
+          "range": 0.75
+        }
+      ]
+    },
+    {
+      "axis": "D_HPA_reactivity",
+      "scene": "S_threat",
+      "direction": "interaction",
+      "readout": "stress->behavior slope",
+      "confidence": "W",
+      "prereg": {
+        "verdict": "INTERACTION_SKIP"
+      },
+      "top_movers": []
+    }
+  ]
+}

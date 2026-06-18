@@ -47,6 +47,11 @@ Primary anchors:
 - `lib/config/formulaConfigSim.ts`
 - `lib/simkit/core/repetitionDamper.ts`
 - simkit decision/orchestrator plugins
+- `lib/goals/goalAtoms.ts` — MoE mode selection. `FC.goal.variability` (default
+  `enabled:false`, a no-op) optionally samples the active mode from a tempered
+  categorical over mode weights, seeded by `(selfId, tick)`, with a temperament
+  budget from `decisionTemperature`/`ambiguityTolerance` trait atoms. The sample
+  is recorded in `goal:mode` `trace.parts.variability` (replay-safe, traceable).
 
 ### Heuristic branching
 
@@ -110,6 +115,11 @@ Main examples in this repo:
 - `hooks/useGoalLabWorld.ts`
 - mixed GoalLab adapter/UI layers
 - runtime-global-driven data entry points
+
+Note: the GoalLab energy-channel inertia cache (`__ENERGY_STATE__` in
+`lib/goals/goalLabContext.ts`) is now keyed by `(runSeed, selfId)` instead of
+`selfId` alone, so distinct runs/scenarios reusing the same agent id no longer
+bleed channel state into each other (was accidental, non-replay-safe variability).
 
 ## Operational rule
 
