@@ -1,0 +1,49 @@
+{
+  "predictions": [
+    {
+      "axis": "A_Power_Sovereignty",
+      "scene": "S_contest",
+      "direction": "up",
+      "readout": "outcome:self_favoring",
+      "confidence": "S",
+      "prereg": {
+        "readout": "outcome:self_favoring",
+        "verdict": "READOUT_ABSENT"
+      },
+      "top_movers": []
+    },
+    {
+      "axis": "A_Power_Sovereignty",
+      "scene": "S_contest",
+      "direction": "down",
+      "readout": "outcome_mean_other",
+      "confidence": "W",
+      "prereg": {
+        "readout": "outcome_mean_other",
+        "verdict": "DEAD",
+        "rho": 0.0,
+        "delta": 0.0,
+        "range": 0.0,
+        "flags": []
+      },
+      "top_movers": []
+    },
+    {
+      "axis": "A_Care_Compassion",
+      "scene": "S_defection",
+      "direction": "up",
+      "readout": "coop_rate",
+      "confidence": "W",
+      "prereg": {
+        "readout": "coop_rate",
+        "verdict": "DEAD",
+        "rho": 0.0,
+        "delta": 0.0,
+        "range": 0.0,
+        "flags": []
+      },
+      "top_movers": []
+    }
+  ],
+  "control_outcome_rows": 0
+}
