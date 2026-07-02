@@ -130,6 +130,14 @@ Pre-registered predictions on this observable: v2 table, 3 rows, frozen
 2026-07-02 in [outcomeSignTable.ts](../lib/goal-lab/probe/outcomeSignTable.ts)
 (v1 in `signTable.ts` untouched). Ledger rows: B-POWER-OUTCOME, B-CARE-COOP.
 
+**T1.5 addition (same-day, frozen with v3):** `G_coercive.v1` (defied /
+complied / negotiated_terms / evaded) for `S_coercive_order`; pressure-scene
+variants `S_contest_pressure` / `S_defection_pressure` inject events through
+`world.eventLog` (the contract channel — see ledger GATE-SOURCES), and the
+`authority` scene metric now derives `ctx:authority` (aux). Factorial
+pre-registration v3 (9 rows incl. flat negative controls and the NOISE-DOM
+interaction): [outcomeSignTableV3.ts](../lib/goal-lab/probe/outcomeSignTableV3.ts).
+
 ---
 
 ## §2 — Scene set (DRAFT, not yet frozen)
@@ -202,9 +210,12 @@ the scene is mislabeled — fix the affordance, do not mark the axis dead.
 1. **`v` channel freeze** — enumerate the exact key set + ordering of the internal
    state-vector (draft `{emo:*, drv:*, util:plan:*, act:prior:*}`; include coarse
    state scalars y/n?). *Blocks every `d_eff` number.*
-2. **`S_coercive_order`** — add now, or first audit the `A_Liberty_Autonomy →
-   trait` mapping to rule out a wiring bug? (Recommendation: add the scene *and*
-   audit; the scene is the cheaper discriminator.)
+2. **`S_coercive_order`** — ~~add now, or first audit the `A_Liberty_Autonomy →
+   trait` mapping to rule out a wiring bug?~~ **CLOSED 2026-07-02 (T1.5): scene
+   built** (`scenes.ts`, with `G_coercive.v1` game + event pressure via
+   `world.eventLog`). The Liberty prediction is frozen in v3
+   (`outcomeSignTableV3.ts`, confidence W) — a miss CONFIRMS the axis→trait
+   wiring gap (ledger AX-DEAD), which is the audit by other means.
 3. **Freeze trigger** — declare §2/§3 frozen once (1) and (2) are closed and the
    payoff harness (Step 1) lands `S_contest`/`S_defection`. Until then this doc
    stays `v1-draft`.

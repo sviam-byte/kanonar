@@ -121,6 +121,7 @@ export function deriveAxes(args: { selfId: string; atoms: ContextAtom[]; tuning?
   const scLoss = q('ctx.src.scene.loss', `ctx:src:scene:loss:${selfId}`, 0);
   const scResourceAccess = q('ctx.src.scene.resourceAccess', `ctx:src:scene:resourceAccess:${selfId}`, 0);
   const scThreat = q('ctx.src.scene.threat', `ctx:src:scene:threat:${selfId}`, 0);
+  const scAuthority = q('ctx.src.scene.authority', `ctx:src:scene:authority:${selfId}`, 0);
 
   const normPrivacy = q('ctx.src.norm.privacy', `ctx:src:norm:privacy:${selfId}`, 0);
   const normPublicExposure = q('ctx.src.norm.publicExposure', `ctx:src:norm:publicExposure:${selfId}`, 0);
@@ -349,6 +350,13 @@ export function deriveAxes(args: { selfId: string; atoms: ContextAtom[]; tuning?
       ctxProceduralStrict,
       [`ctx:src:norm:proceduralStrict:${selfId}`],
       buildParts([{ name: 'proceduralStrict', val: normProceduralStrict }], 'proceduralStrict = norm.proceduralStrict'),
+      'ctx_aux'
+    ),
+    atom(
+      `ctx:authority:${selfId}`,
+      scAuthority,
+      [`ctx:src:scene:authority:${selfId}`],
+      buildParts([{ name: 'sceneAuthority', val: scAuthority }], 'authority = scene.authority'),
       'ctx_aux'
     ),
     atom(

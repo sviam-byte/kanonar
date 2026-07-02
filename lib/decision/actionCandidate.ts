@@ -37,6 +37,13 @@ export type ActionCandidate = {
   /** Confidence / feasibility in [0,1]. */
   confidence?: number;
 
+  /**
+   * Possibility magnitude in [0,1] — the act:prior carrier. Scored into Q only
+   * when FC.actionScoring.priorInfluence.enabled (default off; T1.5,
+   * ledger Q-PRIOR-DROP).
+   */
+  priorMagnitude?: number;
+
   /** Atoms justifying this action. */
   supportAtoms?: ContextAtom[];
 

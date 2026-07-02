@@ -145,3 +145,42 @@ export function makeDefectionGame(outcomes: Record<string, PayoffPair>): Game {
     },
   };
 }
+
+// ---------------------------------------------------------------------------
+// G_coercive.v1 — ADDED 2026-07-02 (T1.5 freeze, same discipline): unilateral
+// response to a coercive order from an authority (S_coercive_order). Frozen
+// with the v3 pre-registration, BEFORE its first run. move == label.
+// ---------------------------------------------------------------------------
+
+const COERCIVE_MOVES = movesTable({
+  // insubordination / open resistance (command back = counter-command)
+  defied: [
+    'challenge', 'confront', 'threaten', 'accuse', 'attack', 'suppress',
+    'betray', 'deceive', 'loot', 'cover_fire', 'command',
+  ],
+  // execute or defer to the order
+  complied: [
+    'submit', 'plead', 'apologize', 'help', 'escort', 'guard', 'treat',
+    'encourage', 'praise', 'comfort',
+  ],
+  // engage the order's terms without obeying or defying
+  negotiated_terms: [
+    'negotiate', 'talk', 'trade', 'share', 'ask_info', 'verify', 'confide',
+    'warn', 'signal',
+  ],
+  // neither obey nor resist
+  evaded: [
+    'wait', 'escape', 'hide', 'avoid', 'rest', 'retreat', 'take_cover',
+    'observe', 'observe_area', 'observe_target', 'monologue', 'self_talk',
+    'patrol', 'investigate', 'call_backup', 'rally',
+  ],
+});
+
+export function makeCoerciveOrderGame(outcomes: Record<string, PayoffPair>): Game {
+  return {
+    id: 'G_coercive.v1',
+    outcomes: { ...outcomes },
+    moves: COERCIVE_MOVES,
+    resolve: move => move,
+  };
+}

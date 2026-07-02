@@ -549,6 +549,8 @@ export function buildActionCandidates(args: {
       possibility: p,
       why,
     });
+    const priorMagnitude = clamp01(Number(pRuntime?.magnitude ?? 0));
+    why.parts.priorMagnitude = priorMagnitude;
     const actionWhy = finalizeWhy(why);
     actions.push({
       id: String(p.id),
@@ -558,6 +560,7 @@ export function buildActionCandidates(args: {
       targetNodeId: pRuntime?.targetNodeId ?? null,
       deltaGoals,
       cost: finalCost,
+      priorMagnitude,
       confidence: clamp01(Number(pRuntime?.confidence ?? 1)),
       supportAtoms: buildSupportAtoms(args.atoms, actionWhy.usedAtomIds),
       why: actionWhy,

@@ -262,8 +262,10 @@ export function buildWorldFactsAtoms(input: WorldFactsInput): ContextAtom[] {
       addCtxSrc01(`ctx:src:scene:resourceAccess:${selfId}`, v, `scene.resourceAccess=${Math.round(v * 100)}%`, ['ctx', 'src', 'scene', 'resourceAccess']);
     }
 
-    // Optional metrics passthrough (if present in older snapshots)
-    for (const k of ['chaos', 'threat'] as const) {
+    // Optional metrics passthrough (if present in older snapshots).
+    // 'authority' (T1.5, ledger GATE-SOURCES): scene-granted standing of self —
+    // the source for ctx:authority (deriveAxes aux), read by the command gate.
+    for (const k of ['chaos', 'threat', 'authority'] as const) {
       const val = (metrics as any)?.[k];
       if (val !== undefined) {
         const v = scale(val);

@@ -12,7 +12,7 @@
 // question answered by the first sweep (Phase 3 triage), not asserted here.
 
 import type { AgentState, WorldState } from '../../../types';
-import { makeContestGame, makeDefectionGame, type Game, type PayoffPair } from './game';
+import { makeContestGame, makeDefectionGame, makeCoerciveOrderGame, type Game, type PayoffPair } from './game';
 
 export type ProbeLayer = 'S7' | 'S8';
 
@@ -316,6 +316,92 @@ export const S_defection: ProbeScene = {
   },
 };
 
+// --- T1.5: pressure scenes + coercive order (2026-07-02) -------------------
+//
+// The T1 kill test fired (ledger B-POWER-OUTCOME): in STATIC scenes the
+// coercive possibilities never spawn because their gates are event-first
+// (collectSocialEventGate reads recent event:* atoms — lib/possibilities/
+// defs.ts:277-322 — and a probe world has eventLog: []). These scenes inject
+// event pressure through the LEGITIMATE contract channel: world.eventLog
+// → atomizeEvents → event:* atoms with meta.event → the gate. Old scenes stay
+// untouched (frozen negative-control cells of the v3 factorial).
+
+/** Push recent-event pressure into a built world (tick 0 = no decay). */
+function withEvents(
+  w: WorldState,
+  events: Array<{ id: string; kind: string; actorId: string; targetId: string; magnitude: number }>,
+): WorldState {
+  const log = ((w as any).eventLog ?? ((w as any).eventLog = { events: [] }));
+  log.events = [...(log.events ?? []), ...events.map(e => ({ ...e, tick: 0 }))];
+  return w;
+}
+
+export const S_contest_pressure: ProbeScene = {
+  id: 'S_contest_pressure',
+  description: 'S_contest + live pressure: B has just claimed the resource with a threat, and the formal setting grants self standing (authority). Coercive verbs become possible.',
+  targetConstructs: ['A_Power_Sovereignty', 'A_Justice_Fairness', 'C_reciprocity_index'],
+  layers: ['S8'],
+  affordance: 'scarcity 0.7 + authority 0.5 (→ctx:authority, unlocks command gate) + event B→self kind=threat 0.7 (→otherCausedTrouble/conflict, unlocks threaten/confront/accuse)',
+  participants: ['B'],
+  payoff: CONTEST_PAYOFF,
+  game: makeContestGame(CONTEST_PAYOFF.outcomes as Record<string, PayoffPair>),
+  build(self) {
+    const b = buildOther({ clearance: 1 });
+    const w = withSceneAffordance(
+      world([self, b]),
+      { scarcity: 0.7, resourceAccess: 0.2, authority: 0.5 },
+      ['formal'],
+    );
+    withEvents(w, [
+      { id: 'ev:contest:claim', kind: 'threat', actorId: 'B', targetId: self.entityId, magnitude: 0.7 },
+    ]);
+    return { world: w, agentId: self.entityId, participantIds: [self.entityId, 'B'] };
+  },
+};
+
+export const S_defection_pressure: ProbeScene = {
+  id: 'S_defection_pressure',
+  description: 'S_defection + live pressure: B has just acted against self (betrayal-flavored harm event). Defect verbs become possible; cooperation is now a costly choice, not the only option.',
+  targetConstructs: ['C_betrayal_cost', 'C_coalition_loyalty', 'C_reciprocity_index', 'A_Care_Compassion'],
+  layers: ['S8'],
+  affordance: 'scarcity 0.6 + event B→self kind=betray 0.6 (→conflict/otherCausedTrouble, unlocks threaten/confront/accuse; betray/deceive possibilities are ungated and native here)',
+  participants: ['B'],
+  payoff: DEFECTION_PAYOFF,
+  game: makeDefectionGame(DEFECTION_PAYOFF.outcomes as Record<string, PayoffPair>),
+  build(self) {
+    const b = buildOther({ clearance: 1 });
+    const w = withSceneAffordance(world([self, b]), { scarcity: 0.6 });
+    withEvents(w, [
+      { id: 'ev:defect:hist', kind: 'betray', actorId: 'B', targetId: self.entityId, magnitude: 0.6 },
+    ]);
+    return { world: w, agentId: self.entityId, participantIds: [self.entityId, 'B'] };
+  },
+};
+
+/** Frozen payoff (2026-07-02, T1.5): response to a coercive order. */
+const COERCIVE_PAYOFF: NonNullable<ProbeScene['payoff']> = {
+  outcomes: { defied: [3, 1], complied: [1, 3], negotiated_terms: [2, 2], evaded: [0, 0] },
+};
+
+export const S_coercive_order: ProbeScene = {
+  id: 'S_coercive_order',
+  description: 'B (clearance 3, leader) has just issued a coercive order to self. Defy / comply / negotiate terms / evade. The SCENE_BATTERY §4 discriminator for A_Liberty_Autonomy (AX-DEAD).',
+  targetConstructs: ['A_Liberty_Autonomy', 'A_Power_Sovereignty', 'A_Legitimacy_Procedure'],
+  layers: ['S8'],
+  affordance: 'B clearance 3 + leader + event B→self kind=command 0.8 (→topicPressure); challenge needs tom dominance ≥0.55 from the hierarchy — whether it spawns is itself the AX-DEAD test',
+  participants: ['B'],
+  payoff: COERCIVE_PAYOFF,
+  game: makeCoerciveOrderGame(COERCIVE_PAYOFF.outcomes as Record<string, PayoffPair>),
+  build(self) {
+    const b = buildOther({ clearance: 3 });
+    const w = world([self, b], { leadership: { currentLeaderId: 'B' } } as any);
+    withEvents(w, [
+      { id: 'ev:order:issued', kind: 'command', actorId: 'B', targetId: self.entityId, magnitude: 0.8 },
+    ]);
+    return { world: w, agentId: self.entityId, participantIds: [self.entityId, 'B'] };
+  },
+};
+
 export const PROBE_SCENES: ProbeScene[] = [
   S_neutral,
   S_vulnerable,
@@ -323,6 +409,9 @@ export const PROBE_SCENES: ProbeScene[] = [
   S_threat,
   S_contest,
   S_defection,
+  S_contest_pressure,
+  S_defection_pressure,
+  S_coercive_order,
 ];
 
 export function sceneById(id: string): ProbeScene | undefined {

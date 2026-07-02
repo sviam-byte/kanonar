@@ -509,6 +509,16 @@ export const ACTION_SCORING = {
     tieTemperatureMultiplier: 1.4,
     minTieCandidates: 2,
   },
+  /**
+   * T1.5 (ledger Q-PRIOR-DROP): route the possibility magnitude (the act:prior
+   * carrier) into Q as an additive term. Default OFF — production behavior
+   * unchanged; the flag doubles as the D2 ablation switch. `weight` is a
+   * HEURISTIC coefficient (GOALS_AND_TASKS §3 registry).
+   */
+  priorInfluence: {
+    enabled: false as boolean,
+    weight: 0.5,
+  },
 } as const;
 
 // ─── Target-Specific ToM Modulation (actionCandidateUtils.ts) ─────────────

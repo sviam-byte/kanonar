@@ -14,6 +14,15 @@ export function scoreAction(action: ActionCandidate, goalEnergy: Record<string, 
   for (const [g, delta] of Object.entries(action.deltaGoals)) {
     q += (goalEnergy[g] ?? 0) * delta;
   }
+
+  // T1.5 (ledger Q-PRIOR-DROP): the possibility magnitude is the only carrier
+  // of act:prior; without this term personality never reaches the choice.
+  // Default off — the flag is the D2 ablation switch.
+  const PI = FC.actionScoring.priorInfluence;
+  if (PI?.enabled) {
+    q += PI.weight * (action.priorMagnitude ?? 0);
+  }
+
   q -= action.cost;
 
   const conf = Math.max(0, Math.min(1, action.confidence));
