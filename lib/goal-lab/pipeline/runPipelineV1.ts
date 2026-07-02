@@ -34,6 +34,7 @@ import { atomizePossibilities } from '../../possibilities/atomize';
 import type { Possibility } from '../../possibilities/catalog';
 import { deriveAccess } from '../../access/deriveAccess';
 import { deriveActionPriors } from '../../decision/actionPriors';
+import { FC } from '../../config/formulaConfig';
 import { decideAction } from '../../decision/decide';
 import { scoreAction } from '../../decision/scoreAction';
 import { buildActionCandidates } from '../../decision/actionCandidateUtils';
@@ -990,7 +991,21 @@ export function runGoalLabPipelineV1(input: {
   // IMPORTANT: keep this stage strictly typed + non-throwing.
   // A pipeline crash should never take down the UI.
   try {
-    const internalPoss = derivePossibilitiesRegistry({ selfId, atoms });
+    // v4 (ledger ORDER-PRIOR-POSS): possibility defs read act:prior via
+    // getPrior, but priors were historically derived AFTER possibilities —
+    // every getPrior saw its default, engine-wide. When priorInfluence is ON,
+    // derive priors FIRST so magnitudes can carry personality; the legacy
+    // order is preserved when OFF (the flag stays the ablation switch).
+    const priorOtherIds = participantIds.filter(id => id && id !== selfId);
+    const priorFirst = Boolean((FC.actionScoring as any)?.priorInfluence?.enabled);
+    const earlyPriorAtoms = priorFirst
+      ? arr(deriveActionPriors({ selfId, otherIds: priorOtherIds, atoms })).map(normalizeAtom)
+      : [];
+    const possInputAtoms = priorFirst
+      ? mergeAtomsPreferNewer(atoms, earlyPriorAtoms).atoms
+      : atoms;
+
+    const internalPoss = derivePossibilitiesRegistry({ selfId, atoms: possInputAtoms });
     // Merge external possibilities (e.g. SimKit spatial offers) with internal ones.
     // External possibilities carry concrete targetId/targetNodeId from SimKit enumeration,
     // allowing GoalLab to score specific move destinations via goal-weighted Q(a).
@@ -1007,19 +1022,23 @@ export function runGoalLabPipelineV1(input: {
       blocked: false,
     }));
     const possAtoms = arr(atomizePossibilities(possList)).map(normalizeAtom);
-    const mS8a = mergeAtomsPreferNewer(atoms, possAtoms);
+    const mS8a = mergeAtomsPreferNewer(possInputAtoms, possAtoms);
 
     const locationId = agent?.locationId;
     const accessPack = deriveAccess(mS8a.atoms, selfId, locationId);
     const accessAtoms = arr(accessPack?.atoms).map(normalizeAtom);
     const mS8b = mergeAtomsPreferNewer(mS8a.atoms, accessAtoms);
 
-    const otherIds = participantIds.filter(id => id && id !== selfId);
-    const priorsAtoms = arr(deriveActionPriors({
-      selfId,
-      otherIds,
-      atoms: mS8b.atoms,
-    })).map(normalizeAtom);
+    const otherIds = priorOtherIds;
+    // priorFirst: reuse the early atoms (re-deriving over possibility atoms
+    // could differ subtly and would split provenance).
+    const priorsAtoms = priorFirst
+      ? earlyPriorAtoms
+      : arr(deriveActionPriors({
+          selfId,
+          otherIds,
+          atoms: mS8b.atoms,
+        })).map(normalizeAtom);
     const mS8c = mergeAtomsPreferNewer(mS8b.atoms, priorsAtoms);
 
     const { actions, goalEnergy } = buildActionCandidates({
@@ -1138,7 +1157,9 @@ export function runGoalLabPipelineV1(input: {
     const decision = decideAction({
       actions,
       goalEnergy,
-      topK: 10,
+      // topK also caps the Gumbel CHOICE pool (candidates 11+ can never be
+      // chosen — ledger TOPK-POOL-CAP); widened only under the flag.
+      topK: priorFirst ? Number((FC.actionScoring as any)?.priorInfluence?.topK ?? 16) : 10,
       // decideAction expects rng() in [0,1) for Gumbel noise. RNG.next() returns
       // a raw uint32, which clamps the noise to a constant and silently disables
       // exploration — use nextFloat(). Neutral 0.5 when no decide channel exists.

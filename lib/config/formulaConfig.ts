@@ -518,6 +518,9 @@ export const ACTION_SCORING = {
   priorInfluence: {
     enabled: false as boolean,
     weight: 0.5,
+    /** Choice-pool size when enabled (legacy topK=10 also CAPS the Gumbel
+     *  pool — candidates ranked 11+ can never be chosen; ledger TOPK-POOL-CAP). */
+    topK: 16,
   },
 } as const;
 

@@ -112,6 +112,31 @@ describe('new scenes stay fully classified on observable B', () => {
   });
 });
 
+describe('v4 reorder (ORDER-PRIOR-POSS): personality reaches candidate Q', () => {
+  function qOfVerb(meanQ: Record<string, number>, verb: string): number {
+    let best = 0;
+    for (const [k, v] of Object.entries(meanQ)) if (k.split(':')[1] === verb) best = Math.max(best, v);
+    return best;
+  }
+
+  it('flag ON ⇒ q of a prior-carrying coercive candidate moves with Power', () => {
+    PI.enabled = true;
+    const lo = runProbe({ scene: S_contest_pressure, axisOverrides: { A_Power_Sovereignty: 0.1 }, seeds: [1] });
+    const hi = runProbe({ scene: S_contest_pressure, axisOverrides: { A_Power_Sovereignty: 0.9 }, seeds: [1] });
+    const dThreaten = qOfVerb(hi.s8MeanQ, 'threaten') - qOfVerb(lo.s8MeanQ, 'threaten');
+    const dCommand = qOfVerb(hi.s8MeanQ, 'command') - qOfVerb(lo.s8MeanQ, 'command');
+    expect(Math.max(dThreaten, dCommand), `Δq threaten=${dThreaten.toFixed(3)} command=${dCommand.toFixed(3)}`)
+      .toBeGreaterThan(0.01);
+  });
+
+  it('flag OFF ⇒ legacy order, q byte-identical across the axis (production regression)', () => {
+    PI.enabled = false;
+    const lo = runProbe({ scene: S_contest_pressure, axisOverrides: { A_Power_Sovereignty: 0.1 }, seeds: [1] });
+    const hi = runProbe({ scene: S_contest_pressure, axisOverrides: { A_Power_Sovereignty: 0.9 }, seeds: [1] });
+    expect(hi.s8MeanQ).toEqual(lo.s8MeanQ);
+  });
+});
+
 describe('v3 pre-registration structure (directions go to triage, not tests)', () => {
   it('9 frozen rows over existing scenes; flat/interaction cells present', () => {
     expect(OUTCOME_SIGN_TABLE_V3).toHaveLength(9);

@@ -1073,7 +1073,11 @@ export const DEFAULT_POSSIBILITY_DEFS: PossibilityDef[] = [
       if (!others.length) return null;
 
       return others.map(otherId => {
-        const { id: pId, v } = getPrior(atoms, selfId, otherId, 'confront', 0.25);
+        // v4 (ledger THREATEN-PRIOR-MISWIRE): was reading the 'confront' prior
+        // — a personality-flat goal-domain composite — while PERSONALITY_ACTION_MAP
+        // emits a dedicated 'threaten' prior. Production-neutral under the
+        // legacy stage order (no act:prior atoms exist here → same fallback).
+        const { id: pId, v } = getPrior(atoms, selfId, otherId, 'threaten', 0.25);
         const hostId = `rel:state:${selfId}:${otherId}:hostility`;
         const host = getMag(atoms, hostId, 0.0);
 

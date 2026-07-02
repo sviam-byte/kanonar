@@ -40,38 +40,37 @@ describe.runIf(RUN)('T1.5 factorial export (v3 pre-registered cells)', () => {
     writeFileSync(path.join(REPORTS, 'outcome_sweep_off.csv'), toCsv(records), 'utf8');
   }, 600000);
 
-  it('exports the priorInfluence=ON cells (+ temperature-interaction cells)', () => {
+  it('exports the priorInfluence=ON cells v4 (+ temperature-interaction cells)', () => {
+    // v4 (outcomeSignTableV4.ts): 32 seeds — declared at freeze; expected
+    // effects are few-percent probability shifts that 8 seeds cannot resolve.
+    // S_neutral controls are not re-run (v3 verdicts stand; OFF path is
+    // bit-identical legacy order).
+    const seedsV4 = Array.from({ length: 32 }, (_, i) => i + 1);
     const PI = (FC.actionScoring as any).priorInfluence;
     PI.enabled = true;
     try {
       const records: ProbeRecord[] = [
-        ...sweepAxis({ axis: 'A_Power_Sovereignty', scene: S_contest, values, seeds }),
-        ...sweepAxis({ axis: 'A_Power_Sovereignty', scene: S_contest_pressure, values, seeds }),
-        ...sweepAxis({ axis: 'A_Care_Compassion', scene: S_defection, values, seeds }),
-        ...sweepAxis({ axis: 'A_Care_Compassion', scene: S_defection_pressure, values, seeds }),
-        ...sweepAxis({ axis: 'A_Liberty_Autonomy', scene: S_coercive_order, values, seeds }),
-        ...sweepAxis({ axis: 'A_Power_Sovereignty', scene: S_neutral, values, seeds }),
-        ...sweepAxis({ axis: 'A_Care_Compassion', scene: S_neutral, values, seeds }),
-        ...sweepAxis({ axis: 'A_Liberty_Autonomy', scene: S_neutral, values, seeds }),
-        // NOISE-DOM interaction cells: same axis×scene at pinned decision
-        // temperature, scene-tagged so the rows stay distinguishable.
+        ...sweepAxis({ axis: 'A_Care_Compassion', scene: S_defection, values, seeds: seedsV4 }),
+        ...sweepAxis({ axis: 'A_Power_Sovereignty', scene: S_contest_pressure, values, seeds: seedsV4 }),
+        ...sweepAxis({ axis: 'A_Care_Compassion', scene: S_defection_pressure, values, seeds: seedsV4 }),
+        ...sweepAxis({ axis: 'A_Liberty_Autonomy', scene: S_coercive_order, values, seeds: seedsV4 }),
         ...tagScene(
           sweepAxis({
-            axis: 'A_Power_Sovereignty', scene: S_contest_pressure, values, seeds,
+            axis: 'A_Power_Sovereignty', scene: S_contest_pressure, values, seeds: seedsV4,
             baseAxisOverrides: { B_decision_temperature: 0.1 },
           }),
           'S_contest_pressure@T0.1',
         ),
         ...tagScene(
           sweepAxis({
-            axis: 'A_Power_Sovereignty', scene: S_contest_pressure, values, seeds,
+            axis: 'A_Power_Sovereignty', scene: S_contest_pressure, values, seeds: seedsV4,
             baseAxisOverrides: { B_decision_temperature: 0.9 },
           }),
           'S_contest_pressure@T0.9',
         ),
       ];
       expect(records.some(r => r.layer === 'OUTCOME')).toBe(true);
-      writeFileSync(path.join(REPORTS, 'outcome_sweep_on.csv'), toCsv(records), 'utf8');
+      writeFileSync(path.join(REPORTS, 'outcome_sweep_on_v4.csv'), toCsv(records), 'utf8');
     } finally {
       PI.enabled = false;
     }
