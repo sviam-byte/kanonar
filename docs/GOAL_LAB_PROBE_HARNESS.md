@@ -35,8 +35,11 @@
 | `runProbe.ts` | мультислойный экстрактор readout'ов (S6 drivers, S7 domains, S8 dist/Q/entropy, stress) | 0 |
 | `scenes.ts` | батарея сцен (affordances через мир-контракт) | 1 |
 | `sweep.ts` | свип оси 0→1 → long-format `{axis,value,scene,layer,readout,result}` + `toCsv` | 0 |
-| `signTable.ts` | **пре-регистрированная** таблица знаков (заморожена ДО прогона) | 2 |
+| `signTable.ts` | **пре-регистрированная** таблица знаков v1, наблюдаемая A (заморожена 2026-06-18) | 2 |
+| `game.ts` | T1 outcome scorer: Game (verb→move→outcome→payoff), наблюдаемая B (заморожен 2026-07-02, SCENE_BATTERY §0-B) | T1 |
+| `outcomeSignTable.ts` | **пре-регистрированная** таблица знаков v2 на исходах, 3 строки (заморожена 2026-07-02) | T1 |
 | `tests/goals/probe_harness.test.ts` | контрактный gate (НЕ проверяет знаки — это эксперимент) | — |
+| `tests/goals/outcome_scorer.test.ts` | контрактный gate наблюдаемой B (детерминизм, тотальность, `unclassified_rate === 0`) | T1 |
 
 Точка входа в пайплайн — `runGoalLabPipelineV1({ world, agentId, participantIds,
 manualAtoms })` (тот же, что в `tests/pipeline/decision_snapshot_trace_surface`).

@@ -12,6 +12,7 @@
 // question answered by the first sweep (Phase 3 triage), not asserted here.
 
 import type { AgentState, WorldState } from '../../../types';
+import { makeContestGame, makeDefectionGame, type Game, type PayoffPair } from './game';
 
 export type ProbeLayer = 'S7' | 'S8';
 
@@ -26,6 +27,20 @@ export interface ProbeScene {
   affordance: string;
   /** Extra participant ids beyond self (e.g. ['B']). */
   participants: string[];
+  /**
+   * Scorer-facing payoff descriptor (Step 1). NOT consumed by
+   * runGoalLabPipelineV1 — the agent does appraisal→drive→act:prior, it does
+   * not maximize EV over a matrix. The payoff is read by the held-out scorer
+   * (CaSiNo bridge / Step-1 evaluation), computed FROM the chosen action.
+   * `outcomes` maps an outcome label to a [self, other] value pair.
+   */
+  payoff?: { resource?: string; total?: number; outcomes: Record<string, [number, number]> };
+  /**
+   * T1 outcome scorer (observable B, game.ts): the action→outcome map + payoff
+   * matrix over this scene's payoff.outcomes. Consumed by runProbe post-loop
+   * from the CHOSEN action; still not a pipeline input.
+   */
+  game?: Game;
   /** Build the world for this scene around a configured self agent. */
   build(self: AgentState): { world: WorldState; agentId: string; participantIds: string[] };
   /** Optional manual atoms injected at S0 to guarantee an affordance hint. */
@@ -222,7 +237,93 @@ export const S_threat: ProbeScene = {
   },
 };
 
-export const PROBE_SCENES: ProbeScene[] = [S_neutral, S_vulnerable, S_hierarchy, S_threat];
+// --- Step 1: payoff scenes (S_contest / S_defection) ---------------------
+//
+// These surface a contested allocation so negotiation verbs become expressible.
+// Affordances are injected the SAME way the working scenes inject them — as
+// scene METRICS / location TAGS that the pipeline derives ctx:* from
+// (worldFacts.ts reads sceneSnapshot.metrics; goalLabContext.ts reads location
+// tags for isFormal) — NOT as raw ctx:* atoms, which do not survive to the
+// possibility stage (verified empirically 2026-06-19).
+//
+// OBSERVABLE LIMIT (verified 2026-06-19): the act:prior vocabulary
+// (deriveActionPriors base ∪ PERSONALITY_ACTION_MAP) is prosocial-biased. It
+// has negotiate / propose_trade / share_resource / command / threaten / accuse
+// / confront / help / harm / avoid — but NO betray / deceive / loot / defend_ally.
+// So defection is only observable here as REDUCED cooperation + harm/avoid/
+// confront, not as a native betray verb. See FALSIFICATION_LEDGER row OBS-VOCAB.
+
+/** Mutate a built world to carry scene metrics + extra location tags, the
+ *  derivation source for ctx:scarcity / ctx:isFormal etc. */
+function withSceneAffordance(
+  w: WorldState,
+  metrics: Record<string, number>,
+  extraLocationTags: string[] = [],
+): WorldState {
+  const snap = (w as any).sceneSnapshot ?? ((w as any).sceneSnapshot = {});
+  snap.metrics = { ...(snap.metrics ?? {}), ...metrics };
+  const loc = (w.locations as any)[0];
+  if (loc) loc.tags = uniqTags([...(loc.tags ?? []), ...extraLocationTags]);
+  return w;
+}
+
+function uniqTags(tags: string[]): string[] {
+  return Array.from(new Set(tags.filter(Boolean)));
+}
+
+/** Frozen payoff magnitudes (2026-06-19) — the single source; game wraps them. */
+const CONTEST_PAYOFF: NonNullable<ProbeScene['payoff']> = {
+  resource: 'contested_supply',
+  total: 10,
+  outcomes: { fair_split: [5, 5], self_favoring: [8, 2], concede: [3, 7], no_deal: [0, 0] },
+};
+
+const DEFECTION_PAYOFF: NonNullable<ProbeScene['payoff']> = {
+  // PD-like; scorer-facing only. The defect rows are scored from reduced
+  // cooperation / harm, not a betray verb (observable limit).
+  outcomes: { both_cooperate: [3, 3], i_defect: [5, 0], they_defect: [0, 5], both_defect: [1, 1] },
+};
+
+export const S_contest: ProbeScene = {
+  id: 'S_contest',
+  description: 'A scarce, contested resource with a formal split to negotiate with B. Power / Justice / reciprocity over allocation.',
+  targetConstructs: ['A_Power_Sovereignty', 'A_Justice_Fairness', 'C_reciprocity_index', 'A_Safety_Care'],
+  layers: ['S8'],
+  affordance: 'scene metric scarcity=0.7 + resourceAccess=0.2 + location tag formal; verbs available: negotiate/propose_trade/share_resource vs command/threaten/confront',
+  participants: ['B'],
+  payoff: CONTEST_PAYOFF,
+  game: makeContestGame(CONTEST_PAYOFF.outcomes as Record<string, PayoffPair>),
+  build(self) {
+    const b = buildOther({ clearance: 1 });
+    const w = withSceneAffordance(world([self, b]), { scarcity: 0.7, resourceAccess: 0.2 }, ['formal']);
+    return { world: w, agentId: self.entityId, participantIds: [self.entityId, 'B'] };
+  },
+};
+
+export const S_defection: ProbeScene = {
+  id: 'S_defection',
+  description: 'A resource-incentive frame with B present: cooperate (share/trade/help) vs disengage. betrayal_cost / coalition_loyalty / reciprocity — observed as cooperation tendency, since native defect verbs are not on the act:prior observable (see OBSERVABLE LIMIT above).',
+  targetConstructs: ['C_betrayal_cost', 'C_coalition_loyalty', 'C_reciprocity_index'],
+  layers: ['S8'],
+  affordance: 'scene metric scarcity=0.6 (private-gain incentive); cooperate verbs (share_resource/propose_trade/praise/help/guard) vs harm/avoid/confront. NO native betray/deceive/loot on this observable.',
+  participants: ['B'],
+  payoff: DEFECTION_PAYOFF,
+  game: makeDefectionGame(DEFECTION_PAYOFF.outcomes as Record<string, PayoffPair>),
+  build(self) {
+    const b = buildOther({ clearance: 1 });
+    const w = withSceneAffordance(world([self, b]), { scarcity: 0.6 });
+    return { world: w, agentId: self.entityId, participantIds: [self.entityId, 'B'] };
+  },
+};
+
+export const PROBE_SCENES: ProbeScene[] = [
+  S_neutral,
+  S_vulnerable,
+  S_hierarchy,
+  S_threat,
+  S_contest,
+  S_defection,
+];
 
 export function sceneById(id: string): ProbeScene | undefined {
   return PROBE_SCENES.find(s => s.id === id);

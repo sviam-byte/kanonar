@@ -15,6 +15,7 @@ import { runGoalLabPipelineV1 } from '../pipeline/runPipelineV1';
 import { RNG, hashString32 } from '../../core/noise';
 import { clamp01 } from '../../util/math';
 import { buildProbeAgent, type ProbeScene } from './scenes';
+import { scoreAction, type OtherPolicy } from './game';
 
 export interface ProbeReadout {
   scene: string;
@@ -41,6 +42,18 @@ export interface ProbeReadout {
   /** Coarse state readouts. */
   stress: number;
   ctxDanger: number;
+  // --- observable B (T1, game.ts): outcomes scored from the CHOSEN action.
+  // All empty/zero when the scene carries no game.
+  /** Outcome label -> probability over seeds; sums to 1 on payoff scenes. */
+  outcomeDistribution: Record<string, number>;
+  /** Probability-weighted mean self payoff. */
+  outcomeMeanSelf: number;
+  /** Probability-weighted mean other payoff. */
+  outcomeMeanOther: number;
+  /** P(move === 'cooperate'); 0 for unilateral games / scenes without game. */
+  coopRate: number;
+  /** P(chosen verb absent from the game's move table) — the loud-drift gate. */
+  unclassifiedRate: number;
 }
 
 export interface RunProbeOptions {
@@ -54,6 +67,10 @@ export interface RunProbeOptions {
   /** Seeds for S8 averaging. One seed = deterministic single sample. */
   seeds?: number[];
   selfId?: string;
+  /** B's stipulated move for joint-game outcome scoring. Frozen default:
+   *  'cooperate' — the frame where i_defect is profitable. Scoring only; the
+   *  pipeline run itself is policy-independent (B is a static prop). */
+  otherPolicy?: OtherPolicy;
 }
 
 /** Clone an agent template and apply δ-deltas to its vector_base. */
@@ -232,6 +249,28 @@ export function runProbe(opts: RunProbeOptions): ProbeReadout {
     if (c > bestCount) { bestCount = c; s8TopAction = k; }
   }
 
+  // Observable B: fold the chosen-action distribution through the scene's
+  // game. Post-loop and deterministic per action key, so it is consistent
+  // with s8Distribution by construction; re-scoring under the other policy
+  // is a free pure-function call (scoreAction is exported).
+  const otherPolicy = opts.otherPolicy ?? 'cooperate';
+  const outcomeDistribution: Record<string, number> = {};
+  let outcomeMeanSelf = 0;
+  let outcomeMeanOther = 0;
+  let coopRate = 0;
+  let unclassifiedRate = 0;
+  if (scene.game && total > 0) {
+    for (const [key, c] of Object.entries(chosenCounts)) {
+      const p = c / total;
+      const s = scoreAction(scene.game, key, otherPolicy);
+      outcomeDistribution[s.label] = (outcomeDistribution[s.label] ?? 0) + p;
+      outcomeMeanSelf += p * s.self;
+      outcomeMeanOther += p * s.other;
+      if (s.move === 'cooperate') coopRate += p;
+      if (s.move === null) unclassifiedRate += p;
+    }
+  }
+
   return {
     scene: scene.id,
     selfId,
@@ -248,5 +287,10 @@ export function runProbe(opts: RunProbeOptions): ProbeReadout {
     s8ActionEntropy: shannonBits(chosenCounts),
     stress,
     ctxDanger,
+    outcomeDistribution,
+    outcomeMeanSelf,
+    outcomeMeanOther,
+    coopRate,
+    unclassifiedRate,
   };
 }

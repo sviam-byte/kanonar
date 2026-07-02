@@ -94,7 +94,10 @@ export const SIGN_TABLE: SignPrediction[] = [
     confidence: 'W',
     note: 'steeper coupling of stress to behavior under threat',
   },
-  // --- pending the payoff harness (Step 1): contest / defection scenes ---
+  // --- Step 1 payoff harness BUILT 2026-06-19: contest / defection scenes ---
+  // pending flipped true→false (build status only). Signs are UNCHANGED from
+  // the 2026-06-18 freeze — these predictions are now testable against the
+  // scenes; a miss is a MISLABELED finding to record, not a reason to edit.
   {
     axis: 'C_coalition_loyalty',
     readout: 'act:defend_ally',
@@ -102,8 +105,8 @@ export const SIGN_TABLE: SignPrediction[] = [
     scene: 'S_defection',
     layer: 'S8',
     confidence: 'S',
-    pending: true,
-    note: 'defend-ally up, betray-ally down — needs payoff scene',
+    pending: false,
+    note: 'defend-ally up, betray-ally down — payoff scene built',
   },
   {
     axis: 'A_Power_Sovereignty',
@@ -112,8 +115,8 @@ export const SIGN_TABLE: SignPrediction[] = [
     scene: 'S_contest',
     layer: 'S8',
     confidence: 'S',
-    pending: true,
-    note: 'scarce-resource contest — needs payoff scene',
+    pending: false,
+    note: 'scarce-resource contest — payoff scene built',
   },
 ];
 

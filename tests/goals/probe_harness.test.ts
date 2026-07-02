@@ -68,11 +68,13 @@ describe('probe harness: pre-registered sign table', () => {
     }
   });
 
-  it('pending predictions are the not-yet-built payoff scenes', () => {
-    const pending = SIGN_TABLE.filter(p => p.pending);
-    for (const p of pending) {
-      expect(['S_contest', 'S_defection']).toContain(p.scene);
-      expect(PROBE_SCENES.find(s => s.id === p.scene)).toBeFalsy();
+  it('payoff scenes (S_contest/S_defection) are built and registered', () => {
+    // Step 1 (2026-06-19): these scenes now exist, so no prediction stays pending
+    // and both scenes are discoverable in PROBE_SCENES.
+    expect(SIGN_TABLE.filter(p => p.pending)).toHaveLength(0);
+    for (const id of ['S_contest', 'S_defection']) {
+      expect(PROBE_SCENES.find(s => s.id === id), `scene ${id} registered`).toBeTruthy();
+      expect(sceneById(id)).toBeTruthy();
     }
   });
 });

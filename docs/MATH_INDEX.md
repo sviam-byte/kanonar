@@ -46,6 +46,15 @@
   + `rosterSweep.ts` → `kanonar_behavior_lab/src/basis/roster_triage.py`
 - archetype / μ basis audit (effect vectors + λ blend + behavior):
   `lib/goal-lab/probe/archetypeProbe.ts` + `archetypeSignTable.ts`
+- **цель программы + упорядоченные задачи T1–T8 + реестр формул со статусами
+  (PRINCIPLED/HEURISTIC/DEBT)**: `docs/GOALS_AND_TASKS.md` (canonical 2026-07-02)
+- validation program (D1–D5, scaffolds 2026-06-19) — the hygiene layer that makes
+  the stack falsifiable rather than self-confirming:
+  - D1 scene battery + **frozen observable** (the gate): `docs/SCENE_BATTERY_v1.md`
+  - D2 baseline/ablation protocol (run first): `docs/BASELINE_ABLATION_PROTOCOL.md`
+  - D3 per-layer contracts (only for D2-proven layers): `docs/LAYER_CONTRACTS.md`
+  - D4 falsification ledger (claim × killing-test, live): `docs/FALSIFICATION_LEDGER.md`
+  - D5 author-oracle pack (character × scene CRAFT standard): `docs/CONSTRUCT_ORACLES.md`
 
 ## 0. Как читать книгу
 

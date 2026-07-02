@@ -12,7 +12,7 @@ export interface ProbeRecord {
   axis: string;
   value: number;
   scene: string;
-  layer: 'S6' | 'S7' | 'S8' | 'STATE';
+  layer: 'S6' | 'S7' | 'S8' | 'STATE' | 'OUTCOME';
   readout: string;
   result: number;
 }
@@ -58,6 +58,18 @@ export function sweepAxis(opts: SweepOptions): ProbeRecord[] {
     push('S8', 'action_entropy', readout.s8ActionEntropy);
     push('STATE', 'stress', readout.stress);
     push('STATE', 'ctxDanger', readout.ctxDanger);
+
+    // Observable B (T1): emitted only for scenes carrying a game, so CSVs of
+    // non-payoff scenes stay byte-identical.
+    if (opts.scene.game) {
+      for (const [label, prob] of Object.entries(readout.outcomeDistribution)) {
+        push('OUTCOME', `outcome:${label}`, prob);
+      }
+      push('OUTCOME', 'outcome_mean_self', readout.outcomeMeanSelf);
+      push('OUTCOME', 'outcome_mean_other', readout.outcomeMeanOther);
+      push('OUTCOME', 'coop_rate', readout.coopRate);
+      push('OUTCOME', 'unclassified_rate', readout.unclassifiedRate);
+    }
   }
 
   return records;
