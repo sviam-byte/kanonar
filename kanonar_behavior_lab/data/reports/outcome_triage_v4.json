@@ -53,7 +53,10 @@
       "eps_dead": 0.03,
       "mono_rho": 0.9,
       "interaction_model": "OLS slope with intercept over all axis points",
-      "interaction_slope_margin": 0.03
+      "interaction_slope_margin": 0.03,
+      "expected_axis_points": 7,
+      "completeness_gate": "cell with != expected grid points -> INVALID_DESIGN (not a graded miss)",
+      "zero_fill": "outcome:<label> rows absent at a grid point are structural zeros (p=0 not emitted)"
     }
   },
   "predictions": [
@@ -288,13 +291,15 @@
             "slope": 0.054,
             "endpoint_delta": 0.062,
             "rho": 0.896,
-            "points": 7
+            "points": 7,
+            "zero_filled": 0
           },
           "S_contest_pressure@T0.9": {
             "slope": 0.08,
             "endpoint_delta": 0.031,
             "rho": 0.777,
-            "points": 7
+            "points": 7,
+            "zero_filled": 0
           }
         },
         "slope_difference": -0.027,

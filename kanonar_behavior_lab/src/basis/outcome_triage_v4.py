@@ -33,6 +33,11 @@ V4_FREEZE_COMMIT = "3b50ab0a744f1b8f30914af598a35fd9687b0118"
 V4_SEEDS = list(range(1, 33))
 # Сохраняем замороженный порог эффекта, но применяем его к настоящим OLS slopes.
 INTERACTION_SLOPE_MARGIN = EPS_DEAD
+# Замороженная сетка оси: linspace(0,1,7) в экспортёре.
+EXPECTED_AXIS_POINTS = 7
+# outcome:<label> строки с p=0 не эмитятся в CSV — отсутствие строки на точке
+# сетки является структурным нулём, а не пропуском данных.
+ZERO_FILL_PREFIXES = ("outcome:",)
 
 
 @dataclass(frozen=True)
@@ -65,22 +70,51 @@ def _ols_slope(xs: np.ndarray, ys: np.ndarray) -> float:
     return float(np.dot(centered_x, ys - ys.mean()) / denominator)
 
 
+def _cell_series(grp: pd.DataFrame, readout: str) -> tuple[np.ndarray, np.ndarray, int]:
+    """Series over the CELL's full axis grid.
+
+    For zero-fill readouts (outcome:<label>) a grid point without a row is a
+    structural zero (p=0 labels are not emitted into the CSV) and is imputed
+    as 0.0. Returns (xs, ys, zero_filled_count).
+    """
+    grid = np.array(sorted(float(v) for v in grp["value"].unique()))
+    xs, ys = _series(grp, readout)
+    if not readout.startswith(ZERO_FILL_PREFIXES):
+        return xs, ys, 0
+    present = {float(x): float(y) for x, y in zip(xs, ys)}
+    filled = np.array([present.get(float(v), 0.0) for v in grid])
+    return grid, filled, int(len(grid) - len(xs))
+
+
 def _classify_interaction(df: pd.DataFrame, p: PredictionV4) -> dict[str, Any]:
     out: dict[str, Any] = {"cells": {}}
     slopes: dict[str, float] = {}
+    problems: list[str] = []
     for t in ("0.1", "0.9"):
         cell = f"{p.scene}@T{t}"
         grp = df[(df["axis"] == p.axis) & (df["scene"] == cell)]
-        xs, ys = _series(grp, p.readout)
+        # Design-completeness gate: the frozen grid must be fully present.
+        # A missing/partial cell is a broken EXPERIMENT, not a graded miss.
+        grid_points = int(grp["value"].nunique()) if len(grp) else 0
+        if grid_points != EXPECTED_AXIS_POINTS:
+            problems.append(f"{cell}: {grid_points}/{EXPECTED_AXIS_POINTS} axis points")
+            out["cells"][cell] = {"points": grid_points}
+            continue
+        xs, ys, zero_filled = _cell_series(grp, p.readout)
         slope = _ols_slope(xs, ys)
         slopes[t] = slope
-        endpoint_delta = float(ys[-1] - ys[0]) if len(ys) >= 2 else 0.0
         out["cells"][cell] = {
             "slope": round(slope, 3),
-            "endpoint_delta": round(endpoint_delta, 3),
+            "endpoint_delta": round(float(ys[-1] - ys[0]), 3),
             "rho": round(_rho(xs, ys), 3),
             "points": int(len(ys)),
+            "zero_filled": zero_filled,
         }
+
+    if problems:
+        out["verdict"] = "INVALID_DESIGN"
+        out["problems"] = problems
+        return out
 
     slope_difference = slopes["0.1"] - slopes["0.9"]
     out["slope_difference"] = round(slope_difference, 3)
@@ -110,6 +144,9 @@ def run_triage() -> dict:
                 "mono_rho": MONO_RHO,
                 "interaction_model": "OLS slope with intercept over all axis points",
                 "interaction_slope_margin": INTERACTION_SLOPE_MARGIN,
+                "expected_axis_points": EXPECTED_AXIS_POINTS,
+                "completeness_gate": "cell with != expected grid points -> INVALID_DESIGN (not a graded miss)",
+                "zero_fill": "outcome:<label> rows absent at a grid point are structural zeros (p=0 not emitted)",
             },
         },
         "predictions": [],
@@ -139,7 +176,12 @@ def main() -> None:
         if "rho" in pr:
             extra = f" rho={pr['rho']:+.2f} d={pr['delta']:+.3f} range={pr['range']:.3f}"
         elif "cells" in pr:
-            extra = " " + " ".join(f"{k}:slope={v['slope']:+.3f}" for k, v in pr["cells"].items())
+            extra = " " + " ".join(
+                f"{k}:slope={v['slope']:+.3f}" if "slope" in v else f"{k}:points={v.get('points', 0)}"
+                for k, v in pr["cells"].items()
+            )
+            if pr.get("problems"):
+                extra += "  problems: " + "; ".join(pr["problems"])
         print(f"{e['axis']:22} @ {e['scene']:22} [{e['direction']:11} {e['confidence']}]  "
               f"'{pr['readout']}': {pr['verdict']}{extra}")
         for m in e["top_movers"][:4]:
