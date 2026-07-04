@@ -9,17 +9,30 @@ the v4 freeze). V4_PREDICTIONS MIRROR lib/goal-lab/probe/outcomeSignTableV4.ts
 
 from __future__ import annotations
 
+import hashlib
 import json
 from dataclasses import dataclass, asdict
 from typing import Any
 
+import numpy as np
 import pandas as pd
 
 from kanonar_behavior_lab.src.paths import REPORTS_DIR
-from kanonar_behavior_lab.src.basis.triage import EPS_DEAD, _classify, _series, _top_movers
+from kanonar_behavior_lab.src.basis.triage import (
+    EPS_DEAD,
+    MONO_RHO,
+    _classify,
+    _rho,
+    _series,
+    _top_movers,
+)
 
 SWEEP_CSV = REPORTS_DIR / "outcome_sweep_on_v4.csv"
 TRIAGE_JSON = REPORTS_DIR / "outcome_triage_v4.json"
+V4_FREEZE_COMMIT = "3b50ab0a744f1b8f30914af598a35fd9687b0118"
+V4_SEEDS = list(range(1, 33))
+# Сохраняем замороженный порог эффекта, но применяем его к настоящим OLS slopes.
+INTERACTION_SLOPE_MARGIN = EPS_DEAD
 
 
 @dataclass(frozen=True)
@@ -41,25 +54,66 @@ V4_PREDICTIONS = [
 ]
 
 
+def _ols_slope(xs: np.ndarray, ys: np.ndarray) -> float:
+    """OLS slope со свободным членом по всем доступным точкам оси."""
+    if len(xs) < 2 or len(xs) != len(ys):
+        return 0.0
+    centered_x = xs - xs.mean()
+    denominator = float(np.dot(centered_x, centered_x))
+    if denominator <= 0:
+        return 0.0
+    return float(np.dot(centered_x, ys - ys.mean()) / denominator)
+
+
 def _classify_interaction(df: pd.DataFrame, p: PredictionV4) -> dict[str, Any]:
     out: dict[str, Any] = {"cells": {}}
-    deltas: dict[str, float] = {}
+    slopes: dict[str, float] = {}
     for t in ("0.1", "0.9"):
         cell = f"{p.scene}@T{t}"
         grp = df[(df["axis"] == p.axis) & (df["scene"] == cell)]
         xs, ys = _series(grp, p.readout)
-        d = float(ys[-1] - ys[0]) if len(ys) >= 2 else 0.0
-        deltas[t] = d
-        out["cells"][cell] = {"delta": round(d, 3), "points": int(len(ys))}
-    out["verdict"] = "PASS" if abs(deltas["0.1"]) > abs(deltas["0.9"]) + EPS_DEAD else (
-        "DEAD" if max(abs(deltas["0.1"]), abs(deltas["0.9"])) < EPS_DEAD else "MISLABELED"
-    )
+        slope = _ols_slope(xs, ys)
+        slopes[t] = slope
+        endpoint_delta = float(ys[-1] - ys[0]) if len(ys) >= 2 else 0.0
+        out["cells"][cell] = {
+            "slope": round(slope, 3),
+            "endpoint_delta": round(endpoint_delta, 3),
+            "rho": round(_rho(xs, ys), 3),
+            "points": int(len(ys)),
+        }
+
+    slope_difference = slopes["0.1"] - slopes["0.9"]
+    out["slope_difference"] = round(slope_difference, 3)
+    if max(abs(slopes["0.1"]), abs(slopes["0.9"])) < EPS_DEAD:
+        out["verdict"] = "DEAD"
+    elif slopes["0.1"] > 0 and slope_difference > INTERACTION_SLOPE_MARGIN:
+        out["verdict"] = "PASS"
+    else:
+        out["verdict"] = "MISLABELED"
     return out
 
 
 def run_triage() -> dict:
     df = pd.read_csv(SWEEP_CSV)
-    report: dict = {"predictions": []}
+    report: dict = {
+        "metadata": {
+            "schema_version": 2,
+            "generated_by": "kanonar_behavior_lab.src.basis.outcome_triage_v4",
+            "source_freeze_commit": V4_FREEZE_COMMIT,
+            "input_csv": SWEEP_CSV.name,
+            "input_sha256": hashlib.sha256(SWEEP_CSV.read_bytes()).hexdigest(),
+            "observation_level": "axis-cell aggregates; per-seed outcomes are not retained",
+            "seeds": V4_SEEDS,
+            "axis_values": sorted(float(v) for v in df["value"].unique()),
+            "classification": {
+                "eps_dead": EPS_DEAD,
+                "mono_rho": MONO_RHO,
+                "interaction_model": "OLS slope with intercept over all axis points",
+                "interaction_slope_margin": INTERACTION_SLOPE_MARGIN,
+            },
+        },
+        "predictions": [],
+    }
     for p in V4_PREDICTIONS:
         if p.direction == "interaction":
             prereg = {"readout": p.readout, **_classify_interaction(df, p)}
@@ -85,7 +139,7 @@ def main() -> None:
         if "rho" in pr:
             extra = f" rho={pr['rho']:+.2f} d={pr['delta']:+.3f} range={pr['range']:.3f}"
         elif "cells" in pr:
-            extra = " " + " ".join(f"{k}:d={v['delta']:+.3f}" for k, v in pr["cells"].items())
+            extra = " " + " ".join(f"{k}:slope={v['slope']:+.3f}" for k, v in pr["cells"].items())
         print(f"{e['axis']:22} @ {e['scene']:22} [{e['direction']:11} {e['confidence']}]  "
               f"'{pr['readout']}': {pr['verdict']}{extra}")
         for m in e["top_movers"][:4]:

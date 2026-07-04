@@ -1,4 +1,61 @@
 {
+  "metadata": {
+    "schema_version": 2,
+    "generated_by": "kanonar_behavior_lab.src.basis.outcome_triage_v4",
+    "source_freeze_commit": "3b50ab0a744f1b8f30914af598a35fd9687b0118",
+    "input_csv": "outcome_sweep_on_v4.csv",
+    "input_sha256": "cd703aae987cfb02ccd7576b616a71b7c044b268d264b251ee721b3698b019dc",
+    "observation_level": "axis-cell aggregates; per-seed outcomes are not retained",
+    "seeds": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20,
+      21,
+      22,
+      23,
+      24,
+      25,
+      26,
+      27,
+      28,
+      29,
+      30,
+      31,
+      32
+    ],
+    "axis_values": [
+      0.0,
+      0.1666666666666666,
+      0.3333333333333333,
+      0.5,
+      0.6666666666666666,
+      0.8333333333333334,
+      1.0
+    ],
+    "classification": {
+      "eps_dead": 0.03,
+      "mono_rho": 0.9,
+      "interaction_model": "OLS slope with intercept over all axis points",
+      "interaction_slope_margin": 0.03
+    }
+  },
   "predictions": [
     {
       "axis": "A_Care_Compassion",
@@ -228,15 +285,20 @@
         "readout": "outcome:self_favoring",
         "cells": {
           "S_contest_pressure@T0.1": {
-            "delta": 0.062,
+            "slope": 0.054,
+            "endpoint_delta": 0.062,
+            "rho": 0.896,
             "points": 7
           },
           "S_contest_pressure@T0.9": {
-            "delta": 0.031,
+            "slope": 0.08,
+            "endpoint_delta": 0.031,
+            "rho": 0.777,
             "points": 7
           }
         },
-        "verdict": "PASS"
+        "slope_difference": -0.027,
+        "verdict": "MISLABELED"
       },
       "top_movers": []
     }

@@ -59,16 +59,65 @@ same way. State the standard explicitly per row.
 | Q-PRIOR-DROP | `act:prior` reaches the S8 choice (the intention→consequence link exists in the mechanism) | CRAFT/impl | FALSIFIED-as-shipped (2026-07-02) | possibility magnitude (the only act:prior carrier) enters `buildActionCandidates` only as `fallbackDelta` (`actionCandidateUtils.ts:387`) and is dropped whenever `BASE_EFFECTS` fire (`:296-305`); Q = Σ goalEnergy·Δg − cost − risk has no prior term (`scoreAction.ts`). The second path (axes→goals→goalEnergy→Q) exists but S7 domains move ~0.02 (over-normalized) | fix under test: `FC.actionScoring.priorInfluence` (default OFF = the D2 ablation switch); v3 cells `on × S_defection` isolate it · `outcomeSignTableV3.ts` + `outcome_triage_v3.py` |
 | ORDER-PRIOR-POSS | Possibility magnitudes carry `act:prior` (the assumption behind the Q-PRIOR-DROP fix) | CRAFT/impl | **FALSIFIED (2026-07-02, discovered BY the v3 factorial)** | `runPipelineV1.ts`: `derivePossibilitiesRegistry` runs at :993, `deriveActionPriors` at :1018 — **after**. Every `getPrior` inside possibility defs sees no act:prior atoms and returns its default, ENGINE-WIDE (production too). Measured: with the flag ON, `q:threaten` is byte-identical at Power 0 and 1 — the prior term added a constant per verb (reshuffling base rates: share→loot, self_favoring 0→0.375, mean_self 1.875→3.625) but cannot carry personality. act:prior atoms currently feed only off-decide diagnostics (`scorePossibility` → `action:utility:*`) | next fix (v4): when priorInfluence is ON, derive priors BEFORE possibilities (flag stays the ablation switch; legacy order when OFF). Killing test: `q` of a prior-carrying candidate still flat across the axis after reorder · v4 freeze |
 | GATE-SOURCES | Static probe scenes can express coercive constructs at S8 | CRAFT/impl | FALSIFIED for static scenes (2026-07-02) | coercive possibilities are event-first (`collectSocialEventGate`, `defs.ts:277-399`); probe worlds had `eventLog: []`; gate inputs `evidence`/`authority` had NO producer anywhere in lib (orphaned reads, `defs.ts:256-262`) | fix under test: event pressure via `world.eventLog` (S_contest_pressure / S_defection_pressure / S_coercive_order) + `authority` scene metric → `ctx:authority` aux (worldFacts/deriveAxes); v3 cells `off × pressure` isolate it · `outcomeSignTableV3.ts` |
-| NOISE-DOM | S8 choice reflects Q differences at probe temperature (T≈1.25, tieBand 0.08×1.4, Gumbel std≈1.28 vs Q gaps 0.05–0.25) | CRAFT/impl | REFRAMED (2026-07-02 run) | v3 interaction cells: slope 0.000 at BOTH T=0.1 and T=0.9 — not noise-domination but **q-dominance**: at low T `talk` (q≈1.05) wins deterministically; the axis never moves q (ORDER-PRIOR-POSS), so temperature is moot until it does | re-test the interaction after the v4 reorder; if q then moves but outcomes still flat at low T, the Q-gap/effect-size story takes over · `outcome_triage_v3.py` |
+| NOISE-DOM | S8 choice reflects Q differences at probe temperature (T≈1.25, tieBand 0.08×1.4, Gumbel std≈1.28 vs Q gaps 0.05–0.25) | CRAFT/impl | REFRAMED (2026-07-02 run) | v3 interaction cells: slope 0.000 at BOTH T=0.1 and T=0.9 — not noise-domination but **q-dominance**: at low T `talk` (q≈1.05) wins deterministically; the axis never moves q (ORDER-PRIOR-POSS), so temperature is moot until it does | re-test the interaction after the v4 reorder; if q then moves but outcomes still flat at low T, the Q-gap/effect-size story takes over · `outcome_triage_v3.py`. **v4 re-test (2026-07-04, after grading-audit repair): MISLABELED** — OLS slopes +0.054 @T0.1 vs +0.080 @T0.9, the low-T>high-T ordering fails; q-dominance NOT supported on outcomes. Next test needs per-seed rows + a pre-frozen seed-aware statistic |
 | THREATEN-PRIOR-MISWIRE | The threaten possibility carries the threaten prior | CRAFT/impl | FALSIFIED→FIXED (2026-07-02, v4) | `defs.ts` threaten def read `getPrior(...,'confront')` — a personality-flat goal-domain composite (0.56, static) — while PAM emits a dedicated threaten prior (moves 0.10→0.33 with Power). Measured: q:threaten byte-identical under the v4 reorder until fixed | fixed production-neutrally (legacy order ⇒ same fallback 0.25); re-check via t15 Δq contract test |
 | TOPK-POOL-CAP | Every spawned candidate can in principle be chosen | CRAFT/impl | FALSIFIED-as-shipped (2026-07-02) | `runPipelineV1.ts` `topK: 10` feeds `decideAction`, whose Gumbel pool = topRanked — candidates ranked 11+ (e.g. `command`, q below share's 0.123) can NEVER be chosen regardless of noise | widened to `priorInfluence.topK=16` when the flag is ON; legacy 10 otherwise. Production cap recorded as standing DEBT |
-| V4-FACTORIAL | With the chain connected (ORDER-PRIOR-POSS + THREATEN-PRIOR-MISWIRE + TOPK-POOL-CAP, all ON-gated), personality reaches OUTCOMES | CRAFT | **RAN 2026-07-02 — first outcome-level effects ever**: 1 PASS + interaction PASS + 3 NON_MONOTONE + 1 DEAD | By frozen thresholds (MONO_RHO 0.90): Care→coop_rate @ S_defection_pressure **PASS** (ρ=+0.94); interaction **PASS** (slope +0.062 @T0.1 vs +0.031 @T0.9 — q-dominance story holds); Power @ S_contest_pressure: self_favoring ρ=+0.78 d=+0.031 and mean_other ρ=−0.90 d=−0.406 — both directionally right, graded NON_MONOTONE by the frozen bar (recorded, not re-graded); Care @ static S_defection NON_MONOTONE with a **sign-surprise to adjudicate: Care↑ → i_defect↑ (ρ=+0.79), mean_self +0.50** — mechanism-only cell, no pressure; Liberty @ S_coercive_order **DEAD** — the predicted W-miss, AX-DEAD (axis→trait wiring) now confirmed on outcomes too | thin-slice risks: 32 seeds, d≈0.03–0.06 near resolution; replicate before believing PASSes. Next: more seeds or lower T for the Power cells; adjudicate the Care/i_defect flip; AX-DEAD → wiring audit (T3-adjacent) · `outcome_triage_v4.json` |
+| V4-FACTORIAL | With the chain connected (ORDER-PRIOR-POSS + THREATEN-PRIOR-MISWIRE + TOPK-POOL-CAP, all ON-gated), personality reaches OUTCOMES | CRAFT | **RAN 2026-07-02 — first outcome-level effects ever**: 1 PASS + 1 MISLABELED interaction + 3 NON_MONOTONE + 1 DEAD | By frozen thresholds (MONO_RHO 0.90): Care→coop_rate @ S_defection_pressure **PASS** (ρ=+0.94); interaction **MISLABELED after audit repair**: OLS slope +0.054 @T0.1 vs +0.080 @T0.9, so the preregistered low-T > high-T ordering fails. The original +0.062/+0.031 values were endpoint deltas incorrectly reported as slopes; this run does **not** support the q-dominance account. Power @ S_contest_pressure: self_favoring ρ=+0.78 d=+0.031 and mean_other ρ=−0.90 d=−0.406 — both directionally right, graded NON_MONOTONE by the frozen bar (recorded, not re-graded); Care @ static S_defection NON_MONOTONE with a **sign-surprise to adjudicate: Care↑ → i_defect↑ (ρ=+0.79), mean_self +0.50** — mechanism-only cell, no pressure; Liberty @ S_coercive_order **DEAD** — the predicted W-miss, AX-DEAD (axis→trait wiring) now confirmed on outcomes too | thin-slice risks: 32 seeds, d≈0.03–0.06 near resolution; replicate before believing the remaining PASS. Next: export per-seed outcomes and freeze a seed-aware interaction statistic before rerunning; adjudicate the Care/i_defect flip; AX-DEAD → wiring audit (T3-adjacent) · `outcome_triage_v4.json` |
 | V3-FACTORIAL | The 2×3 factorial attributes the T1 falsification | CRAFT | **RAN 2026-07-02** — negative controls 3/3 PASS(flat); all 5 directional cells DEAD/ABSENT; interaction DEAD | Both levers WORK but don't yet connect: pressure scenes spawn coercive candidates (contract test: threaten/command in ranked; absent in static) and the flag changes composition (share→loot; self_favoring 0→0.375, mean_self 1.875→3.625) — yet every axis slope is exactly 0 because possibility magnitudes are built BEFORE priors exist (ORDER-PRIOR-POSS). Liberty: `outcome:defied` ABSENT — `challenge` spawns with q≈−0.003 and is never chosen; AX-DEAD stands as predicted (W-miss recorded) | v4: reorder priors→possibilities under the flag, re-freeze the directional cells, rerun · `outcome_triage_v3.json` |
 | DIL-OUTCOME | Personality axes shape dilemma-lab outcomes (they DO enter the utility: `lib/dilemma/runner.ts:99-107` vb()) | CRAFT | OPEN — no outcome-level validation exists | coupling verified in code; zero pre-registered outcome predictions | axes fail to move trust_exchange outcome distribution · *no test yet — post-T1.5, reuse the Game/outcome pattern* |
 | MAF-OUTCOME | Personality axes shape mafia vote/night outcomes (coupling exists: `lib/mafia/decisions/vote.ts:153` traitSnapshot) | CRAFT | OPEN — no outcome-level validation exists | coupling verified in code; zero pre-registered outcome predictions | axes fail to move vote outcomes · *no test yet — Phase 2 prerequisite* |
 
 (Row groups `AX-1..8`, `MU-1..4`, `STK-1..4` expand to one row per item when the
 results land.)
+
+## V4 interaction grading
+
+### Purpose
+
+Проверить пре-регистрированное утверждение: наклон зависимости
+`Power → outcome:self_favoring` при `T=0.1` больше, чем при `T=0.9`.
+
+### Formula
+
+```text
+slope_T = Σᵢ(xᵢ − x̄)(yᵢ,T − ȳ_T) / Σᵢ(xᵢ − x̄)²
+PASS ⇔ slope_0.1 > 0 and slope_0.1 − slope_0.9 > 0.03
+```
+
+### Variables
+
+- `xᵢ ∈ [0,1]` — значение `A_Power_Sovereignty`, семь замороженных точек.
+- `yᵢ,T ∈ [0,1]` — доля `outcome:self_favoring` по 32 seed при температуре `T`.
+- `0.03` — замороженный минимальный порог эффекта `EPS_DEAD`, применённый к
+  разности OLS slopes.
+
+### Source of truth
+
+- implementation: `kanonar_behavior_lab/src/basis/outcome_triage_v4.py`
+- frozen input: `kanonar_behavior_lab/data/reports/outcome_sweep_on_v4.csv`
+- generated report: `kanonar_behavior_lab/data/reports/outcome_triage_v4.json`
+- regression test: `kanonar_behavior_lab/tests/test_outcome_triage_v4.py`
+
+### Invariants
+
+- OLS использует все точки оси и свободный член.
+- Endpoint delta сохраняется только как диагностика и не называется slope.
+- Порог и модель классификации записываются в metadata отчёта.
+
+### Minimal example
+
+```text
+slope_0.1 = +0.054
+slope_0.9 = +0.080
+difference = −0.027
+verdict = MISLABELED
+```
+
+### Failure modes
+
+- Подмена slope разностью крайних точек является ошибкой классификатора.
+- Агрегированный CSV не позволяет оценить seed-level uncertainty; для нового
+  факторного прогона нужны per-seed строки и заранее замороженная статистика.
 
 ## Pending spine edit (item 4 of the plan — NOT a new file)
 
