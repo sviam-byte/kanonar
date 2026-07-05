@@ -1,0 +1,85 @@
+{
+  "metadata": {
+    "schema_version": 1,
+    "generated_by": "kanonar_behavior_lab.src.basis.interaction_perseed",
+    "input_csv": "outcome_sweep_on_v4_perseed.csv",
+    "input_sha256": "b11b0d64e96e038cda8115bca7edf3e8598dad0b458a20c8218565bedf5e9491",
+    "observation_level": "per-seed outcomes (long format + seed column)",
+    "frozen": {
+      "eps_dead": 0.03,
+      "expected_axis_points": 7,
+      "expected_seeds": 32,
+      "bootstrap": {
+        "B": 10000,
+        "seed": 20260705,
+        "kind": "percentile, resample seeds"
+      },
+      "pass_rule": "mean b_T0.1 > 0 AND D > eps_dead AND ci_lo > 0",
+      "dead_rule": "max(|mean b_T0.1|, |mean b_T0.9|) < eps_dead"
+    }
+  },
+  "interaction": {
+    "axis": "A_Power_Sovereignty",
+    "readout": "outcome:self_favoring",
+    "cells": {
+      "S_contest_pressure@T0.1": {
+        "mean_slope": 0.0536,
+        "sd_slope": 0.2721,
+        "seeds": 32
+      },
+      "S_contest_pressure@T0.9": {
+        "mean_slope": 0.0804,
+        "sd_slope": 0.4546,
+        "seeds": 32
+      }
+    },
+    "estimator": "per-seed OLS slopes; D=mean_s(b_T0.1,s - b_T0.9,s); percentile bootstrap over seeds",
+    "eps_dead": 0.03,
+    "bootstrap_B": 10000,
+    "bootstrap_seed": 20260705,
+    "D": -0.0268,
+    "ci95": [
+      -0.1607,
+      0.1071
+    ],
+    "d_per_seed": {
+      "1": -0.6429,
+      "2": 0.0,
+      "3": 0.6429,
+      "4": 0.6429,
+      "5": 0.6429,
+      "6": 0.4286,
+      "7": -0.2143,
+      "8": 0.0,
+      "9": -0.6429,
+      "10": 0.6429,
+      "11": 0.6429,
+      "12": 0.0,
+      "13": 0.0,
+      "14": -0.6429,
+      "15": 0.0,
+      "16": 0.0,
+      "17": 0.0,
+      "18": -0.2143,
+      "19": 0.0,
+      "20": 0.0,
+      "21": 0.0,
+      "22": 0.0,
+      "23": 0.0,
+      "24": 0.0,
+      "25": 0.0,
+      "26": -0.6429,
+      "27": -0.4286,
+      "28": 0.0,
+      "29": 0.0,
+      "30": 0.0,
+      "31": -0.4286,
+      "32": -0.6429
+    },
+    "aggregate_consistency": {
+      "delta": 6.938893903907228e-18,
+      "ok": true
+    },
+    "verdict": "MISLABELED"
+  }
+}
