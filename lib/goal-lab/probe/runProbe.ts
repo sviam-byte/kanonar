@@ -17,12 +17,28 @@ import { clamp01 } from '../../util/math';
 import { buildProbeAgent, type ProbeScene } from './scenes';
 import { scoreAction, type OtherPolicy } from './game';
 
+/**
+ * Per-seed raw datum (WP-A / I-0.1): the chosen action at one seed plus its
+ * game outcome. The choice is the PRIMITIVE observation — outcomes are a pure
+ * fold through scene.game — so retaining it protects any future re-grade
+ * (grading-estimator discipline: per-seed data must survive aggregation).
+ */
+export interface ProbeSeedReadout {
+  seed: number;
+  /** Chosen S8 action key at this seed (null: pipeline ok but no best). */
+  chosenKey: string | null;
+  /** scoreAction(game, chosenKey, otherPolicy); null when scene has no game or no choice. */
+  outcome: { label: string; self: number; other: number; move: string | null } | null;
+}
+
 export interface ProbeReadout {
   scene: string;
   selfId: string;
   axisOverrides: Record<string, number>;
   seedsUsed: number;
   ok: boolean;
+  /** Per-seed raw data; seeds whose pipeline threw are ABSENT (no imputation). */
+  perSeed: ProbeSeedReadout[];
   /** S7: goal domain -> score01 (heavily normalized — weak discriminator). */
   s7Domains: Record<string, number>;
   /** S7: util:plan:<self>:<plan> -> magnitude (goal-action utilities). */
@@ -174,6 +190,7 @@ export function runProbe(opts: RunProbeOptions): ProbeReadout {
   const chosenCounts: Record<string, number> = {};
   const qSums: Record<string, number> = {};
   const qCounts: Record<string, number> = {};
+  const perSeed: ProbeSeedReadout[] = [];
 
   let s7Domains: Record<string, number> = {};
   let utilPlans: Record<string, number> = {};
@@ -224,6 +241,7 @@ export function runProbe(opts: RunProbeOptions): ProbeReadout {
     const best = s8?.best ?? s8?.decisionSnapshot?.digest?.linearBest;
     const key = actionKey(best);
     if (key) chosenCounts[key] = (chosenCounts[key] ?? 0) + 1;
+    perSeed.push({ seed, chosenKey: key ?? null, outcome: null });
 
     const ranked = Array.isArray(s8?.ranked) ? s8.ranked : [];
     for (const r of ranked) {
@@ -269,6 +287,15 @@ export function runProbe(opts: RunProbeOptions): ProbeReadout {
       if (s.move === 'cooperate') coopRate += p;
       if (s.move === null) unclassifiedRate += p;
     }
+    // Per-seed outcomes: the same pure fold, applied to each seed's choice.
+    // By construction mean_s(per-seed indicator) === outcomeDistribution[label]
+    // whenever every retained seed produced a choice (the aggregation identity
+    // asserted by tests/goals/perseed_export.test.ts).
+    for (const ps of perSeed) {
+      if (!ps.chosenKey) continue;
+      const s = scoreAction(scene.game, ps.chosenKey, otherPolicy);
+      ps.outcome = { label: s.label, self: s.self, other: s.other, move: s.move };
+    }
   }
 
   return {
@@ -277,6 +304,7 @@ export function runProbe(opts: RunProbeOptions): ProbeReadout {
     axisOverrides,
     seedsUsed: okCount,
     ok: okCount > 0,
+    perSeed,
     s7Domains,
     utilPlans,
     actPriors,

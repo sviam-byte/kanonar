@@ -2,7 +2,10 @@ import { describe, it, expect } from 'vitest';
 import { writeFileSync } from 'node:fs';
 import path from 'node:path';
 
-import { sweepAxis, toCsv, linspace, type ProbeRecord } from '@/lib/goal-lab/probe/sweep';
+import {
+  sweepAxis, sweepAxisFull, toCsv, toCsvPerSeed, linspace,
+  type ProbeRecord, type PerSeedRecord, type SweepResult,
+} from '@/lib/goal-lab/probe/sweep';
 import {
   S_contest, S_defection, S_neutral,
   S_contest_pressure, S_defection_pressure, S_coercive_order,
@@ -27,6 +30,14 @@ function tagScene(records: ProbeRecord[], sceneTag: string): ProbeRecord[] {
   return records.map(r => ({ ...r, scene: sceneTag }));
 }
 
+/** Same re-tag for a full sweep result (aggregate + per-seed rows). */
+function tagSceneFull(result: SweepResult, sceneTag: string): SweepResult {
+  return {
+    aggregate: tagScene(result.aggregate, sceneTag),
+    perSeed: result.perSeed.map(r => ({ ...r, scene: sceneTag })),
+  };
+}
+
 describe.runIf(RUN)('T1.5 factorial export (v3 pre-registered cells)', () => {
   it('exports the priorInfluence=OFF cells', () => {
     const PI = (FC.actionScoring as any).priorInfluence;
@@ -49,28 +60,35 @@ describe.runIf(RUN)('T1.5 factorial export (v3 pre-registered cells)', () => {
     const PI = (FC.actionScoring as any).priorInfluence;
     PI.enabled = true;
     try {
-      const records: ProbeRecord[] = [
-        ...sweepAxis({ axis: 'A_Care_Compassion', scene: S_defection, values, seeds: seedsV4 }),
-        ...sweepAxis({ axis: 'A_Power_Sovereignty', scene: S_contest_pressure, values, seeds: seedsV4 }),
-        ...sweepAxis({ axis: 'A_Care_Compassion', scene: S_defection_pressure, values, seeds: seedsV4 }),
-        ...sweepAxis({ axis: 'A_Liberty_Autonomy', scene: S_coercive_order, values, seeds: seedsV4 }),
-        ...tagScene(
-          sweepAxis({
+      // WP-A: same runs, two tables — the aggregate CSV (byte-identical schema
+      // to the v4 freeze run) and its per-seed twin (`seed` column added),
+      // consumed by kanonar_behavior_lab/src/basis/interaction_perseed.py.
+      const cells: SweepResult[] = [
+        sweepAxisFull({ axis: 'A_Care_Compassion', scene: S_defection, values, seeds: seedsV4 }),
+        sweepAxisFull({ axis: 'A_Power_Sovereignty', scene: S_contest_pressure, values, seeds: seedsV4 }),
+        sweepAxisFull({ axis: 'A_Care_Compassion', scene: S_defection_pressure, values, seeds: seedsV4 }),
+        sweepAxisFull({ axis: 'A_Liberty_Autonomy', scene: S_coercive_order, values, seeds: seedsV4 }),
+        tagSceneFull(
+          sweepAxisFull({
             axis: 'A_Power_Sovereignty', scene: S_contest_pressure, values, seeds: seedsV4,
             baseAxisOverrides: { B_decision_temperature: 0.1 },
           }),
           'S_contest_pressure@T0.1',
         ),
-        ...tagScene(
-          sweepAxis({
+        tagSceneFull(
+          sweepAxisFull({
             axis: 'A_Power_Sovereignty', scene: S_contest_pressure, values, seeds: seedsV4,
             baseAxisOverrides: { B_decision_temperature: 0.9 },
           }),
           'S_contest_pressure@T0.9',
         ),
       ];
+      const records: ProbeRecord[] = cells.flatMap(c => c.aggregate);
+      const perSeed: PerSeedRecord[] = cells.flatMap(c => c.perSeed);
       expect(records.some(r => r.layer === 'OUTCOME')).toBe(true);
+      expect(perSeed.some(r => r.layer === 'OUTCOME')).toBe(true);
       writeFileSync(path.join(REPORTS, 'outcome_sweep_on_v4.csv'), toCsv(records), 'utf8');
+      writeFileSync(path.join(REPORTS, 'outcome_sweep_on_v4_perseed.csv'), toCsvPerSeed(perSeed), 'utf8');
     } finally {
       PI.enabled = false;
     }
