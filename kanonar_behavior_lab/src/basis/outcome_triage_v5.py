@@ -57,9 +57,9 @@ ON_AGG_CSV = REPORTS_DIR / "outcome_sweep_on_v5_on.csv"
 ON_SEED_CSV = REPORTS_DIR / "outcome_sweep_on_v5_on_perseed.csv"
 TRIAGE_JSON = REPORTS_DIR / "outcome_triage_v5.json"
 
-# Filled at the results commit (v4 precedent) — the freeze commit that
-# preceded the run.
-V5_FREEZE_COMMIT = "TBD-AT-RESULTS-COMMIT"
+# The freeze commit that preceded the run (filled at the results commit,
+# v4 precedent).
+V5_FREEZE_COMMIT = "c15d6b4ea024a841e387ba9d212739d734287132"
 
 AXIS = "A_Liberty_Autonomy"
 CELL_OFF = "S_coercive_order@pamV2off"
@@ -354,10 +354,11 @@ def main() -> None:
     report = run_triage()
     for rid, pr in report["predictions"].items():
         extra = ""
+        # ASCII-only console output: cp1251 terminals cannot encode U+0304.
         if "mean_slope" in pr:
-            extra = f" b̄={pr['mean_slope']:+.4f} sd={pr['sd_slope']:.4f} CI95=[{pr['ci95'][0]:+.4f},{pr['ci95'][1]:+.4f}]"
+            extra = f" b_mean={pr['mean_slope']:+.4f} sd={pr['sd_slope']:.4f} CI95=[{pr['ci95'][0]:+.4f},{pr['ci95'][1]:+.4f}]"
         elif "D" in pr:
-            extra = (f" b̄_on={pr['mean_slope_on']:+.4f} b̄_off={pr['mean_slope_off']:+.4f}"
+            extra = (f" b_on={pr['mean_slope_on']:+.4f} b_off={pr['mean_slope_off']:+.4f}"
                      f" D={pr['D']:+.4f} CI95=[{pr['ci95'][0]:+.4f},{pr['ci95'][1]:+.4f}]")
         elif "rho" in pr:
             extra = f" rho={pr['rho']:+.2f} d={pr['delta']:+.3f}"
