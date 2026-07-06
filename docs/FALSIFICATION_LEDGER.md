@@ -47,7 +47,7 @@ same way. State the standard explicitly per row.
 | L-05 | "провал без злодеев" = deterministic fall into the default attractor when B/will sag (a *consequence*, not a plot device) | LAW (consequence of L-01/L-03) | OPEN | follows from L-01+L-03 if those hold | default-attractor capture not predicted by z · *downstream of L-01/L-03* |
 | L-06 | dual-process gate `w(z)=σ(β(budget−cost(z)))` with hysteresis | LAW/impl | FALSIFIED-as-stated (not wired) | only 3 hard modes via arousal/surprise/fatigue, no continuous w(z), no hysteresis (D3 wiring truths) | — already known absent; reclassify once built · [LAYER_CONTRACTS](LAYER_CONTRACTS.md) |
 | AX-1..8 | each of the 8 LIVE axes drives its pre-registered readout, correctly signed | CRAFT (+ LAW on Layer 3 anchors) | SUPPORTED (sign), held-out OPEN | sign-audit PASS + population-stable cons 1.00 (worklog §4); held-out not run. **Re-graded 2026-07-02: evidence is WIRING-ONLY** — all readouts are act:prior/util:plan, which provably do not reach the S8 choice (Q-PRIOR-DROP, B-POWER-OUTCOME) | wrong sign on held-out, or no lift over context-only baseline · [BASELINE_ABLATION_PROTOCOL](BASELINE_ABLATION_PROTOCOL.md) (D2) |
-| AX-DEAD | `A_Liberty_Autonomy` is genuinely dead (not a missing affordance) | CRAFT | OPEN | dead on toy *and* real chars (worklog §93) | comes alive in `S_coercive_order` with a `defy` affordance · [SCENE_BATTERY_v1 §2](SCENE_BATTERY_v1.md) |
+| AX-DEAD | `A_Liberty_Autonomy` is genuinely dead (not a missing affordance) | CRAFT | OPEN | dead on toy *and* real chars (worklog §93). **Attribution corrected 2026-07-06 (I-0.2 recon):** the "axis→trait wiring" phrasing was wrong — the wiring EXISTS (`extractCharacter.ts:52`: `trait.autonomy = clamp01(A_Liberty_Autonomy)`, 1:1 mirror of powerDrive). The real breaks: (a) PAM had no `challenge`/`defy` entry → `getPrior(...,'challenge',0.15)` (`defs.ts:1875`) always fell back to a personality-flat constant — addressed flag-gated in PAM-V2; (b) `score.ts:311` trait families key on `aff:attack\|aff:confront\|aff:threaten` id prefixes — `con:challenge` matches NO family, so even trait.autonomy's Q-terms never touch it — **standing DEBT, not fixed in I-0.2** | comes alive in `S_coercive_order` once challenge/defy carry priors (v5 rows R1/R2/R3, `outcomeSignTableV5.ts`) · [SCENE_BATTERY_v1 §2](SCENE_BATTERY_v1.md) |
 | AX-FLIP | `C_betrayal_cost→confront` sign is character-dependent (predicted non-identifiability) | CRAFT | SUPPORTED | cons 0.64 sign-flip (worklog §4). **Re-graded 2026-07-02: wiring-only evidence** (act:prior layer — see Q-PRIOR-DROP) | consistency ≥0.8 (i.e. NOT character-dependent) would falsify the compensation story · roster_triage |
 | MU-1..4 | μ poles produce distinct, correctly-signed behavioural tops (SR→rebel, SN→coordinate, ON→optimize, OR→deceive) | CRAFT | SUPPORTED (own readout) | archetype_probe 5/5 (worklog §5) — **but on the sidecar readout, not the pipeline** | a pole's top action matches another pole, or doesn't survive wiring into the pipeline · archetype_probe / D2 A2 |
 | STK-1..4 | each stack layer (ToM/archetype/lookahead/drivers) earns its place (held-out lift) | CRAFT | OPEN | none — the missing comparison | ablating the layer does not hurt held-out beyond noise · [BASELINE_ABLATION_PROTOCOL](BASELINE_ABLATION_PROTOCOL.md) (D2) |
@@ -64,6 +64,7 @@ same way. State the standard explicitly per row.
 | TOPK-POOL-CAP | Every spawned candidate can in principle be chosen | CRAFT/impl | FALSIFIED-as-shipped (2026-07-02) | `runPipelineV1.ts` `topK: 10` feeds `decideAction`, whose Gumbel pool = topRanked — candidates ranked 11+ (e.g. `command`, q below share's 0.123) can NEVER be chosen regardless of noise | widened to `priorInfluence.topK=16` when the flag is ON; legacy 10 otherwise. Production cap recorded as standing DEBT |
 | V4-FACTORIAL | With the chain connected (ORDER-PRIOR-POSS + THREATEN-PRIOR-MISWIRE + TOPK-POOL-CAP, all ON-gated), personality reaches OUTCOMES | CRAFT | **RAN 2026-07-02 — first outcome-level effects ever**: 1 PASS + 1 MISLABELED interaction + 3 NON_MONOTONE + 1 DEAD | By frozen thresholds (MONO_RHO 0.90): Care→coop_rate @ S_defection_pressure **PASS** (ρ=+0.94); interaction **MISLABELED after audit repair**: OLS slope +0.054 @T0.1 vs +0.080 @T0.9, so the preregistered low-T > high-T ordering fails. The original +0.062/+0.031 values were endpoint deltas incorrectly reported as slopes; this run does **not** support the q-dominance account. *Seed-aware re-grade 2026-07-05 (estimator frozen b4aefe8 pre-run): MISLABELED confirmed — D=−0.0268, CI95=[−0.161,+0.107], d_s>0 on 6/32 seeds; design bound MDE≈0.14 recorded (see «Seed-aware re-grade» section).* Power @ S_contest_pressure: self_favoring ρ=+0.78 d=+0.031 and mean_other ρ=−0.90 d=−0.406 — both directionally right, graded NON_MONOTONE by the frozen bar (recorded, not re-graded); Care @ static S_defection NON_MONOTONE with a **sign-surprise to adjudicate: Care↑ → i_defect↑ (ρ=+0.79), mean_self +0.50** — mechanism-only cell, no pressure; Liberty @ S_coercive_order **DEAD** — the predicted W-miss, AX-DEAD (axis→trait wiring) now confirmed on outcomes too | thin-slice risks: 32 seeds, d≈0.03–0.06 near resolution; replicate before believing the remaining PASS. Next: export per-seed outcomes and freeze a seed-aware interaction statistic before rerunning; adjudicate the Care/i_defect flip; AX-DEAD → wiring audit (T3-adjacent) · `outcome_triage_v4.json` |
 | V3-FACTORIAL | The 2×3 factorial attributes the T1 falsification | CRAFT | **RAN 2026-07-02** — negative controls 3/3 PASS(flat); all 5 directional cells DEAD/ABSENT; interaction DEAD | Both levers WORK but don't yet connect: pressure scenes spawn coercive candidates (contract test: threaten/command in ranked; absent in static) and the flag changes composition (share→loot; self_favoring 0→0.375, mean_self 1.875→3.625) — yet every axis slope is exactly 0 because possibility magnitudes are built BEFORE priors exist (ORDER-PRIOR-POSS). Liberty: `outcome:defied` ABSENT — `challenge` spawns with q≈−0.003 and is never chosen; AX-DEAD stands as predicted (W-miss recorded) | v4: reorder priors→possibilities under the flag, re-freeze the directional cells, rerun · `outcome_triage_v3.json` |
+| PAM-V2 | Insubordinate priors (challenge/defy, keyed on `trait.autonomy`) connect Liberty to choice — the OBS-VOCAB "separate behavior-affecting decision", taken VERSIONED (author decision 2026-07-05) | CRAFT | OPEN — frozen 2026-07-06, run pending | mechanism: `PERSONALITY_ACTION_MAP_V2` + `FC.actionScoring.pamV2` (default OFF; OFF iterates the untouched v1 map by reference — map-ablation equivalence contract in `tests/goals/pam_v2.test.ts`; dampen regex extended `\|challenge\|defy`, inert OFF). `defy` is prior-vocabulary only (no possibility/spec consumes it). Pre-registered: `outcomeSignTableV5.ts` R0 (flat control @pamV2off, 512 seeds), R1 (prior:B:challenge up, deterministic), R2 (outcome:defied up, seed-aware b̄+CI), R3 (CRN-paired ON−OFF contrast D) | R1 fails ⇒ the map/trait plumbing itself is broken; R2/R3 DEAD ⇒ effect size below Q-noise (grades size, not wiring) · `outcome_triage_v5.py` |
 | DIL-OUTCOME | Personality axes shape dilemma-lab outcomes (they DO enter the utility: `lib/dilemma/runner.ts:99-107` vb()) | CRAFT | OPEN — no outcome-level validation exists | coupling verified in code; zero pre-registered outcome predictions | axes fail to move trust_exchange outcome distribution · *no test yet — post-T1.5, reuse the Game/outcome pattern* |
 | MAF-OUTCOME | Personality axes shape mafia vote/night outcomes (coupling exists: `lib/mafia/decisions/vote.ts:153` traitSnapshot) | CRAFT | OPEN — no outcome-level validation exists | coupling verified in code; zero pre-registered outcome predictions | axes fail to move vote outcomes · *no test yet — Phase 2 prerequisite* |
 
@@ -160,6 +161,54 @@ requires ~650 seeds or a variance-reduced observable.**
 - generated report: `outcome_interaction_perseed.json`
 - regression test: `kanonar_behavior_lab/tests/test_interaction_perseed.py`
   (pins both hashes, the verdict, and the 6/32 seed-level count)
+
+## V5 grading (PAM v2: challenge/defy — I-0.2)
+
+### Purpose
+
+Проверить пре-регистрированные утверждения `outcomeSignTableV5.ts` (FROZEN
+2026-07-06, до прогона): версионированные insubordinate-priors соединяют
+Liberty с выбором в `S_coercive_order`.
+
+### Formula
+
+```text
+R0 (flat control, pamV2 OFF):  PASS(flat) ⇔ range(outcome:defied) < EPS_DEAD
+R1 (wiring, S8):               triage._classify 'up' на prior:B:challenge
+                               (rho ≥ MONO_RHO ∧ delta > EPS_DEAD)
+R2 (seed-aware, pamV2 ON):     b_s = OLS slope с intercept индикатора
+                               outcome:defied на сетке linspace(0,1,7)
+                               (structural zero-fill), b̄ = mean_s b_s;
+                               CI95 = percentile bootstrap по сидам,
+                               B=10000, rng seed 20260706;
+                               PASS ⇔ b̄ > EPS_DEAD ∧ CI_lo > 0;
+                               DEAD ⇔ |b̄| < EPS_DEAD
+R3 (CRN-контраст):             d_s = b_on,s − b_off,s (спарено сидом; defy
+                               не добавляет кандидата ⇒ Gumbel-поток
+                               инвариантен флагу); D = mean_s d_s;
+                               PASS ⇔ b̄_on > 0 ∧ D > EPS_DEAD ∧ CI_lo > 0
+INVALID_DESIGN:                сетка ≠ 7 · сидов ≠ 512 · сид-множества
+                               различаются · |b̄ − b_aggregate| > 1e-9
+```
+
+### Variables
+
+- 512 сидов на ячейку — задекларировано при freeze из записанной границы
+  I-0.1: sd(b_s) ≈ 0.27–0.45 ⇒ полуширина CI ≈ 1.96·sd/√512 ≈ 0.024–0.039 ≈
+  0.8–1.3 × EPS_DEAD (у R3 меньше за счёт CRN).
+- Ожидаемый эффект R2 (задекларировано при freeze): Δprior ≈ +0.26 →
+  Δmag ≈ +0.09 → Δq ≈ +0.047 при Gumbel std ≈ 1.28 ⇒ slope 0.005–0.05 —
+  страддлит EPS_DEAD; DEAD у R2/R3 грейдит **effect size**, wiring несёт R1.
+
+### Source of truth
+
+- pre-registration: `lib/goal-lab/probe/outcomeSignTableV5.ts`
+- implementation: `kanonar_behavior_lab/src/basis/outcome_triage_v5.py`
+  (`--selftest`: замкнутые формы, все ветки вердиктов)
+- frozen inputs: `outcome_sweep_on_v5_{off,on}[_perseed].csv`
+- generated report: `outcome_triage_v5.json`
+- regression test: `kanonar_behavior_lab/tests/test_outcome_triage_v5.py`
+  (при freeze — selftest+тождество; пины хэшей/вердиктов — при results-коммите)
 
 ## Pending spine edit (item 4 of the plan — NOT a new file)
 

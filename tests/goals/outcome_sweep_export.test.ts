@@ -93,6 +93,51 @@ describe.runIf(RUN)('T1.5 factorial export (v3 pre-registered cells)', () => {
       PI.enabled = false;
     }
   }, 600000);
+
+  // v5 (outcomeSignTableV5.ts, I-0.2 PAM-V2): one Liberty cell per pamV2
+  // state, 512 seeds declared at freeze (power rationale in the table file).
+  // Same seed list in both cells ⇒ CRN pairing for the R3 contrast. The v4
+  // block above runs with pamV2 OFF — its CSV byte-identity (sha256 pin in
+  // test_interaction_perseed.py) is the end-to-end OFF gate.
+  const seedsV5 = Array.from({ length: 512 }, (_, i) => i + 1);
+
+  it('exports the v5 OFF-control cell (priorInfluence ON, pamV2 OFF)', () => {
+    const PI = (FC.actionScoring as any).priorInfluence;
+    const PV2 = (FC.actionScoring as any).pamV2;
+    PI.enabled = true;
+    PV2.enabled = false;
+    try {
+      const cell = tagSceneFull(
+        sweepAxisFull({ axis: 'A_Liberty_Autonomy', scene: S_coercive_order, values, seeds: seedsV5 }),
+        'S_coercive_order@pamV2off',
+      );
+      expect(cell.perSeed.some(r => r.layer === 'OUTCOME')).toBe(true);
+      writeFileSync(path.join(REPORTS, 'outcome_sweep_on_v5_off.csv'), toCsv(cell.aggregate), 'utf8');
+      writeFileSync(path.join(REPORTS, 'outcome_sweep_on_v5_off_perseed.csv'), toCsvPerSeed(cell.perSeed), 'utf8');
+    } finally {
+      PI.enabled = false;
+      PV2.enabled = false;
+    }
+  }, 600000);
+
+  it('exports the v5 ON cell (priorInfluence ON, pamV2 ON)', () => {
+    const PI = (FC.actionScoring as any).priorInfluence;
+    const PV2 = (FC.actionScoring as any).pamV2;
+    PI.enabled = true;
+    PV2.enabled = true;
+    try {
+      const cell = tagSceneFull(
+        sweepAxisFull({ axis: 'A_Liberty_Autonomy', scene: S_coercive_order, values, seeds: seedsV5 }),
+        'S_coercive_order@pamV2on',
+      );
+      expect(cell.perSeed.some(r => r.layer === 'OUTCOME')).toBe(true);
+      writeFileSync(path.join(REPORTS, 'outcome_sweep_on_v5_on.csv'), toCsv(cell.aggregate), 'utf8');
+      writeFileSync(path.join(REPORTS, 'outcome_sweep_on_v5_on_perseed.csv'), toCsvPerSeed(cell.perSeed), 'utf8');
+    } finally {
+      PI.enabled = false;
+      PV2.enabled = false;
+    }
+  }, 600000);
 });
 
 // Keep the file discoverable by vitest even when the export is skipped.

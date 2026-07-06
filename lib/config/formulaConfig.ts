@@ -376,6 +376,23 @@ export const PERSONALITY_ACTION_MAP: Record<string, {
   propose_trade: { base: 0.20, traits: { normSensitivity: 0.10, experience: 0.15 } },
 } as const;
 
+// ─── PAM v2 additions (I-0.2, ledger PAM-V2) ─────────────────────────────
+// Insubordinate verbs keyed on trait.autonomy (= A_Liberty_Autonomy 1:1,
+// extractCharacter.ts). Versioned observable change: merged into the PAM
+// loop ONLY when FC.actionScoring.pamV2.enabled — with the flag off the v2
+// map is never read and the act:prior vocabulary is bit-identical to legacy.
+// NOTE `defy` is prior-vocabulary only: no possibility/spec consumes it yet
+// (only the `defied` OUTCOME label exists); recorded in outcomeSignTableV5.
+
+export const PERSONALITY_ACTION_MAP_V2: Record<string, {
+  base: number;
+  traits: Record<string, number>;
+}> = {
+  // ── Insubordinate ──
+  challenge: { base: 0.10, traits: { autonomy: 0.35, normSensitivity: -0.15 } },
+  defy: { base: 0.05, traits: { autonomy: 0.40, normSensitivity: -0.20 } },
+} as const;
+
 // ─── Possibility Weights (defs.ts magic numbers) ────────────────────────
 // Each possibility builder reads weights from here instead of hardcoding.
 // Format: { <key>: { <inputName>: weight, ... } }
@@ -521,6 +538,15 @@ export const ACTION_SCORING = {
     /** Choice-pool size when enabled (legacy topK=10 also CAPS the Gumbel
      *  pool — candidates ranked 11+ can never be chosen; ledger TOPK-POOL-CAP). */
     topK: 16,
+  },
+  /**
+   * I-0.2 (ledger PAM-V2): merge PERSONALITY_ACTION_MAP_V2 (challenge/defy,
+   * keyed on trait.autonomy) into the PAM loop of deriveActionPriors.
+   * Default OFF — the OFF path iterates the untouched v1 map by reference,
+   * so the system is bit-identical to legacy (contract: tests/goals/pam_v2).
+   */
+  pamV2: {
+    enabled: false as boolean,
   },
 } as const;
 
@@ -872,6 +898,7 @@ export const FC = {
   mode: MODE_FORMULA,
   priors: PRIORS_FORMULA,
   personalityActionMap: PERSONALITY_ACTION_MAP,
+  personalityActionMapV2: PERSONALITY_ACTION_MAP_V2,
   possibilityWeights: POSSIBILITY_WEIGHTS,
   inhibition: INHIBITION,
   decision: DECISION,

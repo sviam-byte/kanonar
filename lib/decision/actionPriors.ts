@@ -269,8 +269,13 @@ export function deriveActionPriors(args: {
 
     // ── Personality-driven social priors ──
     // Reads character traits and maps them to action tendencies via PERSONALITY_ACTION_MAP.
+    // PAM v2 (I-0.2, ledger PAM-V2): challenge/defy merged ONLY when the flag
+    // is on; the OFF branch iterates the untouched v1 object by reference.
     {
-      const PAM = (FC as any).personalityActionMap;
+      const pamV2On = Boolean((FC.actionScoring as any)?.pamV2?.enabled);
+      const PAM = pamV2On
+        ? { ...(FC as any).personalityActionMap, ...(FC as any).personalityActionMapV2 }
+        : (FC as any).personalityActionMap;
       if (PAM && typeof PAM === 'object') {
         for (const [act, spec] of Object.entries(PAM) as [string, { base: number; traits: Record<string, number> }][]) {
           let v = spec.base;
@@ -279,7 +284,7 @@ export function deriveActionPriors(args: {
           }
 
           // Context modulation: social risk dampens aggressive priors.
-          const isAggressive = /command|threaten|accuse/.test(act);
+          const isAggressive = /command|threaten|accuse|challenge|defy/.test(act);
           if (isAggressive) {
             v *= clamp01(1 - 0.3 * socialRisk);
           }
