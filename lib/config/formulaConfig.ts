@@ -584,6 +584,29 @@ export const OBJECTS_FORMULA = {
   },
 } as const;
 
+// ─── Location v1 (I-2.4, KANONAR_PHASE_I_IMPL_PLAN §4) ──────────────────────
+
+/**
+ * Location v1 properties passthrough: the SimKit→GoalLab adapter
+ * (goalLabWorldState.ts) forwards the location ENTITY's `properties`
+ * (privacy/control_level/visibility/noise/…) into the pipeline's location
+ * object, so the EXISTING producers (worldFacts.ts `world:loc:*`,
+ * locationAtoms.ts) and the untouched deriveAxes sockets
+ * (privacy = 0.7·locPrivacy + 0.3·normPrivacy;
+ *  publicness = 0.7·(1−locPrivacy) + 0.3·normPublicExposure) finally SEE the
+ * location. Before this flag, simkit snapshots dropped `properties` entirely —
+ * every scene read as public/neutral regardless of the data (same break class
+ * as MVP0-C1-V0's agentAtoms with no consumer). Default OFF — the adapter
+ * output carries no `properties` key, byte-identical to legacy (witness: the
+ * pinned MVP-0 golden hash). Frozen v1 scope: `properties` only; location
+ * `state`/`ownership` passthrough is a separate versioned decision.
+ */
+export const LOCATION_FORMULA = {
+  propsV1: {
+    enabled: false as boolean,
+  },
+} as const;
+
 // ─── Target-Specific ToM Modulation (actionCandidateUtils.ts) ─────────────
 
 export const TOM_MODULATION = {
@@ -939,6 +962,7 @@ export const FC = {
   actionScoring: ACTION_SCORING,
   communication: COMMUNICATION_FORMULA,
   objects: OBJECTS_FORMULA,
+  location: LOCATION_FORMULA,
   tomMod: TOM_MODULATION,
   goalState: GOAL_STATE,
   lookahead: LOOKAHEAD,

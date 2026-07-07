@@ -1,8 +1,9 @@
 // lib/simkit/plugins/goalLabWorldState.ts
 // Shared SimKit -> GoalLab world-state adapter used by multiple plugins.
 
-import type { SimWorld, SimSnapshot, ActionOffer } from '../core/types';
-import { EntityType, type WorldState } from '../../../types';
+import type { SimWorld, SimSnapshot, ActionOffer, SimLocation } from '../core/types';
+import { EntityType, type LocationEntity, type WorldState } from '../../../types';
+import { FC } from '../../config/formulaConfig';
 import { makeAgentRNG, setGlobalRunSeed } from '../../core/noise';
 import { clamp01 } from '../../util/math';
 import { arr } from '../../utils/arr';
@@ -389,7 +390,7 @@ export function buildWorldStateFromSim(world: SimWorld, snapshot: SimSnapshot, o
   setGlobalRunSeed(Number((world as any)?.seed ?? 12345));
 
   const chars = arr<any>((snapshot as any)?.characters);
-  const locs = arr<any>((snapshot as any)?.locations);
+  const locs = arr<SimLocation>((snapshot as any)?.locations);
   const domainEvents = toDomainEvents(world, snapshot);
   const observedByAgent = buildObservedByAgent(domainEvents, world);
   const inboxByAgent = ((world as any)?.facts?.inboxAtoms && typeof (world as any).facts.inboxAtoms === 'object')
@@ -489,9 +490,9 @@ export function buildWorldStateFromSim(world: SimWorld, snapshot: SimSnapshot, o
     }
   }
 
-  const locations = locs.map((l: any) => {
+  const locations: LocationEntity[] = locs.map((l) => {
     const entityId = String(l?.id);
-    return {
+    const out: Record<string, unknown> = {
       entityId,
       type: EntityType.Location,
       title: String(l?.name ?? entityId),
@@ -500,7 +501,16 @@ export function buildWorldStateFromSim(world: SimWorld, snapshot: SimSnapshot, o
       norms: l?.norms || {},
       neighbors: arr<string>(l?.neighbors),
       // pipeline expects LocationEntity-ish, tolerate extra fields
-    } as any;
+    };
+    // Location v1 (I-2.4, FC.location.propsV1): forward the location ENTITY's
+    // properties so worldFacts/locationAtoms/deriveAxes see privacy & co.
+    // OFF (default): no `properties` key — adapter output byte-identical to
+    // legacy (simkit scenes historically read as public/neutral).
+    if (FC.location.propsV1.enabled) {
+      const props = (l.entity as Pick<LocationEntity, 'properties'> | undefined)?.properties;
+      if (props && typeof props === 'object') out.properties = props;
+    }
+    return out as LocationEntity;
   });
 
   const beliefAtomsByAgent = Object.fromEntries(

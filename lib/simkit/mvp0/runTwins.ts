@@ -16,7 +16,7 @@
 import type { SimWorld, SpeechEventV1 } from '../core/types';
 import { cloneWorld } from '../core/world';
 import { objectFactKey } from '../actions/objectSpec';
-import { MVP0_OBJECT_ID } from '../scenarios/mvp0Scene';
+import { MVP0_LOCATION_ID, MVP0_OBJECT_ID } from '../scenarios/mvp0Scene';
 import { makeMvp0Simulator, stepToRows, type Mvp0Row } from './runMvpRollout';
 import { canonicalStringify, sha256Hex } from './hash';
 
@@ -111,6 +111,27 @@ export function injectSpeechAtomTransform(args: {
       ...(w.events || []),
       { id: `evt:speech:inject:${w.tickIndex}:${args.from}:${args.to}`, type: 'speech:v1', payload },
     ];
+    return w;
+  };
+}
+
+/** Location v1 (I-2.4): flip the scene location's `privacy` property — the
+ *  single manipulated knob of the A4-LOC cell (private ↔ public over the SAME
+ *  scene). Only meaningful with FC.location.propsV1 ON; with the flag OFF the
+ *  adapter drops properties and both arms are identical by construction.
+ *  cloneWorld is a JSON deep clone, so the shared data/locations entity is
+ *  never mutated. */
+export function setLocationPrivacyTransform(
+  privacy: 'private' | 'semi' | 'public',
+  locationId: string = MVP0_LOCATION_ID,
+) {
+  return (world: SimWorld): SimWorld => {
+    const w = cloneWorld(world);
+    const loc = w.locations[locationId];
+    if (loc?.entity) {
+      const entity = loc.entity as Record<string, unknown> & { properties?: Record<string, unknown> };
+      entity.properties = { ...(entity.properties ?? {}), privacy };
+    }
     return w;
   };
 }

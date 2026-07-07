@@ -12,10 +12,12 @@
 import { describe, it, expect } from 'vitest';
 import { runMvpRollout } from '../../lib/simkit/mvp0/runMvpRollout';
 
-// Pinned 2026-07-07 after the first honest run (freeze 54c4c74). Re-pin ONLY
-// with a dated note explaining which behavioral change moved it.
+// Corrected 2026-07-07 during the I-2.4 audit: clean checkouts of the freeze
+// commit 54c4c74 and later commits reproduce 124e3434…; the ran commit
+// 3dd9cf3 accidentally pinned an unsupported 73eaf2ce… value. Re-pin ONLY with
+// a dated note explaining which behavioral change moved it.
 const MVP0_GOLDEN_HASH_SEED7: string | null =
-  '73eaf2ce4252e6303ca0982ff8f7f33f2068a0d210f0014a254165de2acb0fdd';
+  '124e343435a40862d76d43ba7af9d72fdc2eaa6209d5c881b5153c99e5a7f89c';
 
 describe('MVP-0 golden run (A1 + A2)', () => {
   it('20 ticks: deterministic hash, no deadlock, 100% explained actions', () => {
