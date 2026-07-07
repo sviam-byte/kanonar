@@ -201,12 +201,33 @@ I-2.5 после I-2.1; I-2.3/I-2.4 параллелимы.
   защитная ретенция вместо уступки). Рычаги A5 (решение автора): эффект-сайз
   danger (кривая драйвера) ИЛИ пере-регистрация сигнатуры C1-v2 как
   engagement/retention.
+- **C1-v2 RAN 2026-07-07 (freeze 626c4d3, свежие сиды 33–64):** версия
+  engagement/retention подтвердила все направления: negotiate 14/32→17/32
+  (Δ=+0.09375), voluntary yield {give,share} 1/32→0 (Δ=−0.03125),
+  dSafetyNeed=+0.00304, confront 0→0. Вердикт **DIRECTIONAL-UNDER-BAR**:
+  frozen min-PASS +0.10 не пройден на один выбор. Это не переоценка и не
+  ретроактивное закрытие A5-STAKES; исходная гипотеза уступки остаётся
+  фальсифицированной.
 
 ### I-2.4 Location v1: оси как факторы (A4)
-- **Состав:** publicity/privacy/authority уже пишутся сенсорами
-  (`applyInputAxesSensors`) — довести до валидационной ячейки: манипуляция
-  локацией (private↔public) меняет меню/исход с пре-зарегистрированным знаком;
-  перемещение как действие уже есть (move-офферы).
+- **Состав:** `FC.location.propsV1` (default OFF) пропускает `properties`
+  сущности SimKit-локации в GoalLab `LocationEntity`; существующие
+  `locationAtoms.ts` и `deriveAxes.ts` превращают privacy private↔public в
+  `world:loc:privacy:*` и оси privacy/publicness/intimacy. `state` и
+  `ownership` не входят в v1. Перемещение как действие уже есть (move-офферы),
+  но в этой ячейке не проверяется.
+- **Контракт:** OFF — adapter output бит-идентичен при private/public
+  манипуляции и golden-run не меняется; ON — properties доходят до pipeline,
+  privacy↑, publicness↓, intimacy↑. Чистая функция
+  `setLocationPrivacyTransform` меняет только privacy в клонированном мире.
+- **RAN 2026-07-07 (freeze 626c4d3, A4-LOC):** private 30/64 affiliative
+  (0.46875), public 17/64 (0.265625), **dAffiliative=+0.203125 ≥ +0.10 — PASS**.
+  Состав: help 30→17, negotiate 8→21, talk 26→26. Это outcome-level
+  подтверждение location-фактора на одной сцене/32 сидах, не проверка всех
+  location properties и не проверка move-механики. Долг артефакта: JSON
+  сохранил список сидов и aggregate counts, но не per-seed строки; paired
+  uncertainty из него не восстановить, и frozen cell ради этого не
+  перезапускается.
 
 ### I-2.5 Память: A3 в полную силу
 - **Пре-регистрация:** $t_{1/2}=\ln 2/\ln\frac{1}{1-\alpha}$; для decaying
