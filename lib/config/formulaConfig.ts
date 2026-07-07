@@ -550,6 +550,23 @@ export const ACTION_SCORING = {
   },
 } as const;
 
+// ─── Communication ladder (KANONAR_TZ §1.4) ────────────────────────────────
+
+/**
+ * I-2.1 (ledger MVP0-C1-V0): speech-borne threat reaches the danger axis.
+ * When enabled, runPipelineV1 derives `ctx:src:comm:threat:<selfId>` from
+ * incoming speech atoms with meta.act='threaten' (max of magnitude·confidence
+ * over senders ≠ self), and deriveAxes joins it into dangerSocial as
+ * max(sceneThreat, commThreat). Default OFF — the atom is never produced and
+ * max(x, 0) = x, so every axis output is bit-identical to legacy (contract:
+ * the pinned MVP-0 golden hash + frozen probe tests).
+ */
+export const COMMUNICATION_FORMULA = {
+  speechThreatV1: {
+    enabled: false as boolean,
+  },
+} as const;
+
 // ─── Target-Specific ToM Modulation (actionCandidateUtils.ts) ─────────────
 
 export const TOM_MODULATION = {
@@ -903,6 +920,7 @@ export const FC = {
   inhibition: INHIBITION,
   decision: DECISION,
   actionScoring: ACTION_SCORING,
+  communication: COMMUNICATION_FORMULA,
   tomMod: TOM_MODULATION,
   goalState: GOAL_STATE,
   lookahead: LOOKAHEAD,

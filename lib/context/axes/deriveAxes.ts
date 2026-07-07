@@ -121,6 +121,13 @@ export function deriveAxes(args: { selfId: string; atoms: ContextAtom[]; tuning?
   const scLoss = q('ctx.src.scene.loss', `ctx:src:scene:loss:${selfId}`, 0);
   const scResourceAccess = q('ctx.src.scene.resourceAccess', `ctx:src:scene:resourceAccess:${selfId}`, 0);
   const scThreat = q('ctx.src.scene.threat', `ctx:src:scene:threat:${selfId}`, 0);
+  // Communication v1a (I-2.1): speech-borne threat source, produced flag-gated
+  // (commThreatAtoms.ts). Absent (flag OFF or no threats) ⇒ 0 ⇒ max is a no-op
+  // and every output AND trace below is bit-identical to legacy (the comm
+  // contribution enters parts/usedAtomIds only when the atom exists).
+  const commThreatPresent = atoms.some(x => String((x as any)?.id) === `ctx:src:comm:threat:${selfId}`);
+  const commThreat = commThreatPresent ? q('ctx.src.comm.threat', `ctx:src:comm:threat:${selfId}`, 0) : 0;
+  const scThreatEff = Math.max(scThreat, commThreat);
   const scAuthority = q('ctx.src.scene.authority', `ctx:src:scene:authority:${selfId}`, 0);
 
   const normPrivacy = q('ctx.src.norm.privacy', `ctx:src:norm:privacy:${selfId}`, 0);
@@ -159,7 +166,7 @@ export function deriveAxes(args: { selfId: string; atoms: ContextAtom[]; tuning?
   const hierarchy = clamp01(0.55 * control + 0.25 * normPressure + 0.20 * normProceduralStrict);
   const vulnFactor = clamp01(0.85 + 0.10 * (1 - escape) + 0.05 * (1 - cover));
   const dangerBase = clamp01(danger * vulnFactor);
-  const dangerSocial = clamp01(0.55 * scHostility + 0.45 * scThreat);
+  const dangerSocial = clamp01(0.55 * scHostility + 0.45 * scThreatEff);
   const ctxDanger = clamp01(0.75 * dangerBase + 0.25 * dangerSocial);
   const ctxCrowd = crowd;
   const ctxNormPressure = clamp01(0.45 * normPressure + 0.30 * surveillance + 0.15 * publicness + 0.10 * normProceduralStrict);
@@ -280,7 +287,8 @@ export function deriveAxes(args: { selfId: string; atoms: ContextAtom[]; tuning?
         `world:map:escape:${selfId}`,
         `world:map:cover:${selfId}`,
         `ctx:src:scene:hostility:${selfId}`,
-        `ctx:src:scene:threat:${selfId}`
+        `ctx:src:scene:threat:${selfId}`,
+        ...(commThreatPresent ? [`ctx:src:comm:threat:${selfId}`] : [])
       ],
       buildParts([
         { name: 'dangerBase', val: dangerBase, w: 0.75 },
@@ -293,7 +301,15 @@ export function deriveAxes(args: { selfId: string; atoms: ContextAtom[]; tuning?
         { name: 'cover', val: cover },
         { name: 'sceneHostility', val: scHostility, w: 0.55 },
         { name: 'sceneThreat', val: scThreat, w: 0.45 },
-      ], 'danger = 0.75*(danger * vulnFactor) + 0.25*(0.55*hostility + 0.45*sceneThreat)')
+        ...(commThreatPresent
+          ? [
+              { name: 'commThreat', val: commThreat },
+              { name: 'threatEff', val: scThreatEff, w: 0.45 },
+            ]
+          : []),
+      ], commThreatPresent
+        ? 'danger = 0.75*(danger * vulnFactor) + 0.25*(0.55*hostility + 0.45*max(sceneThreat, commThreat))'
+        : 'danger = 0.75*(danger * vulnFactor) + 0.25*(0.55*hostility + 0.45*sceneThreat)')
     ),
     atom(
       `ctx:intimacy:${selfId}`,

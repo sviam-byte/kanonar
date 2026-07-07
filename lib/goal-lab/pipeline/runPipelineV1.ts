@@ -12,6 +12,7 @@ import { applyCharacterLens } from '../../context/lens/characterLens';
 import { applyRelationPriorsToDyads } from '../../tom/base/applyRelationPriors';
 import { deriveNonContextDyadAtoms } from '../../tom/base/deriveNonContextDyads';
 import { derivePhysicalThreatAtoms } from '../../context/sources/physicalThreatAtoms';
+import { deriveCommThreatAtoms } from '../../context/sources/commThreatAtoms';
 import { deriveSocialStandingAtoms } from '../../context/sources/socialStandingAtoms';
 import { buildBeliefToMBias } from '../../tom/ctx/beliefBias';
 import { buildTomPolicyLayer } from '../../tom/policy/tomPolicy';
@@ -690,7 +691,13 @@ export function runGoalLabPipelineV1(input: {
     s2Warnings.push('S2: hazard-ish signals present, but hazardGeometry produced 0 atoms (check world.locations[].map + agent positions).');
   }
 
-  const mS2a = mergeAtomsPreferNewer(atoms, [...spAtoms, ...hzAtoms]);
+  // Communication v1a (I-2.1, flag-gated): speech-borne threat → danger-axis
+  // source. OFF ⇒ no atom ⇒ deriveAxes' max-join is a no-op (bit-identical).
+  const commThreatAtoms = FC.communication.speechThreatV1.enabled
+    ? arr(deriveCommThreatAtoms({ selfId, atoms }).atoms).map(normalizeAtom)
+    : [];
+
+  const mS2a = mergeAtomsPreferNewer(atoms, [...spAtoms, ...hzAtoms, ...commThreatAtoms]);
   const atomsS2in = mS2a.atoms;
 
   const ctx = deriveAxes({ selfId, atoms: atomsS2in });

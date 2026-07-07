@@ -149,18 +149,60 @@ trace → twin-diff.** Всё новое кладём в `lib/simkit/mvp0/` + о
 
 ## 4. Шаг I-2 — мир формализуется (закрывает ярус A)
 
-Детализируется до мини-спеков **после** приёмки MVP-0. Состав (из ТЗ):
+Мини-спеки детализированы 2026-07-07 (после приёмки MVP-0 автором; входы —
+вердикты MVP0-* в леджере). Порядок: I-2.1 → I-2.2 — критический путь A5;
+I-2.5 после I-2.1; I-2.3/I-2.4 параллелимы.
 
-- **Object v1:** типизированный контракт (facts-принадлежность; possibility-гейты
-  И контекст-оси; transfer/seize в Game). Freeze предсказаний → A4 в полную силу.
-- **Location v1:** оси publicity/privacy/authority как факторы (субстрат:
-  `applyInputAxesSensors` уже пишет privacy/authorityPresence); перемещение как
-  действие. Freeze → A4.
-- **Communication v1:** невербальный канал, сцена C2 (субстрат: шаг 5.6
-  симулятора); презентационный слой (детерминированные шаблоны поверх трассы)
-  отдельным не влияющим модулем. → A5 закреплён (порог Δp ≥ 0.15, 32 сида).
-- **Память:** пре-регистрация $t_{1/2}=\ln 2/\ln\frac{1}{1-\alpha}$ из α EMA;
-  wipe-twin → A3 в полную силу.
+### I-2.1 Communication v1a: speech→danger coupling (рычаг MVP0-C1-V0)
+- **Вход:** ось danger строится ТОЛЬКО из ctx:/world:-источников; speech-атом
+  0.7 в S0 невидим для `deriveAxes` (вердикт MVP0-C1-V0).
+- **Дизайн:** НЕ менять формулу оси. У `dangerSocial` уже есть сокет
+  `ctx:src:scene:threat`; добавляем параллельный источник
+  `ctx:src:comm:threat:<selfId>` — флаг-гейтед продьюсер (runPipelineV1, до
+  deriveAxes): max по входящим speech-атомам с meta.act='threaten',
+  meta.from≠self, значение = magnitude·confidence, трасса = id этих атомов.
+  В deriveAxes: `scThreatEff = max(scThreat, commThreat)`; при OFF атом не
+  существует ⇒ max(x,0)=x ⇒ выход побайтово легаси.
+- **Файлы:** `lib/config/formulaConfig.ts` (FC.communication.speechThreatV1,
+  default OFF); `lib/goal-lab/pipeline/runPipelineV1.ts` (продьюсер);
+  `lib/context/axes/deriveAxes.ts` (max-join + parts).
+- **Тест:** contract — OFF: запинённый golden hash MVP-0 не двигается +
+  замороженные probe-тесты зелёные; unit ON: threaten-атом в пуле ⇒
+  ctx:danger↑ с предсказуемым вкладом.
+- **Запрещено:** менять веса 0.75/0.25/0.55/0.45; невербалка; шаблоны текста.
+
+### I-2.2 C1-v1: A5 в полную силу (re-run 32 сида, флаг ON)
+- **Пре-регистрация (freeze до прогона):** твин ± threaten(A→B, mag 0.7) @t0,
+  ридаут B @tick 1: S1 Δdanger>0 (safetyNeed/fear); S2 Δp(confront)≤0;
+  S3 Δp(retreat/give)>0; **A5 мин-PASS: Δp(retreat/give) ≥ 0.15 @32 сида.**
+- **Файлы:** `tests/simkit/mvp0_c1_sign.test.ts` (v1-вариант с флагом ON) +
+  отчёт `mvp0_c1_sign_v1.json`.
+- **Запрещено:** менять сцену/сиды/классы глаголов после freeze.
+
+### I-2.3 Object v1: типизированный контракт (A4 outcome-level)
+- **Состав:** possibility-гейты (наличие/владение токеном гейтит кандидатов)
+  И контекст-оси (владение → `ctx:src:scene:resourceAccess`, отсутствие →
+  scarcity); transfer/seize скорится в Game (расширение G_* или новый G_object).
+- **Freeze предсказаний:** |Δp| ≥ 0.10 @32 сида, знак пре-зарегистрирован
+  (абляция токена ⇒ scarcity↑ ⇒ предсказанный сдвиг класса действий).
+- **Известный риск:** take не выбирается (q-доминирование talk, MVP0-A4-MENU);
+  лечится осевым каналом (scarcity/resourceAccess), не тюнингом q.
+
+### I-2.4 Location v1: оси как факторы (A4)
+- **Состав:** publicity/privacy/authority уже пишутся сенсорами
+  (`applyInputAxesSensors`) — довести до валидационной ячейки: манипуляция
+  локацией (private↔public) меняет меню/исход с пре-зарегистрированным знаком;
+  перемещение как действие уже есть (move-офферы).
+
+### I-2.5 Память: A3 в полную силу
+- **Пре-регистрация:** $t_{1/2}=\ln 2/\ln\frac{1}{1-\alpha}$; для decaying
+  store (decayPerTick 0.97): $t_{1/2}=\ln 2/\ln(1/0.97)\approx 22.76$ тиков —
+  проверка затухания следа в пределах ×2. Wipe-twin: расхождение ≤5 тиков
+  после wipe на сцене, где память несёт угрозу (после I-2.1 speech-угроза
+  должна персистироваться в mem:* — сейчас speech:v1 НЕ попадает в
+  buildBeliefAtomsForTick, только action:*-события; это отдельное versioned
+  решение внутри I-2.5).
+- **Вход из MVP-0:** MVP0-MEM-DECOR — память state-real, behavior-decorative.
 
 ## 5. Верификация и дисциплина (сквозные)
 
