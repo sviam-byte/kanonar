@@ -230,14 +230,67 @@ I-2.5 после I-2.1; I-2.3/I-2.4 параллелимы.
   перезапускается.
 
 ### I-2.5 Память: A3 в полную силу
-- **Пре-регистрация:** $t_{1/2}=\ln 2/\ln\frac{1}{1-\alpha}$; для decaying
-  store (decayPerTick 0.97): $t_{1/2}=\ln 2/\ln(1/0.97)\approx 22.76$ тиков —
-  проверка затухания следа в пределах ×2. Wipe-twin: расхождение ≤5 тиков
-  после wipe на сцене, где память несёт угрозу (после I-2.1 speech-угроза
-  должна персистироваться в mem:* — сейчас speech:v1 НЕ попадает в
-  buildBeliefAtomsForTick, только action:*-события; это отдельное versioned
-  решение внутри I-2.5).
-- **Вход из MVP-0:** MVP0-MEM-DECOR — память state-real, behavior-decorative.
+
+#### Назначение
+
+Versioned `FC.memory.threatTraceV1` превращает принятую речь `threaten` в
+явный затухающий внутренний trace. Default OFF сохраняет legacy golden-run.
+
+#### Формула
+
+```text
+c(t) = c0 · d^(t - τ)
+t_1/2 = ln(0.5) / ln(d)
+```
+
+#### Переменные
+
+- `c0 ∈ [0,1]` — confidence принятого speech-атома после trust gate.
+- `d = 0.97` — `decayPerTick` из `FC.memory.threatTraceV1`.
+- `τ` — тик наблюдения; `t` — текущий тик, `t ≥ τ`.
+- `forgetBelow = 0.12` — порог удаления trace; `maxFacts = 600` — предел store.
+
+#### Источники истины
+
+- runtime: `lib/simkit/post/perceiveActions.ts`,
+  `lib/simkit/plugins/perceptionMemoryPlugin.ts`,
+  `lib/simkit/plugins/goalLabWorldState.ts`;
+- config: `lib/config/formulaConfig.ts` (`FC.memory.threatTraceV1`);
+- tests: `tests/simkit/memory_threat_v1.test.ts`,
+  `tests/simkit/mvp0_memory_sign.test.ts`;
+- trace/report: `kanonar_behavior_lab/data/reports/mvp0_memory_sign.json`.
+
+#### Инварианты
+
+- абсолютный возраст считается от `lastObservedTick`; повторное
+  `confidence *= d^age` запрещено для v1 trace;
+- в GoalLab возвращаются только decaying entries с tags `{speech, threat}`;
+- OFF не меняет legacy output; wipe очищает все B memory stores до шага twin.
+
+#### Минимальный пример
+
+```text
+c0 = 0.60, d = 0.97, age = 23
+c(23) = 0.60 · 0.97^23 ≈ 0.298
+t_1/2 = 22.7566; discrete crossing = 23; ratio = 1.0107
+```
+
+#### Результат и ограничения
+
+**RAN 2026-07-07 (freeze b3f8f9f): A3 PASS.** На заранее выбранном из
+C1-v1 threat-responsive seed 3 оба twin получают одну угрозу в t0; wipe B
+перед t2 даёт первое расхождение B в t2 (lag 0): base `help`, twin
+`negotiate`. Half-life проходит критерий ×2. Результат — single-seed
+mechanism cell, не population estimate. Upstream `mem:speech:threat:*` пока не
+доходит до action-level `usedAtomIds`; S8 показывает только разошедшиеся
+`util:hint:*`, поэтому индивидуальная atom-attribution остаётся debt.
+
+#### Failure modes
+
+- speech trace отсутствует в S0 после завершения fresh delivery;
+- confidence зависит от числа вызовов persistence, а не только от возраста;
+- OFF меняет golden-run;
+- wipe не меняет решение в frozen пяти-тиковом окне.
 
 ## 5. Верификация и дисциплина (сквозные)
 

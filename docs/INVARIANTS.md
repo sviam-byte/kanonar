@@ -43,6 +43,18 @@
 - `belief:surprise:*` должен сохраняться в `pipeline.beliefPersist.beliefAtoms` (а не только в frame atoms), иначе петля S9→S0→S6 разрывается.
 - S6 может усиливать `drv:*` только через явный конфиг (`FC.drivers.surpriseFeedback`) с верхней границей (`maxBoost`) и trace-полем `parts.surpriseBoost`.
 
+## Memory v1 invariants
+
+- При `FC.memory.threatTraceV1.enabled=true` confidence принятого threat trace
+  вычисляется только как `c0 * decayPerTick^age`, где
+  `age = currentTick - lastObservedTick`.
+- Повторное умножение уже затухшего confidence на `decayPerTick^age` запрещено:
+  результат не должен зависеть от числа промежуточных вызовов persistence.
+- В GoalLab из `mem:memory:*` проецируются только явно tagged
+  `{speech, threat}` entries; action-memory сохраняет legacy-семантику.
+- OFF-ветвь обязана сохранять MVP-0 golden hash. Проверки:
+  `tests/simkit/memory_threat_v1.test.ts`, `tests/simkit/mvp0_golden.test.ts`.
+
 ### Belief persistence completeness (v27+)
 
 beliefPersist.beliefAtoms MUST include both prediction atoms AND surprise atoms.

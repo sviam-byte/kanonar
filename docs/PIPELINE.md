@@ -26,6 +26,11 @@ Additional version rule:
 Outputs:
 - `world:*`, `obs:*`, `mem:*`, `rel:*`, `life:*`
 - адаптер SimKit может добавлять `memory:episodic` belief-atoms (derived from recent salient events) в `agent.memory.beliefAtoms` до S0.
+- при `FC.memory.threatTraceV1.enabled=true` адаптер добавляет только tagged
+  `{speech, threat}` entries из `mem:memory:<agentId>`; confidence вычисляется
+  по абсолютному возрасту `c0 * decayPerTick^age`. Fresh accepted speech
+  доставляется отдельно только на следующий тик, поэтому decaying trace не
+  является бесконечным повтором `agentAtoms:*`.
 - `artifacts.placementValidation` — итог проверки размещения персонажей до запуска S0…S8.
 - `artifacts.placementComplete` — краткий флаг `placementValidation.isComplete`.
 

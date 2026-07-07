@@ -1,0 +1,167 @@
+{
+ "metadata": {
+  "generated_by": "tests/simkit/mvp0_memory_sign.test.ts",
+  "date": "2026-07-07",
+  "freeze_design": {
+   "seed": 3,
+   "seed_basis": "already-frozen C1-v1 threat-responsive seed (talk→negotiate)",
+   "setup": "common threaten(A→B, magnitude 0.7) at t0",
+   "intervention": "wipe B memory immediately before t2",
+   "readout": "B applied decisions, t2..t6"
+  },
+  "frozen_predictions": {
+   "A3_behavior": "first B decision divergence tick <= 6 (lag <= 4 within the five post-wipe ticks)",
+   "A3_decay": "discrete half-life within ×2 of ln(0.5)/ln(0.97)"
+  }
+ },
+ "decay": {
+  "decayPerTick": 0.97,
+  "predictedHalfLife": 22.75657306277341,
+  "discreteHalfLife": 23,
+  "ratio": 1.0106969945147322,
+  "withinFactorTwo": true
+ },
+ "behavior": {
+  "interventionTick": 2,
+  "firstDivergenceTickAnyAgent": 2,
+  "firstBDivergenceTick": 2,
+  "divergenceLag": 0,
+  "divergedAtoms": {
+   "onlyBase": [
+    "util:hint:allow:complete_mission:help",
+    "util:hint:allow:help_wounded:help",
+    "util:hint:allow:maintain_bonds:help",
+    "util:hint:allow:protect_lives:help",
+    "util:hint:allow:protect_other:help",
+    "util:hint:allow:protect_others:help",
+    "util:hint:allow:protect_specific_person:help",
+    "util:hint:allow:redeem_self:help",
+    "util:hint:allow:self_transcendence:help"
+   ],
+   "onlyTwin": [
+    "util:hint:allow:assert_autonomy:negotiate",
+    "util:hint:allow:faction_loyalty:negotiate",
+    "util:hint:allow:follow_order:negotiate",
+    "util:hint:allow:go_to_surface:negotiate",
+    "util:hint:allow:maintain_cohesion:negotiate",
+    "util:hint:allow:maintain_legitimacy:negotiate",
+    "util:hint:allow:protect_other:negotiate",
+    "util:hint:allow:protect_others:negotiate",
+    "util:hint:allow:support_leader:negotiate"
+   ]
+  },
+  "baseGoldenHash": "cd25ee292c2d86af2770c11ab802bd1648be89583dc880e3022cb84d2da6dc82",
+  "twinGoldenHash": "32d808834e424ba428fc650147c851292d854bc418251a615d3e5ccac5d8a41f",
+  "perTickB": [
+   {
+    "tick": 0,
+    "baseAction": {
+     "kind": "start_intent",
+     "targetId": "mvp0A",
+     "goalLabKind": "talk"
+    },
+    "twinAction": {
+     "kind": "start_intent",
+     "targetId": "mvp0A",
+     "goalLabKind": "talk"
+    },
+    "baseMemoryAtomIds": [],
+    "twinMemoryAtomIds": []
+   },
+   {
+    "tick": 1,
+    "baseAction": {
+     "kind": "continue_intent",
+     "targetId": "mvp0A",
+     "goalLabKind": "negotiate"
+    },
+    "twinAction": {
+     "kind": "continue_intent",
+     "targetId": "mvp0A",
+     "goalLabKind": "negotiate"
+    },
+    "baseMemoryAtomIds": [],
+    "twinMemoryAtomIds": []
+   },
+   {
+    "tick": 2,
+    "baseAction": {
+     "kind": "continue_intent",
+     "targetId": "mvp0A",
+     "goalLabKind": "help"
+    },
+    "twinAction": {
+     "kind": "continue_intent",
+     "targetId": "mvp0A",
+     "goalLabKind": "negotiate"
+    },
+    "baseMemoryAtomIds": [],
+    "twinMemoryAtomIds": []
+   },
+   {
+    "tick": 3,
+    "baseAction": {
+     "kind": "continue_intent",
+     "targetId": "mvp0A",
+     "goalLabKind": "negotiate"
+    },
+    "twinAction": {
+     "kind": "continue_intent",
+     "targetId": "mvp0A",
+     "goalLabKind": "help"
+    },
+    "baseMemoryAtomIds": [],
+    "twinMemoryAtomIds": []
+   },
+   {
+    "tick": 4,
+    "baseAction": {
+     "kind": "help",
+     "targetId": "mvp0A",
+     "goalLabKind": "help"
+    },
+    "twinAction": {
+     "kind": "continue_intent",
+     "targetId": "mvp0A",
+     "goalLabKind": "negotiate"
+    },
+    "baseMemoryAtomIds": [],
+    "twinMemoryAtomIds": []
+   },
+   {
+    "tick": 5,
+    "baseAction": {
+     "kind": "start_intent",
+     "targetId": "mvp0A",
+     "goalLabKind": "negotiate"
+    },
+    "twinAction": {
+     "kind": "help",
+     "targetId": "mvp0A",
+     "goalLabKind": "help"
+    },
+    "baseMemoryAtomIds": [],
+    "twinMemoryAtomIds": []
+   },
+   {
+    "tick": 6,
+    "baseAction": {
+     "kind": "help",
+     "targetId": "mvp0A",
+     "goalLabKind": "help"
+    },
+    "twinAction": {
+     "kind": "encourage",
+     "targetId": "mvp0A",
+     "goalLabKind": "negotiate"
+    },
+    "baseMemoryAtomIds": [],
+    "twinMemoryAtomIds": []
+   }
+  ],
+  "signs_observed": {
+   "preWipePrefixIdentical": true,
+   "A3_behavior_min_pass": true
+  }
+ }
+}
