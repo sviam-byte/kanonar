@@ -13,6 +13,7 @@ import { applyRelationPriorsToDyads } from '../../tom/base/applyRelationPriors';
 import { deriveNonContextDyadAtoms } from '../../tom/base/deriveNonContextDyads';
 import { derivePhysicalThreatAtoms } from '../../context/sources/physicalThreatAtoms';
 import { deriveCommThreatAtoms } from '../../context/sources/commThreatAtoms';
+import { deriveObjectContextAtoms } from '../../context/sources/objectContextAtoms';
 import { deriveSocialStandingAtoms } from '../../context/sources/socialStandingAtoms';
 import { buildBeliefToMBias } from '../../tom/ctx/beliefBias';
 import { buildTomPolicyLayer } from '../../tom/policy/tomPolicy';
@@ -697,7 +698,13 @@ export function runGoalLabPipelineV1(input: {
     ? arr(deriveCommThreatAtoms({ selfId, atoms }).atoms).map(normalizeAtom)
     : [];
 
-  const mS2a = mergeAtomsPreferNewer(atoms, [...spAtoms, ...hzAtoms, ...commThreatAtoms]);
+  // Object v1 (I-2.3, flag-gated): obj:v0:* facts → resourceAccess/scarcity
+  // source atoms (existing deriveAxes sockets). OFF ⇒ no atoms ⇒ bit-identical.
+  const objectCtxAtoms = FC.objects.contextAxesV1.enabled
+    ? arr(deriveObjectContextAtoms({ selfId, world, atoms }).atoms).map(normalizeAtom)
+    : [];
+
+  const mS2a = mergeAtomsPreferNewer(atoms, [...spAtoms, ...hzAtoms, ...commThreatAtoms, ...objectCtxAtoms]);
   const atomsS2in = mS2a.atoms;
 
   const ctx = deriveAxes({ selfId, atoms: atomsS2in });

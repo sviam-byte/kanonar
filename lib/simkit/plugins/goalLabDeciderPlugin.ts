@@ -127,6 +127,8 @@ const OFFER_KIND_TO_POSS_KIND: Record<string, 'aff' | 'con' | 'off' | 'exit' | '
   observe: 'cog', wait: 'cog', rest: 'cog',
   question_about: 'aff', inspect_feature: 'cog',
   repair_feature: 'off', scavenge_feature: 'off',
+  // Object v0/v1 actions (I-2.3): resource opportunities, not 'cog' fallback.
+  take: 'off', seize: 'off', give: 'aff',
 };
 
 function offersToExternalPossibilities(

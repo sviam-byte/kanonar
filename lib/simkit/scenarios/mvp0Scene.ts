@@ -80,3 +80,15 @@ export function makeMvp0World(seed: number): SimWorld {
   world.facts[objectFactKey(MVP0_OBJECT_ID)] = { holderId: null, locId: MVP0_LOCATION_ID };
   return world;
 }
+
+/**
+ * Staked C1 variant (I-2.3): same world, but agent B HOLDS the token — the
+ * ТЗ's own С1 is a threat over an OBJECT. With FC.objects.contextAxesV1 ON,
+ * B gets resourceAccess 0.9 (a stake to protect/yield: `give` is in B's menu)
+ * and A gets scarcity 0.7 (rival holds).
+ */
+export function makeMvp0StakesWorld(seed: number): SimWorld {
+  const world = makeMvp0World(seed);
+  world.facts[objectFactKey(MVP0_OBJECT_ID)] = { holderId: MVP0_AGENT_B, locId: MVP0_LOCATION_ID };
+  return world;
+}

@@ -567,6 +567,23 @@ export const COMMUNICATION_FORMULA = {
   },
 } as const;
 
+// ─── Object v1 (I-2.3, KANONAR_PHASE_I_IMPL_PLAN §4) ────────────────────────
+
+/**
+ * Object v1 context axes: obj:v0:* facts (holder/location) become per-agent
+ * `ctx:src:scene:resourceAccess` / `ctx:src:scene:scarcity` source atoms —
+ * feeding the EXISTING deriveAxes sockets (control/scarcity formulas
+ * untouched). Values are the observable's frozen constants (in
+ * objectContextAtoms.ts). Default OFF — no atoms are produced and the axes
+ * are bit-identical to legacy. The producer defers to scene metrics: if the
+ * pool already carries the source atom, it does not emit a duplicate.
+ */
+export const OBJECTS_FORMULA = {
+  contextAxesV1: {
+    enabled: false as boolean,
+  },
+} as const;
+
 // ─── Target-Specific ToM Modulation (actionCandidateUtils.ts) ─────────────
 
 export const TOM_MODULATION = {
@@ -921,6 +938,7 @@ export const FC = {
   decision: DECISION,
   actionScoring: ACTION_SCORING,
   communication: COMMUNICATION_FORMULA,
+  objects: OBJECTS_FORMULA,
   tomMod: TOM_MODULATION,
   goalState: GOAL_STATE,
   lookahead: LOOKAHEAD,
