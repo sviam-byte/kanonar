@@ -7,7 +7,7 @@ import { FC } from '../../config/formulaConfig';
 import { makeAgentRNG, setGlobalRunSeed } from '../../core/noise';
 import { clamp01 } from '../../util/math';
 import { arr } from '../../utils/arr';
-import { buildEpisodicAtomsForAgent } from '../post/perceiveActions';
+import { buildDecayingMemoryAtomsForAgent, buildEpisodicAtomsForAgent } from '../post/perceiveActions';
 
 type BuildWorldStateFromSimOpts = {
   offersByAgent?: Record<string, ActionOffer[]>;
@@ -412,7 +412,11 @@ export function buildWorldStateFromSim(world: SimWorld, snapshot: SimSnapshot, o
     const tickNow = Number((world as any)?.tickIndex ?? 0);
     const acceptedAtoms = arr<any>((world as any)?.facts?.[`agentAtoms:${entityId}`])
       .filter((a: any) => Number(a?.meta?.origin?.tickIndex ?? NaN) === tickNow - 1);
-    const allBeliefAtoms = [...beliefAtoms, ...episodicAtoms, ...acceptedAtoms];
+    const memoryV1 = FC.memory.threatTraceV1;
+    const decayingMemoryAtoms = memoryV1.enabled
+      ? buildDecayingMemoryAtomsForAgent(world, entityId, { ...memoryV1, requiredTags: ['speech', 'threat'] })
+      : [];
+    const allBeliefAtoms = [...beliefAtoms, ...episodicAtoms, ...decayingMemoryAtoms, ...acceptedAtoms];
     return {
       entityId,
       type: EntityType.Character,

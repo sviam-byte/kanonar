@@ -16,6 +16,7 @@ export type BeliefAtom = {
   confidence: number;
   tags?: string[];
   label?: string;
+  meta?: Record<string, unknown>;
   trace?: any;
 };
 
@@ -24,7 +25,12 @@ export type PersistedMentalAtom = {
   atom: BeliefAtom;
   lastObservedTick: number;
   confidence: number;
+  baseConfidence?: number;
   source: 'vision' | 'hearing' | 'inference' | 'hallucination';
+};
+
+export type BuildBeliefAtomsOptions = {
+  includeAcceptedThreatSpeech?: boolean;
 };
 
 function isActionEvent(e: SimEvent): boolean {
@@ -32,7 +38,11 @@ function isActionEvent(e: SimEvent): boolean {
   return t.startsWith('action:');
 }
 
-export function buildBeliefAtomsForTick(world: SimWorld, eventsApplied: SimEvent[]) {
+export function buildBeliefAtomsForTick(
+  world: SimWorld,
+  eventsApplied: SimEvent[],
+  opts: BuildBeliefAtomsOptions = {},
+) {
   const out: Record<string, BeliefAtom[]> = {};
   const chars = Object.keys(world.characters || {}).sort();
   for (const id of chars) out[id] = [];
@@ -68,6 +78,37 @@ export function buildBeliefAtomsForTick(world: SimWorld, eventsApplied: SimEvent
         trace: { usedAtomIds: [], notes: [], parts: { simEventId: e.id, payload: p, atomKey } },
       });
     }
+
+    if (opts.includeAcceptedThreatSpeech) {
+      const accepted = arr<any>((world.facts as any)?.[`agentAtoms:${observerId}`]);
+      for (const sourceAtom of accepted) {
+        const meta = sourceAtom?.meta ?? {};
+        const observedTick = Number(meta?.origin?.tickIndex ?? meta?.tickIndex ?? -1);
+        const from = String(meta?.from ?? meta?.origin?.from ?? '');
+        if (String(meta?.act ?? '') !== 'threaten' || !from || from === observerId) continue;
+        if (observedTick !== Number(world.tickIndex ?? 0)) continue;
+
+        const atomKey = `speech-threat:${observerId}:${from}`;
+        atoms.push({
+          id: `mem:speech:threat:${observerId}:${from}`,
+          ns: 'memory',
+          kind: 'speech_threat_memory',
+          origin: 'derived',
+          source: 'simkit:post.perceiveActions',
+          subject: observerId,
+          magnitude: clamp01(Number(sourceAtom?.magnitude ?? 0)),
+          confidence: clamp01(Number(sourceAtom?.confidence ?? 0)),
+          tags: ['memory', 'speech', 'threat', 'decaying'],
+          label: `remembered threat from ${from}`,
+          meta: { ...meta, from, act: 'threaten', observedTick },
+          trace: {
+            usedAtomIds: [String(sourceAtom?.id ?? '')].filter(Boolean),
+            notes: ['accepted threaten speech persisted into absolute-age decaying memory'],
+            parts: { atomKey, sourceAtomId: sourceAtom?.id, from, observedTick },
+          },
+        });
+      }
+    }
     out[observerId] = atoms;
   }
   return out;
@@ -89,10 +130,12 @@ export function persistBeliefAtomsToFacts(world: SimWorld, beliefAtomsByAgentId:
   }
 }
 
-type PersistMemoryOptions = {
+export type PersistMemoryOptions = {
   decayPerTick?: number;
   forgetBelow?: number;
   maxFacts?: number;
+  absoluteAgeDecayV1?: boolean;
+  requiredTags?: string[];
 };
 
 export function persistDecayingMemoryToFacts(
@@ -103,6 +146,7 @@ export function persistDecayingMemoryToFacts(
   const decayPerTick = Number.isFinite(opts.decayPerTick) ? Number(opts.decayPerTick) : 0.97;
   const forgetBelow = Number.isFinite(opts.forgetBelow) ? Number(opts.forgetBelow) : 0.12;
   const maxFacts = Number.isFinite(opts.maxFacts) ? Number(opts.maxFacts) : 600;
+  const absoluteAgeDecayV1 = opts.absoluteAgeDecayV1 === true;
 
   world.facts ||= {};
   const ids = Object.keys(world.characters || {}).sort();
@@ -115,8 +159,11 @@ export function persistDecayingMemoryToFacts(
     // Decay existing facts based on age.
     for (const [factKey, fact] of Object.entries(next)) {
       const age = Math.max(0, now - Number(fact.lastObservedTick ?? 0));
+      const useAbsoluteAge = absoluteAgeDecayV1 && fact.atom?.tags?.includes('decaying');
       if (age > 0) {
-        fact.confidence = clamp01(fact.confidence * Math.pow(decayPerTick, age));
+        fact.confidence = useAbsoluteAge
+          ? clamp01(Number(fact.baseConfidence ?? fact.atom?.confidence ?? fact.confidence) * Math.pow(decayPerTick, age))
+          : clamp01(fact.confidence * Math.pow(decayPerTick, age));
       }
       if (fact.confidence < forgetBelow) {
         delete next[factKey];
@@ -126,12 +173,14 @@ export function persistDecayingMemoryToFacts(
     // Merge new observations.
     for (const atom of arr(beliefAtomsByAgentId[id])) {
       const atomKey = String(atom?.trace?.parts?.atomKey || atom?.id || `obs:${id}:${String(atom?.kind ?? 'event')}`);
+      const useAbsoluteAge = absoluteAgeDecayV1 && atom.tags?.includes('decaying');
       next[atomKey] = {
         key: atomKey,
         atom,
         lastObservedTick: now,
-        confidence: 1,
-        source: 'vision',
+        confidence: useAbsoluteAge ? clamp01(atom.confidence) : 1,
+        ...(useAbsoluteAge ? { baseConfidence: clamp01(atom.confidence) } : {}),
+        source: atom.tags?.includes('speech') ? 'hearing' : 'vision',
       };
     }
 
@@ -146,6 +195,46 @@ export function persistDecayingMemoryToFacts(
 
     (world.facts as any)[key] = next;
   }
+}
+
+/** Materialize live memory atoms at the world's current tick. */
+export function buildDecayingMemoryAtomsForAgent(
+  world: SimWorld,
+  agentId: string,
+  opts: Pick<PersistMemoryOptions, 'decayPerTick' | 'forgetBelow' | 'requiredTags'> = {},
+): BeliefAtom[] {
+  const decayPerTick = Number.isFinite(opts.decayPerTick) ? Number(opts.decayPerTick) : 0.97;
+  const forgetBelow = Number.isFinite(opts.forgetBelow) ? Number(opts.forgetBelow) : 0.12;
+  const store = (world.facts as any)?.[`mem:memory:${agentId}`] as Record<string, PersistedMentalAtom> | undefined;
+  if (!store || typeof store !== 'object') return [];
+
+  const now = Number(world.tickIndex ?? 0);
+  const out: BeliefAtom[] = [];
+  for (const fact of Object.values(store)) {
+    if (opts.requiredTags?.some((tag) => !fact.atom?.tags?.includes(tag))) continue;
+    const age = Math.max(0, now - Number(fact.lastObservedTick ?? 0));
+    const baseConfidence = clamp01(Number(fact.baseConfidence ?? fact.atom?.confidence ?? fact.confidence));
+    const confidence = clamp01(baseConfidence * Math.pow(decayPerTick, age));
+    if (confidence < forgetBelow) continue;
+
+    out.push({
+      ...fact.atom,
+      confidence,
+      trace: {
+        ...(fact.atom.trace ?? {}),
+        usedAtomIds: arr<string>(fact.atom.trace?.usedAtomIds),
+        notes: [
+          ...arr<string>(fact.atom.trace?.notes),
+          `memory confidence = ${baseConfidence} * ${decayPerTick}^${age}`,
+        ],
+        parts: {
+          ...(fact.atom.trace?.parts ?? {}),
+          memoryDecay: { baseConfidence, decayPerTick, age, confidence },
+        },
+      },
+    });
+  }
+  return out.sort((a, b) => String(a.id).localeCompare(String(b.id)));
 }
 
 export type EpisodicEntry = {

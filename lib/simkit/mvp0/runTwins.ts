@@ -32,10 +32,14 @@ export type Mvp0Intervention =
       atTick?: number;
     };
 
+export type Mvp0Setup = Omit<Extract<Mvp0Intervention, { kind: 'injectSpeechAtom' }>, 'atTick'>;
+
 export interface TwinDiff {
   seed: number;
   ticks: number;
   intervention: Mvp0Intervention;
+  /** Common initial condition applied to both twins before tick 0. */
+  setup?: Mvp0Setup;
   interventionTick: number;
   baseRows: Mvp0Row[];
   twinRows: Mvp0Row[];
@@ -161,15 +165,21 @@ function interventionTickOf(intervention: Mvp0Intervention): number {
  * are stepped identically up to that point, so their RNG states match and any
  * divergence is attributable to the single intervention.
  */
-export function runTwins(args: { seed: number; ticks?: number; intervention: Mvp0Intervention }): TwinDiff {
+export function runTwins(args: {
+  seed: number;
+  ticks?: number;
+  intervention: Mvp0Intervention;
+  setup?: Mvp0Setup;
+}): TwinDiff {
   const seed = Number(args.seed);
   const ticks = Math.max(1, Math.min(64, Number(args.ticks ?? 20)));
   const intervention = args.intervention;
   const atTick = Math.min(interventionTickOf(intervention), ticks - 1);
   const transform = transformOf(intervention);
+  const setupTransform = args.setup ? transformOf(args.setup) : undefined;
 
-  const baseSim = makeMvp0Simulator(seed);
-  const twinSim = makeMvp0Simulator(seed);
+  const baseSim = makeMvp0Simulator(seed, setupTransform);
+  const twinSim = makeMvp0Simulator(seed, setupTransform);
 
   const baseRows: Mvp0Row[] = [];
   const twinRows: Mvp0Row[] = [];
@@ -218,6 +228,7 @@ export function runTwins(args: { seed: number; ticks?: number; intervention: Mvp
     seed,
     ticks,
     intervention,
+    ...(args.setup ? { setup: args.setup } : {}),
     interventionTick: atTick,
     baseRows,
     twinRows,

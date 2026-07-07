@@ -607,6 +607,23 @@ export const LOCATION_FORMULA = {
   },
 } as const;
 
+// ─── Memory v1 (I-2.5, KANONAR_PHASE_I_IMPL_PLAN §4) ────────────────────────
+
+/**
+ * Accepted threaten speech becomes an explicit decaying memory trace. The
+ * frozen law is absolute-age exponential decay:
+ *   confidence(t) = confidence0 * decayPerTick^(t - observedTick)
+ * Default OFF preserves the legacy stores and adapter output byte-for-byte.
+ */
+export const MEMORY_FORMULA = {
+  threatTraceV1: {
+    enabled: false as boolean,
+    decayPerTick: 0.97,
+    forgetBelow: 0.12,
+    maxFacts: 600,
+  },
+} as const;
+
 // ─── Target-Specific ToM Modulation (actionCandidateUtils.ts) ─────────────
 
 export const TOM_MODULATION = {
@@ -963,6 +980,7 @@ export const FC = {
   communication: COMMUNICATION_FORMULA,
   objects: OBJECTS_FORMULA,
   location: LOCATION_FORMULA,
+  memory: MEMORY_FORMULA,
   tomMod: TOM_MODULATION,
   goalState: GOAL_STATE,
   lookahead: LOOKAHEAD,
