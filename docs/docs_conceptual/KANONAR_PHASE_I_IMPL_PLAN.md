@@ -28,12 +28,12 @@ I-2 (мир формализуется). Цель Фазы — ярус A (A1–
 | Facts / состояние мира | `world.facts` через `lib/simkit/core/factsAccessors.ts` (getFact/setFact/getCtx/setCtx) | готов |
 | Меню действий | `lib/simkit/actions/specs.ts` (`enumerateActionOffers`) → `rules.ts:proposeActions`; валидация `actions/validate.ts` | готов; **предметных действий нет** |
 | eventLog | `world.events` → `rules.ts:applyEvent`; скользящая история `facts['sim:recentEvents']` (64) | готов |
-| Коммуникация (цепочка C1) | S8 threaten → `SpeechEventV1` (`actions/specs.ts:827`) → `speech:v1` → `rules.ts:89` → `perception/speechFilter.ts` (слышимость/приватность) → `facts['inboxAtoms']` → trust-гейт (`simulator.ts` шаг 2.5) → `facts['agentAtoms:<B>']` → S0 адресата след. тика | **вся цепочка есть; контракт (twin-доказательство) — нет** |
+| Коммуникация (цепочка C1) | S8 threaten → `SpeechEventV1` (`actions/specs.ts:827`) → `speech:v1` → `rules.ts:89` → `perception/speechFilter.ts` (слышимость/приватность) → `facts['inboxAtoms']` → trust-гейт (`simulator.ts` шаг 2.5) → `facts['agentAtoms:<B>']` → S0 адресата след. тика | **вся цепочка есть; контракт (twin-доказательство) — нет.** *Обновлено 2026-07-07 (I-1 ran): звено agentAtoms→S0 НЕ существовало (нет потребителя) — починено в `goalLabWorldState.ts`; цепочка доказана twin-тестом; НО ось danger (`deriveAxes`) не видит speech-атомы — знак C1 danger↑ не наблюдён, вердикт MVP0-C1-V0 в леджере; рычаг — Communication v1 (I-2)* |
 | Невербалка | `perception/nonverbalAtoms.ts`, уже включена в `simulator.ts` шаг 5.6 | субстрат для I-2, в MVP-0 не валидируем |
 | Spatial | `lib/simkit/core/spatial.ts` + `computeTacticalAtoms` (simulator) | готов |
 | Twin-run | `lib/simkit/compare/`: `batchRunner.ts` (`runBatch/runPair/compareRuns`, хук `worldTransform`), `perturbationVector.ts` (body/tom/fact/trait/belief), `divergenceMetrics.ts` (D(t)), `amplifierAttribution.ts` | готов как ProConflict Lab; **нет removeObject/wipeMemory/injectSpeechAtom и first-divergence-tick с атомом** |
 | Одно-тиковый probe | `lib/goal-lab/probe/runProbe.ts` — один тик против статичного B | остаётся для лабов; MVP-0 его НЕ расширяет |
-| Предмет | `ObjectID` в `lib/location/types.ts` — только тип | **главный пробел** |
+| Предмет | `ObjectID` в `lib/location/types.ts` — только тип | **главный пробел.** *Закрыт 2026-07-07 (I-1.2): `lib/simkit/actions/objectSpec.ts` — take/give/seize над фактом `obj:v0:<id>`, событие `obj:transfer`, менюшный эффект доказан (MVP0-A4-MENU)* |
 
 Вывод разведки: MVP-0 — это в основном **сборка и доказательство**, а не новый
 субстрат. Новый код: objectSpec, два тонких раннера-обёртки, тесты.

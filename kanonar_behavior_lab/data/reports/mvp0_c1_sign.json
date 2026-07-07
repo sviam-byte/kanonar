@@ -1,0 +1,550 @@
+{
+ "metadata": {
+  "generated_by": "tests/simkit/mvp0_c1_sign.test.ts",
+  "date": "2026-07-07",
+  "seeds": [
+   1,
+   2,
+   3,
+   4,
+   5,
+   6,
+   7,
+   8,
+   9,
+   10,
+   11,
+   12,
+   13,
+   14,
+   15,
+   16,
+   17,
+   18,
+   19,
+   20,
+   21,
+   22,
+   23,
+   24,
+   25,
+   26,
+   27,
+   28,
+   29,
+   30,
+   31,
+   32
+  ],
+  "design": "twin pair per seed: base vs +threaten(A→B, mag 0.7) at t0; readout = B at tick 1",
+  "frozen_predictions": {
+   "S1_danger": "dSafety > 0 OR dFear > 0",
+   "S2_confront": "dConfront <= 0",
+   "S3_retreat_give": "dRetreatGive > 0",
+   "threshold_note": "sign only; dp >= 0.15 is I-2 (A5 full)"
+  }
+ },
+ "aggregates": {
+  "p_base": {
+   "retreat_give": 0,
+   "confront": 0,
+   "other": 1
+  },
+  "p_twin": {
+   "retreat_give": 0,
+   "confront": 0,
+   "other": 1
+  },
+  "dRetreatGive": 0,
+  "dConfront": 0,
+  "dSafetyNeed": 0,
+  "dFear": 0,
+  "signs_observed": {
+   "S1_danger": false,
+   "S2_confront": true,
+   "S3_retreat_give": false
+  }
+ },
+ "perSeed": [
+  {
+   "seed": 1,
+   "base": {
+    "kind": "talk",
+    "class": "other",
+    "safetyNeed": 0.04385817150686524,
+    "fear": 0
+   },
+   "twin": {
+    "kind": "talk",
+    "class": "other",
+    "safetyNeed": 0.04385817150686524,
+    "fear": 0
+   }
+  },
+  {
+   "seed": 2,
+   "base": {
+    "kind": "help",
+    "class": "other",
+    "safetyNeed": 0.04385817150686524,
+    "fear": 0
+   },
+   "twin": {
+    "kind": "talk",
+    "class": "other",
+    "safetyNeed": 0.04385817150686524,
+    "fear": 0
+   }
+  },
+  {
+   "seed": 3,
+   "base": {
+    "kind": "talk",
+    "class": "other",
+    "safetyNeed": 0.04385817150686524,
+    "fear": 0
+   },
+   "twin": {
+    "kind": "negotiate",
+    "class": "other",
+    "safetyNeed": 0.04385817150686524,
+    "fear": 0
+   }
+  },
+  {
+   "seed": 4,
+   "base": {
+    "kind": "talk",
+    "class": "other",
+    "safetyNeed": 0.04385817150686524,
+    "fear": 0
+   },
+   "twin": {
+    "kind": "negotiate",
+    "class": "other",
+    "safetyNeed": 0.04385817150686524,
+    "fear": 0
+   }
+  },
+  {
+   "seed": 5,
+   "base": {
+    "kind": "talk",
+    "class": "other",
+    "safetyNeed": 0.04385817150686524,
+    "fear": 0
+   },
+   "twin": {
+    "kind": "talk",
+    "class": "other",
+    "safetyNeed": 0.04385817150686524,
+    "fear": 0
+   }
+  },
+  {
+   "seed": 6,
+   "base": {
+    "kind": "talk",
+    "class": "other",
+    "safetyNeed": 0.04385817150686524,
+    "fear": 0
+   },
+   "twin": {
+    "kind": "talk",
+    "class": "other",
+    "safetyNeed": 0.04385817150686524,
+    "fear": 0
+   }
+  },
+  {
+   "seed": 7,
+   "base": {
+    "kind": "talk",
+    "class": "other",
+    "safetyNeed": 0.04385817150686524,
+    "fear": 0
+   },
+   "twin": {
+    "kind": "talk",
+    "class": "other",
+    "safetyNeed": 0.04385817150686524,
+    "fear": 0
+   }
+  },
+  {
+   "seed": 8,
+   "base": {
+    "kind": "talk",
+    "class": "other",
+    "safetyNeed": 0.04385817150686524,
+    "fear": 0
+   },
+   "twin": {
+    "kind": "talk",
+    "class": "other",
+    "safetyNeed": 0.04385817150686524,
+    "fear": 0
+   }
+  },
+  {
+   "seed": 9,
+   "base": {
+    "kind": "talk",
+    "class": "other",
+    "safetyNeed": 0.04385817150686524,
+    "fear": 0
+   },
+   "twin": {
+    "kind": "negotiate",
+    "class": "other",
+    "safetyNeed": 0.04385817150686524,
+    "fear": 0
+   }
+  },
+  {
+   "seed": 10,
+   "base": {
+    "kind": "talk",
+    "class": "other",
+    "safetyNeed": 0.04385817150686524,
+    "fear": 0
+   },
+   "twin": {
+    "kind": "talk",
+    "class": "other",
+    "safetyNeed": 0.04385817150686524,
+    "fear": 0
+   }
+  },
+  {
+   "seed": 11,
+   "base": {
+    "kind": "help",
+    "class": "other",
+    "safetyNeed": 0.04385817150686524,
+    "fear": 0
+   },
+   "twin": {
+    "kind": "negotiate",
+    "class": "other",
+    "safetyNeed": 0.04385817150686524,
+    "fear": 0
+   }
+  },
+  {
+   "seed": 12,
+   "base": {
+    "kind": "talk",
+    "class": "other",
+    "safetyNeed": 0.04385817150686524,
+    "fear": 0
+   },
+   "twin": {
+    "kind": "negotiate",
+    "class": "other",
+    "safetyNeed": 0.04385817150686524,
+    "fear": 0
+   }
+  },
+  {
+   "seed": 13,
+   "base": {
+    "kind": "talk",
+    "class": "other",
+    "safetyNeed": 0.04385817150686524,
+    "fear": 0
+   },
+   "twin": {
+    "kind": "negotiate",
+    "class": "other",
+    "safetyNeed": 0.04385817150686524,
+    "fear": 0
+   }
+  },
+  {
+   "seed": 14,
+   "base": {
+    "kind": "talk",
+    "class": "other",
+    "safetyNeed": 0.04385817150686524,
+    "fear": 0
+   },
+   "twin": {
+    "kind": "talk",
+    "class": "other",
+    "safetyNeed": 0.04385817150686524,
+    "fear": 0
+   }
+  },
+  {
+   "seed": 15,
+   "base": {
+    "kind": "talk",
+    "class": "other",
+    "safetyNeed": 0.04385817150686524,
+    "fear": 0
+   },
+   "twin": {
+    "kind": "negotiate",
+    "class": "other",
+    "safetyNeed": 0.04385817150686524,
+    "fear": 0
+   }
+  },
+  {
+   "seed": 16,
+   "base": {
+    "kind": "talk",
+    "class": "other",
+    "safetyNeed": 0.04385817150686524,
+    "fear": 0
+   },
+   "twin": {
+    "kind": "talk",
+    "class": "other",
+    "safetyNeed": 0.04385817150686524,
+    "fear": 0
+   }
+  },
+  {
+   "seed": 17,
+   "base": {
+    "kind": "talk",
+    "class": "other",
+    "safetyNeed": 0.04385817150686524,
+    "fear": 0
+   },
+   "twin": {
+    "kind": "talk",
+    "class": "other",
+    "safetyNeed": 0.04385817150686524,
+    "fear": 0
+   }
+  },
+  {
+   "seed": 18,
+   "base": {
+    "kind": "talk",
+    "class": "other",
+    "safetyNeed": 0.04385817150686524,
+    "fear": 0
+   },
+   "twin": {
+    "kind": "talk",
+    "class": "other",
+    "safetyNeed": 0.04385817150686524,
+    "fear": 0
+   }
+  },
+  {
+   "seed": 19,
+   "base": {
+    "kind": "talk",
+    "class": "other",
+    "safetyNeed": 0.04385817150686524,
+    "fear": 0
+   },
+   "twin": {
+    "kind": "talk",
+    "class": "other",
+    "safetyNeed": 0.04385817150686524,
+    "fear": 0
+   }
+  },
+  {
+   "seed": 20,
+   "base": {
+    "kind": "talk",
+    "class": "other",
+    "safetyNeed": 0.04385817150686524,
+    "fear": 0
+   },
+   "twin": {
+    "kind": "talk",
+    "class": "other",
+    "safetyNeed": 0.04385817150686524,
+    "fear": 0
+   }
+  },
+  {
+   "seed": 21,
+   "base": {
+    "kind": "help",
+    "class": "other",
+    "safetyNeed": 0.04385817150686524,
+    "fear": 0
+   },
+   "twin": {
+    "kind": "talk",
+    "class": "other",
+    "safetyNeed": 0.04385817150686524,
+    "fear": 0
+   }
+  },
+  {
+   "seed": 22,
+   "base": {
+    "kind": "talk",
+    "class": "other",
+    "safetyNeed": 0.04385817150686524,
+    "fear": 0
+   },
+   "twin": {
+    "kind": "talk",
+    "class": "other",
+    "safetyNeed": 0.04385817150686524,
+    "fear": 0
+   }
+  },
+  {
+   "seed": 23,
+   "base": {
+    "kind": "help",
+    "class": "other",
+    "safetyNeed": 0.04385817150686524,
+    "fear": 0
+   },
+   "twin": {
+    "kind": "negotiate",
+    "class": "other",
+    "safetyNeed": 0.04385817150686524,
+    "fear": 0
+   }
+  },
+  {
+   "seed": 24,
+   "base": {
+    "kind": "talk",
+    "class": "other",
+    "safetyNeed": 0.04385817150686524,
+    "fear": 0
+   },
+   "twin": {
+    "kind": "talk",
+    "class": "other",
+    "safetyNeed": 0.04385817150686524,
+    "fear": 0
+   }
+  },
+  {
+   "seed": 25,
+   "base": {
+    "kind": "talk",
+    "class": "other",
+    "safetyNeed": 0.04385817150686524,
+    "fear": 0
+   },
+   "twin": {
+    "kind": "negotiate",
+    "class": "other",
+    "safetyNeed": 0.04385817150686524,
+    "fear": 0
+   }
+  },
+  {
+   "seed": 26,
+   "base": {
+    "kind": "talk",
+    "class": "other",
+    "safetyNeed": 0.04385817150686524,
+    "fear": 0
+   },
+   "twin": {
+    "kind": "negotiate",
+    "class": "other",
+    "safetyNeed": 0.04385817150686524,
+    "fear": 0
+   }
+  },
+  {
+   "seed": 27,
+   "base": {
+    "kind": "talk",
+    "class": "other",
+    "safetyNeed": 0.04385817150686524,
+    "fear": 0
+   },
+   "twin": {
+    "kind": "negotiate",
+    "class": "other",
+    "safetyNeed": 0.04385817150686524,
+    "fear": 0
+   }
+  },
+  {
+   "seed": 28,
+   "base": {
+    "kind": "talk",
+    "class": "other",
+    "safetyNeed": 0.04385817150686524,
+    "fear": 0
+   },
+   "twin": {
+    "kind": "talk",
+    "class": "other",
+    "safetyNeed": 0.04385817150686524,
+    "fear": 0
+   }
+  },
+  {
+   "seed": 29,
+   "base": {
+    "kind": "talk",
+    "class": "other",
+    "safetyNeed": 0.04385817150686524,
+    "fear": 0
+   },
+   "twin": {
+    "kind": "negotiate",
+    "class": "other",
+    "safetyNeed": 0.04385817150686524,
+    "fear": 0
+   }
+  },
+  {
+   "seed": 30,
+   "base": {
+    "kind": "help",
+    "class": "other",
+    "safetyNeed": 0.04385817150686524,
+    "fear": 0
+   },
+   "twin": {
+    "kind": "negotiate",
+    "class": "other",
+    "safetyNeed": 0.04385817150686524,
+    "fear": 0
+   }
+  },
+  {
+   "seed": 31,
+   "base": {
+    "kind": "talk",
+    "class": "other",
+    "safetyNeed": 0.04385817150686524,
+    "fear": 0
+   },
+   "twin": {
+    "kind": "talk",
+    "class": "other",
+    "safetyNeed": 0.04385817150686524,
+    "fear": 0
+   }
+  },
+  {
+   "seed": 32,
+   "base": {
+    "kind": "help",
+    "class": "other",
+    "safetyNeed": 0.04385817150686524,
+    "fear": 0
+   },
+   "twin": {
+    "kind": "help",
+    "class": "other",
+    "safetyNeed": 0.04385817150686524,
+    "fear": 0
+   }
+  }
+ ]
+}
