@@ -17,6 +17,7 @@ import { recordTrail } from '../core/mapTypes';
 import { setFact } from '../core/factsAccessors';
 import { RespondSpec } from './respondSpec';
 import { MoveCellSpec } from './moveCellSpec';
+import { TakeSpec, GiveSpec, SeizeSpec } from './objectSpec';
 import { decideSpeechContent } from '../dialogue/speechContent';
 import { FCS } from '../../config/formulaConfigSim';
 import { familyOfActionKind, normalizeTargetId } from '../../behavior/actionPattern';
@@ -2122,6 +2123,10 @@ export const ACTION_SPECS: Record<ActionKind, ActionSpec> = {
   abort_intent: AbortIntentSpec,
   respond: RespondSpec,
   retreat: RetreatSpec,
+  // Object v0 (MVP-0, I-1.2): facts-only resource token, obj:transfer events.
+  take: TakeSpec,
+  give: GiveSpec,
+  seize: SeizeSpec,
 };
 
 export function enumerateActionOffers(world: SimWorld): ActionOffer[] {

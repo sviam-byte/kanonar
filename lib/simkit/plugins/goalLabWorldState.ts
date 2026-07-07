@@ -403,7 +403,15 @@ export function buildWorldStateFromSim(world: SimWorld, snapshot: SimSnapshot, o
     const beliefAtoms = arr<any>((world as any)?.facts?.[`mem:beliefAtoms:${entityId}`]);
     // Episodic memory atoms are generated from prior salient events around co-present agents.
     const episodicAtoms = buildEpisodicAtomsForAgent(world, entityId);
-    const allBeliefAtoms = [...beliefAtoms, ...episodicAtoms];
+    // Communication v0 chain repair (I-1.3, 2026-07-07): atoms accepted by the
+    // trust gate (simulator step 2.5 → facts[agentAtoms:<id>]) previously had
+    // NO consumer — the speech chain died exactly here. Deliver the atoms
+    // accepted LAST tick into this tick's S0 (fresh messages only; retention
+    // beyond one tick is memory's job, not the delivery channel's).
+    const tickNow = Number((world as any)?.tickIndex ?? 0);
+    const acceptedAtoms = arr<any>((world as any)?.facts?.[`agentAtoms:${entityId}`])
+      .filter((a: any) => Number(a?.meta?.origin?.tickIndex ?? NaN) === tickNow - 1);
+    const allBeliefAtoms = [...beliefAtoms, ...episodicAtoms, ...acceptedAtoms];
     return {
       entityId,
       type: EntityType.Character,

@@ -597,11 +597,14 @@ function extractAgentTrace(pipeline: GoalLabPipelineResult | null, actorId: stri
       for (const [g, d] of Object.entries(deltas)) out[g] = Number(d);
       return out;
     })(),
-    usedAtomIds: arr((r?.action?.why?.usedAtomIds ?? []) as string[])
+    // S8 artifacts.ranked entries are the raw candidates themselves (no
+    // {action} wrapper) — read why from the entry with the wrapped form as
+    // fallback, otherwise usedAtomIds silently reads empty (found in MVP-0).
+    usedAtomIds: arr(((r?.action ?? r)?.why?.usedAtomIds ?? []) as string[])
       .map(String)
       .filter((id: string) => id && !id.startsWith('goal:')),
-    notes: arr((r?.action?.why?.notes ?? []) as string[]).map(String),
-    modifiers: arr(r?.action?.why?.modifiers).slice(0, 12),
+    notes: arr(((r?.action ?? r)?.why?.notes ?? []) as string[]).map(String),
+    modifiers: arr((r?.action ?? r)?.why?.modifiers).slice(0, 12),
   }));
 
   const decisionSnapshot = s8arts.decisionSnapshot ?? null;
