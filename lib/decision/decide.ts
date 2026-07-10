@@ -56,6 +56,7 @@ function toDecisionAtom(
   goalEnergy: Record<string, number>,
   samplingMeta?: { qUsed: number; noise: number; sampleScore: number; effectiveTemperature?: number; inTieBand?: boolean; marginFromBest?: number; nearTieActionIds?: string[] },
   chosen = false,
+  priorInfluenceEnabled = FC.actionScoring.priorInfluence.enabled,
 ): ContextAtom {
   const extraUsedIds = arr<string>((action as any)?.why?.usedAtomIds);
   const usedAtomIds = Array.from(
@@ -68,7 +69,11 @@ function toDecisionAtom(
   );
 
   const { goalContribs, rawGoalSum } = computeGoalContribs(action, goalEnergy);
-  const rawBeforeRisk = rawGoalSum - Number(action.cost ?? 0);
+  const priorMagnitude = clamp01(Number(action.priorMagnitude ?? 0));
+  const priorContribution = priorInfluenceEnabled
+    ? FC.actionScoring.priorInfluence.weight * priorMagnitude
+    : 0;
+  const rawBeforeRisk = rawGoalSum + priorContribution - Number(action.cost ?? 0);
   const riskPenalty = computeRiskPenalty(action, rawBeforeRisk);
   const magnitude = clamp01(0.5 + 0.5 * Math.tanh(qBase));
   const qUsed = Number(samplingMeta?.qUsed ?? qBase);
@@ -114,6 +119,9 @@ function toDecisionAtom(
         confidence: clamp01(action.confidence),
         goalContribs,
         rawGoalSum,
+        priorMagnitude,
+        priorContribution,
+        priorInfluenceEnabled,
         rawBeforeRisk,
         riskPenalty,
         why: whyParts,
@@ -130,11 +138,17 @@ export function decideAction(args: {
   rng: (() => number) | { next: () => number };
   topK?: number;
   qSamplingOverrides?: Record<string, number>;
+  priorInfluenceEnabled?: boolean;
 }): DecisionResult {
   const actions = arr<ActionCandidate>(args.actions);
 
   const rankedBase = actions
-    .map((action) => ({ action, q: scoreAction(action, args.goalEnergy) }))
+    .map((action) => ({
+      action,
+      q: scoreAction(action, args.goalEnergy, {
+        priorInfluenceEnabled: args.priorInfluenceEnabled,
+      }),
+    }))
     .sort((a, b) => b.q - a.q);
 
   const topK = Math.max(1, Number.isFinite(args.topK as any) ? Number(args.topK) : rankedBase.length);
@@ -219,7 +233,7 @@ export function decideAction(args: {
       inTieBand: s.inTieBand,
       marginFromBest: s.marginFromBest,
       nearTieActionIds,
-    }, s.chosen)
+    }, s.chosen, args.priorInfluenceEnabled)
   );
 
   return { best: chosen, ranked, atoms: decisionAtoms };

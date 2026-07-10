@@ -63,11 +63,11 @@ Legacy and archive are below the trust line.
 
 Primary files:
 
-- `pages/GoalLabPage.tsx`
-- `pages/GoalLabConsolePage.tsx`
-- `pages/ConsolePage.tsx`
 - `components/GoalSandbox/*`
 - `archive/*`
+
+The old `/goal-lab` and `/goal-lab-console` URLs are redirects in `App.tsx`,
+not mounted legacy page implementations.
 
 What this means:
 

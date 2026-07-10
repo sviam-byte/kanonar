@@ -4,7 +4,14 @@ import path from "node:path";
 
 const ROOT = path.resolve(".");
 const EXTS = new Set([".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"]);
-const IGNORE_DIRS = new Set(["node_modules", "dist", "build", ".git", "archive"]);
+const IGNORE_DIRS = new Set([
+  "node_modules",
+  "dist",
+  "build",
+  ".git",
+  ".venv",
+  "archive",
+]);
 
 const importPathRe =
   /(?:import|export)\s+(?:type\s+)?(?:[\s\w\{\}\*\$,]+\s+from\s+)?['"]([^'"]+)['"]/g;
@@ -114,6 +121,12 @@ async function main() {
       const isTestFile = /(?:^|\/|\\).+\.(test|spec)\.[cm]?[jt]sx?$/.test(rel);
       if (isTestDir || isTestFile) entrypoints.push(path.resolve(f));
     }
+  }
+
+  // Utility scripts are command entrypoints even when the app never imports them.
+  for (const f of allFiles) {
+    const rel = path.relative(ROOT, f);
+    if (rel.startsWith(`scripts${path.sep}`)) entrypoints.push(path.resolve(f));
   }
 
   const reachable = new Set();

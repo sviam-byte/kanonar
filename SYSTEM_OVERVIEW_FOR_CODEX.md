@@ -1,14 +1,20 @@
 # SYSTEM OVERVIEW FOR CODEX (Canonical Control Plane)
 
-This file is the **single entry point** for agents and humans who need to modify Kanonar safely.
+This file is a compact agent-routing reference. The public entrypoint is
+`README.md` -> `docs/MATH_INDEX.md`; this file does not override live runtime,
+types, tests, config, or canonical domain contracts.
 
 Priority order for truth recovery:
-1. `SYSTEM_OVERVIEW_FOR_CODEX.md` (this file)
-2. `CANONICAL_PATHS.md`
-3. `STATUS_MAP.md`
-4. `TRUST_MAP.md`
-5. `DOMAIN_MAP.md`
-6. `SYSTEM_OVERVIEW_FOR_CODEX.manifest.json` (machine-readable mirror)
+1. Live runtime implementation.
+2. Type contracts.
+3. Tests exercising the live path.
+4. Config and explicitly frozen observables.
+5. Canonical contracts and math docs.
+6. UI projections, compat layers, then legacy/archive.
+
+The root maps below are navigation aids inside that order:
+`CANONICAL_PATHS.md`, `STATUS_MAP.md`, `TRUST_MAP.md`, `DOMAIN_MAP.md`, and
+`SYSTEM_OVERVIEW_FOR_CODEX.manifest.json`.
 
 ---
 
@@ -117,6 +123,6 @@ When changing docs/comments only:
   - `pages/*`
 - Giant compatibility hubs without canonical status confirmation:
   - `types.ts`
-  - `components/GoalSandbox/GoalSandbox.tsx`
+  - `components/GoalSandbox/*`
 
 Use `TRUST_MAP.md` for full confidence mapping.

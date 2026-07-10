@@ -27,14 +27,16 @@ The repo no longer needs the separate folder because the validated parts now liv
 - `lib/goal-lab/atoms/canonical.ts` explicitly treats `pipelineV1.stages[*].atoms` as truth and `snapshot.atoms` as fallback only.
 - `hooks/useGoalLabEngine.ts` is a mixed orchestration layer that combines old and new paths.
 - `hooks/useGoalLabWorld.ts` uses `Date.now()` for live session seeds and auto-placement, so UI-level reproducibility is weaker than core seeded logic.
-- `App.tsx` keeps both legacy GoalLab routes and v2 GoalLab routes mounted.
+- `App.tsx` mounts v2 GoalLab pages; old GoalLab URLs are redirects, not
+  separately mounted legacy pages.
 - `tests/pipeline/stage_isolation.test.ts` confirms core namespace and stage invariants.
 - `tests/simkit/decision_gate.test.ts` confirms the live SimKit mode-gating family is active and tested.
 
 ## Confirmed With Adjustment
 
 - The claim that `/goal-lab-v2` is the promoted GoalLab entry is correct through `pages/HomePage.tsx`.
-- The claim that header navigation still points users toward legacy GoalLab is also correct through `components/Header.tsx`.
+- `components/Header.tsx` points users to `/goal-lab-v2` and
+  `/goal-lab-console-v2`; prior legacy-navigation notes are obsolete.
 - The claim that `docs/agent/*` is partly stale is correct in at least one concrete way:
   `docs/agent/00_INDEX.md` still directs discovery toward `src`, while most live logic is under `lib`, `components`, `pages`, and `hooks`.
 
@@ -49,4 +51,6 @@ The previous problems have been resolved by integration rather than by preservin
 
 ## Recommended Status
 
-Treat `docs/unified/*` as the only repo-level control-plane layer.
+Treat `docs/unified/*` as a routing/control-plane reference. Behavioral truth
+still follows the shared trust order: live runtime -> types -> tests -> config
+-> canonical docs -> UI -> compat/archive.

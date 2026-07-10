@@ -12,7 +12,8 @@ It is a mixed TypeScript/React repository with:
 - a staged GoalLab decision pipeline
 - several UI surfaces over that pipeline
 - a SimKit runtime that can call into GoalLab logic
-- legacy GoalSandbox and console surfaces still mounted in routes
+- legacy GoalLab URLs retained only as redirects to v2; removed GoalSandbox and
+  console pages are not active runtime surfaces
 
 ## Canonical Runtime Spine
 
@@ -98,6 +99,5 @@ If the task is about simulation behavior:
 Use the fastest repo-native checks available:
 
 - `npm test`
+- `npm run typecheck`
 - `npm run build`
-
-There is no dedicated `typecheck` script in `package.json` right now.

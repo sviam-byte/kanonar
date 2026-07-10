@@ -2,14 +2,19 @@ import type { ActionCandidate } from './actionCandidate';
 import { FC } from '../config/formulaConfig';
 
 /**
- * Q(a) = Σ_g E_g * Δg(a) − cost(a) − riskPenalty(1 − conf)
+ * Q_raw(a) = Σ_g E_g * Δg(a) + I_prior * w_prior * priorMagnitude(a) − cost(a)
+ * Q(a) = Q_raw(a) − riskCoeff * |Q_raw(a)| * (1 − confidence(a))
  *
  * confidence is treated as an additive risk penalty rather than a multiplier.
  * At conf=1 → no penalty. At conf=0.5 → penalty = FC.actionScoring.riskCoeff × |rawQ| × 0.5.
  * This avoids the over-pessimism of the old multiplicative model where conf=0.5
  * would halve Q regardless of the magnitude of the risk.
  */
-export function scoreAction(action: ActionCandidate, goalEnergy: Record<string, number>): number {
+export function scoreAction(
+  action: ActionCandidate,
+  goalEnergy: Record<string, number>,
+  opts?: { priorInfluenceEnabled?: boolean },
+): number {
   let q = 0;
   for (const [g, delta] of Object.entries(action.deltaGoals)) {
     q += (goalEnergy[g] ?? 0) * delta;
@@ -19,7 +24,7 @@ export function scoreAction(action: ActionCandidate, goalEnergy: Record<string, 
   // of act:prior; without this term personality never reaches the choice.
   // Default off — the flag is the D2 ablation switch.
   const PI = FC.actionScoring.priorInfluence;
-  if (PI?.enabled) {
+  if (opts?.priorInfluenceEnabled ?? PI?.enabled) {
     q += PI.weight * (action.priorMagnitude ?? 0);
   }
 

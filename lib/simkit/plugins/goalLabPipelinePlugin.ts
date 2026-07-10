@@ -6,6 +6,7 @@ import type { SimWorld, SimSnapshot } from '../core/types';
 import { runGoalLabPipelineV1 } from '../../goal-lab/pipeline/runPipelineV1';
 import { buildWorldStateFromSim } from './goalLabWorldState';
 import { arr } from '../../utils/arr';
+import { getRuntimeProfileFromFacts } from '../../config/runtimeMechanics';
 
 export { buildWorldStateFromSim } from './goalLabWorldState';
 
@@ -38,6 +39,9 @@ export function makeGoalLabPipelinePlugin(opts?: {
           agentId,
           participantIds,
           tickOverride: Number((snapshot as any)?.tickIndex ?? (world as any)?.tickIndex ?? 0),
+          sceneControl: {
+            runtimeProfile: getRuntimeProfileFromFacts(world.facts as Record<string, unknown>),
+          },
         });
 
         record.plugins ||= {};

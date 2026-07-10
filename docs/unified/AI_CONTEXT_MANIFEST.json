@@ -25,9 +25,6 @@
   ],
   "legacy_roots": [
     "components/GoalSandbox",
-    "pages/GoalLabPage.tsx",
-    "pages/GoalLabConsolePage.tsx",
-    "pages/ConsolePage.tsx",
     "docs/agent"
   ],
   "archive_roots": [
@@ -49,12 +46,12 @@
   ],
   "trust_order": [
     "lib/goal-lab/pipeline/runPipelineV1.ts",
-    "docs/PIPELINE.md",
-    "docs/INVARIANTS.md",
     "lib/context/v2/types.ts",
     "lib/goal-lab/atoms/canonical.ts",
-    "lib/config/formulaConfig.ts",
     "tests/pipeline/* and tests/decision/*",
+    "lib/config/formulaConfig.ts",
+    "docs/PIPELINE.md",
+    "docs/INVARIANTS.md",
     "docs/ARCHITECTURE.md",
     "v2 UI engine files",
     "compat adapters",
@@ -71,7 +68,7 @@
         "lib/context/pipeline/stage0.ts",
         "lib/context/axes/deriveAxes.ts",
         "lib/context/lens/characterLens.ts",
-        "lib/emotion",
+        "lib/emotions",
         "lib/tom",
         "lib/drivers/deriveDrivers.ts",
         "lib/goals/goalAtoms.ts",
@@ -90,13 +87,10 @@
       ]
     },
     {
-      "name": "legacy_goalsandbox_path",
-      "status": "legacy",
+      "name": "compat_goal_lab_redirects",
+      "status": "compat",
       "files": [
-        "pages/GoalLabPage.tsx",
-        "pages/GoalLabConsolePage.tsx",
-        "pages/ConsolePage.tsx",
-        "components/GoalSandbox/GoalSandbox.tsx"
+        "App.tsx"
       ]
     },
     {
@@ -125,7 +119,6 @@
     "lib/goals/goalLabContext.ts",
     "lib/goal-lab/pipeline/runPipelineV1.ts",
     "types.ts",
-    "components/GoalSandbox/GoalSandbox.tsx",
     "lib/simkit/plugins/goalLabDeciderPlugin.ts",
     "lib/simkit/plugins/orchestratorPlugin.ts",
     "lib/possibilities/defs.ts",
@@ -139,7 +132,7 @@
     "Goal derivation must consume ctx:final:* rather than raw ctx:*",
     "Action selection must not consume goal:* directly; bridge must be explicit via util:* or equivalent projection",
     "Canonical UI/export atom source is pipelineV1.stages[*].atoms; snapshot.atoms is fallback only",
-    "All numeric coefficients for S0-S9 should be centralized in lib/config/formulaConfig.ts",
+    "New or changed S0-S9 scoring coefficients belong in FormulaConfig unless an observable is explicitly frozen and versioned locally",
     "beliefPersist must preserve prediction and surprise atoms for feedback loop continuity"
   ],
   "unsafe_assumptions_for_agents": [

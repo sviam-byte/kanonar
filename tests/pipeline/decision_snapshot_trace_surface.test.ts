@@ -23,5 +23,9 @@ describe('pipeline: decision snapshot surfaces explainability payload', () => {
     expect(snapshot?.best).toHaveProperty('why');
     expect(Array.isArray(snapshot?.ranked)).toBe(true);
     expect(snapshot?.ranked?.length).toBeGreaterThan(0);
+    const chosen = snapshot?.ranked?.find((entry: any) => entry?.chosen === true);
+    expect(chosen).toBeTruthy();
+    expect(snapshot?.best?.id).toBe(chosen?.id);
+    expect(snapshot?.best?.q).toBeCloseTo(chosen?.q, 12);
   });
 });

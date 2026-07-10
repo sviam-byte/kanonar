@@ -26,13 +26,15 @@ Additional version rule:
 Outputs:
 - `world:*`, `obs:*`, `mem:*`, `rel:*`, `life:*`
 - адаптер SimKit может добавлять `memory:episodic` belief-atoms (derived from recent salient events) в `agent.memory.beliefAtoms` до S0.
-- при `FC.memory.threatTraceV1.enabled=true` адаптер добавляет только tagged
+- при effective `runtimeMechanics.memoryThreatTraceV1=true` адаптер добавляет только tagged
   `{speech, threat}` entries из `mem:memory:<agentId>`; confidence вычисляется
   по абсолютному возрасту `c0 * decayPerTick^age`. Fresh accepted speech
   доставляется отдельно только на следующий тик, поэтому decaying trace не
   является бесконечным повтором `agentAtoms:*`.
-- `artifacts.placementValidation` — итог проверки размещения персонажей до запуска S0…S8.
+- `artifacts.placementValidation` — итог проверки размещения персонажей до запуска S0…S9.
 - `artifacts.placementComplete` — краткий флаг `placementValidation.isComplete`.
+- при явном `sceneControl.runtimeProfile` S0 пишет resolved
+  `artifacts.runtimeMechanics`; отсутствие профиля сохраняет legacy shape.
 
 Forbidden:
 - любые `ctx:*`
@@ -55,6 +57,10 @@ Notes:
 
 Outputs:
 - `ctx:*` (НО НЕ `ctx:final:*`)
+- при effective `communicationSpeechThreatV1` входящая принятая угроза создаёт
+  `ctx:src:comm:threat:<selfId>`;
+- при effective `objectsContextAxesV1` факты `obj:v0:*` создают source-атомы
+  `ctx:src:scene:resourceAccess/scarcity:<selfId>`.
 
 Forbidden:
 - `ctx:final:*`
@@ -226,11 +232,16 @@ Inputs:
 - temperature policy:
   - prefer per-agent `feat:char:<selfId>:trait.decisionTemperature` when present (scaled to decision temperature),
   - fallback to world/agent legacy temperature fields for backward compatibility.
-- `sceneControl` is always forwarded from SimKit adapter so deliberative/degraded modes can consistently toggle S9 predict behavior.
+- `sceneControl` is always forwarded from SimKit adapter so deliberative/degraded modes can consistently toggle S9 predict behavior and carry the per-run runtime profile.
 
 Outputs:
 - `action:*`
-  - canonical ranking/reporting: `Q_raw(a)=Σ_g E_g*Δg(a) − cost(a)`, then confidence is applied as additive risk penalty `Q=Q_raw−k·|Q_raw|·(1−conf)`
+  - canonical ranking/reporting:
+    `Q_raw(a)=Σ_g E_g*Δg(a)+I_prior*w_prior*priorMagnitude(a)−cost(a)`,
+    then `riskPenalty=k*|Q_raw|*(1−conf)` and `Q=Q_raw−riskPenalty`;
+  - `I_prior=1` only when effective `actionPriorInfluence` is enabled. Phase-I
+    profile also enables PAM v2 before possibilities are enumerated, so
+    personality priors can reach candidate magnitude and Q.
   - optional sampling override path (`sceneControl.useLookaheadForChoice`) may use lookahead logits **only for stochastic choice**, without mutating reported/ranked canonical `Q`
   - when S9 lookahead is enabled, S8 may damp per-goal `goalEnergy[g]` before `decideAction` if top lookahead actions show consistently negative feasibility (`max_a ΔV_g(a) < -0.01`)
 - if no possibility rules fire, S8 must still receive a fallback cognitive option `cog:wait:<selfId>` to avoid hard deadlocks in action selection
@@ -251,8 +262,14 @@ Outputs:
   - `qUsed`, `sampleNoise`, `sampleScore`, `chosen`
   - `usedAtomIds`, `notes`, `modifiers`, `why`
 - `decisionSnapshot.best` mirrors the same explainability fields for the chosen action.
+- score decomposition includes `rawGoalSum`, `priorMagnitude`,
+  `priorContribution`, `cost`, `rawBeforeRisk`, `riskPenalty`, and reconstructed
+  Q. `best` is the actual seeded Gumbel winner, not merely rank 1 by Q.
 - Near-tie exploration in S8 can sample from a tie-band subset around the best canonical `Q` (configurable via `FC.actionScoring.exploration`).
 - `decisionSnapshot.ranked[*]` may include tie telemetry: `marginFromBest`, `inTieBand`.
+- explicit-profile SimKit traces also expose `runtimeMechanics`, selected context
+  axes, threat memory, and the read-only C(t) vector. Reactive branches expose
+  the profile but set pipeline-derived tension to null.
 
 Forbidden:
 - `action:*` НЕ должен зависеть от `goal:*` напрямую (только через `util:*`)

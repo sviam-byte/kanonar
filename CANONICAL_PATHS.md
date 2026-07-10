@@ -52,7 +52,8 @@ with these paths, prefer these paths unless a newer canonical doc says otherwise
 - Active context: `contexts/GoalLabContext.tsx`
 - Active v2 components: `components/goal-lab-v2/*`
 - Deep debug/lab panels: `components/goal-lab/*`
-- Legacy routes: `pages/GoalLabPage.tsx`, `pages/GoalLabConsolePage.tsx`
+- Compatibility redirects: `/goal-lab` and `/goal-lab-console` in `App.tsx`;
+  removed legacy page files are not implementation surfaces.
 
 ## Tests By Surface
 

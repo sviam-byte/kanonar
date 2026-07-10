@@ -20,6 +20,8 @@ Kanonar не является психологической, клиническ
 2. `docs/ENTITY_AND_METRIC_INDEX.md` — энциклопедия сущностей и метрик: смысл, диапазоны, source paths, формулы или статус raw/input.
 3. `docs/WALKTHROUGH_ONE_TICK.md` — один минимальный тик через pipeline.
 4. `docs/DOCUMENTATION_STANDARD.md` — правила, как поддерживать документацию дальше.
+5. `docs/docs_conceptual/KANONAR_PHASE_I_IMPL_PLAN.md` — реализованные Phase-I
+   механики, их формулы, runtime-профиль и результаты проверок.
 
 Глубокие главы книги живут в `docs/agents/*`. Repo/control-plane reference живёт в `docs/unified/*`. UI/visualization reference живёт в `docs/VISUALIZATION.md`. Experimental external-data layer: `docs/BEHAVIOR_LAB.md`.
 
@@ -40,6 +42,7 @@ Kanonar не является психологической, клиническ
 ```bash
 npm i
 npm run dev
+npm run typecheck
 npm test
 npm run build
 ```

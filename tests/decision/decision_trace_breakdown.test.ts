@@ -69,4 +69,34 @@ describe('decision: action trace carries scoring breakdown', () => {
     expect(atom?.trace?.parts?.why?.source).toBe('test-case');
     expect(atom?.trace?.parts?.chosen).toBe(true);
   });
+
+  it('reconstructs the prior term and additive risk penalty used by Q', () => {
+    const action: ActionCandidate = {
+      id: 'action:challenge',
+      kind: 'challenge',
+      actorId: 'A',
+      deltaGoals: { autonomy: 0.4 },
+      priorMagnitude: 0.6,
+      cost: 0.1,
+      confidence: 0.75,
+      supportAtoms: [mkAtom('util:domain:autonomy:A', 1)],
+      why: { usedAtomIds: ['act:prior:A:B:challenge'], notes: [], parts: {} },
+    };
+
+    const result = decideAction({
+      actions: [action],
+      goalEnergy: { autonomy: 1 },
+      temperature: 0.2,
+      rng: () => 0.5,
+      priorInfluenceEnabled: true,
+    });
+    const atom = result.atoms[0];
+    const parts = atom?.trace?.parts as any;
+
+    expect(parts.priorMagnitude).toBeCloseTo(0.6, 12);
+    expect(parts.priorContribution).toBeCloseTo(0.3, 12);
+    expect(parts.rawBeforeRisk).toBeCloseTo(0.4 + 0.3 - 0.1, 12);
+    expect(parts.riskPenalty).toBeCloseTo(0.4 * 0.6 * 0.25, 12);
+    expect(parts.qBase).toBeCloseTo(parts.rawBeforeRisk - parts.riskPenalty, 12);
+  });
 });

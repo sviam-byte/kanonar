@@ -99,7 +99,8 @@ export function accumulateImpactsFromEffects(
 export function calculateSocialEventImpacts(
   character: CharacterEntity, 
   allEvents: SocialEventEntity[],
-  flatParams: Record<string, number>
+  flatParams: Record<string, number>,
+  opts?: { referenceTimeMs?: number },
 ): EventImpacts {
     const relevantEvents = allEvents.filter(e => e.actorId === character.entityId || e.targetId === character.entityId);
 
@@ -110,6 +111,13 @@ export function calculateSocialEventImpacts(
     let impacts: EventImpacts = { paramDeltas: {}, paramScales: {}, goalActivationDeltas: {}, acuteDeltas: {}, relationDeltas: {} };
 
     const TAU_SOCIAL = 180; // Decay for social impulses in days
+    const storyTime = Number((character as CharacterEntity & { storyTime?: number }).storyTime);
+    const latestEventTime = Math.max(...relevantEvents.map((event) => Number(event.t)).filter(Number.isFinite));
+    const referenceTimeMs = Number.isFinite(opts?.referenceTimeMs)
+      ? Number(opts?.referenceTimeMs)
+      : Number.isFinite(storyTime)
+        ? storyTime
+        : latestEventTime;
 
     for (const event of relevantEvents) {
         // New: Accumulate structured effects if present
@@ -123,7 +131,7 @@ export function calculateSocialEventImpacts(
         if (!isActor && !isTarget) continue;
 
         const w_s = { private: 1.0, ingroup: 1.6, public: 2.3 }[event.scope];
-        const eventAgeDays = (Date.now() - event.t) / (1000 * 60 * 60 * 24);
+        const eventAgeDays = Math.max(0, (referenceTimeMs - event.t) / (1000 * 60 * 60 * 24));
         const reliab = event.veracity * Math.exp(-(event.delay_days ?? eventAgeDays) / TAU_SOCIAL);
         
         const J_base = event.polarity * event.intensity * w_s * reliab;

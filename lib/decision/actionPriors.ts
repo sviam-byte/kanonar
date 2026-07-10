@@ -57,6 +57,7 @@ export function deriveActionPriors(args: {
   selfId: string;
   otherIds: string[];
   atoms: ContextAtom[];
+  pamV2Enabled?: boolean;
 }): ContextAtom[] {
   const { selfId, otherIds, atoms } = args;
   const out: ContextAtom[] = [];
@@ -272,7 +273,7 @@ export function deriveActionPriors(args: {
     // PAM v2 (I-0.2, ledger PAM-V2): challenge/defy merged ONLY when the flag
     // is on; the OFF branch iterates the untouched v1 object by reference.
     {
-      const pamV2On = Boolean((FC.actionScoring as any)?.pamV2?.enabled);
+      const pamV2On = args.pamV2Enabled ?? Boolean((FC.actionScoring as any)?.pamV2?.enabled);
       const PAM = pamV2On
         ? { ...(FC as any).personalityActionMap, ...(FC as any).personalityActionMapV2 }
         : (FC as any).personalityActionMap;

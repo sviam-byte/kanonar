@@ -16,8 +16,11 @@ import { runMvpRollout } from '../../lib/simkit/mvp0/runMvpRollout';
 // commit 54c4c74 and later commits reproduce 124e3434…; the ran commit
 // 3dd9cf3 accidentally pinned an unsupported 73eaf2ce… value. Re-pin ONLY with
 // a dated note explaining which behavioral change moved it.
+// 2026-07-10: provenance-only re-pin. Applied actions/menu semantics stay on
+// the legacy profile, but sim:trace.best now names the actual seeded Gumbel
+// winner instead of the top-Q candidate, so usedAtomIds/facts digests change.
 const MVP0_GOLDEN_HASH_SEED7: string | null =
-  '124e343435a40862d76d43ba7af9d72fdc2eaa6209d5c881b5153c99e5a7f89c';
+  '451edc9d952ed05a6e26298c204fd768b694b81505229146bea08dd738f05431';
 
 describe('MVP-0 golden run (A1 + A2)', () => {
   it('20 ticks: deterministic hash, no deadlock, 100% explained actions', () => {

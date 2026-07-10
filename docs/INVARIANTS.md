@@ -45,15 +45,30 @@
 
 ## Memory v1 invariants
 
-- При `FC.memory.threatTraceV1.enabled=true` confidence принятого threat trace
+- При effective `runtimeMechanics.memoryThreatTraceV1=true` confidence принятого threat trace
   вычисляется только как `c0 * decayPerTick^age`, где
   `age = currentTick - lastObservedTick`.
 - Повторное умножение уже затухшего confidence на `decayPerTick^age` запрещено:
   результат не должен зависеть от числа промежуточных вызовов persistence.
 - В GoalLab из `mem:memory:*` проецируются только явно tagged
   `{speech, threat}` entries; action-memory сохраняет legacy-семантику.
-- OFF-ветвь обязана сохранять MVP-0 golden hash. Проверки:
+- No-profile/legacy ветвь обязана сохранять поведенческую семантику MVP-0.
+  Provenance-only исправления требуют явного re-pin с объяснением. Проверки:
   `tests/simkit/memory_threat_v1.test.ts`, `tests/simkit/mvp0_golden.test.ts`.
+
+## Runtime profile invariants
+
+- Runtime profile is per run: `world.facts['sim:runtimeProfile']` in SimKit or
+  `sceneControl.runtimeProfile` in direct GoalLab calls.
+- `phase1` enables communication threat, object context, location properties,
+  threat memory, prior influence, and PAM v2 without mutating global `FC`.
+- No explicit profile continues to resolve the current FormulaConfig defaults;
+  `legacy` is an explicit all-OFF control.
+- Same state + same seed + same profile must produce the same semantic output.
+- Explicit profiles must be visible in stage/runtime trace. Reactive branches
+  must show the profile and explicitly report that pipeline C(t) is unavailable.
+- C(t) retention state belongs to resettable world facts, not plugin closure
+  state, so simulator reset cannot leak EMA/held state across runs.
 
 ### Belief persistence completeness (v27+)
 
@@ -61,9 +76,11 @@ beliefPersist.beliefAtoms MUST include both prediction atoms AND surprise atoms.
 Surprise atoms are consumed by S6 (deriveDrivers) on the next tick.
 If surprise atoms are not persisted, the POMDP feedback loop is broken.
 
-### FormulaConfig completeness (v27+)
+### Coefficient ownership
 
-All numeric coefficients in pipeline stages S0–S9 MUST be sourced from
-`lib/config/formulaConfig.ts`. Local hardcoded constants are treated as bugs.
-Run `grep -rn "0\.\d\+" lib/drivers/ lib/decision/ | grep -v formulaConfig`
-to detect violations.
+Every new or changed scoring coefficient in S0–S9 must be placed in
+`lib/config/formulaConfig.ts` or `lib/config/formulaConfigSim.ts`, unless the
+mechanism is an explicitly versioned frozen observable such as `TENSION_V1`.
+Existing local tables in `lib/decision/actionProjection.ts` and related legacy
+paths are known migration debt, not evidence that centralization is complete.
+Tests and documentation must name the real owner of each coefficient family.

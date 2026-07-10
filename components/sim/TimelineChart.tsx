@@ -46,7 +46,7 @@ export const TimelineChart: React.FC<Props> = ({ sim, selectedAgentId, names, he
       }
     }
 
-    const series: Series[] = [{ label: 'Tension', color: '#ef4444', values: tension }];
+    const series: Series[] = [{ label: 'World tension (SimKit)', color: '#ef4444', values: tension }];
 
     if (selectedAgentId && stressSeries[selectedAgentId]) {
       series.push({

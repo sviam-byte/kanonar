@@ -20,15 +20,16 @@ Operational contract:
 2) all stochastic components draw from a seeded RNG
 3) seed is surfaced in UI/debug logs
 
-If current code does not yet thread a seed, treat this section as the target contract and
-record any deviations explicitly.
+The active GoalLab/SimKit path threads a fixed seed. The `/simulator` UI exposes
+the seed and the selected runtime profile; profile metadata is also present in
+the explicit-profile trace.
 
 ---
 
 ## 2) Stage snapshots (audit trail)
 
 Minimum:
-- store `Atoms(Sk)` for each stage Sk (S0..S8)
+- store `Atoms(Sk)` for each stage Sk (S0..S9)
 - include:
   - atom id
   - ns

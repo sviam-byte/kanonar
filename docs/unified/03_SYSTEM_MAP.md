@@ -58,8 +58,8 @@ Main shell:
 Observed route families:
 
 - live GoalLab: `/goal-lab-v2`, `/goal-lab-console-v2`
-- legacy GoalLab: `/goal-lab`, `/goal-lab-console`
-- legacy console shell: `/console`
+- compatibility redirects: `/goal-lab` -> `/goal-lab-v2`,
+  `/goal-lab-console` -> `/goal-lab-console-v2`
 - simulation: `/simulator`
 - many domain labs and editors under `pages/*`
 
@@ -74,16 +74,11 @@ Main rendering family:
 - `components/goal-lab-v2/*`
 - `components/goal-lab/*` for many deep debug and analysis panels still in use
 
-### Legacy GoalLab / GoalSandbox
+### Compatibility routes and legacy GoalSandbox
 
-Still mounted and reachable:
-
-- `pages/GoalLabPage.tsx`
-- `pages/GoalLabConsolePage.tsx`
-- `pages/ConsolePage.tsx`
-- `components/GoalSandbox/*`
-
-This is still live code, but should not be treated as the canonical model contract.
+`/goal-lab` and `/goal-lab-console` are compatibility redirects in `App.tsx`;
+their old page components are no longer mounted. `components/GoalSandbox/*`
+remains reference/transitional code and is not a canonical model contract.
 
 ## Simulation / Orchestration
 
@@ -142,7 +137,8 @@ Useful for conceptual background, but do not treat them as fresher than pipeline
 
 ## Known Architectural Tensions
 
-- `HomePage` promotes `/goal-lab-v2`, but `Header` still foregrounds legacy GoalLab routes.
+- `HomePage` and `Header` both foreground the v2 GoalLab routes; old GoalLab
+  URLs are redirect-only compatibility entries.
 - `useGoalLabEngine.ts` is a mixed orchestration layer, not a clean read-only projector over one canonical contract.
 - `useGoalLabWorld.ts` introduces UI-time seed generation via `Date.now()`, which weakens reproducibility at the surface layer.
 - several docs families make overlapping claims about “canon”, so trust order must be explicit.

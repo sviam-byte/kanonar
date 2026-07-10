@@ -6,6 +6,7 @@ import type { SimEvent } from '../core/types';
 import { buildBeliefAtomsForTick, persistBeliefAtomsToFacts, persistDecayingMemoryToFacts, updateEpisodicMemory } from '../post/perceiveActions';
 import { arr } from '../../utils/arr';
 import { FC } from '../../config/formulaConfig';
+import { getRuntimeProfileFromFacts, resolveRuntimeMechanics } from '../../config/runtimeMechanics';
 
 export function makePerceptionMemoryPlugin(): SimPlugin {
   // Snapshot for trust-delta-based episodic updates.
@@ -17,10 +18,12 @@ export function makePerceptionMemoryPlugin(): SimPlugin {
       try {
         const eventsApplied = arr<SimEvent>((record as any)?.trace?.eventsApplied);
         const memoryV1 = FC.memory.threatTraceV1;
+        const runtimeProfile = getRuntimeProfileFromFacts(world.facts as Record<string, unknown>);
+        const runtimeMechanics = resolveRuntimeMechanics(runtimeProfile);
         const beliefAtomsByAgentId = buildBeliefAtomsForTick(world, eventsApplied, {
-          includeAcceptedThreatSpeech: memoryV1.enabled,
+          includeAcceptedThreatSpeech: runtimeMechanics.memoryThreatTraceV1,
         });
-        const durableBeliefAtoms = memoryV1.enabled
+        const durableBeliefAtoms = runtimeMechanics.memoryThreatTraceV1
           ? Object.fromEntries(Object.entries(beliefAtomsByAgentId).map(([id, atoms]) => [
               id,
               atoms.filter((atom) => !atom.tags?.includes('decaying')),
@@ -31,7 +34,7 @@ export function makePerceptionMemoryPlugin(): SimPlugin {
           decayPerTick: memoryV1.decayPerTick,
           forgetBelow: memoryV1.forgetBelow,
           maxFacts: memoryV1.maxFacts,
-          absoluteAgeDecayV1: memoryV1.enabled,
+          absoluteAgeDecayV1: runtimeMechanics.memoryThreatTraceV1,
         });
         updateEpisodicMemory(world, eventsApplied, prevRelationsSnapshot);
 
@@ -48,6 +51,7 @@ export function makePerceptionMemoryPlugin(): SimPlugin {
 
         record.plugins ||= {};
         record.plugins.perceptionMemory = {
+          ...(runtimeProfile ? { runtimeMechanics } : {}),
           stored: Object.fromEntries(
             Object.keys(beliefAtomsByAgentId)
               .sort()

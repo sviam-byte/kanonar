@@ -25,16 +25,17 @@ It is also the official repo-level home for the control-plane material that prev
 
 ## Trust Order
 
-1. `lib/goal-lab/pipeline/runPipelineV1.ts`
-2. `docs/PIPELINE.md`
-3. `docs/INVARIANTS.md`
-4. `lib/context/v2/types.ts`
-5. `lib/goal-lab/atoms/canonical.ts`
-6. `lib/config/formulaConfig.ts`
-7. `tests/pipeline/*`, `tests/decision/*`, `tests/simkit/*`
-8. v2 UI orchestration: `pages/GoalLabPageV2.tsx`, `contexts/GoalLabContext.tsx`, `hooks/useGoalLabEngine.ts`
-9. compat / mixed layers: `lib/goals/goalLabContext.ts`, snapshot adapters, legacy GoalLab routes
-10. archive and legacy docs
+1. Live runtime: `lib/goal-lab/pipeline/runPipelineV1.ts` and the relevant
+   pure domain engine.
+2. Type contracts: `lib/context/v2/types.ts`,
+   `lib/goal-lab/atoms/canonical.ts`, nearby domain types.
+3. Tests: `tests/pipeline/*`, `tests/decision/*`, `tests/simkit/*`, and relevant
+   domain tests.
+4. Config/frozen constants: `lib/config/formulaConfig.ts`,
+   `lib/config/formulaConfigSim.ts`, explicitly versioned observables.
+5. Canonical docs: `docs/PIPELINE.md`, `docs/INVARIANTS.md`, nearest math spec.
+6. v2 UI orchestration.
+7. Compat/mixed layers, then archive and legacy docs.
 
 ## Control Plane
 

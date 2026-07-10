@@ -113,7 +113,10 @@ export const GoalLabProvider: React.FC<{
   const [injectedEvents, setInjectedEventsRaw] = useState<any[]>([]);
   const setInjectedEvents = useCallback((updater: (prev: any[]) => any[]) => setInjectedEventsRaw(updater), []);
   // enablePredict defaults to false — toggled on via UI. POMDP panel shows prototype when off.
-  const [sceneControl, setSceneControl] = useState<any>({ presetId: 'safe_hub' });
+  const [sceneControl, setSceneControl] = useState<any>({
+    presetId: 'safe_hub',
+    runtimeProfile: 'phase1',
+  });
   const [decisionNonce, setDecisionNonce] = useState(0);
   const bumpDecisionNonce = useCallback(() => setDecisionNonce(n => n + 1), []);
   const [observeLiteParams, setObserveLiteParams] = useState({ radius: 10, maxAgents: 12, noiseSigma: 0, seed: 0 });

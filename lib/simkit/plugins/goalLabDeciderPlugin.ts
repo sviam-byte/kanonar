@@ -22,6 +22,8 @@ import { familyOfActionKind } from '../../behavior/actionPattern';
 import { canonicalActionFromSimAction } from '../semantic/canonicalAction';
 import { readIntentCooldown } from '../core/behaviorMemory';
 import { buildIntentLifecycleTrace, getIntentStaleness, isCriticalIntentStage, isTransactionallyEquivalentAction, originalActionOfIntent, summarizeIntentForTrace } from '../core/intentLifecycle';
+import { getRuntimeProfileFromFacts, resolveRuntimeMechanics } from '../../config/runtimeMechanics';
+import { computeTensionVector, type TensionState } from '../../metrics/tension';
 
 // ── Intent cooldown: read cooldown facts and return penalty multiplier ──
 // If an agent just completed an intent of the same kind+target, penalize re-selection.
@@ -496,6 +498,16 @@ function groundAbstractAction(
 function extractAgentTrace(pipeline: GoalLabPipelineResult | null, actorId: string, world: SimWorld, mode: DecisionMode, gateResult: unknown): Record<string, unknown> {
   const stages = pipeline?.stages ?? [];
 
+  const contextAtoms = arr(stages.find((s: { stage: string }) => s.stage === 'S3')?.atoms);
+  const contextAxes: Record<string, number> = {};
+  for (const key of ['danger', 'privacy', 'publicness', 'surveillance', 'intimacy', 'resourceAccess', 'scarcity', 'control']) {
+    const atom = contextAtoms.find((a: unknown) => atomId(a) === `ctx:final:${key}:${actorId}`)
+      ?? (key === 'resourceAccess'
+        ? contextAtoms.find((a: unknown) => atomId(a) === `ctx:src:scene:resourceAccess:${actorId}`)
+        : null);
+    if (atom) contextAxes[key] = clamp01(atomMagnitude(atom));
+  }
+
   // S4: emotions
   const s4atoms = arr(stages.find((s: { stage: string }) => s.stage === 'S4')?.atoms);
   const emotions: Record<string, number> = {};
@@ -591,6 +603,7 @@ function extractAgentTrace(pipeline: GoalLabPipelineResult | null, actorId: stri
     sampleScore: Number(r?.sampleScore ?? 0),
     marginFromBest: Number(r?.marginFromBest ?? 0),
     inTieBand: Boolean(r?.inTieBand),
+    chosen: Boolean(r?.chosen),
     cost: Number(r?.action?.cost ?? r?.cost ?? 0),
     confidence: clamp01(Number(r?.action?.confidence ?? r?.confidence ?? 1)),
     goalContribs: (() => {
@@ -610,7 +623,12 @@ function extractAgentTrace(pipeline: GoalLabPipelineResult | null, actorId: stri
   }));
 
   const decisionSnapshot = s8arts.decisionSnapshot ?? null;
-  const best = ranked[0] || null;
+  const bestArtifactId = String((s8arts.best as any)?.id ?? '');
+  const best = ranked.find((entry) => bestArtifactId && entry.action === bestArtifactId)
+    ?? ranked.find((entry) => entry.chosen)
+    ?? ranked[0]
+    ?? null;
+  const topByQ = ranked[0] ?? null;
   const activeIntentSummary = summarizeIntentForTrace(getFact(world, `intent:${actorId}`), Number(pipeline?.tick ?? world.tickIndex ?? 0));
   const lastIntentRuntimeEvent = getFact(world, `sim:intent:last:${actorId}`) ?? null;
 
@@ -621,6 +639,7 @@ function extractAgentTrace(pipeline: GoalLabPipelineResult | null, actorId: stri
     lastIntentRuntimeEvent,
     decisionMode: mode,
     gate: gateResult,
+    contextAxes,
     emotions,
     drivers,
     goals,
@@ -632,6 +651,7 @@ function extractAgentTrace(pipeline: GoalLabPipelineResult | null, actorId: stri
     basedOnEvents,
     communicativeIntent,
     ranked,
+    topByQ,
     best: best
       ? {
           kind: best.kind,
@@ -757,6 +777,8 @@ export function makeGoalLabDeciderPlugin(opts?: { storePipeline?: boolean; enabl
       if (String((world as any)?.facts?.['sim:decider'] ?? '') === 'heuristic') return null;
 
       const snapshot = buildSnapshot(world, tickIndex);
+      const runtimeProfile = getRuntimeProfileFromFacts(world.facts as Record<string, unknown>);
+      const runtimeMechanics = resolveRuntimeMechanics(runtimeProfile);
       const offersByAgent = offers.reduce((acc, offer) => {
         const key = String((offer as any)?.actorId || '');
         if (!key) return acc;
@@ -795,6 +817,7 @@ export function makeGoalLabDeciderPlugin(opts?: { storePipeline?: boolean; enabl
             activeGoals: [],
             mode: '',
             relations: {},
+            ...(runtimeProfile ? { runtimeMechanics, tension: null } : {}),
             ranked: arr(rr.shortlist).map((entry: any) => ({ kind: entry.kind, targetId: entry.targetId ?? null, q: Number(entry.score ?? 0), explanation: arr(entry.reasons) })),
             reactive: { trigger: rr.trigger, context: rr.context, shortlist: rr.shortlist },
             best: rr.action
@@ -839,6 +862,7 @@ export function makeGoalLabDeciderPlugin(opts?: { storePipeline?: boolean; enabl
             activeGoals: [],
             mode: '',
             relations: {},
+            ...(runtimeProfile ? { runtimeMechanics, tension: null } : {}),
             ranked: arr(rr.shortlist).map((entry: any) => ({ kind: entry.kind, targetId: entry.targetId ?? null, q: Number(entry.score ?? 0), explanation: arr(entry.reasons) })),
             reactive: { trigger: rr.trigger, context: rr.context, shortlist: rr.shortlist },
             best: rr.action
@@ -860,7 +884,9 @@ export function makeGoalLabDeciderPlugin(opts?: { storePipeline?: boolean; enabl
           continue;
         }
 
-        const sceneControl: any = {};
+        const sceneControl: any = {
+          runtimeProfile,
+        };
         if (mode === 'degraded') {
           const dm = FCS.dualProcess.degradedModifiers;
           sceneControl.enableToM = dm.tomEnabled;
@@ -908,6 +934,16 @@ export function makeGoalLabDeciderPlugin(opts?: { storePipeline?: boolean; enabl
         }
 
         const trace = extractAgentTrace(pipeline, actorId, world, mode, gateResult);
+        if (runtimeProfile) {
+          const tensionStateKey = `sim:tensionState:${actorId}`;
+          const tension = computeTensionVector(pipeline, {
+            selfId: actorId,
+            prev: getFact<TensionState>(world, tensionStateKey) ?? null,
+          });
+          setFact(world, tensionStateKey, tension.state);
+          trace.runtimeMechanics = runtimeMechanics;
+          trace.tension = tension.readout;
+        }
         if ((trace as any)?.best?.explanation) {
           (trace as any).best.explanation = buildExplanation(
             (trace as any).best,
@@ -930,6 +966,10 @@ export function makeGoalLabDeciderPlugin(opts?: { storePipeline?: boolean; enabl
           appraisedEvents: trace.appraisedEvents || [],
           basedOnEvents: trace.basedOnEvents || [],
           communicativeIntent: trace.communicativeIntent || null,
+          ...(runtimeProfile ? {
+            runtimeMechanics: trace.runtimeMechanics,
+            tension: trace.tension,
+          } : {}),
         });
         // Store placement validation for UI consumption.
         if (placementResult) {

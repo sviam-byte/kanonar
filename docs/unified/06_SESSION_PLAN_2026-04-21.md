@@ -1,5 +1,8 @@
 # Session Plan — 2026-04-21
 
+> Historical session plan. It is retained as implementation history and is not
+> a current route, trust, or reachability map.
+
 ## Scope
 
 Current cleanup track:

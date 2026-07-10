@@ -189,6 +189,15 @@ const SceneSetup: React.FC = () => {
           <input type="checkbox" checked={sceneControl?.enablePredict !== false} onChange={e => setSceneControl({ ...sceneControl, enablePredict: e.target.checked })} className="w-3 h-3 rounded accent-cyan-500" />
           <span className="text-slate-400">POMDP Lookahead</span>
         </label>
+        <div className="text-[9px] text-slate-500 mt-1">Runtime profile</div>
+        <select
+          value={sceneControl?.runtimeProfile || 'phase1'}
+          onChange={e => setSceneControl({ ...sceneControl, runtimeProfile: e.target.value })}
+          className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-[10px] text-slate-300 mb-1.5"
+        >
+          <option value="phase1">Phase I — mechanics visible</option>
+          <option value="legacy">Legacy control</option>
+        </select>
         <select
           value={world.activeScenarioId}
           onChange={e => world.setActiveScenarioId(e.target.value)}

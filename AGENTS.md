@@ -70,14 +70,22 @@ For a narrow fix, read only the relevant canonical docs plus nearby code.
 
 ## Trust Order
 
-1. Pipeline truth: `lib/goal-lab/pipeline/runPipelineV1.ts`
-2. Pipeline contracts: `docs/PIPELINE.md`, `docs/INVARIANTS.md`
-3. Atom contracts: `lib/context/v2/types.ts`, `lib/goal-lab/atoms/canonical.ts`
-4. Coefficients: `lib/config/formulaConfig.ts`, `lib/config/formulaConfigSim.ts`
-5. Active UI: `pages/GoalLabPageV2.tsx`, `contexts/GoalLabContext.tsx`, `components/goal-lab-v2/*`
-6. Deep GoalLab panels still used by v2: `components/goal-lab/*`
-7. Transitional adapters: `hooks/useGoalLabEngine.ts`, `lib/goals/goalLabContext.ts`, snapshot adapters
-8. Legacy/archive code: useful for reference only, never canonical
+1. Live runtime implementation: `lib/goal-lab/pipeline/runPipelineV1.ts` and the
+   relevant pure domain engine.
+2. Type contracts: `lib/context/v2/types.ts`,
+   `lib/goal-lab/atoms/canonical.ts`, nearby domain types.
+3. Tests that exercise the live path: `tests/pipeline/*`, `tests/decision/*`,
+   `tests/simkit/*`, and relevant domain tests.
+4. Coefficients/config: `lib/config/formulaConfig.ts`,
+   `lib/config/formulaConfigSim.ts`, and explicitly frozen local observables.
+5. Canonical contracts/docs: `docs/PIPELINE.md`, `docs/INVARIANTS.md`, and the
+   nearest math specification. Docs define intended law; runtime/tests reveal
+   whether it is actually implemented.
+6. Active UI: `pages/GoalLabPageV2.tsx`, `contexts/GoalLabContext.tsx`,
+   `components/goal-lab-v2/*`, then deep panels under `components/goal-lab/*`.
+7. Transitional adapters: `hooks/useGoalLabEngine.ts`,
+   `lib/goals/goalLabContext.ts`, snapshot adapters.
+8. Legacy/archive code: reference only, never implementation truth.
 
 If docs and code disagree, prefer the canonical runtime and tests, then update
 docs if the change introduces a new invariant or knob.

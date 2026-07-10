@@ -7,11 +7,14 @@ import type { CharacterEntity, LocationEntity } from '../../types';
 import { MacroMap } from './MacroMap';
 import type { SimWorld } from '../../lib/simkit/core/types';
 import { autoPlaceCharacters } from '../../lib/simkit/adapters/autoPlace';
+import type { RuntimeProfileId } from '../../lib/config/runtimeMechanics';
 
 type StartConfig = {
   selectedCharIds: string[];
   selectedLocIds: string[];
   placements: Record<string, string>;
+  seed: number;
+  runtimeProfile: RuntimeProfileId;
 };
 
 type Props = {
@@ -25,6 +28,8 @@ export const SetupPanel: React.FC<Props> = ({ characters, locations, onStart }) 
   const [selectedLocIds, setSelectedLocIds] = useState<string[]>([]);
   // characterId -> locationId
   const [placements, setPlacements] = useState<Record<string, string>>({});
+  const [seed, setSeed] = useState(3);
+  const [runtimeProfile, setRuntimeProfile] = useState<RuntimeProfileId>('phase1');
 
   const toggleChar = useCallback((id: string) => {
     setSelectedCharIds((prev) => {
@@ -135,6 +140,33 @@ export const SetupPanel: React.FC<Props> = ({ characters, locations, onStart }) 
         Выбери локации (1+) и персонажей (2+). Расставь персонажей по локациям или нажми «Авторасстановка».
       </p>
 
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 140px', gap: 12, padding: 12, border: '1px solid #1e293b', borderRadius: 8, background: '#0f172a' }}>
+        <label style={{ display: 'flex', flexDirection: 'column', gap: 4, color: '#94a3b8', fontSize: 11 }}>
+          Runtime-профиль
+          <select
+            value={runtimeProfile}
+            onChange={(e) => setRuntimeProfile(e.target.value as RuntimeProfileId)}
+            style={{ background: '#020617', color: '#e2e8f0', border: '1px solid #334155', borderRadius: 4, padding: '6px 8px' }}
+          >
+            <option value="phase1">Phase I — механики включены</option>
+            <option value="legacy">Legacy — контрольная ветка</option>
+          </select>
+          <span style={{ color: '#64748b', fontSize: 9 }}>
+            Phase I включает речь→угрозу, предметный/локационный контекст, threat-memory и PAM v2. Профиль фиксируется в trace.
+          </span>
+        </label>
+        <label style={{ display: 'flex', flexDirection: 'column', gap: 4, color: '#94a3b8', fontSize: 11 }}>
+          Seed
+          <input
+            type="number"
+            value={seed}
+            onChange={(e) => setSeed(Number.isFinite(Number(e.target.value)) ? Number(e.target.value) : 3)}
+            style={{ background: '#020617', color: '#e2e8f0', border: '1px solid #334155', borderRadius: 4, padding: '6px 8px' }}
+          />
+          <span style={{ color: '#64748b', fontSize: 9 }}>Повторный запуск с тем же seed сравним семантически.</span>
+        </label>
+      </div>
+
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
         <div>
           <h3 style={{ fontSize: 12, fontWeight: 600, color: '#94a3b8', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 1 }}>
@@ -232,7 +264,7 @@ export const SetupPanel: React.FC<Props> = ({ characters, locations, onStart }) 
           ↻ Авторасстановка
         </button>
         <button
-          onClick={() => onStart({ selectedCharIds, selectedLocIds, placements })}
+          onClick={() => onStart({ selectedCharIds, selectedLocIds, placements, seed, runtimeProfile })}
           disabled={!canStart}
           style={{
             padding: '8px 28px', borderRadius: 6, border: 'none', cursor: canStart ? 'pointer' : 'not-allowed',

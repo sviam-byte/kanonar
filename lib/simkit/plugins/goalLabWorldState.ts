@@ -4,6 +4,7 @@
 import type { SimWorld, SimSnapshot, ActionOffer, SimLocation } from '../core/types';
 import { EntityType, type LocationEntity, type WorldState } from '../../../types';
 import { FC } from '../../config/formulaConfig';
+import { getRuntimeProfileFromFacts, resolveRuntimeMechanics } from '../../config/runtimeMechanics';
 import { makeAgentRNG, setGlobalRunSeed } from '../../core/noise';
 import { clamp01 } from '../../util/math';
 import { arr } from '../../utils/arr';
@@ -388,6 +389,9 @@ export function buildWorldStateFromSim(world: SimWorld, snapshot: SimSnapshot, o
   // Ensure GoalLab's seeded RNG channels are wired in SimKit mode.
   // SimKit exposes a per-run seed; map it into the global seed factory.
   setGlobalRunSeed(Number((world as any)?.seed ?? 12345));
+  const runtimeMechanics = resolveRuntimeMechanics(
+    getRuntimeProfileFromFacts(world.facts as Record<string, unknown>),
+  );
 
   const chars = arr<any>((snapshot as any)?.characters);
   const locs = arr<SimLocation>((snapshot as any)?.locations);
@@ -413,7 +417,7 @@ export function buildWorldStateFromSim(world: SimWorld, snapshot: SimSnapshot, o
     const acceptedAtoms = arr<any>((world as any)?.facts?.[`agentAtoms:${entityId}`])
       .filter((a: any) => Number(a?.meta?.origin?.tickIndex ?? NaN) === tickNow - 1);
     const memoryV1 = FC.memory.threatTraceV1;
-    const decayingMemoryAtoms = memoryV1.enabled
+    const decayingMemoryAtoms = runtimeMechanics.memoryThreatTraceV1
       ? buildDecayingMemoryAtomsForAgent(world, entityId, { ...memoryV1, requiredTags: ['speech', 'threat'] })
       : [];
     const allBeliefAtoms = [...beliefAtoms, ...episodicAtoms, ...decayingMemoryAtoms, ...acceptedAtoms];
@@ -510,7 +514,7 @@ export function buildWorldStateFromSim(world: SimWorld, snapshot: SimSnapshot, o
     // properties so worldFacts/locationAtoms/deriveAxes see privacy & co.
     // OFF (default): no `properties` key — adapter output byte-identical to
     // legacy (simkit scenes historically read as public/neutral).
-    if (FC.location.propsV1.enabled) {
+    if (runtimeMechanics.locationPropsV1) {
       const props = (l.entity as Pick<LocationEntity, 'properties'> | undefined)?.properties;
       if (props && typeof props === 'object') out.properties = props;
     }

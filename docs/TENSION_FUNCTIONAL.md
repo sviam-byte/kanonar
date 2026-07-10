@@ -14,10 +14,13 @@
 ## 0. Scope and read-only guarantee
 
 C(t) is computed AFTER the pipeline, from the existing trace only
-(`runGoalLabPipelineV1` result). It writes nothing: no atoms, no facts, no
-influence on any decision. Influence of C on the gate is Phase II (WP-E) and
-requires its own freeze. The contract test proves the pipeline result is
-byte-identical whether or not the metric is computed.
+(`runGoalLabPipelineV1` result). The pure function writes nothing and has no
+influence on any decision. In explicit-profile SimKit runs, the decider plugin
+projects its readout to `sim:trace:<agentId>.tension` and stores retention state
+in resettable `world.facts['sim:tensionState:<agentId>']`; this projection does
+not feed S0–S9. Influence of C on the gate is Phase II (WP-E) and requires its
+own freeze. The contract test proves the pipeline result is byte-identical
+whether or not the metric is computed.
 
 ## 1. Inputs (trace substrate, verified 2026-07-07)
 
@@ -102,7 +105,8 @@ clarification 2):
 $$\bar C_k(t)=(1-\alpha)\,\bar C_k(t-1)+\alpha\,C_k(t),\qquad \alpha=0.2$$
 
 predicted trace half-life $t_{1/2}=\ln 2/\ln\frac{1}{1-\alpha}=\ln 2/\ln 1.25\approx 3.106$ ticks
-(this number is a pre-registered A3-style check once rollouts exist).
+(rollouts now exist; this is the C-retention half-life, not threat-memory A3,
+whose independent law uses `d=0.97`).
 
 Channel $k$ is **held** at tick $t$ iff $C_k>\theta_{hold}=0.3$ for $m=3$
 consecutive ticks. State (`ema`, per-channel run lengths) is carried by the
@@ -124,8 +128,8 @@ Per-channel z-score against a frozen baseline ensemble — the same convention
 as v(t) (FREEZE-ITEM SCENE_BATTERY §0, still open): S_neutral, fixed seed set,
 per-channel mean/std over the ensemble; $z_k=(C_k-\mu_k)/\sigma_k$ with
 $\sigma_k=0$ ⇒ $z_k=0$. The pure post-processor exists in v1
-(`normalizeTensionChannels`); the baseline ensemble itself requires the
-rollout harness and is deferred to MVP-0 (dated: 2026-07-07). Until then all
+(`normalizeTensionChannels`). The rollout harness now exists, but the neutral
+baseline ensemble has not been generated and frozen (status 2026-07-10). Until then all
 exports are RAW and labeled as such.
 
 ## 5. Pair typology (pre-registered signatures)
@@ -165,3 +169,17 @@ All four are OPEN until the WP-C/WP-F harness exists; they are listed in
 | EMA α | 0.2 ($t_{1/2}\approx 3.106$) |
 | $\theta_{hold}$, m | 0.3, 3 ticks |
 | surprise floor | none beyond the producer's own 0.05 emit-gate |
+
+## Assumptions and limitations
+
+Kanonar is a research/prototype simulation system. Variables such as trust, fear,
+stress, resentment, affiliation need, or control need are internal simulation
+scalars. They are not clinical, psychometric, or experimentally calibrated
+measurements.
+
+The system is useful for deterministic simulation, explainable decision
+pipelines, sensitivity analysis, comparing rule systems, and prototyping agent
+dynamics.
+
+The system must not be presented as a validated psychological, diagnostic, or
+real-world behavioral prediction model without external validation.

@@ -298,3 +298,80 @@ action:*
 ## Known limitation of this walkthrough
 
 Этот walkthrough описывает canonical decision tick, но не претендует на покрытие всех mixed surfaces репозитория. SimKit, dilemma runtime, UI projections и legacy layers могут добавлять собственные artifacts вокруг canonical pipeline, однако источником истины для staged decision chain остаётся `lib/goal-lab/pipeline/runPipelineV1.ts`.
+
+## Appendix: reproducible Legacy vs Phase I run
+
+Один тик недостаточен для всей коммуникационной цепочки: речь применяется в
+тик `t`, принимается trust gate и попадает в GoalLab адресата в `t+1`. Поэтому
+smoke-проверка профиля использует два тика, а memory trajectory — семь и более.
+
+### Initial state
+
+```text
+seed = 3
+agents = A, B
+location = private MVP-0 room
+object token holder = B
+tick 0 event = threaten(A -> B, magnitude=0.7, confidence=0.9)
+```
+
+Одинаковые мир/seed/event запускаются дважды. Единственное различие:
+
+```text
+legacy: world.facts['sim:runtimeProfile'] = 'legacy'
+phase1: world.facts['sim:runtimeProfile'] = 'phase1'
+```
+
+### Expected mechanism readouts
+
+| readout | Legacy | Phase I |
+|---|---:|---:|
+| active profile mechanisms | 0 | 6 |
+| location properties reach GoalLab | no | yes |
+| B resourceAccess source (holds token) | absent | 0.9 |
+| A scarcity axis from rival-held token | legacy floor | 0.75 in clean object example |
+| accepted threat source at B, t+1 | absent | `0.7*0.9=0.63` |
+| clean-floor danger contribution | 0 | `0.25*0.45*0.63=0.070875` |
+| decaying threat memory | absent | `c0*0.97^age` |
+| PAM v2 + prior Q carrier | off | on, subject to possibility gates |
+| C(t) | not projected | finite raw read-only vector |
+
+The full-profile comparison is a visibility smoke test, not causal attribution
+to one mechanism. Causal claims still require one-mechanism twins/ablations.
+
+### What to inspect in UI
+
+1. `/simulator`: select `Phase I`, a fixed seed, two characters, and a location.
+2. Runtime header: profile and seed.
+3. Agent inspector: active mechanisms, context axes, threat memory, actual
+   chosen action and raw C(t) channels.
+4. Timeline label `World tension (SimKit)` is a different coarse scalar; it is
+   not held contradiction C(t).
+
+### Reproduction test
+
+```bash
+npm test -- tests/simkit/runtime_mechanics_profile.test.ts
+```
+
+The test pins profile isolation, location passthrough, object/communication
+source atoms, memory persistence, finite C(t), and absence of global FC
+mutation. For the full causal evidence, also run:
+
+```bash
+npm test -- tests/simkit/comm_threat_v1.test.ts tests/simkit/object_context_v1.test.ts tests/simkit/location_props_v1.test.ts tests/simkit/memory_threat_v1.test.ts tests/goals/tension_contract.test.ts tests/goals/pam_v2.test.ts
+```
+
+## Assumptions and limitations
+
+Kanonar is a research/prototype simulation system. Variables such as trust, fear,
+stress, resentment, affiliation need, or control need are internal simulation
+scalars. They are not clinical, psychometric, or experimentally calibrated
+measurements.
+
+The system is useful for deterministic simulation, explainable decision
+pipelines, sensitivity analysis, comparing rule systems, and prototyping agent
+dynamics.
+
+The system must not be presented as a validated psychological, diagnostic, or
+real-world behavioral prediction model without external validation.

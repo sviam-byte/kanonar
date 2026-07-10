@@ -1,5 +1,9 @@
 # Stabilization Memory
 
+> Historical stabilization snapshot. Route and trust claims below describe an
+> earlier repository state; use `AGENTS.md`, `docs/PIPELINE.md`, and
+> `docs/unified/README.md` for the current contract.
+
 ## Purpose
 
 This is the short operational memory for stabilization work. Keep it focused on what future agents need to preserve while moving the repo toward a demo-quality, explainable decision microscope.

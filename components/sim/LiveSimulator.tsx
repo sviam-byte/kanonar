@@ -23,6 +23,7 @@ import { AgentInspector } from './AgentInspector';
 import { LocationMapPanel } from './LocationMapPanel';
 import { TimelineChart } from './TimelineChart';
 import { canonicalActionFromSimAction } from '../../lib/simkit/semantic/canonicalAction';
+import { RUNTIME_PROFILE_FACT_KEY, type RuntimeProfileId } from '../../lib/config/runtimeMechanics';
 
 // ─── Helpers ───────────────────────────────────────────────────────────
 
@@ -331,17 +332,23 @@ const ControlsBar: React.FC<{
   running: boolean;
   speed: number;
   tension?: number;
+  seed: number;
+  runtimeProfile: string;
   onStep: () => void;
   onRun: () => void;
   onPause: () => void;
   onReset: () => void;
   onSpeedChange: (s: number) => void;
-}> = ({ tick, running, speed, tension, onStep, onRun, onPause, onReset, onSpeedChange }) => (
+}> = ({ tick, running, speed, tension, seed, runtimeProfile, onStep, onRun, onPause, onReset, onSpeedChange }) => (
   <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontFamily: '"JetBrains Mono", monospace', fontSize: 12 }}>
     <button onClick={onStep} disabled={running} style={btnStyle(!running)}>▶ Step</button>
     {running ? <button onClick={onPause} style={btnStyle(true)}>⏸ Pause</button> : <button onClick={onRun} style={btnStyle(true)}>▶▶ Run</button>}
     <button onClick={onReset} style={btnStyle(true)}>↺ Reset</button>
     <span style={{ color: '#64748b', fontSize: 10 }}>t={tick}</span>
+    <span style={{ color: '#64748b', fontSize: 10 }}>seed={seed}</span>
+    <span style={{ color: runtimeProfile === 'phase1' ? '#22d3ee' : '#94a3b8', fontSize: 9, border: '1px solid #334155', borderRadius: 4, padding: '2px 5px', textTransform: 'uppercase' }}>
+      {runtimeProfile === 'phase1' ? 'Phase I' : 'Legacy'}
+    </span>
     {tension !== undefined && (
       <span style={{ color: tension > 0.6 ? '#ef4444' : tension > 0.3 ? '#f59e0b' : '#22c55e', fontSize: 10 }}>
         ◆ {Math.round(tension * 100)}%
@@ -394,6 +401,8 @@ export const LiveSimulator: React.FC = () => {
     selectedCharIds: string[];
     selectedLocIds: string[];
     placements: Record<string, string>;
+    seed: number;
+    runtimeProfile: RuntimeProfileId;
   }) => {
     const locations = allLocations.filter((l) => config.selectedLocIds.includes(l.entityId));
     const characters = allCharacters.filter((c) => config.selectedCharIds.includes(c.entityId));
@@ -407,13 +416,14 @@ export const LiveSimulator: React.FC = () => {
       placements[c.entityId] = requested && locationSet.has(requested) ? requested : defaultLocId;
     }
 
-    const seed = Date.now() % 100000;
+    const seed = Number.isFinite(config.seed) ? Math.trunc(config.seed) : 3;
     const world = makeSimWorldFromSelection({
       seed,
       locations,
       characters,
       placements,
     } as any);
+    world.facts[RUNTIME_PROFILE_FACT_KEY] = config.runtimeProfile;
 
     const decider = makeGoalLabDeciderPlugin({ storePipeline: true });
     const pipeline = makeGoalLabPipelinePlugin();
@@ -665,6 +675,7 @@ export const LiveSimulator: React.FC = () => {
     return Object.values(worldView.characters || {}).sort((a: any, b: any) => a.id.localeCompare(b.id)) as SimCharacter[];
   }, [worldView, tick]);
   const tension = Number((simRef.current as any)?.tensionHistory?.slice?.(-1)?.[0] ?? 0);
+  const runtimeProfile = String(worldView?.facts?.[RUNTIME_PROFILE_FACT_KEY] ?? 'legacy');
 
   if (phase === 'setup') {
     return (
@@ -690,6 +701,8 @@ export const LiveSimulator: React.FC = () => {
           running={running}
           speed={speed}
           tension={tension}
+          seed={Number(worldView?.seed ?? 0)}
+          runtimeProfile={runtimeProfile}
           onStep={handleStep}
           onRun={handleRun}
           onPause={handlePause}

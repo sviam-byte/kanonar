@@ -74,16 +74,16 @@ Discipline target:
 
 ## Hotspot 5
 
-### `components/GoalSandbox/GoalSandbox.tsx`
+### `components/GoalSandbox/*`
 
 Why it matters:
-- huge legacy surface, still mounted, still influential
+- broad legacy/reference surface that can be mistaken for the active GoalLab UI
 
 Main risk:
 - agents patch it as if it were the canonical GoalLab runtime
 
 Discipline target:
-- keep legacy status explicit
+- keep its non-canonical, unmounted status explicit
 - use shared guards/contracts when import/export paths are touched
 
 ## Hotspot 6

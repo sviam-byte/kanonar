@@ -1,153 +1,193 @@
-# Decision, modes, hysteresis — v69
+# Decision, variability, and persistence
 
-This file pins down the *decision model* as it exists in code, plus the stability criteria.
+Status: canonical decision-math reference for the current S7→S8 path.
 
-Sources of truth:
-- decision: `lib/decision/decide.ts`
-- priors/access: `lib/decision/actionPriors.ts`, `lib/access/deriveAccess.ts`
-- util projection: `lib/goals/goalAtoms.ts` (S7 end)
+## 1. Purpose
 
-Even if details evolve, the invariants here must remain stable unless explicitly revised.
+The decision layer converts projected goal effects, costs, confidence, action
+priors, access gates, and seeded variability into one applied action. It does
+not read `goal:*` atoms directly.
 
----
+```text
+goal:* -> util:* / projected Δg(a) -> Q(a) -> seeded selection -> action:*
+```
 
-## 1) Formal separation: goals vs actions
+## 2. Score formula
 
-Hard architectural rule:
-- Actions read `util:*`, not `goal:*`.
+### Purpose
 
-Formally:
-- `Decision` is a function of `(Util, Access, Priors, Possibilities, Noise?)`.
-- `Decision` is NOT a direct function of `Goal`.
+Assign one inspectable canonical Q value to every allowed candidate.
 
-`Goal → Util` is a projection step:
-- `Π: GoalSpace → UtilSpace`
+### Formula
 
-Only `UtilSpace` is visible to the action selector.
+```text
+G(a) = Σ_g E_g · Δg(a)
+P(a) = I_prior · w_prior · priorMagnitude(a)
+Q_raw(a) = G(a) + P(a) - cost(a)
+riskPenalty(a) = k_risk · |Q_raw(a)| · (1 - confidence(a))
+Q(a) = Q_raw(a) - riskPenalty(a)
+```
 
----
+### Variables
 
-## 2) Utility aggregation model (conceptual contract)
+- `E_g` — current energy of goal domain `g`.
+- `Δg(a)` — signed projected effect of action `a` on domain `g`.
+- `priorMagnitude(a) ∈ [0,1]` — prior carried by the possibility/candidate.
+- `I_prior ∈ {0,1}` — effective runtime prior-influence gate.
+- `w_prior = 0.5` — `FC.actionScoring.priorInfluence.weight`.
+- `cost(a) ∈ [0,1]` — inspectable action cost.
+- `confidence(a) ∈ [0,1]`.
+- `k_risk = 0.4` — `FC.actionScoring.riskCoeff`.
 
-The code produces a set of utilities:
-- `u_i ∈ [0,1]` for each util feature i (e.g., util:safety, util:affiliation, …)
+### Source of truth
 
-Action a has a util vector weight/profile:
-- `w_a ∈ R^m` (m utilities) + bias `b_a`
+- implementation: `lib/decision/scoreAction.ts`, `lib/decision/decide.ts`
+- candidate construction: `lib/decision/actionCandidateUtils.ts`
+- config: `lib/config/formulaConfig.ts`
+- pipeline: `lib/goal-lab/pipeline/runPipelineV1.ts`
+- tests: `tests/decision/score_action_risk_penalty.test.ts`,
+  `tests/decision/decision_trace_breakdown.test.ts`
+- trace: `action:score:*` and `S8.artifacts.decisionSnapshot`
 
-A standard linear score is:
+### Invariants
 
-`s(a) = b_a + Σ_i w_{a,i} · u_i`
+- `action:*` provenance must not contain direct `goal:*` dependencies.
+- Prior contribution is exactly zero when prior influence is disabled.
+- Confidence is an additive risk penalty, not multiplication `Q*confidence`.
+- Trace decomposition must reconstruct canonical Q within numeric tolerance.
 
-Then selection can be:
-1) Argmax deterministic:
-   - `a* = argmax_a s(a)`
-2) Softmax stochastic with temperature T:
-   - `P(a) = exp(s(a)/T) / Σ_j exp(s(j)/T)`
-3) Gumbel-Max (equivalent to softmax):
-   - `a* = argmax_a ( s(a) + g_a )`, where `g_a ~ Gumbel(0, T)`
+### Minimal example
 
-**Contract**:
-Even if implementation differs, it must be expressible as:
-- a monotone transformation of a scalar action score,
-- computed from util/access/priors, not from goal atoms directly.
+```text
+G=0.40, priorMagnitude=0.60, I_prior=1, cost=0.10, confidence=0.75
+P=0.5·0.60=0.30
+Q_raw=0.40+0.30-0.10=0.60
+riskPenalty=0.4·0.60·0.25=0.06
+Q=0.54
+```
 
----
+### Failure modes
 
-## 3) Access + priors (gating)
+- trace omits the prior term while runtime uses it;
+- documentation says confidence multiplies Q;
+- local UI score is treated as canonical instead of S8 Q;
+- forbidden action reaches the selection pool.
 
-Let:
-- `A(a) ∈ {0,1}` be access (allowed action)
-- `p(a)` be prior (could be a bias term or multiplicative factor)
+## 3. Candidate pool and seeded selection
 
-Two equivalent formulations:
+### Purpose
 
-### 3.1 Additive (logit) formulation
+Keep exact reproducibility for a fixed seed while allowing controlled
+variability among competitive candidates.
 
-`s'(a) = s(a) + log p(a) + mask(a)`
+### Formula
 
-where:
-- `mask(a) = -∞` if `A(a)=0`, else 0.
+```text
+K = 10                                  legacy/no prior profile
+K = FC.actionScoring.priorInfluence.topK = 16  prior influence ON
 
-### 3.2 Multiplicative probability formulation
+topRanked = first K candidates sorted by descending Q
+nearTie = first 3 candidates where Q_best - Q(a) <= 0.08
 
-`P(a) ∝ A(a) · p(a) · exp(s(a)/T)`
+T_eff = 1.4T  if |nearTie| >= 2
+T_eff = T     otherwise
+T_eff >= 0.05
 
----
+g_a = -ln(-ln(U_a)), U_a from seeded RNG
+sampleScore(a) = Q_used(a)/T_eff + g_a
+a* = argmax over the active sampling pool sampleScore(a)
+```
 
-## 4) Hysteresis / stability (goal or mode persistence)
+If lookahead choice is enabled, `Q_used` may be an explicit lookahead override;
+canonical reported `Q` remains unchanged.
 
-Even if action selection is per-tick, *intentional stability* is required to avoid flicker.
-If the code currently applies hysteresis to active goal/mode selection, the contract is:
+### Variables
 
-### 4.1 Margin hysteresis (mode switching)
+- `T` — decision temperature.
+- `g_a` — seeded Gumbel noise; standard deviation is about `1.28`.
+- `Q_used` — canonical Q or an explicit lookahead sampling override.
+- near-tie constants come from `FC.actionScoring.exploration`.
 
-Let:
-- `m_t` be current mode at tick t
-- `Score(mode)` be a scalar mode score
-- `Δ = Score(best) - Score(m_t)`
+### Source of truth
 
-Switch only if:
-- `Δ ≥ τ_switch`
+- implementation: `lib/decision/decide.ts`
+- RNG: `lib/core/noise.ts`
+- config: `FC.actionScoring.exploration`
+- tests: `tests/decision/near_tie_sampling.test.ts`,
+  `tests/decision/q_sampling_overrides.test.ts`,
+  `tests/pipeline/determinism_oracle.test.ts`
 
-Otherwise keep:
-- `m_{t+1} = m_t`
+### Invariants
 
-This is the simplest stable policy.
+- Same candidates + Q + seed + temperature + profile => same winner.
+- `decisionSnapshot.best` is the actual Gumbel winner, not Q rank 1.
+- `topByQ` and `chosen` are distinct readouts.
+- The standing noise-rank-coupling debt remains: noise is currently drawn by
+  ranked iteration order, not keyed by candidate identity.
 
-### 4.2 Inertia / exponential smoothing (utilities)
+### Minimal example
 
-Maintain smoothed util:
-- `ū_{t+1} = (1-α)·ū_t + α·u_t`
+```text
+Q = [0.54, 0.50], gap=0.04 <= 0.08 -> near-tie pool
+T=0.2 -> T_eff=0.28
+seeded g=[0.1, 0.5]
+sampleScore=[2.029, 2.286] -> second candidate is applied
+```
 
-with `α ∈ (0,1]`.
+### Failure modes
 
-Stability criterion:
-- smaller α → more inertia, less flicker.
+- UI calls Q rank 1 the applied action;
+- different profile changes top-K but export omits the profile;
+- unseeded randomness enters the pool;
+- candidate-order changes re-deal noise and are misread as preference change.
 
-### 4.3 Goal-set hysteresis (active goal selection)
+## 4. Access, priors, and PAM v2
 
-If there is a discrete set of “active goals”:
-- keep current active goal g unless another goal exceeds it by margin τ.
+Access is a hard pre-selection gate: blocked candidates do not enter scoring.
+PAM v2 produces `challenge`/`defy` priors from autonomy-related traits. A prior
+can affect Q only when both the PAM vocabulary and prior-influence carrier are
+enabled. The complete PAM formulas and gates are in
+`docs/docs_conceptual/KANONAR_PHASE_I_IMPL_PLAN.md` §I-0.2.
 
-Formally:
-- choose `g* = argmax g score(g)`
-- if `score(g*) - score(g_current) ≥ τ` then switch, else keep current.
+`defy` currently has no consuming possibility and therefore cannot be selected.
+This is documented vocabulary debt.
 
----
+## 5. Persistence and hysteresis actually present
 
-## 5) Decision quality criteria (testable)
+There is no generic action-score hysteresis in `decideAction`. Stability comes
+from separate mechanisms:
 
-### 5.1 Determinism under fixed seed (if noise is used)
+- S7 goal activation/hysteresis and `goalState` retention;
+- SimKit intent lifecycle (`start/continue/abort`) and cooldown;
+- repetition penalties and novelty relief;
+- dual-process mode gate and degraded modifiers;
+- optional belief/prediction feedback.
 
-If the system uses any stochasticity, then:
-- with fixed seed, outputs are deterministic.
+Do not document the conceptual margin rule `switch iff Δ>=τ` as implemented
+unless a concrete runtime path and test are named. The planned continuous budget
+gate involving C(t) is Phase II and is not wired; C(t) remains read-only.
 
-### 5.2 Non-trivial variation under different utilities
+## 6. Validation commands
 
-If util vector changes significantly (L1 distance ≥ δ_util),
-selected action distribution should change.
+```bash
+npm run typecheck
+npm test -- tests/decision tests/pipeline
+```
 
-Example:
-- `||u - u'||_1 ≥ 0.5` should produce either:
-  - different argmax action, or
-  - materially different softmax probabilities.
+Any score-law change requires updates to `docs/PIPELINE.md`, this document,
+decision trace tests, determinism tests, and the relevant frozen experiment
+status if the observable changed.
 
-### 5.3 Access dominates
+## Assumptions and limitations
 
-If `A(a)=0`, then action `a` must never be selected.
+Kanonar is a research/prototype simulation system. Variables such as trust, fear,
+stress, resentment, affiliation need, or control need are internal simulation
+scalars. They are not clinical, psychometric, or experimentally calibrated
+measurements.
 
----
+The system is useful for deterministic simulation, explainable decision
+pipelines, sensitivity analysis, comparing rule systems, and prototyping agent
+dynamics.
 
-## 6) How this file must be kept in sync
-
-If you change:
-- how `util:*` is computed or normalized,
-- how access/prior gating works,
-- whether selection uses argmax vs softmax vs gumbel,
-- any hysteresis thresholds,
-
-then you must update:
-- this file,
-- docs/ORACLES.md (thresholds),
-- and tests covering determinism/stability.
+The system must not be presented as a validated psychological, diagnostic, or
+real-world behavioral prediction model without external validation.

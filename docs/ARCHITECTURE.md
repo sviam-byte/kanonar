@@ -2,7 +2,7 @@
 
 ## Core idea
 
-Один тик/снимок агента проходит staged pipeline S0…S8, который производит атомы (ContextAtom) с trace,
+Один тик/снимок агента проходит staged pipeline S0…S9, который производит атомы (ContextAtom) с trace,
 после чего UI визуализирует:
 - что получилось на каждой стадии,
 - почему цели получили такие веса,
@@ -17,17 +17,28 @@
 - Character lens: `lib/context/lens/characterLens.ts`
 - Goal derivation/projection: `lib/goals/*`
 - Decision graph builder: `lib/graph/GraphAdapter.ts`
-- GoalLab UI: `components/goal-lab/*`
+- GoalLab v2 shell: `pages/GoalLabPageV2.tsx`, `components/goal-lab-v2/*`
+- Deep analysis panels used by v2: `components/goal-lab/*`
 
 ## Data flow (conceptual)
 
 world/obs/mem/rel/life atoms
+  → (S0) canonical world/obs/mem/rel/life atoms
   → (S1) quarks
   → (S2) ctx:* (base axes)
   → (S3) ctx:final:* (subjective axes via character lens)
+  → (S4) appraisal + emotion atoms
+  → (S5) ToM/dyadic policy atoms
   → (S6) drv:* (drivers)
   → (S7) goal:* (goals) + util:* projection
   → (S8) action:* decision
+  → (S9) predicted transition + belief persistence when enabled
+
+User-facing runs may select an explicit runtime profile. `legacy` is the
+compatibility control; `phase1` enables the validated communication, object,
+location, memory, prior-influence, and PAM-v2 mechanisms for that run without
+mutating global FormulaConfig. The selected profile is part of trace and must
+be included when comparing runs.
 
 ## Reading strategy
 

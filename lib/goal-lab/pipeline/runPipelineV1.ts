@@ -37,6 +37,7 @@ import type { Possibility } from '../../possibilities/catalog';
 import { deriveAccess } from '../../access/deriveAccess';
 import { deriveActionPriors } from '../../decision/actionPriors';
 import { FC } from '../../config/formulaConfig';
+import { resolveRuntimeMechanics } from '../../config/runtimeMechanics';
 import { decideAction } from '../../decision/decide';
 import { scoreAction } from '../../decision/scoreAction';
 import { buildActionCandidates } from '../../decision/actionCandidateUtils';
@@ -507,6 +508,10 @@ export function runGoalLabPipelineV1(input: {
 }): GoalLabPipelineV1 | null {
   const { world, agentId, participantIds } = input;
   const tick = Number(input.tickOverride ?? world.tick ?? 0);
+  const runtimeMechanics = resolveRuntimeMechanics(
+    (input.sceneControl as Record<string, unknown> | undefined)?.runtimeProfile,
+  );
+  const hasExplicitRuntimeProfile = runtimeMechanics.source === 'runtimeProfile';
   const agent = world.agents.find(a => a.entityId === agentId);
   if (!agent) return null;
   const selfId = agent.entityId;
@@ -638,6 +643,7 @@ export function runGoalLabPipelineV1(input: {
       }),
       placementValidation,
       placementComplete: placementValidation.isComplete,
+      ...(hasExplicitRuntimeProfile ? { runtimeMechanics } : {}),
     }
   });
 
@@ -694,13 +700,13 @@ export function runGoalLabPipelineV1(input: {
 
   // Communication v1a (I-2.1, flag-gated): speech-borne threat → danger-axis
   // source. OFF ⇒ no atom ⇒ deriveAxes' max-join is a no-op (bit-identical).
-  const commThreatAtoms = FC.communication.speechThreatV1.enabled
+  const commThreatAtoms = runtimeMechanics.communicationSpeechThreatV1
     ? arr(deriveCommThreatAtoms({ selfId, atoms }).atoms).map(normalizeAtom)
     : [];
 
   // Object v1 (I-2.3, flag-gated): obj:v0:* facts → resourceAccess/scarcity
   // source atoms (existing deriveAxes sockets). OFF ⇒ no atoms ⇒ bit-identical.
-  const objectCtxAtoms = FC.objects.contextAxesV1.enabled
+  const objectCtxAtoms = runtimeMechanics.objectsContextAxesV1
     ? arr(deriveObjectContextAtoms({ selfId, world, atoms }).atoms).map(normalizeAtom)
     : [];
 
@@ -1011,9 +1017,14 @@ export function runGoalLabPipelineV1(input: {
     // derive priors FIRST so magnitudes can carry personality; the legacy
     // order is preserved when OFF (the flag stays the ablation switch).
     const priorOtherIds = participantIds.filter(id => id && id !== selfId);
-    const priorFirst = Boolean((FC.actionScoring as any)?.priorInfluence?.enabled);
+    const priorFirst = runtimeMechanics.actionPriorInfluence;
     const earlyPriorAtoms = priorFirst
-      ? arr(deriveActionPriors({ selfId, otherIds: priorOtherIds, atoms })).map(normalizeAtom)
+      ? arr(deriveActionPriors({
+          selfId,
+          otherIds: priorOtherIds,
+          atoms,
+          pamV2Enabled: runtimeMechanics.actionPamV2,
+        })).map(normalizeAtom)
       : [];
     const possInputAtoms = priorFirst
       ? mergeAtomsPreferNewer(atoms, earlyPriorAtoms).atoms
@@ -1052,6 +1063,7 @@ export function runGoalLabPipelineV1(input: {
           selfId,
           otherIds,
           atoms: mS8b.atoms,
+          pamV2Enabled: runtimeMechanics.actionPamV2,
         })).map(normalizeAtom);
     const mS8c = mergeAtomsPreferNewer(mS8b.atoms, priorsAtoms);
 
@@ -1083,7 +1095,9 @@ export function runGoalLabPipelineV1(input: {
     const rankedBaseline = actions
       .map((action: any) => ({
         ...(action || {}),
-        q: Number(scoreAction(action, goalEnergy) ?? 0),
+        q: Number(scoreAction(action, goalEnergy, {
+          priorInfluenceEnabled: runtimeMechanics.actionPriorInfluence,
+        }) ?? 0),
       }))
       .sort((a: any, b: any) => Number(b?.q ?? 0) - Number(a?.q ?? 0));
 
@@ -1174,6 +1188,7 @@ export function runGoalLabPipelineV1(input: {
       // topK also caps the Gumbel CHOICE pool (candidates 11+ can never be
       // chosen — ledger TOPK-POOL-CAP); widened only under the flag.
       topK: priorFirst ? Number((FC.actionScoring as any)?.priorInfluence?.topK ?? 16) : 10,
+      priorInfluenceEnabled: runtimeMechanics.actionPriorInfluence,
       // decideAction expects rng() in [0,1) for Gumbel noise. RNG.next() returns
       // a raw uint32, which clamps the noise to a constant and silently disables
       // exploration — use nextFloat(). Neutral 0.5 when no decide channel exists.
@@ -1231,6 +1246,12 @@ export function runGoalLabPipelineV1(input: {
       }
       const cost = Number(actionObj?.cost ?? 0);
       const conf = Number(actionObj?.confidence ?? 1);
+      const priorMagnitude = clamp01(Number(actionObj?.priorMagnitude ?? 0));
+      const priorContribution = runtimeMechanics.actionPriorInfluence
+        ? FC.actionScoring.priorInfluence.weight * priorMagnitude
+        : 0;
+      const rawBeforeRisk = sum + priorContribution - cost;
+      const riskPenalty = FC.actionScoring.riskCoeff * Math.abs(rawBeforeRisk) * (1 - clamp01(conf));
 
       const id = String(actionObj?.id || actionObj?.actionId || actionObj?.name || '');
       const look = id ? (lookByActionId.get(id) || null) : null;
@@ -1250,7 +1271,13 @@ export function runGoalLabPipelineV1(input: {
         confidence: conf,
         deltaGoals,
         contribByGoal,
-        rawBeforeConfidence: sum - cost,
+        rawGoalSum: sum,
+        priorMagnitude,
+        priorContribution,
+        priorInfluenceEnabled: runtimeMechanics.actionPriorInfluence,
+        rawBeforeRisk,
+        riskPenalty,
+        qReconstructed: rawBeforeRisk - riskPenalty,
         usedAtomIds: arr((actionObj?.why?.usedAtomIds ?? []) as string[])
           .map(String)
           .filter((id: string) => id && !id.startsWith('goal:')),
@@ -1264,7 +1291,7 @@ export function runGoalLabPipelineV1(input: {
       };
     };
 
-    const bestRaw = decision?.best || null;
+    const bestRaw = rankedActions.find((a: any) => a?.chosen === true) || decision?.best || null;
     const bestOverridden = forcedActionId
       ? (rankedActions.find((a: any) => String(a?.id || a?.actionId || a?.name || '') === forcedActionId) || { id: forcedActionId })
       : bestRaw;
@@ -1342,6 +1369,7 @@ export function runGoalLabPipelineV1(input: {
       enablePredict: enablePredict,
       useLookaheadForChoice: useLookaheadForChoice,
       lookahead: enablePredict ? { gamma: lookaheadGamma, riskAversion: lookaheadRisk } : null,
+      ...(hasExplicitRuntimeProfile ? { runtimeMechanics } : {}),
     };
 
     const stabilizersSnapshot = {
@@ -1420,11 +1448,11 @@ export function runGoalLabPipelineV1(input: {
               chosen,
             };
           })(),
-          ranked: arr(decision?.ranked).slice(0, 10).map((r: any) => buildDecisionBreakdown(r?.action || {}, r?.q)),
+          ranked: rankedActions.slice(0, 10).map((a: any) => buildDecisionBreakdown(a, a?.q)),
           rankedOverridden: rankedOverridden.slice(0, 10).map((a: any) => buildDecisionBreakdown(a, a?.q)),
           best: bestOverridden ? buildDecisionBreakdown(bestOverridden as any, (bestOverridden as any)?.q ?? 0) : null,
           forcedActionId: forcedActionId || null,
-          note: 'Decision breakdown: Q(a)=Σ_g goalEnergy[g]*Δg(a) - cost(a), then *confidence(a). contribByGoal are pre-confidence.',
+          note: 'Q_raw=Σ_g E_g·Δg(a)+I_prior·w_prior·priorMagnitude−cost; riskPenalty=riskCoeff·|Q_raw|·(1−confidence); Q=Q_raw−riskPenalty. Seeded Gumbel selects within the configured pool.',
           lookahead: transitionSnapshot ? {
             enabled: true,
             gamma: transitionSnapshot.gamma,

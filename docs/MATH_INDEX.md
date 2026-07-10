@@ -225,7 +225,15 @@ Tests:
 - `tests/simkit/*`
 - `tests/dilemma/*`
 
-Status: there is no separate canonical `CONFLICT_LAB_*` or `PROCONFLICT_*` doc in this wave. The current book maps the live surfaces and keeps formulas/status in `docs/ENTITY_AND_METRIC_INDEX.md`.
+Canonical specifications:
+
+- `docs/CONFLICT_LAB_CONTRACT.md` — typed mechanic contract and work order.
+- `docs/CONFLICT_LAB_MATH_SPEC.md` — conflict state and transition equations.
+- `docs/PROCONFLICT_MATH.md` — perturbation, divergence, and sensitivity math.
+- `docs/TENSION_FUNCTIONAL.md` — frozen read-only held-contradiction vector C(t).
+- `docs/docs_conceptual/KANONAR_PHASE_I_IMPL_PLAN.md` — implemented Phase-I
+  communication, objects, locations, memory, PAM/Q mechanics and their
+  validation status.
 
 ## 8. Explainability, trace, tests
 
@@ -289,7 +297,7 @@ Legacy / to merge gradually:
 | V4.2 metrics | full family formulas | `docs/ENTITY_AND_METRIC_INDEX.md` | Direct unit tests if public claim |
 | Derived metrics | full family formulas | `docs/ENTITY_AND_METRIC_INDEX.md` | Resolve placeholder `latents.U` note |
 | Drivers/goals/util/action | full core chain | `docs/agents/05_GOAL_LAB_MATH.md` | Keep config docs synced |
-| SimKit/dilemma/conflict | mapped/reference | this file, `docs/ENTITY_AND_METRIC_INDEX.md` | No separate broad docs in this wave |
+| SimKit/dilemma/conflict | implemented + partially validated | `docs/CONFLICT_LAB_*`, `docs/PROCONFLICT_MATH.md`, `docs/TENSION_FUNCTIONAL.md`, Phase-I plan | Keep profile/runtime trace and frozen results synchronized |
 | UI/visualization | reference only | `docs/VISUALIZATION.md` | Not part of model book core |
 
 ## Rule of thumb

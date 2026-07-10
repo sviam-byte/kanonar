@@ -45,6 +45,10 @@ export const AgentInspector: React.FC<Props> = ({ world, agentId, names }) => {
   const char = world?.characters?.[agentId];
   if (!char || !trace) return <div style={{ padding: 8, color: '#475569', fontSize: 11 }}>Выбери агента</div>;
 
+  const threatMemories = Object.values(
+    ((world?.facts as Record<string, unknown>)?.[`mem:memory:${agentId}`] ?? {}) as Record<string, any>,
+  ).filter((entry: any) => entry?.atom?.tags?.includes('speech') && entry?.atom?.tags?.includes('threat'));
+
   const n = (id: string) => names[id] || id;
   const pct = (v: number) => `${Math.round(v * 100)}%`;
 
@@ -66,6 +70,57 @@ export const AgentInspector: React.FC<Props> = ({ world, agentId, names }) => {
           {trace.decisionMode === 'reactive' ? '⚡ System 1' : trace.decisionMode === 'degraded' ? '⚠ Degraded' : '🧠 System 2'}
         </span>
       </div>
+
+      {trace.runtimeMechanics && (
+        <div style={{ background: '#082f49', border: '1px solid #155e75', borderRadius: 6, padding: 7 }}>
+          <div style={{ color: '#67e8f9', fontSize: 10, fontWeight: 700, textTransform: 'uppercase' }}>
+            Runtime: {trace.runtimeMechanics.profileId}
+          </div>
+          <div style={{ color: '#94a3b8', fontSize: 9, lineHeight: 1.5 }}>
+            {(trace.runtimeMechanics.activeMechanisms || []).join(' · ') || 'механики профиля выключены'}
+          </div>
+        </div>
+      )}
+
+      {Object.keys(trace.contextAxes || {}).length > 0 && (
+        <div>
+          <div style={{ fontSize: 9, color: '#475569', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 3, fontWeight: 600 }}>Контекст</div>
+          {Object.entries(trace.contextAxes as Record<string, number>).map(([key, value]) => (
+            <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '1px 0' }}>
+              <span style={{ fontSize: 9, color: '#64748b', width: 75, textAlign: 'right' }}>{key}</span>
+              <MiniBar value={Number(value)} color="#38bdf8" w={50} />
+              <span style={{ fontSize: 8, color: '#475569' }}>{pct(Number(value))}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {threatMemories.length > 0 && (
+        <div>
+          <div style={{ fontSize: 9, color: '#475569', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 3, fontWeight: 600 }}>Threat memory</div>
+          {threatMemories.map((entry: any) => (
+            <div key={String(entry?.key ?? entry?.atom?.id)} style={{ color: '#fca5a5', fontSize: 9, padding: '2px 0' }}>
+              {String(entry?.atom?.meta?.from ?? 'unknown')} · confidence={Number(entry?.confidence ?? 0).toFixed(3)} · observed t={Number(entry?.lastObservedTick ?? 0)}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {trace.tension?.channels && (
+        <div>
+          <div style={{ fontSize: 9, color: '#475569', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 3, fontWeight: 600 }}>C(t), raw read-only</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+            {['dec', 'goal', 'mot', 'refl', 'epi'].map((key) => (
+              <span key={key} style={{ color: trace.tension.held?.[key] ? '#f87171' : '#94a3b8', fontSize: 9 }}>
+                {key}={Number(trace.tension.channels[key] ?? 0).toFixed(3)}{trace.tension.held?.[key] ? ' held' : ''}
+              </span>
+            ))}
+          </div>
+          <div style={{ color: '#64748b', fontSize: 8, marginTop: 2 }}>
+            total={Number(trace.tension.channels.total ?? 0).toFixed(3)} · сумма не является процентом
+          </div>
+        </div>
+      )}
 
       {trace.best && (
         <div style={{ background: '#0c1929', border: '1px solid #1e3a5f', borderRadius: 6, padding: 8 }}>
