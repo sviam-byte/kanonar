@@ -1,8 +1,14 @@
-// test.ts — smoke test for MafiaLab.
-// Runs one game with 7 synthetic characters + a 30-game batch.
+// tests/mafia/mafia_game.test.ts
+//
+// MAFIA-TEST-NAME closure (docs/unification/README.md): the root
+// mafia_test.ts was a console smoke script named outside the vitest
+// include pattern (**/*.test.ts) and never ran. This ports its cast and
+// checks — including the determinism comparison it only printed — as
+// real assertions. Cast copied verbatim from the retired script.
 
-import { runMafiaGame, runMafiaBatch } from './lib/mafia';
-import type { AgentState, WorldState } from './types';
+import { describe, expect, it } from 'vitest';
+import { runMafiaBatch, runMafiaGame } from '../../lib/mafia';
+import type { AgentState, WorldState } from '../../types';
 
 function mkAgent(id: string, traits: Record<string, number>, rels: Record<string, Partial<{ trust: number; bond: number; conflict: number; familiarity: number }>> = {}): AgentState {
   const relationships: Record<string, any> = {};
@@ -98,35 +104,32 @@ const world: WorldState = { agents: characters } as WorldState;
 const players = characters.map(c => c.id!);
 const roleDistribution = { mafia: 2, sheriff: 1, doctor: 1, blocker: 0, citizen: 3 } as const;
 
-console.log('═══ SINGLE GAME ═══');
-const result = runMafiaGame({
-  players,
-  roleAssignment: 'random',
-  roleDistribution,
-  world,
-  seed: 42,
+describe('mafia game (ported from root mafia_test.ts smoke script)', () => {
+  it('same seed produces an identical game', () => {
+    const r1 = runMafiaGame({ players, roleAssignment: 'random', roleDistribution, world, seed: 777 });
+    const r2 = runMafiaGame({ players, roleAssignment: 'random', roleDistribution, world, seed: 777 });
+    expect(r1.analysis.winner).toBe(r2.analysis.winner);
+    expect(r1.analysis.cycles).toBe(r2.analysis.cycles);
+    expect(r1.state.roles).toEqual(r2.state.roles);
+    expect(r1.state.history.days.length).toBe(r2.state.history.days.length);
+  });
+
+  it('terminates with a valid winner and the requested role distribution', () => {
+    const result = runMafiaGame({ players, roleAssignment: 'random', roleDistribution, world, seed: 42 });
+    expect(['town', 'mafia', 'draw']).toContain(result.analysis.winner);
+
+    const roleCounts: Record<string, number> = {};
+    for (const role of Object.values(result.state.roles)) {
+      roleCounts[role as string] = (roleCounts[role as string] ?? 0) + 1;
+    }
+    expect(roleCounts).toEqual({ mafia: 2, sheriff: 1, doctor: 1, citizen: 3 });
+  });
+
+  it('batch is deterministic and win rates aggregate to 100%', () => {
+    const b1 = runMafiaBatch({ players, roleDistribution, nGames: 10, world, baseSeed: 1000 });
+    const b2 = runMafiaBatch({ players, roleDistribution, nGames: 10, world, baseSeed: 1000 });
+    expect(JSON.stringify(b1.aggregate)).toBe(JSON.stringify(b2.aggregate));
+    const { townWinRate, mafiaWinRate, drawRate } = b1.aggregate;
+    expect(townWinRate + mafiaWinRate + drawRate).toBeCloseTo(1, 12);
+  });
 });
-
-console.log(`Winner: ${result.analysis.winner}`);
-
-console.log('\n═══ BATCH (100 games) ═══');
-const batch = runMafiaBatch({
-  players,
-  roleDistribution,
-  nGames: 100,
-  world,
-  baseSeed: 1000,
-});
-
-console.log(`Town wins:   ${(batch.aggregate.townWinRate * 100).toFixed(1)}%`);
-console.log(`Mafia wins:  ${(batch.aggregate.mafiaWinRate * 100).toFixed(1)}%`);
-
-console.log('\n═══ DETERMINISM CHECK ═══');
-const r1 = runMafiaGame({ players, roleAssignment: 'random', roleDistribution, world, seed: 777 });
-const r2 = runMafiaGame({ players, roleAssignment: 'random', roleDistribution, world, seed: 777 });
-const same =
-  r1.analysis.winner === r2.analysis.winner &&
-  r1.analysis.cycles === r2.analysis.cycles &&
-  JSON.stringify(r1.state.roles) === JSON.stringify(r2.state.roles) &&
-  r1.state.history.days.length === r2.state.history.days.length;
-console.log(same ? '✓ Deterministic — same seed produces identical game' : '✗ NON-DETERMINISTIC');

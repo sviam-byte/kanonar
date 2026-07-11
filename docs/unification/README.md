@@ -32,7 +32,10 @@
    `tests/determinism/collation_boundary.test.ts`. Пин `4352ad74…` не
    изменился в этом окружении и ожидается каноническим кросс-платформенно;
    подтверждение на втором toolchain — при следующем его прогоне.
-2. **MAFIA-TEST-NAME**: корневой `mafia_test.ts` не подпадает под
-   `**/*.test.ts` и никогда не запускался (MAP_0.md §4).
+2. **MAFIA-TEST-NAME — CLOSED 2026-07-11**: корневой скрипт `mafia_test.ts`
+   (не тест: console.log без assertions) портирован в
+   `tests/mafia/mafia_game.test.ts` с реальными проверками детерминизма,
+   победителя и распределения ролей; корневой файл удалён. Добавлен
+   `npm run check` (typecheck + vitest run) — состав из TEST_0.md.
 3. **DET-HIGH**: wall-clock в semantic state — `lib/social/acquaintance.ts:59`,
    `lib/biography.ts:197` (DETERMINISM_SWEEP_0.md).

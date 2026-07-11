@@ -11,6 +11,7 @@
     "prune:stubs": "node scripts/prune-deleted-stubs.mjs",
     "test": "vitest run",
     "typecheck": "tsc --noEmit --pretty false",
+    "check": "npm run typecheck && npm run test",
     "test:watch": "vitest"
   },
   "dependencies": {
