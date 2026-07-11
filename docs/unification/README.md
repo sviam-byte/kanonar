@@ -37,5 +37,31 @@
    `tests/mafia/mafia_game.test.ts` с реальными проверками детерминизма,
    победителя и распределения ролей; корневой файл удалён. Добавлен
    `npm run check` (typecheck + vitest run) — состав из TEST_0.md.
-3. **DET-HIGH**: wall-clock в semantic state — `lib/social/acquaintance.ts:59`,
-   `lib/biography.ts:197` (DETERMINISM_SWEEP_0.md).
+3. **DET-HIGH — CLOSED 2026-07-11**: wall-clock убран из semantic state —
+   `touchSeen(edge, tick)`, biography-якорь = последнее событие биографии,
+   registry `startTime=0`; регрессия + статический tripwire —
+   `tests/determinism/wallclock_regression.test.ts`. Два medium-вхождения
+   (world-builders, diagnostics runner) deferred в R8 как route-unreachable
+   (DETERMINISM_SWEEP_0.md).
+
+## Реализация после R1 (2026-07-11)
+
+- **TOM-BUILDER/UPDATE core**: `lib/tom/opponentBelief/` (builder, update,
+  serialization) + legacy decoder (`legacyDecoder.ts`, `legacy-tom-decoder`
+  v1) — TOM_SPEC_0.md §Update.
+- **S5 dual-emit seam**: `runtimeMechanics.opponentBeliefS5V1` (OFF на всех
+  профилях, включая phase1; opt-in объектной формой runtimeProfile);
+  `s5DualEmitLayer.ts` мерджится последним слоем S5 (docs/PIPELINE.md,
+  docs/INVARIANTS.md).
+- **Обязательная пара оракулов TOM_SPEC_0**:
+  `tests/tom/opponent_belief_oracles.test.ts` (resolver→builder→S5) и
+  `tests/pipeline/opponent_belief_s5_dual_emit.test.ts` (pipeline, флаг ON;
+  hidden-инвариантность до S8 ranked включительно).
+- **R4 первый шаг**: интеграция scene-адаптеров —
+  `tests/simkit/scene_projection_integration.test.ts` (mvp0-мир steppable
+  после применения resolved-сцены) и
+  `tests/pipeline/scene_goal_lab_parity.test.ts` (S8 достигается, allowlist
+  не протекает).
+
+Очередь дальше: TOM-BUILDER от resolved-сцены в живом контуре (не legacy),
+CONFLICT-CHOICE-ADR-0, R2 metric-фиксы, решение о включении dual-emit.
