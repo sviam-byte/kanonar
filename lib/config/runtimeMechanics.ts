@@ -13,6 +13,7 @@ export type RuntimeMechanics = {
   memoryThreatTraceV1: boolean;
   actionPriorInfluence: boolean;
   actionPamV2: boolean;
+  opponentBeliefS5V1: boolean;
   activeMechanisms: string[];
 };
 
@@ -23,6 +24,7 @@ const MECHANISM_LABELS: Array<[keyof Omit<RuntimeMechanics, 'profileId' | 'sourc
   ['memoryThreatTraceV1', 'memory.threatTraceV1'],
   ['actionPriorInfluence', 'actionScoring.priorInfluence'],
   ['actionPamV2', 'actionScoring.pamV2'],
+  ['opponentBeliefS5V1', 'tom.opponentBeliefS5V1'],
 ];
 
 function profileIdFrom(value: unknown): RuntimeProfileId | null {
@@ -32,6 +34,16 @@ function profileIdFrom(value: unknown): RuntimeProfileId | null {
       ? (value as Record<string, unknown>).profileId ?? (value as Record<string, unknown>).runtimeProfile
       : null;
   return raw === 'legacy' || raw === 'phase1' ? raw : null;
+}
+
+// tom:belief:* dual-emit stays OFF on every named profile (phase1 is the live
+// UI default); a run opts in only through this explicit object-form override.
+function opponentBeliefOverrideFrom(value: unknown): boolean | undefined {
+  if (value && typeof value === 'object') {
+    const raw = (value as Record<string, unknown>).opponentBeliefS5V1;
+    if (typeof raw === 'boolean') return raw;
+  }
+  return undefined;
 }
 
 function withActiveMechanisms(
@@ -54,6 +66,7 @@ function withActiveMechanisms(
  */
 export function resolveRuntimeMechanics(value?: unknown): RuntimeMechanics {
   const profileId = profileIdFrom(value);
+  const opponentBeliefOverride = opponentBeliefOverrideFrom(value);
 
   if (profileId === 'legacy') {
     return withActiveMechanisms({
@@ -65,6 +78,7 @@ export function resolveRuntimeMechanics(value?: unknown): RuntimeMechanics {
       memoryThreatTraceV1: false,
       actionPriorInfluence: false,
       actionPamV2: false,
+      opponentBeliefS5V1: opponentBeliefOverride ?? false,
     });
   }
 
@@ -78,6 +92,7 @@ export function resolveRuntimeMechanics(value?: unknown): RuntimeMechanics {
       memoryThreatTraceV1: true,
       actionPriorInfluence: true,
       actionPamV2: true,
+      opponentBeliefS5V1: opponentBeliefOverride ?? false,
     });
   }
 
@@ -90,6 +105,7 @@ export function resolveRuntimeMechanics(value?: unknown): RuntimeMechanics {
     memoryThreatTraceV1: FC.memory.threatTraceV1.enabled,
     actionPriorInfluence: FC.actionScoring.priorInfluence.enabled,
     actionPamV2: FC.actionScoring.pamV2.enabled,
+    opponentBeliefS5V1: opponentBeliefOverride ?? FC.opponentBeliefV1.s5DualEmit.enabled,
   });
 }
 

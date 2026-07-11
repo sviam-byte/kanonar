@@ -58,6 +58,18 @@ describe('runtime mechanics profile', () => {
     })).toBe(before);
   });
 
+  it('keeps opponentBeliefS5V1 OFF on every named profile and honors the explicit override', () => {
+    expect(resolveRuntimeMechanics('legacy').opponentBeliefS5V1).toBe(false);
+    expect(resolveRuntimeMechanics('phase1').opponentBeliefS5V1).toBe(false);
+    expect(resolveRuntimeMechanics().opponentBeliefS5V1).toBe(false);
+
+    const optIn = resolveRuntimeMechanics({ profileId: 'legacy', opponentBeliefS5V1: true });
+    expect(optIn.opponentBeliefS5V1).toBe(true);
+    expect(optIn.source).toBe('runtimeProfile');
+    expect(optIn.activeMechanisms).toEqual(['tom.opponentBeliefS5V1']);
+    expect(FC.opponentBeliefV1.s5DualEmit.enabled).toBe(false);
+  });
+
   it('emits profile metadata only for an explicit run profile', () => {
     const implicit = runGoalLabPipelineV1({
       world: mockWorld(),

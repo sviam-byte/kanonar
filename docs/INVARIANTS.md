@@ -62,6 +62,10 @@
   `sceneControl.runtimeProfile` in direct GoalLab calls.
 - `phase1` enables communication threat, object context, location properties,
   threat memory, prior influence, and PAM v2 without mutating global `FC`.
+- `tom.opponentBeliefS5V1` (S5 dual-emit of `tom:belief:*`) is OFF on every
+  named profile including `phase1`; a run opts in only via the object form
+  `{ profileId, opponentBeliefS5V1: true }`. Gate:
+  `tests/simkit/runtime_mechanics_profile.test.ts`.
 - No explicit profile continues to resolve the current FormulaConfig defaults;
   `legacy` is an explicit all-OFF control.
 - Same state + same seed + same profile must produce the same semantic output.

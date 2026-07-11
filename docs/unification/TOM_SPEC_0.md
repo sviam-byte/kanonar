@@ -13,6 +13,17 @@ Implementation:
 - coefficients: `FC.opponentBeliefV1` in `lib/config/formulaConfig.ts`;
 - tests: `tests/tom/opponent_belief_v1.test.ts`.
 
+Update 2026-07-11 (после core): реализованы legacy decoder
+(`lib/tom/opponentBelief/legacyDecoder.ts`, adapterId `legacy-tom-decoder` v1;
+маппинг trust / align→alignment / respect / dominance, остальное — только
+`payload.migration.unmappedFields`, тесты `tests/tom/legacy_decoder_v1.test.ts`)
+и flag-gated S5 dual-emit seam (`s5DualEmitLayer.ts` +
+`runtimeMechanics.opponentBeliefS5V1`, OFF на всех именованных профилях,
+opt-in объектной формой runtimeProfile). Approved-расширение evidence-ID
+грамматики: decoder-evidence без сцены использует псевдо-сегмент `legacy-tom`
+— `belief:evidence:legacy-tom:<observerId>:<targetId>`. Декодирование
+`world.tom.views`/V3-report остаётся deferred (`unsupported_legacy_shape`).
+
 ## Evidence-weighted update V1
 
 ### Purpose

@@ -17,6 +17,7 @@ import { deriveObjectContextAtoms } from '../../context/sources/objectContextAto
 import { deriveSocialStandingAtoms } from '../../context/sources/socialStandingAtoms';
 import { buildBeliefToMBias } from '../../tom/ctx/beliefBias';
 import { buildTomPolicyLayer } from '../../tom/policy/tomPolicy';
+import { buildOpponentBeliefDualEmitLayerV1 } from '../../tom/opponentBelief/s5DualEmitLayer';
 
 import { deriveAppraisalAtoms } from '../../emotion/appraisals';
 import { deriveEmotionAtoms } from '../../emotion/emotions';
@@ -825,9 +826,18 @@ export function runGoalLabPipelineV1(input: {
     const policyAtoms = arr(policy?.atoms).map(normalizeAtom);
     const mS5c = mergeAtomsPreferNewer(mS5b.atoms, policyAtoms);
 
-    const atomsS5 = mS5c.atoms;
-    const s5Added = uniqStrings([...mS5a.newIds, ...mS5phys.newIds, ...mS5social.newIds, ...mS5x.newIds, ...mS5b.newIds, ...mS5c.newIds]);
-    const s5Overridden = uniqStrings([...mS5a.overriddenIds, ...mS5phys.overriddenIds, ...mS5social.overriddenIds, ...mS5x.overriddenIds, ...mS5b.overriddenIds, ...mS5c.overriddenIds]);
+    // Flag-gated dual-emit of the approved tom:belief:* grammar. Merged LAST
+    // so no existing S5 layer consumes the new atoms; OFF keeps the stage
+    // output byte-identical.
+    const dualEmit = runtimeMechanics.opponentBeliefS5V1
+      ? buildOpponentBeliefDualEmitLayerV1({ world, selfId, otherIds: othersForTom, tick })
+      : null;
+    const dualAtoms = arr(dualEmit?.atoms).map(normalizeAtom);
+    const mS5d = mergeAtomsPreferNewer(mS5c.atoms, dualAtoms);
+
+    const atomsS5 = mS5d.atoms;
+    const s5Added = uniqStrings([...mS5a.newIds, ...mS5phys.newIds, ...mS5social.newIds, ...mS5x.newIds, ...mS5b.newIds, ...mS5c.newIds, ...mS5d.newIds]);
+    const s5Overridden = uniqStrings([...mS5a.overriddenIds, ...mS5phys.overriddenIds, ...mS5social.overriddenIds, ...mS5x.overriddenIds, ...mS5b.overriddenIds, ...mS5c.overriddenIds, ...mS5d.overriddenIds]);
     atoms = atomsS5;
     stages.push({
       stage: 'S5',
@@ -844,6 +854,12 @@ export function runGoalLabPipelineV1(input: {
         nonContextDyadCount: nonCtxAtoms.length,
         beliefBiasCount: beliefAtoms.length,
         policyCount: policyAtoms.length,
+        opponentBeliefDualEmit: {
+          enabled: runtimeMechanics.opponentBeliefS5V1,
+          atomCount: dualAtoms.length,
+          beliefCount: arr(dualEmit?.beliefs).length,
+          skipped: arr(dualEmit?.skipped),
+        },
         overriddenIds: s5Overridden,
       }
     });
