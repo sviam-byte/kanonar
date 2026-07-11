@@ -33,13 +33,17 @@ export function makeNeutralOpponentBeliefPriorV1(args: { observerId: string; tar
   };
 }
 
-export function buildOpponentBeliefV1(args: { observerId: string; targetId: string; observations: ObservationEnvelopeV1[]; tick: number }): OpponentBeliefV1 {
-  const prior = makeNeutralOpponentBeliefPriorV1(args);
-  const evidence: BeliefEvidenceV1[] = args.observations
+/** Directed evidence extracted from resolver-approved observation envelopes. */
+export function evidenceFromObservationsV1(args: { observerId: string; targetId: string; observations: ObservationEnvelopeV1[] }): BeliefEvidenceV1[] {
+  return args.observations
     .filter(item => item.observerId === args.observerId && (item.targetId === args.targetId || (!item.targetId && item.subjectId === args.targetId)))
     .map(item => ({ schemaVersion: 1 as const, evidenceId: `belief:evidence:${item.sceneId}:${item.observationId}`, kind: evidenceKind(item), observerId: args.observerId, targetId: args.targetId, observationId: item.observationId, payload: item.payload, reliability: item.reliability, tick: item.tick, provenance: item.provenance }))
     .sort((a, b) => a.tick - b.tick || codeUnitCompare(a.evidenceId, b.evidenceId));
-  return updateOpponentBeliefV1(prior, evidence, args.tick);
+}
+
+export function buildOpponentBeliefV1(args: { observerId: string; targetId: string; observations: ObservationEnvelopeV1[]; tick: number }): OpponentBeliefV1 {
+  const prior = makeNeutralOpponentBeliefPriorV1(args);
+  return updateOpponentBeliefV1(prior, evidenceFromObservationsV1(args), args.tick);
 }
 
 export function projectOpponentBeliefToS5AtomsV1(belief: OpponentBeliefV1): ContextAtom[] {

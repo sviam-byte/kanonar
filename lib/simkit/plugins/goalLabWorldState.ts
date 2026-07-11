@@ -539,6 +539,12 @@ export function buildWorldStateFromSim(world: SimWorld, snapshot: SimSnapshot, o
       schemaVersion: 1,
       events: domainEvents as any,
     },
+    // Resolved-scene observation envelopes (applySimKitSceneProjectionV1
+    // stores them as a fact); the S5 opponent-belief layer reads them as
+    // directed evidence. Absent fact -> field absent, legacy shape intact.
+    ...((world as any)?.facts?.['scene:observations:v1']
+      ? { resolvedObservations: (world as any).facts['scene:observations:v1'] }
+      : {}),
     // lightweight sceneSnapshot hook (optional)
     sceneSnapshot: {
       simkit: {

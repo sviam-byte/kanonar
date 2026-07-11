@@ -10,6 +10,7 @@ import { KANONAR_SYSTEM_VERSION } from '../../lib/goal-lab/versioning';
 import { adaptResolvedSceneToSimKitV1, applySimKitSceneProjectionV1 } from '../../lib/scene/adapters/simKit';
 import { resolveObservationsV1 } from '../../lib/scene/observation/resolver';
 import type { ObservationProvenanceV1, ResolvedSceneInputV1, VisibilityRuleV1 } from '../../lib/scene/observation/types';
+import { RUNTIME_PROFILE_FACT_KEY } from '../../lib/config/runtimeMechanics';
 import { SimKitSimulator } from '../../lib/simkit/core/simulator';
 import { makeGoalLabDeciderPlugin } from '../../lib/simkit/plugins/goalLabDeciderPlugin';
 import {
@@ -99,6 +100,27 @@ describe('SimKit scene projection integration (mvp0)', () => {
     const second = run();
     expect(first.length).toBeGreaterThan(0);
     expect(second).toEqual(first);
+  });
+
+  it('feeds resolved-scene envelopes into S5 beliefs when the dual-emit flag is on', () => {
+    const world = projectedWorld().applied;
+    world.facts[RUNTIME_PROFILE_FACT_KEY] = { profileId: 'legacy', opponentBeliefS5V1: true };
+
+    const sim = new SimKitSimulator({
+      scenarioId: 'scene-projection-belief',
+      seed: 7,
+      initialWorld: world,
+      plugins: [makeGoalLabDeciderPlugin({ storePipeline: true })],
+    });
+    sim.step();
+
+    const pipeline = sim.world.facts['sim:goalLab:lastPipeline'] as any;
+    const s5 = (pipeline?.stages ?? []).find((st: any) => st?.stage === 'S5');
+    // mvp0 worlds carry no legacy world.tom, so the single belief per agent
+    // comes purely from the resolved-scene envelopes stored as a fact.
+    expect(s5?.artifacts?.opponentBeliefDualEmit).toMatchObject({ enabled: true, beliefCount: 1, atomCount: 24, skipped: [] });
+    const beliefAtoms = (s5?.atoms ?? []).filter((atom: any) => String(atom?.id).startsWith('tom:belief:'));
+    expect(beliefAtoms).toHaveLength(24);
   });
 
   it('fails closed on unknown characters, unknown locations and identity mismatch', () => {

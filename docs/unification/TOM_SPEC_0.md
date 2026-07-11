@@ -13,6 +13,17 @@ Implementation:
 - coefficients: `FC.opponentBeliefV1` in `lib/config/formulaConfig.ts`;
 - tests: `tests/tom/opponent_belief_v1.test.ts`.
 
+Update 2026-07-11b (TOM-BUILDER live wiring): S5 dual-emit слой теперь строит
+belief как `legacy-decoder prior (если есть world.tom энтри) + directed
+evidence из envelope-наблюдений resolved-сцены` через единый update-law;
+envelopes приходят как `world.resolvedObservations` (GoalLab adapter отдаёт
+`observationEnvelopes`; SimKit — fact `scene:observations:v1` через
+`buildWorldStateFromSim`). Диада только с envelope-evidence (без legacy)
+теперь тоже получает belief. Тесты:
+`tests/pipeline/opponent_belief_scene_evidence.test.ts`,
+`tests/simkit/scene_projection_integration.test.ts` (end-to-end через
+SimKitSimulator).
+
 Update 2026-07-11 (после core): реализованы legacy decoder
 (`lib/tom/opponentBelief/legacyDecoder.ts`, adapterId `legacy-tom-decoder` v1;
 маппинг trust / align→alignment / respect / dominance, остальное — только

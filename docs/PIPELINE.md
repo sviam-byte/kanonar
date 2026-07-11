@@ -90,9 +90,12 @@ Outputs:
 - `social:rank:diff:<self>:<other>` (signed social standing differential)
 
 - flag-gated (`runtimeMechanics.opponentBeliefS5V1`, OFF на всех именованных
-  профилях): dual-emit `tom:belief:final|confidence|uncertainty:<obs>:<tgt>:<key>`
-  из legacy `world.tom` через `legacy-tom-decoder` v1; мерджится последним
-  слоем S5, существующие слои эти атомы не читают; артефакт
+  профилях): dual-emit `tom:belief:final|confidence|uncertainty:<obs>:<tgt>:<key>`;
+  belief = prior из legacy `world.tom` (`legacy-tom-decoder` v1, если энтри
+  есть) + directed evidence из envelope-наблюдений resolved-сцены
+  (`world.resolvedObservations`, в SimKit — из fact `scene:observations:v1`)
+  через единый update-law; диада без обоих источников не эмитится; мерджится
+  последним слоем S5, существующие слои эти атомы не читают; артефакт
   `opponentBeliefDualEmit {enabled, atomCount, beliefCount, skipped}`
 
 Notes:

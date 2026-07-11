@@ -17,6 +17,11 @@ export type GoalLabSceneProjectionV1 = {
   };
   observations: Record<string, Observation[]>;
   observationAtoms: ContextAtom[];
+  /**
+   * Raw resolver envelopes per observer — the input for the directed
+   * OpponentBelief builder. Callers wire it as `world.resolvedObservations`.
+   */
+  observationEnvelopes: ObservationResolutionV1['observationsByCharacterId'];
 };
 
 function legacyKind(envelope: ObservationEnvelopeV1): Observation['kind'] {
@@ -53,5 +58,6 @@ export function adaptResolvedSceneToGoalLabV1(scene: ResolvedSceneInputV1, resol
     schemaVersion: 1, sceneId: scene.sceneId, seed: scene.seed, tick: scene.tick,
     sceneSnapshot: { schemaVersion: 1, sceneId: scene.sceneId, participants: scene.cast.map(item => item.agentId).sort(), placements: scene.placements, sourceRefs: scene.sourceRefs },
     observations, observationAtoms,
+    observationEnvelopes: resolution.observationsByCharacterId,
   };
 }

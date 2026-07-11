@@ -63,5 +63,12 @@
   `tests/pipeline/scene_goal_lab_parity.test.ts` (S8 достигается, allowlist
   не протекает).
 
-Очередь дальше: TOM-BUILDER от resolved-сцены в живом контуре (не legacy),
-CONFLICT-CHOICE-ADR-0, R2 metric-фиксы, решение о включении dual-emit.
+- **TOM-BUILDER live wiring (2026-07-11)**: S5 belief-слой комбинирует
+  decoder-prior и envelope-evidence resolved-сцены
+  (`world.resolvedObservations`; SimKit — fact `scene:observations:v1`);
+  envelope-only диады получают belief; end-to-end через SimKitSimulator —
+  `tests/pipeline/opponent_belief_scene_evidence.test.ts`,
+  `tests/simkit/scene_projection_integration.test.ts`.
+
+Очередь дальше: CONFLICT-CHOICE-ADR-0, R2 metric-фиксы (ложные нули
+goalTension/frustration), решение о включении dual-emit по умолчанию.
