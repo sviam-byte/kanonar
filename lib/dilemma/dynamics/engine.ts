@@ -1,3 +1,4 @@
+import { codeUnitCompare } from '../../utils/compare';
 import { CONFLICT_LAB_DYNAMICS_FORMULA } from '../../config/formulaConfig';
 import { cloneConflictMemory } from '../learningMemory';
 import { actionImpactForTrustExchange } from './actionImpact';
@@ -374,7 +375,7 @@ function buildUtilityTrace(
 ): ConflictTrajectoryFrame['utility'] {
   const sorted = [...utilities].sort((a, b) => {
     if (b.U !== a.U) return b.U - a.U;
-    return a.actionId.localeCompare(b.actionId);
+    return codeUnitCompare(a.actionId, b.actionId);
   });
   const selected = utilities.find((u) => u.actionId === actionId) ?? sorted[0];
   const secondBest = sorted.find((u) => u.actionId !== selected?.actionId);

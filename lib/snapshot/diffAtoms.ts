@@ -1,4 +1,5 @@
 
+import { codeUnitCompare } from '../utils/compare';
 import { ContextAtom } from '../context/v2/types';
 
 export type AtomDiff = {
@@ -45,7 +46,7 @@ export function diffAtoms(prev: ContextAtom[], next: ContextAtom[], eps = 1e-6):
   }
 
   const score = { changed: 0, added: 1, removed: 2 };
-  out.sort((a,b) => (score[a.type] - score[b.type]) || a.id.localeCompare(b.id));
+  out.sort((a,b) => (score[a.type] - score[b.type]) || codeUnitCompare(a.id, b.id));
 
   return out;
 }

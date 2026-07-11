@@ -1,3 +1,4 @@
+import { codeUnitCompare } from '../utils/compare';
 import { WorldState, AgentState, ContextTuning, ContextV2 } from '../../types';
 import { ContextSnapshot, ContextAtom } from '../context/v2/types';
 import { ContextBuildOptions, buildContextSnapshot } from '../context/v2/builder';
@@ -387,11 +388,11 @@ function sortAtomsDeterministic(atoms: ContextAtom[]): ContextAtom[] {
     if (ra !== rb) return ra - rb;
     const nsa = String(a?.ns || '');
     const nsb = String(b?.ns || '');
-    if (nsa !== nsb) return nsa.localeCompare(nsb);
+    if (nsa !== nsb) return codeUnitCompare(nsa, nsb);
     const ka = String(a?.kind || '');
     const kb = String(b?.kind || '');
-    if (ka !== kb) return ka.localeCompare(kb);
-    return String(a?.id || '').localeCompare(String(b?.id || ''));
+    if (ka !== kb) return codeUnitCompare(ka, kb);
+    return codeUnitCompare(String(a?.id || ''), String(b?.id || ''));
   });
 }
 

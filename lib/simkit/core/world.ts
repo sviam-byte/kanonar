@@ -1,6 +1,7 @@
 // lib/simkit/core/world.ts
 // World utilities and snapshot builder.
 
+import { codeUnitCompare } from '../../utils/compare';
 import type { Id, SimWorld, SimSnapshot, SimCharacter, SimLocation } from './types';
 import { importLocationFromGoalLab } from '../locations/goallabImport';
 
@@ -29,12 +30,12 @@ export function buildSnapshot(w: SimWorld, opts?: { events?: any[] }): SimSnapsh
     id: `sim:snap:${padTick(w.tickIndex)}`,
     time: nowIso(),
     tickIndex: w.tickIndex,
-    characters: Object.values(w.characters).sort((a, b) => a.id.localeCompare(b.id)),
-    locations: Object.values(w.locations).sort((a, b) => a.id.localeCompare(b.id)),
+    characters: Object.values(w.characters).sort((a, b) => codeUnitCompare(a.id, b.id)),
+    locations: Object.values(w.locations).sort((a, b) => codeUnitCompare(a.id, b.id)),
     // IMPORTANT: SimWorld.events is a transient queue that is consumed during step().
     // Snapshot должен отражать события, реально применённые на этом тике.
     // Поэтому opts.events (eventsApplied) имеет приоритет; иначе fallback на w.events.
-    events: (opts?.events || w.events || []).slice().sort((a, b) => a.id.localeCompare(b.id)),
+    events: (opts?.events || w.events || []).slice().sort((a, b) => codeUnitCompare(a.id, b.id)),
     debug: {},
   };
 }

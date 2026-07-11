@@ -1,6 +1,7 @@
 // lib/simkit/core/simulator.ts
 // Core simulator: step/run/reset/history plus optional plugins.
 
+import { codeUnitCompare } from '../../utils/compare';
 import type { SimWorld, SimAction, ActionOffer, SimTickRecord, TickTrace, SimWorldFacts } from './types';
 import { RNG } from './rng';
 import { getCtx, setCtx, getFact, setFact } from './factsAccessors';
@@ -280,7 +281,7 @@ function pickTopOffer(world: SimWorld, offers: ActionOffer[], actorId: string): 
     if (b.o.score !== a.o.score) return b.o.score - a.o.score;
     const ka = String(a.o.kind);
     const kb = String(b.o.kind);
-    if (ka !== kb) return ka.localeCompare(kb);
+    if (ka !== kb) return codeUnitCompare(ka, kb);
     return a.idx - b.idx;
   });
   return scored[0].o;
@@ -674,7 +675,7 @@ export class SimKitSimulator {
   private takeForcedActions(): SimAction[] {
     const xs = this.forcedActions.slice();
     this.forcedActions = [];
-    xs.sort((a, b) => a.id.localeCompare(b.id));
+    xs.sort((a, b) => codeUnitCompare(a.id, b.id));
     return xs;
   }
 }

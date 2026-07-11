@@ -7,6 +7,7 @@
 // - classify V3 (single tick vs intent) — v1: all are single
 // - apply (effects + events)
 
+import { codeUnitCompare } from '../../utils/compare';
 import type { ActionKind, ActionOffer, SimAction, SimEvent, SimWorld, SpeechEventV1, IntentState } from '../core/types';
 import { getChar, getLoc } from '../core/world';
 import { distSameLocation, getCellCover, getCellElevation, getCharXY, getSpatialConfig, hasLineOfSight } from '../core/spatial';
@@ -2204,9 +2205,9 @@ export function enumerateActionOffers(world: SimWorld): ActionOffer[] {
   }
 
   return offers.sort((a, b) => (b.score - a.score)
-    || a.actorId.localeCompare(b.actorId)
-    || String(a.targetId ?? '').localeCompare(String(b.targetId ?? ''))
-    || a.kind.localeCompare(b.kind));
+    || codeUnitCompare(a.actorId, b.actorId)
+    || codeUnitCompare(String(a.targetId ?? ''), String(b.targetId ?? ''))
+    || codeUnitCompare(a.kind, b.kind));
 }
 
 /** Resolved spec cache for generic social actions (avoids rebuilding each tick). */

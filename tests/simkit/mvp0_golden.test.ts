@@ -16,11 +16,21 @@ import { runMvpRollout } from '../../lib/simkit/mvp0/runMvpRollout';
 // commit 54c4c74 and later commits reproduce 124e3434…; the ran commit
 // 3dd9cf3 accidentally pinned an unsupported 73eaf2ce… value. Re-pin ONLY with
 // a dated note explaining which behavioral change moved it.
-// 2026-07-10: provenance-only re-pin. Applied actions/menu semantics stay on
-// the legacy profile, but sim:trace.best now names the actual seeded Gumbel
-// winner instead of the top-Q candidate, so usedAtomIds/facts digests change.
+// 2026-07-10: provenance-only re-pin for 1740492. Applied actions, events, and
+// menu counts remain byte-stable against 7b68c1e (semantic-subset hash
+// efa018b3...), while sim:trace.best now names the seeded Gumbel winner and the
+// trace adds chosen/contextAxes/topByQ readouts. Those intentional provenance
+// and diagnostic-shape changes alter usedAtomIds and the whole-facts digest.
+// 2026-07-11: the hash history has TWO per-environment lineages (this machine:
+// 73eaf2ce->4352ad74; the 2026-07-07/1740492 toolchain: 124e3434->451edc9d).
+// Neither was "wrong": localeCompare sorts in the semantic path made the order
+// ICU/locale-dependent. All semantic sorts now use codeUnitCompare
+// (lib/utils/compare.ts, gated by tests/determinism/collation_boundary.test.ts).
+// The hash below is unchanged by that fix on this machine. Cross-toolchain
+// equality still requires an independent run; this test proves the local pin
+// and the boundary test prevents reintroducing locale-dependent comparison.
 const MVP0_GOLDEN_HASH_SEED7: string | null =
-  '451edc9d952ed05a6e26298c204fd768b694b81505229146bea08dd738f05431';
+  '4352ad740f0c5cb8accba616b1c668148a2ea617c5d9ac32490879682820180a';
 
 describe('MVP-0 golden run (A1 + A2)', () => {
   it('20 ticks: deterministic hash, no deadlock, 100% explained actions', () => {

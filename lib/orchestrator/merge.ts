@@ -1,6 +1,7 @@
 // lib/orchestrator/merge.ts
 // Deterministic merge helpers for atom patches.
 
+import { codeUnitCompare } from '../utils/compare';
 import type { AtomV1, AtomOrigin, AtomChange, AtomPatch } from './types';
 
 const clampNum = (x: any, fb = 0) => (Number.isFinite(Number(x)) ? Number(x) : fb);
@@ -94,7 +95,7 @@ export function applyPatch(baseAtoms: AtomV1[], patch: AtomPatch): { atoms: Atom
     }
   }
 
-  const atoms = Array.from(map.values()).sort((x, y) => x.id.localeCompare(y.id));
+  const atoms = Array.from(map.values()).sort((x, y) => codeUnitCompare(x.id, y.id));
   return { atoms, changes };
 }
 
@@ -109,8 +110,8 @@ export function mergePatches(patches: AtomPatch[]): AtomPatch {
     remove.push(...(p.remove || []));
   }
   // deterministic order
-  add.sort((a, b) => String(a.id).localeCompare(String(b.id)));
-  remove.sort((a, b) => String(a.id).localeCompare(String(b.id)));
-  update.sort((a, b) => String(a.after?.id ?? '').localeCompare(String(b.after?.id ?? '')));
+  add.sort((a, b) => codeUnitCompare(String(a.id), String(b.id)));
+  remove.sort((a, b) => codeUnitCompare(String(a.id), String(b.id)));
+  update.sort((a, b) => codeUnitCompare(String(a.after?.id ?? ''), String(b.after?.id ?? '')));
   return { add, update, remove };
 }

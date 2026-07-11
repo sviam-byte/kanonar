@@ -8,6 +8,7 @@
 // - pipelineHistory[*].drivers -> driver threshold crossings
 // - stressHistory / tensionHistory -> coarse divergence onset
 
+import { codeUnitCompare } from '../../utils/compare';
 import type { RunResult, PipelineTickState } from './batchRunner';
 import type { SimTickRecord } from '../core/types';
 
@@ -251,7 +252,7 @@ export function attributeAmplifiers(
     const ga = gateOrder[a.gate] ?? 99;
     const gb = gateOrder[b.gate] ?? 99;
     if (ga !== gb) return ga - gb;
-    return a.agentId.localeCompare(b.agentId);
+    return codeUnitCompare(a.agentId, b.agentId);
   });
 
   return out;

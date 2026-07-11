@@ -8,6 +8,7 @@
 // exported from the SimKit adapter (deriveLifeGoals/deriveGoalTuning/...), so we
 // do not maintain a second mapping.
 
+import { codeUnitCompare } from '../../utils/compare';
 import type { AgentState, CharacterEntity } from '../../../types';
 import { makeAgentRNG } from '../../core/noise';
 import {
@@ -71,7 +72,7 @@ export function loadRosterEntities(): CharacterEntity[] {
       out.push(ent as CharacterEntity);
     }
   }
-  return out.sort((a: any, b: any) => String(a.entityId).localeCompare(String(b.entityId)));
+  return out.sort((a: any, b: any) => codeUnitCompare(String(a.entityId), String(b.entityId)));
 }
 
 export function loadRosterAgents(): RosterMember[] {

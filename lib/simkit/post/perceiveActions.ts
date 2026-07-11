@@ -1,6 +1,7 @@
 // lib/simkit/post/perceiveActions.ts
 // POST phase v0: build observed action atoms from tick events and persist per-agent memory.
 
+import { codeUnitCompare } from '../../utils/compare';
 import type { SimEvent, SimWorld } from '../core/types';
 import { clamp01 } from '../../util/math';
 import { arr } from '../../utils/arr';
@@ -234,7 +235,7 @@ export function buildDecayingMemoryAtomsForAgent(
       },
     });
   }
-  return out.sort((a, b) => String(a.id).localeCompare(String(b.id)));
+  return out.sort((a, b) => codeUnitCompare(String(a.id), String(b.id)));
 }
 
 export type EpisodicEntry = {

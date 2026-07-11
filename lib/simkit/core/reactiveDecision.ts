@@ -2,6 +2,7 @@
 // System 1 reactive shortcut: emotion-driven action selection without full pipeline,
 // but with a short explainable shortlist instead of "first matching offer".
 
+import { codeUnitCompare } from '../../utils/compare';
 import type { SimWorld, SimAction, ActionOffer } from './types';
 import { clamp01 } from '../../util/math';
 import { FCS } from '../../config/formulaConfigSim';
@@ -155,7 +156,7 @@ function scoreHabitOffer(offer: ActionOffer, lastKind: string | null): ReactiveS
 function chooseTop(shortlist: ReactiveShortlistEntry[], limit = 3): ReactiveShortlistEntry[] {
   return shortlist
     .slice()
-    .sort((a, b) => b.score - a.score || a.kind.localeCompare(b.kind) || String(a.targetId || '').localeCompare(String(b.targetId || '')))
+    .sort((a, b) => b.score - a.score || codeUnitCompare(a.kind, b.kind) || codeUnitCompare(String(a.targetId || ''), String(b.targetId || '')))
     .slice(0, limit);
 }
 

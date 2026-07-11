@@ -1,3 +1,4 @@
+import { codeUnitCompare } from '../utils/compare';
 import type { GoalLabSnapshotV1 } from './snapshotTypes';
 import { normalizeAtom } from '../context/v2/infer';
 import { describeQuark } from '../context/codex/quarkRegistry';
@@ -99,7 +100,7 @@ export function buildDebugFrameFromSnapshot(snapshot: GoalLabSnapshotV1, stageId
   }
 
   const uniq = (xs: string[]) => Array.from(new Set(xs));
-  const sortAlpha = (xs: string[]) => uniq(xs).sort((a, b) => a.localeCompare(b));
+  const sortAlpha = (xs: string[]) => uniq(xs).sort((a, b) => codeUnitCompare(a, b));
 
   const diag = {
     totalAtoms: atoms.length,

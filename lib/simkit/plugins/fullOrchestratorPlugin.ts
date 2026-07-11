@@ -7,6 +7,7 @@
 // - Choice is sampled with temperature T using the simulator RNG.
 // - POST step stores observed action events as belief atoms (minimal v0).
 
+import { codeUnitCompare } from '../../utils/compare';
 import type { SimPlugin } from '../core/simulator';
 import type { SimWorld, SimSnapshot, ActionOffer, SimAction } from '../core/types';
 import { EntityType, type WorldState } from '../../../types';
@@ -134,7 +135,7 @@ function softmaxSample(args: {
       if (Boolean(a.allowed) !== Boolean(b.allowed)) return a.allowed ? -1 : 1;
       const ds = (b.score ?? 0) - (a.score ?? 0);
       if (ds !== 0) return ds;
-      return a.id.localeCompare(b.id);
+      return codeUnitCompare(a.id, b.id);
     });
     const chosen = sorted.find((x) => x.allowed) || sorted[0];
     return {
@@ -165,7 +166,7 @@ function softmaxSample(args: {
   const chosen = pool[chosenIdx];
   const top = pool
     .map((x, i) => ({ id: x.id, score: x.score, allowed: x.allowed, p: ps[i] }))
-    .sort((a, b) => (b.p - a.p) || b.score - a.score || a.id.localeCompare(b.id))
+    .sort((a, b) => (b.p - a.p) || b.score - a.score || codeUnitCompare(a.id, b.id))
     .slice(0, 10);
   return { chosenId: chosen?.id || null, top };
 }
@@ -185,8 +186,8 @@ export function makeFullOrchestratorPlugin(opts?: { T?: number }): SimPlugin {
         id: `sim:preSnap:t${String(tickIndex).padStart(5, '0')}`,
         time: new Date().toISOString(),
         tickIndex,
-        characters: Object.values(world.characters || {}).sort((a, b) => a.id.localeCompare(b.id)),
-        locations: Object.values(world.locations || {}).sort((a, b) => a.id.localeCompare(b.id)),
+        characters: Object.values(world.characters || {}).sort((a, b) => codeUnitCompare(a.id, b.id)),
+        locations: Object.values(world.locations || {}).sort((a, b) => codeUnitCompare(a.id, b.id)),
         events: [],
         debug: {},
       };

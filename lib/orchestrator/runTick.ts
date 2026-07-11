@@ -1,6 +1,7 @@
 // lib/orchestrator/runTick.ts
 // Single orchestrator tick: run producer stages, merge patches, and emit trace.
 
+import { codeUnitCompare } from '../utils/compare';
 import type {
   AtomV1, OrchestratorContext, OrchestratorTraceV1, ProducerSpec,
   ProducerTrace, StageTrace,
@@ -61,7 +62,7 @@ export function runTick(args: RunTickArgs): { nextSnapshot: any; trace: Orchestr
     arr.push(spec);
     byStage.set(spec.stageId, arr);
   }
-  const stageIds = Array.from(byStage.keys()).sort((a, b) => a.localeCompare(b));
+  const stageIds = Array.from(byStage.keys()).sort((a, b) => codeUnitCompare(a, b));
 
   const stages: StageTrace[] = [];
   let workingAtoms: AtomV1[] = atomsIn;
@@ -74,7 +75,7 @@ export function runTick(args: RunTickArgs): { nextSnapshot: any; trace: Orchestr
     specs.sort((a, b) => {
       const pa = (b.priority ?? 0) - (a.priority ?? 0);
       if (pa !== 0) return pa;
-      return a.name.localeCompare(b.name);
+      return codeUnitCompare(a.name, b.name);
     });
 
     const stageTrace: StageTrace = { id: stageId, producers: [] };
@@ -95,12 +96,12 @@ export function runTick(args: RunTickArgs): { nextSnapshot: any; trace: Orchestr
         tookMs: Math.round(took),
         // enforce deterministic ordering in outputs
         outputs: {
-          atomsAdded: [...(res.patch.add || [])].map(normalizeAtom).sort((a, b) => a.id.localeCompare(b.id)),
+          atomsAdded: [...(res.patch.add || [])].map(normalizeAtom).sort((a, b) => codeUnitCompare(a.id, b.id)),
           atomsUpdated: [...(res.patch.update || [])].map(x => ({
             before: normalizeAtom(x.before),
             after: normalizeAtom(x.after),
-          })).sort((a, b) => a.after.id.localeCompare(b.after.id)),
-          atomsRemoved: [...(res.patch.remove || [])].map(normalizeAtom).sort((a, b) => a.id.localeCompare(b.id)),
+          })).sort((a, b) => codeUnitCompare(a.after.id, b.after.id)),
+          atomsRemoved: [...(res.patch.remove || [])].map(normalizeAtom).sort((a, b) => codeUnitCompare(a.id, b.id)),
         },
         why: (res.trace.why || []).slice(),
         inputRefs: (res.trace.inputRefs || []).slice().sort(),
@@ -119,7 +120,7 @@ export function runTick(args: RunTickArgs): { nextSnapshot: any; trace: Orchestr
   // workingAtoms is the source of truth (sequential application).
 
   // human log
-  const atomChanges = Array.from(lastChangeById.values()).sort((a, b) => a.id.localeCompare(b.id));
+  const atomChanges = Array.from(lastChangeById.values()).sort((a, b) => codeUnitCompare(a.id, b.id));
   const added = atomChanges.filter(c => c.op === 'add').length;
   const upd = atomChanges.filter(c => c.op === 'update').length;
   const rem = atomChanges.filter(c => c.op === 'remove').length;

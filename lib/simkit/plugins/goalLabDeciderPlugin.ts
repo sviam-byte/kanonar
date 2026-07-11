@@ -2,6 +2,7 @@
 // SimKit plugin: uses GoalLab S8 decision ranking and stores rich per-agent trace
 // for UI inspection in world.facts['sim:trace:<agentId>'].
 
+import { codeUnitCompare } from '../../utils/compare';
 import type { SimPlugin } from '../core/simulator';
 import type { SimSnapshot, SimWorld, SimAction, ActionOffer, IntentState, ActionKind } from '../core/types';
 import { getFact, setFact } from '../core/factsAccessors';
@@ -59,8 +60,8 @@ function buildSnapshot(world: SimWorld, tickIndex: number): SimSnapshot {
     id: `sim:gl:decider:t${String(tickIndex).padStart(5, '0')}`,
     time: new Date().toISOString(),
     tickIndex,
-    characters: Object.values(world.characters || {}).sort((a: any, b: any) => a.id.localeCompare(b.id)),
-    locations: Object.values(world.locations || {}).sort((a: any, b: any) => a.id.localeCompare(b.id)),
+    characters: Object.values(world.characters || {}).sort((a: any, b: any) => codeUnitCompare(a.id, b.id)),
+    locations: Object.values(world.locations || {}).sort((a: any, b: any) => codeUnitCompare(a.id, b.id)),
     events: (world.events || []).slice(),
     debug: {},
   } as any;
