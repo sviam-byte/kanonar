@@ -1155,10 +1155,15 @@ pipeline observation module.
 22. TOM-LIVE-WIRING-AUDIT-FIX-0 — DONE 2026-07-11; subject/relation direction,
     fail-closed observer-map + envelope decode, S5 provenance artifact, S8 Q
     sensitivity and semantic-only MVP-0 golden pin
+23. CONFLICT-CHOICE-ADR-0    — ACCEPTED 2026-07-11
+    (docs/unification/CONFLICT_CHOICE_ADR_0.md): utility = GoalLab S8 Q,
+    canonical choice = versioned goal_lab_s8_gumbel_v1, шов = существующий
+    forcedJointActions + validateJointAction; kernel/runner политики →
+    reference/compatibility; dual-run обязателен до parity
 ```
 
-Следующий пакет по dependency graph: `CONFLICT-CHOICE-ADR-0`, затем
-`CONFLICT-DEFINITION-0`. Live replacement существующих GoalLab/Conflict/SimKit
+Следующий пакет по dependency graph: `CONFLICT-DEFINITION-0`. Live
+replacement существующих GoalLab/Conflict/SimKit
 callers вынесен в `SCENE-ADAPTER-LIVE-WIRING-0`; pure adapters не объявляются
 уже подключённым runtime.
 

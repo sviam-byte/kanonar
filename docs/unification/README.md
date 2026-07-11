@@ -18,6 +18,7 @@
 | OBSERVATION-CONTRACT-0 | [OBSERVATION_CONTRACT_0.md](OBSERVATION_CONTRACT_0.md) | ACCEPTED | 2026-07-11 |
 | TOM-SPEC-0 | [TOM_SPEC_0.md](TOM_SPEC_0.md) | ACCEPTED | 2026-07-11 |
 | SCENE-OWNERSHIP-ADR-0 | [SCENE_OWNERSHIP_ADR_0.md](SCENE_OWNERSHIP_ADR_0.md) | ACCEPTED | 2026-07-11 |
+| CONFLICT-CHOICE-ADR-0 | [CONFLICT_CHOICE_ADR_0.md](CONFLICT_CHOICE_ADR_0.md) | ACCEPTED | 2026-07-11 |
 
 ## Открытые тикеты, порождённые R1
 
@@ -80,5 +81,7 @@
   `tests/tom/opponent_belief_v1.test.ts` и
   `tests/pipeline/opponent_belief_scene_evidence.test.ts`.
 
-Очередь дальше: CONFLICT-CHOICE-ADR-0, R2 metric-фиксы (ложные нули
-goalTension/frustration), решение о включении dual-emit по умолчанию.
+Очередь дальше: CONFLICT-DEFINITION-0 (typed projection row + immutable
+`trust_exchange` contract, разблокирован CONFLICT-CHOICE-ADR-0), R2
+metric-фиксы (ложные нули goalTension/frustration), решение о включении
+dual-emit по умолчанию.
