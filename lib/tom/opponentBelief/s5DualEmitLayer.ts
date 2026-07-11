@@ -14,6 +14,7 @@
 import type { WorldState } from '../../../types';
 import type { ContextAtom } from '../../context/v2/types';
 import type { ObservationEnvelopeV1 } from '../../scene/observation/types';
+import { decodeObservationEnvelopeMapForObserverV1, decodeObservationEnvelopesV1 } from '../../scene/observation/resolver';
 import { codeUnitCompare } from '../../utils/compare';
 import { evidenceFromObservationsV1, makeNeutralOpponentBeliefPriorV1, projectOpponentBeliefToS5AtomsV1 } from './builder';
 import { decodeLegacyTomToOpponentBeliefV1 } from './legacyDecoder';
@@ -30,13 +31,20 @@ export function buildOpponentBeliefDualEmitLayerV1(args: {
   atoms: ContextAtom[];
   beliefs: OpponentBeliefV1[];
   skipped: Array<{ targetId: string; code: string }>;
+  wireErrors: Array<{ code: string; path: string }>;
 } {
   const atoms: ContextAtom[] = [];
   const beliefs: OpponentBeliefV1[] = [];
   const skipped: Array<{ targetId: string; code: string }> = [];
   const tomStore = (args.world as { tom?: Record<string, Record<string, unknown>> }).tom;
-  const rawEnvelopes = (args.world as { resolvedObservations?: Record<string, unknown> }).resolvedObservations?.[args.selfId];
-  const envelopes: ObservationEnvelopeV1[] = Array.isArray(rawEnvelopes) ? rawEnvelopes : [];
+  const rawContainer = (args.world as { resolvedObservations?: unknown }).resolvedObservations;
+  const decodedEnvelopes = rawContainer === undefined
+    ? decodeObservationEnvelopesV1([], args.selfId)
+    : decodeObservationEnvelopeMapForObserverV1(rawContainer, args.selfId);
+  const envelopes: ObservationEnvelopeV1[] = decodedEnvelopes.ok ? decodedEnvelopes.value : [];
+  const wireErrors = decodedEnvelopes.ok === false
+    ? decodedEnvelopes.validation.errors.map(error => ({ code: error.code, path: error.path }))
+    : [];
 
   for (const targetId of [...args.otherIds].sort(codeUnitCompare)) {
     if (!targetId || targetId === args.selfId) continue;
@@ -69,5 +77,5 @@ export function buildOpponentBeliefDualEmitLayerV1(args: {
     atoms.push(...projectOpponentBeliefToS5AtomsV1(belief));
   }
 
-  return { atoms, beliefs, skipped };
+  return { atoms, beliefs, skipped, wireErrors };
 }

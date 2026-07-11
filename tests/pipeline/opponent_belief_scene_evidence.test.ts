@@ -31,8 +31,10 @@ function evidenceScene(trustToB: number, hidden = 'none'): ResolvedSceneInputV1 
     povAgentIds: ['A'],
     placements: ['A', 'B', 'C'].map((id, i) => ({ agentId: id, locationId: 'loc:demo', x: i, y: 0, provenance: provenance(`p-${id}`) })),
     events: [
-      { eventId: 'sig-B', kind: 'relation_signal', tick: 0, actorId: 'B', targetIds: ['B'], payload: { trust: trustToB, hiddenPlan: hidden }, visibilityRuleIds: ['signals'], baseReliability: 0.9, provenance: provenance('sig-B') },
-      { eventId: 'sig-C', kind: 'relation_signal', tick: 0, actorId: 'C', targetIds: ['C'], payload: { trust: 0.9 }, visibilityRuleIds: ['signals'], baseReliability: 0.9, provenance: provenance('sig-C') },
+      // Real directed shape: B/C are the described actors; A is the
+      // counterparty. Evidence must update A->B/A->C, never A->A.
+      { eventId: 'sig-B', kind: 'speech', tick: 0, actorId: 'B', targetIds: ['A'], payload: { trust: trustToB, hiddenPlan: hidden }, visibilityRuleIds: ['signals'], baseReliability: 0.9, provenance: provenance('sig-B') },
+      { eventId: 'sig-C', kind: 'direct_event', tick: 0, actorId: 'C', targetIds: ['A'], payload: { trust: 0.9 }, visibilityRuleIds: ['signals'], baseReliability: 0.9, provenance: provenance('sig-C') },
     ],
     relationLayers: [], knowledge: [],
     visibilityRules: [rule('signals', ['trust'])],
@@ -65,6 +67,12 @@ function pipelineInput(opts: { withEnvelopes?: boolean; trustToB?: number; hidde
   return {
     world, agentId: 'A', participantIds: ['A', 'B', 'C'],
     observeLiteParams: { seed: 1234 },
+    externalPossibilities: [{
+      id: 'external:help:B', kind: 'aff', label: 'help B', magnitude: 1,
+      confidence: 1, subjectId: 'A', targetId: 'B',
+      trace: { usedAtomIds: ['test:external:help:B'] },
+      meta: { sim: { kind: 'help' } },
+    }],
     sceneControl: {
       enableToM: true,
       runtimeProfile: flagOn ? { profileId: 'legacy', opponentBeliefS5V1: true } : 'legacy',
@@ -105,6 +113,9 @@ describe('S5 opponent-belief from resolved-scene evidence', () => {
     // The evidence ledger cites both the decoder and the scene observation.
     const artifacts = arr<any>((combined as any)?.stages).find((st: any) => st?.stage === 'S5')?.artifacts;
     expect(artifacts?.opponentBeliefDualEmit).toMatchObject({ enabled: true, beliefCount: 2, skipped: [] });
+    const storedBelief = arr<any>(artifacts?.opponentBeliefDualEmit?.beliefs)
+      .find((belief: any) => belief?.targetId === 'B');
+    expect(storedBelief?.evidence.some((item: any) => item?.provenance?.sourceIds?.includes('sig-B'))).toBe(true);
     const trustAtom = s5Atoms(combined).find(atom => atom.id === 'tom:belief:final:A:B:trust');
     const used = arr<string>(trustAtom?.trace?.usedAtomIds).map(String);
     expect(used.some(id => id.includes('legacy-tom'))).toBe(true);
@@ -128,6 +139,47 @@ describe('S5 opponent-belief from resolved-scene evidence', () => {
     const high = runGoalLabPipelineV1(pipelineInput({ trustToB: 0.9 }));
     expect(beliefMagnitude(low, 'tom:belief:final:A:B:trust'))
       .not.toBeCloseTo(beliefMagnitude(high, 'tom:belief:final:A:B:trust') as number, 6);
+  });
+
+  it('visible evidence reaches S8 target modulation and Q provenance', () => {
+    const low = runGoalLabPipelineV1(pipelineInput({ trustToB: 0.1 }));
+    const high = runGoalLabPipelineV1(pipelineInput({ trustToB: 0.9 }));
+    const rankedForB = (pipeline: any) => arr<any>(arr<any>(pipeline?.stages)
+      .find((stage: any) => stage?.stage === 'S8')?.artifacts?.ranked)
+      .filter((candidate: any) => candidate?.targetId === 'B');
+    const lowCandidates = rankedForB(low);
+    const highById = new Map(rankedForB(high).map((candidate: any) => [candidate.id, candidate]));
+    const paired = lowCandidates
+      .map((candidate: any) => [candidate, highById.get(candidate.id)] as const)
+      .find(([a, b]) => b && a?.why?.parts?.targetSignals?.trust?.atomId === 'tom:belief:final:A:B:trust');
+    expect(paired).toBeDefined();
+    expect(paired?.[1]?.why?.usedAtomIds).toContain('tom:belief:final:A:B:trust');
+    expect(paired?.[1]?.q).not.toBeCloseTo(paired?.[0]?.q as number, 8);
+  });
+
+  it('rejects malformed persisted envelopes without throwing or partial use', () => {
+    const input = pipelineInput({ withEnvelopes: false });
+    input.world.resolvedObservations = { A: [{ schemaVersion: 999, observerId: 'A', payload: null }] };
+    const pipeline = runGoalLabPipelineV1(input);
+    const artifact = arr<any>(pipeline?.stages).find((stage: any) => stage?.stage === 'S5')
+      ?.artifacts?.opponentBeliefDualEmit;
+    expect(artifact).toMatchObject({ enabled: true, beliefCount: 1 });
+    expect(artifact?.wireErrors).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'invalid_schema_version' }),
+      expect.objectContaining({ code: 'missing_provenance' }),
+    ]));
+    expect(s5Atoms(pipeline).filter(atom => atom.id === 'tom:belief:final:A:C:trust')).toHaveLength(0);
+  });
+
+  it('rejects a malformed observer container instead of treating it as absent', () => {
+    const input = pipelineInput({ withEnvelopes: false });
+    input.world.resolvedObservations = [];
+    const pipeline = runGoalLabPipelineV1(input);
+    const artifact = arr<any>(pipeline?.stages).find((stage: any) => stage?.stage === 'S5')
+      ?.artifacts?.opponentBeliefDualEmit;
+    expect(artifact?.wireErrors).toContainEqual({
+      code: 'invalid_observation_envelope', path: 'resolvedObservations',
+    });
   });
 
   it('emits nothing when the flag is off, envelopes present or not', () => {

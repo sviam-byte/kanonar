@@ -2,7 +2,8 @@
 
 Статус: IMPLEMENTED CORE. Дата спецификации: 2026-07-11. Isolated TypeScript
 types, builder, update law, validation/serialization и S5 projection реализованы
-2026-07-11; legacy S0/S5/persistence adapters ещё не подключены.
+2026-07-11. Flag-gated S5/SimKit scene-evidence path подключён; default GoalLab
+caller migration и versioned belief persistence остаются deferred.
 
 Implementation:
 
@@ -12,6 +13,16 @@ Implementation:
 - validation/serialization: `lib/tom/opponentBelief/serialization.ts`;
 - coefficients: `FC.opponentBeliefV1` in `lib/config/formulaConfig.ts`;
 - tests: `tests/tom/opponent_belief_v1.test.ts`.
+
+Update 2026-07-11c (audit repair): evidence attribution follows the observation
+contract: payload describes `subjectId`; the only V1 exception is a visible
+relation `observer -> counterparty`, which is evidence for the counterparty.
+Persisted observer maps and envelope arrays pass through a fail-closed decoder
+before S5, with errors exposed as `wireErrors`. The S5 artifact retains complete beliefs and
+evidence provenance, and S8 target modulation reads canonical
+`tom:belief:final:<observer>:<target>:<key>` before compatibility dyads. The
+visible-sensitivity oracle now proves a changed scene signal reaches target Q
+and its `usedAtomIds`, not only the emitted S5 magnitude.
 
 Update 2026-07-11b (TOM-BUILDER live wiring): S5 dual-emit слой теперь строит
 belief как `legacy-decoder prior (если есть world.tom энтри) + directed
@@ -336,6 +347,10 @@ Each atom carries:
 - origin `belief`, namespace `tom`;
 - `usedAtomIds` pointing to evidence projections and prior belief ID;
 - parts containing belief ID, key, tick and update trace ID.
+
+The corresponding belief/evidence objects are retained under
+`S5.artifacts.opponentBeliefDualEmit.beliefs`, so every referenced belief and
+evidence ID resolves to its source IDs and adapter steps in pipeline output.
 
 Existing `tom:dyad:*`/`tom:effective:*` output is compatibility-only and may be
 dual-emitted by a versioned adapter. Downstream new code reads only the approved

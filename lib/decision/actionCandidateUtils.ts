@@ -438,6 +438,7 @@ export function buildActionCandidates(args: {
       };
 
       const tomRead = (metric: string) => readTargetSignal([
+        `tom:belief:final:${args.selfId}:${targetId}:${metric}`,
         `tom:dyad:final:${metric}:${args.selfId}:${targetId}`,
         `tom:effective:dyad:${metric}:${args.selfId}:${targetId}`,
         `tom:ctx:dyad:${metric}:${args.selfId}:${targetId}`,

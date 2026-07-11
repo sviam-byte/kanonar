@@ -3,6 +3,7 @@ import { codeUnitCompare } from '../../utils/compare';
 import {
   OBSERVATION_SCHEMA_VERSION,
   type ObservationEnvelopeV1,
+  type ObservationEnvelopeDecodeResultV1,
   type ObservationKindV1,
   type ObservationProvenanceV1,
   type ObservationResolutionResultV1,
@@ -38,14 +39,20 @@ function nonEmpty(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
 }
 
-function validProvenance(value: ObservationProvenanceV1 | undefined): boolean {
-  return !!value
-    && value.sourceIds.length > 0
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function validProvenance(value: unknown): value is ObservationProvenanceV1 {
+  if (!isRecord(value) || !Array.isArray(value.sourceIds) || !Array.isArray(value.adapterSteps)) return false;
+  return value.sourceIds.length > 0
     && value.sourceIds.every(nonEmpty)
     && value.adapterSteps.length > 0
-    && value.adapterSteps.every(step => nonEmpty(step.adapterId)
+    && value.adapterSteps.every(step => isRecord(step)
+      && nonEmpty(step.adapterId)
       && Number.isInteger(step.adapterVersion)
-      && step.adapterVersion >= 0
+      && Number(step.adapterVersion) >= 0
+      && Array.isArray(step.inputIds)
       && step.inputIds.every(nonEmpty));
 }
 
@@ -61,6 +68,77 @@ function addError(
   sourceId?: string,
 ): void {
   errors.push({ code, path, value, sourceId });
+}
+
+/** Decode persisted/resumed envelopes as a fail-closed wire boundary. */
+export function decodeObservationEnvelopesV1(
+  input: unknown,
+  expectedObserverId: string,
+): ObservationEnvelopeDecodeResultV1 {
+  const errors: ObservationValidationErrorV1[] = [];
+  if (!Array.isArray(input)) {
+    addError(errors, 'invalid_observation_envelope', 'observations', input);
+    return { ok: false, validation: { valid: false, errors } };
+  }
+
+  input.forEach((item, index) => {
+    const path = `observations[${index}]`;
+    if (!isRecord(item)) {
+      addError(errors, 'invalid_observation_envelope', path, item);
+      return;
+    }
+    if (item.schemaVersion !== OBSERVATION_SCHEMA_VERSION) addError(errors, 'invalid_schema_version', `${path}.schemaVersion`, item.schemaVersion);
+    if (item.systemVersion !== KANONAR_SYSTEM_VERSION) addError(errors, 'invalid_system_version', `${path}.systemVersion`, item.systemVersion);
+    if (!nonEmpty(item.observationId) || !nonEmpty(item.sceneId)) addError(errors, 'invalid_observation_envelope', path, item);
+    if (item.observerId !== expectedObserverId) addError(errors, 'invalid_observation_envelope', `${path}.observerId`, item.observerId);
+    if (item.subjectId !== undefined && !nonEmpty(item.subjectId)) addError(errors, 'invalid_observation_envelope', `${path}.subjectId`, item.subjectId);
+    if (item.targetId !== undefined && !nonEmpty(item.targetId)) addError(errors, 'invalid_observation_envelope', `${path}.targetId`, item.targetId);
+    if (!OBSERVATION_KINDS.has(String(item.kind ?? ''))) addError(errors, 'unknown_event_kind', `${path}.kind`, item.kind);
+    if (!isRecord(item.payload)) addError(errors, 'invalid_observation_envelope', `${path}.payload`, item.payload);
+    if (!validReliability(item.reliability)) addError(errors, 'invalid_reliability', `${path}.reliability`, item.reliability);
+    if (!Number.isInteger(item.tick) || Number(item.tick) < 0) addError(errors, 'invalid_tick', `${path}.tick`, item.tick);
+    if (!isRecord(item.source) || !nonEmpty(item.source.sourceKind) || !nonEmpty(item.source.sourceId)) {
+      addError(errors, 'invalid_observation_envelope', `${path}.source`, item.source);
+    }
+    if (!isRecord(item.visibility)
+      || !Array.isArray(item.visibility.ruleIds)
+      || !item.visibility.ruleIds.every(nonEmpty)
+      || !Array.isArray(item.visibility.allowedFields)
+      || !item.visibility.allowedFields.every(nonEmpty)
+      || !Object.hasOwn(MODE_RESTRICTIVENESS, String(item.visibility.mode ?? ''))) {
+      addError(errors, 'invalid_observation_envelope', `${path}.visibility`, item.visibility);
+    }
+    if (!validProvenance(item.provenance)) addError(errors, 'missing_provenance', `${path}.provenance`, item.provenance, String(item.observationId ?? ''));
+  });
+
+  if (errors.length > 0) return { ok: false, validation: { valid: false, errors } };
+  return { ok: true, value: input as ObservationEnvelopeV1[] };
+}
+
+/** Decode the observer-indexed persisted container before selecting a slot. */
+export function decodeObservationEnvelopeMapForObserverV1(
+  input: unknown,
+  expectedObserverId: string,
+): ObservationEnvelopeDecodeResultV1 {
+  if (!isRecord(input)) {
+    return {
+      ok: false,
+      validation: {
+        valid: false,
+        errors: [{ code: 'invalid_observation_envelope', path: 'resolvedObservations', value: input }],
+      },
+    };
+  }
+  if (!Object.hasOwn(input, expectedObserverId)) {
+    return {
+      ok: false,
+      validation: {
+        valid: false,
+        errors: [{ code: 'invalid_observation_envelope', path: `resolvedObservations.${expectedObserverId}` }],
+      },
+    };
+  }
+  return decodeObservationEnvelopesV1(input[expectedObserverId], expectedObserverId);
 }
 
 export function validateResolvedSceneInputV1(input: ResolvedSceneInputV1): ObservationValidationReportV1 {

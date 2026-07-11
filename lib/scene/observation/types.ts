@@ -141,6 +141,7 @@ export type ObservationValidationCodeV1 =
   | 'invalid_knowledge_assignment'
   | 'invalid_relation_layer'
   | 'unknown_event_kind'
+  | 'invalid_observation_envelope'
   | 'missing_provenance';
 
 export type ObservationValidationErrorV1 = {
@@ -175,4 +176,8 @@ export type ObservationResolutionV1 = {
 
 export type ObservationResolutionResultV1 =
   | { ok: true; value: ObservationResolutionV1 }
+  | { ok: false; validation: ObservationValidationReportV1 };
+
+export type ObservationEnvelopeDecodeResultV1 =
+  | { ok: true; value: ObservationEnvelopeV1[] }
   | { ok: false; validation: ObservationValidationReportV1 };

@@ -27,6 +27,18 @@ describe('OpponentBeliefV1', () => {
     expect(bob.estimates.threat.value).toBe(0.5);
   });
 
+  it('attributes actor-to-counterparty evidence to the described subject', () => {
+    const speech = {
+      ...observation('bob', { trust: 0.9 }, 'speech-bob-to-alice'),
+      kind: 'speech' as const,
+      subjectId: 'bob',
+      targetId: 'alice',
+    };
+    const bob = buildOpponentBeliefV1({ observerId: 'alice', targetId: 'bob', observations: [speech], tick: 2 });
+    expect(bob.evidence).toHaveLength(1);
+    expect(bob.estimates.trust.value).toBeCloseTo(0.9, 12);
+  });
+
   it('is independent of input order and ignores non-approved payload fields', () => {
     const a = observation('bob', { trust: 0.8, secret: 'x' }, 'a');
     const b = observation('bob', { trust: 0.4 }, 'b');

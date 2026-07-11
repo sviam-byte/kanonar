@@ -611,6 +611,18 @@ provenance и форму диагностического trace. Hash переп
 воспроизведётся — записать точный toolchain и приложить к TEST_0.md, не
 чинить вслепую.
 
+Oracle re-scope 2026-07-11: full `world.facts` digest больше не используется
+как фиксированный межсредовый pin. `mvp0_golden.test.ts` по-прежнему требует
+полной byte-equality повторных запусков в одной среде, но замороженное
+ожидание теперь относится к semantic applied-dynamics subset без `factsDigest`
+(`efa018b311fe889b…`). Основание: полный hash имеет ТРИ стабильные
+пер-средовые линии — `4352ad74…` (env A; подтверждён 2026-07-11 clean
+worktrees на 7be8f15 и 2822bff, lockfile не менялся, Node v24.11.1),
+`451edc9d…` (toolchain 07-07/1740492), `e925be50…` (третья среда — sandbox
+агента-аудитора). Semantic subset совпадает во всех трёх. Первоначальная
+формулировка аудита «pin не воспроизводится в clean worktree» была неверна:
+она отражала измерение только третьей среды; pin в env A жив.
+
 Известный дисбаланс покрытия (для интерпретации результатов): tests/simkit 31
 файлов, tests/pipeline 17, tests/goals 16, tests/decision 15, tests/dilemma 11 —
 против tests/metrics, tests/lens, tests/possibilities, tests/util по 1 файлу.
@@ -1140,6 +1152,9 @@ pipeline observation module.
 19. CONFLICT-SCENE-ADAPTER-0 — DONE CORE (lib/scene/adapters/conflict.ts)
 20. SIMKIT-SCENE-ADAPTER-0   — DONE CORE (lib/scene/adapters/simKit.ts)
 21. SCENE-ADAPTER-LIVE-WIRING-0 — DEFERRED; requires per-runtime caller migration
+22. TOM-LIVE-WIRING-AUDIT-FIX-0 — DONE 2026-07-11; subject/relation direction,
+    fail-closed observer-map + envelope decode, S5 provenance artifact, S8 Q
+    sensitivity and semantic-only MVP-0 golden pin
 ```
 
 Следующий пакет по dependency graph: `CONFLICT-CHOICE-ADR-0`, затем

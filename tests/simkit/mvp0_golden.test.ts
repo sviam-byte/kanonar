@@ -5,12 +5,13 @@
 //       (no empty menus).
 //   A2: 100% of applied actions carry non-empty usedAtomIds.
 //
-// MVP0_GOLDEN_HASH_SEED7 is pinned AFTER the first honest run (freeze
-// discipline: null at the freeze commit, pinned in the "ran" commit). Any
-// behavioral change to the engine will break this pin LOUDLY — that is its job.
+// MVP0_SEMANTIC_HASH_SEED7 pins applied dynamics after the honest freeze/run
+// sequence. Same-environment full-row equality separately guards deterministic
+// diagnostic output without treating factsDigest as cross-toolchain semantics.
 
 import { describe, it, expect } from 'vitest';
 import { runMvpRollout } from '../../lib/simkit/mvp0/runMvpRollout';
+import { canonicalStringify, sha256Hex } from '../../lib/simkit/mvp0/hash';
 
 // Corrected 2026-07-07 during the I-2.4 audit: clean checkouts of the freeze
 // commit 54c4c74 and later commits reproduce 124e3434…; the ran commit
@@ -21,16 +22,19 @@ import { runMvpRollout } from '../../lib/simkit/mvp0/runMvpRollout';
 // efa018b3...), while sim:trace.best now names the seeded Gumbel winner and the
 // trace adds chosen/contextAxes/topByQ readouts. Those intentional provenance
 // and diagnostic-shape changes alter usedAtomIds and the whole-facts digest.
-// 2026-07-11: the hash history has TWO per-environment lineages (this machine:
-// 73eaf2ce->4352ad74; the 2026-07-07/1740492 toolchain: 124e3434->451edc9d).
-// Neither was "wrong": localeCompare sorts in the semantic path made the order
-// ICU/locale-dependent. All semantic sorts now use codeUnitCompare
-// (lib/utils/compare.ts, gated by tests/determinism/collation_boundary.test.ts).
-// The hash below is unchanged by that fix on this machine. Cross-toolchain
-// equality still requires an independent run; this test proves the local pin
-// and the boundary test prevents reintroducing locale-dependent comparison.
-const MVP0_GOLDEN_HASH_SEED7: string | null =
-  '4352ad740f0c5cb8accba616b1c668148a2ea617c5d9ac32490879682820180a';
+// 2026-07-11 oracle re-scope: the full-row hash is per-ENVIRONMENT, not
+// broken. Verified same day with clean worktrees (unchanged lockfile,
+// ms-playwright-go Node v24.11.1): env A reproduces 4352ad74... exactly at
+// both 7be8f15 (the pin commit) and 2822bff. The 07-07/1740492 toolchain
+// produced 124e3434...->451edc9d...; a third sandbox produced e925be50...
+// Three stable lineages prove factsDigest (diagnostic/provenance shape) is
+// not a cross-toolchain contract. Full-row equality stays as a
+// same-environment determinism check; the frozen cross-environment pin is
+// the applied-dynamics subset tick/agent/action/events/menuCount, which
+// agrees across all three environments (first recorded in the 1740492
+// provenance-only repair).
+const MVP0_SEMANTIC_HASH_SEED7 =
+  'efa018b311fe889bbb1c2600f360c4cf207918289f9d23ed1757144c0d6dabb6';
 
 describe('MVP-0 golden run (A1 + A2)', () => {
   it('20 ticks: deterministic hash, no deadlock, 100% explained actions', () => {
@@ -58,12 +62,10 @@ describe('MVP-0 golden run (A1 + A2)', () => {
     const digests = new Set(a.rows.map((r) => r.factsDigest));
     expect(digests.size).toBeGreaterThan(1);
 
-    if (MVP0_GOLDEN_HASH_SEED7) {
-      expect(a.goldenHash).toBe(MVP0_GOLDEN_HASH_SEED7);
-    } else {
-      // Freeze phase: surface the hash so the "ran" commit can pin it.
-      console.log('MVP0 golden hash (seed 7, 20 ticks):', a.goldenHash);
-    }
+    const semanticRows = a.rows.map(({ tick, agentId, action, events, menuCount }) => ({
+      tick, agentId, action, events, menuCount,
+    }));
+    expect(sha256Hex(canonicalStringify(semanticRows))).toBe(MVP0_SEMANTIC_HASH_SEED7);
   }, 600000);
 
   it('different seeds produce different trajectories', () => {

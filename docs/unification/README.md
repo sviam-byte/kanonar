@@ -21,17 +21,19 @@
 
 ## Открытые тикеты, порождённые R1
 
-1. **GOLDEN-DRIFT — CLOSED (root cause), диагноз уточнён 2026-07-11**:
-   динамика byte-stable (semantic subset `b9a06aef…` стабилен 626c4d3 →
-   7b68c1e → 1740492), но «ошибочных» пинов не было — существовали ДВЕ
-   стабильные линии хешей по окружениям (эта машина: `73eaf2ce…→4352ad74…`;
-   toolchain аудита 07-07 и коммита 1740492: `124e3434…→451edc9d…`).
-   Причина: ICU-зависимый `localeCompare` в семантических сортировках.
-   Исправлено: все семантические пути переведены на `codeUnitCompare`
-   (`lib/utils/compare.ts`), gate —
-   `tests/determinism/collation_boundary.test.ts`. Пин `4352ad74…` не
-   изменился в этом окружении и ожидается каноническим кросс-платформенно;
-   подтверждение на втором toolchain — при следующем его прогоне.
+1. **GOLDEN-DRIFT — CLOSED, oracle re-scoped 2026-07-11**: semantic sorts
+   используют `codeUnitCompare` и защищены
+   `tests/determinism/collation_boundary.test.ts`. Верификация 2026-07-11
+   (clean worktrees, lockfile не менялся, Node v24.11.1): pin `4352ad74…`
+   ЖИВ в env A — воспроизводится байт-в-байт и на 7be8f15 (пин-коммит), и на
+   2822bff. `e925be50…` — ТРЕТЬЯ пер-средовая линия (sandbox агента-аудитора
+   2026-07-11), рядом с `124e3434…→451edc9d…` (toolchain 07-07/1740492). Три
+   стабильные линии доказывают: `factsDigest` (diagnostic/provenance shape)
+   не является межсредовым semantic oracle. Поэтому full-row hash понижен до
+   same-environment determinism check (byte-equality двух запусков), а
+   фиксированный межсредовой pin — applied-dynamics subset
+   `tick/agent/action/events/menuCount`: `efa018b311fe889b…` (совпадает во
+   всех трёх средах).
 2. **MAFIA-TEST-NAME — CLOSED 2026-07-11**: корневой скрипт `mafia_test.ts`
    (не тест: console.log без assertions) портирован в
    `tests/mafia/mafia_game.test.ts` с реальными проверками детерминизма,
@@ -69,6 +71,14 @@
   envelope-only диады получают belief; end-to-end через SimKitSimulator —
   `tests/pipeline/opponent_belief_scene_evidence.test.ts`,
   `tests/simkit/scene_projection_integration.test.ts`.
+
+- **TOM live-wiring audit repair (2026-07-11)**: исправлена направленность
+  subject/counterparty для speech/event evidence, добавлен fail-closed decode
+  persisted envelopes, полный belief/evidence ledger сохранён в S5 artifact,
+  а canonical `tom:belief:final:*` теперь достигает S8 target modulation и Q
+  provenance. Регрессии находятся в
+  `tests/tom/opponent_belief_v1.test.ts` и
+  `tests/pipeline/opponent_belief_scene_evidence.test.ts`.
 
 Очередь дальше: CONFLICT-CHOICE-ADR-0, R2 metric-фиксы (ложные нули
 goalTension/frustration), решение о включении dual-emit по умолчанию.

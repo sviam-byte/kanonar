@@ -292,6 +292,7 @@ invalid_tick
 invalid_knowledge_assignment
 invalid_relation_layer
 unknown_event_kind
+invalid_observation_envelope
 missing_provenance
 ```
 
@@ -361,6 +362,10 @@ in provenance and migration reports.
 - Deterministically sorted per-character envelopes.
 - Relation fold with fixed layer precedence and winning source per key.
 - Directed multi-target events emit one envelope per target.
+- Persisted/resumed observer maps and their envelope arrays are decoded as a
+  separate fail-closed wire boundary before live ToM consumption. A malformed
+  outer map, missing current-observer slot or one invalid item rejects the full
+  observer array and produces validation diagnostics.
 
 ## Runtime adapter projections
 

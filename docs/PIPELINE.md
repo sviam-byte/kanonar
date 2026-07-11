@@ -94,9 +94,14 @@ Outputs:
   belief = prior из legacy `world.tom` (`legacy-tom-decoder` v1, если энтри
   есть) + directed evidence из envelope-наблюдений resolved-сцены
   (`world.resolvedObservations`, в SimKit — из fact `scene:observations:v1`)
-  через единый update-law; диада без обоих источников не эмитится; мерджится
-  последним слоем S5, существующие слои эти атомы не читают; артефакт
-  `opponentBeliefDualEmit {enabled, atomCount, beliefCount, skipped}`
+  через единый update-law; диада без обоих источников не эмитится. Persisted
+  observer-map и envelope arrays декодируются fail-closed; invalid container не используется частично и
+  попадает в `wireErrors`. Payload обычно атрибутируется `subjectId`; для
+  известного отношения observer→counterparty применяется явное relation-rule.
+  Слой мерджится последним в S5, после чего S8 target modulation предпочитает
+  canonical `tom:belief:final:*` legacy dyad IDs. Артефакт
+  `opponentBeliefDualEmit {enabled, atomCount, beliefCount, beliefs, skipped,
+  wireErrors}` сохраняет полный evidence/provenance ledger.
 
 Notes:
 - стадия может быть отключена через `sceneControl.enableToM === false`

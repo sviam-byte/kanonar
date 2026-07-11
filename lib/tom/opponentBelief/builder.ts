@@ -36,7 +36,18 @@ export function makeNeutralOpponentBeliefPriorV1(args: { observerId: string; tar
 /** Directed evidence extracted from resolver-approved observation envelopes. */
 export function evidenceFromObservationsV1(args: { observerId: string; targetId: string; observations: ObservationEnvelopeV1[] }): BeliefEvidenceV1[] {
   return args.observations
-    .filter(item => item.observerId === args.observerId && (item.targetId === args.targetId || (!item.targetId && item.subjectId === args.targetId)))
+    .filter(item => {
+      if (item.observerId !== args.observerId) return false;
+      // Payload normally describes `subjectId`. A directed relation authored
+      // by the observer is the explicit exception: A's known A->B relation is
+      // evidence for A's model of B, so the counterparty is the belief target.
+      const describedOpponentId = item.kind === 'relation_signal'
+        && item.subjectId === args.observerId
+        && item.targetId
+        ? item.targetId
+        : item.subjectId ?? item.targetId;
+      return describedOpponentId === args.targetId;
+    })
     .map(item => ({ schemaVersion: 1 as const, evidenceId: `belief:evidence:${item.sceneId}:${item.observationId}`, kind: evidenceKind(item), observerId: args.observerId, targetId: args.targetId, observationId: item.observationId, payload: item.payload, reliability: item.reliability, tick: item.tick, provenance: item.provenance }))
     .sort((a, b) => a.tick - b.tick || codeUnitCompare(a.evidenceId, b.evidenceId));
 }

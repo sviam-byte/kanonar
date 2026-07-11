@@ -826,9 +826,9 @@ export function runGoalLabPipelineV1(input: {
     const policyAtoms = arr(policy?.atoms).map(normalizeAtom);
     const mS5c = mergeAtomsPreferNewer(mS5b.atoms, policyAtoms);
 
-    // Flag-gated dual-emit of the approved tom:belief:* grammar. Merged LAST
-    // so no existing S5 layer consumes the new atoms; OFF keeps the stage
-    // output byte-identical.
+    // Flag-gated emission of the approved tom:belief:* grammar. Merged last
+    // inside S5; S8 target modulation reads canonical final axes first while
+    // OFF keeps the legacy path byte-identical.
     const dualEmit = runtimeMechanics.opponentBeliefS5V1
       ? buildOpponentBeliefDualEmitLayerV1({ world, selfId, otherIds: othersForTom, tick })
       : null;
@@ -858,7 +858,9 @@ export function runGoalLabPipelineV1(input: {
           enabled: runtimeMechanics.opponentBeliefS5V1,
           atomCount: dualAtoms.length,
           beliefCount: arr(dualEmit?.beliefs).length,
+          beliefs: arr(dualEmit?.beliefs),
           skipped: arr(dualEmit?.skipped),
+          wireErrors: arr(dualEmit?.wireErrors),
         },
         overriddenIds: s5Overridden,
       }
