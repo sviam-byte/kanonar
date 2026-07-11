@@ -994,6 +994,16 @@ export const FC = {
     uncertaintyDecay: 0.5,
     disagreementWeight: 0.5,
     evidenceLimit: 256,
+    // S5 dual-emit of tom:belief:* atoms stays OFF on every profile;
+    // opt-in is per-run via the object-form runtimeProfile override.
+    s5DualEmit: { enabled: false },
+    legacyDecoder: {
+      reliabilityFloor: 0.2,
+      reliabilityCeiling: 0.8,
+      certaintyWeight: 0.45,
+      evidenceCountWeight: 0.15,
+      evidenceCountHalfPoint: 4,
+    },
   },
 } as const;
 

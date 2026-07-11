@@ -15,7 +15,7 @@ function evidenceKind(observation: ObservationEnvelopeV1): BeliefEvidenceKindV1 
   return 'observation';
 }
 
-export function buildOpponentBeliefV1(args: { observerId: string; targetId: string; observations: ObservationEnvelopeV1[]; tick: number }): OpponentBeliefV1 {
+export function makeNeutralOpponentBeliefPriorV1(args: { observerId: string; targetId: string; tick: number }): OpponentBeliefV1 {
   if (!args.observerId || !args.targetId || args.observerId === args.targetId) throw new Error('self_target_forbidden');
   const estimates = Object.fromEntries(APPROVED_BELIEF_KEYS_V1.map(key => [key, {
     value: FC.opponentBeliefV1.priorValue,
@@ -23,7 +23,7 @@ export function buildOpponentBeliefV1(args: { observerId: string; targetId: stri
     uncertainty: FC.opponentBeliefV1.priorUncertainty,
     evidenceIds: [], updatedAtTick: args.tick,
   }])) as OpponentBeliefV1['estimates'];
-  const prior: OpponentBeliefV1 = {
+  return {
     schemaVersion: OPPONENT_BELIEF_SCHEMA_VERSION, systemVersion: KANONAR_SYSTEM_VERSION,
     beliefId: `belief:opponent:${args.observerId}:${args.targetId}`,
     observerId: args.observerId, targetId: args.targetId, estimates,
@@ -31,6 +31,10 @@ export function buildOpponentBeliefV1(args: { observerId: string; targetId: stri
     summary: { confidence: FC.opponentBeliefV1.priorConfidence, uncertainty: FC.opponentBeliefV1.priorUncertainty },
     updatedAtTick: args.tick,
   };
+}
+
+export function buildOpponentBeliefV1(args: { observerId: string; targetId: string; observations: ObservationEnvelopeV1[]; tick: number }): OpponentBeliefV1 {
+  const prior = makeNeutralOpponentBeliefPriorV1(args);
   const evidence: BeliefEvidenceV1[] = args.observations
     .filter(item => item.observerId === args.observerId && (item.targetId === args.targetId || (!item.targetId && item.subjectId === args.targetId)))
     .map(item => ({ schemaVersion: 1 as const, evidenceId: `belief:evidence:${item.sceneId}:${item.observationId}`, kind: evidenceKind(item), observerId: args.observerId, targetId: args.targetId, observationId: item.observationId, payload: item.payload, reliability: item.reliability, tick: item.tick, provenance: item.provenance }))
