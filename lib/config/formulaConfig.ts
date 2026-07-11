@@ -986,6 +986,15 @@ export const FC = {
   lookahead: LOOKAHEAD,
   dilemmaLearning: DILEMMA_LEARNING_FORMULA,
   conflictLabDynamics: CONFLICT_LAB_DYNAMICS_FORMULA,
+  opponentBeliefV1: {
+    priorValue: 0.5,
+    priorConfidence: 0,
+    priorUncertainty: 1,
+    confidenceGain: 0.65,
+    uncertaintyDecay: 0.5,
+    disagreementWeight: 0.5,
+    evidenceLimit: 256,
+  },
 } as const;
 
 export type FormulaConfig = typeof FC;

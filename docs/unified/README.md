@@ -7,6 +7,10 @@ It does not replace deep domain docs in `docs/PIPELINE.md` or `docs/INVARIANTS.m
 It tells you what is actually live in code and where the risky mixed layers are.
 It is also the official repo-level home for the control-plane material that previously lived outside `docs/`.
 
+The proposed staged migration from multiple lab contours to a shared runtime is
+documented in `docs/LAB_UNIFICATION_PLAN.md`. It is a planning contract, not a
+replacement for the live-runtime trust order below.
+
 ## Read Order
 
 1. `docs/unified/01_CONTROL_PLANE.md`
