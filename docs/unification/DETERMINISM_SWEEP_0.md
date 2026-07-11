@@ -11,11 +11,11 @@
 
 | path:line | использование | downstream | предложение | severity |
 | --- | --- | --- | --- | --- |
-| `lib/social/acquaintance.ts:59` | `t = world.tick ?? world.time ?? Date.now()` в `touchSeen` | `edge.lastSeenAt` — persisted acquaintance state; влияет на familiarity/tier | убрать fallback: tick обязателен параметром | **high** |
-| `lib/biography.ts:197` | `now = character.storyTime ?? Date.now()` | `computeBiographyLatent(bio, now)` → effectiveVector → axisDeltas персонажа | требовать storyTime; отсутствие — явная ошибка, не wall-clock | **high** |
-| `lib/scenario/registry.ts:27` | `createInitialWorld(Date.now(), …)` — первый арг = `startTime` мира | база времени мира wall-clock (seed отдельно: `options.runSeed`) | startTime = 0 или из preset | medium |
-| `lib/planning/world-builders.ts:121` | `hydrateAgent(char, Date.now())` | время гидрации агента в state | передавать scenario start tick | medium |
-| `lib/diagnostics/runner.ts:147` | `historicalEvents.push({… t: Date.now() …})` | событие «Катастрофа» в historicalEvents агента | t из world.tick | medium |
+| `lib/social/acquaintance.ts:59` | `t = world.tick ?? world.time ?? Date.now()` в `touchSeen` | `edge.lastSeenAt` — persisted acquaintance state; влияет на familiarity/tier | **RESOLVED 2026-07-11**: `touchSeen(edge, tick, opts)` — tick обязателен, все 7 колл-сайтов обновлены | **high** |
+| `lib/biography.ts:197` | `now = character.storyTime ?? Date.now()` | `computeBiographyLatent(bio, now)` → effectiveVector → axisDeltas персонажа | **RESOLVED 2026-07-11**: fallback = время последнего события биографии (детерминированный якорь; events непусты на этом пути) | **high** |
+| `lib/scenario/registry.ts:27` | `createInitialWorld(Date.now(), …)` — первый арг = `startTime` мира | база времени мира wall-clock (seed отдельно: `options.runSeed`) | **RESOLVED 2026-07-11**: `startTime = 0` (параметр телом initializer не читается) | medium |
+| `lib/planning/world-builders.ts:121` | `hydrateAgent(char, Date.now())` | время гидрации агента в state | передавать scenario start tick; **deferred в R8** — не достижим с живых routes (sandbox-функции никем не импортируются) | medium |
+| `lib/diagnostics/runner.ts:147` | `historicalEvents.push({… t: Date.now() …})` | событие «Катастрофа» в historicalEvents агента | t из world.tick; **deferred в R8** — DiagnosticsPage не в роутинге App.tsx | medium |
 | `lib/biography/history-formalizer.ts:150` | `t: Date.now(), // Mock time` (сам признаётся) | биографическое событие | реальный story-time источник | medium |
 | `lib/character-snippet.ts:205` | `temp-${Date.now()}-counter` fallback-ID | идентичность сущности недетерминирована при отсутствии meta.id | детерминированный hash содержимого | low |
 

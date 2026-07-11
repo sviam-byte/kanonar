@@ -178,7 +178,7 @@ export const SocialSystem = {
                     (agent as any)?.locationId &&
                     (other as any)?.locationId &&
                     (agent as any).locationId === (other as any).locationId;
-                if (sameLoc) touchSeen(world, acq, { idBoost: 0.12, famBoost: 0.08 });
+                if (sameLoc) touchSeen(acq, world.tick ?? 0, { idBoost: 0.12, famBoost: 0.08 });
                 
                 // Update Policy Prior (Expectations)
                 if (world.tom) {

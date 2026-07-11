@@ -194,7 +194,12 @@ export function getEffectiveCharacterBasis(
       return { vectorBase: character.vector_base || {}, bioState: null };
   }
 
-  const now = character.storyTime ?? Date.now();
+  // DET-HIGH fix (DETERMINISM_SWEEP_0): the latent feeds effectiveVector /
+  // axisDeltas, so wall-clock here made character basis drift in real time.
+  // Without storyTime the deterministic anchor is the latest biography event
+  // (bio.events is non-empty on every path reaching this line).
+  const now = character.storyTime
+    ?? Math.max(...bio.events.map(ev => (Number.isFinite(ev.time) ? ev.time : 0)), 0);
   const bioLatent = computeBiographyLatent(bio, now);
   const effectiveVector = computeEffectiveVector(character.vector_base || {}, bioLatent);
 

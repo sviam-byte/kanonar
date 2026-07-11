@@ -24,7 +24,9 @@ export function getInitialWorldForScenario(scenarioId: ScenarioId): WorldState {
     const selectedCharacters = allChars.slice(0, 5);
 
     const world = createInitialWorld(
-        Date.now(),
+        // startTime is unused by the initializer body; 0 keeps this call
+        // deterministic (DETERMINISM_SWEEP_0).
+        0,
         selectedCharacters,
         scenarioId,
         {}, // goalWeights

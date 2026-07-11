@@ -51,13 +51,14 @@ export function ensureAcquaintance(agent: AgentState, otherId: string): Acquaint
   return fresh;
 }
 
+// DET-HIGH fix (DETERMINISM_SWEEP_0): lastSeenAt is persisted acquaintance
+// state, so the caller must supply story/tick time — no wall-clock fallback.
 export function touchSeen(
-  world: WorldState | null | undefined,
   edge: AcquaintanceEdge,
+  tick: number,
   opts?: { idBoost?: number; famBoost?: number }
 ) {
-  const t = (world as any)?.tick ?? (world as any)?.time ?? Date.now();
-  edge.lastSeenAt = t;
+  edge.lastSeenAt = tick;
 
   const idBoost = safeNum(opts?.idBoost, 0.08);
   const famBoost = safeNum(opts?.famBoost, 0.05);

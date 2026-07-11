@@ -31,7 +31,7 @@ export function applyAcquaintanceFromEvents(world: WorldState, events: DomainEve
       const e1 = ensureAcquaintance(actor, targetId);
       if (seenAsFromEvent) (e1 as Record<string, unknown>).seenAsLabel = seenAsFromEvent;
       if (recognizedAsFromEvent) (e1 as Record<string, unknown>).recognizedAsLabel = recognizedAsFromEvent;
-      touchSeen(world, e1, { idBoost: 0.75, famBoost: 0.45 });
+      touchSeen(e1, nowTick, { idBoost: 0.75, famBoost: 0.45 });
 
       const e2 = ensureAcquaintance(target, actorId);
       // For reverse direction: allow meta.seenAsLabelReverse / meta.recognizedAsLabelReverse.
@@ -40,7 +40,7 @@ export function applyAcquaintanceFromEvents(world: WorldState, events: DomainEve
       if (seenAsRev) (e2 as Record<string, unknown>).seenAsLabel = seenAsRev;
       if (recAsRev) (e2 as Record<string, unknown>).recognizedAsLabel = recAsRev;
 
-      touchSeen(world, e2, { idBoost: 0.75, famBoost: 0.45 });
+      touchSeen(e2, nowTick, { idBoost: 0.75, famBoost: 0.45 });
       continue;
     }
 
@@ -67,7 +67,7 @@ export function applyAcquaintanceFromEvents(world: WorldState, events: DomainEve
     const rep1 = recent1 <= 3 ? 1.6 : recent1 <= 10 ? 1.2 : 1.0;
     const rep2 = recent2 <= 3 ? 1.6 : recent2 <= 10 ? 1.2 : 1.0;
 
-    touchSeen(world, e1, { idBoost: baseId * rep1, famBoost: baseFam * rep1 });
-    touchSeen(world, e2, { idBoost: baseId * rep2, famBoost: baseFam * rep2 });
+    touchSeen(e1, nowTick, { idBoost: baseId * rep1, famBoost: baseFam * rep1 });
+    touchSeen(e2, nowTick, { idBoost: baseId * rep2, famBoost: baseFam * rep2 });
   }
 }

@@ -224,11 +224,11 @@ export const ActionSystem = {
         if (intention.id === 'introduce' && target) {
             // Make "introduce" explicitly lock in recognition on both sides.
             const e1 = ensureAcquaintance(agent, target.entityId);
-            touchSeen(world, e1, { idBoost: 0.75, famBoost: 0.45 });
+            touchSeen(e1, world.tick ?? 0, { idBoost: 0.75, famBoost: 0.45 });
             if (e1.tier === 'seen') e1.tier = 'acquaintance';
 
             const e2 = ensureAcquaintance(target, agent.entityId);
-            touchSeen(world, e2, { idBoost: 0.75, famBoost: 0.45 });
+            touchSeen(e2, world.tick ?? 0, { idBoost: 0.75, famBoost: 0.45 });
             if (e2.tier === 'seen') e2.tier = 'acquaintance';
 
             description = `${agent.title} представляется ${target.title}. (acquaintance++)`;
