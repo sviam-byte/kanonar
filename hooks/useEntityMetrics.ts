@@ -7,7 +7,7 @@ import { simulateCharacter } from '../lib/simulate';
 import { getEvidenceById } from '../data/evidence';
 import { getSourceById } from '../data/sources';
 import { scoreTopology } from '../lib/topology';
-import { calculateV42Metrics } from '../lib/character-metrics-v4.2';
+import { recomputeV42WithLivePv } from '../lib/metrics/liveV42';
 import { useCharacterCalculations } from './useCharacterCalculations';
 import { calculateLatentsAndQuickStates } from '../lib/metrics';
 import { calculateSdeDiagnostics } from '../lib/sde-helpers';
@@ -43,6 +43,7 @@ export const useEntityMetrics = (
     let finalStates: CharacterState[] | undefined = undefined;
     let initialState: CharacterState | undefined = undefined;
     let analytics: CalculatedMetrics['analytics'] | undefined = undefined;
+    let v42metrics: V42Metrics = characterCalculations.v42metrics;
     
     let effectiveParams = { ...eventAdjustedFlatParams };
      if ('tda' in entity && entity.tda && entity.tda.barcode) {
@@ -80,6 +81,15 @@ export const useEntityMetrics = (
       simulationData = simOutput.mean;
       finalStates = simOutput.finalStates;
       const t0_data: Partial<SimulationPoint> = simOutput.mean[0] || {};
+
+      // RAP performance uses live SDE Pv instead of the static Pv_norm=0
+      // filler (METRIC-INVENTORY-0: connect real source).
+      v42metrics = recomputeV42WithLivePv({
+          eventAdjustedFlatParams,
+          latents: characterCalculations.latents,
+          tomV2Metrics: characterCalculations.tomV2Metrics,
+          pv: t0_data.Pv ?? 0,
+      });
 
       // DR (Robustness) Calculation
       const { runs } = simOutput;
@@ -208,10 +218,10 @@ export const useEntityMetrics = (
       key: scenario.key,
       title: scenario.title,
       // Cast metric object to satisfy FitnessScenario (using Partial internally in scenarios)
-      ...scenario.calculateFitness(entity, { 
-          ...snapshotMetrics, 
+      ...scenario.calculateFitness(entity, {
+          ...snapshotMetrics,
           derivedMetrics,
-          v42metrics: characterCalculations.v42metrics,
+          v42metrics,
           tomMetrics: characterCalculations.tomMetrics,
           tomV2Metrics: characterCalculations.tomV2Metrics,
           behavioralAdvice: characterCalculations.behavioralAdvice,
@@ -230,7 +240,7 @@ export const useEntityMetrics = (
       scenarioFitness,
       simulationData,
       finalStates,
-      v42metrics: characterCalculations.v42metrics,
+      v42metrics,
       derivedMetrics: characterCalculations.derivedMetrics,
       tomMetrics: characterCalculations.tomMetrics,
       tomV2Metrics: characterCalculations.tomV2Metrics,

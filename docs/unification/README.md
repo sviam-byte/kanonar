@@ -107,6 +107,16 @@
   Live-замена `runDilemmaV2` на provider — отдельная миграция после
   накопления dual-run parity evidence.
 
-Очередь дальше: R2 metric-фиксы (ложные нули goalTension/frustration),
-решение о включении dual-emit по умолчанию, R6 generalized schema; live
-wiring provider в Conflict Lab UI — после parity evidence.
+- **R2-METRIC-FIXES-0 (2026-07-12)**: четыре решения METRIC-INVENTORY-0
+  исполнены. goalTension/frustration: у `deriveGoalCatalog` НЕТ реального
+  вычисления (константные нули) → honest unknown (`number | null`, продюсер
+  null, dashboard `N/A` с объяснением; сценовый источник — R2b).
+  `linterIssues` скрыт (мёртвый контракт). Scenario `warn` рендерится как
+  warn (`scenarioStatusPresentation`), не как fail. RAP получает live SDE
+  `Pv` (`lib/metrics/liveV42.ts` + `useEntityMetrics`); Pv=0 воспроизводит
+  legacy-значения байт-в-байт (формула не менялась). Регрессии —
+  `tests/metrics/entity_detail_fixes.test.ts`.
+
+Очередь дальше: решение о включении dual-emit по умолчанию, R6 generalized
+schema; live wiring provider в Conflict Lab UI — после parity evidence;
+R2b metric catalog — после сценового goal-conflict runtime.

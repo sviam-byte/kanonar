@@ -119,8 +119,10 @@ export function calculateDerivedMetrics(
         - 0.05 * getParam(p, 'vector_base.E_KB_civic')
     );
 
-    const goalTension = goalEcology?.tension ?? 0;
-    const frustration = (goalEcology?.frustration ?? 0) * 10;
+    // null = the ecology producer did not compute these (no fake zeros:
+    // 0.00 would claim a confirmed neutral state that was never measured).
+    const goalTension = Number.isFinite(goalEcology?.tension as number) ? (goalEcology!.tension as number) : null;
+    const frustration = Number.isFinite(goalEcology?.frustration as number) ? (goalEcology!.frustration as number) * 10 : null;
 
     const sensoriumReliability = sigmoid(
         -0.35 * getParam(p, 'observation.noise')

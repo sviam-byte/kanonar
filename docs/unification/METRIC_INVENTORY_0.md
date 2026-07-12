@@ -46,7 +46,7 @@ EntityDetailPage(paramValues, branch, blackSwans)
 | `deltaS_destroyer` | Разруш. | `-h*S_norm*dt*100` | percentage-point delta | simulation rebuild | waterfall | zeros are filtered | keep |
 | `deltaS_shock` | Шок | `shock_J*(1-S/100)*100` | percentage-point delta | black swan / seeded run | waterfall | zeros are filtered | keep |
 | computed end | S(t+1) | UI cumulative sum of four displayed deltas plus S(t) | `0..100` expected, not explicitly clamped in component | simulation data change | waterfall | UI reconstruction duplicates SDE next-state presentation | keep |
-| `scenarioFitness[*]` | Годность по сценариям: dynamic title, ok/fail score, checks | `data/scenarios[*].calculateFitness` over snapshot metrics and effective params | score display, nominally `0..100`; status enum also allows `warn`, UI renders every non-`ok` as `fail` | entity/metrics/branch change | scenario badges | `warn` is mislabeled `fail` | connect real source |
+| `scenarioFitness[*]` | Годность по сценариям: dynamic title, ok/fail score, checks | `data/scenarios[*].calculateFitness` over snapshot metrics and effective params | score display, nominally `0..100`; status enum also allows `warn`, UI renders every non-`ok` as `fail` | entity/metrics/branch change | scenario badges | `warn` is mislabeled `fail` | connect real source — **DONE 2026-07-12**: `scenarioStatusPresentation` рендерит warn отдельно |
 
 ## Inventory: visible derived risk metrics
 
@@ -72,13 +72,23 @@ The dashboard does not render `resilience`, `antifragility`, `regulatoryGain`,
 
 | id/label | reason | decision |
 | --- | --- | --- |
-| `derivedMetrics.goalTension` / Напряжение | `calculateAllCharacterMetrics` calls `calculateDerivedMetrics(..., goalEcology=null)` before deriving goal ecology; formula therefore returns `0` every time in this path | connect real source |
-| `derivedMetrics.frustration` / Фрустрация | same null input; UI displays `0.00`, not unknown | connect real source |
-| `linterIssues=[]` | Entity Detail hardcodes an empty array; `MetricsDashboard` neither renders the prop nor uses imported `LintBadges` | hide |
+| `derivedMetrics.goalTension` / Напряжение | `calculateAllCharacterMetrics` calls `calculateDerivedMetrics(..., goalEcology=null)` before deriving goal ecology; formula therefore returns `0` every time in this path | connect real source — **RESOLVED 2026-07-12 as honest unknown** |
+| `derivedMetrics.frustration` / Фрустрация | same null input; UI displays `0.00`, not unknown | connect real source — **RESOLVED 2026-07-12 as honest unknown** |
+| `linterIssues=[]` | Entity Detail hardcodes an empty array; `MetricsDashboard` neither renders the prop nor uses imported `LintBadges` | hide — **DONE 2026-07-12** |
 
 `goalTension` and `frustration` must be recomputed after `deriveGoalCatalog`, or
 the UI must mark them unavailable. Retaining `0.00` claims a confirmed neutral
 state that was never calculated.
+
+Resolution 2026-07-12 (R2-METRIC-FIXES-0): углублённый аудит показал, что
+`deriveGoalCatalog` сам пишет константные `tension: 0 / frustration: 0`
+(и пустой `conflictMatrix`) — реального продюсера в статическом пути НЕТ,
+поэтому «connect real source» невозможен без выдумывания формулы. Принят
+второй санкционированный вариант: honest unknown. `GoalEcology.tension/
+frustration` и `DerivedMetrics.goalTension/frustration` стали `number | null`
+(null = не вычислено), продюсер выдаёт null, dashboard показывает `N/A` с
+объяснением. Подключение реального сценового источника — задача R2b после
+goal-conflict runtime. Регрессии: `tests/metrics/entity_detail_fixes.test.ts`.
 
 ## Inventory: V4.2 display
 
@@ -104,7 +114,7 @@ and optional ToM v2 feedback. Runtime formulas are in
 | `Recovery_t` | Recovery | resilience capacity reduced by exhaustion | `0..1` | display | none found | keep |
 | `ImpulseCtl_t` | ImpulseCtl | SD/cooldown/civic versus temperature/HPA, scaled by WMcap | `0..1` | display | none found | keep |
 | `InfoHyg_t` | InfoHyg | CH/OPSEC geometric core plus verification/fidelity minus exposure/noise | `0..1` | display | none found | keep |
-| `RAP_t` | RAP | performance × risk penalty × plan boost, optional ToM penalty | `0..1` | display | `Pv_norm` is hardcoded to 0 in Entity Detail calculation, so performance omits live SDE Pv | connect real source |
+| `RAP_t` | RAP | performance × risk penalty × plan boost, optional ToM penalty | `0..1` | display | `Pv_norm` is hardcoded to 0 in Entity Detail calculation, so performance omits live SDE Pv | connect real source — **DONE 2026-07-12**: `useEntityMetrics` recomputes V4.2 c live `Pv` (`lib/metrics/liveV42.ts`) |
 
 Formula ticket required: automatically compare `FORMULA_REGISTRY` templates
 against runtime formula/version metadata, and either pass the calculated agent

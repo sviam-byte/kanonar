@@ -179,8 +179,9 @@ export function calculateAllCharacterMetrics(
     v42metrics = calculateV42Metrics(normParams, feedbackLatents, 0, tomV2Metrics);
     tomMetrics = calculateToMMetrics(eventAdjustedFlatParams, feedbackLatents, v42metrics, tomV2Metrics);
 
-    // 5. Derived Metrics
-    const derivedMetrics = calculateDerivedMetrics(eventAdjustedFlatParams, feedbackLatents, quickStates, null);
+    // 5. Derived Metrics — computed AFTER goal ecology (step 10 below):
+    // passing null here made goalTension/frustration permanent false zeros
+    // (METRIC-INVENTORY-0 §Confirmed false zeros).
 
     // 6. Field Metrics
     const fieldMetrics = calculateFieldMetrics(effectiveCharacter, (character as any).trauma || {self:0, others:0, world:0, system:0});
@@ -265,6 +266,9 @@ export function calculateAllCharacterMetrics(
     if (goalEcology) {
         goalEcology.lifeGoalDebug = lifeGoalDebug;
     }
+
+    // 5 (deferred). Derived Metrics with the real goal ecology.
+    const derivedMetrics = calculateDerivedMetrics(eventAdjustedFlatParams, feedbackLatents, quickStates, goalEcology ?? null);
 
     const behavioralAdvice = calculateBehavioralAdvice(v42metrics, tomMetrics);
 

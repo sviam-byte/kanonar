@@ -5,11 +5,25 @@ interface ScenarioDisplayProps {
   results: ScenarioFitnessResult[];
 }
 
+// Pure status -> presentation mapping (METRIC-INVENTORY-0: `warn` was
+// mislabeled `fail`). Unknown statuses stay loud as `fail`.
+export function scenarioStatusPresentation(status: ScenarioFitnessResult['status']): {
+    label: 'ok' | 'warn' | 'fail';
+    bgColor: string;
+    borderColor: string;
+    textColor: string;
+} {
+    if (status === 'ok') {
+        return { label: 'ok', bgColor: 'bg-green-800/50', borderColor: 'border-green-500/60', textColor: 'text-canon-green' };
+    }
+    if (status === 'warn') {
+        return { label: 'warn', bgColor: 'bg-yellow-800/50', borderColor: 'border-yellow-500/60', textColor: 'text-yellow-400' };
+    }
+    return { label: 'fail', bgColor: 'bg-red-800/50', borderColor: 'border-red-500/60', textColor: 'text-canon-red' };
+}
+
 const ScenarioBadge: React.FC<{ result: ScenarioFitnessResult }> = ({ result }) => {
-    const isOk = result.status === 'ok';
-    const bgColor = isOk ? 'bg-green-800/50' : 'bg-red-800/50';
-    const borderColor = isOk ? 'border-green-500/60' : 'border-red-500/60';
-    const textColor = isOk ? 'text-canon-green' : 'text-canon-red';
+    const { label, bgColor, borderColor, textColor } = scenarioStatusPresentation(result.status);
 
     const TooltipContent = () => (
         <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 bg-canon-bg p-3 rounded text-xs border border-canon-border shadow-lg z-10 hidden group-hover:block whitespace-normal break-words">
@@ -32,7 +46,7 @@ const ScenarioBadge: React.FC<{ result: ScenarioFitnessResult }> = ({ result }) 
            <TooltipContent />
            <span className="text-canon-text truncate pr-2" title={result.title}>{result.title}</span>
            <span className={`font-mono font-bold ${textColor}`}>
-                {isOk ? 'ok' : 'fail'} {result.score.toFixed(0)}
+                {label} {result.score.toFixed(0)}
            </span>
         </div>
     );

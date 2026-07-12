@@ -141,8 +141,11 @@ export const deriveGoalCatalog = (
         latent: sorted.slice(5).map(g => ({...g, is_active: false})),
         drop: sorted.filter(g => g.blocked),
         queue: [],
-        tension: 0,
-        frustration: 0,
+        // Not computed in the static catalog path: the goal-conflict runtime
+        // owns real ecology-level tension/frustration. A constant 0 here was
+        // a false zero (METRIC-INVENTORY-0) — null means unknown, not calm.
+        tension: null,
+        frustration: null,
         conflictMatrix: {},
         groupGoals: [],
         cascade: null, 

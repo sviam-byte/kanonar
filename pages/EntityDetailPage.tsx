@@ -451,7 +451,7 @@ export const EntityDetailPage: React.FC = () => {
       tabs = [
           { label: 'Симуляция (SDE)', content: (
               <div className="space-y-6">
-                  {metrics && <MetricsDashboard metrics={metrics} entity={paramValues} linterIssues={[]} />}
+                  {metrics && <MetricsDashboard metrics={metrics} entity={paramValues} />}
                   {metrics && metrics.simulationData.length > 0 && (
                       <div className="h-80 bg-canon-bg border border-canon-border rounded-lg p-4">
                           <h3 className="font-bold mb-2 text-canon-text">Динамика стабильности</h3>

@@ -908,8 +908,10 @@ export interface DerivedMetrics {
     socialFriction: number;
     reputationFragility: number;
     darkTendency: number;
-    goalTension: number;
-    frustration: number;
+    /** null = not computed in this path (static profile has no goal-conflict runtime; METRIC-INVENTORY-0). */
+    goalTension: number | null;
+    /** null = not computed in this path. */
+    frustration: number | null;
     sensoriumReliability: number;
     sleepPressure: number;
     energyMargin: number;
@@ -978,8 +980,10 @@ export interface GoalEcology {
   latent: GoalState[];
   queue: GoalState[];
   drop: GoalState[];
-  tension: number;
-  frustration: number;
+  /** null = producer did not compute ecology-level tension (METRIC-INVENTORY-0: no fake zeros). */
+  tension: number | null;
+  /** null = producer did not compute ecology-level frustration. */
+  frustration: number | null;
   conflictMatrix: Record<string, string[]>;
   groupGoals: GoalState[];
   cascade?: Record<string, unknown>;

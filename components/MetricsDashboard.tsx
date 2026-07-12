@@ -1,9 +1,8 @@
 
 import React from 'react';
-import { CalculatedMetrics, AnyEntity, LintIssue, EntityType, DerivedMetrics } from '../types';
+import { CalculatedMetrics, AnyEntity, EntityType, DerivedMetrics } from '../types';
 import { DoseManometer } from './visuals/DoseManometer';
 import { TSealBarcode } from './visuals/TSealBarcode';
-import { LintBadges } from './visuals/LintBadges';
 import { VsigmaThermometer } from './visuals/VsigmaThermometer';
 import { ScenarioDisplay } from './ScenarioDisplay';
 import { VsigmaBreakdown } from './visuals/VsigmaBreakdown';
@@ -54,10 +53,12 @@ const RiskPanel: React.FC<RiskPanelProps> = ({ metrics }) => {
 interface MetricsDashboardProps {
     metrics: CalculatedMetrics;
     entity: AnyEntity;
-    linterIssues: LintIssue[];
+    // linterIssues prop removed (METRIC-INVENTORY-0: hide) — Entity Detail
+    // hardcoded [] and the dashboard never rendered it; reintroduce together
+    // with a real lint producer.
 }
 
-export const MetricsDashboard: React.FC<MetricsDashboardProps> = ({ metrics, entity, linterIssues }) => {
+export const MetricsDashboard: React.FC<MetricsDashboardProps> = ({ metrics, entity }) => {
     
     const isObject = entity.type === EntityType.Object;
     const isCharacter = entity.type === EntityType.Character || entity.type === EntityType.Essence;
@@ -79,8 +80,8 @@ export const MetricsDashboard: React.FC<MetricsDashboardProps> = ({ metrics, ent
                  <div className="bg-canon-bg-light border border-canon-border rounded-lg p-3 flex flex-col items-center justify-center space-y-2">
                      <h4 className="text-sm font-bold text-canon-text-light">Психическое состояние</h4>
                      <div className="flex-grow flex flex-col items-center justify-center space-y-4">
-                         <MetricDisplay name="Напряжение" value={derivedMetrics?.goalTension.toFixed(2) || 'N/A'} colorClass="text-canon-red" tooltip="Конфликт между активными целями." />
-                         <MetricDisplay name="Фрустрация" value={derivedMetrics?.frustration.toFixed(2) || 'N/A'} colorClass="text-yellow-400" tooltip="Разрыв между желаемым и достигнутым." />
+                         <MetricDisplay name="Напряжение" value={derivedMetrics?.goalTension != null ? derivedMetrics.goalTension.toFixed(2) : 'N/A'} colorClass="text-canon-red" tooltip="Конфликт между активными целями. N/A: не вычисляется в статическом профиле — нужен сценовый runtime целей." />
+                         <MetricDisplay name="Фрустрация" value={derivedMetrics?.frustration != null ? derivedMetrics.frustration.toFixed(2) : 'N/A'} colorClass="text-yellow-400" tooltip="Разрыв между желаемым и достигнутым. N/A: не вычисляется в статическом профиле." />
                      </div>
                 </div>
                  <div className="bg-canon-bg-light border border-canon-border rounded-lg p-4 flex flex-col">

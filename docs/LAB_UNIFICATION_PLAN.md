@@ -1173,11 +1173,16 @@ pipeline observation module.
     rng) → forcedJointActions (learn_from_utility) + dual-run reference lane;
     live-замена runDilemmaV2 отложена до parity evidence
     (tests/dilemma/conflictIntegration.test.ts)
+26. R2-METRIC-FIXES-0        — DONE 2026-07-12: goalTension/frustration →
+    honest unknown (number|null; у deriveGoalCatalog нет реального
+    вычисления — константные нули), linterIssues скрыт, scenario warn ≠
+    fail (scenarioStatusPresentation), RAP c live SDE Pv
+    (lib/metrics/liveV42.ts); tests/metrics/entity_detail_fixes.test.ts
 ```
 
-Следующий пакет: R2 metric-фиксы и решение о dual-emit default; R6
-generalized schema после накопления dual-run parity. Live
-replacement существующих GoalLab/Conflict/SimKit
+Следующий пакет: решение о dual-emit default; R6 generalized schema после
+накопления dual-run parity; R2b metric catalog после сценового goal-conflict
+runtime. Live replacement существующих GoalLab/Conflict/SimKit
 callers вынесен в `SCENE-ADAPTER-LIVE-WIRING-0`; pure adapters не объявляются
 уже подключённым runtime.
 
