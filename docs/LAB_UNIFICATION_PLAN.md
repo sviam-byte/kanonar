@@ -1160,9 +1160,15 @@ pipeline observation module.
     canonical choice = versioned goal_lab_s8_gumbel_v1, шов = существующий
     forcedJointActions + validateJointAction; kernel/runner политики →
     reference/compatibility; dual-run обязателен до parity
+24. CONFLICT-DEFINITION-0    — DONE 2026-07-12 (lib/dilemma/definition/):
+    frozen TRUST_EXCHANGE_DEFINITION (contract §11: roles/phase/observation/
+    legal actions/payoff/transition/termination/validation; bound kernel, не
+    ре-имплементация) + typed projection row v1 c fail-closed exact-match
+    resolveProjectedChoice; пять GAP-0 тестов + non-interference/immutability
+    (tests/dilemma/conflictActionProjection.test.ts, conflictDefinition.test.ts)
 ```
 
-Следующий пакет по dependency graph: `CONFLICT-DEFINITION-0`. Live
+Следующий пакет по dependency graph: `CONFLICT-INTEGRATION-0` (R5b). Live
 replacement существующих GoalLab/Conflict/SimKit
 callers вынесен в `SCENE-ADAPTER-LIVE-WIRING-0`; pure adapters не объявляются
 уже подключённым runtime.

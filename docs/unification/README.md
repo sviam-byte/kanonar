@@ -81,7 +81,17 @@
   `tests/tom/opponent_belief_v1.test.ts` и
   `tests/pipeline/opponent_belief_scene_evidence.test.ts`.
 
-Очередь дальше: CONFLICT-DEFINITION-0 (typed projection row + immutable
-`trust_exchange` contract, разблокирован CONFLICT-CHOICE-ADR-0), R2
-metric-фиксы (ложные нули goalTension/frustration), решение о включении
-dual-emit по умолчанию.
+- **CONFLICT-DEFINITION-0 (2026-07-12)**: `lib/dilemma/definition/` —
+  замороженный (`deepFreeze`) runtime-контракт `TRUST_EXCHANGE_DEFINITION`
+  (roles/phases/actions/termination + bound kernel functions, без
+  ре-имплементации; termination v1 = external_round_budget) и typed
+  projection contract (`projectLegalActions`, fail-closed
+  `resolveProjectedChoice` по exact-match candidate ID). Пять обязательных
+  тестов CONFLICT-GAP-0 —
+  `tests/dilemma/conflictActionProjection.test.ts`; non-interference и
+  immutability — `tests/dilemma/conflictDefinition.test.ts`. Barrel
+  `lib/dilemma/index.ts` не расширялся.
+
+Очередь дальше: CONFLICT-INTEGRATION-0 (DecisionProvider поверх
+forcedJointActions + dual-run parity), R2 metric-фиксы (ложные нули
+goalTension/frustration), решение о включении dual-emit по умолчанию.
