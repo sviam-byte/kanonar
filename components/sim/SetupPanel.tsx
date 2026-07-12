@@ -152,7 +152,7 @@ export const SetupPanel: React.FC<Props> = ({ characters, locations, onStart }) 
             <option value="legacy">Legacy — контрольная ветка</option>
           </select>
           <span style={{ color: '#64748b', fontSize: 9 }}>
-            Phase I включает речь→угрозу, предметный/локационный контекст, threat-memory и PAM v2. Профиль фиксируется в trace.
+            Phase I включает речь→угрозу, предметный/локационный контекст, threat-memory, PAM v2 и S5 OpponentBelief. Профиль фиксируется в trace.
           </span>
         </label>
         <label style={{ display: 'flex', flexDirection: 'column', gap: 4, color: '#94a3b8', fontSize: 11 }}>

@@ -1180,11 +1180,25 @@ pipeline observation module.
     (lib/metrics/liveV42.ts); tests/metrics/entity_detail_fixes.test.ts
 ```
 
-Следующий пакет: решение о dual-emit default; R6 generalized schema после
-накопления dual-run parity; R2b metric catalog после сценового goal-conflict
+27. PHASE1-OPPONENT-BELIEF-DEFAULT-0 — DONE 2026-07-12: S5 dual-emit ON по
+умолчанию только у `phase1`; `legacy` и no-profile/config остаются OFF;
+object-form override `true|false` сохраняет opt-in/rollback. Global FC не
+изменён. Оракулы: runtime profile matrix, S5 grammar, hidden/reverse
+non-interference, visible S8 Q/provenance, determinism и no-profile golden.
+
+Следующий пакет: накопление dual-run parity evidence; R6 generalized schema после
+parity; R2b metric catalog после сценового goal-conflict
 runtime. Live replacement существующих GoalLab/Conflict/SimKit
 callers вынесен в `SCENE-ADAPTER-LIVE-WIRING-0`; pure adapters не объявляются
 уже подключённым runtime.
+
+Audit repair 2026-07-12: непрозрачный projection ID отделён от типизированного
+`actionKey`; ID связывает tick/history; допустимые Conflict possibilities входят
+в реальный GoalLab S8 в режиме replace с именованным seeded decision RNG; trace
+сохраняет effective temperature и membership в sampling pool.
+
+Phase1 OpponentBelief default 2026-07-12: `phase1` включает семь механизмов,
+включая S5 dual-emit; `legacy` и no-profile/config сохраняют прежний OFF-path.
 
 ## 29. Assumptions and limitations
 

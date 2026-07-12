@@ -36,8 +36,8 @@ function profileIdFrom(value: unknown): RuntimeProfileId | null {
   return raw === 'legacy' || raw === 'phase1' ? raw : null;
 }
 
-// tom:belief:* dual-emit stays OFF on every named profile (phase1 is the live
-// UI default); a run opts in only through this explicit object-form override.
+// Object-form override двусторонний: legacy может включить механизм, а phase1
+// откатить default без изменения глобального FormulaConfig.
 function opponentBeliefOverrideFrom(value: unknown): boolean | undefined {
   if (value && typeof value === 'object') {
     const raw = (value as Record<string, unknown>).opponentBeliefS5V1;
@@ -92,7 +92,7 @@ export function resolveRuntimeMechanics(value?: unknown): RuntimeMechanics {
       memoryThreatTraceV1: true,
       actionPriorInfluence: true,
       actionPamV2: true,
-      opponentBeliefS5V1: opponentBeliefOverride ?? false,
+      opponentBeliefS5V1: opponentBeliefOverride ?? true,
     });
   }
 

@@ -488,7 +488,7 @@ function buildCommunicativeIntent(args: {
   };
 }
 
-export function runGoalLabPipelineV1(input: {
+export type GoalLabPipelineInputV1 = {
   world: WorldState;
   agentId: string;
   participantIds: string[];
@@ -506,7 +506,13 @@ export function runGoalLabPipelineV1(input: {
    * alongside its own abstract possibilities (escape, hide, etc.).
    */
   externalPossibilities?: Possibility[];
-}): GoalLabPipelineV1 | null {
+  /** Заменяет внутренний набор, когда допустимыми действиями владеет механика. */
+  externalPossibilityMode?: 'merge' | 'replace';
+  /** Явный seeded-канал выбора для runtime с именованным RNG-швом. */
+  decisionRng?: (() => number) | { nextFloat: () => number };
+};
+
+export function runGoalLabPipelineV1(input: GoalLabPipelineInputV1): GoalLabPipelineV1 | null {
   const { world, agentId, participantIds } = input;
   const tick = Number(input.tickOverride ?? world.tick ?? 0);
   const runtimeMechanics = resolveRuntimeMechanics(
@@ -1055,7 +1061,9 @@ export function runGoalLabPipelineV1(input: {
     // Dedup by id: internal wins on collision (they have richer trace/context).
     const externalPoss = arr(input.externalPossibilities);
     const internalIds = new Set(internalPoss.map((p) => p.id));
-    const possList = [...internalPoss, ...externalPoss.filter((p) => p?.id && !internalIds.has(p.id))];
+    const possList = input.externalPossibilityMode === 'replace'
+      ? externalPoss.filter((p) => p?.id)
+      : [...internalPoss, ...externalPoss.filter((p) => p?.id && !internalIds.has(p.id))];
     const externalOffersLike = externalPoss.map((p: any) => ({
       actorId: selfId,
       kind: String((p as any)?.meta?.sim?.kind ?? ''),
@@ -1092,7 +1100,10 @@ export function runGoalLabPipelineV1(input: {
       currentTick: tick,
     });
 
-    const rng = agent?.rngChannels?.decide;
+    const rng = input.decisionRng ?? agent?.rngChannels?.decide;
+    const rngObject = rng && typeof rng === 'object'
+      ? rng as { nextFloat?: () => number; next?: () => number }
+      : null;
     // Prefer per-agent trait-derived temperature when available.
     // trait.decisionTemperature atom is normalized [0..1], so scale to practical
     // softmax range and clamp a non-zero floor for numerical stability.
@@ -1200,20 +1211,25 @@ export function runGoalLabPipelineV1(input: {
         })()
       : undefined;
 
+    const decisionTopK = priorFirst
+      ? Number((FC.actionScoring as any)?.priorInfluence?.topK ?? 16)
+      : 10;
     const decision = decideAction({
       actions,
       goalEnergy,
       // topK also caps the Gumbel CHOICE pool (candidates 11+ can never be
       // chosen — ledger TOPK-POOL-CAP); widened only under the flag.
-      topK: priorFirst ? Number((FC.actionScoring as any)?.priorInfluence?.topK ?? 16) : 10,
+      topK: decisionTopK,
       priorInfluenceEnabled: runtimeMechanics.actionPriorInfluence,
       // decideAction expects rng() in [0,1) for Gumbel noise. RNG.next() returns
       // a raw uint32, which clamps the noise to a constant and silently disables
       // exploration — use nextFloat(). Neutral 0.5 when no decide channel exists.
-      rng: rng && typeof rng.nextFloat === 'function'
-        ? () => rng.nextFloat()
-        : rng && typeof rng.next === 'function'
-          ? () => (rng.next() >>> 0) / 4294967296
+      rng: typeof rng === 'function'
+        ? rng
+        : rngObject && typeof rngObject.nextFloat === 'function'
+          ? () => rngObject.nextFloat!()
+          : rngObject && typeof rngObject.next === 'function'
+            ? () => (rngObject.next!() >>> 0) / 4294967296
           : () => 0.5,
       temperature,
       qSamplingOverrides,
@@ -1247,6 +1263,8 @@ export function runGoalLabPipelineV1(input: {
       sampleScore: Number(r?.sampleScore ?? 0),
       marginFromBest: Number(r?.marginFromBest ?? 0),
       inTieBand: Boolean(r?.inTieBand),
+      inSamplingPool: Boolean(r?.inSamplingPool),
+      effectiveTemperature: Number(r?.effectiveTemperature ?? temperature),
       chosen: Boolean(r?.chosen),
     }));
 
@@ -1284,6 +1302,8 @@ export function runGoalLabPipelineV1(input: {
         sampleScore: Number(actionObj?.sampleScore ?? 0),
         marginFromBest: Number(actionObj?.marginFromBest ?? 0),
         inTieBand: Boolean(actionObj?.inTieBand),
+        inSamplingPool: Boolean(actionObj?.inSamplingPool),
+        effectiveTemperature: Number(actionObj?.effectiveTemperature ?? temperature),
         chosen: Boolean(actionObj?.chosen),
         cost,
         confidence: conf,
@@ -1416,6 +1436,7 @@ export function runGoalLabPipelineV1(input: {
         decisionSnapshot: {
           selfId,
           temperature,
+          topK: decisionTopK,
           goalEnergy,
           digest: (() => {
             const entries = Object.entries(goalEnergy || {})

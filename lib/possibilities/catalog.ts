@@ -6,6 +6,8 @@ export type PossibilityKind = 'aff' | 'con' | 'off' | 'exit' | 'cog';
 
 export type Possibility = {
   id: string;
+  /** Явный ключ действия, если `id` — непрозрачный транспортный идентификатор. */
+  actionKey?: string;
   kind: PossibilityKind;
   label: string;
   magnitude: number;

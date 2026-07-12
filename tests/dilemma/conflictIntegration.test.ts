@@ -4,7 +4,6 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { runGoalLabPipelineV1 } from '@/lib/goal-lab/pipeline/runPipelineV1';
 import { adaptResolvedSceneToGoalLabV1 } from '@/lib/scene/adapters/goalLab';
 import { adaptResolvedSceneToConflictV1 } from '@/lib/scene/adapters/conflict';
 import { resolveObservationsV1 } from '@/lib/scene/observation/resolver';
@@ -25,6 +24,7 @@ import {
   runConflictJointDecisionV1,
 } from '@/lib/dilemma/integration';
 import type { ContextAtom } from '@/lib/context/v2/types';
+import { buildActionCandidates } from '@/lib/decision/actionCandidateUtils';
 
 import { mockAgent, mockWorld } from '../pipeline/fixtures';
 
@@ -109,15 +109,13 @@ function buildJointDecisionArgs(seedA = 101, seedB = 202) {
     (world as any).observations = goalLabProjection.observations;
     (world as any).sceneSnapshot = goalLabProjection.sceneSnapshot;
     (world as any).resolvedObservations = goalLabProjection.observationEnvelopes;
-    const pipeline = runGoalLabPipelineV1({
+    const pipelineInput = {
       world, agentId: observerId, participantIds: ['A', 'B'],
       observeLiteParams: { seed: 1234 },
       manualAtoms: goalLabProjection.observationAtoms,
-    } as any);
-    expect(pipeline).not.toBeNull();
+    } as any;
     players[observerId] = {
-      pipeline,
-      world,
+      pipelineInput,
       rng: lcg(seeds[observerId]),
       rngChannelId: `test:decide:${observerId}`,
     };
@@ -160,6 +158,10 @@ describe('CONFLICT-INTEGRATION-0 — S8 policy drives the kernel through the pro
       expect(trace.projectedRows.length).toBe(3);
       expect(trace.usedAtomIds.length).toBeGreaterThan(0);
       expect(trace.ranked.some((r) => r.chosen)).toBe(true);
+      expect(trace.samplingPoolCandidateIds.length).toBeGreaterThan(0);
+      expect(trace.ranked.every((r) => Number.isFinite(r.effectiveTemperature))).toBe(true);
+      expect(trace.ranked.filter((r) => r.inSamplingPool).map((r) => r.utilityCandidateId))
+        .toEqual(trace.samplingPoolCandidateIds);
       const chosenRow = trace.projectedRows.find((r) => r.utilityCandidateId === trace.chosenUtilityCandidateId);
       expect(chosenRow?.kernelActionId).toBe(trace.kernelActionId);
       expect(Number.isFinite(trace.temperature)).toBe(true);
@@ -182,6 +184,38 @@ describe('CONFLICT-INTEGRATION-0 — S8 policy drives the kernel through the pro
       expect(result.error.code).toBe('missing_rng_channel');
       expect(result.error.playerId).toBe('B');
     }
+  });
+
+  it('fail-closed: pipeline identity must match the conflict player and tick', () => {
+    const args = buildJointDecisionArgs();
+    args.players.A.pipelineInput.agentId = 'B';
+    const result = runConflictJointDecisionV1(args);
+    expect(result.ok).toBe(false);
+    if (result.ok === false) {
+      expect(result.error.code).toBe('pipeline_mismatch');
+      expect(result.error.playerId).toBe('A');
+    }
+  });
+
+  it('ignores UI force_action overrides so the canonical winner stays the S8 Gumbel choice', () => {
+    const forcedArgs = buildJointDecisionArgs();
+    const protocol = TRUST_EXCHANGE_DEFINITION.createProtocol(['A', 'B']);
+    const rows = projectLegalActions(TRUST_EXCHANGE_DEFINITION, forcedArgs.state, protocol, 'A');
+    if (rows.ok === false) throw new Error('projection failed');
+    const forcedId = rows.value.find((row) => row.kernelActionId === 'betray')!.utilityCandidateId;
+    forcedArgs.players.A.pipelineInput.injectedEvents = [
+      { type: 'force_action', agentId: 'A', actionId: forcedId },
+    ];
+
+    const forced = runConflictJointDecisionV1(forcedArgs);
+    const control = runConflictJointDecisionV1(buildJointDecisionArgs());
+    expect(forced.ok).toBe(true);
+    expect(JSON.stringify(forced)).toBe(JSON.stringify(control));
+    if (forced.ok === false) return;
+    const trace = forced.value.choices.A;
+    expect(trace.ranked.filter((entry) => entry.chosen)).toHaveLength(1);
+    expect(trace.ranked.find((entry) => entry.chosen)?.utilityCandidateId)
+      .toBe(trace.chosenUtilityCandidateId);
   });
 
   it('records the dual-run reference lane; reference equals a direct kernel step', () => {
@@ -249,6 +283,9 @@ describe('conflict candidate bridge — impact matrix and belief modulation', ()
       expect(possibility.trace?.usedAtomIds).toContain(beliefAtomId);
       expect(possibility.id.startsWith('conflict:')).toBe(true);
     }
+
+    const built = buildActionCandidates({ selfId: 'A', atoms, possibilities, currentTick: state.tick });
+    expect(built.actions.map((action) => action.kind)).toEqual(['trust', 'withhold', 'betray']);
 
     // Higher believed trust must raise the trust-action candidate's
     // affiliation delta relative to the low-trust read.

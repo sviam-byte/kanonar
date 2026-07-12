@@ -52,8 +52,8 @@
 - **TOM-BUILDER/UPDATE core**: `lib/tom/opponentBelief/` (builder, update,
   serialization) + legacy decoder (`legacyDecoder.ts`, `legacy-tom-decoder`
   v1) — TOM_SPEC_0.md §Update.
-- **S5 dual-emit seam**: `runtimeMechanics.opponentBeliefS5V1` (OFF на всех
-  профилях, включая phase1; opt-in объектной формой runtimeProfile);
+- **S5 dual-emit seam**: `runtimeMechanics.opponentBeliefS5V1` (default ON у
+  `phase1`, OFF у `legacy` и no-profile/config; object-form opt-in/rollback);
   `s5DualEmitLayer.ts` мерджится последним слоем S5 (docs/PIPELINE.md,
   docs/INVARIANTS.md).
 - **Обязательная пара оракулов TOM_SPEC_0**:
@@ -117,6 +117,22 @@
   legacy-значения байт-в-байт (формула не менялась). Регрессии —
   `tests/metrics/entity_detail_fixes.test.ts`.
 
-Очередь дальше: решение о включении dual-emit по умолчанию, R6 generalized
-schema; live wiring provider в Conflict Lab UI — после parity evidence;
+Очередь дальше: накопление dual-run parity evidence, затем R6 generalized
+schema и решение о live wiring provider в Conflict Lab UI;
 R2b metric catalog — после сценового goal-conflict runtime.
+
+## Phase1 OpponentBelief default (2026-07-12)
+
+`phase1` теперь включает S5 `OpponentBelief` dual-emit по умолчанию. `legacy`
+и no-profile/config остаются OFF; object-form override `true|false` сохраняет
+явный opt-in/rollback. Глобальный `FC.opponentBeliefV1.s5DualEmit.enabled`
+не изменён.
+## Audit repair Conflict Integration (2026-07-12)
+
+Непрозрачные ID больше не определяют семантику действия: типизированный
+`actionKey` сохраняет `trust|withhold|betray`, projection ID связывает
+tick/history, а допустимый набор оценивается и выбирается внутри реального S8 в
+режиме replace. Choice trace содержит effective temperature и фактическое
+membership в sampling pool.
+Conflict seam удаляет UI-only `force_action`, использует один input для
+baseline beliefs и боевого S8 и записывает фактический `topK` из pipeline.

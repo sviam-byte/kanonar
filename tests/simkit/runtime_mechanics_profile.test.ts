@@ -47,6 +47,7 @@ describe('runtime mechanics profile', () => {
       'memory.threatTraceV1',
       'actionScoring.priorInfluence',
       'actionScoring.pamV2',
+      'tom.opponentBeliefS5V1',
     ]);
     expect(JSON.stringify({
       communication: FC.communication.speechThreatV1.enabled,
@@ -58,15 +59,19 @@ describe('runtime mechanics profile', () => {
     })).toBe(before);
   });
 
-  it('keeps opponentBeliefS5V1 OFF on every named profile and honors the explicit override', () => {
+  it('enables opponentBeliefS5V1 only for phase1 and honors opt-in/rollback overrides', () => {
     expect(resolveRuntimeMechanics('legacy').opponentBeliefS5V1).toBe(false);
-    expect(resolveRuntimeMechanics('phase1').opponentBeliefS5V1).toBe(false);
+    expect(resolveRuntimeMechanics('phase1').opponentBeliefS5V1).toBe(true);
     expect(resolveRuntimeMechanics().opponentBeliefS5V1).toBe(false);
 
     const optIn = resolveRuntimeMechanics({ profileId: 'legacy', opponentBeliefS5V1: true });
     expect(optIn.opponentBeliefS5V1).toBe(true);
     expect(optIn.source).toBe('runtimeProfile');
     expect(optIn.activeMechanisms).toEqual(['tom.opponentBeliefS5V1']);
+
+    const rollback = resolveRuntimeMechanics({ profileId: 'phase1', opponentBeliefS5V1: false });
+    expect(rollback.opponentBeliefS5V1).toBe(false);
+    expect(rollback.activeMechanisms).not.toContain('tom.opponentBeliefS5V1');
     expect(FC.opponentBeliefV1.s5DualEmit.enabled).toBe(false);
   });
 
@@ -133,12 +138,15 @@ describe('runtime mechanics profile', () => {
 
     const trace = sim.world.facts[`sim:trace:${MVP0_AGENT_B}`] as any;
     expect(trace?.runtimeMechanics?.profileId).toBe('phase1');
+    expect(trace?.runtimeMechanics?.activeMechanisms).toContain('tom.opponentBeliefS5V1');
     expect(trace?.contextAxes?.privacy).toBeGreaterThan(0.5);
     expect(trace?.contextAxes?.resourceAccess).toBeGreaterThan(0.5);
     expect(Number.isFinite(trace?.tension?.channels?.total)).toBe(true);
 
     const pipeline = sim.world.facts['sim:goalLab:lastPipeline'] as any;
+    const s5 = arr<any>(pipeline?.stages).find((stage) => stage?.stage === 'S5');
     const s2Atoms = arr<any>(arr<any>(pipeline?.stages).find((stage) => stage?.stage === 'S2')?.atoms);
+    expect(s5?.artifacts?.opponentBeliefDualEmit?.enabled).toBe(true);
     expect(s2Atoms.some((atom) => atom?.id === `ctx:src:comm:threat:${MVP0_AGENT_B}`)).toBe(true);
     expect(s2Atoms.some((atom) => atom?.id === `ctx:src:scene:resourceAccess:${MVP0_AGENT_B}`)).toBe(true);
 

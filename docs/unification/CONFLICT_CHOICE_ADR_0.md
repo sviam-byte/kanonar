@@ -101,6 +101,16 @@ projected kernelActionId + protocolId + phaseId (projection row)
 schemaVersion
 ```
 
+Audit repair 2026-07-12: типизированные Conflict possibilities входят в
+реальный GoalLab S8 с `externalPossibilityMode='replace'` и явным seeded
+`decisionRng`. Непрозрачный projection ID несёт отдельный типизированный
+`actionKey`; trace сохраняет `effectiveTemperature` и membership каждого
+кандидата в sampling pool. Projection ID включает tick/history, поэтому ID
+предыдущего тика не разрешается против новых rows.
+UI override `force_action` удаляется на Conflict-границе; baseline beliefs и
+боевой S8 строятся из одного pipeline input, а фактический `topK` переносится в
+joined trace.
+
 Это соединяет S8 candidate ↔ kernel action ↔ outcome в один joined trace
 (required gap 4 из CONFLICT-GAP-0).
 

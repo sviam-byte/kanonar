@@ -15,6 +15,8 @@ export type RankedDecision = {
   chosen: boolean;
   marginFromBest: number;
   inTieBand: boolean;
+  inSamplingPool: boolean;
+  effectiveTemperature: number;
 };
 
 export type DecisionResult = {
@@ -221,6 +223,8 @@ export function decideAction(args: {
       chosen: Boolean(chosen && chosen.id === id),
       marginFromBest: meta.marginFromBest,
       inTieBand: meta.inTieBand,
+      inSamplingPool: samplingPool.some((entry) => String(entry.action?.id || '') === id),
+      effectiveTemperature: meta.effectiveTemperature,
     };
   });
 

@@ -75,7 +75,9 @@ function pipelineInput(opts: { withEnvelopes?: boolean; trustToB?: number; hidde
     }],
     sceneControl: {
       enableToM: true,
-      runtimeProfile: flagOn ? { profileId: 'legacy', opponentBeliefS5V1: true } : 'legacy',
+      runtimeProfile: flagOn
+        ? 'phase1'
+        : { profileId: 'phase1', opponentBeliefS5V1: false },
     },
   } as any;
 }

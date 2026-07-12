@@ -105,6 +105,27 @@ describe('CONFLICT-GAP-0 projection contract — trust_exchange', () => {
     expect(joint.ok).toBe(false);
   });
 
+  it('rejects a candidate ID projected for an earlier tick/history', () => {
+    const initial = makeState();
+    const oldRows = projectFor(initial, 'a').rows;
+    const later = makeState({
+      tick: 1,
+      history: [{
+        tick: 0,
+        protocolId: 'trust_exchange',
+        actions: { a: 'trust', b: 'withhold' },
+        outcomeTag: 'mutual_caution',
+        payoffs: { a: 0, b: 0 },
+      }],
+    });
+    const freshRows = projectFor(later, 'a').rows;
+
+    expect(freshRows.map((row) => row.utilityCandidateId))
+      .not.toEqual(oldRows.map((row) => row.utilityCandidateId));
+    const stale = resolveProjectedChoice(freshRows, oldRows[0].utilityCandidateId);
+    expect(stale.ok).toBe(false);
+  });
+
   it('labels and localization are not projection inputs and cannot affect rows', () => {
     const state = makeState();
     const labelsRu: ConflictCoreActionLabels = {

@@ -1,5 +1,4 @@
-import type { GoalLabPipelineV1 } from '../../goal-lab/pipeline/runPipelineV1';
-import type { WorldState } from '../../../types';
+import type { GoalLabPipelineInputV1 } from '../../goal-lab/pipeline/runPipelineV1';
 import type {
   ConflictActionId,
   ConflictPhase,
@@ -28,9 +27,8 @@ export type ConflictTemperatureSource =
   | 'default';
 
 export interface ConflictPlayerDecisionInputV1 {
-  /** Observer's completed GoalLab pipeline run (S8 atoms carry the beliefs). */
-  pipeline: GoalLabPipelineV1 | null;
-  world: WorldState;
+  /** Один input для baseline beliefs и повтора S8 с действиями механики. */
+  pipelineInput: Omit<GoalLabPipelineInputV1, 'externalPossibilities' | 'externalPossibilityMode' | 'decisionRng'>;
   /**
    * Named seeded RNG channel. Fail-closed per CONFLICT-CHOICE-ADR-0 §6:
    * a missing channel is a validation error, never a silent fallback.
@@ -47,6 +45,8 @@ export interface ConflictRankedCandidateTraceV1 {
   readonly sampleNoise: number;
   readonly sampleScore: number;
   readonly inTieBand: boolean;
+  readonly inSamplingPool: boolean;
+  readonly effectiveTemperature: number;
   readonly marginFromBest: number;
   readonly chosen: boolean;
 }
@@ -60,6 +60,7 @@ export interface ConflictChoiceTraceV1 {
   readonly temperature: number;
   readonly temperatureSource: ConflictTemperatureSource;
   readonly topK: number;
+  readonly samplingPoolCandidateIds: readonly string[];
   readonly protocolId: ConflictProtocolId;
   readonly phaseId: ConflictPhase;
   readonly projectedRows: readonly ConflictActionProjectionRow[];
@@ -104,6 +105,7 @@ export interface ConflictJointDecisionReportV1 {
 export interface ConflictIntegrationError {
   readonly code:
     | 'missing_pipeline'
+    | 'pipeline_mismatch'
     | 'missing_rng_channel'
     | 'missing_s8_stage'
     | 'empty_candidates'

@@ -19,6 +19,11 @@ function keyFromPossibilityId(id: string): string {
   return parts[1] || parts[0] || '';
 }
 
+function actionKeyFromPossibility(possibility: Possibility): string {
+  const explicit = String(possibility.actionKey ?? '').trim();
+  return explicit || keyFromPossibilityId(possibility.id);
+}
+
 type WhyDraft = {
   usedAtomIds: Set<string>;
   notes: string[];
@@ -378,7 +383,7 @@ export function buildActionCandidates(args: {
 
   for (const p of arr<Possibility>(args.possibilities)) {
     const pRuntime = asRuntimePossibility(p);
-    const key = keyFromPossibilityId(p.id);
+    const key = actionKeyFromPossibility(p);
     const targetId = pRuntime.targetId ?? null;
     const deltaInfo = buildDeltaGoals(
       args.atoms,
@@ -601,7 +606,7 @@ export function buildActionCandidates(args: {
       const decayFactor = Math.pow(1 - REP.decayPerTick, tickGap);
 
       for (const action of actions) {
-        const kindMatch = keyFromPossibilityId(action.id) === prevKind || action.kind === prevKind;
+        const kindMatch = action.kind === prevKind;
         const actionFamily = familyOfActionKind(action.kind);
         const familyMatch = actionFamily === prevFamily;
         const targetMatch = action.targetId === prevTargetId && Boolean(prevTargetId);

@@ -15,6 +15,13 @@
 
 Единственный мост между goal-уровнем и decision/action — `util:*` проекция.
 
+- Непрозрачные ID внешних possibilities нельзя разбирать для восстановления
+  семантики действия. Продюсер передаёт типизированный `actionKey`; возврат в
+  kernel выполняется только по точному совпадению projection row.
+- Набор допустимых действий механики входит в реальный S8 через
+  `externalPossibilityMode='replace'`; повторная сборка/оценка после завершённого
+  S8 не является каноническим Conflict choice.
+
 ## Intent/Schema traceability invariants
 
 - Кандидаты Layer F/Layer G обязаны сохранять explainability-поля (`family`, `goalContribs`, `dialogueHook`/`desiredEffect`, `trace.parts`).
@@ -61,10 +68,12 @@
 - Runtime profile is per run: `world.facts['sim:runtimeProfile']` in SimKit or
   `sceneControl.runtimeProfile` in direct GoalLab calls.
 - `phase1` enables communication threat, object context, location properties,
-  threat memory, prior influence, and PAM v2 without mutating global `FC`.
-- `tom.opponentBeliefS5V1` (S5 dual-emit of `tom:belief:*`) is OFF on every
-  named profile including `phase1`; a run opts in only via the object form
-  `{ profileId, opponentBeliefS5V1: true }`. Gate:
+  threat memory, prior influence, PAM v2 and S5 OpponentBelief dual-emit without
+  mutating global `FC`.
+- `tom.opponentBeliefS5V1` is ON by default only for `phase1`. It remains OFF
+  for `legacy` and no-profile/config runs. Object form
+  `{ profileId, opponentBeliefS5V1: true|false }` is the explicit opt-in/rollback
+  seam. Gate:
   `tests/simkit/runtime_mechanics_profile.test.ts`.
 - No explicit profile continues to resolve the current FormulaConfig defaults;
   `legacy` is an explicit all-OFF control.

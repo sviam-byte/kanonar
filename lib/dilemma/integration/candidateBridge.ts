@@ -134,6 +134,7 @@ export function buildConflictPossibilities(args: {
       // id === utilityCandidateId so the chosen candidate resolves back into
       // the kernel by exact match only (fail-closed projection gate).
       id: row.utilityCandidateId,
+      actionKey: row.kernelActionId,
       kind: 'con',
       label: row.kernelActionId,
       magnitude: 0,

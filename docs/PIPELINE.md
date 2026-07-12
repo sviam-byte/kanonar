@@ -89,8 +89,10 @@ Outputs:
 - `phys:threat:<self>:<other>` (physical threat differential)
 - `social:rank:diff:<self>:<other>` (signed social standing differential)
 
-- flag-gated (`runtimeMechanics.opponentBeliefS5V1`, OFF на всех именованных
-  профилях): dual-emit `tom:belief:final|confidence|uncertainty:<obs>:<tgt>:<key>`;
+- profile-gated (`runtimeMechanics.opponentBeliefS5V1`): ON по умолчанию у
+  `phase1`, OFF у `legacy` и no-profile/config; object-form override `true|false`
+  поддерживает opt-in и rollback. Dual-emit:
+  `tom:belief:final|confidence|uncertainty:<obs>:<tgt>:<key>`;
   belief = prior из legacy `world.tom` (`legacy-tom-decoder` v1, если энтри
   есть) + directed evidence из envelope-наблюдений resolved-сцены
   (`world.resolvedObservations`, в SimKit — из fact `scene:observations:v1`)
@@ -274,6 +276,7 @@ Outputs:
 - S8 artifacts содержат `schemaGroundedCommunicativeIntent` с источником (`schemaLayer|legacy`) и деталями schema/intent для трассировки.
 - `decisionSnapshot.ranked[*]` now exports sampling diagnostics and explainability payload:
   - `qUsed`, `sampleNoise`, `sampleScore`, `chosen`
+  - `effectiveTemperature`, `inTieBand`, `inSamplingPool`
   - `usedAtomIds`, `notes`, `modifiers`, `why`
 - `decisionSnapshot.best` mirrors the same explainability fields for the chosen action.
 - score decomposition includes `rawGoalSum`, `priorMagnitude`,
@@ -281,6 +284,12 @@ Outputs:
   Q. `best` is the actual seeded Gumbel winner, not merely rank 1 by Q.
 - Near-tie exploration in S8 can sample from a tie-band subset around the best canonical `Q` (configurable via `FC.actionScoring.exploration`).
 - `decisionSnapshot.ranked[*]` may include tie telemetry: `marginFromBest`, `inTieBand`.
+- Типизированная механика может задать `externalPossibilityMode='replace'`;
+  тогда S8 ранжирует ровно её допустимые действия. Непрозрачные ID несут
+  явный `actionKey` и не разбираются для восстановления семантики действия.
+- Host runtime может передать именованный seeded `decisionRng`; Conflict
+  Integration использует этот шов, поэтому выбор и sampling trace создаёт тот
+  же прогон S8, который оценил типизированные допустимые действия.
 - explicit-profile SimKit traces also expose `runtimeMechanics`, selected context
   axes, threat memory, and the read-only C(t) vector. Reactive branches expose
   the profile but set pipeline-derived tension to null.

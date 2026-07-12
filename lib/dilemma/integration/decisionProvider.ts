@@ -1,8 +1,7 @@
-import { decideAction } from '../../decision/decide';
-import { buildActionCandidates } from '../../decision/actionCandidateUtils';
 import { getMag } from '../../util/atoms';
 import { arr } from '../../utils/arr';
 import type { ContextAtom } from '../../context/v2/types';
+import { runGoalLabPipelineV1, type GoalLabPipelineInputV1 } from '../../goal-lab/pipeline/runPipelineV1';
 import type {
   ConflictAction,
   ConflictActionId,
@@ -25,11 +24,6 @@ import {
   type ConflictTemperatureSource,
 } from './types';
 
-// topK mirrors the pipeline's non-priorFirst S8 default (TOPK-POOL-CAP);
-// with |legal actions| = 3 it never truncates the pool, but the policy
-// contract stays byte-compatible with goal_lab_s8_gumbel_v1.
-const POLICY_TOP_K = 10;
-
 function fail(
   code: ConflictIntegrationError['code'],
   message: string,
@@ -45,12 +39,38 @@ function s8Atoms(pipeline: { stages?: unknown } | null): ContextAtom[] | null {
   return arr<ContextAtom>(s8.atoms);
 }
 
+function s8DecisionArtifact(pipeline: { stages?: unknown } | null): {
+  ranked: Array<Record<string, unknown>>;
+  best: Record<string, unknown> | null;
+  temperature: number;
+  topK: number;
+} | null {
+  const stages = arr<{ stage?: string; artifacts?: Record<string, unknown> }>((pipeline as { stages?: unknown[] })?.stages);
+  const s8 = stages.find((stage) => String(stage?.stage ?? '') === 'S8');
+  const snapshot = s8?.artifacts?.decisionSnapshot as Record<string, unknown> | undefined;
+  if (!snapshot) return null;
+  return {
+    ranked: arr<Record<string, unknown>>(snapshot.ranked),
+    best: snapshot.best && typeof snapshot.best === 'object' ? snapshot.best as Record<string, unknown> : null,
+    temperature: Number(snapshot.temperature ?? Number.NaN),
+    topK: Number(snapshot.topK ?? Number.NaN),
+  };
+}
+
+function withoutForceAction(events: unknown): unknown[] {
+  return arr<unknown>(events).filter((event) => {
+    if (!event || typeof event !== 'object') return true;
+    const record = event as Record<string, unknown>;
+    return String(record.type ?? record.kind ?? '') !== 'force_action';
+  });
+}
+
 // Same precedence as runPipelineV1 S8 (trait atom -> world -> behavioral
 // params -> agent -> 1.0); CONFLICT-CHOICE-ADR-0 §6 forbids a conflict-local
 // temperature law.
 function resolveTemperature(
   atoms: ContextAtom[],
-  world: ConflictJointDecisionArgsV1['players'][string]['world'],
+  world: GoalLabPipelineInputV1['world'],
   playerId: ConflictPlayerId,
 ): { temperature: number; source: ConflictTemperatureSource } {
   const traitTemp = getMag(atoms, `feat:char:${playerId}:trait.decisionTemperature`, -1);
@@ -78,8 +98,8 @@ export function runConflictJointDecisionV1(
 
   for (const playerId of state.players) {
     const playerInput = args.players[playerId];
-    if (!playerInput || !playerInput.pipeline) {
-      return fail('missing_pipeline', `No GoalLab pipeline run supplied for ${playerId}`, playerId);
+    if (!playerInput) {
+      return fail('missing_pipeline', `No GoalLab pipeline input supplied for ${playerId}`, playerId);
     }
 
     // Fail-closed seed contract (ADR §6): no neutral-0.5 fallback here.
@@ -93,7 +113,26 @@ export function runConflictJointDecisionV1(
       return fail('missing_rng_channel', `No seeded rng channel for ${playerId} (channel ${playerInput.rngChannelId || 'unnamed'})`, playerId);
     }
 
-    const atoms = s8Atoms(playerInput.pipeline);
+    const pipelineInput = {
+      ...playerInput.pipelineInput,
+      injectedEvents: withoutForceAction(playerInput.pipelineInput.injectedEvents),
+    };
+    // Baseline нужен только для belief-атомов: он не должен расходовать
+    // канонический Conflict RNG-канал до настоящего S8 choice.
+    const baselinePipeline = runGoalLabPipelineV1({
+      ...pipelineInput,
+      externalPossibilities: undefined,
+      externalPossibilityMode: 'merge',
+      decisionRng: () => 0.5,
+    });
+    if (!baselinePipeline) {
+      return fail('missing_pipeline', `GoalLab baseline pipeline failed for ${playerId}`, playerId);
+    }
+    const hasAllPlayers = state.players.every((id) => baselinePipeline.participantIds.includes(id));
+    if (baselinePipeline.selfId !== playerId || baselinePipeline.tick !== state.tick || !hasAllPlayers) {
+      return fail('pipeline_mismatch', `GoalLab baseline identity does not match conflict state for ${playerId}`, playerId);
+    }
+    const atoms = s8Atoms(baselinePipeline);
     if (!atoms) {
       return fail('missing_s8_stage', `Pipeline run for ${playerId} has no S8 stage`, playerId);
     }
@@ -105,19 +144,28 @@ export function runConflictJointDecisionV1(
     const rows = projected.value;
 
     const { possibilities } = buildConflictPossibilities({ rows, atoms, selfId: playerId });
-    const { actions, goalEnergy } = buildActionCandidates({
-      selfId: playerId,
-      atoms,
-      possibilities,
-      currentTick: state.tick,
+    const conflictPipeline = runGoalLabPipelineV1({
+      ...pipelineInput,
+      externalPossibilities: possibilities,
+      externalPossibilityMode: 'replace',
+      decisionRng: rng,
     });
-    if (!actions.length) {
-      return fail('empty_candidates', `No conflict candidates were built for ${playerId}`, playerId);
+    const decision = s8DecisionArtifact(conflictPipeline);
+    if (conflictPipeline && (conflictPipeline.selfId !== playerId || conflictPipeline.tick !== state.tick)) {
+      return fail('pipeline_mismatch', `GoalLab conflict pipeline identity changed for ${playerId}`, playerId);
+    }
+    if (!decision || decision.ranked.length !== rows.length) {
+      return fail('empty_candidates', `GoalLab S8 did not rank the complete legal action set for ${playerId}`, playerId);
     }
 
-    const { temperature, source: temperatureSource } = resolveTemperature(atoms, playerInput.world, playerId);
-    const decision = decideAction({ actions, goalEnergy, temperature, rng, topK: POLICY_TOP_K });
-    const chosenId = String(decision?.best?.id ?? '');
+    const { temperature, source: temperatureSource } = resolveTemperature(atoms, pipelineInput.world, playerId);
+    if (!Number.isFinite(decision.temperature) || Math.abs(decision.temperature - temperature) > 1e-9) {
+      return fail('empty_candidates', `GoalLab S8 temperature mismatch for ${playerId}`, playerId);
+    }
+    if (!Number.isFinite(decision.topK) || decision.topK < 1) {
+      return fail('empty_candidates', `GoalLab S8 did not expose its sampling topK for ${playerId}`, playerId);
+    }
+    const chosenId = String(decision.best?.id ?? '');
     if (!chosenId) {
       return fail('empty_candidates', `Policy returned no chosen candidate for ${playerId}`, playerId);
     }
@@ -129,17 +177,22 @@ export function runConflictJointDecisionV1(
     forcedJointActions.push(resolved.value);
 
     const rowByCandidateId = new Map(rows.map((row) => [row.utilityCandidateId, row]));
-    const ranked: ConflictRankedCandidateTraceV1[] = arr(decision.ranked).map((entry) => ({
-      utilityCandidateId: String(entry?.action?.id ?? ''),
-      kernelActionId: rowByCandidateId.get(String(entry?.action?.id ?? ''))?.kernelActionId as ConflictActionId,
+    const ranked: ConflictRankedCandidateTraceV1[] = decision.ranked.map((entry) => ({
+      utilityCandidateId: String(entry.id ?? ''),
+      kernelActionId: rowByCandidateId.get(String(entry.id ?? ''))?.kernelActionId as ConflictActionId,
       q: Number(entry?.q ?? 0),
       qUsed: Number(entry?.qUsed ?? entry?.q ?? 0),
       sampleNoise: Number(entry?.sampleNoise ?? 0),
       sampleScore: Number(entry?.sampleScore ?? 0),
       inTieBand: Boolean(entry?.inTieBand),
+      inSamplingPool: Boolean(entry?.inSamplingPool),
+      effectiveTemperature: Number(entry?.effectiveTemperature ?? temperature),
       marginFromBest: Number(entry?.marginFromBest ?? 0),
       chosen: Boolean(entry?.chosen),
     }));
+    if (ranked.some((entry) => !entry.kernelActionId)) {
+      return fail('unknown_candidate', `GoalLab S8 returned a candidate outside the typed projection for ${playerId}`, playerId);
+    }
 
     choices[playerId] = {
       schemaVersion: CONFLICT_CHOICE_TRACE_SCHEMA_VERSION,
@@ -149,14 +202,15 @@ export function runConflictJointDecisionV1(
       rngChannelId: playerInput.rngChannelId,
       temperature,
       temperatureSource,
-      topK: POLICY_TOP_K,
+      topK: decision.topK,
+      samplingPoolCandidateIds: ranked.filter((entry) => entry.inSamplingPool).map((entry) => entry.utilityCandidateId),
       protocolId: protocol.id,
       phaseId: rows[0]?.phaseId ?? 'simultaneous_choice',
       projectedRows: rows,
       ranked,
       chosenUtilityCandidateId: chosenId,
       kernelActionId: resolved.value.actionId,
-      usedAtomIds: arr<string>(decision?.best?.why?.usedAtomIds).map(String),
+      usedAtomIds: arr<string>(decision.best?.usedAtomIds).map(String),
     };
   }
 

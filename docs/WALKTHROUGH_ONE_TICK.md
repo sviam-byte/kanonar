@@ -326,7 +326,8 @@ phase1: world.facts['sim:runtimeProfile'] = 'phase1'
 
 | readout | Legacy | Phase I |
 |---|---:|---:|
-| active profile mechanisms | 0 | 6 |
+| active profile mechanisms | 0 | 7 |
+| S5 OpponentBelief dual-emit | off | on |
 | location properties reach GoalLab | no | yes |
 | B resourceAccess source (holds token) | absent | 0.9 |
 | A scarcity axis from rival-held token | legacy floor | 0.75 in clean object example |

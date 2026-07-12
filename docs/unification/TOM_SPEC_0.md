@@ -40,8 +40,9 @@ Update 2026-07-11 (после core): реализованы legacy decoder
 маппинг trust / align→alignment / respect / dominance, остальное — только
 `payload.migration.unmappedFields`, тесты `tests/tom/legacy_decoder_v1.test.ts`)
 и flag-gated S5 dual-emit seam (`s5DualEmitLayer.ts` +
-`runtimeMechanics.opponentBeliefS5V1`, OFF на всех именованных профилях,
-opt-in объектной формой runtimeProfile). Approved-расширение evidence-ID
+`runtimeMechanics.opponentBeliefS5V1`; с 2026-07-12 default ON у `phase1`, OFF у
+`legacy` и no-profile/config, object-form override поддерживает opt-in/rollback).
+Approved-расширение evidence-ID
 грамматики: decoder-evidence без сцены использует псевдо-сегмент `legacy-tom`
 — `belief:evidence:legacy-tom:<observerId>:<targetId>`. Декодирование
 `world.tom.views`/V3-report остаётся deferred (`unsupported_legacy_shape`).

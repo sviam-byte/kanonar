@@ -22,6 +22,7 @@ import { CONFLICT_ACTION_PROJECTION_SCHEMA_VERSION } from './types';
 function candidateId(
   observation: ConflictObservation,
   kernelActionId: string,
+  tick: number,
 ): string {
   // Opaque; consumers resolve by exact match against projected rows, never by
   // parsing, so separator collisions in player IDs cannot forge a candidate.
@@ -31,6 +32,8 @@ function candidateId(
     observation.protocolId,
     observation.phase,
     `${observation.playerId}->${observation.otherId}`,
+    `t${tick}`,
+    `h${observation.historyLength}`,
     kernelActionId,
   ].join(':');
 }
@@ -54,7 +57,7 @@ export function projectLegalActions(
     actorId: observation.playerId,
     targetIds: [observation.otherId],
     legalSource: 'protocol_action_order',
-    utilityCandidateId: candidateId(observation, kernelActionId),
+    utilityCandidateId: candidateId(observation, kernelActionId, state.tick),
     provenance: {
       source: 'conflict-kernel-observation',
       tick: state.tick,

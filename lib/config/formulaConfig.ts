@@ -994,8 +994,8 @@ export const FC = {
     uncertaintyDecay: 0.5,
     disagreementWeight: 0.5,
     evidenceLimit: 256,
-    // S5 dual-emit of tom:belief:* atoms stays OFF on every profile;
-    // opt-in is per-run via the object-form runtimeProfile override.
+    // Глобальный/no-profile fallback остаётся OFF. Именованный phase1 включает
+    // шов явно и поддерживает object-form rollback для отдельного прогона.
     s5DualEmit: { enabled: false },
     legacyDecoder: {
       reliabilityFloor: 0.2,

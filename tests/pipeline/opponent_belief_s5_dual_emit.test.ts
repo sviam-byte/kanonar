@@ -42,7 +42,9 @@ function fixedInput(tomOverrides: { ab?: Record<string, number>; ba?: Record<str
     observeLiteParams: { seed: 1234 },
     sceneControl: {
       enableToM: true,
-      runtimeProfile: flagOn ? { profileId: 'legacy', opponentBeliefS5V1: true } : 'legacy',
+      runtimeProfile: flagOn
+        ? 'phase1'
+        : { profileId: 'phase1', opponentBeliefS5V1: false },
     },
   } as any;
 }
