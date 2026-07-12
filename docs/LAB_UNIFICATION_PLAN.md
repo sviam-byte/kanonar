@@ -1166,9 +1166,17 @@ pipeline observation module.
     ре-имплементация) + typed projection row v1 c fail-closed exact-match
     resolveProjectedChoice; пять GAP-0 тестов + non-interference/immutability
     (tests/dilemma/conflictActionProjection.test.ts, conflictDefinition.test.ts)
+25. CONFLICT-INTEGRATION-0   — DONE CORE 2026-07-12 (lib/dilemma/integration/):
+    runConflictJointDecisionV1 = pipeline S8-атомы → кандидаты из projection
+    rows (typed ActionImpact × conflict-impact-goal-matrix-v1,
+    belief-модуляция v1) → decideAction (goal_lab_s8_gumbel_v1, fail-closed
+    rng) → forcedJointActions (learn_from_utility) + dual-run reference lane;
+    live-замена runDilemmaV2 отложена до parity evidence
+    (tests/dilemma/conflictIntegration.test.ts)
 ```
 
-Следующий пакет по dependency graph: `CONFLICT-INTEGRATION-0` (R5b). Live
+Следующий пакет: R2 metric-фиксы и решение о dual-emit default; R6
+generalized schema после накопления dual-run parity. Live
 replacement существующих GoalLab/Conflict/SimKit
 callers вынесен в `SCENE-ADAPTER-LIVE-WIRING-0`; pure adapters не объявляются
 уже подключённым runtime.

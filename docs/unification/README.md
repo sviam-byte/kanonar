@@ -92,6 +92,21 @@
   immutability — `tests/dilemma/conflictDefinition.test.ts`. Barrel
   `lib/dilemma/index.ts` не расширялся.
 
-Очередь дальше: CONFLICT-INTEGRATION-0 (DecisionProvider поверх
-forcedJointActions + dual-run parity), R2 metric-фиксы (ложные нули
-goalTension/frustration), решение о включении dual-emit по умолчанию.
+- **CONFLICT-INTEGRATION-0 CORE (2026-07-12)**: `lib/dilemma/integration/` —
+  `runConflictJointDecisionV1`: per-player GoalLab pipeline (S8-атомы с
+  beliefs) → conflict-кандидаты из projection rows (goal-deltas из typed
+  `ActionImpact` механики через версионированную матрицу
+  `conflict-impact-goal-matrix-v1` + belief-модуляция
+  `conflict-belief-modulation-v1`, канонические `tom:belief:final:*` первыми)
+  → `decideAction` (= goal_lab_s8_gumbel_v1, fail-closed rng-канал) →
+  exact-match resolve → `forcedJointActions` (mode `learn_from_utility`:
+  memory/learning/hysteresis/trace живут) + dual-run reference lane
+  (replicator+argmax) с записью divergence. Тесты —
+  `tests/dilemma/conflictIntegration.test.ts` (e2e от resolved scene,
+  детерминизм, fail-closed rng, parity reference-lane, sign/belief оракулы).
+  Live-замена `runDilemmaV2` на provider — отдельная миграция после
+  накопления dual-run parity evidence.
+
+Очередь дальше: R2 metric-фиксы (ложные нули goalTension/frustration),
+решение о включении dual-emit по умолчанию, R6 generalized schema; live
+wiring provider в Conflict Lab UI — после parity evidence.
