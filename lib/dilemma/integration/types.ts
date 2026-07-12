@@ -56,6 +56,12 @@ export interface ConflictChoiceTraceV1 {
   readonly policyId: typeof CONFLICT_CHOICE_POLICY_ID;
   readonly policyVersion: typeof CONFLICT_CHOICE_POLICY_VERSION;
   readonly playerId: ConflictPlayerId;
+  /**
+   * Additive since CONFLICT-PARITY-0: the provider runs S8 with
+   * runtimeMechanics.goalEnergyDomainUnionV1 so domain-keyed conflict deltas
+   * actually reach Q. Absent in traces recorded before the fix.
+   */
+  readonly goalEnergyMode?: 'domain-union-v1';
   readonly rngChannelId: string;
   readonly temperature: number;
   readonly temperatureSource: ConflictTemperatureSource;

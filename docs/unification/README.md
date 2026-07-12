@@ -19,6 +19,7 @@
 | TOM-SPEC-0 | [TOM_SPEC_0.md](TOM_SPEC_0.md) | ACCEPTED | 2026-07-11 |
 | SCENE-OWNERSHIP-ADR-0 | [SCENE_OWNERSHIP_ADR_0.md](SCENE_OWNERSHIP_ADR_0.md) | ACCEPTED | 2026-07-11 |
 | CONFLICT-CHOICE-ADR-0 | [CONFLICT_CHOICE_ADR_0.md](CONFLICT_CHOICE_ADR_0.md) | ACCEPTED | 2026-07-11 |
+| CONFLICT-PARITY-0 | [CONFLICT_PARITY_0.md](CONFLICT_PARITY_0.md) | DONE — evidence 432 решений, 2 дефекта исправлено | 2026-07-12 |
 
 ## Открытые тикеты, порождённые R1
 
@@ -117,9 +118,20 @@
   legacy-значения байт-в-байт (формула не менялась). Регрессии —
   `tests/metrics/entity_detail_fixes.test.ts`.
 
-Очередь дальше: накопление dual-run parity evidence, затем R6 generalized
-schema и решение о live wiring provider в Conflict Lab UI;
-R2b metric catalog — после сценового goal-conflict runtime.
+- **CONFLICT-PARITY-0 (2026-07-12)**: dual-run parity evidence собран —
+  432 joint decisions по сетке rel × agents × env × temp × seed × tick
+  (`docs/unification/CONFLICT_PARITY_0.md`, JSON в `evidence/`). Ранжирования
+  Q↔U согласованы на 100%, transition parity 102/102, всё расхождение выбора
+  (55.6%) — политика (argmax vs seeded Gumbel), масштабируется температурой.
+  Попутно найдены и исправлены: плоский Q конфликтных кандидатов
+  (goal-energy словарь затенял доменные дельты → механика
+  `goalEnergyDomainUnionV1`, default OFF, провайдер включает явно) и
+  belief-слепота моста без S5-слоя (S0 dyad фоллбэк в `readBeliefMetric`).
+
+Очередь дальше: GOALENERGY-UNION-DEFAULT (глобальный default механики +
+golden-перепин), live wiring provider в Conflict Lab UI (parity-блокеров
+нет), затем R6 generalized schema; R2b metric catalog — после сценового
+goal-conflict runtime.
 
 ## Phase1 OpponentBelief default (2026-07-12)
 

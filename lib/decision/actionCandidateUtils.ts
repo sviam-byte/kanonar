@@ -141,7 +141,11 @@ function readFirstFinite(atoms: ContextAtom[], ids: string[], fallback = 0) {
  * 1) prefers `util:activeGoal:<selfId>:*` (post-S3 canonical);
  * 2) falls back to legacy `goal:domain:*:<selfId>` if active goals are absent.
  */
-function buildGoalEnergyMap(atoms: ContextAtom[], selfId: string): Record<string, number> {
+function buildGoalEnergyMap(
+  atoms: ContextAtom[],
+  selfId: string,
+  opts?: { domainUnionV1?: boolean },
+): Record<string, number> {
   const out: Record<string, number> = {};
   const activePrefix = `util:activeGoal:${selfId}:`;
   for (const a of atoms) {
@@ -150,7 +154,13 @@ function buildGoalEnergyMap(atoms: ContextAtom[], selfId: string): Record<string
     out[goalId] = clamp01(Number(a?.magnitude ?? 0));
   }
 
-  if (Object.keys(out).length) return out;
+  // goalEnergyDomainUnionV1: active-goal ids and goal domains are disjoint
+  // vocabularies; external offers (conflict bridge, SimKit deltas) speak the
+  // domain one. Without the union their Q contribution is zero whenever any
+  // active goal exists. Active-goal keys keep precedence on collision.
+  const domainUnion = opts?.domainUnionV1 === true;
+  if (Object.keys(out).length && !domainUnion) return out;
+  const activeKeys = new Set(Object.keys(out));
 
   const domainPrefix = `goal:domain:`;
   for (const a of atoms) {
@@ -159,6 +169,7 @@ function buildGoalEnergyMap(atoms: ContextAtom[], selfId: string): Record<string
     const domain = parts[2];
     const owner = parts[3];
     if (!domain || owner !== selfId) continue;
+    if (activeKeys.has(domain)) continue;
     out[domain] = clamp01(Number(a?.magnitude ?? 0));
   }
 
@@ -377,9 +388,13 @@ export function buildActionCandidates(args: {
   atoms: ContextAtom[];
   possibilities: Possibility[];
   currentTick?: number;
+  /** runtimeMechanics.goalEnergyDomainUnionV1 — see buildGoalEnergyMap. */
+  goalEnergyDomainUnionV1?: boolean;
 }): { actions: ActionCandidate[]; goalEnergy: Record<string, number> } {
   const actions: ActionCandidate[] = [];
-  const goalEnergy = buildGoalEnergyMap(args.atoms, args.selfId);
+  const goalEnergy = buildGoalEnergyMap(args.atoms, args.selfId, {
+    domainUnionV1: args.goalEnergyDomainUnionV1,
+  });
 
   for (const p of arr<Possibility>(args.possibilities)) {
     const pRuntime = asRuntimePossibility(p);

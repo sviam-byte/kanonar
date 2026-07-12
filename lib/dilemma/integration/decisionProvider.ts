@@ -113,9 +113,22 @@ export function runConflictJointDecisionV1(
       return fail('missing_rng_channel', `No seeded rng channel for ${playerId} (channel ${playerInput.rngChannelId || 'unnamed'})`, playerId);
     }
 
+    // CONFLICT-PARITY-0: conflict candidates carry goal-domain deltas, so the
+    // S8 goal-energy map must include domain energies (union mode) or every
+    // conflict Q collapses to -cost and the choice degenerates to pure Gumbel
+    // noise. Opt-in per run; the caller's runtime profile is preserved.
+    const callerSceneControl = (playerInput.pipelineInput as { sceneControl?: Record<string, unknown> }).sceneControl;
+    const callerProfile = callerSceneControl?.runtimeProfile;
+    const runtimeProfile = typeof callerProfile === 'string'
+      ? { profileId: callerProfile, goalEnergyDomainUnionV1: true }
+      : {
+        ...(callerProfile && typeof callerProfile === 'object' ? callerProfile as Record<string, unknown> : {}),
+        goalEnergyDomainUnionV1: true,
+      };
     const pipelineInput = {
       ...playerInput.pipelineInput,
       injectedEvents: withoutForceAction(playerInput.pipelineInput.injectedEvents),
+      sceneControl: { ...(callerSceneControl ?? {}), runtimeProfile },
     };
     // Baseline нужен только для belief-атомов: он не должен расходовать
     // канонический Conflict RNG-канал до настоящего S8 choice.
@@ -199,6 +212,7 @@ export function runConflictJointDecisionV1(
       policyId: CONFLICT_CHOICE_POLICY_ID,
       policyVersion: CONFLICT_CHOICE_POLICY_VERSION,
       playerId,
+      goalEnergyMode: 'domain-union-v1',
       rngChannelId: playerInput.rngChannelId,
       temperature,
       temperatureSource,

@@ -21,3 +21,13 @@ export {
   type ConflictBeliefSignals,
 } from './candidateBridge';
 export { runConflictJointDecisionV1 } from './decisionProvider';
+export {
+  CONFLICT_PARITY_EVIDENCE_SCHEMA_VERSION,
+  aggregateConflictParityEvidenceV1,
+  extractConflictParityRecordV1,
+  type ConflictParityAggregateV1,
+  type ConflictParityDecisionRecordV1,
+  type ConflictParityDivergenceExampleV1,
+  type ConflictParityMetaV1,
+  type ConflictParityPlayerRecordV1,
+} from './paritySweep';

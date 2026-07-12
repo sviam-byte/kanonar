@@ -55,6 +55,10 @@ function readBeliefMetric(
     `tom:dyad:final:${metric}:${selfId}:${targetId}`,
     `rel:state:${metric}:${selfId}:${targetId}`,
     `tom:dyad:${metric}:${selfId}:${targetId}`,
+    // S0 legacy dyad format (extractTomDyadAtoms) — same fallback S8's own
+    // tomRead uses; without it the bridge is belief-blind whenever the S5
+    // dual-emit layer is off (CONFLICT-PARITY-0 finding).
+    `tom:dyad:${selfId}:${targetId}:${metric}`,
   ];
   for (const id of candidates) {
     const atom = getAtom(atoms as ContextAtom[], id);

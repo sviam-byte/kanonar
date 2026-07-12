@@ -168,6 +168,23 @@ describe('CONFLICT-INTEGRATION-0 — S8 policy drives the kernel through the pro
     }
   });
 
+  it('CONFLICT-PARITY-0: S8 Q differentiates conflict candidates (domain-union goal energy)', () => {
+    const args = buildJointDecisionArgs();
+    const result = runConflictJointDecisionV1(args);
+    expect(result.ok).toBe(true);
+    if (result.ok === false) return;
+
+    for (const playerId of ['A', 'B']) {
+      const trace = result.value.choices[playerId];
+      expect(trace.goalEnergyMode).toBe('domain-union-v1');
+      // The flat-Q defect made every conflict Q equal (-cost) so the choice
+      // degenerated to seeded noise; domain-union goal energy restores a live
+      // utility field over the projected candidates.
+      const qs = trace.ranked.map((entry) => entry.q);
+      expect(new Set(qs.map((q) => q.toFixed(9))).size).toBeGreaterThan(1);
+    }
+  });
+
   it('is deterministic for identical scenes and seeds', () => {
     const first = runConflictJointDecisionV1(buildJointDecisionArgs());
     const second = runConflictJointDecisionV1(buildJointDecisionArgs());
@@ -262,6 +279,25 @@ describe('conflict candidate bridge — impact matrix and belief modulation', ()
     const high = conflictDeltaGoalsV1(impact, { trust: 0.9, threat: 0.5, usedAtomIds: [] });
     expect(low.affiliation).toBeLessThan(mid.affiliation);
     expect(mid.affiliation).toBeLessThan(high.affiliation);
+  });
+
+  it('falls back to S0 legacy dyad atoms when the S5 belief layer is off', () => {
+    const state = makeConflictState();
+    const protocol = TRUST_EXCHANGE_DEFINITION.createProtocol(['A', 'B']);
+    const projected = projectLegalActions(TRUST_EXCHANGE_DEFINITION, state, protocol, 'A');
+    if (projected.ok === false) throw new Error('projection failed');
+
+    // extractTomDyadAtoms id format: tom:dyad:{self}:{other}:{metric}.
+    const legacyAtoms: ContextAtom[] = [
+      { id: 'tom:dyad:A:B:trust', kind: 'tom_dyad_metric', ns: 'tom', origin: 'belief', source: 'tom', magnitude: 0.85, confidence: 1 } as any,
+      { id: 'tom:dyad:A:B:threat', kind: 'tom_dyad_metric', ns: 'tom', origin: 'belief', source: 'tom', magnitude: 0.15, confidence: 1 } as any,
+    ];
+    const { beliefSignalsByTarget } = buildConflictPossibilities({
+      rows: projected.value, atoms: legacyAtoms, selfId: 'A',
+    });
+    expect(beliefSignalsByTarget.B.trust).toBeCloseTo(0.85, 6);
+    expect(beliefSignalsByTarget.B.threat).toBeCloseTo(0.15, 6);
+    expect(beliefSignalsByTarget.B.usedAtomIds).toContain('tom:dyad:A:B:trust');
   });
 
   it('reads canonical belief atoms first and records their provenance on the possibility', () => {
