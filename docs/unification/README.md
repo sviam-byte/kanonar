@@ -118,6 +118,18 @@
   explicitly `unsupported_kernel` and are not promoted to canonical mechanics.
   Regression: `tests/dilemma/liveTrustExchangeRuntime.test.ts`.
 
+- **R7-FOUNDATION-0 — inventory + contract PROPOSAL (2026-07-13)**: multi-agent
+  foundation prep. Inventory found the primitives are already directed/per-observer
+  (`SceneEventInputV1.targetIds`, `OpponentBeliefV1` observer→target,
+  `s5DualEmitLayer` `otherIds: string[]`); dyadic hardness is concentrated in
+  `ConflictDefinitionV2` (`playerCount: 2` literal, "exactly two roles", binary
+  `target`), the missing self-belief, and the missing typed belief graph with an
+  `N·(N−1)` bound. Proposes additive contracts (`participant-set-v1`,
+  `observation-view-v1`, `belief-graph-v1`, `conflict-definition-v3`) that keep
+  the dyadic kernel execution and golden identity intact. ADR-reserved decisions
+  (self-belief shape, multi-target semantics, ordering) await author sign-off. No
+  code changed. Doc: `docs/unification/R7_FOUNDATION_0.md`.
+
 - **R6 CATALOG WIRING — step 4 (2026-07-13)**: the Conflict Lab catalog is now
   driven by the typed `CONFLICT_SCENARIO_INVENTORY` via the pure
   `conflictCatalogLane(kind, runnable)` classifier, not the ad-hoc `disabled`

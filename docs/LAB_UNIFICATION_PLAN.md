@@ -457,6 +457,17 @@ Foundation означает:
 Полноценный joint protocol для `N > 2`, coalition goals и group payoff —
 отдельный будущий эпик.
 
+R7-FOUNDATION-0 2026-07-13 (PROPOSAL): инвентаризация зафиксировала, что
+примитивы уже направленные/per-observer (`SceneEventInputV1.targetIds`,
+`OpponentBeliefV1` observer→target, `s5DualEmitLayer` `otherIds: string[]`), а
+диадическая жёсткость сосредоточена в `ConflictDefinitionV2` (`playerCount: 2`
+литерал, «ровно 2 роли», бинарный `target`), в отсутствии self-belief и
+типизированного графа с границей `N·(N−1)`. Предложены аддитивные контракты
+(`participant-set-v1`, `observation-view-v1`, `belief-graph-v1`,
+`conflict-definition-v3`), сохраняющие диадический kernel-execution и golden
+identity. ADR-решения (self-belief shape, multi-target семантика, порядок)
+ждут подписи автора. Полный документ: `docs/unification/R7_FOUNDATION_0.md`.
+
 ## 14. R8 — controlled cleanup
 
 Каждый кандидат получает статус: `false positive`, `test-only`, `runtime plugin`,
