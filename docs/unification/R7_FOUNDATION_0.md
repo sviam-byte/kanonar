@@ -1,6 +1,12 @@
 # R7-FOUNDATION-0 — multi-agent foundation inventory + contract proposal
 
-Статус: **PROPOSAL — awaiting author ADR sign-off.** Дата: 2026-07-13.
+Статус: **PROPOSAL — ADR §5.1 decided, first slice implemented.** Дата: 2026-07-13.
+Update 2026-07-13: author decided §5.1 (self-belief = separate node reusing
+`OpponentBeliefV1`, observerId===targetId, outside the directed bound). The
+`belief-graph-v1` slice is implemented pure-domain
+(`lib/tom/opponentBelief/beliefGraph.ts`, `tests/tom/belief_graph_v1.test.ts`).
+§5.2/§5.3/§5.4 (multi-target semantics, ordering beyond this slice, naming)
+still await sign-off.
 Основание: `docs/LAB_UNIFICATION_PLAN.md` §13 (R7 multi-agent foundation),
 release gate R7 («N-participant contracts, observations и directed beliefs
 работают»). Это подготовительный документ: он инвентаризует текущие
@@ -123,9 +129,10 @@ view другого (перенос hidden-field non-interference оракула
 
 ## 5. Решения, зарезервированные за автором (нужна подпись до кода)
 
-1. **Self-belief representation.** Отдельный узел `selfBeliefs[id]` того же типа
-   `OpponentBeliefV1` (observerId === targetId) — или отдельный тип
-   `SelfModelV1`? Влияет на форму графа и S8-чтение.
+1. **Self-belief representation.** ✅ DECIDED 2026-07-13: отдельный узел
+   `selfBeliefs[id]` того же типа `OpponentBeliefV1` (observerId === targetId),
+   вне directed-границы `N·(N−1)`. Переиспользует валидированный тип; минимум
+   новой поверхности. Реализовано в `belief-graph-v1`.
 2. **Multi-target action семантика.** Набор target-режимов (§3.4): минимальный
    (`self | participant | all_others`) или полный (`+ role | subset`)? Это
    ADR-уровень: определяет форму legal-action и проекции.
@@ -137,16 +144,18 @@ view другого (перенос hidden-field non-interference оракула
 
 ## 6. Первый имплементационный срез (наименьшая карта)
 
-Рекомендация (после подписи §5): **`belief-graph-v1` pure-domain** — самый
-изолированный и полезный:
-- типы графа + fail-closed конструктор + инвариант границы `N·(N−1)` + self-узел;
+**`belief-graph-v1` — ✅ IMPLEMENTED 2026-07-13** (pure-domain):
+- `lib/tom/opponentBelief/beliefGraph.ts`: `BeliefGraphV1` тип, fail-closed
+  `buildBeliefGraphV1`, `maxDirectedEdgesV1(n) = n·(n−1)`, self-узлы отдельно;
 - построение из существующих `OpponentBeliefV1` рёбер, без изменения S5/runtime;
-- тесты: конструктор, граница на `N = 2..5`, self-isolation, детерминизм,
-  отказ на дубликат/self-петлю/неизвестного участника.
+- `tests/tom/belief_graph_v1.test.ts` (8): дьяда, граница `N = 2..5`,
+  self-isolation, детерминизм по порядку входа, fail-closed на пустой/дублирующий
+  participant, неизвестного участника и дубликат ребра.
 
-Gate этого среза: pure-domain типы+валидатор+тесты зелёные; `tsc` чист; golden
-no-profile идентичность; ни одного изменения runtime-подписи. Далее —
-`participant-set-v1`, затем `observation-view-v1`, затем `conflict-definition-v3`.
+Gate достигнут: `tsc` чист; полный набор зелёный; golden no-profile хеш
+`efa018b3…` не сдвинут (модуль никем в runtime не импортируется). Следующие
+срезы (ждут §5.2–5.4): `participant-set-v1`, `observation-view-v1`,
+`conflict-definition-v3`.
 
 ## 7. Пределы верификации
 
