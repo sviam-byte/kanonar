@@ -15,8 +15,13 @@ export {
 export { TRUST_EXCHANGE_DEFINITION, TRUST_EXCHANGE_DEFINITION_V2 } from './trustExchangeDefinition';
 export { constructTrustExchange } from './constructor';
 export type { TrustExchangeConstruction, TrustExchangeConstructorInput } from './constructor';
-export { CONFLICT_SCENARIO_INVENTORY, constructorInventory } from './inventory';
-export type { ConflictInventoryEntry, ConflictInventoryKind } from './inventory';
+export {
+  CONFLICT_SCENARIO_INVENTORY,
+  conflictCatalogLane,
+  conflictInventoryEntry,
+  constructorInventory,
+} from './inventory';
+export type { ConflictCatalogLane, ConflictInventoryEntry, ConflictInventoryKind } from './inventory';
 export { validateConflictDefinition, validateConflictDefinitionV2 } from './validation';
 export type { ConflictDefinitionValidation, ConflictDefinitionValidationError, ConflictDefinitionV2Validation } from './validation';
 export {

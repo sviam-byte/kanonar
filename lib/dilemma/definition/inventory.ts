@@ -26,3 +26,23 @@ export const CONFLICT_SCENARIO_INVENTORY: readonly ConflictInventoryEntry[] = [
 export function constructorInventory(): readonly ConflictInventoryEntry[] {
   return CONFLICT_SCENARIO_INVENTORY.filter((entry) => entry.visibleInConstructor);
 }
+
+export function conflictInventoryEntry(scenarioId: string): ConflictInventoryEntry | undefined {
+  return CONFLICT_SCENARIO_INVENTORY.find((entry) => entry.scenarioId === scenarioId);
+}
+
+export type ConflictCatalogLane = 'canonical' | 'compatibility' | 'unavailable';
+
+// R6 step 4: the UI catalog lane is a pure function of typed inventory kind and
+// runnability. Runnability (a non-disabled entry in the scenario registry) gates
+// selectability; a non-runnable scenario is always `unavailable` regardless of
+// kind. A runnable scenario is `canonical` only when the inventory names it the
+// executable kernel; every other runnable scenario is an explicit compatibility
+// run — so no card becomes an executable mechanic by presentation.
+export function conflictCatalogLane(
+  kind: ConflictInventoryKind | undefined,
+  runnable: boolean,
+): ConflictCatalogLane {
+  if (!runnable) return 'unavailable';
+  return kind === 'canonical_mechanic' ? 'canonical' : 'compatibility';
+}

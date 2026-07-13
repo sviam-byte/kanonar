@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom';
 import { runConflictLabSessionV1 } from '../../lib/dilemma/integration/liveSession';
 import { allScenarios, getScenario } from '../../lib/dilemma/scenarios';
 import { allMechanics } from '../../lib/dilemma/mechanics';
+import { CONFLICT_SCENARIO_INVENTORY, conflictCatalogLane } from '../../lib/dilemma/definition';
+import type { ConflictInventoryEntry, ConflictInventoryKind } from '../../lib/dilemma/definition';
 import type {
   ScenarioTemplate, V2GameState, V2RoundTrace, V2RunResult, MechanicTemplate, PressureSchedule, ProtocolCardView,
 } from '../../lib/dilemma/types';
@@ -29,6 +31,27 @@ const MECHANIC_ICONS: Record<string, string> = {
   ultimatum_split: '🪓',
   volunteer_sacrifice: '🩸',
   signaling_trust: '📡',
+};
+
+// R6 step 4: honest typed-inventory badge on every card. Presentation never
+// promotes a card into an executable mechanic — the label states what it is.
+const INVENTORY_KIND_META: Record<ConflictInventoryKind, { label: string; cls: string }> = {
+  canonical_mechanic: { label: 'canonical kernel', cls: 'text-canon-good bg-canon-good/10 border-canon-good/25' },
+  parameter_variant: { label: 'parameter variant', cls: 'text-canon-muted bg-canon-bg/60 border-canon-border/40' },
+  skin: { label: 'skin', cls: 'text-canon-muted bg-canon-bg/60 border-canon-border/40' },
+  duplicate: { label: 'duplicate', cls: 'text-canon-faint bg-canon-bg/60 border-canon-border/40' },
+  unsupported: { label: 'no typed kernel', cls: 'text-yellow-300 bg-yellow-300/10 border-yellow-300/25' },
+  needs_multi_agent: { label: 'needs multi-agent', cls: 'text-orange-300 bg-orange-300/10 border-orange-300/25' },
+};
+
+const InventoryBadge: React.FC<{ entry?: ConflictInventoryEntry }> = ({ entry }) => {
+  if (!entry) return null;
+  const meta = INVENTORY_KIND_META[entry.kind];
+  return (
+    <span className={`shrink-0 rounded-full border px-1.5 py-0.5 text-[8px] font-medium ${meta.cls}`} title={entry.reason}>
+      {meta.label}
+    </span>
+  );
 };
 
 const TIMING_LABELS: Record<ProtocolCardView['timing'], string> = {
@@ -90,8 +113,8 @@ function buildMinimalWorld(chars: { entityId: string; [k: string]: unknown }[]):
 // ═══════════════════════════════════════════════════════════════
 
 const ScenarioCard: React.FC<{
-  s: ScenarioTemplate; selected: boolean; disabled?: boolean; onClick?: () => void;
-}> = ({ s, selected, disabled = false, onClick }) => {
+  s: ScenarioTemplate; selected: boolean; disabled?: boolean; onClick?: () => void; inventory?: ConflictInventoryEntry;
+}> = ({ s, selected, disabled = false, onClick, inventory }) => {
   const protocol = s.protocol;
   return (
     <button onClick={disabled ? undefined : onClick}
@@ -106,7 +129,10 @@ const ScenarioCard: React.FC<{
           <span className="text-lg">{CLASS_ICONS[s.dilemmaClass] ?? '◆'}</span>
           <span className={`text-sm font-semibold truncate ${selected ? 'text-canon-accent' : 'text-canon-text'}`}>{s.name}</span>
         </div>
-        <span className="shrink-0 rounded-full border border-canon-border/50 px-1.5 py-0.5 text-[8px] text-canon-faint">{protocol.kernel}</span>
+        <div className="flex shrink-0 items-center gap-1">
+          <InventoryBadge entry={inventory} />
+          <span className="rounded-full border border-canon-border/50 px-1.5 py-0.5 text-[8px] text-canon-faint">{protocol.kernel}</span>
+        </div>
       </div>
       <div className="mt-2 flex flex-wrap gap-1">
         <span className="rounded bg-canon-bg/70 px-1.5 py-0.5 text-[9px] text-canon-muted">{protocol.typeLabel}</span>
@@ -133,7 +159,8 @@ const ScenarioCard: React.FC<{
       <div className="mt-2 text-[9px] text-canon-faint line-clamp-2">
         main: {protocol.primaryParameter}; secondary pressure {pct(s.institutionalPressure)}
       </div>
-      {disabled && s.disabledReason && <div className="text-[10px] text-canon-faint mt-2 line-clamp-3">{s.disabledReason}</div>}
+      {inventory && <div className="text-[9px] text-canon-faint mt-2 line-clamp-2">{inventory.reason}</div>}
+      {disabled && s.disabledReason && <div className="text-[10px] text-canon-faint mt-1 line-clamp-3">{s.disabledReason}</div>}
     </button>
   );
 };
@@ -199,7 +226,8 @@ const MechanicSection: React.FC<{
   scenarios: ScenarioTemplate[];
   selectedScenarioId: string;
   onSelect: (scenarioId: string) => void;
-}> = ({ mechanic, scenarios, selectedScenarioId, onSelect }) => {
+  inventoryByScenario: Map<string, ConflictInventoryEntry>;
+}> = ({ mechanic, scenarios, selectedScenarioId, onSelect, inventoryByScenario }) => {
   if (scenarios.length === 0) return null;
   return (
     <div className="rounded-lg border border-canon-border/60 bg-canon-card p-3 space-y-3">
@@ -212,7 +240,7 @@ const MechanicSection: React.FC<{
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
         {scenarios.map((s) => (
-          <ScenarioCard key={s.id} s={s} selected={selectedScenarioId === s.id} onClick={() => onSelect(s.id)} />
+          <ScenarioCard key={s.id} s={s} selected={selectedScenarioId === s.id} onClick={() => onSelect(s.id)} inventory={inventoryByScenario.get(s.id)} />
         ))}
       </div>
     </div>
@@ -528,6 +556,21 @@ export const DilemmaLabPanel: React.FC = () => {
   const scenarios = useMemo(() => allScenarios(), []);
   const disabledScenarios = useMemo(() => allScenarios({ includeDisabled: true }).filter((s) => s.disabled), []);
   const mechanics = useMemo(() => allMechanics(), []);
+  const inventoryByScenario = useMemo(
+    () => new Map<string, ConflictInventoryEntry>(CONFLICT_SCENARIO_INVENTORY.map((e) => [e.scenarioId, e])),
+    [],
+  );
+  // R6 step 4: active scenarios are runnable, so their lane is decided by typed
+  // inventory kind (canonical kernel vs explicit compatibility run). Disabled
+  // scenarios are not in the runnable registry → always the unavailable lane.
+  const canonicalScenarios = useMemo(
+    () => scenarios.filter((s) => conflictCatalogLane(inventoryByScenario.get(s.id)?.kind, true) === 'canonical'),
+    [scenarios, inventoryByScenario],
+  );
+  const compatScenarios = useMemo(
+    () => scenarios.filter((s) => conflictCatalogLane(inventoryByScenario.get(s.id)?.kind, true) === 'compatibility'),
+    [scenarios, inventoryByScenario],
+  );
   const scenarioIds = useMemo(() => scenarios.map((s) => s.id), [scenarios]);
   const [scenarioId, setScenarioId] = useState(scenarioIds[0] ?? 'trust_interrogation');
   const [totalRounds, setTotalRounds] = useState(10);
@@ -540,14 +583,13 @@ export const DilemmaLabPanel: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
 
   const scenario = getScenario(scenarioId);
-  const scenariosByMechanic = useMemo(() => {
+  const groupByMechanic = (list: ScenarioTemplate[]): Record<string, ScenarioTemplate[]> => {
     const grouped: Record<string, ScenarioTemplate[]> = {};
-    for (const s of scenarios) {
-      if (!grouped[s.mechanicId]) grouped[s.mechanicId] = [];
-      grouped[s.mechanicId].push(s);
-    }
+    for (const s of list) (grouped[s.mechanicId] ??= []).push(s);
     return grouped;
-  }, [scenarios]);
+  };
+  const canonicalByMechanic = useMemo(() => groupByMechanic(canonicalScenarios), [canonicalScenarios]);
+  const compatByMechanic = useMemo(() => groupByMechanic(compatScenarios), [compatScenarios]);
   const game = result?.game ?? null;
 
   const allChars = useMemo(() => {
@@ -660,25 +702,48 @@ export const DilemmaLabPanel: React.FC = () => {
         <div className="lg:col-span-3 bg-canon-panel border border-canon-border rounded-lg p-4 space-y-4">
           <div className="space-y-3">
             <div className="text-xs font-semibold text-canon-muted uppercase tracking-wider mb-2">Protocol kernel → preset</div>
-            <div className="text-[11px] text-canon-muted">Карточки показывают не только имя пресета, а роли, фазы, observability и payoff-правило механики. Давление остаётся вторичным параметром.</div>
+            <div className="text-[11px] text-canon-muted">Каталог размечен типизированным R6-инвентарём. <span className="text-canon-good">Canonical kernel</span> исполняет S8-ядро; остальные — явные compatibility-прогоны (legacy V2 + <span className="text-yellow-300">unsupported_kernel</span>). Presentation не повышает пресет до исполнимой механики.</div>
+
+            <div className="text-[10px] font-semibold uppercase tracking-wider text-canon-good/80 pt-1">Canonical kernel</div>
             {mechanics
-              .filter((mechanic) => (scenariosByMechanic[mechanic.id] ?? []).length > 0)
+              .filter((mechanic) => (canonicalByMechanic[mechanic.id] ?? []).length > 0)
               .map((mechanic) => (
                 <MechanicSection
-                  key={mechanic.id}
+                  key={`canon-${mechanic.id}`}
                   mechanic={mechanic}
-                  scenarios={scenariosByMechanic[mechanic.id] ?? []}
+                  scenarios={canonicalByMechanic[mechanic.id] ?? []}
                   selectedScenarioId={scenarioId}
                   onSelect={(id) => { setScenarioId(id); reset(); }}
+                  inventoryByScenario={inventoryByScenario}
                 />
               ))}
+
+            {compatScenarios.length > 0 && (
+              <>
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-yellow-300/80 pt-2">Совместимость — вне типизированного kernel</div>
+                <div className="text-[10px] text-canon-faint">Выбираемы и запускаются, но не имеют типизированного transition-ядра: прогон идёт на legacy/unsupported_kernel-полосе.</div>
+                {mechanics
+                  .filter((mechanic) => (compatByMechanic[mechanic.id] ?? []).length > 0)
+                  .map((mechanic) => (
+                    <MechanicSection
+                      key={`compat-${mechanic.id}`}
+                      mechanic={mechanic}
+                      scenarios={compatByMechanic[mechanic.id] ?? []}
+                      selectedScenarioId={scenarioId}
+                      onSelect={(id) => { setScenarioId(id); reset(); }}
+                      inventoryByScenario={inventoryByScenario}
+                    />
+                  ))}
+              </>
+            )}
+
             {disabledScenarios.length > 0 && (
               <div className="rounded-lg border border-canon-border/40 bg-canon-bg/30 p-3 space-y-2">
-                <div className="text-xs font-semibold text-canon-muted uppercase tracking-wider">Вне dyad-ядра</div>
-                <div className="text-[10px] text-canon-faint">Эти пресеты пока убраны из активного каталога, потому что механически они не чистые dyad-сцены.</div>
+                <div className="text-xs font-semibold text-canon-muted uppercase tracking-wider">Недоступно — вне runnable-реестра</div>
+                <div className="text-[10px] text-canon-faint">Убраны из активного каталога (не чистые dyad-сцены / дубликаты) и не запускаются.</div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                   {disabledScenarios.map((s) => (
-                    <ScenarioCard key={s.id} s={s} selected={false} disabled />
+                    <ScenarioCard key={s.id} s={s} selected={false} disabled inventory={inventoryByScenario.get(s.id)} />
                   ))}
                 </div>
               </div>

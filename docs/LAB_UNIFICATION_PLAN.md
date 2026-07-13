@@ -1220,6 +1220,19 @@ versioned choice trace and exports it under `ConflictLabSessionV1`. Other
 mechanics remain explicit legacy/`unsupported_kernel` compatibility runs.
 Regression: `tests/dilemma/liveTrustExchangeRuntime.test.ts`.
 
+R6 step 4 catalog wiring 2026-07-13: the Conflict Lab catalog lane is now a
+pure function of the typed inventory (`conflictCatalogLane(kind, runnable)`),
+not the ad-hoc `disabled` flag. Runnability gates selectability; the inventory
+kind decides canonical-kernel vs an explicit compatibility run. `trust_exchange`
+(`trust_interrogation`) is the sole canonical lane; the eight runnable
+non-kernel presets stay selectable under an explicit "compatibility — no typed
+kernel" lane (each badged with its inventory kind + reason), and disabled
+presets are shown as unavailable. No card is promoted into an executable
+mechanic by presentation, and no runnable behavior is removed. Steps 1–3 and 5
+(schema/validator/inventory/constructor) landed in `CONFLICT-LIVE-0`; step 6
+(schema editor v2) stays gated behind a stable validation report. Regression:
+`tests/dilemma/conflictCatalog.test.ts`.
+
 ## 29. Assumptions and limitations
 
 Раздел намеренно на английском: это внешний дисклеймер, а не рабочий текст.

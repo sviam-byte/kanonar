@@ -12,12 +12,15 @@ export {
   CONFLICT_SCENARIO_INVENTORY,
   TRUST_EXCHANGE_DEFINITION,
   TRUST_EXCHANGE_DEFINITION_V2,
+  conflictCatalogLane,
+  conflictInventoryEntry,
   constructTrustExchange,
   constructorInventory,
   validateConflictDefinition,
   validateConflictDefinitionV2,
 } from './definition';
 export type {
+  ConflictCatalogLane,
   ConflictDefinition,
   ConflictDefinitionV2,
   ConflictDefinitionV2Action,

@@ -118,6 +118,18 @@
   explicitly `unsupported_kernel` and are not promoted to canonical mechanics.
   Regression: `tests/dilemma/liveTrustExchangeRuntime.test.ts`.
 
+- **R6 CATALOG WIRING — step 4 (2026-07-13)**: the Conflict Lab catalog is now
+  driven by the typed `CONFLICT_SCENARIO_INVENTORY` via the pure
+  `conflictCatalogLane(kind, runnable)` classifier, not the ad-hoc `disabled`
+  flag. `trust_interrogation` is the sole canonical lane; the eight runnable
+  non-kernel presets stay selectable as an explicit "compatibility — no typed
+  kernel" lane (badged with inventory kind + reason and run on the
+  legacy/`unsupported_kernel` path); disabled presets render as unavailable.
+  Presentation never promotes a card into an executable mechanic and no runnable
+  behavior is removed. R6 steps 1–3/5 (schema/validator/inventory/constructor)
+  landed with `CONFLICT-LIVE-0`; step 6 (schema editor v2) stays gated behind a
+  stable validation report. Regression: `tests/dilemma/conflictCatalog.test.ts`.
+
 - **R2-METRIC-FIXES-0 (2026-07-12)**: четыре решения METRIC-INVENTORY-0
   исполнены. goalTension/frustration: у `deriveGoalCatalog` НЕТ реального
   вычисления (константные нули) → honest unknown (`number | null`, продюсер
@@ -141,9 +153,11 @@
 
 `GOALENERGY-UNION-DEFAULT` закрыт: `phase1` включает union, а `legacy` и
 no-profile/config сохраняют прежнюю семантику; object-form override остаётся
-двусторонним. Live wiring provider в Conflict Lab UI завершён; следующий
-крупный этап — R6 generalized schema. R2b metric catalog остаётся после
-сценового goal-conflict runtime.
+двусторонним. Live wiring provider в Conflict Lab UI завершён. R6 steps 1–5
+(schema/validator/inventory/constructor + step 4 catalog wiring) закрыты;
+внутри R6 остаётся только gated step 6 — schema editor v2 после стабильного
+validation report. По gate-порядку дальше R2b (после сценового goal-conflict
+runtime), затем R7 multi-agent foundation.
 
 ## Phase1 OpponentBelief default (2026-07-12)
 
