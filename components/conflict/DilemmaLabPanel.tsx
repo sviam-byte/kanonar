@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { runDilemmaV2 } from '../../lib/dilemma/runner';
+import { runConflictLabSessionV1 } from '../../lib/dilemma/integration/liveSession';
 import { allScenarios, getScenario } from '../../lib/dilemma/scenarios';
 import { allMechanics } from '../../lib/dilemma/mechanics';
 import type {
@@ -589,7 +589,7 @@ export const DilemmaLabPanel: React.FC = () => {
       const find = (id: string) => world.agents?.find(a => (a as any).entityId === id || (a as any).id === id);
       if (!find(id0)) throw new Error(`"${id0}" не найден`);
       if (!find(id1)) throw new Error(`"${id1}" не найден`);
-      const res = runDilemmaV2({
+      const res = runConflictLabSessionV1({
         scenarioId,
         players: [id0, id1],
         totalRounds: Math.max(1, Math.floor(totalRounds)),
@@ -609,7 +609,7 @@ export const DilemmaLabPanel: React.FC = () => {
     if (!game || !result) return;
     const ts = new Date().toISOString();
     const safe = (s: string) => s.replace(/[^a-z0-9_-]/gi, '_');
-    downloadJson({ schema: 'DilemmaLabV2', exportedAt: ts, scenarioId, scenario, ...result },
+    downloadJson({ schema: result.canonicalSession ? 'ConflictLabSessionV1' : 'DilemmaLabV2', exportedAt: ts, scenarioId, scenario, ...result },
       `dilemma-v2__${safe(scenarioId)}__${safe(game.players[0])}__${safe(game.players[1])}__${ts.replace(/[:.]/g, '-')}.json`);
   }, [game, result, scenarioId, scenario]);
 
@@ -844,9 +844,9 @@ export const DilemmaLabPanel: React.FC = () => {
                       {game.rounds.map(r => (
                         <div key={r.index} className="flex items-center gap-2 text-xs bg-canon-card border border-canon-border/30 rounded-lg px-3 py-1.5">
                           <span className="text-canon-faint font-mono w-6">R{r.index + 1}</span>
-                          <span className="text-canon-accent truncate flex-1">{scenario.actionPool.find(a => a.id === r.choices[game.players[0]])?.label}</span>
+                          <span className="text-canon-accent truncate flex-1">{scenario.actionPool.find(a => a.id === r.choices[game.players[0]])?.label ?? r.choices[game.players[0]]}</span>
                           <span className="text-canon-faint">×</span>
-                          <span className="text-canon-accent-2 truncate flex-1 text-right">{scenario.actionPool.find(a => a.id === r.choices[game.players[1]])?.label}</span>
+                          <span className="text-canon-accent-2 truncate flex-1 text-right">{scenario.actionPool.find(a => a.id === r.choices[game.players[1]])?.label ?? r.choices[game.players[1]]}</span>
                         </div>
                       ))}
                     </div>
@@ -860,7 +860,43 @@ export const DilemmaLabPanel: React.FC = () => {
               ),
             },
             {
-              label: 'Legacy V2 Trace', content: (
+              label: result.canonicalSession ? 'S8 Choice Trace' : 'Legacy V2 Trace', content: result.canonicalSession ? (
+                <div className="p-4 space-y-3">
+                  <div className="text-xs text-canon-muted">
+                    Authoritative policy: {result.canonicalSession.policyId} v{result.canonicalSession.policyVersion}. Kernel autonomous choice remains the reference lane.
+                  </div>
+                  {result.canonicalSession.decisions.map((decision) => (
+                    <div key={decision.tick} className="rounded-lg border border-canon-border/50 bg-canon-card p-3 space-y-2">
+                      <div className="flex items-center justify-between text-[10px]">
+                        <span className="text-canon-text">tick {decision.tick}</span>
+                        <span className={decision.divergence.anyDifference ? 'text-yellow-300' : 'text-canon-good'}>
+                          {decision.divergence.anyDifference ? 'canonical/reference divergence' : 'canonical/reference agree'}
+                        </span>
+                      </div>
+                      {decision.players.map((playerId) => {
+                        const choice = decision.choices[playerId];
+                        if (!choice) return null;
+                        return (
+                          <div key={playerId} className="rounded bg-canon-bg/50 p-2 space-y-1 text-[10px]">
+                            <div className="flex flex-wrap gap-3">
+                              <span className="text-canon-text">{playerId}: {choice.kernelActionId}</span>
+                              <span className="text-canon-muted">T={f3(choice.temperature)} ({choice.temperatureSource})</span>
+                              <span className="text-canon-muted">topK={choice.topK}</span>
+                              <span className="text-canon-muted">pool={choice.samplingPoolCandidateIds.length}</span>
+                            </div>
+                            <div className="text-canon-faint">used atoms: {choice.usedAtomIds.length}</div>
+                            {choice.ranked.map((candidate) => (
+                              <div key={candidate.utilityCandidateId} className={candidate.chosen ? 'text-canon-accent' : 'text-canon-muted'}>
+                                {candidate.kernelActionId} · Q={f3(candidate.q)} · sample={f3(candidate.sampleScore)}{candidate.inSamplingPool ? ' · pool' : ''}
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ))}
+                </div>
+              ) : (
                 <div className="p-4 space-y-3">
                   <div className="text-xs text-canon-muted">Legacy/experimental runner trace: 7-осевой utility · confidence · объяснения · state updates</div>
                   <div className="space-y-2 max-h-[600px] overflow-y-auto pr-1">

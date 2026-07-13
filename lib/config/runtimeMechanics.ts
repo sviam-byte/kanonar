@@ -51,9 +51,10 @@ function opponentBeliefOverrideFrom(value: unknown): boolean | undefined {
 // CONFLICT-PARITY-0 fix: S8 goal energy is keyed by active-goal ids while
 // external offers (conflict bridge, SimKit tactical deltas) speak goal-domain
 // vocabulary; without the union their Q contribution silently collapses to
-// -cost whenever active goals exist. Default OFF in every profile until the
-// program decides the global default (golden re-pin required) — the conflict
-// decision provider opts in explicitly.
+// -cost whenever active goals exist. Phase1 enables the union; legacy and
+// no-profile/config preserve their historical scoring. The conflict decision
+// provider also opts in explicitly so its typed bridge does not depend on the
+// caller profile.
 function goalEnergyDomainUnionOverrideFrom(value: unknown): boolean | undefined {
   if (value && typeof value === 'object') {
     const raw = (value as Record<string, unknown>).goalEnergyDomainUnionV1;
@@ -111,7 +112,7 @@ export function resolveRuntimeMechanics(value?: unknown): RuntimeMechanics {
       actionPriorInfluence: true,
       actionPamV2: true,
       opponentBeliefS5V1: opponentBeliefOverride ?? true,
-      goalEnergyDomainUnionV1: goalEnergyDomainUnionOverride ?? false,
+      goalEnergyDomainUnionV1: goalEnergyDomainUnionOverride ?? true,
     });
   }
 

@@ -243,6 +243,12 @@ Compatibility note:
 
 ## S8 — Decision / Actions
 
+- `runtimeMechanics.goalEnergyDomainUnionV1` controls the S8 energy map for
+  external/domain-keyed possibilities. When ON, active-goal and
+  `goal:domain:*` energies are merged; an active-goal key wins a collision.
+  The default is ON only for `phase1`, OFF for `legacy` and no-profile/config,
+  with an explicit object-form `true|false` override.
+
 Inputs:
 - `util:*`, action priors, access, possibilities
 - temperature policy:

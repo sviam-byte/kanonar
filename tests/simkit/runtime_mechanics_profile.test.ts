@@ -48,6 +48,7 @@ describe('runtime mechanics profile', () => {
       'actionScoring.priorInfluence',
       'actionScoring.pamV2',
       'tom.opponentBeliefS5V1',
+      'actionScoring.goalEnergyDomainUnionV1',
     ]);
     expect(JSON.stringify({
       communication: FC.communication.speechThreatV1.enabled,
@@ -73,6 +74,20 @@ describe('runtime mechanics profile', () => {
     expect(rollback.opponentBeliefS5V1).toBe(false);
     expect(rollback.activeMechanisms).not.toContain('tom.opponentBeliefS5V1');
     expect(FC.opponentBeliefV1.s5DualEmit.enabled).toBe(false);
+  });
+
+  it('enables goalEnergyDomainUnionV1 only for phase1 and honors opt-in/rollback overrides', () => {
+    expect(resolveRuntimeMechanics('legacy').goalEnergyDomainUnionV1).toBe(false);
+    expect(resolveRuntimeMechanics('phase1').goalEnergyDomainUnionV1).toBe(true);
+    expect(resolveRuntimeMechanics().goalEnergyDomainUnionV1).toBe(false);
+
+    const optIn = resolveRuntimeMechanics({ profileId: 'legacy', goalEnergyDomainUnionV1: true });
+    expect(optIn.goalEnergyDomainUnionV1).toBe(true);
+    expect(optIn.activeMechanisms).toEqual(['actionScoring.goalEnergyDomainUnionV1']);
+
+    const rollback = resolveRuntimeMechanics({ profileId: 'phase1', goalEnergyDomainUnionV1: false });
+    expect(rollback.goalEnergyDomainUnionV1).toBe(false);
+    expect(rollback.activeMechanisms).not.toContain('actionScoring.goalEnergyDomainUnionV1');
   });
 
   it('emits profile metadata only for an explicit run profile', () => {

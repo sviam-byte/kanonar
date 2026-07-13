@@ -3,7 +3,8 @@
 // goal-domain deltas. Legacy behavior: any active goal shadows every domain
 // energy, so a domain-keyed candidate scores Q = -cost regardless of its
 // deltas. goalEnergyDomainUnionV1 merges the two vocabularies (active-goal
-// keys win on collision) without touching the legacy default.
+// keys win on collision). Phase1 enables it; legacy/no-profile keep the
+// historical default.
 
 import { describe, expect, it } from 'vitest';
 

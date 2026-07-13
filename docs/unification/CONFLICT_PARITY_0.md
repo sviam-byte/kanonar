@@ -1,5 +1,13 @@
 # CONFLICT-PARITY-0 — dual-run parity evidence (canonical S8 vs kernel reference)
 
+Update 2026-07-12 (`GOALENERGY-UNION-DEFAULT`): the original all-profile OFF
+default described below is superseded. `phase1` now enables the union;
+`legacy` and no-profile/config remain OFF, and object-form `true|false`
+preserves opt-in/rollback. The no-profile semantic golden is unchanged. The
+Conflict provider live wiring was completed on 2026-07-12 through
+`runConflictLabSessionV1`; the remaining generalized-mechanic work belongs to
+R6, not to the trust-only R5 migration.
+
 Статус: **DONE — evidence collected, два дефекта интеграции найдены и исправлены**
 Дата: 2026-07-12
 Основание: план §CONFLICT-6.3 (dual-run parity mode), CONFLICT_CHOICE_ADR_0 §7
@@ -163,3 +171,18 @@ rel allied 0.458 / neutral 0.458 / strained 0.417; agents и env — ровно 
 - `tests/decision/goal_energy_domain_union.test.ts`,
   `tests/dilemma/conflictIntegration.test.ts`,
   `tests/dilemma/conflictParityEvidence.test.ts` — регрессии + харнесс.
+
+## 7. Live migration result (2026-07-12)
+
+- Active UI entrypoint: `runConflictLabSessionV1`.
+- Authoritative trust path: per-player GoalLab S8 choice → typed projected
+  action → `forcedJointActions(learn_from_utility)` → kernel next state.
+- Reference path: autonomous kernel replicator + argmax, retained in every
+  `ConflictJointDecisionReportV1`; divergence remains visible data.
+- UI/export surfaces expose policy/version, temperature/source, topK, sampling
+  pool membership, Q/sample scores, `usedAtomIds` and divergence.
+- Non-trust scenarios remain legacy compatibility runs with explicit
+  `unsupported_kernel`; no provider failure falls back to the legacy chooser.
+- Regression: `tests/dilemma/liveTrustExchangeRuntime.test.ts` covers
+  authoritative round/history alignment, multi-round state folding,
+  determinism and the unsupported compatibility lane.

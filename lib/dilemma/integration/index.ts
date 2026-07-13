@@ -21,6 +21,7 @@ export {
   type ConflictBeliefSignals,
 } from './candidateBridge';
 export { runConflictJointDecisionV1 } from './decisionProvider';
+export { CONFLICT_LIVE_SESSION_SCHEMA_VERSION, runConflictLabSessionV1 } from './liveSession';
 export {
   CONFLICT_PARITY_EVIDENCE_SCHEMA_VERSION,
   aggregateConflictParityEvidenceV1,

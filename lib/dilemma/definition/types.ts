@@ -22,6 +22,36 @@ import type {
 // (docs/LAB_UNIFICATION_PLAN.md §11, docs/unification/CONFLICT_CHOICE_ADR_0.md).
 
 export const CONFLICT_DEFINITION_SCHEMA_VERSION = 'conflict-definition-v1' as const;
+export const CONFLICT_DEFINITION_V2_SCHEMA_VERSION = 'conflict-definition-v2' as const;
+
+/** Declarative R6 schema. It describes a mechanic; it never supplies a UI-only rule. */
+export interface ConflictDefinitionV2Role {
+  readonly id: string;
+  readonly playerId: ConflictPlayerId;
+}
+
+export interface ConflictDefinitionV2Phase {
+  readonly id: string;
+  readonly actorRoleIds: readonly string[];
+  readonly observation: 'public_state' | 'private_state' | 'role_limited';
+}
+
+export interface ConflictDefinitionV2Action {
+  readonly id: ConflictActionId;
+  readonly phaseId: string;
+  readonly actorRoleId: string;
+  readonly target: 'counterparty' | 'none';
+}
+
+export interface ConflictDefinitionV2 {
+  readonly schemaVersion: typeof CONFLICT_DEFINITION_V2_SCHEMA_VERSION;
+  readonly protocolId: ConflictProtocolId;
+  readonly playerCount: 2;
+  readonly roles: readonly ConflictDefinitionV2Role[];
+  readonly phases: readonly ConflictDefinitionV2Phase[];
+  readonly legalActions: readonly ConflictDefinitionV2Action[];
+  readonly termination: ConflictDefinitionTermination;
+}
 
 export interface ConflictDefinitionTermination {
   // v1: the kernel state carries no terminal predicate; the host owns the

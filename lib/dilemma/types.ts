@@ -6,6 +6,7 @@
 import type { WorldState, V42Metrics, TomBeliefTraits, Relationship } from '../../types';
 import type { ConflictLearningTrace } from './learningMemory';
 import type { ConflictCoreRunReport } from './dynamics/types';
+import type { ConflictJointDecisionReportV1 } from './integration/types';
 
 // ═══════════════════════════════════════════════════════════════
 // v1 types (used by catalog/engine/analysis/bridge/legacy runner)
@@ -405,4 +406,15 @@ export interface V2RunResult {
   confidence: Record<string, number>;
   summaries: Record<string, string>;
   conflictCore?: ConflictCoreRunReport;
+  /**
+   * Present only when the live Conflict Lab session is owned by the canonical
+   * GoalLab S8 provider. Legacy callers remain wire-compatible by omission.
+   */
+  canonicalSession?: {
+    schemaVersion: 'conflict-live-session-v1';
+    runtime: 'canonical_goal_lab_s8';
+    policyId: 'goal_lab_s8_gumbel';
+    policyVersion: 1;
+    decisions: readonly ConflictJointDecisionReportV1[];
+  };
 }

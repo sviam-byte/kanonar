@@ -122,6 +122,12 @@ Canonical core direction:
   Conflict Lab protocol work.
 - `lib/dilemma/runner.ts` / `runDilemmaV2` remains a legacy/experimental
   scenario runner with learning traces and UI-facing scenario behavior.
+- The active Conflict Lab UI calls
+  `lib/dilemma/integration/liveSession.ts` / `runConflictLabSessionV1`.
+  For `trust_exchange`, its authoritative rounds are GoalLab S8 choices passed
+  through the typed kernel; the kernel autonomous policy is trace-only as the
+  recorded reference lane. Non-trust mechanics remain explicit legacy
+  compatibility runs with `unsupported_kernel` status.
 - Do not duplicate new mechanic rules in both systems. New protocol kernels
   should land in `dynamics/*` first, then legacy/UI integration can adapt to
   them explicitly.
@@ -267,3 +273,12 @@ Before reporting completion, review the diff against these questions:
 10. Did I document what mathematically distinguishes the mechanic?
 
 If any answer is bad, fix it before final response or report the blocker.
+
+## R6 constructor boundary (in progress)
+
+`ConflictDefinition` v1 remains the live kernel binding for `trust_exchange`.
+The additive v2 schema records role-to-player ownership, phase observation,
+legal action ownership and targets before a constructor can create a run. The
+only currently constructible mechanic is the deterministic dyadic
+`trust_exchange` kernel. Scenario cards without a typed kernel remain outside
+the constructor inventory and must not be presented as canonical mechanics.

@@ -108,6 +108,16 @@
   Live-замена `runDilemmaV2` на provider — отдельная миграция после
   накопления dual-run parity evidence.
 
+- **R5 LIVE CONFLICT PROVIDER WIRING (2026-07-12)**:
+  `runConflictLabSessionV1` is the active UI boundary. Multi-round
+  `trust_exchange` sessions now use canonical GoalLab S8 decisions as the
+  authoritative action history and typed-kernel next state. The versioned
+  choice reports preserve policy, effective temperature/source, sampling pool,
+  `usedAtomIds`, kernel reference actions and divergence in UI/export.
+  `runDilemmaV2` remains a callable compatibility runner; non-trust cards stay
+  explicitly `unsupported_kernel` and are not promoted to canonical mechanics.
+  Regression: `tests/dilemma/liveTrustExchangeRuntime.test.ts`.
+
 - **R2-METRIC-FIXES-0 (2026-07-12)**: четыре решения METRIC-INVENTORY-0
   исполнены. goalTension/frustration: у `deriveGoalCatalog` НЕТ реального
   вычисления (константные нули) → honest unknown (`number | null`, продюсер
@@ -125,13 +135,15 @@
   (55.6%) — политика (argmax vs seeded Gumbel), масштабируется температурой.
   Попутно найдены и исправлены: плоский Q конфликтных кандидатов
   (goal-energy словарь затенял доменные дельты → механика
-  `goalEnergyDomainUnionV1`, default OFF, провайдер включает явно) и
+  `goalEnergyDomainUnionV1`, теперь default ON только у `phase1`, провайдер
+  также включает явно) и
   belief-слепота моста без S5-слоя (S0 dyad фоллбэк в `readBeliefMetric`).
 
-Очередь дальше: GOALENERGY-UNION-DEFAULT (глобальный default механики +
-golden-перепин), live wiring provider в Conflict Lab UI (parity-блокеров
-нет), затем R6 generalized schema; R2b metric catalog — после сценового
-goal-conflict runtime.
+`GOALENERGY-UNION-DEFAULT` закрыт: `phase1` включает union, а `legacy` и
+no-profile/config сохраняют прежнюю семантику; object-form override остаётся
+двусторонним. Live wiring provider в Conflict Lab UI завершён; следующий
+крупный этап — R6 generalized schema. R2b metric catalog остаётся после
+сценового goal-conflict runtime.
 
 ## Phase1 OpponentBelief default (2026-07-12)
 
