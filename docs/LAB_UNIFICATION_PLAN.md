@@ -468,6 +468,12 @@ R7-FOUNDATION-0 2026-07-13 (PROPOSAL): инвентаризация зафикс
 identity. ADR-решения (self-belief shape, multi-target семантика, порядок)
 ждут подписи автора. Полный документ: `docs/unification/R7_FOUNDATION_0.md`.
 
+NKERNEL-FOUNDATION-0 2026-07-17: отложенный «отдельный будущий эпик»
+(исполнимый N-транзишн) начат; семейство карточек `NKERNEL-*`. Kernel
+execution в runtime остаётся диадическим; N-шаг строится как pure-domain
+парная декомпозиция поверх нетронутого ядра (транзишн-хелперы уже
+pair-generic). Полный документ: `docs/unification/NKERNEL_FOUNDATION_0.md`.
+
 ## 14. R8 — controlled cleanup
 
 Каждый кандидат получает статус: `false positive`, `test-only`, `runtime plugin`,

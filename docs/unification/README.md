@@ -130,6 +130,18 @@
   (self-belief shape, multi-target semantics, ordering) await author sign-off. No
   code changed. Doc: `docs/unification/R7_FOUNDATION_0.md`.
 
+- **NKERNEL-FOUNDATION-0 — исполнимое N-ядро, inventory + contract PROPOSAL
+  (2026-07-17)**: открывает эпик исполнимого N-транзишна, отложенный
+  R7-FOUNDATION-0 §0/§6.4. Инвентаризация ядра показала: транзишн-хелперы
+  (`normalizeConflictState`, `applyConflictTransition`, `validateJointAction`)
+  уже pair-generic, диадичность заперта в кортеже `ConflictState.players`,
+  `otherPlayer()`, `resolveTrustExchangeOutcome` и конструкторе протокола.
+  Предложена парная декомпозиция N-шага (`N·(N−1)/2` пар, свёртка mean-дельт +
+  sum-payoffs по ADR) поверх нетронутого диадического ядра; ADR §5.1–§5.4
+  подписаны 2026-07-17. Kernel execution в runtime остаётся диадическим;
+  срезы — `NKERNEL-STEP-0` … `NKERNEL-SESSION-0`. Doc:
+  `docs/unification/NKERNEL_FOUNDATION_0.md`.
+
 - **R6 CATALOG WIRING — step 4 (2026-07-13)**: the Conflict Lab catalog is now
   driven by the typed `CONFLICT_SCENARIO_INVENTORY` via the pure
   `conflictCatalogLane(kind, runnable)` classifier, not the ad-hoc `disabled`

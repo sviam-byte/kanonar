@@ -16,6 +16,8 @@ contract-first паттерну, что и уже принятый belief-graph-
 Update 2026-07-17 (2): автор подписал §5.2 (МИНИМАЛЬНЫЙ target-набор), §5.3
 (contract-first) и §5.4 (отдельный модуль v3 + lift). `conflict-definition-v3`
 реализован pure-domain (см. §6.4) — R7-foundation закрыт на уровне контрактов.
+Update 2026-07-17 (3): отдельный эпик исполнимого N-транзишна (§0/§3.4/§6.4)
+начат — `docs/unification/NKERNEL_FOUNDATION_0.md` (семейство `NKERNEL-*`).
 Основание: `docs/LAB_UNIFICATION_PLAN.md` §13 (R7 multi-agent foundation),
 release gate R7 («N-participant contracts, observations и directed beliefs
 работают»). Это подготовительный документ: он инвентаризует текущие
