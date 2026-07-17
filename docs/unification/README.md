@@ -148,6 +148,12 @@
   `tests/dilemma/nkernel_step_v1.test.ts` (8) с побайтным оракулом редукции
   N=2 и pairwise-consistency/non-interference N=3. Golden `efa018b3…` не
   сдвинут — модуль никем в runtime не импортируется, barrel не расширялся.
+  Срез 2 `NKERNEL-CHOICE-0` реализован 2026-07-18 (ADR агрегации: mean по
+  целям): `lib/dilemma/nkernel/nchoice.ts` — эндогенный
+  `resolveConflictNChoiceStepV1` (kernel-репликатор над mean-агрегатом парных
+  utilities → dominant → N-step), `learn_from_utility` при `N > 2`
+  разблокирован в nstep; `tests/dilemma/nkernel_choice_v1.test.ts` (5) с
+  побайтным оракулом против неforced `resolveProtocolStep`.
 
 - **R6 CATALOG WIRING — step 4 (2026-07-13)**: the Conflict Lab catalog is now
   driven by the typed `CONFLICT_SCENARIO_INVENTORY` via the pure

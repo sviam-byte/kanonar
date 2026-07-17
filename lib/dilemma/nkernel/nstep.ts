@@ -13,6 +13,7 @@ import { codeUnitCompare } from '../../utils/compare';
 import {
   applyConflictTransition,
   resolveProtocolStep,
+  updateStrategyProfileReplicator,
   validateJointAction,
 } from '../dynamics/engine';
 import { normalizeActionProbabilities } from '../dynamics/math';
@@ -21,11 +22,11 @@ import type { ConflictLearningMemory } from '../learningMemory';
 import type {
   ActionUtilityBreakdown,
   AgentDelta,
+  ConflictActionId,
   ConflictObservation,
   ConflictOutcome,
   ConflictPlayerId,
   ConflictRegimeState,
-  ConflictStepResult,
   ConflictTrajectoryFrame,
   ForcedActionStrategyMode,
   RelationDelta,
@@ -57,17 +58,6 @@ export function resolveConflictNStepV1(input: ConflictNStepInputV1): ConflictNSt
     }
   }
 
-  if (mode === 'learn_from_utility' && players.length > 2) {
-    return {
-      ok: false,
-      error: {
-        code: 'unsupported_strategy_mode_for_n',
-        playerCount: players.length,
-        message: `forcedActionStrategyMode 'learn_from_utility' is fail-closed at N = ${players.length} until the NKERNEL-CHOICE-0 aggregation ADR is signed (NKERNEL_FOUNDATION_0 §5.2)`,
-      },
-    };
-  }
-
   const actions = validateJointAction(asKernelConflictStateV1(canonical), protocol, input.forcedJointActions);
   if (actions.ok === false) return actions;
 
@@ -77,7 +67,6 @@ export function resolveConflictNStepV1(input: ConflictNStepInputV1): ConflictNSt
   // (the projection resets trace to [], so the pair state's trace IS the new
   // frames); the pair's own agents/environment/history/tick are discarded.
   const pairwise: ConflictNStepPairV1[] = [];
-  const pairSteps: ConflictStepResult[] = [];
   const observations: Record<ConflictPlayerId, Record<ConflictPlayerId, ConflictObservation>> = {};
   const utilities: Record<ConflictPlayerId, Record<ConflictPlayerId, readonly ActionUtilityBreakdown[]>> = {};
   const foldedMemories: Record<ConflictPlayerId, Record<ConflictPlayerId, ConflictLearningMemory>> = {};
@@ -122,7 +111,6 @@ export function resolveConflictNStepV1(input: ConflictNStepInputV1): ConflictNSt
       }
 
       pairwise.push({ pair: [a, b], outcome: pairStep.value.outcome });
-      pairSteps.push(pairStep.value);
       setDirected(observations, a, b, pairStep.value.observations[a]);
       setDirected(observations, b, a, pairStep.value.observations[b]);
       setDirected(utilities, a, b, pairStep.value.utilities[a]);
@@ -174,10 +162,12 @@ export function resolveConflictNStepV1(input: ConflictNStepInputV1): ConflictNSt
     eventTags: singlePair ? pairwise[0].outcome.eventTags : sortedTagUnion(pairwise),
   };
 
-  // ADR §5.2: 'freeze' recomputes the normalized pass-through at N level
-  // (byte-equal to the kernel's freeze branch); 'learn_from_utility' is only
-  // reachable at N = 2 here — identity aggregation of the single pair's
-  // replicator output.
+  // ADR §5.2 (aggregation signed 2026-07-18): 'freeze' recomputes the normalized
+  // pass-through at N level (byte-equal to the kernel's freeze branch);
+  // 'learn_from_utility' runs the kernel replicator at N level over the
+  // component-wise MEAN of the player's per-target utilities — at N = 2 the
+  // mean is a fold-of-one, so the profile equals the single pair's replicator
+  // output exactly (utilities are pre-resolution, independent of the actions).
   const strategyProfiles: Record<ConflictPlayerId, StrategyProfile> = {};
   if (mode === 'freeze') {
     for (const playerId of players) {
@@ -189,7 +179,14 @@ export function resolveConflictNStepV1(input: ConflictNStepInputV1): ConflictNSt
     }
   } else {
     for (const playerId of players) {
-      strategyProfiles[playerId] = pairSteps[0].strategyProfiles[playerId];
+      const perTarget = players
+        .filter((targetId) => targetId !== playerId)
+        .map((targetId) => utilities[playerId][targetId]);
+      strategyProfiles[playerId] = updateStrategyProfileReplicator(
+        canonical.strategyProfiles[playerId],
+        aggregateActionUtilitiesMeanV1(perTarget, protocol.actionOrder),
+        protocol.actionOrder,
+      );
     }
   }
 
@@ -247,6 +244,43 @@ function foldAgentDeltaMean(contributions: readonly AgentDelta[], divisor: numbe
     out[key] = sum / divisor;
   }
   return out as AgentDelta;
+}
+
+/**
+ * ADR NKERNEL-CHOICE-0 (signed 2026-07-18): component-wise MEAN of a player's
+ * utility breakdowns across their targets, per actionOrder entry. U is linear
+ * in its components, so mean(U) = U(mean) — the fold is self-consistent — and
+ * the magnitude does not grow with N (same rationale as the §5.1 mean of
+ * agentDeltas). With a single target every field is x/1 = x exactly, which is
+ * what keeps the N = 2 reduction oracle byte-tight. Inputs are kernel-produced
+ * breakdowns (every actionOrder id present in each target's list); the divisor
+ * is the number of targets that actually scored the action.
+ */
+export function aggregateActionUtilitiesMeanV1(
+  perTarget: readonly (readonly ActionUtilityBreakdown[])[],
+  actionOrder: readonly ConflictActionId[],
+): readonly ActionUtilityBreakdown[] {
+  return actionOrder.map((actionId) => {
+    const entries = perTarget
+      .map((breakdowns) => breakdowns.find((entry) => entry.actionId === actionId))
+      .filter((entry): entry is ActionUtilityBreakdown => entry !== undefined);
+    const divisor = Math.max(1, entries.length);
+    const keys = new Set<string>();
+    for (const entry of entries) {
+      for (const key of Object.keys(entry)) {
+        if (key !== 'actionId' && typeof (entry as unknown as Record<string, unknown>)[key] === 'number') keys.add(key);
+      }
+    }
+    const folded: Record<string, number> = {};
+    for (const key of [...keys].sort(codeUnitCompare)) {
+      let sum = 0;
+      for (const entry of entries) {
+        sum += ((entry as unknown as Record<string, number>)[key] ?? 0);
+      }
+      folded[key] = sum / divisor;
+    }
+    return { ...folded, actionId } as unknown as ActionUtilityBreakdown;
+  });
 }
 
 function sortedTagUnion(pairwise: readonly ConflictNStepPairV1[]): readonly string[] {

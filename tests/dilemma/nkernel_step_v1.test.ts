@@ -10,13 +10,10 @@ import { describe, expect, it } from 'vitest';
 
 import {
   createTrustExchangeProtocol,
-  defaultConflictAgentState,
   defaultConflictRelationState,
   resolveProtocolStep,
   type ConflictAction,
   type ConflictActionId,
-  type ConflictRelationState,
-  type StrategyProfile,
 } from '../../lib/dilemma';
 import {
   asKernelConflictStateV1,
@@ -25,7 +22,13 @@ import {
   participantSetFromConflictPlayersV1,
   trustExchangeDefinitionNV1,
 } from '../../lib/dilemma/nkernel/nstate';
-import { N_PAIRWISE_OUTCOME_TAG, resolveConflictNStepV1 } from '../../lib/dilemma/nkernel/nstep';
+import { normalizeActionProbabilities } from '../../lib/dilemma/dynamics/math';
+import { updateStrategyProfileReplicator } from '../../lib/dilemma/dynamics/engine';
+import {
+  N_PAIRWISE_OUTCOME_TAG,
+  aggregateActionUtilitiesMeanV1,
+  resolveConflictNStepV1,
+} from '../../lib/dilemma/nkernel/nstep';
 import {
   CONFLICT_NSTEP_SCHEMA_VERSION,
   type ConflictStateNV1,
@@ -33,52 +36,9 @@ import {
 import type { ParticipantSetV1 } from '../../lib/dilemma/definition/participantSet';
 import { maxDirectedEdgesV1 } from '../../lib/tom/opponentBelief/beliefGraph';
 
+import { makeStateN } from './nkernelFixtures';
+
 const ACTION_IDS = ['trust', 'withhold', 'betray'] as const satisfies readonly ConflictActionId[];
-
-function makeStateN(n: number): ConflictStateNV1 {
-  const players = Array.from({ length: n }, (_, i) => String.fromCharCode(97 + i)); // 'a', 'b', 'c', ...
-  const agents: Record<string, ReturnType<typeof defaultConflictAgentState>> = {};
-  const relations: Record<string, Record<string, ConflictRelationState>> = {};
-  const strategyProfiles: Record<string, StrategyProfile> = {};
-
-  players.forEach((playerId, i) => {
-    agents[playerId] = defaultConflictAgentState({
-      cooperationTendency: 0.5 + 0.05 * i,
-      loyalty: 0.4 + 0.04 * i,
-      fear: 0.15 + 0.03 * i,
-      goalPressure: 0.45 + 0.02 * i,
-    });
-    strategyProfiles[playerId] = {
-      playerId,
-      probabilities: { trust: 1 / 3, withhold: 1 / 3, betray: 1 / 3 },
-    };
-    relations[playerId] = {};
-    players.forEach((otherId, j) => {
-      if (playerId === otherId) return;
-      relations[playerId][otherId] = defaultConflictRelationState({
-        trust: 0.4 + 0.06 * i + 0.02 * j,
-        bond: 0.28 + 0.03 * j,
-        conflict: 0.12 + 0.02 * i,
-        perceivedThreat: 0.18 + 0.01 * j,
-      });
-    });
-  });
-
-  return {
-    tick: 0,
-    players,
-    agents,
-    relations,
-    environment: {
-      resourceScarcity: 0.25,
-      externalPressure: 0.3,
-      visibility: 0.2,
-      institutionalPressure: 0.45,
-    },
-    history: [],
-    strategyProfiles,
-  };
-}
 
 function forced(actions: Readonly<Record<string, ConflictActionId>>): readonly ConflictAction[] {
   return Object.keys(actions).map((playerId) => ({ playerId, actionId: actions[playerId] }));
@@ -313,7 +273,34 @@ describe('NKERNEL-STEP-0 conflict-nstep-v1', () => {
     }
   });
 
-  it('fails closed on joint-action violations, protocol gaps, learn mode at N > 2, and bad pair projections', () => {
+  it('learn mode at N = 3 runs the replicator over mean-aggregated utilities (NKERNEL-CHOICE-0 ADR)', () => {
+    const stateN = makeStateN(3);
+    const protocol = buildTrustExchangeProtocolNV1(mustSet(stateN.players));
+    const learnAtN3 = resolveConflictNStepV1({
+      state: stateN,
+      protocol,
+      forcedJointActions: forced({ a: 'trust', b: 'betray', c: 'withhold' }),
+      forcedActionStrategyMode: 'learn_from_utility',
+    });
+    if (learnAtN3.ok === false) throw new Error('learn mode at N = 3 must be supported after the NKERNEL-CHOICE-0 ADR');
+
+    for (const playerId of ['a', 'b', 'c']) {
+      const perTarget = ['a', 'b', 'c']
+        .filter((targetId) => targetId !== playerId)
+        .map((targetId) => learnAtN3.value.utilities[playerId][targetId]);
+      const expected = updateStrategyProfileReplicator(
+        {
+          playerId,
+          probabilities: normalizeActionProbabilities({ trust: 1 / 3, withhold: 1 / 3, betray: 1 / 3 }, protocol.actionOrder),
+        },
+        aggregateActionUtilitiesMeanV1(perTarget, protocol.actionOrder),
+        protocol.actionOrder,
+      );
+      expect(learnAtN3.value.strategyProfiles[playerId]).toEqual(expected);
+    }
+  });
+
+  it('fails closed on joint-action violations, protocol gaps, and bad pair projections', () => {
     const stateN = makeStateN(3);
     const protocol = buildTrustExchangeProtocolNV1(mustSet(stateN.players));
     const runWith = (jointActions: readonly ConflictAction[]) =>
@@ -338,20 +325,6 @@ describe('NKERNEL-STEP-0 conflict-nstep-v1', () => {
     });
     expect(dyadProtocol.ok).toBe(false);
     if (dyadProtocol.ok === false) expect(dyadProtocol.error.code).toBe('invalid_protocol');
-
-    const learnAtN3 = resolveConflictNStepV1({
-      state: makeStateN(3),
-      protocol,
-      forcedJointActions: forced({ a: 'trust', b: 'betray', c: 'withhold' }),
-      forcedActionStrategyMode: 'learn_from_utility',
-    });
-    expect(learnAtN3.ok).toBe(false);
-    if (learnAtN3.ok === false) {
-      expect(learnAtN3.error.code).toBe('unsupported_strategy_mode_for_n');
-      if (learnAtN3.error.code === 'unsupported_strategy_mode_for_n') {
-        expect(learnAtN3.error.playerCount).toBe(3);
-      }
-    }
 
     const selfPair = dyadicPairProjectionV1(makeStateN(3), 'a', 'a');
     expect(selfPair.ok).toBe(false);

@@ -22,6 +22,7 @@ import type {
 
 export const CONFLICT_NSTATE_SCHEMA_VERSION = 'conflict-nstate-v1' as const;
 export const CONFLICT_NSTEP_SCHEMA_VERSION = 'conflict-nstep-v1' as const;
+export const CONFLICT_NCHOICE_SCHEMA_VERSION = 'conflict-nchoice-v1' as const;
 
 // Structurally ConflictState with the dyadic players tuple widened to an
 // ordered N-array (author-declared order, preserved). The kernel state is
@@ -40,9 +41,6 @@ export type ConflictNStepErrorV1 =
   // Participant strictness reused from participant-set-v1 (unique ids, N >= 2);
   // causeCode carries the first underlying cause, message aggregates all.
   | { code: 'invalid_participants'; causeCode: ParticipantSetErrorV1['code']; message: string }
-  // ADR §5.2: learn_from_utility at N > 2 is fail-closed until the utility
-  // aggregation ADR of NKERNEL-CHOICE-0 is signed.
-  | { code: 'unsupported_strategy_mode_for_n'; playerCount: number; message: string }
   | {
     code: 'pair_step_failed';
     pair: readonly [ConflictPlayerId, ConflictPlayerId];
@@ -84,4 +82,21 @@ export interface ConflictNStepResultV1 {
 
 export type ConflictNStepResultOrErrorV1 =
   | { readonly ok: true; readonly value: ConflictNStepResultV1 }
+  | { readonly ok: false; readonly error: ConflictNStepErrorV1 };
+
+// NKERNEL-CHOICE-0 (§3.4): endogenous N-choice. The chosen joint action is the
+// kernel's own endogenous rule lifted to N — replicator over the ADR-signed
+// component-wise MEAN of the player's per-target utility breakdowns, then
+// dominant action; the transition itself is the same pairwise N-step.
+export interface ConflictNChoiceResultV1 {
+  readonly schemaVersion: typeof CONFLICT_NCHOICE_SCHEMA_VERSION;
+  readonly chosenActions: Readonly<Record<ConflictPlayerId, ConflictActionId>>;
+  // Per-player aggregated utilities the choice was made from (mean over the
+  // player's N−1 targets, field-wise).
+  readonly aggregatedUtilities: Readonly<Record<ConflictPlayerId, readonly ActionUtilityBreakdown[]>>;
+  readonly step: ConflictNStepResultV1;
+}
+
+export type ConflictNChoiceResultOrErrorV1 =
+  | { readonly ok: true; readonly value: ConflictNChoiceResultV1 }
   | { readonly ok: false; readonly error: ConflictNStepErrorV1 };
