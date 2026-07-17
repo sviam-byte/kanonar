@@ -1,6 +1,6 @@
 # R7-FOUNDATION-0 — multi-agent foundation inventory + contract proposal
 
-Статус: **PROPOSAL — ADR §5.1 decided, slices 1–3 implemented.** Дата: 2026-07-13.
+Статус: **IMPLEMENTED — ADR §5.1–§5.4 decided, все срезы 1–4 реализованы.** Дата: 2026-07-13.
 Update 2026-07-13: author decided §5.1 (self-belief = separate node reusing
 `OpponentBeliefV1`, observerId===targetId, outside the directed bound). The
 `belief-graph-v1` slice is implemented pure-domain
@@ -13,6 +13,9 @@ Update 2026-07-17: `participant-set-v1` (§3.1) и `observation-view-v1` (§3.2)
 contract-first паттерну, что и уже принятый belief-graph-v1 (рекомендация
 §5.3; формальная подпись §5.3 по-прежнему открыта). `conflict-definition-v3`
 остаётся заблокирован до подписи §5.2/§5.4.
+Update 2026-07-17 (2): автор подписал §5.2 (МИНИМАЛЬНЫЙ target-набор), §5.3
+(contract-first) и §5.4 (отдельный модуль v3 + lift). `conflict-definition-v3`
+реализован pure-domain (см. §6.4) — R7-foundation закрыт на уровне контрактов.
 Основание: `docs/LAB_UNIFICATION_PLAN.md` §13 (R7 multi-agent foundation),
 release gate R7 («N-participant contracts, observations и directed beliefs
 работают»). Это подготовительный документ: он инвентаризует текущие
@@ -115,7 +118,7 @@ view другого (перенос hidden-field non-interference оракула
 - fail-closed конструктор: дублирующее ребро, self-в-directed, неизвестный
   participant → отказ.
 
-### 3.4 Role knowledge + multi-target actions (`conflict-definition-v3` **proposal**)
+### 3.4 Role knowledge + multi-target actions (`conflict-definition-v3`) — ✅ IMPLEMENTED 2026-07-17
 Обобщение `ConflictDefinitionV2`:
 - `playerCount: number (≥2)` вместо литерала `2`;
 - `target: 'counterparty'` → адресуемый target-режим (`self | role | participant
@@ -124,6 +127,9 @@ view другого (перенос hidden-field non-interference оракула
 
 **Kernel execution остаётся диадическим:** v3 описывает контракт, исполнимый
 транзишн для `N > 2` — отдельный эпик (§0). Валидатор v3 fail-closed как v2.
+
+Реализация — §6.4. Отгружен МИНИМАЛЬНЫЙ target-набор по решению §5.2 (без
+`role`/`subset` — они отложены в аддитивный v3.1).
 
 ## 4. Сохраняемые инварианты
 
@@ -140,14 +146,19 @@ view другого (перенос hidden-field non-interference оракула
    `selfBeliefs[id]` того же типа `OpponentBeliefV1` (observerId === targetId),
    вне directed-границы `N·(N−1)`. Переиспользует валидированный тип; минимум
    новой поверхности. Реализовано в `belief-graph-v1`.
-2. **Multi-target action семантика.** Набор target-режимов (§3.4): минимальный
-   (`self | participant | all_others`) или полный (`+ role | subset`)? Это
-   ADR-уровень: определяет форму legal-action и проекции.
-3. **Порядок реализации.** Contract-first (все типы+валидаторы+тесты как pure
-   domain, затем wiring — паттерн R3/TOM-SPEC-0), что рекомендуется, или
-   иной срез?
-4. **Именование/версии.** `conflict-definition-v3` vs расширение v2 in-place под
-   новым флагом.
+2. **Multi-target action семантика.** ✅ DECIDED 2026-07-17: минимальный набор
+   `none | self | counterparty | participant | all_others`; `counterparty` —
+   валидируемый алиас, легален только при `playerCount === 2`; `participant`
+   несёт явный `participantId` (playerId известной роли, не role id);
+   `role`/`subset` — будущий аддитивный v3.1.
+3. **Порядок реализации.** ✅ DECIDED 2026-07-17: contract-first pure domain
+   (типы + fail-closed валидатор + тесты; без runtime/UI wiring; kernel
+   остаётся диадическим) — паттерн, уже принятый для срезов 1–3.
+4. **Именование/версии.** ✅ DECIDED 2026-07-17: отдельный модуль
+   `conflict-definition-v3`; v2 заморожен (его пин-тест не тронут);
+   `liftConflictDefinitionV2ToV3` доказывает, что v2 — частный случай
+   `N = 2`/counterparty (тот же bridge-паттерн, что
+   `participantSetFromConflictRolesV1`).
 
 ## 6. Имплементационные срезы
 
@@ -191,8 +202,36 @@ Gate достигнут: `tsc` чист; полный набор зелёный;
 
 Gate 2026-07-17: `tsc --noEmit` чист; полный набор 520 passed / 10 skipped / 0
 failed; golden-тест зелёный, no-profile хеш `efa018b3…` не сдвинут (оба модуля
-никем в runtime не импортируются). Оставшийся срез: `conflict-definition-v3` —
-ждёт подписи §5.2 (multi-target семантика) и §5.4 (нейминг v3 vs v2-in-place).
+никем в runtime не импортируются).
+
+### 6.4 `conflict-definition-v3` — ✅ IMPLEMENTED 2026-07-17 (pure-domain)
+- `lib/dilemma/definition/conflictDefinitionV3.ts`: `ConflictDefinitionV3`
+  (`playerCount: number`, обязан равняться `roles.length`; `N ≥ 2` — через
+  мост participant-set), discriminated target union §5.2 (минимальный набор),
+  fail-closed `validateConflictDefinitionV3` (14-кодовый error union,
+  collect-all) и `liftConflictDefinitionV2ToV3` (чистая пере-разметка +
+  ре-валидация результата — теорема «lift валидного v2 = валидный v3»);
+- ключевые решения: `protocolId` и action `id` — plain `string`, расцеплены от
+  kernel-литералов `ConflictProtocolId`/`ConflictActionId` (иначе `N = 3` игра
+  нетипизируема; lift type-sound — литералы расширяются); уникальность action
+  id НЕ требуется — канонический v2-инстанс дублирует id между ролями,
+  уникальность на тройке `(phaseId, actorRoleId, id)`; роли валидируются через
+  `participantSetFromConflictRolesV1` (ошибки фолдятся в `invalid_roles` +
+  `causeCode`), поэтому v3 **строже v2**: дубликаты `playerId` отвергаются
+  (пин-тест фиксирует оба поведения); `participant`-target адресует `playerId`;
+  `phase.observation`/`role_limited` остаётся декларативным до v3.1;
+- `tests/dilemma/conflict_definition_v3.test.ts` (15): lift канонического
+  trust_exchange с пополевой эквивалентностью, оба v2-target вида, `N = 3..5`,
+  counterparty при `N = 2` напрямую / отказ при `N > 2`, participant=playerId
+  («зубы»: role id отвергается), неизвестный target, mismatch в обе стороны,
+  `N < 2`, дубликаты/пустые id через мост, malformed phases/actions,
+  collect-all, строгость v3 над v2.
+
+Gate 2026-07-17 (2): `tsc --noEmit` чист; полный набор 535 passed / 10 skipped
+/ 0 failed; golden-тест зелёный, no-profile хеш `efa018b3…` не сдвинут (модуль
+никем в runtime не импортируется). R7-foundation закрыт на уровне контрактов;
+исполнимый N-транзишн, joint protocol `N > 2`, coalition goals — отдельный
+будущий эпик (§0).
 
 ## 7. Пределы верификации
 
