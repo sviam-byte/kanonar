@@ -1,12 +1,18 @@
 # R7-FOUNDATION-0 — multi-agent foundation inventory + contract proposal
 
-Статус: **PROPOSAL — ADR §5.1 decided, first slice implemented.** Дата: 2026-07-13.
+Статус: **PROPOSAL — ADR §5.1 decided, slices 1–3 implemented.** Дата: 2026-07-13.
 Update 2026-07-13: author decided §5.1 (self-belief = separate node reusing
 `OpponentBeliefV1`, observerId===targetId, outside the directed bound). The
 `belief-graph-v1` slice is implemented pure-domain
 (`lib/tom/opponentBelief/beliefGraph.ts`, `tests/tom/belief_graph_v1.test.ts`).
 §5.2/§5.3/§5.4 (multi-target semantics, ordering beyond this slice, naming)
 still await sign-off.
+Update 2026-07-17: `participant-set-v1` (§3.1) и `observation-view-v1` (§3.2)
+реализованы pure-domain (см. §6.2/§6.3). Они не зависят от §5.2/§5.4 — те
+решения ограничивают только `conflict-definition-v3` — и следуют тому же
+contract-first паттерну, что и уже принятый belief-graph-v1 (рекомендация
+§5.3; формальная подпись §5.3 по-прежнему открыта). `conflict-definition-v3`
+остаётся заблокирован до подписи §5.2/§5.4.
 Основание: `docs/LAB_UNIFICATION_PLAN.md` §13 (R7 multi-agent foundation),
 release gate R7 («N-participant contracts, observations и directed beliefs
 работают»). Это подготовительный документ: он инвентаризует текущие
@@ -88,16 +94,17 @@ dual-emit при `otherIds.length === 1` для обоих участников.
 подписей; вводятся под новыми schema-версиями. Ни один не подключается к
 runtime по умолчанию (paritygate как в R3/R5).
 
-### 3.1 Participant set contract (`participant-set-v1`)
+### 3.1 Participant set contract (`participant-set-v1`) — ✅ IMPLEMENTED 2026-07-17
 Явное упорядоченное множество участников сцены + роль-привязка, обобщающее
 `ConflictDefinitionV2Role[]` с 2 до `N ≥ 2`. Additive: диадический инстанс —
-частный случай `N = 2`, байт-идентичный текущему.
+частный случай `N = 2`, байт-идентичный текущему. Реализация — §6.2.
 
-### 3.2 Individual observation views (`observation-view-v1`)
+### 3.2 Individual observation views (`observation-view-v1`) — ✅ IMPLEMENTED 2026-07-17
 Тонкая обёртка: резолвер под каждого observerId → per-participant view.
 Контракт наблюдений уже это позволяет (§1.1); нужен только типизированный
 селектор + доказательство, что hidden-поля одного участника не протекают в
 view другого (перенос hidden-field non-interference оракула на N).
+Реализация — §6.3.
 
 ### 3.3 Sparse directed belief graph (`belief-graph-v1`)
 Типизированная обёртка над множеством `OpponentBeliefV1` рёбер:
@@ -142,9 +149,9 @@ view другого (перенос hidden-field non-interference оракула
 4. **Именование/версии.** `conflict-definition-v3` vs расширение v2 in-place под
    новым флагом.
 
-## 6. Первый имплементационный срез (наименьшая карта)
+## 6. Имплементационные срезы
 
-**`belief-graph-v1` — ✅ IMPLEMENTED 2026-07-13** (pure-domain):
+### 6.1 `belief-graph-v1` — ✅ IMPLEMENTED 2026-07-13 (pure-domain)
 - `lib/tom/opponentBelief/beliefGraph.ts`: `BeliefGraphV1` тип, fail-closed
   `buildBeliefGraphV1`, `maxDirectedEdgesV1(n) = n·(n−1)`, self-узлы отдельно;
 - построение из существующих `OpponentBeliefV1` рёбер, без изменения S5/runtime;
@@ -153,9 +160,39 @@ view другого (перенос hidden-field non-interference оракула
   participant, неизвестного участника и дубликат ребра.
 
 Gate достигнут: `tsc` чист; полный набор зелёный; golden no-profile хеш
-`efa018b3…` не сдвинут (модуль никем в runtime не импортируется). Следующие
-срезы (ждут §5.2–5.4): `participant-set-v1`, `observation-view-v1`,
-`conflict-definition-v3`.
+`efa018b3…` не сдвинут (модуль никем в runtime не импортируется).
+
+### 6.2 `participant-set-v1` — ✅ IMPLEMENTED 2026-07-17 (pure-domain)
+- `lib/dilemma/definition/participantSet.ts`: `ParticipantSetV1` (упорядоченный,
+  порядок автора сохраняется дословно, не сортируется), fail-closed
+  `buildParticipantSetV1` (`N ≥ 2`, уникальные participant- и role-id, непустые
+  id), `participantIdsV1` (форма, которую ест `buildBeliefGraphV1`) и
+  диадический мост `participantSetFromConflictRolesV1`
+  (`ConflictDefinitionV2Role[]` → частный случай `N = 2`, чистая пере-разметка
+  `playerId → participantId`, `id → roleId`);
+- `tests/dilemma/participant_set_v1.test.ts` (7): мост v2-ролей ≡ прямое
+  построение, `N = 3..5`, порядок verbatim, fail-closed на `< 2`, пустые id,
+  дубликаты participant/role, композиция `participantIdsV1 →
+  buildBeliefGraphV1` (fully connected `N = 3` упирается в `maxDirectedEdgesV1`).
+
+### 6.3 `observation-view-v1` — ✅ IMPLEMENTED 2026-07-17 (pure-domain)
+- `lib/scene/observation/observationView.ts`: `ObservationViewV1`, fail-closed
+  `selectObservationViewV1` (per-observer срез уже разрешённой
+  `ObservationResolutionV1`; отказ на невалидную/чужую resolution, неизвестного
+  observer'а и «foreign envelope» — конверт чужого наблюдателя в слоте) и
+  `selectAllObservationViewsV1` (все views, сортировка по observerId,
+  all-or-nothing);
+- `tests/scene/observation_view_v1.test.ts` (9): точный срез слота, все views,
+  fail-closed ×3, и **N=3 non-interference оракул** — мутация hidden-поля вне
+  allowlist не меняет ни один view; мутация alice-only канала (event),
+  carol-only knowledge и carol-only relation меняет view только адресата,
+  остальные byte-for-byte равны baseline (`.not.toEqual` на адресате — оракул
+  «с зубами»).
+
+Gate 2026-07-17: `tsc --noEmit` чист; полный набор 520 passed / 10 skipped / 0
+failed; golden-тест зелёный, no-profile хеш `efa018b3…` не сдвинут (оба модуля
+никем в runtime не импортируются). Оставшийся срез: `conflict-definition-v3` —
+ждёт подписи §5.2 (multi-target семантика) и §5.4 (нейминг v3 vs v2-in-place).
 
 ## 7. Пределы верификации
 
@@ -165,3 +202,9 @@ Gate достигнут: `tsc` чист; полный набор зелёный;
 end-to-end N-participant прогон намеренно вне scope до имплементационных карт.
 Граница `N·(N−1)` доказана арифметически (§2), enforced-инвариант появится в
 `belief-graph-v1`.
+
+Update 2026-07-17: для слоя наблюдений утверждение §1.1 теперь подтверждено
+исполнением, не только типами — `resolveObservationsV1` реально прогнан на
+`N = 3` сцене в `tests/scene/observation_view_v1.test.ts`, включая
+non-interference оракул. End-to-end N-participant прогон *всего пайплайна*
+(kernel + S5 + выбор) по-прежнему вне scope — kernel диадичен по §0/§4.
