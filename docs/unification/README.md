@@ -141,6 +141,13 @@
   подписаны 2026-07-17. Kernel execution в runtime остаётся диадическим;
   срезы — `NKERNEL-STEP-0` … `NKERNEL-SESSION-0`. Doc:
   `docs/unification/NKERNEL_FOUNDATION_0.md`.
+  Срез 1 `NKERNEL-STEP-0` реализован 2026-07-17:
+  `lib/dilemma/nkernel/{types,nstate,nstep}.ts` — forced-joint-action
+  `resolveConflictNStepV1` (свёртки mean-дельт + sum-payoffs, `pairwise`
+  провенанс, `learn_from_utility` fail-closed при `N > 2`);
+  `tests/dilemma/nkernel_step_v1.test.ts` (8) с побайтным оракулом редукции
+  N=2 и pairwise-consistency/non-interference N=3. Golden `efa018b3…` не
+  сдвинут — модуль никем в runtime не импортируется, barrel не расширялся.
 
 - **R6 CATALOG WIRING — step 4 (2026-07-13)**: the Conflict Lab catalog is now
   driven by the typed `CONFLICT_SCENARIO_INVENTORY` via the pure

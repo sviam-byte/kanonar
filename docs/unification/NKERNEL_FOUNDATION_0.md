@@ -1,7 +1,13 @@
 # NKERNEL-FOUNDATION-0 — исполнимое N-ядро: инвентаризация + contract proposal
 
-Статус: **PROPOSAL — ADR §5.1–§5.4 подписаны 2026-07-17; срез 1 (`conflict-nstep-v1`) готов к имплементации.**
+Статус: **ADR §5.1–§5.4 подписаны 2026-07-17; срез 1 (`NKERNEL-STEP-0`) РЕАЛИЗОВАН 2026-07-17.**
 Дата: 2026-07-17.
+Update 2026-07-17: `NKERNEL-STEP-0` реализован pure-domain (см. §6.1):
+`lib/dilemma/nkernel/{types,nstate,nstep}.ts` +
+`tests/dilemma/nkernel_step_v1.test.ts` (8). Gate: `tsc --noEmit` чист; полный
+набор 543 passed / 10 skipped / 0 failed; golden-тест зелёный, no-profile хеш
+`efa018b3…` не сдвинут (`grep -rn "nkernel" lib` — только self-references,
+barrel не расширялся).
 
 Основание: `docs/LAB_UNIFICATION_PLAN.md` §13 («Полноценный joint protocol для
 `N > 2`, coalition goals и group payoff — отдельный будущий эпик») и
@@ -196,10 +202,23 @@ pair-generic хелперы (`normalizeConflictState`, `applyConflictTransition`
 
 ## 6. Имплементационные срезы
 
-1. **`NKERNEL-STEP-0`** — §3.1–§3.3: `conflict-nstate-v1` +
-   `trust-exchange-protocol-n-v1` + `conflict-nstep-v1`, тесты с оракулом
-   редукции (N=2) и pairwise-consistency/non-interference (N=3).
-   Исполнимый срез этой карты.
+1. **`NKERNEL-STEP-0`** — §3.1–§3.3 — ✅ IMPLEMENTED 2026-07-17 (pure-domain):
+   `lib/dilemma/nkernel/types.ts` (`ConflictStateNV1` без лишних полей —
+   диадический инстанс структурно равен kernel-состоянию; error union =
+   kernel-коды + `invalid_participants`/`unsupported_strategy_mode_for_n`/
+   `pair_step_failed`), `nstate.ts` (единственный документированный адаптер
+   `asKernelConflictStateV1`, `normalizeConflictStateNV1`,
+   `dyadicPairProjectionV1` с harvest-инвариантом `trace: []`,
+   `buildTrustExchangeProtocolNV1`, `trustExchangeDefinitionNV1` с
+   ре-валидацией v3), `nstep.ts` (`resolveConflictNStepV1` — парная
+   декомпозиция §2, свёртки ADR §5.1/§5.4, один `applyConflictTransition` на
+   N-уровне); `tests/dilemma/nkernel_step_v1.test.ts` (8): оракул редукции
+   N=2 — все 9 joint-действий × оба режима, побайтно state/outcome/
+   observations/utilities/profiles + 5-раундовая learning-цепочка;
+   pairwise-consistency N=3 с численным пином свёрток; non-interference N=3
+   (мутация `c→b` не трогает a-сторону, адресат меняется — «зубы»);
+   fail-closed ×8; детерминизм + иммутабельность входа (N=4, 6 пар,
+   12 фреймов).
 2. **`NKERNEL-CHOICE-0`** — эндогенный reference-выбор при N (нужен ADR §3.4).
 3. **`NKERNEL-TRAJECTORY-0`** — N-обобщение
    `runConflictTrajectory`/`trajectoryMetrics` (`analysis.ts:32,53`).
