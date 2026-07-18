@@ -154,6 +154,12 @@
   utilities → dominant → N-step), `learn_from_utility` при `N > 2`
   разблокирован в nstep; `tests/dilemma/nkernel_choice_v1.test.ts` (5) с
   побайтным оракулом против неforced `resolveProtocolStep`.
+  Срез 3 `NKERNEL-TRAJECTORY-0` реализован 2026-07-18: `nanalysis.ts`
+  (N-метрики: сумма/средние по N агентам и N·(N−1) отношениям) +
+  `ntrajectory.ts` (`runConflictNTrajectoryV1`, forced=freeze /
+  без-forced=эндогенный выбор; межшаговая ре-нормализация ядра отзеркалена —
+  оракул показал, что она несущая); `nkernel_trajectory_v1.test.ts` (5) с
+  побайтными N=2 оракулами раннера и всех метрик.
 
 - **R6 CATALOG WIRING — step 4 (2026-07-13)**: the Conflict Lab catalog is now
   driven by the typed `CONFLICT_SCENARIO_INVENTORY` via the pure

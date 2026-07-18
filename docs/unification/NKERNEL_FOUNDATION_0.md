@@ -1,6 +1,6 @@
 # NKERNEL-FOUNDATION-0 — исполнимое N-ядро: инвентаризация + contract proposal
 
-Статус: **ADR §5.1–§5.4 подписаны 2026-07-17; срезы 1–2 (`NKERNEL-STEP-0`, `NKERNEL-CHOICE-0`) РЕАЛИЗОВАНЫ.**
+Статус: **ADR §5.1–§5.4 подписаны 2026-07-17; срезы 1–3 (`NKERNEL-STEP-0`, `NKERNEL-CHOICE-0`, `NKERNEL-TRAJECTORY-0`) РЕАЛИЗОВАНЫ.**
 Дата: 2026-07-17.
 Update 2026-07-18: автор подписал ADR агрегации utilities (§5.2-agg:
 покомпонентный MEAN по N−1 целям игрока) — `NKERNEL-CHOICE-0` реализован
@@ -9,6 +9,9 @@ pure-domain (см. §6.2): `lib/dilemma/nkernel/nchoice.ts` + разблокир
 `unsupported_strategy_mode_for_n` удалён — он стоял ровно до этой подписи).
 Gate: `tsc --noEmit` чист; полный набор 549 passed / 10 skipped / 0 failed;
 golden `efa018b3…` не сдвинут.
+Update 2026-07-18 (2): `NKERNEL-TRAJECTORY-0` реализован (см. §6.3) —
+N-траектории и метрики. Gate: `tsc --noEmit` чист; 554 passed / 10 skipped /
+0 failed; golden `efa018b3…` не сдвинут.
 Update 2026-07-17: `NKERNEL-STEP-0` реализован pure-domain (см. §6.1):
 `lib/dilemma/nkernel/{types,nstate,nstep}.ts` +
 `tests/dilemma/nkernel_step_v1.test.ts` (8). Gate: `tsc --noEmit` чист; полный
@@ -247,8 +250,25 @@ pair-generic хелперы (`normalizeConflictState`, `applyConflictTransition`
    репликатор→dominant, choice non-interference, детерминизм/иммутабельность,
    fail-closed passthrough; в step-тесте learn-N=3 кейс заменён позитивным
    пином профилей.
-3. **`NKERNEL-TRAJECTORY-0`** — N-обобщение
-   `runConflictTrajectory`/`trajectoryMetrics` (`analysis.ts:32,53`).
+3. **`NKERNEL-TRAJECTORY-0`** — ✅ IMPLEMENTED 2026-07-18 (pure-domain):
+   `lib/dilemma/nkernel/nanalysis.ts` (`stateDistanceNV1` — взвешенная
+   евклидова норма по N агентам + N·(N−1) отношениям + env;
+   `collapseScoreNV1`/`repairCapacityNV1` — средние по N агентам и N·(N−1)
+   отношениям; cycle/divergence/metrics generic поверх) и
+   `lib/dilemma/nkernel/ntrajectory.ts` (`runConflictNTrajectoryV1`:
+   forced-шаг = N-step freeze как у array-формы ядра, шаг без forced =
+   эндогенный NKERNEL-CHOICE-0). Санкционированное единственное дублирование:
+   приватные squared-distance хелперы `analysis.ts` отзеркалены дословно —
+   дрейф ловит побайтный N=2 оракул (`toBe` на каждой метрике).
+   НАХОДКА оракула: kernel-раннер ре-нормализует state между шагами и это
+   несущая семантика — `normalizeActionProbabilities` не идемпотентна
+   побайтно, когда вероятность после деления падает ниже replicator-floor;
+   межшаговая ре-нормализация отзеркалена. Тесты
+   `tests/dilemma/nkernel_trajectory_v1.test.ts` (5): смешанное
+   forced/эндогенное 6-шаговое расписание против `runConflictTrajectory`
+   побайтно; все метрики против диадических оригиналов (`toBe` + `toEqual`
+   полного `trajectoryMetrics` с perturbed-двойником); N=3 sanity/циклы;
+   детерминизм; fail-closed passthrough.
 4. **`NKERNEL-DEFINITION-BIND-0`** — привязка v3-targets
    (`participant`/`all_others`) к исполнимым projection rows.
 5. **`NKERNEL-DECISION-0`** — §3.5.
