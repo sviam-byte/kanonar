@@ -84,6 +84,30 @@ the old behavior, it must request
 profiles update from the current utility scores while the outcome still uses
 the forced action. Step traces must surface this as `intervention.forced`.
 
+### Experimental forced pairwise N-core
+
+For an explicit joint action over `N ≥ 2`, the experimental N-core resolves all
+unordered pairs `P = {{i,j} | i < j}` with the canonical dyadic trust kernel,
+then folds the pair results once at N level:
+
+```text
+agentDelta_i = (1 / (N - 1)) * sum_{j != i} agentDelta_i^(ij)
+payoff_i     = sum_{j != i} payoff_i^(ij)
+relation_ij  = relation_ij^(ij)
+```
+
+The environment fold is deterministic and the `N = 2` fold contains exactly
+one pair, so it reduces to the dyadic transition. Endogenous kernel utility,
+when used for experimental trajectory choice, is the component-wise mean over
+the `N−1` counterparties. These laws describe forced pairwise dynamics and
+trajectory experiments only; they do not define a target-aware N>2 decision
+policy.
+
+Accordingly, GoalLab joint choice and live sessions are fail-closed above two
+participants. A future per-target action matrix/coalition ADR must define how
+one actor chooses different actions for different counterparties before that
+boundary can be reopened.
+
 ### Bounded Logit Transition
 
 Scalar updates use bounded logit-space drive:

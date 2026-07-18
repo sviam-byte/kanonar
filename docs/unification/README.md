@@ -19,6 +19,7 @@
 | TOM-SPEC-0 | [TOM_SPEC_0.md](TOM_SPEC_0.md) | ACCEPTED | 2026-07-11 |
 | SCENE-OWNERSHIP-ADR-0 | [SCENE_OWNERSHIP_ADR_0.md](SCENE_OWNERSHIP_ADR_0.md) | ACCEPTED | 2026-07-11 |
 | CONFLICT-CHOICE-ADR-0 | [CONFLICT_CHOICE_ADR_0.md](CONFLICT_CHOICE_ADR_0.md) | ACCEPTED | 2026-07-11 |
+| CONFLICT-PARITY-0 | [CONFLICT_PARITY_0.md](CONFLICT_PARITY_0.md) | DONE — 432 решений, compact fingerprinted evidence | 2026-07-18 |
 
 ## Открытые тикеты, порождённые R1
 
@@ -107,6 +108,110 @@
   Live-замена `runDilemmaV2` на provider — отдельная миграция после
   накопления dual-run parity evidence.
 
+- **R5 LIVE CONFLICT PROVIDER WIRING (2026-07-12)**:
+  `runConflictLabSessionV1` is the active UI boundary. Multi-round
+  `trust_exchange` sessions now use canonical GoalLab S8 decisions as the
+  authoritative action history and typed-kernel next state. The versioned
+  choice reports preserve policy, effective temperature/source, sampling pool,
+  `usedAtomIds`, kernel reference actions and divergence in UI/export.
+  `runDilemmaV2` remains a callable compatibility runner; non-trust cards stay
+  explicitly `unsupported_kernel` and are not promoted to canonical mechanics.
+  Regression: `tests/dilemma/liveTrustExchangeRuntime.test.ts`.
+
+- **R7-FOUNDATION-0 — inventory + contract PROPOSAL (2026-07-13)**: multi-agent
+  foundation prep. Inventory found the primitives are already directed/per-observer
+  (`SceneEventInputV1.targetIds`, `OpponentBeliefV1` observer→target,
+  `s5DualEmitLayer` `otherIds: string[]`); dyadic hardness is concentrated in
+  `ConflictDefinitionV2` (`playerCount: 2` literal, "exactly two roles", binary
+  `target`), the then-missing self-belief, and the missing typed belief graph with an
+  `N·(N−1)` bound. Proposes additive contracts (`participant-set-v1`,
+  `observation-view-v1`, `belief-graph-v1`, `conflict-definition-v3`) that keep
+  the dyadic kernel execution and golden identity intact. ADR-reserved decisions
+  (self-belief shape, multi-target semantics, ordering) were subsequently
+  decided. Audit repair 2026-07-18 replaces the invalid self-as-opponent shape
+  with a separate validated `SelfBeliefV1`. Doc:
+  `docs/unification/R7_FOUNDATION_0.md`.
+
+- **NKERNEL-FOUNDATION-0 — исполнимое N-ядро, inventory + contract PROPOSAL
+  (2026-07-17)**: открывает эпик исполнимого N-транзишна, отложенный
+  R7-FOUNDATION-0 §0/§6.4. Инвентаризация ядра показала: транзишн-хелперы
+  (`normalizeConflictState`, `applyConflictTransition`, `validateJointAction`)
+  уже pair-generic, диадичность заперта в кортеже `ConflictState.players`,
+  `otherPlayer()`, `resolveTrustExchangeOutcome` и конструкторе протокола.
+  Предложена парная декомпозиция N-шага (`N·(N−1)/2` пар, свёртка mean-дельт +
+  sum-payoffs по ADR) поверх нетронутого диадического ядра; ADR §5.1–§5.4
+  подписаны 2026-07-17. Kernel execution в runtime остаётся диадическим;
+  срезы — `NKERNEL-STEP-0` … `NKERNEL-SESSION-0`. Doc:
+  `docs/unification/NKERNEL_FOUNDATION_0.md`.
+  Срез 1 `NKERNEL-STEP-0` реализован 2026-07-17:
+  `lib/dilemma/nkernel/{types,nstate,nstep}.ts` — forced-joint-action
+  `resolveConflictNStepV1` (свёртки mean-дельт + sum-payoffs, `pairwise`
+  провенанс, `learn_from_utility` fail-closed при `N > 2`);
+  `tests/dilemma/nkernel_step_v1.test.ts` (8) с побайтным оракулом редукции
+  N=2 и pairwise-consistency/non-interference N=3. Golden `efa018b3…` не
+  сдвинут — модуль никем в runtime не импортируется, barrel не расширялся.
+  Срез 2 `NKERNEL-CHOICE-0` реализован 2026-07-18 (ADR агрегации: mean по
+  целям): `lib/dilemma/nkernel/nchoice.ts` — эндогенный
+  `resolveConflictNChoiceStepV1` (kernel-репликатор над mean-агрегатом парных
+  utilities → dominant → N-step), `learn_from_utility` при `N > 2`
+  разблокирован в nstep; `tests/dilemma/nkernel_choice_v1.test.ts` (5) с
+  побайтным оракулом против неforced `resolveProtocolStep`.
+  Срез 3 `NKERNEL-TRAJECTORY-0` реализован 2026-07-18: `nanalysis.ts`
+  (N-метрики: сумма/средние по N агентам и N·(N−1) отношениям) +
+  `ntrajectory.ts` (`runConflictNTrajectoryV1`, forced=freeze /
+  без-forced=эндогенный выбор; межшаговая ре-нормализация ядра отзеркалена —
+  оракул показал, что она несущая); `nkernel_trajectory_v1.test.ts` (5) с
+  побайтными N=2 оракулами раннера и всех метрик.
+  Срез 4 `NKERNEL-DEFINITION-BIND-0` реализован 2026-07-18:
+  `ndefinitionbind.ts` — `resolveConflictActionTargetIdsV1` (fail-closed
+  резолвер v3 target-режимов `none|self|counterparty|participant|all_others` в
+  конкретные `targetIds`, независимый от `validateConflictDefinitionV3`) +
+  `projectConflictDefinitionV3ActionsV1` (проекция `legalActions` в исполнимые
+  строки нового узкого типа `ConflictActionProjectionRowNV1`, не переиспользуя
+  kernel-литерал-пришитый `ConflictActionProjectionRow`);
+  `nkernel_definition_bind_v1.test.ts` (7) с побайтным оракулом `all_others`
+  против диадического `projectLegalActions` при N=2.
+  Срез 5 `NKERNEL-DECISION-0` v1 реализован 2026-07-18 как N=2 reduction
+  boundary; N>2 target-aware choice отложен в хвостовой ADR:
+  `lib/dilemma/integration/`
+  `ndecisionProvider.ts` — `runConflictNJointDecisionV1`, N-аналог
+  `runConflictJointDecisionV1`, переиспользующий `buildConflictPossibilities`/
+  `resolveProjectedChoice` без изменений через один документированный
+  адаптер `toDyadicProjectionRowV1`; canonical-транзишн через
+  `resolveConflictNStepV1`, reference-lane через `resolveConflictNChoiceStepV1`;
+  early gate `n_decision_requires_dyad` при `N > 2`; binding требует exact
+  protocol/participant/action/target agreement. `nkernel_decision_v1.test.ts`
+  сохраняет побайтный N=2 oracle и проверяет ранний N=3 отказ.
+  Срез 6 `NKERNEL-SESSION-0` реализован как dyadic reduction wrapper:
+  `lib/dilemma/integration/nliveSession.ts` — `runConflictNLabSessionV1`
+  (N-аналог канонического цикла `runConflictLabSessionV1`: per-round pressure
+  → `worldForTickNV1` (закрытие §1.2-шва `players.find`) → per-player GoalLab
+  input + RNG imul-цепь → `runConflictNJointDecisionV1` → межшаговая
+  ре-нормализация), `buildCanonicalInitialStateNV1` (per-pair reuse
+  `buildCanonicalInitialState` + anchor-partner-слияние), fail-closed `Result`
+  без `runDilemmaV2`-fallback. N>2 возвращает `n_live_requires_dyad` до
+  pipeline work; definition override больше не является escape hatch. Экспорт
+  из `integration/index.ts` (первое осознанное
+  пересечение границы «nkernel не в runtime»); главный баррель
+  `lib/dilemma/index.ts` и `liveSession.ts` байтово не тронуты — ничто не
+  диспатчит в N-полосу по умолчанию. `nkernel_session_v1.test.ts` (8):
+  побайтные N=2 оракулы initial state и всей сессии против
+  `runConflictLabSessionV1`; N=3 fail-early; strict round budgets `1..30`;
+  catalog-throw; determinism. Forced N=3 step/trajectory/analysis остаются
+  доступны экспериментально, choice/live deferred.
+
+- **R6 CATALOG WIRING — step 4 (2026-07-13)**: the Conflict Lab catalog is now
+  driven by the typed `CONFLICT_SCENARIO_INVENTORY` via the pure
+  `conflictCatalogLane(kind, runnable)` classifier, not the ad-hoc `disabled`
+  flag. `trust_interrogation` is the sole canonical lane; the eight runnable
+  non-kernel presets stay selectable as an explicit "compatibility — no typed
+  kernel" lane (badged with inventory kind + reason and run on the
+  legacy/`unsupported_kernel` path); disabled presets render as unavailable.
+  Presentation never promotes a card into an executable mechanic and no runnable
+  behavior is removed. R6 steps 1–3/5 (schema/validator/inventory/constructor)
+  landed with `CONFLICT-LIVE-0`; step 6 (schema editor v2) stays gated behind a
+  stable validation report. Regression: `tests/dilemma/conflictCatalog.test.ts`.
+
 - **R2-METRIC-FIXES-0 (2026-07-12)**: четыре решения METRIC-INVENTORY-0
   исполнены. goalTension/frustration: у `deriveGoalCatalog` НЕТ реального
   вычисления (константные нули) → honest unknown (`number | null`, продюсер
@@ -117,9 +222,24 @@
   legacy-значения байт-в-байт (формула не менялась). Регрессии —
   `tests/metrics/entity_detail_fixes.test.ts`.
 
-Очередь дальше: накопление dual-run parity evidence, затем R6 generalized
-schema и решение о live wiring provider в Conflict Lab UI;
-R2b metric catalog — после сценового goal-conflict runtime.
+- **CONFLICT-PARITY-0 (2026-07-12)**: dual-run parity evidence собран —
+  432 joint decisions по сетке rel × agents × env × temp × seed × tick
+  (`docs/unification/CONFLICT_PARITY_0.md`, JSON в `evidence/`). Ранжирования
+  Q↔U согласованы на 100%, transition parity 108/108, всё расхождение выбора
+  (54.9%) — политика (argmax vs seeded Gumbel), масштабируется температурой.
+  Попутно найдены и исправлены: плоский Q конфликтных кандидатов
+  (goal-energy словарь затенял доменные дельты → механика
+  `goalEnergyDomainUnionV1`, теперь default ON только у `phase1`, провайдер
+  также включает явно) и
+  belief-слепота моста без S5-слоя (S0 dyad фоллбэк в `readBeliefMetric`).
+
+`GOALENERGY-UNION-DEFAULT` закрыт: `phase1` включает union, а `legacy` и
+no-profile/config сохраняют прежнюю семантику; object-form override остаётся
+двусторонним. Live wiring provider в Conflict Lab UI завершён. R6 steps 1–5
+(schema/validator/inventory/constructor + step 4 catalog wiring) закрыты;
+внутри R6 остаётся только gated step 6 — schema editor v2 после стабильного
+validation report. R7 contracts и forced pairwise N-core реализованы;
+target-aware N>2 choice/live остаётся отдельным будущим ADR.
 
 ## Phase1 OpponentBelief default (2026-07-12)
 

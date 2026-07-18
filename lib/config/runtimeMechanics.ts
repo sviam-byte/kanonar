@@ -14,6 +14,7 @@ export type RuntimeMechanics = {
   actionPriorInfluence: boolean;
   actionPamV2: boolean;
   opponentBeliefS5V1: boolean;
+  goalEnergyDomainUnionV1: boolean;
   activeMechanisms: string[];
 };
 
@@ -25,6 +26,7 @@ const MECHANISM_LABELS: Array<[keyof Omit<RuntimeMechanics, 'profileId' | 'sourc
   ['actionPriorInfluence', 'actionScoring.priorInfluence'],
   ['actionPamV2', 'actionScoring.pamV2'],
   ['opponentBeliefS5V1', 'tom.opponentBeliefS5V1'],
+  ['goalEnergyDomainUnionV1', 'actionScoring.goalEnergyDomainUnionV1'],
 ];
 
 function profileIdFrom(value: unknown): RuntimeProfileId | null {
@@ -41,6 +43,21 @@ function profileIdFrom(value: unknown): RuntimeProfileId | null {
 function opponentBeliefOverrideFrom(value: unknown): boolean | undefined {
   if (value && typeof value === 'object') {
     const raw = (value as Record<string, unknown>).opponentBeliefS5V1;
+    if (typeof raw === 'boolean') return raw;
+  }
+  return undefined;
+}
+
+// CONFLICT-PARITY-0 fix: S8 goal energy is keyed by active-goal ids while
+// external offers (conflict bridge, SimKit tactical deltas) speak goal-domain
+// vocabulary; without the union their Q contribution silently collapses to
+// -cost whenever active goals exist. Phase1 enables the union; legacy and
+// no-profile/config preserve their historical scoring. The conflict decision
+// provider also opts in explicitly so its typed bridge does not depend on the
+// caller profile.
+function goalEnergyDomainUnionOverrideFrom(value: unknown): boolean | undefined {
+  if (value && typeof value === 'object') {
+    const raw = (value as Record<string, unknown>).goalEnergyDomainUnionV1;
     if (typeof raw === 'boolean') return raw;
   }
   return undefined;
@@ -67,6 +84,7 @@ function withActiveMechanisms(
 export function resolveRuntimeMechanics(value?: unknown): RuntimeMechanics {
   const profileId = profileIdFrom(value);
   const opponentBeliefOverride = opponentBeliefOverrideFrom(value);
+  const goalEnergyDomainUnionOverride = goalEnergyDomainUnionOverrideFrom(value);
 
   if (profileId === 'legacy') {
     return withActiveMechanisms({
@@ -79,6 +97,7 @@ export function resolveRuntimeMechanics(value?: unknown): RuntimeMechanics {
       actionPriorInfluence: false,
       actionPamV2: false,
       opponentBeliefS5V1: opponentBeliefOverride ?? false,
+      goalEnergyDomainUnionV1: goalEnergyDomainUnionOverride ?? false,
     });
   }
 
@@ -93,6 +112,7 @@ export function resolveRuntimeMechanics(value?: unknown): RuntimeMechanics {
       actionPriorInfluence: true,
       actionPamV2: true,
       opponentBeliefS5V1: opponentBeliefOverride ?? true,
+      goalEnergyDomainUnionV1: goalEnergyDomainUnionOverride ?? true,
     });
   }
 
@@ -106,6 +126,7 @@ export function resolveRuntimeMechanics(value?: unknown): RuntimeMechanics {
     actionPriorInfluence: FC.actionScoring.priorInfluence.enabled,
     actionPamV2: FC.actionScoring.pamV2.enabled,
     opponentBeliefS5V1: opponentBeliefOverride ?? FC.opponentBeliefV1.s5DualEmit.enabled,
+    goalEnergyDomainUnionV1: goalEnergyDomainUnionOverride ?? false,
   });
 }
 

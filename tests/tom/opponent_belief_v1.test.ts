@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { KANONAR_SYSTEM_VERSION } from '../../lib/goal-lab/versioning';
-import { buildOpponentBeliefV1, projectOpponentBeliefToS5AtomsV1 } from '../../lib/tom/opponentBelief/builder';
-import { decodeOpponentBeliefV1, encodeOpponentBeliefV1, validateOpponentBeliefV1 } from '../../lib/tom/opponentBelief/serialization';
+import { buildOpponentBeliefV1, makeNeutralSelfBeliefPriorV1, projectOpponentBeliefToS5AtomsV1 } from '../../lib/tom/opponentBelief/builder';
+import { decodeOpponentBeliefV1, decodeSelfBeliefV1, encodeOpponentBeliefV1, encodeSelfBeliefV1, validateOpponentBeliefV1, validateSelfBeliefV1 } from '../../lib/tom/opponentBelief/serialization';
 import { updateOpponentBeliefV1 } from '../../lib/tom/opponentBelief/update';
 import type { ObservationEnvelopeV1 } from '../../lib/scene/observation/types';
 
@@ -76,5 +76,30 @@ describe('OpponentBeliefV1', () => {
     expect(decoded).toEqual({ ok: true, value: belief });
     const invalid = { ...belief, targetId: 'alice' };
     expect(validateOpponentBeliefV1(invalid).valid).toBe(false);
+  });
+
+  it('builds, validates, and round-trips a distinct SelfBeliefV1', () => {
+    const belief = makeNeutralSelfBeliefPriorV1({ participantId: 'alice', tick: 2 });
+    expect(validateSelfBeliefV1(belief)).toEqual({ valid: true, errors: [] });
+    expect(decodeSelfBeliefV1(encodeSelfBeliefV1(belief))).toEqual({ ok: true, value: belief });
+    expect(validateSelfBeliefV1({ ...belief, beliefId: 'belief:opponent:alice:alice' }).valid).toBe(false);
+  });
+
+  it('rejects malformed self-belief payload and evidence on decode', () => {
+    const belief = makeNeutralSelfBeliefPriorV1({ participantId: 'alice', tick: 2 });
+    const malformed = {
+      ...belief,
+      evidence: [{ evidenceId: 'broken', reliability: Number.NaN }],
+      estimates: { ...belief.estimates, trust: { ...belief.estimates.trust, evidenceIds: ['broken'] } },
+    };
+    const decoded = decodeSelfBeliefV1(JSON.stringify(malformed));
+    expect(decoded.ok).toBe(false);
+    if (decoded.ok === false) {
+      expect(decoded.errors.map((error) => error.code)).toEqual(expect.arrayContaining([
+        'invalid_evidence_schema',
+        'invalid_evidence_payload',
+        'invalid_evidence_provenance',
+      ]));
+    }
   });
 });

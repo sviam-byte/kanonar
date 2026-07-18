@@ -17,6 +17,7 @@ import {
   CONFLICT_CHOICE_TRACE_SCHEMA_VERSION,
   CONFLICT_JOINT_DECISION_SCHEMA_VERSION,
   type ConflictChoiceTraceV1,
+  type ConflictGoalEnergySourceV1,
   type ConflictIntegrationError,
   type ConflictJointDecisionArgsV1,
   type ConflictJointDecisionReportV1,
@@ -63,6 +64,33 @@ function withoutForceAction(events: unknown): unknown[] {
     const record = event as Record<string, unknown>;
     return String(record.type ?? record.kind ?? '') !== 'force_action';
   });
+}
+
+function rankedGoalEnergySources(entry: Record<string, unknown>): ConflictGoalEnergySourceV1[] {
+  const why = entry.why && typeof entry.why === 'object'
+    ? entry.why as Record<string, unknown>
+    : {};
+  const seenGoals = new Set<string>();
+  const sources: ConflictGoalEnergySourceV1[] = [];
+  for (const raw of arr<Record<string, unknown>>(why.goalEnergySources)) {
+    const goalId = String(raw?.goalId ?? '');
+    const atomId = String(raw?.atomId ?? '');
+    if (!goalId || !atomId || seenGoals.has(goalId)) continue;
+    seenGoals.add(goalId);
+    sources.push({ goalId, atomId });
+  }
+  return sources;
+}
+
+function rankedUsedAtomIds(entry: Record<string, unknown>): string[] {
+  const why = entry.why && typeof entry.why === 'object'
+    ? entry.why as Record<string, unknown>
+    : {};
+  return Array.from(new Set([
+    ...arr<string>(entry.usedAtomIds).map(String),
+    ...arr<string>(why.usedAtomIds).map(String),
+    ...rankedGoalEnergySources(entry).map((source) => source.atomId),
+  ].filter(Boolean)));
 }
 
 // Same precedence as runPipelineV1 S8 (trait atom -> world -> behavioral
@@ -113,9 +141,22 @@ export function runConflictJointDecisionV1(
       return fail('missing_rng_channel', `No seeded rng channel for ${playerId} (channel ${playerInput.rngChannelId || 'unnamed'})`, playerId);
     }
 
+    // CONFLICT-PARITY-0: conflict candidates carry goal-domain deltas, so the
+    // S8 goal-energy map must include domain energies (union mode) or every
+    // conflict Q collapses to -cost and the choice degenerates to pure Gumbel
+    // noise. Opt-in per run; the caller's runtime profile is preserved.
+    const callerSceneControl = (playerInput.pipelineInput as { sceneControl?: Record<string, unknown> }).sceneControl;
+    const callerProfile = callerSceneControl?.runtimeProfile;
+    const runtimeProfile = typeof callerProfile === 'string'
+      ? { profileId: callerProfile, goalEnergyDomainUnionV1: true }
+      : {
+        ...(callerProfile && typeof callerProfile === 'object' ? callerProfile as Record<string, unknown> : {}),
+        goalEnergyDomainUnionV1: true,
+      };
     const pipelineInput = {
       ...playerInput.pipelineInput,
       injectedEvents: withoutForceAction(playerInput.pipelineInput.injectedEvents),
+      sceneControl: { ...(callerSceneControl ?? {}), runtimeProfile },
     };
     // Baseline нужен только для belief-атомов: он не должен расходовать
     // канонический Conflict RNG-канал до настоящего S8 choice.
@@ -189,6 +230,8 @@ export function runConflictJointDecisionV1(
       effectiveTemperature: Number(entry?.effectiveTemperature ?? temperature),
       marginFromBest: Number(entry?.marginFromBest ?? 0),
       chosen: Boolean(entry?.chosen),
+      usedAtomIds: rankedUsedAtomIds(entry),
+      goalEnergySources: rankedGoalEnergySources(entry),
     }));
     if (ranked.some((entry) => !entry.kernelActionId)) {
       return fail('unknown_candidate', `GoalLab S8 returned a candidate outside the typed projection for ${playerId}`, playerId);
@@ -199,6 +242,7 @@ export function runConflictJointDecisionV1(
       policyId: CONFLICT_CHOICE_POLICY_ID,
       policyVersion: CONFLICT_CHOICE_POLICY_VERSION,
       playerId,
+      goalEnergyMode: 'domain-union-v1',
       rngChannelId: playerInput.rngChannelId,
       temperature,
       temperatureSource,

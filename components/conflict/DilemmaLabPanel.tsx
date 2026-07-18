@@ -1,8 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { runDilemmaV2 } from '../../lib/dilemma/runner';
+import { runConflictLabSessionV1 } from '../../lib/dilemma/integration/liveSession';
 import { allScenarios, getScenario } from '../../lib/dilemma/scenarios';
 import { allMechanics } from '../../lib/dilemma/mechanics';
+import { TRUST_EXCHANGE_ACTION_LABELS, TRUST_EXCHANGE_ACTION_ORDER } from '../../lib/dilemma/dynamics/trustExchange';
+import { CONFLICT_SCENARIO_INVENTORY, conflictCatalogLane } from '../../lib/dilemma/definition';
+import type { ConflictInventoryEntry, ConflictInventoryKind } from '../../lib/dilemma/definition';
 import type {
   ScenarioTemplate, V2GameState, V2RoundTrace, V2RunResult, MechanicTemplate, PressureSchedule, ProtocolCardView,
 } from '../../lib/dilemma/types';
@@ -29,6 +32,27 @@ const MECHANIC_ICONS: Record<string, string> = {
   ultimatum_split: '🪓',
   volunteer_sacrifice: '🩸',
   signaling_trust: '📡',
+};
+
+// R6 step 4: honest typed-inventory badge on every card. Presentation never
+// promotes a card into an executable mechanic — the label states what it is.
+const INVENTORY_KIND_META: Record<ConflictInventoryKind, { label: string; cls: string }> = {
+  canonical_mechanic: { label: 'canonical kernel', cls: 'text-canon-good bg-canon-good/10 border-canon-good/25' },
+  parameter_variant: { label: 'parameter variant', cls: 'text-canon-muted bg-canon-bg/60 border-canon-border/40' },
+  skin: { label: 'skin', cls: 'text-canon-muted bg-canon-bg/60 border-canon-border/40' },
+  duplicate: { label: 'duplicate', cls: 'text-canon-faint bg-canon-bg/60 border-canon-border/40' },
+  unsupported: { label: 'no typed kernel', cls: 'text-yellow-300 bg-yellow-300/10 border-yellow-300/25' },
+  needs_multi_agent: { label: 'needs multi-agent', cls: 'text-orange-300 bg-orange-300/10 border-orange-300/25' },
+};
+
+const InventoryBadge: React.FC<{ entry?: ConflictInventoryEntry }> = ({ entry }) => {
+  if (!entry) return null;
+  const meta = INVENTORY_KIND_META[entry.kind];
+  return (
+    <span className={`shrink-0 rounded-full border px-1.5 py-0.5 text-[8px] font-medium ${meta.cls}`} title={entry.reason}>
+      {meta.label}
+    </span>
+  );
 };
 
 const TIMING_LABELS: Record<ProtocolCardView['timing'], string> = {
@@ -90,8 +114,8 @@ function buildMinimalWorld(chars: { entityId: string; [k: string]: unknown }[]):
 // ═══════════════════════════════════════════════════════════════
 
 const ScenarioCard: React.FC<{
-  s: ScenarioTemplate; selected: boolean; disabled?: boolean; onClick?: () => void;
-}> = ({ s, selected, disabled = false, onClick }) => {
+  s: ScenarioTemplate; selected: boolean; disabled?: boolean; onClick?: () => void; inventory?: ConflictInventoryEntry;
+}> = ({ s, selected, disabled = false, onClick, inventory }) => {
   const protocol = s.protocol;
   return (
     <button onClick={disabled ? undefined : onClick}
@@ -106,7 +130,10 @@ const ScenarioCard: React.FC<{
           <span className="text-lg">{CLASS_ICONS[s.dilemmaClass] ?? '◆'}</span>
           <span className={`text-sm font-semibold truncate ${selected ? 'text-canon-accent' : 'text-canon-text'}`}>{s.name}</span>
         </div>
-        <span className="shrink-0 rounded-full border border-canon-border/50 px-1.5 py-0.5 text-[8px] text-canon-faint">{protocol.kernel}</span>
+        <div className="flex shrink-0 items-center gap-1">
+          <InventoryBadge entry={inventory} />
+          <span className="rounded-full border border-canon-border/50 px-1.5 py-0.5 text-[8px] text-canon-faint">{protocol.kernel}</span>
+        </div>
       </div>
       <div className="mt-2 flex flex-wrap gap-1">
         <span className="rounded bg-canon-bg/70 px-1.5 py-0.5 text-[9px] text-canon-muted">{protocol.typeLabel}</span>
@@ -133,7 +160,8 @@ const ScenarioCard: React.FC<{
       <div className="mt-2 text-[9px] text-canon-faint line-clamp-2">
         main: {protocol.primaryParameter}; secondary pressure {pct(s.institutionalPressure)}
       </div>
-      {disabled && s.disabledReason && <div className="text-[10px] text-canon-faint mt-2 line-clamp-3">{s.disabledReason}</div>}
+      {inventory && <div className="text-[9px] text-canon-faint mt-2 line-clamp-2">{inventory.reason}</div>}
+      {disabled && s.disabledReason && <div className="text-[10px] text-canon-faint mt-1 line-clamp-3">{s.disabledReason}</div>}
     </button>
   );
 };
@@ -199,7 +227,8 @@ const MechanicSection: React.FC<{
   scenarios: ScenarioTemplate[];
   selectedScenarioId: string;
   onSelect: (scenarioId: string) => void;
-}> = ({ mechanic, scenarios, selectedScenarioId, onSelect }) => {
+  inventoryByScenario: Map<string, ConflictInventoryEntry>;
+}> = ({ mechanic, scenarios, selectedScenarioId, onSelect, inventoryByScenario }) => {
   if (scenarios.length === 0) return null;
   return (
     <div className="rounded-lg border border-canon-border/60 bg-canon-card p-3 space-y-3">
@@ -212,7 +241,7 @@ const MechanicSection: React.FC<{
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
         {scenarios.map((s) => (
-          <ScenarioCard key={s.id} s={s} selected={selectedScenarioId === s.id} onClick={() => onSelect(s.id)} />
+          <ScenarioCard key={s.id} s={s} selected={selectedScenarioId === s.id} onClick={() => onSelect(s.id)} inventory={inventoryByScenario.get(s.id)} />
         ))}
       </div>
     </div>
@@ -300,7 +329,8 @@ const CoreDynamicsBlock: React.FC<{ core: V2RunResult['conflictCore'] }> = ({ co
     { from: b, to: a, relation: core.finalState.relations[b]?.[a], memory: core.finalState.memories[b]?.[a], regime: core.finalState.regimes[b]?.[a] },
   ];
   const frames = core.frames.slice(-Math.min(24, core.frames.length));
-  const actionLabel = (id: keyof typeof core.actionLabels | string) => core.actionLabels[id as keyof typeof core.actionLabels] ?? id;
+  const actionLabel = (id: keyof typeof TRUST_EXCHANGE_ACTION_LABELS | string) =>
+    TRUST_EXCHANGE_ACTION_LABELS[id as keyof typeof TRUST_EXCHANGE_ACTION_LABELS] ?? id;
 
   return (
     <div className="p-4 space-y-4">
@@ -321,9 +351,9 @@ const CoreDynamicsBlock: React.FC<{ core: V2RunResult['conflictCore'] }> = ({ co
         <div className="rounded-lg border border-canon-border/50 bg-canon-card p-3">
           <div className="text-[10px] uppercase tracking-wider text-canon-faint">action vocabulary</div>
           <div className="mt-2 space-y-1 text-[10px]">
-            <div><span className="text-canon-accent">trust</span><span className="text-canon-faint"> = {core.actionLabels.trust}</span></div>
-            <div><span className="text-canon-accent">withhold</span><span className="text-canon-faint"> = {core.actionLabels.withhold}</span></div>
-            <div><span className="text-canon-accent">betray</span><span className="text-canon-faint"> = {core.actionLabels.betray}</span></div>
+            <div><span className="text-canon-accent">trust</span><span className="text-canon-faint"> = {TRUST_EXCHANGE_ACTION_LABELS.trust}</span></div>
+            <div><span className="text-canon-accent">withhold</span><span className="text-canon-faint"> = {TRUST_EXCHANGE_ACTION_LABELS.withhold}</span></div>
+            <div><span className="text-canon-accent">betray</span><span className="text-canon-faint"> = {TRUST_EXCHANGE_ACTION_LABELS.betray}</span></div>
           </div>
         </div>
       </div>
@@ -528,6 +558,21 @@ export const DilemmaLabPanel: React.FC = () => {
   const scenarios = useMemo(() => allScenarios(), []);
   const disabledScenarios = useMemo(() => allScenarios({ includeDisabled: true }).filter((s) => s.disabled), []);
   const mechanics = useMemo(() => allMechanics(), []);
+  const inventoryByScenario = useMemo(
+    () => new Map<string, ConflictInventoryEntry>(CONFLICT_SCENARIO_INVENTORY.map((e) => [e.scenarioId, e])),
+    [],
+  );
+  // R6 step 4: active scenarios are runnable, so their lane is decided by typed
+  // inventory kind (canonical kernel vs explicit compatibility run). Disabled
+  // scenarios are not in the runnable registry → always the unavailable lane.
+  const canonicalScenarios = useMemo(
+    () => scenarios.filter((s) => conflictCatalogLane(inventoryByScenario.get(s.id)?.kind, true) === 'canonical'),
+    [scenarios, inventoryByScenario],
+  );
+  const compatScenarios = useMemo(
+    () => scenarios.filter((s) => conflictCatalogLane(inventoryByScenario.get(s.id)?.kind, true) === 'compatibility'),
+    [scenarios, inventoryByScenario],
+  );
   const scenarioIds = useMemo(() => scenarios.map((s) => s.id), [scenarios]);
   const [scenarioId, setScenarioId] = useState(scenarioIds[0] ?? 'trust_interrogation');
   const [totalRounds, setTotalRounds] = useState(10);
@@ -540,15 +585,21 @@ export const DilemmaLabPanel: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
 
   const scenario = getScenario(scenarioId);
-  const scenariosByMechanic = useMemo(() => {
+  const groupByMechanic = (list: ScenarioTemplate[]): Record<string, ScenarioTemplate[]> => {
     const grouped: Record<string, ScenarioTemplate[]> = {};
-    for (const s of scenarios) {
-      if (!grouped[s.mechanicId]) grouped[s.mechanicId] = [];
-      grouped[s.mechanicId].push(s);
-    }
+    for (const s of list) (grouped[s.mechanicId] ??= []).push(s);
     return grouped;
-  }, [scenarios]);
+  };
+  const canonicalByMechanic = useMemo(() => groupByMechanic(canonicalScenarios), [canonicalScenarios]);
+  const compatByMechanic = useMemo(() => groupByMechanic(compatScenarios), [compatScenarios]);
   const game = result?.game ?? null;
+  const canonicalVocabulary = conflictCatalogLane(inventoryByScenario.get(scenario.id)?.kind, true) === 'canonical';
+  const displayedActions: Array<{ id: string; label: string; requires?: ScenarioTemplate['actionPool'][number]['requires'] }> = canonicalVocabulary
+    ? TRUST_EXCHANGE_ACTION_ORDER.map((id) => ({ id, label: TRUST_EXCHANGE_ACTION_LABELS[id] }))
+    : scenario.actionPool;
+  const displayActionLabel = (actionId: string): string => canonicalVocabulary
+    ? TRUST_EXCHANGE_ACTION_LABELS[actionId as keyof typeof TRUST_EXCHANGE_ACTION_LABELS] ?? actionId
+    : scenario.actionPool.find((action) => action.id === actionId)?.label ?? actionId;
 
   const allChars = useMemo(() => {
     const base = getAllCharactersWithRuntime();
@@ -589,7 +640,7 @@ export const DilemmaLabPanel: React.FC = () => {
       const find = (id: string) => world.agents?.find(a => (a as any).entityId === id || (a as any).id === id);
       if (!find(id0)) throw new Error(`"${id0}" не найден`);
       if (!find(id1)) throw new Error(`"${id1}" не найден`);
-      const res = runDilemmaV2({
+      const res = runConflictLabSessionV1({
         scenarioId,
         players: [id0, id1],
         totalRounds: Math.max(1, Math.floor(totalRounds)),
@@ -609,7 +660,7 @@ export const DilemmaLabPanel: React.FC = () => {
     if (!game || !result) return;
     const ts = new Date().toISOString();
     const safe = (s: string) => s.replace(/[^a-z0-9_-]/gi, '_');
-    downloadJson({ schema: 'DilemmaLabV2', exportedAt: ts, scenarioId, scenario, ...result },
+    downloadJson({ schema: result.canonicalSession ? 'ConflictLabSessionV1' : 'DilemmaLabV2', exportedAt: ts, scenarioId, scenario, ...result },
       `dilemma-v2__${safe(scenarioId)}__${safe(game.players[0])}__${safe(game.players[1])}__${ts.replace(/[:.]/g, '-')}.json`);
   }, [game, result, scenarioId, scenario]);
 
@@ -660,25 +711,48 @@ export const DilemmaLabPanel: React.FC = () => {
         <div className="lg:col-span-3 bg-canon-panel border border-canon-border rounded-lg p-4 space-y-4">
           <div className="space-y-3">
             <div className="text-xs font-semibold text-canon-muted uppercase tracking-wider mb-2">Protocol kernel → preset</div>
-            <div className="text-[11px] text-canon-muted">Карточки показывают не только имя пресета, а роли, фазы, observability и payoff-правило механики. Давление остаётся вторичным параметром.</div>
+            <div className="text-[11px] text-canon-muted">Каталог размечен типизированным R6-инвентарём. <span className="text-canon-good">Canonical kernel</span> исполняет S8-ядро; остальные — явные compatibility-прогоны (legacy V2 + <span className="text-yellow-300">unsupported_kernel</span>). Presentation не повышает пресет до исполнимой механики.</div>
+
+            <div className="text-[10px] font-semibold uppercase tracking-wider text-canon-good/80 pt-1">Canonical kernel</div>
             {mechanics
-              .filter((mechanic) => (scenariosByMechanic[mechanic.id] ?? []).length > 0)
+              .filter((mechanic) => (canonicalByMechanic[mechanic.id] ?? []).length > 0)
               .map((mechanic) => (
                 <MechanicSection
-                  key={mechanic.id}
+                  key={`canon-${mechanic.id}`}
                   mechanic={mechanic}
-                  scenarios={scenariosByMechanic[mechanic.id] ?? []}
+                  scenarios={canonicalByMechanic[mechanic.id] ?? []}
                   selectedScenarioId={scenarioId}
                   onSelect={(id) => { setScenarioId(id); reset(); }}
+                  inventoryByScenario={inventoryByScenario}
                 />
               ))}
+
+            {compatScenarios.length > 0 && (
+              <>
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-yellow-300/80 pt-2">Совместимость — вне типизированного kernel</div>
+                <div className="text-[10px] text-canon-faint">Выбираемы и запускаются, но не имеют типизированного transition-ядра: прогон идёт на legacy/unsupported_kernel-полосе.</div>
+                {mechanics
+                  .filter((mechanic) => (compatByMechanic[mechanic.id] ?? []).length > 0)
+                  .map((mechanic) => (
+                    <MechanicSection
+                      key={`compat-${mechanic.id}`}
+                      mechanic={mechanic}
+                      scenarios={compatByMechanic[mechanic.id] ?? []}
+                      selectedScenarioId={scenarioId}
+                      onSelect={(id) => { setScenarioId(id); reset(); }}
+                      inventoryByScenario={inventoryByScenario}
+                    />
+                  ))}
+              </>
+            )}
+
             {disabledScenarios.length > 0 && (
               <div className="rounded-lg border border-canon-border/40 bg-canon-bg/30 p-3 space-y-2">
-                <div className="text-xs font-semibold text-canon-muted uppercase tracking-wider">Вне dyad-ядра</div>
-                <div className="text-[10px] text-canon-faint">Эти пресеты пока убраны из активного каталога, потому что механически они не чистые dyad-сцены.</div>
+                <div className="text-xs font-semibold text-canon-muted uppercase tracking-wider">Недоступно — вне runnable-реестра</div>
+                <div className="text-[10px] text-canon-faint">Убраны из активного каталога (не чистые dyad-сцены / дубликаты) и не запускаются.</div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                   {disabledScenarios.map((s) => (
-                    <ScenarioCard key={s.id} s={s} selected={false} disabled />
+                    <ScenarioCard key={s.id} s={s} selected={false} disabled inventory={inventoryByScenario.get(s.id)} />
                   ))}
                 </div>
               </div>
@@ -687,7 +761,7 @@ export const DilemmaLabPanel: React.FC = () => {
           <div className="text-xs text-canon-muted bg-canon-card border border-canon-border/50 rounded-lg p-3 italic">{scenario.setup}</div>
           <ProtocolSkeleton protocol={scenario.protocol} />
           <div className="text-[10px] text-canon-faint">
-            Механика: <span className="text-canon-text">{scenario.mechanicName}</span> · класс: {scenario.dilemmaClass} · действия: {scenario.actionPool.map(a => a.label).join(' · ')}
+            Механика: <span className="text-canon-text">{scenario.mechanicName}</span> · класс: {scenario.dilemmaClass} · действия: {displayedActions.map(a => a.label).join(' · ')}
           </div>
 
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
@@ -800,7 +874,7 @@ export const DilemmaLabPanel: React.FC = () => {
           </div>
           <div className="border-t border-canon-border/30 pt-2 mt-2">
             <div className="text-xs font-semibold text-canon-muted uppercase tracking-wider mb-1">Действия</div>
-            {scenario.actionPool.map(a => (
+            {displayedActions.map(a => (
               <div key={a.id} className="text-[10px] text-canon-muted py-0.5">
                 <span className="text-canon-text font-medium">{a.label}</span>
                 {a.requires && <span className="text-canon-faint ml-1">[{a.requires.roles?.join('/') || ''}{a.requires.minClearance ? ` cl≥${a.requires.minClearance}` : ''}]</span>}
@@ -830,7 +904,7 @@ export const DilemmaLabPanel: React.FC = () => {
                         <div className="text-[10px] font-semibold text-canon-muted mb-1">{pid.replace('character-', '')}</div>
                         {(Object.entries(actionCounts[pid] ?? {}) as Array<[string, number]>).sort((a, b) => b[1] - a[1]).map(([aid, cnt]) => (
                           <div key={aid} className="flex items-center gap-1 text-[10px]">
-                            <span className="text-canon-text flex-1 truncate">{scenario.actionPool.find(a => a.id === aid)?.label ?? aid}</span>
+                            <span className="text-canon-text flex-1 truncate">{displayActionLabel(aid)}</span>
                             <div className="h-2 bg-canon-accent/30 rounded" style={{ width: `${cnt / game.totalRounds * 60}px` }} />
                             <span className="font-mono text-canon-muted w-8 text-right">{cnt}/{game.totalRounds}</span>
                           </div>
@@ -844,9 +918,9 @@ export const DilemmaLabPanel: React.FC = () => {
                       {game.rounds.map(r => (
                         <div key={r.index} className="flex items-center gap-2 text-xs bg-canon-card border border-canon-border/30 rounded-lg px-3 py-1.5">
                           <span className="text-canon-faint font-mono w-6">R{r.index + 1}</span>
-                          <span className="text-canon-accent truncate flex-1">{scenario.actionPool.find(a => a.id === r.choices[game.players[0]])?.label}</span>
+                          <span className="text-canon-accent truncate flex-1">{displayActionLabel(r.choices[game.players[0]])}</span>
                           <span className="text-canon-faint">×</span>
-                          <span className="text-canon-accent-2 truncate flex-1 text-right">{scenario.actionPool.find(a => a.id === r.choices[game.players[1]])?.label}</span>
+                          <span className="text-canon-accent-2 truncate flex-1 text-right">{displayActionLabel(r.choices[game.players[1]])}</span>
                         </div>
                       ))}
                     </div>
@@ -860,7 +934,43 @@ export const DilemmaLabPanel: React.FC = () => {
               ),
             },
             {
-              label: 'Legacy V2 Trace', content: (
+              label: result.canonicalSession ? 'S8 Choice Trace' : 'Legacy V2 Trace', content: result.canonicalSession ? (
+                <div className="p-4 space-y-3">
+                  <div className="text-xs text-canon-muted">
+                    Authoritative policy: {result.canonicalSession.policyId} v{result.canonicalSession.policyVersion}. Kernel autonomous choice remains the reference lane.
+                  </div>
+                  {result.canonicalSession.decisions.map((decision) => (
+                    <div key={decision.tick} className="rounded-lg border border-canon-border/50 bg-canon-card p-3 space-y-2">
+                      <div className="flex items-center justify-between text-[10px]">
+                        <span className="text-canon-text">tick {decision.tick}</span>
+                        <span className={decision.divergence.anyDifference ? 'text-yellow-300' : 'text-canon-good'}>
+                          {decision.divergence.anyDifference ? 'canonical/reference divergence' : 'canonical/reference agree'}
+                        </span>
+                      </div>
+                      {decision.players.map((playerId) => {
+                        const choice = decision.choices[playerId];
+                        if (!choice) return null;
+                        return (
+                          <div key={playerId} className="rounded bg-canon-bg/50 p-2 space-y-1 text-[10px]">
+                            <div className="flex flex-wrap gap-3">
+                              <span className="text-canon-text">{playerId}: {displayActionLabel(choice.kernelActionId)}</span>
+                              <span className="text-canon-muted">T={f3(choice.temperature)} ({choice.temperatureSource})</span>
+                              <span className="text-canon-muted">topK={choice.topK}</span>
+                              <span className="text-canon-muted">pool={choice.samplingPoolCandidateIds.length}</span>
+                            </div>
+                            <div className="text-canon-faint">used atoms: {choice.usedAtomIds.length}</div>
+                            {choice.ranked.map((candidate) => (
+                              <div key={candidate.utilityCandidateId} className={candidate.chosen ? 'text-canon-accent' : 'text-canon-muted'}>
+                                {displayActionLabel(candidate.kernelActionId)} · Q={f3(candidate.q)} · sample={f3(candidate.sampleScore)}{candidate.inSamplingPool ? ' · pool' : ''}
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ))}
+                </div>
+              ) : (
                 <div className="p-4 space-y-3">
                   <div className="text-xs text-canon-muted">Legacy/experimental runner trace: 7-осевой utility · confidence · объяснения · state updates</div>
                   <div className="space-y-2 max-h-[600px] overflow-y-auto pr-1">

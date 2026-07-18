@@ -32,6 +32,25 @@
 Если атом вычислен из других атомов, он должен указывать зависимости в:
 - `trace.usedAtomIds`
 
+- Goal-energy lookup follows canonical atom order: the first atom for a key
+  wins. Every ranked Conflict candidate must retain the atom IDs for the goal
+  energies actually used in its score; aggregate `usedAtomIds` on the chosen
+  candidate alone is not complete provenance.
+
+## Conflict N-kernel invariants
+
+- Participant/role IDs that collide with own `Object.prototype` keys are
+  invalid before any `Record` is constructed; composite pair keys must use an
+  injective tuple encoding.
+- N-step accepts only the exact canonical `trust_exchange` protocol structure.
+- Forced pairwise N≥2 step/trajectory/analysis may run experimentally, but
+  GoalLab joint choice and live sessions must return typed dyad-only errors for
+  `N > 2` until a target-aware action-matrix ADR exists.
+- Live Conflict round budgets are finite integers in `1..30`; no clamping,
+  flooring, or silent fallback is permitted.
+- N-analysis never throws for caller-supplied state mismatch; it returns typed
+  `invalid_state` or `participant_set_mismatch` results.
+
 ## Versioning invariants
 
 - Single source of system version truth: `lib/goal-lab/versioning.ts` -> `KANONAR_SYSTEM_VERSION`.
@@ -68,12 +87,19 @@
 - Runtime profile is per run: `world.facts['sim:runtimeProfile']` in SimKit or
   `sceneControl.runtimeProfile` in direct GoalLab calls.
 - `phase1` enables communication threat, object context, location properties,
-  threat memory, prior influence, PAM v2 and S5 OpponentBelief dual-emit without
-  mutating global `FC`.
+  threat memory, prior influence, PAM v2, S5 OpponentBelief dual-emit and the
+  active-goal/domain energy union without mutating global `FC`.
 - `tom.opponentBeliefS5V1` is ON by default only for `phase1`. It remains OFF
   for `legacy` and no-profile/config runs. Object form
   `{ profileId, opponentBeliefS5V1: true|false }` is the explicit opt-in/rollback
   seam. Gate:
+  `tests/simkit/runtime_mechanics_profile.test.ts`.
+- `actionScoring.goalEnergyDomainUnionV1` is ON by default only for `phase1`.
+  It merges active-goal and domain-keyed energy before S8 scoring, with
+  active-goal keys winning collisions. `legacy` and no-profile/config remain
+  OFF; object form `{ profileId, goalEnergyDomainUnionV1: true|false }` is the
+  explicit opt-in/rollback seam. Gates:
+  `tests/decision/goal_energy_domain_union.test.ts` and
   `tests/simkit/runtime_mechanics_profile.test.ts`.
 - No explicit profile continues to resolve the current FormulaConfig defaults;
   `legacy` is an explicit all-OFF control.

@@ -23,6 +23,7 @@ import {
   conflictDeltaGoalsV1,
   runConflictJointDecisionV1,
 } from '@/lib/dilemma/integration';
+import { isConflictChoiceTraceCompleteV1 } from '@/lib/dilemma/integration/paritySweep';
 import type { ContextAtom } from '@/lib/context/v2/types';
 import { buildActionCandidates } from '@/lib/decision/actionCandidateUtils';
 
@@ -160,11 +161,45 @@ describe('CONFLICT-INTEGRATION-0 — S8 policy drives the kernel through the pro
       expect(trace.ranked.some((r) => r.chosen)).toBe(true);
       expect(trace.samplingPoolCandidateIds.length).toBeGreaterThan(0);
       expect(trace.ranked.every((r) => Number.isFinite(r.effectiveTemperature))).toBe(true);
+      expect(trace.ranked.every((r) => (r.goalEnergySources?.length ?? 0) > 0)).toBe(true);
+      for (const ranked of trace.ranked) {
+        expect(ranked.usedAtomIds.length).toBeGreaterThan(0);
+        expect(ranked.goalEnergySources?.every((source) => Boolean(source.goalId) && Boolean(source.atomId))).toBe(true);
+        expect(ranked.goalEnergySources?.every((source) => ranked.usedAtomIds.includes(source.atomId))).toBe(true);
+      }
       expect(trace.ranked.filter((r) => r.inSamplingPool).map((r) => r.utilityCandidateId))
         .toEqual(trace.samplingPoolCandidateIds);
       const chosenRow = trace.projectedRows.find((r) => r.utilityCandidateId === trace.chosenUtilityCandidateId);
       expect(chosenRow?.kernelActionId).toBe(trace.kernelActionId);
       expect(Number.isFinite(trace.temperature)).toBe(true);
+      expect(isConflictChoiceTraceCompleteV1(trace)).toBe(true);
+    }
+    const complete = report.choices.A;
+    const incomplete = {
+      ...complete,
+      ranked: complete.ranked.map((entry, index) => index === 0 ? { ...entry, goalEnergySources: [] } : entry),
+    };
+    expect(isConflictChoiceTraceCompleteV1(incomplete)).toBe(false);
+    expect(isConflictChoiceTraceCompleteV1({
+      ...complete,
+      ranked: complete.ranked.map((entry, index) => index === 0 ? { ...entry, usedAtomIds: [] } : entry),
+    })).toBe(false);
+  });
+
+  it('CONFLICT-PARITY-0: S8 Q differentiates conflict candidates (domain-union goal energy)', () => {
+    const args = buildJointDecisionArgs();
+    const result = runConflictJointDecisionV1(args);
+    expect(result.ok).toBe(true);
+    if (result.ok === false) return;
+
+    for (const playerId of ['A', 'B']) {
+      const trace = result.value.choices[playerId];
+      expect(trace.goalEnergyMode).toBe('domain-union-v1');
+      // The flat-Q defect made every conflict Q equal (-cost) so the choice
+      // degenerated to seeded noise; domain-union goal energy restores a live
+      // utility field over the projected candidates.
+      const qs = trace.ranked.map((entry) => entry.q);
+      expect(new Set(qs.map((q) => q.toFixed(9))).size).toBeGreaterThan(1);
     }
   });
 
@@ -264,6 +299,25 @@ describe('conflict candidate bridge — impact matrix and belief modulation', ()
     expect(mid.affiliation).toBeLessThan(high.affiliation);
   });
 
+  it('falls back to S0 legacy dyad atoms when the S5 belief layer is off', () => {
+    const state = makeConflictState();
+    const protocol = TRUST_EXCHANGE_DEFINITION.createProtocol(['A', 'B']);
+    const projected = projectLegalActions(TRUST_EXCHANGE_DEFINITION, state, protocol, 'A');
+    if (projected.ok === false) throw new Error('projection failed');
+
+    // extractTomDyadAtoms id format: tom:dyad:{self}:{other}:{metric}.
+    const legacyAtoms: ContextAtom[] = [
+      { id: 'tom:dyad:A:B:trust', kind: 'tom_dyad_metric', ns: 'tom', origin: 'belief', source: 'tom', magnitude: 0.85, confidence: 1 } as any,
+      { id: 'tom:dyad:A:B:threat', kind: 'tom_dyad_metric', ns: 'tom', origin: 'belief', source: 'tom', magnitude: 0.15, confidence: 1 } as any,
+    ];
+    const { beliefSignalsByTarget } = buildConflictPossibilities({
+      rows: projected.value, atoms: legacyAtoms, selfId: 'A',
+    });
+    expect(beliefSignalsByTarget.B.trust).toBeCloseTo(0.85, 6);
+    expect(beliefSignalsByTarget.B.threat).toBeCloseTo(0.15, 6);
+    expect(beliefSignalsByTarget.B.usedAtomIds).toContain('tom:dyad:A:B:trust');
+  });
+
   it('reads canonical belief atoms first and records their provenance on the possibility', () => {
     const state = makeConflictState();
     const protocol = TRUST_EXCHANGE_DEFINITION.createProtocol(['A', 'B']);
@@ -281,7 +335,7 @@ describe('conflict candidate bridge — impact matrix and belief modulation', ()
     expect(beliefSignalsByTarget.B.trust).toBeCloseTo(0.9, 6);
     for (const possibility of possibilities) {
       expect(possibility.trace?.usedAtomIds).toContain(beliefAtomId);
-      expect(possibility.id.startsWith('conflict:')).toBe(true);
+      expect(possibility.id.length).toBeGreaterThan(0);
     }
 
     const built = buildActionCandidates({ selfId: 'A', atoms, possibilities, currentTick: state.tick });

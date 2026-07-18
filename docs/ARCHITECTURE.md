@@ -36,7 +36,8 @@ world/obs/mem/rel/life atoms
 
 User-facing runs may select an explicit runtime profile. `legacy` is the
 compatibility control; `phase1` enables the validated communication, object,
-location, memory, prior-influence, PAM-v2, and S5 OpponentBelief dual-emit
+location, memory, prior-influence, PAM-v2, S5 OpponentBelief dual-emit, and
+active-goal/domain energy-union
 mechanisms for that run without
 mutating global FormulaConfig. The selected profile is part of trace and must
 be included when comparing runs.

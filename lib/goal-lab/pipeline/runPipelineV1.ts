@@ -1098,6 +1098,7 @@ export function runGoalLabPipelineV1(input: GoalLabPipelineInputV1): GoalLabPipe
       atoms: mS8c.atoms,
       possibilities: possList,
       currentTick: tick,
+      goalEnergyDomainUnionV1: runtimeMechanics.goalEnergyDomainUnionV1,
     });
 
     const rng = input.decisionRng ?? agent?.rngChannels?.decide;

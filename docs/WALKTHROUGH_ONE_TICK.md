@@ -326,7 +326,7 @@ phase1: world.facts['sim:runtimeProfile'] = 'phase1'
 
 | readout | Legacy | Phase I |
 |---|---:|---:|
-| active profile mechanisms | 0 | 7 |
+| active profile mechanisms | 0 | 8 |
 | S5 OpponentBelief dual-emit | off | on |
 | location properties reach GoalLab | no | yes |
 | B resourceAccess source (holds token) | absent | 0.9 |
@@ -335,6 +335,7 @@ phase1: world.facts['sim:runtimeProfile'] = 'phase1'
 | clean-floor danger contribution | 0 | `0.25*0.45*0.63=0.070875` |
 | decaying threat memory | absent | `c0*0.97^age` |
 | PAM v2 + prior Q carrier | off | on, subject to possibility gates |
+| active-goal/domain energy union | off | on |
 | C(t) | not projected | finite raw read-only vector |
 
 The full-profile comparison is a visibility smoke test, not causal attribution
