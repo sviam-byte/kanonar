@@ -6,16 +6,14 @@
 // design: schema-version fields (conflict-nlive-session-v1 vs the V2RunResult
 // shape; conflict-njoint-decision-v1 vs conflict-joint-decision-v1), the
 // N-step extras (pairwise, N-shaped observations/utilities), and the
-// V2RunResult-only confidence/summaries/game.traces. Also pins the ADR §5.5
-// scope at session level (default all_others definition fails closed at
-// N = 3), a single-target N = 3 end-to-end run, the catalog-lane throw
-// invariant (getScenario, not a Result), and determinism.
+// V2RunResult-only confidence/summaries/game.traces. Also pins the repaired
+// dyad-only N>2 boundary, strict 1..30 round budget, catalog-lane throw
+// invariant for valid dyads, and determinism.
 
 import { describe, expect, it } from 'vitest';
 
 import { runConflictLabSessionV1 } from '../../lib/dilemma';
 import { buildCanonicalInitialState } from '../../lib/dilemma/dynamics/bridge';
-import { TRUST_EXCHANGE_ACTION_ORDER } from '../../lib/dilemma/dynamics/trustExchange';
 import { getScenario } from '../../lib/dilemma/scenarios';
 import {
   buildCanonicalInitialStateNV1,
@@ -23,7 +21,6 @@ import {
 } from '../../lib/dilemma/integration/nliveSession';
 
 import { mockAgent, mockWorld } from '../pipeline/fixtures';
-import { makeSingleTargetDefinitionN3 } from './nkernelFixtures';
 
 function dyadicWorld() {
   return mockWorld([mockAgent('A'), mockAgent('B')]);
@@ -106,56 +103,9 @@ describe('NKERNEL-SESSION-0 conflict-nlive-session-v1', () => {
     expect(n.value.decisions[0]?.choices['B']?.rngChannelId).toBe('conflict-live:trust_interrogation:17:B');
   });
 
-  it('runs end-to-end at N = 3 with a single-target definition override', () => {
+  it('rejects N > 2 before scenario, world, definition, or decision work', () => {
     const result = runConflictNLabSessionV1({
-      scenarioId: 'trust_interrogation',
-      players: ['a', 'b', 'c'],
-      totalRounds: 2,
-      world: triadWorld(),
-      seed: 29,
-      definition: makeSingleTargetDefinitionN3(),
-    });
-    if (result.ok === false) throw new Error(`expected N=3 session ok, got ${result.error.code}: ${result.error.message}`);
-    const report = result.value;
-
-    expect(report.definitionSource).toBe('caller_override');
-    expect(report.players).toEqual(['a', 'b', 'c']);
-    expect(report.decisions).toHaveLength(2);
-    expect(report.trajectory).toHaveLength(3);
-    report.decisions.forEach((decision, index) => {
-      expect(decision.tick).toBe(index);
-      expect(decision.players).toEqual(['a', 'b', 'c']);
-      expect(decision.canonical.step.pairwise).toHaveLength(3); // N=3 -> 3 unordered pairs
-      for (const playerId of ['a', 'b', 'c']) {
-        expect(TRUST_EXCHANGE_ACTION_ORDER.includes(decision.canonical.actions[playerId])).toBe(true);
-        expect(decision.choices[playerId]?.ranked.length).toBe(TRUST_EXCHANGE_ACTION_ORDER.length);
-        expect(decision.reference.actions[playerId]).toBeDefined();
-      }
-      // Threaded history: round i's post-step state has i+1 entries.
-      expect(decision.canonical.step.state.history).toHaveLength(index + 1);
-    });
-    expect(report.finalState).toEqual(report.trajectory[report.trajectory.length - 1]);
-  });
-
-  it('is deterministic at N = 3 for the same seed', () => {
-    const config = {
-      scenarioId: 'trust_interrogation',
-      players: ['a', 'b', 'c'] as const,
-      totalRounds: 2,
-      world: triadWorld(),
-      seed: 29,
-      definition: makeSingleTargetDefinitionN3(),
-    };
-    const first = runConflictNLabSessionV1({ ...config, players: ['a', 'b', 'c'] });
-    const second = runConflictNLabSessionV1({ ...config, players: ['a', 'b', 'c'] });
-    expect(first.ok).toBe(true);
-    expect(second.ok).toBe(true);
-    expect(JSON.stringify(first)).toBe(JSON.stringify(second));
-  });
-
-  it('fails closed at N = 3 on the default all_others definition (ADR §5.5 surfaced at session level)', () => {
-    const result = runConflictNLabSessionV1({
-      scenarioId: 'trust_interrogation',
+      scenarioId: 'no_such_scenario',
       players: ['a', 'b', 'c'],
       totalRounds: 2,
       world: triadWorld(),
@@ -163,11 +113,30 @@ describe('NKERNEL-SESSION-0 conflict-nlive-session-v1', () => {
     });
     expect(result.ok).toBe(false);
     if (result.ok === false) {
-      expect(result.error.code).toBe('decision_failed');
-      if (result.error.code === 'decision_failed') {
-        expect(result.error.round).toBe(0);
-        expect(result.error.cause.code).toBe('multi_target_not_supported');
-      }
+      expect(result.error.code).toBe('n_live_requires_dyad');
+    }
+  });
+
+  it('returns a typed error for invalid round budgets', () => {
+    for (const totalRounds of [0, 1.5, 31, Number.NaN, Number.NEGATIVE_INFINITY, Number.POSITIVE_INFINITY]) {
+      const result = runConflictNLabSessionV1({
+        scenarioId: 'trust_interrogation',
+        players: ['A', 'B'],
+        totalRounds,
+        world: dyadicWorld(),
+      });
+      expect(result.ok).toBe(false);
+      if (result.ok === false) expect(result.error.code).toBe('invalid_round_budget');
+    }
+    for (const totalRounds of [1, 30]) {
+      const result = runConflictNLabSessionV1({
+        scenarioId: 'authority_judgment',
+        players: ['A', 'B'],
+        totalRounds,
+        world: dyadicWorld(),
+      });
+      expect(result.ok).toBe(false);
+      if (result.ok === false) expect(result.error.code).toBe('unsupported_mechanic');
     }
   });
 

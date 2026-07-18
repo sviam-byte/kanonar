@@ -123,13 +123,15 @@ All IDs are opaque non-empty strings. The direction is always:
 observerId -> targetId
 ```
 
-For `OpponentBeliefV1`, `observerId === targetId` is invalid. Self-ToM uses a
-separate future contract and cannot be stored under an opponent-belief ID.
+For `OpponentBeliefV1`, `observerId === targetId` is invalid. Self-ToM uses the
+separate validated `SelfBeliefV1` contract and cannot be stored under an
+opponent-belief ID.
 
 Approved IDs:
 
 ```text
 belief:opponent:<observerId>:<targetId>
+belief:self:<participantId>
 belief:evidence:<sceneId>:<observationId>
 tom:belief:final:<observerId>:<targetId>:<beliefKey>
 tom:belief:confidence:<observerId>:<targetId>:<beliefKey>

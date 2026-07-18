@@ -10,6 +10,19 @@ import type { ConflictDefinitionV2Role } from './types';
 
 export const PARTICIPANT_SET_SCHEMA_VERSION = 'participant-set-v1' as const;
 
+/**
+ * Conflict ids become keys in plain Record objects throughout the kernel.
+ * Reject prototype-sensitive names and control characters before any such
+ * object is built; punctuation such as ':' and '/' remains valid.
+ */
+export function isSafeConflictIdV1(id: string): boolean {
+  return id.length > 0
+    && id.trim().length > 0
+    && id !== 'prototype'
+    && !Object.prototype.hasOwnProperty.call(Object.prototype, id)
+    && !/[\u0000-\u001f\u007f]/.test(id);
+}
+
 export interface ParticipantSetV1Member {
   readonly participantId: string;
   readonly roleId: string;
@@ -28,6 +41,8 @@ export type ParticipantSetErrorV1 =
   | { readonly code: 'too_few_participants'; readonly count: number; readonly message: string }
   | { readonly code: 'empty_participant_id'; readonly index: number; readonly message: string }
   | { readonly code: 'empty_role_id'; readonly index: number; readonly message: string }
+  | { readonly code: 'unsafe_participant_id'; readonly index: number; readonly participantId: string; readonly message: string }
+  | { readonly code: 'unsafe_role_id'; readonly index: number; readonly roleId: string; readonly message: string }
   | { readonly code: 'duplicate_participant'; readonly participantId: string; readonly message: string }
   | { readonly code: 'duplicate_role'; readonly roleId: string; readonly message: string };
 
@@ -59,6 +74,8 @@ export function buildParticipantSetV1(
   members.forEach((member, index) => {
     if (member.participantId.length === 0) {
       errors.push({ code: 'empty_participant_id', index, message: `members[${index}] has an empty participantId` });
+    } else if (!isSafeConflictIdV1(member.participantId)) {
+      errors.push({ code: 'unsafe_participant_id', index, participantId: member.participantId, message: `members[${index}] has an unsafe participantId` });
     } else if (participantIds.has(member.participantId)) {
       errors.push({ code: 'duplicate_participant', participantId: member.participantId, message: `duplicate participant ${member.participantId}` });
     } else {
@@ -66,6 +83,8 @@ export function buildParticipantSetV1(
     }
     if (member.roleId.length === 0) {
       errors.push({ code: 'empty_role_id', index, message: `members[${index}] has an empty roleId` });
+    } else if (!isSafeConflictIdV1(member.roleId)) {
+      errors.push({ code: 'unsafe_role_id', index, roleId: member.roleId, message: `members[${index}] has an unsafe roleId` });
     } else if (roleIds.has(member.roleId)) {
       errors.push({ code: 'duplicate_role', roleId: member.roleId, message: `duplicate role ${member.roleId}` });
     } else {

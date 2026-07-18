@@ -174,6 +174,46 @@ describe('R7 observation-view-v1', () => {
     }
   });
 
+  it('re-decodes envelopes and rejects stale scene, tick, and payload validation', () => {
+    const wrongScene = resolve3();
+    wrongScene.observationsByCharacterId.alice[0].sceneId = 'other-scene';
+    expect(selectObservationViewV1(wrongScene, 'alice').ok).toBe(false);
+
+    const wrongTick = resolve3();
+    wrongTick.observationsByCharacterId.alice[0].tick = 4;
+    expect(selectObservationViewV1(wrongTick, 'alice').ok).toBe(false);
+
+    const malformed = resolve3();
+    malformed.observationsByCharacterId.alice[0].reliability = 2;
+    expect(selectObservationViewV1(malformed, 'alice').ok).toBe(false);
+
+    const leaked = resolve3();
+    leaked.observationsByCharacterId.alice[0].payload.injectedSecret = 'attack';
+    expect(selectObservationViewV1(leaked, 'alice').ok).toBe(false);
+  });
+
+  it('fails closed on a null envelope slot', () => {
+    const resolution = resolve3();
+    (resolution.observationsByCharacterId.alice as unknown[])[0] = null;
+    const selected = selectObservationViewV1(resolution, 'alice');
+    expect(selected.ok).toBe(false);
+  });
+
+  it('returns envelope, payload, and provenance copies owned by the view', () => {
+    const resolution = resolve3();
+    const alice = view(resolution, 'alice');
+    const source = resolution.observationsByCharacterId.alice[0];
+    const selected = alice.observations[0];
+    expect(selected).not.toBe(source);
+    expect(selected.payload).not.toBe(source.payload);
+    expect(selected.provenance).not.toBe(source.provenance);
+
+    const before = structuredClone(selected);
+    source.payload.visible = 'changed-after-selection';
+    source.provenance.sourceIds.push('changed-after-selection');
+    expect(selected).toEqual(before);
+  });
+
   it('N=3 non-interference: a hidden field outside every allowlist reaches no view', () => {
     const baseline = resolve3();
     const mutated = scene3();

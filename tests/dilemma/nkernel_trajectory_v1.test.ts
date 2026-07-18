@@ -46,6 +46,11 @@ function forced(actions: Readonly<Record<string, ConflictActionId>>): readonly C
   return Object.keys(actions).map((playerId) => ({ playerId, actionId: actions[playerId] }));
 }
 
+function mustValue<T>(result: { readonly ok: true; readonly value: T } | { readonly ok: false; readonly error: unknown }): T {
+  if (result.ok === false) throw new Error('expected analysis result ok');
+  return result.value;
+}
+
 describe('NKERNEL-TRAJECTORY-0', () => {
   it('N = 2 reduction oracle: a mixed forced/endogenous 6-step schedule reproduces runConflictTrajectory', () => {
     const schedule = [
@@ -93,9 +98,9 @@ describe('NKERNEL-TRAJECTORY-0', () => {
     const statesDyad = statesN.map((state) => asKernelConflictStateV1(state));
 
     for (let i = 1; i < statesN.length; i++) {
-      expect(stateDistanceNV1(statesN[0], statesN[i])).toBe(stateDistance(statesDyad[0], statesDyad[i]));
-      expect(collapseScoreNV1(statesN[i])).toBe(collapseScore(statesDyad[i]));
-      expect(repairCapacityNV1(statesN[i])).toBe(repairCapacity(statesDyad[i]));
+      expect(mustValue(stateDistanceNV1(statesN[0], statesN[i]))).toBe(stateDistance(statesDyad[0], statesDyad[i]));
+      expect(mustValue(collapseScoreNV1(statesN[i]))).toBe(collapseScore(statesDyad[i]));
+      expect(mustValue(repairCapacityNV1(statesN[i]))).toBe(repairCapacity(statesDyad[i]));
     }
 
     // A perturbed twin for the divergence-rate branch.
@@ -111,7 +116,7 @@ describe('NKERNEL-TRAJECTORY-0', () => {
     const perturbedN: readonly ConflictStateNV1[] = [perturbedStart, ...perturbed.value.map((step) => step.state)];
     const perturbedDyad = perturbedN.map((state) => asKernelConflictStateV1(state));
 
-    const metricsN = trajectoryMetricsNV1(statesN, { perturbed: perturbedN });
+    const metricsN = mustValue(trajectoryMetricsNV1(statesN, { perturbed: perturbedN }));
     const metricsDyad = trajectoryMetrics(statesDyad, { perturbed: perturbedDyad });
     expect(metricsN).toEqual(metricsDyad);
   });
@@ -129,7 +134,7 @@ describe('NKERNEL-TRAJECTORY-0', () => {
     });
 
     const states: readonly ConflictStateNV1[] = [stateN, ...run.value.map((step) => step.state)];
-    const metrics = trajectoryMetricsNV1(states);
+    const metrics = mustValue(trajectoryMetricsNV1(states));
     expect(metrics.distanceFromStart).toBeGreaterThanOrEqual(0);
     expect(Number.isFinite(metrics.distanceFromStart)).toBe(true);
     expect(metrics.collapseScore).toBeGreaterThanOrEqual(0);
@@ -140,8 +145,8 @@ describe('NKERNEL-TRAJECTORY-0', () => {
     // Appending an exact copy of an earlier state is a distance-0 revisit:
     // the copy lands at index 6, the original sits at index 3 → period 3.
     const looped = [...states, states[states.length - 3]];
-    expect(detectCyclePeriodNV1(looped, 1e-9)).toBe(3);
-    expect(estimateDivergenceRateNV1(states, states)).toBeUndefined(); // d0 = 0
+    expect(mustValue(detectCyclePeriodNV1(looped, 1e-9))).toBe(3);
+    expect(mustValue(estimateDivergenceRateNV1(states, states))).toBeUndefined(); // d0 = 0
   });
 
   it('N = 3: trajectories are deterministic and mixed schedules respect per-step modes', () => {
@@ -185,5 +190,23 @@ describe('NKERNEL-TRAJECTORY-0', () => {
     });
     expect(badForced.ok).toBe(false);
     if (badForced.ok === false) expect(badForced.error.code).toBe('missing_player');
+  });
+
+  it('returns typed analysis errors for invalid states, participant mismatch, empty metrics, and bad epsilon', () => {
+    const invalid = collapseScoreNV1({ ...makeStateN(2), players: ['a', 'a'] });
+    expect(invalid.ok).toBe(false);
+    if (invalid.ok === false) expect(invalid.error.code).toBe('invalid_state');
+
+    const mismatch = stateDistanceNV1(makeStateN(2), makeStateN(3));
+    expect(mismatch.ok).toBe(false);
+    if (mismatch.ok === false) expect(mismatch.error.code).toBe('participant_set_mismatch');
+
+    const empty = trajectoryMetricsNV1([]);
+    expect(empty.ok).toBe(false);
+    if (empty.ok === false) expect(empty.error.code).toBe('empty_trajectory');
+
+    const epsilon = detectCyclePeriodNV1([makeStateN(2)], Number.NaN);
+    expect(epsilon.ok).toBe(false);
+    if (epsilon.ok === false) expect(epsilon.error.code).toBe('invalid_epsilon');
   });
 });

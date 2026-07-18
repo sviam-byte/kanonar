@@ -66,6 +66,23 @@ describe('goalEnergyDomainUnionV1', () => {
     const qA = scoreAction(byId.get('offer:a') as any, goalEnergy);
     const qB = scoreAction(byId.get('offer:b') as any, goalEnergy);
     expect(qA).toBeGreaterThan(qB);
+    const sources = (byId.get('offer:a')?.why?.parts.goalEnergySources ?? []) as Array<{ goalId: string; atomId: string }>;
+    expect(sources).toContainEqual({ goalId: 'affiliation', atomId: 'goal:domain:affiliation:A' });
+  });
+
+  it('keeps the first/newest atom when a domain id occurs more than once', () => {
+    const atoms = [
+      atom('goal:domain:safety:A', 0.77),
+      atom('goal:domain:safety:A', 0),
+    ];
+    const { actions, goalEnergy } = buildActionCandidates({
+      selfId: 'A', atoms, possibilities: [domainOffer('offer:a', { safety: 0.5 })], currentTick: 0,
+      goalEnergyDomainUnionV1: true,
+    });
+    expect(goalEnergy.safety).toBeCloseTo(0.77, 9);
+    expect(actions[0].why?.parts.goalEnergySources).toContainEqual({
+      goalId: 'safety', atomId: 'goal:domain:safety:A',
+    });
   });
 
   it('union mode: active-goal keys keep precedence over a colliding domain key', () => {

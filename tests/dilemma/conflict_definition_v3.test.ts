@@ -220,6 +220,22 @@ describe('R7 conflict-definition-v3', () => {
     }
   });
 
+  it('rejects unsafe participant and role ids via the bridge', () => {
+    const base = makeV3(2);
+    const res = validateConflictDefinitionV3({
+      ...base,
+      roles: [
+        { id: '__proto__', playerId: 'P0' },
+        { id: 'contributor-1', playerId: 'constructor' },
+      ],
+    });
+    expect(res.ok).toBe(false);
+    if (res.ok === false) {
+      expect(res.errors.some((e) => e.code === 'invalid_roles' && e.causeCode === 'unsafe_role_id')).toBe(true);
+      expect(res.errors.some((e) => e.code === 'invalid_roles' && e.causeCode === 'unsafe_participant_id')).toBe(true);
+    }
+  });
+
   it('rejects malformed phases', () => {
     const empty = validateConflictDefinitionV3({ ...makeV3(2), phases: [] });
     expect(empty.ok).toBe(false);
@@ -271,6 +287,25 @@ describe('R7 conflict-definition-v3', () => {
       expect(codes).toEqual(expect.arrayContaining([
         'empty_action_id', 'unknown_action_phase', 'unknown_action_role', 'duplicate_action',
       ]));
+    }
+  });
+
+  it('rejects an action whose role exists but is inactive in that phase', () => {
+    const base = makeV3(2);
+    const res = validateConflictDefinitionV3({
+      ...base,
+      phases: [{ ...base.phases[0], actorRoleIds: ['contributor-0'] }],
+      legalActions: [{
+        id: 'free_ride',
+        phaseId: 'contribution',
+        actorRoleId: 'contributor-1',
+        target: { mode: 'none' },
+      }],
+    });
+    expect(res.ok).toBe(false);
+    if (res.ok === false) {
+      expect(res.errors.some((e) => e.code === 'inactive_action_actor'
+        && e.actorRoleId === 'contributor-1')).toBe(true);
     }
   });
 

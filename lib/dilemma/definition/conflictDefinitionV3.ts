@@ -75,6 +75,7 @@ export type ConflictDefinitionV3Error =
   | { readonly code: 'duplicate_action'; readonly phaseId: string; readonly actorRoleId: string; readonly actionId: string; readonly message: string }
   | { readonly code: 'unknown_action_phase'; readonly actionId: string; readonly phaseId: string; readonly message: string }
   | { readonly code: 'unknown_action_role'; readonly actionId: string; readonly actorRoleId: string; readonly message: string }
+  | { readonly code: 'inactive_action_actor'; readonly actionId: string; readonly phaseId: string; readonly actorRoleId: string; readonly message: string }
   | { readonly code: 'counterparty_requires_dyad'; readonly actionId: string; readonly playerCount: number; readonly message: string }
   | { readonly code: 'unknown_target_participant'; readonly actionId: string; readonly participantId: string; readonly message: string };
 
@@ -125,6 +126,7 @@ export function validateConflictDefinitionV3(
     errors.push({ code: 'empty_phases', message: 'phases must be non-empty' });
   }
   const phaseIds = new Set<string>();
+  const phaseActorIds = new Map<string, ReadonlySet<string>>();
   definition.phases.forEach((phase, index) => {
     if (phase.id.length === 0) {
       errors.push({ code: 'empty_phase_id', index, message: `phases[${index}] has an empty id` });
@@ -140,6 +142,9 @@ export function validateConflictDefinitionV3(
       if (!roleIds.has(roleId)) {
         errors.push({ code: 'unknown_phase_actor', phaseId: phase.id, roleId, message: `phase ${phase.id} references unknown role ${roleId}` });
       }
+    }
+    if (phase.id.length > 0 && !phaseActorIds.has(phase.id)) {
+      phaseActorIds.set(phase.id, new Set(phase.actorRoleIds));
     }
   });
 
@@ -168,6 +173,14 @@ export function validateConflictDefinitionV3(
     }
     if (!roleIds.has(action.actorRoleId)) {
       errors.push({ code: 'unknown_action_role', actionId: action.id, actorRoleId: action.actorRoleId, message: `action ${action.id} references unknown role ${action.actorRoleId}` });
+    } else if (phaseActorIds.has(action.phaseId) && !phaseActorIds.get(action.phaseId)?.has(action.actorRoleId)) {
+      errors.push({
+        code: 'inactive_action_actor',
+        actionId: action.id,
+        phaseId: action.phaseId,
+        actorRoleId: action.actorRoleId,
+        message: `action ${action.id} is assigned to role ${action.actorRoleId}, which is inactive in phase ${action.phaseId}`,
+      });
     }
     if (action.target.mode === 'counterparty' && definition.playerCount !== 2) {
       errors.push({

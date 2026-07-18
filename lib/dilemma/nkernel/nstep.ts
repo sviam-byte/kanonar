@@ -26,6 +26,7 @@ import type {
   ConflictObservation,
   ConflictOutcome,
   ConflictPlayerId,
+  ConflictProtocol,
   ConflictRegimeState,
   ConflictTrajectoryFrame,
   ForcedActionStrategyMode,
@@ -36,6 +37,7 @@ import { asKernelConflictStateV1, dyadicPairProjectionV1, normalizeConflictState
 import {
   CONFLICT_NSTEP_SCHEMA_VERSION,
   type ConflictNStepInputV1,
+  type ConflictNStepErrorV1,
   type ConflictNStepPairV1,
   type ConflictNStepResultOrErrorV1,
 } from './types';
@@ -44,6 +46,31 @@ import {
 // pairwise provenance. At N = 2 the single pair's tag passes through verbatim.
 export const N_PAIRWISE_OUTCOME_TAG = 'n_pairwise' as const;
 
+function sameOrderedValues(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((value, index) => value === b[index]);
+}
+
+export function validateCanonicalTrustProtocolNV1(
+  players: readonly ConflictPlayerId[],
+  protocol: ConflictProtocol,
+): ConflictNStepErrorV1 | null {
+  if (protocol.id !== 'trust_exchange') {
+    return { code: 'invalid_protocol', message: `N-kernel accepts only trust_exchange, got ${protocol.id}` };
+  }
+  if (!sameOrderedValues(protocol.phases, ['simultaneous_choice', 'resolution'])) {
+    return { code: 'invalid_protocol', message: 'N-kernel trust protocol phases are not canonical' };
+  }
+  if (!sameOrderedValues(protocol.actionOrder, ['trust', 'withhold', 'betray'])) {
+    return { code: 'invalid_protocol', message: 'N-kernel trust protocol action order is not canonical' };
+  }
+  const rolePlayers = Object.keys(protocol.roles);
+  if (!sameOrderedValues(rolePlayers, players)
+    || rolePlayers.some((playerId) => protocol.roles[playerId] !== 'participant')) {
+    return { code: 'invalid_protocol', message: 'N-kernel trust protocol roles do not exactly match ordered participants' };
+  }
+  return null;
+}
+
 export function resolveConflictNStepV1(input: ConflictNStepInputV1): ConflictNStepResultOrErrorV1 {
   const normalized = normalizeConflictStateNV1(input.state);
   if (normalized.ok === false) return normalized;
@@ -51,12 +78,8 @@ export function resolveConflictNStepV1(input: ConflictNStepInputV1): ConflictNSt
   const players = canonical.players;
   const protocol = input.protocol;
   const mode: ForcedActionStrategyMode = input.forcedActionStrategyMode ?? 'freeze';
-
-  for (const playerId of players) {
-    if (!protocol.roles[playerId]) {
-      return { ok: false, error: { code: 'invalid_protocol', message: `Protocol ${protocol.id} has no role for player ${playerId}` } };
-    }
-  }
+  const protocolError = validateCanonicalTrustProtocolNV1(players, protocol);
+  if (protocolError) return { ok: false, error: protocolError };
 
   const actions = validateJointAction(asKernelConflictStateV1(canonical), protocol, input.forcedJointActions);
   if (actions.ok === false) return actions;

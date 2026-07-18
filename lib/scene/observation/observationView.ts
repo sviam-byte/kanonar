@@ -6,6 +6,7 @@
 // invalid resolution. Pure domain: nothing imports it at runtime.
 
 import { codeUnitCompare } from '../../utils/compare';
+import { decodeObservationEnvelopesV1 } from './resolver';
 import { OBSERVATION_SCHEMA_VERSION } from './types';
 import type { ObservationEnvelopeV1, ObservationResolutionV1 } from './types';
 
@@ -44,6 +45,12 @@ function resolutionErrors(resolution: ObservationResolutionV1): ObservationViewE
   if (!resolution.validation.valid) {
     errors.push({ code: 'invalid_resolution', message: 'resolution carries a failed validation report' });
   }
+  if (!resolution.sceneId || !Number.isInteger(resolution.tick) || resolution.tick < 0) {
+    errors.push({ code: 'invalid_resolution', message: 'resolution requires a non-empty sceneId and a non-negative integer tick' });
+  }
+  if (!resolution.observationsByCharacterId || typeof resolution.observationsByCharacterId !== 'object' || Array.isArray(resolution.observationsByCharacterId)) {
+    errors.push({ code: 'invalid_resolution', message: 'resolution observations must be an observer-indexed object' });
+  }
   return errors;
 }
 
@@ -52,22 +59,54 @@ function selectSlot(
   observerId: string,
 ): { slot: ObservationEnvelopeV1[]; errors: ObservationViewErrorV1[] } {
   const errors: ObservationViewErrorV1[] = [];
+  if (!resolution.observationsByCharacterId || typeof resolution.observationsByCharacterId !== 'object' || Array.isArray(resolution.observationsByCharacterId)) {
+    return { slot: [], errors: [{ code: 'invalid_resolution', message: 'resolution observations must be an observer-indexed object' }] };
+  }
   if (!Object.hasOwn(resolution.observationsByCharacterId, observerId)) {
     errors.push({ code: 'unknown_observer', observerId, message: `resolution has no observer ${observerId}` });
     return { slot: [], errors };
   }
-  const slot = resolution.observationsByCharacterId[observerId];
-  for (const envelope of slot) {
-    if (envelope.observerId !== observerId) {
+  const rawSlot: unknown = resolution.observationsByCharacterId[observerId];
+  if (Array.isArray(rawSlot)) {
+    for (const item of rawSlot) {
+      if (item && typeof item === 'object' && 'observerId' in item && item.observerId !== observerId) {
+        const observationId = 'observationId' in item && typeof item.observationId === 'string' ? item.observationId : '<unknown>';
+        const foreignObserverId = typeof item.observerId === 'string' ? item.observerId : String(item.observerId);
+        errors.push({
+          code: 'foreign_envelope',
+          observerId,
+          observationId,
+          message: `slot ${observerId} carries envelope ${observationId} for observer ${foreignObserverId}`,
+        });
+      }
+    }
+  }
+
+  const decoded = decodeObservationEnvelopesV1(rawSlot, observerId);
+  if (decoded.ok === false) {
+    errors.push({
+      code: 'invalid_resolution',
+      message: `observer ${observerId} slot failed envelope decoding: ${decoded.validation.errors.map(error => `${error.code}:${error.path}`).join(',')}`,
+    });
+    return { slot: [], errors };
+  }
+
+  for (const envelope of decoded.value) {
+    if (envelope.sceneId !== resolution.sceneId || envelope.tick !== resolution.tick) {
       errors.push({
-        code: 'foreign_envelope',
-        observerId,
-        observationId: envelope.observationId,
-        message: `slot ${observerId} carries envelope ${envelope.observationId} for observer ${envelope.observerId}`,
+        code: 'invalid_resolution',
+        message: `envelope ${envelope.observationId} identity does not match resolution scene/tick`,
+      });
+    }
+    const allowedFields = new Set(envelope.visibility.allowedFields);
+    if (Object.keys(envelope.payload).some(field => !allowedFields.has(field))) {
+      errors.push({
+        code: 'invalid_resolution',
+        message: `envelope ${envelope.observationId} payload exceeds its visibility allowlist`,
       });
     }
   }
-  return { slot, errors };
+  return { slot: errors.length === 0 ? structuredClone(decoded.value) : [], errors };
 }
 
 /**
@@ -91,7 +130,7 @@ export function selectObservationViewV1(
       sceneId: resolution.sceneId,
       tick: resolution.tick,
       observerId,
-      observations: [...slot],
+      observations: slot,
     },
   };
 }
@@ -104,6 +143,9 @@ export function selectAllObservationViewsV1(
   resolution: ObservationResolutionV1,
 ): ObservationViewsResultV1 {
   const errors = resolutionErrors(resolution);
+  if (!resolution.observationsByCharacterId || typeof resolution.observationsByCharacterId !== 'object' || Array.isArray(resolution.observationsByCharacterId)) {
+    return { ok: false, errors };
+  }
   const observerIds = Object.keys(resolution.observationsByCharacterId).sort(codeUnitCompare);
   const views: ObservationViewV1[] = [];
   for (const observerId of observerIds) {
@@ -115,7 +157,7 @@ export function selectAllObservationViewsV1(
         sceneId: resolution.sceneId,
         tick: resolution.tick,
         observerId,
-        observations: [...slot],
+        observations: slot,
       });
     }
   }

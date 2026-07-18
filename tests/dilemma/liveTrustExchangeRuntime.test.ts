@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import { runConflictLabSessionV1, TRUST_EXCHANGE_ACTION_ORDER } from '@/lib/dilemma';
+import { MAX_CONFLICT_LIVE_ROUNDS_V1 } from '@/lib/dilemma/integration/liveSession';
+import { TRUST_EXCHANGE_ACTION_LABELS } from '@/lib/dilemma/dynamics/trustExchange';
 import { mockAgent, mockWorld } from '../pipeline/fixtures';
 
 function run(seed = 17) {
@@ -15,6 +17,33 @@ function run(seed = 17) {
 }
 
 describe('R5 live trust_exchange runtime', () => {
+  it('exports and enforces the strict dyadic round boundary', () => {
+    expect(MAX_CONFLICT_LIVE_ROUNDS_V1).toBe(30);
+    const world = mockWorld([mockAgent('A'), mockAgent('B')]);
+    for (const totalRounds of [0, 1.5, 31, Number.NaN, Number.NEGATIVE_INFINITY, Number.POSITIVE_INFINITY]) {
+      expect(() => runConflictLabSessionV1({
+        scenarioId: 'trust_interrogation', players: ['A', 'B'], totalRounds, world,
+      })).toThrow(RangeError);
+    }
+    expect(() => runConflictLabSessionV1({
+      scenarioId: 'trust_interrogation',
+      players: ['A', 'A'],
+      totalRounds: 1,
+      world,
+    })).toThrow(RangeError);
+    for (const totalRounds of [1, 30]) {
+      expect(runConflictLabSessionV1({
+        scenarioId: 'authority_judgment', players: ['A', 'B'], totalRounds, world,
+      }).game.rounds).toHaveLength(totalRounds);
+    }
+    expect(() => runConflictLabSessionV1({
+      scenarioId: 'trust_interrogation',
+      players: ['__proto__', 'B'],
+      totalRounds: 1,
+      world,
+    })).toThrow(RangeError);
+  });
+
   it('uses GoalLab S8 choices as the authoritative multi-round game and kernel history', () => {
     const result = run();
     expect(result.canonicalSession?.runtime).toBe('canonical_goal_lab_s8');
@@ -24,6 +53,8 @@ describe('R5 live trust_exchange runtime', () => {
     if (!result.canonicalSession || result.conflictCore?.runtime !== 'canonical_dynamics') return;
 
     expect(result.canonicalSession.decisions).toHaveLength(3);
+    expect(Object.keys(TRUST_EXCHANGE_ACTION_LABELS)).toEqual([...TRUST_EXCHANGE_ACTION_ORDER]);
+    expect(Object.values(TRUST_EXCHANGE_ACTION_LABELS)).toEqual(['trust', 'withhold', 'betray']);
     result.canonicalSession.decisions.forEach((decision, index) => {
       expect(decision.tick).toBe(index);
       expect(result.game.rounds[index]?.choices).toEqual(decision.canonical.actions);

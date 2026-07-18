@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { runConflictLabSessionV1 } from '../../lib/dilemma/integration/liveSession';
 import { allScenarios, getScenario } from '../../lib/dilemma/scenarios';
 import { allMechanics } from '../../lib/dilemma/mechanics';
+import { TRUST_EXCHANGE_ACTION_LABELS, TRUST_EXCHANGE_ACTION_ORDER } from '../../lib/dilemma/dynamics/trustExchange';
 import { CONFLICT_SCENARIO_INVENTORY, conflictCatalogLane } from '../../lib/dilemma/definition';
 import type { ConflictInventoryEntry, ConflictInventoryKind } from '../../lib/dilemma/definition';
 import type {
@@ -328,7 +329,8 @@ const CoreDynamicsBlock: React.FC<{ core: V2RunResult['conflictCore'] }> = ({ co
     { from: b, to: a, relation: core.finalState.relations[b]?.[a], memory: core.finalState.memories[b]?.[a], regime: core.finalState.regimes[b]?.[a] },
   ];
   const frames = core.frames.slice(-Math.min(24, core.frames.length));
-  const actionLabel = (id: keyof typeof core.actionLabels | string) => core.actionLabels[id as keyof typeof core.actionLabels] ?? id;
+  const actionLabel = (id: keyof typeof TRUST_EXCHANGE_ACTION_LABELS | string) =>
+    TRUST_EXCHANGE_ACTION_LABELS[id as keyof typeof TRUST_EXCHANGE_ACTION_LABELS] ?? id;
 
   return (
     <div className="p-4 space-y-4">
@@ -349,9 +351,9 @@ const CoreDynamicsBlock: React.FC<{ core: V2RunResult['conflictCore'] }> = ({ co
         <div className="rounded-lg border border-canon-border/50 bg-canon-card p-3">
           <div className="text-[10px] uppercase tracking-wider text-canon-faint">action vocabulary</div>
           <div className="mt-2 space-y-1 text-[10px]">
-            <div><span className="text-canon-accent">trust</span><span className="text-canon-faint"> = {core.actionLabels.trust}</span></div>
-            <div><span className="text-canon-accent">withhold</span><span className="text-canon-faint"> = {core.actionLabels.withhold}</span></div>
-            <div><span className="text-canon-accent">betray</span><span className="text-canon-faint"> = {core.actionLabels.betray}</span></div>
+            <div><span className="text-canon-accent">trust</span><span className="text-canon-faint"> = {TRUST_EXCHANGE_ACTION_LABELS.trust}</span></div>
+            <div><span className="text-canon-accent">withhold</span><span className="text-canon-faint"> = {TRUST_EXCHANGE_ACTION_LABELS.withhold}</span></div>
+            <div><span className="text-canon-accent">betray</span><span className="text-canon-faint"> = {TRUST_EXCHANGE_ACTION_LABELS.betray}</span></div>
           </div>
         </div>
       </div>
@@ -591,6 +593,13 @@ export const DilemmaLabPanel: React.FC = () => {
   const canonicalByMechanic = useMemo(() => groupByMechanic(canonicalScenarios), [canonicalScenarios]);
   const compatByMechanic = useMemo(() => groupByMechanic(compatScenarios), [compatScenarios]);
   const game = result?.game ?? null;
+  const canonicalVocabulary = conflictCatalogLane(inventoryByScenario.get(scenario.id)?.kind, true) === 'canonical';
+  const displayedActions: Array<{ id: string; label: string; requires?: ScenarioTemplate['actionPool'][number]['requires'] }> = canonicalVocabulary
+    ? TRUST_EXCHANGE_ACTION_ORDER.map((id) => ({ id, label: TRUST_EXCHANGE_ACTION_LABELS[id] }))
+    : scenario.actionPool;
+  const displayActionLabel = (actionId: string): string => canonicalVocabulary
+    ? TRUST_EXCHANGE_ACTION_LABELS[actionId as keyof typeof TRUST_EXCHANGE_ACTION_LABELS] ?? actionId
+    : scenario.actionPool.find((action) => action.id === actionId)?.label ?? actionId;
 
   const allChars = useMemo(() => {
     const base = getAllCharactersWithRuntime();
@@ -752,7 +761,7 @@ export const DilemmaLabPanel: React.FC = () => {
           <div className="text-xs text-canon-muted bg-canon-card border border-canon-border/50 rounded-lg p-3 italic">{scenario.setup}</div>
           <ProtocolSkeleton protocol={scenario.protocol} />
           <div className="text-[10px] text-canon-faint">
-            Механика: <span className="text-canon-text">{scenario.mechanicName}</span> · класс: {scenario.dilemmaClass} · действия: {scenario.actionPool.map(a => a.label).join(' · ')}
+            Механика: <span className="text-canon-text">{scenario.mechanicName}</span> · класс: {scenario.dilemmaClass} · действия: {displayedActions.map(a => a.label).join(' · ')}
           </div>
 
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
@@ -865,7 +874,7 @@ export const DilemmaLabPanel: React.FC = () => {
           </div>
           <div className="border-t border-canon-border/30 pt-2 mt-2">
             <div className="text-xs font-semibold text-canon-muted uppercase tracking-wider mb-1">Действия</div>
-            {scenario.actionPool.map(a => (
+            {displayedActions.map(a => (
               <div key={a.id} className="text-[10px] text-canon-muted py-0.5">
                 <span className="text-canon-text font-medium">{a.label}</span>
                 {a.requires && <span className="text-canon-faint ml-1">[{a.requires.roles?.join('/') || ''}{a.requires.minClearance ? ` cl≥${a.requires.minClearance}` : ''}]</span>}
@@ -895,7 +904,7 @@ export const DilemmaLabPanel: React.FC = () => {
                         <div className="text-[10px] font-semibold text-canon-muted mb-1">{pid.replace('character-', '')}</div>
                         {(Object.entries(actionCounts[pid] ?? {}) as Array<[string, number]>).sort((a, b) => b[1] - a[1]).map(([aid, cnt]) => (
                           <div key={aid} className="flex items-center gap-1 text-[10px]">
-                            <span className="text-canon-text flex-1 truncate">{scenario.actionPool.find(a => a.id === aid)?.label ?? aid}</span>
+                            <span className="text-canon-text flex-1 truncate">{displayActionLabel(aid)}</span>
                             <div className="h-2 bg-canon-accent/30 rounded" style={{ width: `${cnt / game.totalRounds * 60}px` }} />
                             <span className="font-mono text-canon-muted w-8 text-right">{cnt}/{game.totalRounds}</span>
                           </div>
@@ -909,9 +918,9 @@ export const DilemmaLabPanel: React.FC = () => {
                       {game.rounds.map(r => (
                         <div key={r.index} className="flex items-center gap-2 text-xs bg-canon-card border border-canon-border/30 rounded-lg px-3 py-1.5">
                           <span className="text-canon-faint font-mono w-6">R{r.index + 1}</span>
-                          <span className="text-canon-accent truncate flex-1">{scenario.actionPool.find(a => a.id === r.choices[game.players[0]])?.label ?? r.choices[game.players[0]]}</span>
+                          <span className="text-canon-accent truncate flex-1">{displayActionLabel(r.choices[game.players[0]])}</span>
                           <span className="text-canon-faint">×</span>
-                          <span className="text-canon-accent-2 truncate flex-1 text-right">{scenario.actionPool.find(a => a.id === r.choices[game.players[1]])?.label ?? r.choices[game.players[1]]}</span>
+                          <span className="text-canon-accent-2 truncate flex-1 text-right">{displayActionLabel(r.choices[game.players[1]])}</span>
                         </div>
                       ))}
                     </div>
@@ -944,7 +953,7 @@ export const DilemmaLabPanel: React.FC = () => {
                         return (
                           <div key={playerId} className="rounded bg-canon-bg/50 p-2 space-y-1 text-[10px]">
                             <div className="flex flex-wrap gap-3">
-                              <span className="text-canon-text">{playerId}: {choice.kernelActionId}</span>
+                              <span className="text-canon-text">{playerId}: {displayActionLabel(choice.kernelActionId)}</span>
                               <span className="text-canon-muted">T={f3(choice.temperature)} ({choice.temperatureSource})</span>
                               <span className="text-canon-muted">topK={choice.topK}</span>
                               <span className="text-canon-muted">pool={choice.samplingPoolCandidateIds.length}</span>
@@ -952,7 +961,7 @@ export const DilemmaLabPanel: React.FC = () => {
                             <div className="text-canon-faint">used atoms: {choice.usedAtomIds.length}</div>
                             {choice.ranked.map((candidate) => (
                               <div key={candidate.utilityCandidateId} className={candidate.chosen ? 'text-canon-accent' : 'text-canon-muted'}>
-                                {candidate.kernelActionId} · Q={f3(candidate.q)} · sample={f3(candidate.sampleScore)}{candidate.inSamplingPool ? ' · pool' : ''}
+                                {displayActionLabel(candidate.kernelActionId)} · Q={f3(candidate.q)} · sample={f3(candidate.sampleScore)}{candidate.inSamplingPool ? ' · pool' : ''}
                               </div>
                             ))}
                           </div>

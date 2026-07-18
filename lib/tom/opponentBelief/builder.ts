@@ -4,7 +4,7 @@ import type { ContextAtom } from '../../context/v2/types';
 import type { ObservationEnvelopeV1 } from '../../scene/observation/types';
 import { codeUnitCompare } from '../../utils/compare';
 import { updateOpponentBeliefV1 } from './update';
-import { APPROVED_BELIEF_KEYS_V1, OPPONENT_BELIEF_SCHEMA_VERSION, type BeliefEvidenceKindV1, type BeliefEvidenceV1, type OpponentBeliefV1 } from './types';
+import { APPROVED_BELIEF_KEYS_V1, OPPONENT_BELIEF_SCHEMA_VERSION, type BeliefEvidenceKindV1, type BeliefEvidenceV1, type BeliefPayloadV1, type OpponentBeliefV1, type SelfBeliefV1 } from './types';
 
 function evidenceKind(observation: ObservationEnvelopeV1): BeliefEvidenceKindV1 {
   if (observation.kind === 'speech') return 'speech';
@@ -15,21 +15,41 @@ function evidenceKind(observation: ObservationEnvelopeV1): BeliefEvidenceKindV1 
   return 'observation';
 }
 
-export function makeNeutralOpponentBeliefPriorV1(args: { observerId: string; targetId: string; tick: number }): OpponentBeliefV1 {
-  if (!args.observerId || !args.targetId || args.observerId === args.targetId) throw new Error('self_target_forbidden');
+function makeNeutralBeliefPayloadV1(tick: number): BeliefPayloadV1 {
   const estimates = Object.fromEntries(APPROVED_BELIEF_KEYS_V1.map(key => [key, {
     value: FC.opponentBeliefV1.priorValue,
     confidence: FC.opponentBeliefV1.priorConfidence,
     uncertainty: FC.opponentBeliefV1.priorUncertainty,
-    evidenceIds: [], updatedAtTick: args.tick,
-  }])) as OpponentBeliefV1['estimates'];
+    evidenceIds: [], updatedAtTick: tick,
+  }])) as BeliefPayloadV1['estimates'];
   return {
-    schemaVersion: OPPONENT_BELIEF_SCHEMA_VERSION, systemVersion: KANONAR_SYSTEM_VERSION,
-    beliefId: `belief:opponent:${args.observerId}:${args.targetId}`,
-    observerId: args.observerId, targetId: args.targetId, estimates,
+    estimates,
     inferredGoals: [], predictedPolicy: [], evidence: [],
     summary: { confidence: FC.opponentBeliefV1.priorConfidence, uncertainty: FC.opponentBeliefV1.priorUncertainty },
-    updatedAtTick: args.tick,
+    updatedAtTick: tick,
+  };
+}
+
+export function makeNeutralOpponentBeliefPriorV1(args: { observerId: string; targetId: string; tick: number }): OpponentBeliefV1 {
+  if (!args.observerId || !args.targetId || args.observerId === args.targetId) throw new Error('self_target_forbidden');
+  return {
+    schemaVersion: OPPONENT_BELIEF_SCHEMA_VERSION,
+    systemVersion: KANONAR_SYSTEM_VERSION,
+    beliefId: `belief:opponent:${args.observerId}:${args.targetId}`,
+    observerId: args.observerId,
+    targetId: args.targetId,
+    ...makeNeutralBeliefPayloadV1(args.tick),
+  };
+}
+
+export function makeNeutralSelfBeliefPriorV1(args: { participantId: string; tick: number }): SelfBeliefV1 {
+  if (!args.participantId) throw new Error('empty_participant_id');
+  return {
+    schemaVersion: OPPONENT_BELIEF_SCHEMA_VERSION,
+    systemVersion: KANONAR_SYSTEM_VERSION,
+    beliefId: `belief:self:${args.participantId}`,
+    participantId: args.participantId,
+    ...makeNeutralBeliefPayloadV1(args.tick),
   };
 }
 
@@ -48,7 +68,7 @@ export function evidenceFromObservationsV1(args: { observerId: string; targetId:
         : item.subjectId ?? item.targetId;
       return describedOpponentId === args.targetId;
     })
-    .map(item => ({ schemaVersion: 1 as const, evidenceId: `belief:evidence:${item.sceneId}:${item.observationId}`, kind: evidenceKind(item), observerId: args.observerId, targetId: args.targetId, observationId: item.observationId, payload: item.payload, reliability: item.reliability, tick: item.tick, provenance: item.provenance }))
+    .map(item => ({ schemaVersion: 1 as const, evidenceId: `belief:evidence:${item.sceneId}:${item.observationId}`, kind: evidenceKind(item), observerId: args.observerId, targetId: args.targetId, observationId: item.observationId, payload: structuredClone(item.payload), reliability: item.reliability, tick: item.tick, provenance: structuredClone(item.provenance) }))
     .sort((a, b) => a.tick - b.tick || codeUnitCompare(a.evidenceId, b.evidenceId));
 }
 

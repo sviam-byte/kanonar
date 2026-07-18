@@ -403,7 +403,7 @@ function mergeDirectedMap<T>(
 }
 
 function relationKey(fromId: ConflictPlayerId, toId: ConflictPlayerId): string {
-  return `${fromId}->${toId}`;
+  return JSON.stringify([fromId, toId]);
 }
 
 export function applyConflictTransition(

@@ -1,6 +1,7 @@
 import type { AgentState, Relationship, WorldState } from '../../../types';
 import { codeUnitCompare } from '../../utils/compare';
 import { compileAgent } from '../compiler';
+import { buildParticipantSetV1 } from '../definition/participantSet';
 import {
   buildCanonicalInitialState,
   computeScheduledPressure,
@@ -20,6 +21,27 @@ import { runConflictJointDecisionV1 } from './decisionProvider';
 import type { ConflictJointDecisionReportV1 } from './types';
 
 export const CONFLICT_LIVE_SESSION_SCHEMA_VERSION = 'conflict-live-session-v1' as const;
+export const MAX_CONFLICT_LIVE_ROUNDS_V1 = 30 as const;
+
+function assertLiveSessionBoundary(config: V2RunConfig): void {
+  if (!Number.isFinite(config.totalRounds)
+    || !Number.isInteger(config.totalRounds)
+    || config.totalRounds < 1
+    || config.totalRounds > MAX_CONFLICT_LIVE_ROUNDS_V1) {
+    throw new RangeError(`totalRounds must be an integer in [1, ${MAX_CONFLICT_LIVE_ROUNDS_V1}], got ${config.totalRounds}`);
+  }
+  const players = config.players as readonly string[];
+  if (players.length !== 2) {
+    throw new RangeError(`Conflict Lab dyadic runtime requires exactly 2 participants, got ${players.length}`);
+  }
+  const set = buildParticipantSetV1(players.map((participantId, index) => ({
+    participantId,
+    roleId: `participant-${index}`,
+  })));
+  if (set.ok === false) {
+    throw new RangeError(`Invalid Conflict Lab dyad: ${set.errors.map((error) => error.message).join('; ')}`);
+  }
+}
 
 function makeDecisionRng(seed: number): () => number {
   let x = (seed >>> 0) || 1;
@@ -89,7 +111,7 @@ function runCanonicalTrustExchangeSession(
   config: V2RunConfig,
   scenario: ScenarioTemplate,
 ): V2RunResult {
-  const totalRounds = Math.max(1, Math.floor(config.totalRounds));
+  const totalRounds = config.totalRounds;
   const seed = config.seed ?? 42;
   const initialState = buildCanonicalInitialState({
     scenario,
@@ -186,6 +208,7 @@ function runCanonicalTrustExchangeSession(
 
 /** Live Conflict Lab boundary: trust_exchange is canonical; other cards remain compatibility-only. */
 export function runConflictLabSessionV1(config: V2RunConfig): V2RunResult {
+  assertLiveSessionBoundary(config);
   const scenario = getScenario(config.scenarioId);
   if (scenario.mechanicId === 'trust_exchange') {
     return runCanonicalTrustExchangeSession(config, scenario);

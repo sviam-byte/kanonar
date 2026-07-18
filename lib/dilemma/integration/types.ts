@@ -26,6 +26,11 @@ export type ConflictTemperatureSource =
   | 'agent'
   | 'default';
 
+export interface ConflictGoalEnergySourceV1 {
+  readonly goalId: string;
+  readonly atomId: string;
+}
+
 export interface ConflictPlayerDecisionInputV1 {
   /** Один input для baseline beliefs и повтора S8 с действиями механики. */
   pipelineInput: Omit<GoalLabPipelineInputV1, 'externalPossibilities' | 'externalPossibilityMode' | 'decisionRng'>;
@@ -49,6 +54,14 @@ export interface ConflictRankedCandidateTraceV1 {
   readonly effectiveTemperature: number;
   readonly marginFromBest: number;
   readonly chosen: boolean;
+  /** Complete S8 atom provenance for this ranked candidate. */
+  readonly usedAtomIds: readonly string[];
+  /**
+   * Exact S8 energy atoms used by this candidate's non-zero goal deltas.
+   * Optional only for wire compatibility with traces emitted before this
+   * scoring-specific field was introduced; current canonical providers populate it.
+   */
+  readonly goalEnergySources?: readonly ConflictGoalEnergySourceV1[];
 }
 
 export interface ConflictChoiceTraceV1 {

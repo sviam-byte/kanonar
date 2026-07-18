@@ -1,5 +1,12 @@
 # CONFLICT-PARITY-0 — dual-run parity evidence (canonical S8 vs kernel reference)
 
+Audit repair 2026-07-18: goal-energy now follows canonical first-write-wins,
+ranked traces carry per-candidate energy provenance, and one-sided ties are
+excluded from concordance denominators. The full grid was regenerated. The
+tracked artifact is compact (aggregate + capped divergence examples) and is
+bound to system/policy/toolchain metadata plus a SHA-256 fingerprint of 77
+relevant tracked source files; raw records are optional reproduction output.
+
 Update 2026-07-12 (`GOALENERGY-UNION-DEFAULT`): the original all-profile OFF
 default described below is superseded. `phase1` now enables the union;
 `legacy` and no-profile/config remain OFF, and object-form `true|false`
@@ -36,14 +43,17 @@ R6, not to the trust-only R5 migration.
   профиль `phase1`, dual-emit ON).
 - Оси сравнения (план §CONFLICT-6.3): legal actions, selected actions,
   utility ranking, state transition, trace completeness.
-- Артефакт: `docs/unification/evidence/conflict_parity_0.json` (агрегат +
-  все 432 записи). Воспроизведение:
+- Артефакт: `docs/unification/evidence/conflict_parity_0.json` (compact
+  aggregate + capped divergence examples, без 432 raw records). Воспроизведение:
 
 ```powershell
 $env:CONFLICT_PARITY_FULL='1'
 $env:CONFLICT_PARITY_OUT='docs\unification\evidence\conflict_parity_0.json'
-node node_modules\vitest\vitest.mjs run tests/dilemma/conflictParityEvidence.test.ts
+npm test -- --run tests/dilemma/conflictParityEvidence.test.ts
 ```
+
+Optional raw records can be written outside the tracked artifact with
+`CONFLICT_PARITY_RECORDS_OUT=<path>` in the same full-grid command.
 
 Гейт-режим (без env) гоняет фиксированное подмножество 2 ячейки × 2 сида ×
 2 тика + байт-детерминизм одной ячейки (~5 с).
@@ -90,19 +100,19 @@ S0 legacy dyad atoms» в `conflictIntegration.test.ts`.
 | Legal actions | совпадение 100% (проекция ≡ kernel action order) |
 | Trace completeness | 100% (ranked=rows, atoms, pool, единственный chosen) |
 | Utility ranking | top-1 = **1.000**, конкордантность пар Q↔U = **1.000** |
-| Selected actions | совпадение **44.4%** (joint: 23.6%) |
-| Transition parity | при совпадении joint-действий **102/102** (payoffs, relations, strategyProfiles байт-в-байт; `learn_from_utility` ≡ kernel step) |
+| Selected actions | совпадение **45.1%** (joint: 25.0%) |
+| Transition parity | при совпадении joint-действий **108/108** (payoffs, relations, strategyProfiles байт-в-байт; `learn_from_utility` ≡ kernel step) |
 
 Распределение выбора:
 
 | lane | trust | withhold | betray |
 | --- | --- | --- | --- |
-| canonical (Gumbel) | 384 (44%) | 252 (29%) | 228 (26%) |
+| canonical (Gumbel) | 390 (45%) | 252 (29%) | 222 (26%) |
 | reference (argmax) | **864 (100%)** | 0 | 0 |
 
-Совпадение по измерениям: temp default **0.375** / cool **0.514**;
-rel allied 0.458 / neutral 0.458 / strained 0.417; agents и env — ровно 0.444
-каждый; тики 0.31 / 0.54 / 0.48.
+Совпадение по измерениям: temp default **0.375** / cool **0.528**;
+rel allied 0.458 / neutral 0.458 / strained 0.438; agents и env — ровно 0.451
+каждый; тики 0.31 / 0.54 / 0.50.
 
 ## 4. Семантическое чтение
 
@@ -114,60 +124,59 @@ rel allied 0.458 / neutral 0.458 / strained 0.417; agents и env — ровно 
 2. **Всё расхождение выбора — политика, не utility.** Reference —
    детерминированный argmax; canonical — версионированный seeded Gumbel.
    Наблюдаемые доли совпадают с softmax-предсказанием: при cool
-   (T=0.3, ΔQ trust↔withhold ≈ 0.16) P(trust) ≈ 0.52 — измерено 0.514.
+   (T=0.3, ΔQ trust↔withhold ≈ 0.16) P(trust) ≈ 0.52 — измерено 0.528.
    Совпадение зависит только от температуры/сида/тика; пресеты отношений
    двигают его слабо (belief-модуляция меняет |ΔQ|, не порядок).
 3. **Несоизмеримость масштабов utility.** Kernel U живёт в диапазоне
-   ±2.6; canonical Q на этой сетке — в [−0.40, −0.04] (дельты ≤ 0.36).
+   ±2.6; canonical Q на этой сетке остаётся примерно в [−0.43, −0.04].
    Политика Gumbel масштабо-чувствительна через температуру: при живом
    диапазоне температур (T=0.3…1.75) канонический выбор остаётся
    исследовательским там, где kernel всегда жаден. Это **не дефект**, а
    зафиксированное ADR-решение (§2, §6: температурный закон общий, без
    conflict-local поправок) — но масштаб Q надо иметь в виду при чтении
    диверсий.
-4. **Belief-модуляция жива и направленно верна**: trust-Q A→B
-   allied −0.041 / neutral −0.077 / strained −0.113 (реципрокность растёт с
-   believed trust); withhold/betray Q от пресета не зависят — см. quirk (b).
+4. **Belief-модуляция и safety energy живы.** First-write-wins сохраняет
+   первый canonical `goal:domain:safety:*` atom, поэтому threat/safety вклад
+   больше не обнуляется более поздним duplicate. Ranked traces называют
+   конкретный energy atom для каждого использованного goal.
 5. **Kernel-сторона на этой сетке никогда не предпочитает betray/withhold**
    — даже def-def × strained × pressured даёт U(trust) > U(withhold) >
    U(betray). Дивергенция «canonical выбрал betray, reference trust» — это
    исследование canonical-линии, а не конфликт оценок.
 
-### Quirks, зафиксированные попутно (не исправлялись)
+### Remaining methodology limitation
 
-- (a) Дубликат `goal:domain:safety:{id}` атомов в S8-наборе: второй (0)
-  затирает первый (0.077) в goal-energy map → эффективная E_safety = 0.
-- (b) Как следствие (a), threat-ветка belief-модуляции
-  (`betrayal/threat → safety`) не влияет на Q — безопасностные дельты
-  умножаются на нулевую энергию.
-- (c) Scene evidence статично по тикам роллаута: beliefs не обновляются от
+- Scene evidence статично по тикам роллаута: beliefs не обновляются от
   конфликтных действий (это отдельная миграция belief-update поверх
   kernel-переходов); kernel-память при этом живёт через
   `learn_from_utility`.
 
 ## 5. Следствия для очереди
 
-1. **GOALENERGY-UNION-DEFAULT** (новый тикет): решить глобальный default
-   `goalEnergyDomainUnionV1` (как минимум phase1 ON) — иначе SimKit
-   tactical deltas продолжают обнуляться в Q при активных целях. Требует
-   golden-прогона/перепина semantic-subset.
-2. **Live wiring провайдера в Conflict Lab UI**: parity-блокеров нет —
+1. **GOALENERGY-UNION-DEFAULT закрыт:** `phase1` включает union; canonical
+   first-write-wins и source atom provenance закреплены тестами.
+2. **Live wiring провайдера в Conflict Lab UI закрыт:** parity-блокеров нет —
    legal set, trace, transition эквивалентны, ranking согласован. Осознанно
    принять: канонический выбор стохастичен по контракту политики; в UI
    должна быть видна температура и sampling pool (поля уже в трейсе).
 3. **Q-scale заметка для R6**: при generalized schema дельты новых механик
    проходят ту же матрицу — держать |ΔQ| в сопоставимом масштабе или
    документировать температурную чувствительность.
-4. Чистка дубликата `goal:domain:*` эмиссии — маленький тикет до R2b.
+4. Duplicate `goal:domain:*` atoms больше не меняют score: canonical array
+   order определяет победивший atom, а trace делает выбор проверяемым.
 
 ## 6. Изменённые файлы
 
 - `lib/config/runtimeMechanics.ts` — `goalEnergyDomainUnionV1` (+ override).
 - `lib/decision/actionCandidateUtils.ts` — union-режим goal-energy map.
+- `lib/dilemma/integration/types.ts`, `decisionProvider.ts` — per-candidate
+  goal-energy source provenance in ranked Conflict traces.
 - `lib/goal-lab/pipeline/runPipelineV1.ts` — проброс флага в S8.
 - `lib/dilemma/integration/decisionProvider.ts` — явный opt-in + трейс-поле.
 - `lib/dilemma/integration/candidateBridge.ts` — S0 dyad фоллбэк.
 - `lib/dilemma/integration/paritySweep.ts` — экстракция/агрегация evidence.
+- `docs/unification/evidence/conflict_parity_0.json` — compact aggregate,
+  divergence examples, policy/toolchain metadata and source fingerprint.
 - `tests/decision/goal_energy_domain_union.test.ts`,
   `tests/dilemma/conflictIntegration.test.ts`,
   `tests/dilemma/conflictParityEvidence.test.ts` — регрессии + харнесс.

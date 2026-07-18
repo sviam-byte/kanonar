@@ -32,6 +32,25 @@
 Если атом вычислен из других атомов, он должен указывать зависимости в:
 - `trace.usedAtomIds`
 
+- Goal-energy lookup follows canonical atom order: the first atom for a key
+  wins. Every ranked Conflict candidate must retain the atom IDs for the goal
+  energies actually used in its score; aggregate `usedAtomIds` on the chosen
+  candidate alone is not complete provenance.
+
+## Conflict N-kernel invariants
+
+- Participant/role IDs that collide with own `Object.prototype` keys are
+  invalid before any `Record` is constructed; composite pair keys must use an
+  injective tuple encoding.
+- N-step accepts only the exact canonical `trust_exchange` protocol structure.
+- Forced pairwise N≥2 step/trajectory/analysis may run experimentally, but
+  GoalLab joint choice and live sessions must return typed dyad-only errors for
+  `N > 2` until a target-aware action-matrix ADR exists.
+- Live Conflict round budgets are finite integers in `1..30`; no clamping,
+  flooring, or silent fallback is permitted.
+- N-analysis never throws for caller-supplied state mismatch; it returns typed
+  `invalid_state` or `participant_set_mismatch` results.
+
 ## Versioning invariants
 
 - Single source of system version truth: `lib/goal-lab/versioning.ts` -> `KANONAR_SYSTEM_VERSION`.

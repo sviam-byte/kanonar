@@ -19,23 +19,44 @@ import { CONFLICT_ACTION_PROJECTION_SCHEMA_VERSION } from './types';
 // kernel IDs from a kernel observation — display labels and localization are
 // not inputs and must never affect the rows.
 
+export function conflictUtilityCandidateIdV1(input: {
+  readonly protocolId: string;
+  readonly phaseId: string;
+  readonly actorId: string;
+  readonly targetIds: readonly string[];
+  readonly tick: number;
+  readonly historyLength: number;
+  readonly kernelActionId: string;
+}): string {
+  // Opaque tuple encoding: arbitrary delimiters inside IDs cannot collapse
+  // two different projection rows to the same candidate ID.
+  return JSON.stringify([
+    'conflict',
+    CONFLICT_ACTION_PROJECTION_SCHEMA_VERSION,
+    input.protocolId,
+    input.phaseId,
+    input.actorId,
+    input.targetIds,
+    input.tick,
+    input.historyLength,
+    input.kernelActionId,
+  ]);
+}
+
 function candidateId(
   observation: ConflictObservation,
   kernelActionId: string,
   tick: number,
 ): string {
-  // Opaque; consumers resolve by exact match against projected rows, never by
-  // parsing, so separator collisions in player IDs cannot forge a candidate.
-  return [
-    'conflict',
-    CONFLICT_ACTION_PROJECTION_SCHEMA_VERSION,
-    observation.protocolId,
-    observation.phase,
-    `${observation.playerId}->${observation.otherId}`,
-    `t${tick}`,
-    `h${observation.historyLength}`,
+  return conflictUtilityCandidateIdV1({
+    protocolId: observation.protocolId,
+    phaseId: observation.phase,
+    actorId: observation.playerId,
+    targetIds: [observation.otherId],
+    tick,
+    historyLength: observation.historyLength,
     kernelActionId,
-  ].join(':');
+  });
 }
 
 export function projectLegalActions(

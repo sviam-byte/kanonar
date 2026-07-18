@@ -13,16 +13,44 @@
 // makes any drift between the copies fail loudly instead.
 
 import { CONFLICT_LAB_DYNAMICS_FORMULA } from '../../config/formulaConfig';
-import { normalizeConflictState } from '../dynamics/state';
 import type {
   ConflictAgentState,
   ConflictRelationState,
+  Result,
   TrajectoryMetrics,
 } from '../dynamics/types';
-import { asKernelConflictStateV1 } from './nstate';
-import type { ConflictStateNV1 } from './types';
+import { normalizeConflictStateNV1, type CanonicalConflictStateNV1 } from './nstate';
+import type { ConflictNStepErrorV1, ConflictStateNV1 } from './types';
 
 const cfg = CONFLICT_LAB_DYNAMICS_FORMULA;
+
+export type ConflictNAnalysisErrorV1 =
+  | { readonly code: 'invalid_state'; readonly stateLabel: string; readonly cause: ConflictNStepErrorV1; readonly message: string }
+  | { readonly code: 'participant_set_mismatch'; readonly expected: readonly string[]; readonly actual: readonly string[]; readonly message: string }
+  | { readonly code: 'invalid_epsilon'; readonly epsilon: number; readonly message: string }
+  | { readonly code: 'empty_trajectory'; readonly message: string };
+
+type AnalysisResult<T> = Result<T, ConflictNAnalysisErrorV1>;
+
+function canonicalize(state: ConflictStateNV1, stateLabel: string): AnalysisResult<CanonicalConflictStateNV1> {
+  const normalized = normalizeConflictStateNV1(state);
+  if (normalized.ok === false) {
+    return {
+      ok: false,
+      error: {
+        code: 'invalid_state',
+        stateLabel,
+        cause: normalized.error,
+        message: `${stateLabel} is invalid: ${normalized.error.message}`,
+      },
+    };
+  }
+  return normalized;
+}
+
+function samePlayers(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((playerId, index) => playerId === b[index]);
+}
 
 /**
  * Weighted Euclidean norm of the full N-state difference: all N agents, all
@@ -30,9 +58,24 @@ const cfg = CONFLICT_LAB_DYNAMICS_FORMULA;
  * the same player set (like the dyadic stateDistance, which indexes b's maps
  * with a's players).
  */
-export function stateDistanceNV1(a: ConflictStateNV1, b: ConflictStateNV1): number {
-  const ca = normalizeConflictState(asKernelConflictStateV1(a));
-  const cb = normalizeConflictState(asKernelConflictStateV1(b));
+export function stateDistanceNV1(a: ConflictStateNV1, b: ConflictStateNV1): AnalysisResult<number> {
+  const aResult = canonicalize(a, 'left state');
+  if (aResult.ok === false) return aResult;
+  const bResult = canonicalize(b, 'right state');
+  if (bResult.ok === false) return bResult;
+  const ca = aResult.value;
+  const cb = bResult.value;
+  if (!samePlayers(ca.players, cb.players)) {
+    return {
+      ok: false,
+      error: {
+        code: 'participant_set_mismatch',
+        expected: [...ca.players],
+        actual: [...cb.players],
+        message: 'state distance requires identical ordered participant sets',
+      },
+    };
+  }
 
   let agentDistance = 0;
   for (const playerId of ca.players) {
@@ -53,16 +96,18 @@ export function stateDistanceNV1(a: ConflictStateNV1, b: ConflictStateNV1): numb
     + square(ca.environment.visibility - cb.environment.visibility)
     + square(ca.environment.institutionalPressure - cb.environment.institutionalPressure);
 
-  return Math.sqrt(
+  return { ok: true, value: Math.sqrt(
     cfg.trajectory.distanceWeights.agent * agentDistance
     + cfg.trajectory.distanceWeights.relation * relationDistance
     + cfg.trajectory.distanceWeights.environment * envDistance,
-  );
+  ) };
 }
 
 /** Same weights as the dyadic collapseScore; means run over N agents and N·(N−1) ordered relations. */
-export function collapseScoreNV1(state: ConflictStateNV1): number {
-  const canonical = normalizeConflictState(asKernelConflictStateV1(state));
+export function collapseScoreNV1(state: ConflictStateNV1): AnalysisResult<number> {
+  const normalized = canonicalize(state, 'state');
+  if (normalized.ok === false) return normalized;
+  const canonical = normalized.value;
   const resentment = meanOverPlayers(canonical.players, (id) => canonical.agents[id].resentment);
   const fear = meanOverPlayers(canonical.players, (id) => canonical.agents[id].fear);
   const stress = meanOverPlayers(canonical.players, (id) => canonical.agents[id].stress);
@@ -70,18 +115,20 @@ export function collapseScoreNV1(state: ConflictStateNV1): number {
   const conflict = meanOverRelations(canonical.players, (from, to) => canonical.relations[from][to].conflict);
   const w = cfg.trajectory.collapseWeights;
 
-  return clampFinite01(
+  return { ok: true, value: clampFinite01(
     w.antiTrust * (1 - trust)
     + w.conflict * conflict
     + w.resentment * resentment
     + w.fear * fear
     + w.stress * stress,
-  );
+  ) };
 }
 
 /** Same weights as the dyadic repairCapacity; means run over N agents and N·(N−1) ordered relations. */
-export function repairCapacityNV1(state: ConflictStateNV1): number {
-  const canonical = normalizeConflictState(asKernelConflictStateV1(state));
+export function repairCapacityNV1(state: ConflictStateNV1): AnalysisResult<number> {
+  const normalized = canonicalize(state, 'state');
+  if (normalized.ok === false) return normalized;
+  const canonical = normalized.value;
   const w = cfg.trajectory.repairCapacityWeights;
   const trust = meanOverRelations(canonical.players, (from, to) => canonical.relations[from][to].trust);
   const bond = meanOverRelations(canonical.players, (from, to) => canonical.relations[from][to].bond);
@@ -89,53 +136,76 @@ export function repairCapacityNV1(state: ConflictStateNV1): number {
   const resentment = meanOverPlayers(canonical.players, (id) => canonical.agents[id].resentment);
   const fear = meanOverPlayers(canonical.players, (id) => canonical.agents[id].fear);
 
-  return clampFinite01(
+  return { ok: true, value: clampFinite01(
     w.trust * trust
     + w.bond * bond
     + w.legitimacy * legitimacy
     - w.resentment * resentment
     - w.fear * fear,
-  );
+  ) };
 }
 
 export function detectCyclePeriodNV1(
   trajectory: readonly ConflictStateNV1[],
   epsilon: number,
-): number | undefined {
+): AnalysisResult<number | undefined> {
+  if (!Number.isFinite(epsilon) || epsilon < 0) {
+    return { ok: false, error: { code: 'invalid_epsilon', epsilon, message: `cycle epsilon must be finite and >= 0, got ${epsilon}` } };
+  }
   const last = trajectory[trajectory.length - 1];
-  if (!last) return undefined;
+  if (!last) return { ok: true, value: undefined };
   for (let i = trajectory.length - 2; i >= 0; i--) {
-    if (stateDistanceNV1(last, trajectory[i]) < epsilon) {
-      return trajectory.length - 1 - i;
+    const distance = stateDistanceNV1(last, trajectory[i]);
+    if (distance.ok === false) return distance;
+    if (distance.value < epsilon) {
+      return { ok: true, value: trajectory.length - 1 - i };
     }
   }
-  return undefined;
+  return { ok: true, value: undefined };
 }
 
 export function estimateDivergenceRateNV1(
   baseline: readonly ConflictStateNV1[],
   perturbed: readonly ConflictStateNV1[],
-): number | undefined {
+): AnalysisResult<number | undefined> {
   const n = Math.min(baseline.length, perturbed.length);
-  if (n < 2) return undefined;
+  if (n < 2) return { ok: true, value: undefined };
   const d0 = stateDistanceNV1(baseline[0], perturbed[0]);
+  if (d0.ok === false) return d0;
   const dt = stateDistanceNV1(baseline[n - 1], perturbed[n - 1]);
-  if (d0 <= 0 || dt <= 0) return undefined;
-  return Math.log(dt / d0) / (n - 1);
+  if (dt.ok === false) return dt;
+  if (d0.value <= 0 || dt.value <= 0) return { ok: true, value: undefined };
+  return { ok: true, value: Math.log(dt.value / d0.value) / (n - 1) };
 }
 
 export function trajectoryMetricsNV1(
   trajectory: readonly ConflictStateNV1[],
   options?: { cycleEpsilon?: number; perturbed?: readonly ConflictStateNV1[] },
-): TrajectoryMetrics {
+): AnalysisResult<TrajectoryMetrics> {
   const first = trajectory[0];
-  const last = trajectory[trajectory.length - 1] ?? first;
+  if (!first) return { ok: false, error: { code: 'empty_trajectory', message: 'trajectory metrics require at least one state' } };
+  const last = trajectory[trajectory.length - 1];
+  const distance = stateDistanceNV1(first, last);
+  if (distance.ok === false) return distance;
+  const collapse = collapseScoreNV1(last);
+  if (collapse.ok === false) return collapse;
+  const repair = repairCapacityNV1(last);
+  if (repair.ok === false) return repair;
+  const cycle = detectCyclePeriodNV1(trajectory, options?.cycleEpsilon ?? 0.03);
+  if (cycle.ok === false) return cycle;
+  const divergence = options?.perturbed
+    ? estimateDivergenceRateNV1(trajectory, options.perturbed)
+    : { ok: true as const, value: undefined };
+  if (divergence.ok === false) return divergence;
   return {
-    distanceFromStart: first && last ? stateDistanceNV1(first, last) : 0,
-    collapseScore: last ? collapseScoreNV1(last) : 0,
-    repairCapacity: last ? repairCapacityNV1(last) : 0,
-    cyclePeriod: detectCyclePeriodNV1(trajectory, options?.cycleEpsilon ?? 0.03),
-    divergenceRate: options?.perturbed ? estimateDivergenceRateNV1(trajectory, options.perturbed) : undefined,
+    ok: true,
+    value: {
+      distanceFromStart: distance.value,
+      collapseScore: collapse.value,
+      repairCapacity: repair.value,
+      cyclePeriod: cycle.value,
+      divergenceRate: divergence.value,
+    },
   };
 }
 

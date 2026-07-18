@@ -18,7 +18,7 @@ import type {
   ConflictProtocol,
 } from '../dynamics/types';
 import { dyadicPairProjectionV1, normalizeConflictStateNV1 } from './nstate';
-import { aggregateActionUtilitiesMeanV1, resolveConflictNStepV1 } from './nstep';
+import { aggregateActionUtilitiesMeanV1, resolveConflictNStepV1, validateCanonicalTrustProtocolNV1 } from './nstep';
 import {
   CONFLICT_NCHOICE_SCHEMA_VERSION,
   type ConflictNChoiceResultOrErrorV1,
@@ -37,11 +37,8 @@ export function resolveConflictNChoiceStepV1(input: ConflictNChoiceInputV1): Con
   const players = canonical.players;
   const protocol = input.protocol;
 
-  for (const playerId of players) {
-    if (!protocol.roles[playerId]) {
-      return { ok: false, error: { code: 'invalid_protocol', message: `Protocol ${protocol.id} has no role for player ${playerId}` } };
-    }
-  }
+  const protocolError = validateCanonicalTrustProtocolNV1(players, protocol);
+  if (protocolError) return { ok: false, error: protocolError };
 
   // Pre-resolution scoring, identical to what the N-step will harvest: the
   // real dyadic kernel observation + trust_exchange evaluator per pair.

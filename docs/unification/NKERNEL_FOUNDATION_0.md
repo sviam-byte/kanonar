@@ -2,6 +2,14 @@
 
 Статус: **ADR §5.1–§5.5 подписаны 2026-07-17/18; срезы 1–6 (`NKERNEL-STEP-0`, `NKERNEL-CHOICE-0`, `NKERNEL-TRAJECTORY-0`, `NKERNEL-DEFINITION-BIND-0`, `NKERNEL-DECISION-0` v1, `NKERNEL-SESSION-0`) РЕАЛИЗОВАНЫ.**
 Дата: 2026-07-17.
+Audit repair 2026-07-18 (authoritative over historical slice notes below):
+forced pairwise N-step, trajectory and Result-based analysis remain available
+for `N > 2`, but GoalLab joint decision and live sessions are now explicitly
+dyad-only. They return `n_decision_requires_dyad` / `n_live_requires_dyad`
+before pipeline work. The former single-target N=3 escape hatch is removed;
+per-target action matrices, coalition choice and group payoff require a future
+ADR. N execution also requires exact canonical trust protocol/definition
+binding, and live budgets are finite integers in `1..30`.
 Update 2026-07-18 (5): `NKERNEL-SESSION-0` реализован (см. §3.6/§6.6) —
 parity-gated N-live-session-раннер `runConflictNLabSessionV1`; **первый срез,
 осознанно пересекающий границу «nkernel не импортируется runtime-кодом»**:
@@ -183,7 +191,7 @@ Replicator-выбор ядра при N. ADR агрегации подписан
 в неforced-пути ядра). `learn_from_utility` при `N > 2` разблокирован в
 `nstep`: N-профили = репликатор над mean-агрегатом harvested utilities.
 
-### 3.5 N joint-decision provider — ✅ IMPLEMENTED 2026-07-18 v1 (`NKERNEL-DECISION-0`)
+### 3.5 N joint-decision provider — ✅ N=2 REDUCTION ONLY (`NKERNEL-DECISION-0`)
 N-аналог `runConflictJointDecisionV1` (`lib/dilemma/integration/decisionProvider.ts:88`):
 per-participant GoalLab S8 поверх `ObservationViewV1`/`selectAllObservationViewsV1`
 и `BeliefGraphV1`. Записанные инварианты потребителей: `makeNeutralOpponentBeliefPriorV1`
@@ -222,8 +230,9 @@ per-participant GoalLab S8 поверх `ObservationViewV1`/`selectAllObservatio
   срез (вариант b); многотаргетный fan-out — в хвостовой ADR (§6 п.7).
   Реализация — см. §6.5.
 
-### 3.6 N live session — ✅ IMPLEMENTED 2026-07-18 (`NKERNEL-SESSION-0`)
-За parity-gate (как R3/R5), никогда default. Записанный инвариант catalog-lane:
+### 3.6 N live session — ✅ DYADIC WRAPPER; N>2 DEFERRED (`NKERNEL-SESSION-0`)
+За parity-gate (как R3/R5), никогда default. N>2 fails before GoalLab work;
+forced N-core availability does not widen this boundary. Записанный инвариант catalog-lane:
 `getScenario` бросает на disabled/unknown id — правила канонической полосы
 R6 применяются без изменений.
 
@@ -252,10 +261,9 @@ R6 применяются без изменений.
   `rngChannelId` — тот же формат `conflict-live:<scenario>:<seed>:<player>`
   (trace-метка, не ключ реестра; общий формат и держит побайтное сравнение
   choices).
-- **ADR §5.5 в сессии** — дефолтное определение `trustExchangeDefinitionNV1`
-  (`all_others`) работает при `N = 2` и fail-closed при `N > 2`
-  (`decision_failed` → cause `multi_target_not_supported`); `N > 2` запускается
-  через `config.definition` (однотаргетное v3-определение, ревалидируется).
+- **Audit-repaired session boundary** — `N = 2` requires the canonical
+  counterparty definition binding. `N > 2` always returns
+  `n_live_requires_dyad`; `config.definition` cannot bypass the boundary.
 
 ## 4. Сохраняемые инварианты
 
@@ -385,8 +393,8 @@ pair-generic хелперы (`normalizeConflictState`, `applyConflictTransition`
    коду ошибки независимо от валидатора; детерминизм + иммутабельность входа.
    Gate: `tsc --noEmit` чист; 561 passed / 10 skipped / 0 failed; golden
    `efa018b3…` не сдвинут (`grep -rn "nkernel" lib` — только self-references).
-5. **`NKERNEL-DECISION-0`** — ✅ IMPLEMENTED 2026-07-18 v1, однотаргетный
-   (pure-domain, не wired в runtime): `lib/dilemma/integration/ndecisionProvider.ts`
+5. **`NKERNEL-DECISION-0`** — ✅ IMPLEMENTED AS N=2 REDUCTION BOUNDARY:
+   `lib/dilemma/integration/ndecisionProvider.ts`
    (`runConflictNJointDecisionV1` — N-аналог `runConflictJointDecisionV1`:
    тот же per-player цикл GoalLab-baseline → `projectConflictDefinitionV3ActionsV1`
    → gate `multi_target_not_supported` при `targetIds.length > 1` (ADR §5.5) →
@@ -398,27 +406,25 @@ pair-generic хелперы (`normalizeConflictState`, `applyConflictTransition`
    `resolveConflictNStepV1` (срез 1) как canonical-транзишн,
    `resolveConflictNChoiceStepV1` (срез 2) как reference-lane вместо
    недforced `definition.step`). `tests/dilemma/nkernel_decision_v1.test.ts`
-   (5): побайтный оракул редукции N=2 против `runConflictJointDecisionV1`
-   (choices/actions/state/outcome/divergence); `all_others`-определение при
-   `N = 3` фейлится `multi_target_not_supported` (ADR §5.5 в действии);
-   ручное однотаргетное N=3-определение проходит end-to-end (3 пары,
-   3 участника, оба lane); fail-closed на отсутствующий rng-канал;
+   тесты сохраняют побайтный оракул редукции N=2 против
+   `runConflictJointDecisionV1`; любой `N = 3` фейлится рано с
+   `n_decision_requires_dyad`, до projection/pipeline/RNG;
    детерминизм. Gate: `tsc --noEmit` чист; 566 passed / 10 skipped / 0 failed;
    golden `efa018b3…` не сдвинут; `grep -rn "ndecisionProvider\|runConflictNJointDecisionV1" lib`
    — только self-references, не в барреле `integration/index.ts`
    (wiring — задача `NKERNEL-SESSION-0`).
-6. **`NKERNEL-SESSION-0`** — ✅ IMPLEMENTED 2026-07-18 (§3.6, за parity-gate,
+6. **`NKERNEL-SESSION-0`** — ✅ DYADIC WRAPPER (§3.6, за parity-gate,
    никогда default): `lib/dilemma/integration/nliveSession.ts`
    (`runConflictNLabSessionV1` — N-цикл канонической live-сессии поверх
    `runConflictNJointDecisionV1`; `buildCanonicalInitialStateNV1` — per-pair
    reuse `buildCanonicalInitialState` + anchor-partner-слияние;
    `worldForTickNV1` — закрытие §1.2-шва; RNG imul-цепь; общий
-   `rngChannelId`-формат; `definition`-override как ADR §5.5 escape hatch);
+   `rngChannelId`-формат; definition override валидируется, но не обходит
+   dyad-only boundary);
    N-полосы (`ndecisionProvider` + `nliveSession`) экспортированы из
    `integration/index.ts` — БЕЗ расширения главного барреля `lib/dilemma/index.ts`
    (он импортирует liveSession напрямую, integration-баррель туда не течёт);
-   фикстура `makeSingleTargetDefinitionN3` поднята в
-   `tests/dilemma/nkernelFixtures.ts`. `tests/dilemma/nkernel_session_v1.test.ts`
+   `tests/dilemma/nkernel_session_v1.test.ts`
    (8): побайтный N=2 initial-state оракул против `buildCanonicalInitialState`
    (default + pressure-override); побайтный N=2 session-оракул против
    `runConflictLabSessionV1` (per-round choices вкл. `rngChannelId`,
@@ -426,11 +432,8 @@ pair-generic хелперы (`normalizeConflictState`, `applyConflictTransition`
    `game.rounds`-соответствие; whole-run trajectory/initial/final/metrics
    против `conflictCore`; исключены by design: schemaVersion-поля, N-step-экстры
    `pairwise`/observations/utilities, V2-only confidence/summaries); пин
-   channel-id-формата; N=3 end-to-end на однотаргетном override (3 пары,
-   тред history, reference-lane) — **первый live-полосный прогон 3 участников:
-   S8 ранжирует полный legal set без обогащения атомами**; N=3 детерминизм;
-   N=3 на дефолтном `all_others` → `decision_failed`/`multi_target_not_supported`
-   (ADR §5.5 на уровне сессии); catalog-throw на unknown + disabled id;
+   channel-id-формата; N=3 → ранний `n_live_requires_dyad`; бюджеты
+   `1..30` принимаются, остальные → `invalid_round_budget`; catalog-throw на unknown + disabled id;
    `authority_judgment` → `unsupported_mechanic` без fallback. Gate:
    `tsc --noEmit` чист; 574 passed / 10 skipped / 0 failed; golden `efa018b3…`
    не сдвинут; `liveSession.ts`/`lib/dilemma/index.ts` байтово не тронуты.

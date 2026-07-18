@@ -13,7 +13,6 @@ import { adaptResolvedSceneToGoalLabV1 } from '../../lib/scene/adapters/goalLab'
 import { resolveObservationsV1 } from '../../lib/scene/observation/resolver';
 import { KANONAR_SYSTEM_VERSION } from '../../lib/goal-lab/versioning';
 import type { ObservationProvenanceV1, ResolvedSceneInputV1, VisibilityRuleV1 } from '../../lib/scene/observation/types';
-import { TRUST_EXCHANGE_ACTION_ORDER } from '../../lib/dilemma/dynamics/trustExchange';
 import { runConflictJointDecisionV1 } from '../../lib/dilemma/integration/decisionProvider';
 import { runConflictNJointDecisionV1 } from '../../lib/dilemma/integration/ndecisionProvider';
 import type { ParticipantSetV1 } from '../../lib/dilemma/definition/participantSet';
@@ -25,7 +24,7 @@ import {
 } from '../../lib/dilemma/nkernel/nstate';
 
 import { mockAgent, mockWorld } from '../pipeline/fixtures';
-import { makeSingleTargetDefinitionN3, makeStateN } from './nkernelFixtures';
+import { makeStateN } from './nkernelFixtures';
 
 function lcg(seed: number): () => number {
   let s = seed >>> 0;
@@ -122,7 +121,7 @@ describe('NKERNEL-DECISION-0 conflict-njoint-decision-v1', () => {
     expect(nResult.value.divergence).toEqual(dyadicResult.value.divergence);
   });
 
-  it('fails closed at N = 3 on the standard all_others trust_exchange definition (multi-target out of v1 scope)', () => {
+  it('rejects N > 2 before projection or pipeline execution', () => {
     const set = mustSet(['a', 'b', 'c']);
     const definition = trustExchangeDefinitionNV1(set);
     if (definition.ok === false) throw new Error('expected v3 definition ok');
@@ -131,39 +130,41 @@ describe('NKERNEL-DECISION-0 conflict-njoint-decision-v1', () => {
       state: makeStateN(3),
       definition: definition.value,
       protocol: buildTrustExchangeProtocolNV1(set),
-      players: buildPlayersInput(['a', 'b', 'c'], { a: 1, b: 2, c: 3 }),
+      players: {},
     });
 
     expect(result.ok).toBe(false);
-    if (result.ok === false) expect(result.error.code).toBe('multi_target_not_supported');
+    if (result.ok === false) expect(result.error.code).toBe('n_decision_requires_dyad');
   });
 
-  it('runs end-to-end at N = 3 with a single-target definition', () => {
-    const definition = makeSingleTargetDefinitionN3();
-    const set = mustSet(['a', 'b', 'c']);
-
-    const result = runConflictNJointDecisionV1({
-      state: makeStateN(3),
-      definition,
-      protocol: buildTrustExchangeProtocolNV1(set),
-      players: buildPlayersInput(['a', 'b', 'c'], { a: 11, b: 22, c: 33 }),
-    });
-
-    if (result.ok === false) throw new Error(`expected decision ok, got ${result.error.code}: ${result.error.message}`);
-    const report = result.value;
-
-    for (const playerId of ['a', 'b', 'c']) {
-      expect(TRUST_EXCHANGE_ACTION_ORDER.includes(report.canonical.actions[playerId])).toBe(true);
-      const trace = report.choices[playerId];
-      expect(trace.projectedRows.length).toBe(TRUST_EXCHANGE_ACTION_ORDER.length);
-      expect(trace.ranked.length).toBe(TRUST_EXCHANGE_ACTION_ORDER.length);
-      expect(trace.ranked.some((entry) => entry.chosen)).toBe(true);
+  it('requires exact canonical trust protocol, participant, action, and pipeline bindings', () => {
+    const set = mustSet(['a', 'b']);
+    const built = trustExchangeDefinitionNV1(set);
+    if (built.ok === false) throw new Error('expected definition ok');
+    const protocol = buildTrustExchangeProtocolNV1(set);
+    const players = buildPlayersInput(['a', 'b'], { a: 11, b: 22 });
+    const cases = [
+      { definition: { ...built.value, protocolId: 'other' }, protocol, players },
+      { definition: { ...built.value, roles: [...built.value.roles].reverse() }, protocol, players },
+      { definition: { ...built.value, legalActions: built.value.legalActions.slice(1) }, protocol, players },
+      {
+        definition: {
+          ...built.value,
+          legalActions: built.value.legalActions.map((action, index) => (
+            index === 0 ? { ...action, target: { mode: 'self' as const } } : action
+          )),
+        },
+        protocol,
+        players,
+      },
+      { definition: built.value, protocol: { ...protocol, actionOrder: ['trust', 'betray', 'withhold'] as const }, players },
+      { definition: built.value, protocol, players: { ...players, extra: players.a } },
+    ];
+    for (const item of cases) {
+      const result = runConflictNJointDecisionV1({ state: makeStateN(2), ...item });
+      expect(result.ok).toBe(false);
+      if (result.ok === false) expect(result.error.code).toBe('invalid_binding');
     }
-    expect(report.canonical.step.state.tick).toBe(1);
-    expect(report.canonical.step.pairwise).toHaveLength(3); // N=3 -> 3 unordered pairs
-    const entry = report.divergence.byPlayer['a'];
-    expect(entry.canonicalActionId).toBe(report.canonical.actions['a']);
-    expect(entry.referenceActionId).toBe(report.reference.actions['a']);
   });
 
   it('fails closed on a missing rng channel, not a silent fallback', () => {

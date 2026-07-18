@@ -19,9 +19,7 @@ export type BeliefUpdateTraceV1 = {
   axisChanges: Array<{ key: ApprovedBeliefKeyV1; before: EstimateV1; after: EstimateV1; ruleId: string; contributorIds: string[] }>;
   afterDigest: string; adapterSteps: ObservationProvenanceV1['adapterSteps'];
 };
-export type OpponentBeliefV1 = {
-  schemaVersion: 1; systemVersion: KanonarSystemVersion; beliefId: string;
-  observerId: string; targetId: string;
+export type BeliefPayloadV1 = {
   estimates: Record<ApprovedBeliefKeyV1, EstimateV1>;
   inferredGoals: Array<{ goalId: string; probability: number; confidence: number; evidenceIds: string[] }>;
   predictedPolicy: Array<{ actionCategory: string; probability: number; confidence: number; evidenceIds: string[] }>;
@@ -29,4 +27,14 @@ export type OpponentBeliefV1 = {
   summary: { confidence: number; uncertainty: number };
   lastUpdateTrace?: BeliefUpdateTraceV1;
   updatedAtTick: number;
+};
+
+export type OpponentBeliefV1 = BeliefPayloadV1 & {
+  schemaVersion: 1; systemVersion: KanonarSystemVersion; beliefId: string;
+  observerId: string; targetId: string;
+};
+
+export type SelfBeliefV1 = BeliefPayloadV1 & {
+  schemaVersion: 1; systemVersion: KanonarSystemVersion; beliefId: string;
+  participantId: string;
 };

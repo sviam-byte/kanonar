@@ -326,6 +326,23 @@ describe('NKERNEL-STEP-0 conflict-nstep-v1', () => {
     expect(dyadProtocol.ok).toBe(false);
     if (dyadProtocol.ok === false) expect(dyadProtocol.error.code).toBe('invalid_protocol');
 
+    const canonical = buildTrustExchangeProtocolNV1(mustSet(['a', 'b', 'c']));
+    const malformedProtocols = [
+      { ...canonical, id: 'other' as typeof canonical.id },
+      { ...canonical, phases: ['resolution', 'simultaneous_choice'] as typeof canonical.phases },
+      { ...canonical, actionOrder: ['trust', 'betray', 'withhold'] as typeof canonical.actionOrder },
+      { ...canonical, roles: { a: 'participant', b: 'participant' } as typeof canonical.roles },
+    ];
+    for (const malformed of malformedProtocols) {
+      const result = resolveConflictNStepV1({
+        state: makeStateN(3),
+        protocol: malformed,
+        forcedJointActions: forced({ a: 'trust', b: 'betray', c: 'withhold' }),
+      });
+      expect(result.ok).toBe(false);
+      if (result.ok === false) expect(result.error.code).toBe('invalid_protocol');
+    }
+
     const selfPair = dyadicPairProjectionV1(makeStateN(3), 'a', 'a');
     expect(selfPair.ok).toBe(false);
     if (selfPair.ok === false) expect(selfPair.error.code).toBe('invalid_player');

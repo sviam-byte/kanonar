@@ -145,13 +145,21 @@ function buildGoalEnergyMap(
   atoms: ContextAtom[],
   selfId: string,
   opts?: { domainUnionV1?: boolean },
-): Record<string, number> {
+): {
+  goalEnergy: Record<string, number>;
+  sourceAtomIdByGoal: Record<string, string>;
+} {
   const out: Record<string, number> = {};
+  const sourceAtomIdByGoal: Record<string, string> = {};
   const activePrefix = `util:activeGoal:${selfId}:`;
   for (const a of atoms) {
     if (!a?.id?.startsWith(activePrefix)) continue;
     const goalId = a.id.slice(activePrefix.length);
+    // Atom arrays use first-write-wins: mergeAtomsPreferNewer places the
+    // newest occurrence first and AtomIndex keeps that first occurrence.
+    if (!goalId || Object.prototype.hasOwnProperty.call(out, goalId)) continue;
     out[goalId] = clamp01(Number(a?.magnitude ?? 0));
+    sourceAtomIdByGoal[goalId] = a.id;
   }
 
   // goalEnergyDomainUnionV1: active-goal ids and goal domains are disjoint
@@ -159,7 +167,7 @@ function buildGoalEnergyMap(
   // domain one. Without the union their Q contribution is zero whenever any
   // active goal exists. Active-goal keys keep precedence on collision.
   const domainUnion = opts?.domainUnionV1 === true;
-  if (Object.keys(out).length && !domainUnion) return out;
+  if (Object.keys(out).length && !domainUnion) return { goalEnergy: out, sourceAtomIdByGoal };
   const activeKeys = new Set(Object.keys(out));
 
   const domainPrefix = `goal:domain:`;
@@ -170,10 +178,12 @@ function buildGoalEnergyMap(
     const owner = parts[3];
     if (!domain || owner !== selfId) continue;
     if (activeKeys.has(domain)) continue;
+    if (Object.prototype.hasOwnProperty.call(out, domain)) continue;
     out[domain] = clamp01(Number(a?.magnitude ?? 0));
+    sourceAtomIdByGoal[domain] = a.id;
   }
 
-  return out;
+  return { goalEnergy: out, sourceAtomIdByGoal };
 }
 
 /**
@@ -392,7 +402,7 @@ export function buildActionCandidates(args: {
   goalEnergyDomainUnionV1?: boolean;
 }): { actions: ActionCandidate[]; goalEnergy: Record<string, number> } {
   const actions: ActionCandidate[] = [];
-  const goalEnergy = buildGoalEnergyMap(args.atoms, args.selfId, {
+  const { goalEnergy, sourceAtomIdByGoal } = buildGoalEnergyMap(args.atoms, args.selfId, {
     domainUnionV1: args.goalEnergyDomainUnionV1,
   });
 
@@ -572,6 +582,15 @@ export function buildActionCandidates(args: {
     });
     const priorMagnitude = clamp01(Number(pRuntime?.magnitude ?? 0));
     why.parts.priorMagnitude = priorMagnitude;
+    // Record the exact energy atom for every non-zero goal delta that can
+    // participate in Q. goal:domain:* is an explicit S8 union input here, so
+    // its dependency must be visible rather than hidden behind the score.
+    const goalEnergySources = Object.entries(deltaGoals)
+      .filter(([, delta]) => Number.isFinite(Number(delta)) && Math.abs(Number(delta)) > 1e-12)
+      .map(([goalId]) => ({ goalId, atomId: sourceAtomIdByGoal[goalId] }))
+      .filter((entry): entry is { goalId: string; atomId: string } => Boolean(entry.atomId));
+    why.parts.goalEnergySources = goalEnergySources;
+    pushUsed(why, ...goalEnergySources.map((entry) => entry.atomId));
     const actionWhy = finalizeWhy(why);
     actions.push({
       id: String(p.id),

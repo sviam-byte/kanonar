@@ -25,6 +25,7 @@ export type { ConflictCatalogLane, ConflictInventoryEntry, ConflictInventoryKind
 export { validateConflictDefinition, validateConflictDefinitionV2 } from './validation';
 export type { ConflictDefinitionValidation, ConflictDefinitionValidationError, ConflictDefinitionV2Validation } from './validation';
 export {
+  conflictUtilityCandidateIdV1,
   projectLegalActions,
   resolveProjectedChoice,
   resolveProjectedJointChoice,

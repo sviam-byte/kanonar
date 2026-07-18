@@ -94,7 +94,7 @@ export function createConflictLearningStore(): ConflictLearningStore {
 }
 
 export function conflictMemoryKey(agentId: string, otherId: string): string {
-  return `${agentId}->${otherId}`;
+  return JSON.stringify([agentId, otherId]);
 }
 
 export function getConflictMemory(

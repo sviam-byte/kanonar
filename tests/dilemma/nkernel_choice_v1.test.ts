@@ -187,5 +187,12 @@ describe('NKERNEL-CHOICE-0 conflict-nchoice-v1', () => {
     });
     expect(uncovered.ok).toBe(false);
     if (uncovered.ok === false) expect(uncovered.error.code).toBe('invalid_protocol');
+
+    const badActionOrder = resolveConflictNChoiceStepV1({
+      state: makeStateN(3),
+      protocol: { ...protocol, actionOrder: ['trust', 'betray', 'withhold'] },
+    });
+    expect(badActionOrder.ok).toBe(false);
+    if (badActionOrder.ok === false) expect(badActionOrder.error.code).toBe('invalid_protocol');
   });
 });

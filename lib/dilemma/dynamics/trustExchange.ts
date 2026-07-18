@@ -23,6 +23,13 @@ const cfg = CONFLICT_LAB_DYNAMICS_FORMULA;
 
 export const TRUST_EXCHANGE_ACTION_ORDER = ['trust', 'withhold', 'betray'] as const satisfies readonly ConflictActionId[];
 
+/** Canonical UI/export vocabulary. Scenario skins keep their legacy labels. */
+export const TRUST_EXCHANGE_ACTION_LABELS = {
+  trust: 'trust',
+  withhold: 'withhold',
+  betray: 'betray',
+} as const satisfies Readonly<Record<(typeof TRUST_EXCHANGE_ACTION_ORDER)[number], string>>;
+
 type TrustExchangeRelationMode =
   | 'mutual_trust'
   | 'betrayal_victim'

@@ -39,10 +39,12 @@ import type {
 } from '../dynamics/types';
 import { CONFLICT_ACTION_PROJECTION_SCHEMA_VERSION } from '../definition/types';
 import type { ConflictActionProjectionRow } from '../definition/types';
-import type { ConflictDefinitionV3 } from '../definition/conflictDefinitionV3';
-import { resolveProjectedChoice } from '../definition/projection';
+import { validateConflictDefinitionV3, type ConflictDefinitionV3 } from '../definition/conflictDefinitionV3';
+import { conflictUtilityCandidateIdV1, resolveProjectedChoice } from '../definition/projection';
+import { TRUST_EXCHANGE_ACTION_ORDER } from '../dynamics/trustExchange';
 import { projectConflictDefinitionV3ActionsV1, type ConflictActionProjectionRowNV1 } from '../nkernel/ndefinitionbind';
 import { resolveConflictNChoiceStepV1 } from '../nkernel/nchoice';
+import { participantSetFromConflictPlayersV1 } from '../nkernel/nstate';
 import { resolveConflictNStepV1 } from '../nkernel/nstep';
 import type { ConflictNStepResultV1, ConflictStateNV1 } from '../nkernel/types';
 import { buildConflictPossibilities } from './candidateBridge';
@@ -51,6 +53,7 @@ import {
   CONFLICT_CHOICE_POLICY_VERSION,
   CONFLICT_CHOICE_TRACE_SCHEMA_VERSION,
   type ConflictChoiceTraceV1,
+  type ConflictGoalEnergySourceV1,
   type ConflictPlayerDecisionInputV1,
   type ConflictRankedCandidateTraceV1,
   type ConflictTemperatureSource,
@@ -59,6 +62,8 @@ import {
 export const CONFLICT_NJOINT_DECISION_SCHEMA_VERSION = 'conflict-njoint-decision-v1' as const;
 
 export type ConflictNIntegrationErrorV1 =
+  | { readonly code: 'n_decision_requires_dyad'; readonly participantCount: number; readonly message: string }
+  | { readonly code: 'invalid_binding'; readonly message: string }
   | { readonly code: 'missing_pipeline'; readonly playerId: string; readonly message: string }
   | { readonly code: 'unknown_actor_role'; readonly playerId: string; readonly message: string }
   | { readonly code: 'missing_rng_channel'; readonly playerId: string; readonly message: string }
@@ -70,7 +75,10 @@ export type ConflictNIntegrationErrorV1 =
   | { readonly code: 'unknown_candidate'; readonly playerId: string; readonly message: string }
   | { readonly code: 'kernel_step_failed'; readonly message: string };
 
-type ConflictNPlayerErrorCodeV1 = Exclude<ConflictNIntegrationErrorV1['code'], 'kernel_step_failed'>;
+type ConflictNPlayerErrorCodeV1 = Exclude<
+  ConflictNIntegrationErrorV1['code'],
+  'kernel_step_failed' | 'n_decision_requires_dyad' | 'invalid_binding'
+>;
 
 export interface ConflictNJointDecisionArgsV1 {
   readonly state: ConflictStateNV1;
@@ -122,6 +130,76 @@ function failKernel(message: string): { ok: false; error: ConflictNIntegrationEr
   return { ok: false, error: { code: 'kernel_step_failed', message } };
 }
 
+function failBinding(message: string): { ok: false; error: ConflictNIntegrationErrorV1 } {
+  return { ok: false, error: { code: 'invalid_binding', message } };
+}
+
+function arraysEqual(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((value, index) => value === b[index]);
+}
+
+function validateCanonicalTrustBinding(args: ConflictNJointDecisionArgsV1): string | null {
+  const { state, definition, protocol } = args;
+  const participants = participantSetFromConflictPlayersV1(state.players);
+  if (participants.ok === false) {
+    return participants.errors.map((error) => error.message).join('; ');
+  }
+  if (protocol.id !== 'trust_exchange' || definition.protocolId !== 'trust_exchange') {
+    return `canonical N decision requires trust_exchange protocol and definition, got ${protocol.id}/${definition.protocolId}`;
+  }
+  const validated = validateConflictDefinitionV3(definition);
+  if (validated.ok === false) {
+    return `invalid conflict definition: ${validated.errors.map((error) => error.message).join('; ')}`;
+  }
+  if (!arraysEqual(protocol.phases, ['simultaneous_choice', 'resolution'])
+    || !arraysEqual(protocol.actionOrder, TRUST_EXCHANGE_ACTION_ORDER)) {
+    return 'protocol phases/action order do not match the canonical trust_exchange kernel';
+  }
+  const protocolPlayers = Object.keys(protocol.roles);
+  if (!arraysEqual(protocolPlayers, state.players)
+    || protocolPlayers.some((playerId) => protocol.roles[playerId] !== 'participant')) {
+    return 'protocol role binding does not exactly match the ordered conflict participants';
+  }
+  const definitionPlayers = definition.roles.map((role) => role.playerId);
+  if (definition.playerCount !== state.players.length || !arraysEqual(definitionPlayers, state.players)) {
+    return 'definition participant binding does not exactly match the ordered conflict participants';
+  }
+  if (definition.phases.length !== 1
+    || definition.phases[0].id !== 'simultaneous_choice'
+    || !arraysEqual(definition.phases[0].actorRoleIds, definition.roles.map((role) => role.id))) {
+    return 'definition phase/actor binding does not match canonical simultaneous trust choice';
+  }
+  const expectedActions = TRUST_EXCHANGE_ACTION_ORDER.flatMap((actionId) => (
+    definition.roles.map((role) => `${actionId}\u0000${role.id}`)
+  ));
+  const actualActions = definition.legalActions.map((action) => {
+    const canonicalTarget = action.target.mode === 'all_others' || action.target.mode === 'counterparty';
+    return canonicalTarget && action.phaseId === 'simultaneous_choice'
+      ? `${action.id}\u0000${action.actorRoleId}`
+      : '';
+  });
+  if (!arraysEqual(actualActions, expectedActions)) {
+    return 'definition legal actions do not exactly match canonical trust actions for every participant';
+  }
+  for (const role of definition.roles) {
+    const projected = projectConflictDefinitionV3ActionsV1(definition, role.id, 'simultaneous_choice');
+    if (projected.ok === false) return `definition projection failed: ${projected.error.message}`;
+    const otherId = state.players.find((playerId) => playerId !== role.playerId);
+    if (!otherId
+      || projected.value.length !== TRUST_EXCHANGE_ACTION_ORDER.length
+      || projected.value.some((row, index) => row.actionId !== TRUST_EXCHANGE_ACTION_ORDER[index]
+        || row.targetIds.length !== 1
+        || row.targetIds[0] !== otherId)) {
+      return `definition actions for ${role.playerId} must each target exactly the canonical counterparty`;
+    }
+  }
+  const suppliedPlayers = Object.keys(args.players);
+  if (suppliedPlayers.length !== state.players.length || state.players.some((playerId) => !suppliedPlayers.includes(playerId))) {
+    return 'pipeline input binding does not exactly match conflict participants';
+  }
+  return null;
+}
+
 function s8Atoms(pipeline: { stages?: unknown } | null): ContextAtom[] | null {
   const stages = arr<{ stage?: string; atoms?: ContextAtom[] }>((pipeline as { stages?: unknown[] })?.stages);
   const s8 = stages.find((stage) => String(stage?.stage ?? '') === 'S8');
@@ -153,6 +231,33 @@ function withoutForceAction(events: unknown): unknown[] {
     const record = event as Record<string, unknown>;
     return String(record.type ?? record.kind ?? '') !== 'force_action';
   });
+}
+
+function rankedGoalEnergySources(entry: Record<string, unknown>): ConflictGoalEnergySourceV1[] {
+  const why = entry.why && typeof entry.why === 'object'
+    ? entry.why as Record<string, unknown>
+    : {};
+  const seenGoals = new Set<string>();
+  const sources: ConflictGoalEnergySourceV1[] = [];
+  for (const raw of arr<Record<string, unknown>>(why.goalEnergySources)) {
+    const goalId = String(raw?.goalId ?? '');
+    const atomId = String(raw?.atomId ?? '');
+    if (!goalId || !atomId || seenGoals.has(goalId)) continue;
+    seenGoals.add(goalId);
+    sources.push({ goalId, atomId });
+  }
+  return sources;
+}
+
+function rankedUsedAtomIds(entry: Record<string, unknown>): string[] {
+  const why = entry.why && typeof entry.why === 'object'
+    ? entry.why as Record<string, unknown>
+    : {};
+  return Array.from(new Set([
+    ...arr<string>(entry.usedAtomIds).map(String),
+    ...arr<string>(why.usedAtomIds).map(String),
+    ...rankedGoalEnergySources(entry).map((source) => source.atomId),
+  ].filter(Boolean)));
 }
 
 // Identical precedence law to the dyadic provider (trait atom -> world ->
@@ -207,16 +312,15 @@ function toDyadicProjectionRowV1(
     // Same opaque scheme as the dyadic candidateId() (projection.ts) — matching
     // it exactly (not a distinguishing prefix) is what makes the N = 2
     // reduction oracle byte-tight; the ID is documented opaque, never parsed.
-    utilityCandidateId: [
-      'conflict',
-      CONFLICT_ACTION_PROJECTION_SCHEMA_VERSION,
-      row.protocolId,
-      row.phaseId,
-      `${row.actorId}->${row.targetIds[0]}`,
-      `t${tick}`,
-      `h${historyLength}`,
-      row.actionId,
-    ].join(':'),
+    utilityCandidateId: conflictUtilityCandidateIdV1({
+      protocolId: row.protocolId,
+      phaseId: row.phaseId,
+      actorId: row.actorId,
+      targetIds: row.targetIds,
+      tick,
+      historyLength,
+      kernelActionId: row.actionId,
+    }),
     provenance: { source: 'conflict-kernel-observation', tick, historyLength },
   };
 }
@@ -225,6 +329,18 @@ export function runConflictNJointDecisionV1(
   args: ConflictNJointDecisionArgsV1,
 ): Result<ConflictNJointDecisionReportV1, ConflictNIntegrationErrorV1> {
   const { state, definition, protocol } = args;
+  if (state.players.length > 2) {
+    return {
+      ok: false,
+      error: {
+        code: 'n_decision_requires_dyad',
+        participantCount: state.players.length,
+        message: `The GoalLab decision provider is dyadic; got ${state.players.length} participants`,
+      },
+    };
+  }
+  const bindingError = validateCanonicalTrustBinding(args);
+  if (bindingError) return failBinding(bindingError);
   const strategyMode = args.forcedActionStrategyMode ?? 'learn_from_utility';
   // trust_exchange has exactly one acting phase; the N-protocol constructor
   // (buildTrustExchangeProtocolNV1) always places it first (NKERNEL_FOUNDATION_0 §3.2).
@@ -325,6 +441,8 @@ export function runConflictNJointDecisionV1(
       effectiveTemperature: Number(entry?.effectiveTemperature ?? temperature),
       marginFromBest: Number(entry?.marginFromBest ?? 0),
       chosen: Boolean(entry?.chosen),
+      usedAtomIds: rankedUsedAtomIds(entry),
+      goalEnergySources: rankedGoalEnergySources(entry),
     }));
     if (ranked.some((entry) => !entry.kernelActionId)) {
       return fail('unknown_candidate', `GoalLab S8 returned a candidate outside the typed projection for ${playerId}`, playerId);

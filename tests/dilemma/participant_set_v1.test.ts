@@ -12,6 +12,7 @@ import {
   participantSetFromConflictRolesV1,
 } from '../../lib/dilemma/definition/participantSet';
 import type { ConflictDefinitionV2Role } from '../../lib/dilemma/definition/types';
+import { conflictMemoryKey } from '../../lib/dilemma/learningMemory';
 import { buildBeliefGraphV1, maxDirectedEdgesV1 } from '../../lib/tom/opponentBelief/beliefGraph';
 import { makeNeutralOpponentBeliefPriorV1 } from '../../lib/tom/opponentBelief/builder';
 import type { OpponentBeliefV1 } from '../../lib/tom/opponentBelief/types';
@@ -77,6 +78,29 @@ describe('R7 participant-set-v1', () => {
       expect(res.errors.some((e) => e.code === 'empty_participant_id')).toBe(true);
       expect(res.errors.some((e) => e.code === 'empty_role_id')).toBe(true);
     }
+  });
+
+  it('rejects prototype-sensitive, control-character, and whitespace-only ids', () => {
+    const prototypeKeysBefore = Object.getOwnPropertyNames(Object.prototype);
+    const res = buildParticipantSetV1([
+      member('__proto__', 'guard'),
+      member('B', 'constructor'),
+      member('C\u0000hidden', 'witness'),
+      member('   ', 'observer'),
+      member('D', 'toString'),
+    ]);
+    expect(res.ok).toBe(false);
+    if (res.ok === false) {
+      expect(res.errors.some((e) => e.code === 'unsafe_participant_id' && e.participantId === '__proto__')).toBe(true);
+      expect(res.errors.some((e) => e.code === 'unsafe_role_id' && e.roleId === 'constructor')).toBe(true);
+      expect(res.errors.some((e) => e.code === 'unsafe_role_id' && e.roleId === 'toString')).toBe(true);
+      expect(res.errors.filter((e) => e.code === 'unsafe_participant_id')).toHaveLength(3);
+    }
+    expect(Object.getOwnPropertyNames(Object.prototype)).toEqual(prototypeKeysBefore);
+  });
+
+  it('tuple-encodes directed memory keys without delimiter collisions', () => {
+    expect(conflictMemoryKey('a', 'a->a')).not.toBe(conflictMemoryKey('a->a', 'a'));
   });
 
   it('fails closed on duplicate participant ids and duplicate role ids', () => {

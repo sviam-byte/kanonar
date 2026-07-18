@@ -8,8 +8,10 @@
 // JSON artifact) produced docs/unification/evidence/conflict_parity_0.json —
 // see docs/unification/CONFLICT_PARITY_0.md for the analysis.
 
-import { mkdirSync, writeFileSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import { adaptResolvedSceneToGoalLabV1 } from '@/lib/scene/adapters/goalLab';
@@ -25,10 +27,13 @@ import {
 import { TRUST_EXCHANGE_ACTION_ORDER } from '@/lib/dilemma/dynamics/trustExchange';
 import {
   aggregateConflictParityEvidenceV1,
+  CONFLICT_CHOICE_POLICY_ID,
+  CONFLICT_CHOICE_POLICY_VERSION,
   extractConflictParityRecordV1,
   runConflictJointDecisionV1,
   type ConflictParityDecisionRecordV1,
 } from '@/lib/dilemma/integration';
+import { rankPairConcordanceV1 } from '@/lib/dilemma/integration/paritySweep';
 
 import { mockAgent, mockWorld } from '../pipeline/fixtures';
 
@@ -36,6 +41,72 @@ import { mockAgent, mockWorld } from '../pipeline/fixtures';
 // Deterministic grid (frozen for the CONFLICT_PARITY_0 evidence artifact).
 
 const PARITY_GRID_VERSION = 'conflict-parity-grid-v1';
+const PARITY_ARTIFACT_SCHEMA_VERSION = 'conflict-parity-artifact-v2';
+const PARITY_ARTIFACT_PATH = resolve(process.cwd(), 'docs/unification/evidence/conflict_parity_0.json');
+const PARITY_REPRO_COMMAND = "$env:CONFLICT_PARITY_FULL='1'; $env:CONFLICT_PARITY_OUT='docs\\unification\\evidence\\conflict_parity_0.json'; npm test -- --run tests/dilemma/conflictParityEvidence.test.ts";
+const PARITY_SOURCE_PATHS = [
+  'lib/config/runtimeMechanics.ts',
+  'lib/decision/actionCandidateUtils.ts',
+  'lib/dilemma',
+  'lib/goal-lab/pipeline',
+  'lib/scene',
+  'tests/dilemma/conflictParityEvidence.test.ts',
+  'tests/pipeline/fixtures.ts',
+  'package.json',
+  'package-lock.json',
+] as const;
+
+function paritySourceFingerprint(): { algorithm: 'sha256'; digest: string; trackedFileCount: number } {
+  const tracked = execFileSync('git', ['ls-files', '-z', '--', ...PARITY_SOURCE_PATHS], { encoding: 'utf8' })
+    .split('\0')
+    .filter(Boolean)
+    .sort();
+  const hash = createHash('sha256');
+  for (const file of tracked) {
+    hash.update(file);
+    hash.update('\0');
+    hash.update(readFileSync(resolve(process.cwd(), file)));
+    hash.update('\0');
+  }
+  return { algorithm: 'sha256', digest: hash.digest('hex'), trackedFileCount: tracked.length };
+}
+
+function parityToolchainMetadata(): { node: string; typescript: string; vitest: string } {
+  const lock = JSON.parse(readFileSync(resolve(process.cwd(), 'package-lock.json'), 'utf8')) as {
+    packages?: Record<string, { version?: string }>;
+  };
+  return {
+    node: process.version,
+    typescript: String(lock.packages?.['node_modules/typescript']?.version ?? 'unknown'),
+    vitest: String(lock.packages?.['node_modules/vitest']?.version ?? 'unknown'),
+  };
+}
+
+function compactParityArtifact(aggregate: ReturnType<typeof aggregateConflictParityEvidenceV1>) {
+  return {
+    artifactSchemaVersion: PARITY_ARTIFACT_SCHEMA_VERSION,
+    gridVersion: PARITY_GRID_VERSION,
+    mode: 'full',
+    system: { version: KANONAR_SYSTEM_VERSION },
+    policy: {
+      canonical: { id: CONFLICT_CHOICE_POLICY_ID, version: CONFLICT_CHOICE_POLICY_VERSION },
+      reference: { id: 'trust_exchange_replicator_argmax', version: 1 },
+    },
+    toolchain: parityToolchainMetadata(),
+    source: paritySourceFingerprint(),
+    reproductionCommand: PARITY_REPRO_COMMAND,
+    grid: {
+      relations: Object.keys(RELATION_PRESETS),
+      agentPairings: Object.keys(AGENT_PAIRINGS),
+      environments: Object.keys(ENVIRONMENT_PRESETS),
+      temperatures: Object.keys(TEMPERATURE_PRESETS),
+      seeds: FULL_SEEDS,
+      ticksPerRollout: FULL_TICKS,
+      runtimeProfile: 'phase1',
+    },
+    aggregate,
+  };
+}
 
 interface RelationPreset {
   // Kernel side (both directions symmetric).
@@ -261,6 +332,14 @@ function gateGridCells(): RolloutCell[] {
 
 const runFull = process.env.CONFLICT_PARITY_FULL === '1';
 
+describe('conflict parity rank concordance', () => {
+  it('excludes one-sided ties from the denominator', () => {
+    const canonical = { trust: 2, withhold: 2, betray: 0 };
+    const reference = { trust: 3, withhold: 2, betray: 0 };
+    expect(rankPairConcordanceV1(canonical, reference, TRUST_EXCHANGE_ACTION_ORDER)).toBe(1);
+  });
+});
+
 describe('CONFLICT-PARITY-0 — dual-run parity evidence sweep', () => {
   it('collects structurally complete parity records across the grid', { timeout: 600000 }, () => {
     const cells = runFull ? fullGridCells() : gateGridCells();
@@ -298,28 +377,14 @@ describe('CONFLICT-PARITY-0 — dual-run parity evidence sweep', () => {
     const out = process.env.CONFLICT_PARITY_OUT;
     if (out) {
       mkdirSync(dirname(out), { recursive: true });
-      writeFileSync(out, JSON.stringify({
-        gridVersion: PARITY_GRID_VERSION,
-        mode: runFull ? 'full' : 'gate-subset',
-        grid: {
-          relations: Object.keys(RELATION_PRESETS),
-          agentPairings: Object.keys(AGENT_PAIRINGS),
-          environments: Object.keys(ENVIRONMENT_PRESETS),
-          temperatures: Object.keys(TEMPERATURE_PRESETS),
-          seeds: runFull ? FULL_SEEDS : GATE_SEEDS,
-          ticksPerRollout: runFull ? FULL_TICKS : GATE_TICKS,
-          runtimeProfile: 'phase1',
-        },
-        presets: {
-          relations: RELATION_PRESETS,
-          agents: AGENT_PRESETS,
-          pairings: AGENT_PAIRINGS,
-          environments: ENVIRONMENT_PRESETS,
-          temperatures: TEMPERATURE_PRESETS,
-        },
-        aggregate,
-        records,
-      }, null, 2), 'utf8');
+      if (!runFull) throw new Error('CONFLICT_PARITY_OUT requires CONFLICT_PARITY_FULL=1');
+      writeFileSync(out, JSON.stringify(compactParityArtifact(aggregate), null, 2), 'utf8');
+    }
+    const recordsOut = process.env.CONFLICT_PARITY_RECORDS_OUT;
+    if (recordsOut) {
+      if (!runFull) throw new Error('CONFLICT_PARITY_RECORDS_OUT requires CONFLICT_PARITY_FULL=1');
+      mkdirSync(dirname(recordsOut), { recursive: true });
+      writeFileSync(recordsOut, JSON.stringify({ gridVersion: PARITY_GRID_VERSION, records }, null, 2), 'utf8');
     }
   });
 
@@ -328,5 +393,25 @@ describe('CONFLICT-PARITY-0 — dual-run parity evidence sweep', () => {
     const first = runRollout(cell);
     const second = runRollout(cell);
     expect(JSON.stringify(first)).toBe(JSON.stringify(second));
+  });
+
+  it('pins the compact full-grid aggregate to the current tracked source', () => {
+    const artifact = JSON.parse(readFileSync(PARITY_ARTIFACT_PATH, 'utf8')) as ReturnType<typeof compactParityArtifact>;
+    expect(artifact.artifactSchemaVersion).toBe(PARITY_ARTIFACT_SCHEMA_VERSION);
+    expect(artifact.mode).toBe('full');
+    expect(artifact.source).toEqual(paritySourceFingerprint());
+    expect(artifact.aggregate).toMatchObject({
+      nDecisions: 432,
+      nPlayerDecisions: 864,
+      legalSetMatchRate: 1,
+      traceCompleteRate: 1,
+      transitionParity: {
+        nJointAgree: 108,
+        payoffsEqual: 108,
+        relationsEqual: 108,
+        profilesEqual: 108,
+      },
+    });
+    expect((artifact as unknown as { records?: unknown }).records).toBeUndefined();
   });
 });

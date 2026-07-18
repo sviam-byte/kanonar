@@ -1,5 +1,5 @@
 import type { ConflictActionId, ConflictPlayerId } from '../dynamics/types';
-import type { ConflictJointDecisionReportV1 } from './types';
+import type { ConflictChoiceTraceV1, ConflictJointDecisionReportV1 } from './types';
 
 // CONFLICT-PARITY-0 (plan §CONFLICT-6.3): dual-run parity evidence.
 //
@@ -111,7 +111,7 @@ function rankOrder(
   });
 }
 
-function pairConcordance(
+export function rankPairConcordanceV1(
   a: Readonly<Record<string, number>>,
   b: Readonly<Record<string, number>>,
   actionOrder: readonly ConflictActionId[],
@@ -124,9 +124,17 @@ function pairConcordance(
       const y = actionOrder[j];
       const da = Math.sign((a[x] ?? 0) - (a[y] ?? 0));
       const db = Math.sign((b[x] ?? 0) - (b[y] ?? 0));
-      pairs += 1;
       // A tie in either ranking is neither evidence for nor against: count
-      // it as concordant only when the other side also ties.
+      // a shared tie as agreement, but exclude one-sided ties from the
+      // denominator entirely.
+      if (da === 0 || db === 0) {
+        if (da === 0 && db === 0) {
+          pairs += 1;
+          concordant += 1;
+        }
+        continue;
+      }
+      pairs += 1;
       if (da === db) concordant += 1;
     }
   }
@@ -136,7 +144,40 @@ function pairConcordance(
 function sameIdSet(a: readonly string[], b: readonly string[]): boolean {
   if (a.length !== b.length) return false;
   const set = new Set(a);
-  return b.every((id) => set.has(id));
+  return set.size === a.length && new Set(b).size === b.length && b.every((id) => set.has(id));
+}
+
+function hasCompleteGoalEnergyTrace(
+  sources: readonly { readonly goalId: string; readonly atomId: string }[] | undefined,
+): boolean {
+  if (!sources?.length) return false;
+  const goalIds = sources.map((source) => source.goalId);
+  const atomIds = sources.map((source) => source.atomId);
+  return sources.every((source) => Boolean(source.goalId) && Boolean(source.atomId))
+    && new Set(goalIds).size === goalIds.length
+    && new Set(atomIds).size === atomIds.length;
+}
+
+export function isConflictChoiceTraceCompleteV1(choice: ConflictChoiceTraceV1): boolean {
+  const projectedActionIds = choice.projectedRows.map((row) => row.kernelActionId);
+  const rankedActionIds = choice.ranked.map((entry) => entry.kernelActionId);
+  const chosenEntries = choice.ranked.filter((entry) => entry.chosen);
+  const samplingPoolCandidateIds = choice.ranked
+    .filter((entry) => entry.inSamplingPool)
+    .map((entry) => entry.utilityCandidateId);
+  return choice.ranked.length === choice.projectedRows.length
+    && sameIdSet(rankedActionIds, projectedActionIds)
+    && choice.usedAtomIds.length > 0
+    && choice.samplingPoolCandidateIds.length > 0
+    && sameIdSet(choice.samplingPoolCandidateIds, samplingPoolCandidateIds)
+    && chosenEntries.length === 1
+    && chosenEntries[0].utilityCandidateId === choice.chosenUtilityCandidateId
+    && chosenEntries[0].kernelActionId === choice.kernelActionId
+    && choice.ranked.every((entry) => Number.isFinite(entry.q)
+      && Number.isFinite(entry.effectiveTemperature)
+      && entry.usedAtomIds.length > 0
+      && hasCompleteGoalEnergyTrace(entry.goalEnergySources)
+      && entry.goalEnergySources?.every((source) => entry.usedAtomIds.includes(source.atomId)) === true);
 }
 
 export function extractConflictParityRecordV1(
@@ -164,13 +205,7 @@ export function extractConflictParityRecordV1(
     const referenceActionId = report.reference.actions[playerId];
 
     const projectedActionIds = choice.projectedRows.map((row) => row.kernelActionId);
-    const rankedActionIds = choice.ranked.map((entry) => entry.kernelActionId);
-    const traceComplete = choice.ranked.length === choice.projectedRows.length
-      && sameIdSet(rankedActionIds, projectedActionIds)
-      && choice.usedAtomIds.length > 0
-      && choice.samplingPoolCandidateIds.length > 0
-      && choice.ranked.filter((entry) => entry.chosen).length === 1
-      && choice.ranked.every((entry) => Number.isFinite(entry.q) && Number.isFinite(entry.effectiveTemperature));
+    const traceComplete = isConflictChoiceTraceCompleteV1(choice);
 
     byPlayer[playerId] = {
       playerId,
@@ -183,7 +218,7 @@ export function extractConflictParityRecordV1(
       canonicalRankOrder,
       referenceRankOrder,
       rankTop1Agree: canonicalRankOrder[0] === referenceRankOrder[0],
-      rankPairConcordance: pairConcordance(canonicalQ, referenceU, actionOrder),
+      rankPairConcordance: rankPairConcordanceV1(canonicalQ, referenceU, actionOrder),
       legalSetMatch: sameIdSet(projectedActionIds, actionOrder),
       traceComplete,
     };

@@ -57,6 +57,7 @@ import {
   type ConflictNJointDecisionReportV1,
 } from './ndecisionProvider';
 import { CONFLICT_CHOICE_POLICY_ID, CONFLICT_CHOICE_POLICY_VERSION } from './types';
+import { MAX_CONFLICT_LIVE_ROUNDS_V1 } from './liveSession';
 
 export const CONFLICT_NLIVE_SESSION_SCHEMA_VERSION = 'conflict-nlive-session-v1' as const;
 
@@ -82,8 +83,11 @@ export interface ConflictNLabSessionConfigV1 {
 export type ConflictNLabSessionErrorV1 =
   | { readonly code: 'unsupported_mechanic'; readonly mechanicId: string; readonly message: string }
   | { readonly code: 'invalid_participants'; readonly causeCode: ParticipantSetErrorV1['code']; readonly message: string }
+  | { readonly code: 'n_live_requires_dyad'; readonly participantCount: number; readonly message: string }
+  | { readonly code: 'invalid_round_budget'; readonly totalRounds: number; readonly min: 1; readonly max: typeof MAX_CONFLICT_LIVE_ROUNDS_V1; readonly message: string }
   | { readonly code: 'invalid_definition'; readonly message: string }
   | { readonly code: 'agent_not_found'; readonly playerId: string; readonly message: string }
+  | { readonly code: 'analysis_failed'; readonly message: string }
   | {
     readonly code: 'decision_failed';
     readonly round: number;
@@ -266,24 +270,13 @@ export function buildCanonicalInitialStateNV1(config: {
  * re-normalization is load-bearing below the replicator floor). Fail-closed
  * Result instead of the dyadic throw, and NO runDilemmaV2 compatibility
  * fallback: a non-trust_exchange mechanic is a typed error in the N lane.
- * getScenario is called first and its throw on unknown/disabled ids
- * propagates — the R6 catalog-lane rules apply unchanged (§3.6).
+ * Participant count and round budget are validated before catalog/pipeline
+ * work. For valid dyads, getScenario still propagates unknown/disabled errors
+ * unchanged — the R6 catalog-lane rules apply (§3.6).
  */
 export function runConflictNLabSessionV1(
   config: ConflictNLabSessionConfigV1,
 ): Result<ConflictNLabSessionReportV1, ConflictNLabSessionErrorV1> {
-  const scenario = getScenario(config.scenarioId);
-  if (scenario.mechanicId !== 'trust_exchange') {
-    return {
-      ok: false,
-      error: {
-        code: 'unsupported_mechanic',
-        mechanicId: String(scenario.mechanicId ?? ''),
-        message: `The N live-session lane is canonical trust_exchange only; ${config.scenarioId} carries mechanic '${scenario.mechanicId}' (no compatibility fallback at N)`,
-      },
-    };
-  }
-
   const set = participantSetFromConflictPlayersV1(config.players);
   if (set.ok === false) {
     return {
@@ -292,6 +285,43 @@ export function runConflictNLabSessionV1(
         code: 'invalid_participants',
         causeCode: set.errors[0].code,
         message: set.errors.map((error) => error.message).join('; '),
+      },
+    };
+  }
+  if (set.value.participantCount > 2) {
+    return {
+      ok: false,
+      error: {
+        code: 'n_live_requires_dyad',
+        participantCount: set.value.participantCount,
+        message: `The live decision/session lane is dyadic; got ${set.value.participantCount} participants`,
+      },
+    };
+  }
+  if (!Number.isFinite(config.totalRounds)
+    || !Number.isInteger(config.totalRounds)
+    || config.totalRounds < 1
+    || config.totalRounds > MAX_CONFLICT_LIVE_ROUNDS_V1) {
+    return {
+      ok: false,
+      error: {
+        code: 'invalid_round_budget',
+        totalRounds: config.totalRounds,
+        min: 1,
+        max: MAX_CONFLICT_LIVE_ROUNDS_V1,
+        message: `totalRounds must be an integer in [1, ${MAX_CONFLICT_LIVE_ROUNDS_V1}], got ${config.totalRounds}`,
+      },
+    };
+  }
+
+  const scenario = getScenario(config.scenarioId);
+  if (scenario.mechanicId !== 'trust_exchange') {
+    return {
+      ok: false,
+      error: {
+        code: 'unsupported_mechanic',
+        mechanicId: String(scenario.mechanicId ?? ''),
+        message: `The N live-session lane is canonical trust_exchange only; ${config.scenarioId} carries mechanic '${scenario.mechanicId}' (no compatibility fallback at N)`,
       },
     };
   }
@@ -321,7 +351,7 @@ export function runConflictNLabSessionV1(
     definitionSource = 'default_trust_exchange_all_others';
   }
 
-  const totalRounds = Math.max(1, Math.floor(config.totalRounds));
+  const totalRounds = config.totalRounds;
   const seed = config.seed ?? 42;
 
   const initial = buildCanonicalInitialStateNV1({
@@ -386,6 +416,11 @@ export function runConflictNLabSessionV1(
     trajectory.push(state);
   }
 
+  const metrics = trajectoryMetricsNV1(trajectory);
+  if (metrics.ok === false) {
+    return { ok: false, error: { code: 'analysis_failed', message: metrics.error.message } };
+  }
+
   return {
     ok: true,
     value: {
@@ -402,7 +437,7 @@ export function runConflictNLabSessionV1(
       finalState: state,
       decisions,
       trajectory,
-      metrics: trajectoryMetricsNV1(trajectory),
+      metrics: metrics.value,
     },
   };
 }

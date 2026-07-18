@@ -84,6 +84,7 @@ export {
   selectDominantAction,
   stateDistance,
   trajectoryMetrics,
+  TRUST_EXCHANGE_ACTION_LABELS,
   TRUST_EXCHANGE_ACTION_ORDER,
   updateActionValue as updateDynamicsActionValue,
   updateConflictMemory as updateDynamicsConflictMemory,

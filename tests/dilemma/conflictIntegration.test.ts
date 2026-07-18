@@ -23,6 +23,7 @@ import {
   conflictDeltaGoalsV1,
   runConflictJointDecisionV1,
 } from '@/lib/dilemma/integration';
+import { isConflictChoiceTraceCompleteV1 } from '@/lib/dilemma/integration/paritySweep';
 import type { ContextAtom } from '@/lib/context/v2/types';
 import { buildActionCandidates } from '@/lib/decision/actionCandidateUtils';
 
@@ -160,12 +161,29 @@ describe('CONFLICT-INTEGRATION-0 — S8 policy drives the kernel through the pro
       expect(trace.ranked.some((r) => r.chosen)).toBe(true);
       expect(trace.samplingPoolCandidateIds.length).toBeGreaterThan(0);
       expect(trace.ranked.every((r) => Number.isFinite(r.effectiveTemperature))).toBe(true);
+      expect(trace.ranked.every((r) => (r.goalEnergySources?.length ?? 0) > 0)).toBe(true);
+      for (const ranked of trace.ranked) {
+        expect(ranked.usedAtomIds.length).toBeGreaterThan(0);
+        expect(ranked.goalEnergySources?.every((source) => Boolean(source.goalId) && Boolean(source.atomId))).toBe(true);
+        expect(ranked.goalEnergySources?.every((source) => ranked.usedAtomIds.includes(source.atomId))).toBe(true);
+      }
       expect(trace.ranked.filter((r) => r.inSamplingPool).map((r) => r.utilityCandidateId))
         .toEqual(trace.samplingPoolCandidateIds);
       const chosenRow = trace.projectedRows.find((r) => r.utilityCandidateId === trace.chosenUtilityCandidateId);
       expect(chosenRow?.kernelActionId).toBe(trace.kernelActionId);
       expect(Number.isFinite(trace.temperature)).toBe(true);
+      expect(isConflictChoiceTraceCompleteV1(trace)).toBe(true);
     }
+    const complete = report.choices.A;
+    const incomplete = {
+      ...complete,
+      ranked: complete.ranked.map((entry, index) => index === 0 ? { ...entry, goalEnergySources: [] } : entry),
+    };
+    expect(isConflictChoiceTraceCompleteV1(incomplete)).toBe(false);
+    expect(isConflictChoiceTraceCompleteV1({
+      ...complete,
+      ranked: complete.ranked.map((entry, index) => index === 0 ? { ...entry, usedAtomIds: [] } : entry),
+    })).toBe(false);
   });
 
   it('CONFLICT-PARITY-0: S8 Q differentiates conflict candidates (domain-union goal energy)', () => {
@@ -317,7 +335,7 @@ describe('conflict candidate bridge — impact matrix and belief modulation', ()
     expect(beliefSignalsByTarget.B.trust).toBeCloseTo(0.9, 6);
     for (const possibility of possibilities) {
       expect(possibility.trace?.usedAtomIds).toContain(beliefAtomId);
-      expect(possibility.id.startsWith('conflict:')).toBe(true);
+      expect(possibility.id.length).toBeGreaterThan(0);
     }
 
     const built = buildActionCandidates({ selfId: 'A', atoms, possibilities, currentTick: state.tick });

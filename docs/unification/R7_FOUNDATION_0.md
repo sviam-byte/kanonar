@@ -1,8 +1,14 @@
 # R7-FOUNDATION-0 — multi-agent foundation inventory + contract proposal
 
 Статус: **IMPLEMENTED — ADR §5.1–§5.4 decided, все срезы 1–4 реализованы.** Дата: 2026-07-13.
-Update 2026-07-13: author decided §5.1 (self-belief = separate node reusing
-`OpponentBeliefV1`, observerId===targetId, outside the directed bound). The
+Update 2026-07-18 (audit repair): self-belief is now a separate validated
+`SelfBeliefV1` node with canonical ID `belief:self:<participantId>`, sharing
+only `BeliefPayloadV1` with directed `OpponentBeliefV1`. Graph input separates
+`directedBeliefs` and `selfBeliefs`; the old observer===target contradiction is
+removed. Observation views also re-decode envelopes and return independent
+copies.
+Update 2026-07-13: author decided §5.1 (self-belief = separate node, outside
+the directed bound). The
 `belief-graph-v1` slice is implemented pure-domain
 (`lib/tom/opponentBelief/beliefGraph.ts`, `tests/tom/belief_graph_v1.test.ts`).
 §5.2/§5.3/§5.4 (multi-target semantics, ordering beyond this slice, naming)
@@ -65,7 +71,7 @@ group payoff — отдельный будущий эпик и в R7 НЕ вхо
   'counterparty' | 'none'` (`lib/dilemma/definition/types.ts`) — бинарный, без
   адресации к конкретному участнику. То же в v1
   (`validateConflictDefinition`: `playerCount !== 2`).
-- **Self-belief отсутствует.** Dual-emit явно пропускает self
+- **Historical gap (closed 2026-07-18): self-belief отсутствовал.** Dual-emit явно пропускал self
   (`if (!targetId || targetId === args.selfId) continue`,
   `s5DualEmitLayer.ts:50`); отдельного self-узла в графе нет.
 - **Нет типизированного объекта графа.** Хранилище — ad-hoc `tomStore[self][target]`;
@@ -112,7 +118,8 @@ view другого (перенос hidden-field non-interference оракула
 Реализация — §6.3.
 
 ### 3.3 Sparse directed belief graph (`belief-graph-v1`)
-Типизированная обёртка над множеством `OpponentBeliefV1` рёбер:
+Типизированная обёртка над раздельными коллекциями `OpponentBeliefV1` рёбер и
+`SelfBeliefV1` узлов:
 - множество участников + карта рёбер `(observerId → targetId) → OpponentBeliefV1`;
 - инвариант `directedEdges ≤ N·(N−1)`, отсутствие self-петель среди directed;
 - **self-belief — отдельный узел** `selfBeliefs[observerId]` вне directed-множества
@@ -144,10 +151,10 @@ view другого (перенос hidden-field non-interference оракула
 
 ## 5. Решения, зарезервированные за автором (нужна подпись до кода)
 
-1. **Self-belief representation.** ✅ DECIDED 2026-07-13: отдельный узел
-   `selfBeliefs[id]` того же типа `OpponentBeliefV1` (observerId === targetId),
-   вне directed-границы `N·(N−1)`. Переиспользует валидированный тип; минимум
-   новой поверхности. Реализовано в `belief-graph-v1`.
+1. **Self-belief representation.** ✅ REPAIRED 2026-07-18: отдельный
+   `SelfBeliefV1` узел `selfBeliefs[id]` с ID
+   `belief:self:<participantId>`, вне directed-границы `N·(N−1)`. Он разделяет
+   с `OpponentBeliefV1` только payload; builder/validator/codec отдельные.
 2. **Multi-target action семантика.** ✅ DECIDED 2026-07-17: минимальный набор
    `none | self | counterparty | participant | all_others`; `counterparty` —
    валидируемый алиас, легален только при `playerCount === 2`; `participant`
@@ -167,7 +174,8 @@ view другого (перенос hidden-field non-interference оракула
 ### 6.1 `belief-graph-v1` — ✅ IMPLEMENTED 2026-07-13 (pure-domain)
 - `lib/tom/opponentBelief/beliefGraph.ts`: `BeliefGraphV1` тип, fail-closed
   `buildBeliefGraphV1`, `maxDirectedEdgesV1(n) = n·(n−1)`, self-узлы отдельно;
-- построение из существующих `OpponentBeliefV1` рёбер, без изменения S5/runtime;
+- построение из раздельно валидируемых `directedBeliefs: OpponentBeliefV1[]` и
+  `selfBeliefs: SelfBeliefV1[]`; pair keys кодируются как JSON tuple;
 - `tests/tom/belief_graph_v1.test.ts` (8): дьяда, граница `N = 2..5`,
   self-isolation, детерминизм по порядку входа, fail-closed на пустой/дублирующий
   participant, неизвестного участника и дубликат ребра.
