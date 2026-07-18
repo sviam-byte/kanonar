@@ -1,7 +1,15 @@
 # NKERNEL-FOUNDATION-0 — исполнимое N-ядро: инвентаризация + contract proposal
 
-Статус: **ADR §5.1–§5.4 подписаны 2026-07-17; срезы 1–3 (`NKERNEL-STEP-0`, `NKERNEL-CHOICE-0`, `NKERNEL-TRAJECTORY-0`) РЕАЛИЗОВАНЫ.**
+Статус: **ADR §5.1–§5.5 подписаны 2026-07-17/18; срезы 1–5 (`NKERNEL-STEP-0`, `NKERNEL-CHOICE-0`, `NKERNEL-TRAJECTORY-0`, `NKERNEL-DEFINITION-BIND-0`, `NKERNEL-DECISION-0` v1) РЕАЛИЗОВАНЫ.**
 Дата: 2026-07-17.
+Update 2026-07-18 (4): `NKERNEL-DECISION-0` v1 реализован (см. §6.5) —
+однотаргетный N-joint-decision provider по ADR §5.5. Gate: `tsc --noEmit`
+чист; 566 passed / 10 skipped / 0 failed; golden `efa018b3…` не сдвинут.
+Update 2026-07-18 (3): `NKERNEL-DEFINITION-BIND-0` реализован (см. §6.4) —
+привязка v3-target-режимов (`none | self | counterparty | participant |
+all_others`) к конкретным `targetIds`, плюс проекция `legalActions` определения
+в исполнимые строки. Gate: `tsc --noEmit` чист; 561 passed / 10 skipped /
+0 failed; golden `efa018b3…` не сдвинут.
 Update 2026-07-18: автор подписал ADR агрегации utilities (§5.2-agg:
 покомпонентный MEAN по N−1 целям игрока) — `NKERNEL-CHOICE-0` реализован
 pure-domain (см. §6.2): `lib/dilemma/nkernel/nchoice.ts` + разблокирован
@@ -165,12 +173,44 @@ Replicator-выбор ядра при N. ADR агрегации подписан
 в неforced-пути ядра). `learn_from_utility` при `N > 2` разблокирован в
 `nstep`: N-профили = репликатор над mean-агрегатом harvested utilities.
 
-### 3.5 N joint-decision provider — DEFERRED (`NKERNEL-DECISION-0`)
-N-аналог `runConflictJointDecisionV1`: per-participant GoalLab S8 поверх
-`ObservationViewV1`/`selectAllObservationViewsV1` и `BeliefGraphV1`.
-Записанные инварианты потребителей: `makeNeutralOpponentBeliefPriorV1`
+### 3.5 N joint-decision provider — ✅ IMPLEMENTED 2026-07-18 v1 (`NKERNEL-DECISION-0`)
+N-аналог `runConflictJointDecisionV1` (`lib/dilemma/integration/decisionProvider.ts:88`):
+per-participant GoalLab S8 поверх `ObservationViewV1`/`selectAllObservationViewsV1`
+и `BeliefGraphV1`. Записанные инварианты потребителей: `makeNeutralOpponentBeliefPriorV1`
 запрещает `observerId === targetId` (`self_target_forbidden`);
 `buildBeliefGraphV1` fail-closed на дубликатах рёбер/участников.
+
+Инвентаризация (после срезов 1–4, 2026-07-18):
+
+- Уже N-generic, без переделки: `state.players`-цикл (`decisionProvider.ts:99`)
+  не несёт диадической посылки; `ConflictPlayerDecisionInputV1`,
+  `ConflictJointDecisionReportV1.choices`/`.divergence.byPlayer` уже
+  `Record<ConflictPlayerId, …>` (`integration/types.ts:29,86,103`).
+- Диадически заперто, но уже есть N-замена в срезах эпика: `args.definition?:
+  ConflictDefinition` — v1/v2-интерфейс с `.step()`/`.createProtocol()`, не
+  v3 (`integration/types.ts:127`); дыадические `projectLegalActions`/
+  `resolveProjectedChoice` — N-замена проекции есть
+  (`projectConflictDefinitionV3ActionsV1`, срез 4), N-аналога
+  `resolveProjectedChoice` ещё нет; недforced-reference-lane
+  `definition.step(state, protocol)` — N-аналог уже есть
+  (`resolveConflictNChoiceStepV1`, срез 2).
+- **Развилка — не механическая генерализация.** `buildConflictPossibilities`
+  (`integration/candidateBridge.ts:123-166`) строит один GoalLab `Possibility`
+  на projection-строку с единственным `targetId = row.targetIds[0]` (:130) —
+  `Possibility` однотаргетна по контракту. При `N > 2` `all_others`-target несёт
+  несколько `targetIds` (срез 4); инвариант «один candidate = одно действие ×
+  один таргет» перестаёт покрывать вход. Варианты:
+  (a) **fan-out** — один candidate на пару (action × target), S8 ранжирует по
+  расширенному пулу; «выбор» становится (actionId, targetId), а не actionId —
+  меняет форму `ConflictChoiceTraceV1`/`resolveProjectedChoice`;
+  (b) **однотаргетный первый срез** — `NKERNEL-DECISION-0` v1 покрывает только
+  definitions, где легальные действия однотаргетны в момент вызова
+  (`self`/`none`/`participant`/`counterparty`, и `all_others` лишь при `N = 2`);
+  многотаргетный choice уходит в тот же хвостовой ADR, что coalition goals/
+  group payoff (§6 п.7).
+  ADR-резерв — см. §5.5. ✅ РЕШЕНО автором 2026-07-18: однотаргетный первый
+  срез (вариант b); многотаргетный fan-out — в хвостовой ADR (§6 п.7).
+  Реализация — см. §6.5.
 
 ### 3.6 N live session — DEFERRED (`NKERNEL-SESSION-0`)
 За parity-gate (как R3/R5), никогда default. Записанный инвариант catalog-lane:
@@ -213,6 +253,16 @@ R6 применяются без изменений.
    дословный passthrough единственной пары (закреплён оракулом); `N > 2` —
    детерминированный агрегатный `outcomeTag` (`n_pairwise`) + отсортированный
    union `eventTags`; per-pair теги сохраняются в `pairwise`-провенансе.
+
+5. **Multi-target candidate scope для `NKERNEL-DECISION-0`.** ✅ DECIDED
+   2026-07-18: однотаргетный первый срез — `NKERNEL-DECISION-0` v1 покрывает
+   только definitions, чьи легальные действия однотаргетны на момент вызова
+   (`self`/`none`/`participant`/`counterparty`, и `all_others` лишь при
+   `N = 2`); многотаргетный choice (fan-out кандидатов, (actionId, targetId)
+   вместо actionId) уходит в тот же хвостовой ADR, что coalition goals/group
+   payoff (§6 п.7) — не в объём этого среза. Совпадает с собственной
+   дисциплиной эпика: `STEP-0` тоже начался forced-only, до эндогенного
+   выбора в `CHOICE-0`.
 
 Зафиксированная граница reuse (следствие §5.3 R7 и CONFLICT-DEFINITION-0):
 pair-generic хелперы (`normalizeConflictState`, `applyConflictTransition`,
@@ -269,9 +319,48 @@ pair-generic хелперы (`normalizeConflictState`, `applyConflictTransition`
    побайтно; все метрики против диадических оригиналов (`toBe` + `toEqual`
    полного `trajectoryMetrics` с perturbed-двойником); N=3 sanity/циклы;
    детерминизм; fail-closed passthrough.
-4. **`NKERNEL-DEFINITION-BIND-0`** — привязка v3-targets
-   (`participant`/`all_others`) к исполнимым projection rows.
-5. **`NKERNEL-DECISION-0`** — §3.5.
+4. **`NKERNEL-DEFINITION-BIND-0`** — ✅ IMPLEMENTED 2026-07-18 (pure-domain):
+   `lib/dilemma/nkernel/ndefinitionbind.ts` (`resolveConflictActionTargetIdsV1`
+   — fail-closed резолвер каждого §3.2/R7-§5.2 target-режима в конкретные
+   `targetIds`, независимый от `validateConflictDefinitionV3` (defense-in-depth,
+   как `dyadicPairProjectionV1`); `counterparty` при `N = 2` резолвится
+   идентично `all_others` — тот же fold-of-one, что уже видит диада через
+   `all_others` в `trustExchangeDefinitionNV1`; `projectConflictDefinitionV3ActionsV1`
+   — проекция `legalActions` определения для `(actorRoleId, phaseId)` в новый,
+   намеренно более узкий тип строки `ConflictActionProjectionRowNV1`, а не
+   переиспользование `ConflictActionProjectionRow` — его `protocolId`/
+   `kernelActionId` пришиты к kernel-литералам, от которых `conflict-definition-v3`
+   осознанно отвязан через `string`). `tests/dilemma/nkernel_definition_bind_v1.test.ts`
+   (7): оракул редукции N=2 — `all_others`-биндинг `trustExchangeDefinitionNV1`
+   побайтно против диадического `projectLegalActions` (оба актора); `all_others`
+   при `N = 3..5` в порядке participant-set; `self`/`none`/`participant` на
+   ручном N=3 определении; роль без действий в фазе → пустой список строк, не
+   ошибка; `counterparty` при `N = 2` ≡ `all_others`; fail-closed по каждому
+   коду ошибки независимо от валидатора; детерминизм + иммутабельность входа.
+   Gate: `tsc --noEmit` чист; 561 passed / 10 skipped / 0 failed; golden
+   `efa018b3…` не сдвинут (`grep -rn "nkernel" lib` — только self-references).
+5. **`NKERNEL-DECISION-0`** — ✅ IMPLEMENTED 2026-07-18 v1, однотаргетный
+   (pure-domain, не wired в runtime): `lib/dilemma/integration/ndecisionProvider.ts`
+   (`runConflictNJointDecisionV1` — N-аналог `runConflictJointDecisionV1`:
+   тот же per-player цикл GoalLab-baseline → `projectConflictDefinitionV3ActionsV1`
+   → gate `multi_target_not_supported` при `targetIds.length > 1` (ADR §5.5) →
+   единственный документированный адаптер `toDyadicProjectionRowV1` в
+   настоящий `ConflictActionProjectionRow` — минтит тот же опаковый
+   `utilityCandidateId`, что и дыадический `candidateId()` (буквально то же
+   значение при N=2, это и держит побайтный оракул) → переиспользованные
+   `buildConflictPossibilities`/`resolveProjectedChoice` без изменений →
+   `resolveConflictNStepV1` (срез 1) как canonical-транзишн,
+   `resolveConflictNChoiceStepV1` (срез 2) как reference-lane вместо
+   недforced `definition.step`). `tests/dilemma/nkernel_decision_v1.test.ts`
+   (5): побайтный оракул редукции N=2 против `runConflictJointDecisionV1`
+   (choices/actions/state/outcome/divergence); `all_others`-определение при
+   `N = 3` фейлится `multi_target_not_supported` (ADR §5.5 в действии);
+   ручное однотаргетное N=3-определение проходит end-to-end (3 пары,
+   3 участника, оба lane); fail-closed на отсутствующий rng-канал;
+   детерминизм. Gate: `tsc --noEmit` чист; 566 passed / 10 skipped / 0 failed;
+   golden `efa018b3…` не сдвинут; `grep -rn "ndecisionProvider\|runConflictNJointDecisionV1" lib`
+   — только self-references, не в барреле `integration/index.ts`
+   (wiring — задача `NKERNEL-SESSION-0`).
 6. **`NKERNEL-SESSION-0`** — §3.6, за parity-gate, никогда default.
 7. Хвост: coalition goals / group payoff — собственный ADR, вне первых срезов.
 

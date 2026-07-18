@@ -160,6 +160,27 @@
   без-forced=эндогенный выбор; межшаговая ре-нормализация ядра отзеркалена —
   оракул показал, что она несущая); `nkernel_trajectory_v1.test.ts` (5) с
   побайтными N=2 оракулами раннера и всех метрик.
+  Срез 4 `NKERNEL-DEFINITION-BIND-0` реализован 2026-07-18:
+  `ndefinitionbind.ts` — `resolveConflictActionTargetIdsV1` (fail-closed
+  резолвер v3 target-режимов `none|self|counterparty|participant|all_others` в
+  конкретные `targetIds`, независимый от `validateConflictDefinitionV3`) +
+  `projectConflictDefinitionV3ActionsV1` (проекция `legalActions` в исполнимые
+  строки нового узкого типа `ConflictActionProjectionRowNV1`, не переиспользуя
+  kernel-литерал-пришитый `ConflictActionProjectionRow`);
+  `nkernel_definition_bind_v1.test.ts` (7) с побайтным оракулом `all_others`
+  против диадического `projectLegalActions` при N=2.
+  Срез 5 `NKERNEL-DECISION-0` v1 реализован 2026-07-18, однотаргетный (ADR
+  §5.5 — многотаргетный fan-out в хвостовом ADR): `lib/dilemma/integration/`
+  `ndecisionProvider.ts` — `runConflictNJointDecisionV1`, N-аналог
+  `runConflictJointDecisionV1`, переиспользующий `buildConflictPossibilities`/
+  `resolveProjectedChoice` без изменений через один документированный
+  адаптер `toDyadicProjectionRowV1`; canonical-транзишн через
+  `resolveConflictNStepV1`, reference-lane через `resolveConflictNChoiceStepV1`;
+  gate `multi_target_not_supported` на `all_others` при `N > 2`.
+  `nkernel_decision_v1.test.ts` (5) с побайтным оракулом против
+  `runConflictJointDecisionV1` при N=2 и end-to-end N=3 на ручном
+  однотаргетном определении. Не wired в runtime/barrel — задача
+  `NKERNEL-SESSION-0`.
 
 - **R6 CATALOG WIRING — step 4 (2026-07-13)**: the Conflict Lab catalog is now
   driven by the typed `CONFLICT_SCENARIO_INVENTORY` via the pure
