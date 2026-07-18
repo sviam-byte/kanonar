@@ -181,6 +181,24 @@
   `runConflictJointDecisionV1` при N=2 и end-to-end N=3 на ручном
   однотаргетном определении. Не wired в runtime/barrel — задача
   `NKERNEL-SESSION-0`.
+  Срез 6 `NKERNEL-SESSION-0` реализован 2026-07-18 — **эпик закрыт по
+  первым срезам, N-полоса за parity-gate, никогда default**:
+  `lib/dilemma/integration/nliveSession.ts` — `runConflictNLabSessionV1`
+  (N-аналог канонического цикла `runConflictLabSessionV1`: per-round pressure
+  → `worldForTickNV1` (закрытие §1.2-шва `players.find`) → per-player GoalLab
+  input + RNG imul-цепь → `runConflictNJointDecisionV1` → межшаговая
+  ре-нормализация), `buildCanonicalInitialStateNV1` (per-pair reuse
+  `buildCanonicalInitialState` + anchor-partner-слияние), fail-closed `Result`
+  без `runDilemmaV2`-fallback, `definition`-override как ADR §5.5 escape hatch
+  для `N > 2`. Экспорт из `integration/index.ts` (первое осознанное
+  пересечение границы «nkernel не в runtime»); главный баррель
+  `lib/dilemma/index.ts` и `liveSession.ts` байтово не тронуты — ничто не
+  диспатчит в N-полосу по умолчанию. `nkernel_session_v1.test.ts` (8):
+  побайтные N=2 оракулы initial state и всей сессии против
+  `runConflictLabSessionV1`; N=3 end-to-end (первый live-полосный прогон трёх
+  участников — S8 ранжирует полный legal set без обогащения атомами); ADR §5.5
+  на уровне сессии; catalog-throw; determinism. Gate: tsc чист; 574 passed /
+  10 skipped / 0 failed; golden `efa018b3…` не сдвинут.
 
 - **R6 CATALOG WIRING — step 4 (2026-07-13)**: the Conflict Lab catalog is now
   driven by the typed `CONFLICT_SCENARIO_INVENTORY` via the pure

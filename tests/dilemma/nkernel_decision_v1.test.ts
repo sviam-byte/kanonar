@@ -16,10 +16,6 @@ import type { ObservationProvenanceV1, ResolvedSceneInputV1, VisibilityRuleV1 } 
 import { TRUST_EXCHANGE_ACTION_ORDER } from '../../lib/dilemma/dynamics/trustExchange';
 import { runConflictJointDecisionV1 } from '../../lib/dilemma/integration/decisionProvider';
 import { runConflictNJointDecisionV1 } from '../../lib/dilemma/integration/ndecisionProvider';
-import {
-  CONFLICT_DEFINITION_V3_SCHEMA_VERSION,
-  type ConflictDefinitionV3,
-} from '../../lib/dilemma/definition/conflictDefinitionV3';
 import type { ParticipantSetV1 } from '../../lib/dilemma/definition/participantSet';
 import {
   asKernelConflictStateV1,
@@ -29,7 +25,7 @@ import {
 } from '../../lib/dilemma/nkernel/nstate';
 
 import { mockAgent, mockWorld } from '../pipeline/fixtures';
-import { makeStateN } from './nkernelFixtures';
+import { makeSingleTargetDefinitionN3, makeStateN } from './nkernelFixtures';
 
 function lcg(seed: number): () => number {
   let s = seed >>> 0;
@@ -93,35 +89,6 @@ function mustSet(players: readonly string[]): ParticipantSetV1 {
   const res = participantSetFromConflictPlayersV1(players);
   if (res.ok === false) throw new Error('expected participant set ok');
   return res.value;
-}
-
-// Every actor's 3 legal actions target one fixed other participant instead of
-// all_others — legal under the single-target-only v1 scope (NKERNEL_FOUNDATION_0
-// §5.5). The target only flavors which counterparty's belief atoms modulate the
-// GoalLab candidate (candidateBridge.ts); the real kernel transition still runs
-// every unordered pair regardless (NKERNEL-STEP-0 §2), so this is a legitimate
-// end-to-end N = 3 exercise, not a restricted kernel.
-function makeSingleTargetDefinitionN3(): ConflictDefinitionV3 {
-  const roles = [
-    { id: 'role-a', playerId: 'a' },
-    { id: 'role-b', playerId: 'b' },
-    { id: 'role-c', playerId: 'c' },
-  ];
-  const nextTarget: Record<string, string> = { a: 'b', b: 'c', c: 'a' };
-  return {
-    schemaVersion: CONFLICT_DEFINITION_V3_SCHEMA_VERSION,
-    protocolId: 'trust_exchange',
-    playerCount: 3,
-    roles,
-    phases: [{ id: 'simultaneous_choice', actorRoleIds: roles.map((role) => role.id), observation: 'public_state' }],
-    legalActions: TRUST_EXCHANGE_ACTION_ORDER.flatMap((actionId) => roles.map((role) => ({
-      id: actionId,
-      phaseId: 'simultaneous_choice',
-      actorRoleId: role.id,
-      target: { mode: 'participant' as const, participantId: nextTarget[role.playerId] },
-    }))),
-    termination: { kind: 'external_round_budget', note: 'test fixture' },
-  };
 }
 
 describe('NKERNEL-DECISION-0 conflict-njoint-decision-v1', () => {

@@ -21,6 +21,25 @@ export {
   type ConflictBeliefSignals,
 } from './candidateBridge';
 export { runConflictJointDecisionV1 } from './decisionProvider';
+// NKERNEL-SESSION-0 wiring surface: the N lanes are callable from here, but
+// nothing dispatches into them by default — runConflictLabSessionV1 below and
+// the UI stay dyadic (NKERNEL_FOUNDATION_0 §3.6, "за parity-gate, никогда default").
+export {
+  CONFLICT_NJOINT_DECISION_SCHEMA_VERSION,
+  runConflictNJointDecisionV1,
+  type ConflictNIntegrationErrorV1,
+  type ConflictNJointDecisionArgsV1,
+  type ConflictNJointDecisionReportV1,
+} from './ndecisionProvider';
+export {
+  CONFLICT_NLIVE_SESSION_SCHEMA_VERSION,
+  buildCanonicalInitialStateNV1,
+  runConflictNLabSessionV1,
+  worldForTickNV1,
+  type ConflictNLabSessionConfigV1,
+  type ConflictNLabSessionErrorV1,
+  type ConflictNLabSessionReportV1,
+} from './nliveSession';
 export { CONFLICT_LIVE_SESSION_SCHEMA_VERSION, runConflictLabSessionV1 } from './liveSession';
 export {
   CONFLICT_PARITY_EVIDENCE_SCHEMA_VERSION,

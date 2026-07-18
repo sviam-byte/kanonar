@@ -1,7 +1,9 @@
-// Shared NKERNEL test fixture: a deterministic, asymmetric N-participant state
-// (players 'a', 'b', 'c', … with index-dependent agent/relation patches) used
-// by the STEP-0 and CHOICE-0 regressions. Asymmetry matters: symmetric states
-// would let directed-slice mixups cancel out and slip past the oracles.
+// Shared NKERNEL test fixtures: a deterministic, asymmetric N-participant
+// state (players 'a', 'b', 'c', … with index-dependent agent/relation patches)
+// used by the STEP-0 and CHOICE-0 regressions, and the single-target N = 3
+// definition used by the DECISION-0 and SESSION-0 regressions. Asymmetry
+// matters: symmetric states would let directed-slice mixups cancel out and
+// slip past the oracles.
 
 import {
   defaultConflictAgentState,
@@ -9,6 +11,11 @@ import {
   type ConflictRelationState,
   type StrategyProfile,
 } from '../../lib/dilemma';
+import {
+  CONFLICT_DEFINITION_V3_SCHEMA_VERSION,
+  type ConflictDefinitionV3,
+} from '../../lib/dilemma/definition/conflictDefinitionV3';
+import { TRUST_EXCHANGE_ACTION_ORDER } from '../../lib/dilemma/dynamics/trustExchange';
 import type { ConflictStateNV1 } from '../../lib/dilemma/nkernel/types';
 
 export function makeStateN(n: number): ConflictStateNV1 {
@@ -53,5 +60,36 @@ export function makeStateN(n: number): ConflictStateNV1 {
     },
     history: [],
     strategyProfiles,
+  };
+}
+
+// Every actor's 3 legal actions target one fixed other participant instead of
+// all_others — legal under the single-target-only v1 scope (NKERNEL_FOUNDATION_0
+// §5.5). The target only flavors which counterparty's belief atoms modulate the
+// GoalLab candidate (candidateBridge.ts); the real kernel transition still runs
+// every unordered pair regardless (NKERNEL-STEP-0 §2), so this is a legitimate
+// end-to-end N = 3 exercise, not a restricted kernel.
+export function makeSingleTargetDefinitionN3(
+  playerIds: readonly [string, string, string] = ['a', 'b', 'c'],
+): ConflictDefinitionV3 {
+  const roles = playerIds.map((playerId) => ({ id: `role-${playerId}`, playerId }));
+  const nextTarget: Record<string, string> = {
+    [playerIds[0]]: playerIds[1],
+    [playerIds[1]]: playerIds[2],
+    [playerIds[2]]: playerIds[0],
+  };
+  return {
+    schemaVersion: CONFLICT_DEFINITION_V3_SCHEMA_VERSION,
+    protocolId: 'trust_exchange',
+    playerCount: 3,
+    roles,
+    phases: [{ id: 'simultaneous_choice', actorRoleIds: roles.map((role) => role.id), observation: 'public_state' }],
+    legalActions: TRUST_EXCHANGE_ACTION_ORDER.flatMap((actionId) => roles.map((role) => ({
+      id: actionId,
+      phaseId: 'simultaneous_choice',
+      actorRoleId: role.id,
+      target: { mode: 'participant' as const, participantId: nextTarget[role.playerId] },
+    }))),
+    termination: { kind: 'external_round_budget', note: 'test fixture' },
   };
 }

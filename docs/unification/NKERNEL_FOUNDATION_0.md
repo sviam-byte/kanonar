@@ -1,7 +1,14 @@
 # NKERNEL-FOUNDATION-0 — исполнимое N-ядро: инвентаризация + contract proposal
 
-Статус: **ADR §5.1–§5.5 подписаны 2026-07-17/18; срезы 1–5 (`NKERNEL-STEP-0`, `NKERNEL-CHOICE-0`, `NKERNEL-TRAJECTORY-0`, `NKERNEL-DEFINITION-BIND-0`, `NKERNEL-DECISION-0` v1) РЕАЛИЗОВАНЫ.**
+Статус: **ADR §5.1–§5.5 подписаны 2026-07-17/18; срезы 1–6 (`NKERNEL-STEP-0`, `NKERNEL-CHOICE-0`, `NKERNEL-TRAJECTORY-0`, `NKERNEL-DEFINITION-BIND-0`, `NKERNEL-DECISION-0` v1, `NKERNEL-SESSION-0`) РЕАЛИЗОВАНЫ.**
 Дата: 2026-07-17.
+Update 2026-07-18 (5): `NKERNEL-SESSION-0` реализован (см. §3.6/§6.6) —
+parity-gated N-live-session-раннер `runConflictNLabSessionV1`; **первый срез,
+осознанно пересекающий границу «nkernel не импортируется runtime-кодом»**:
+N-полоса вызываема из integration-барреля, но ничто не диспатчит в неё по
+умолчанию (`runConflictLabSessionV1`, catalog-lane и UI не тронуты байтово).
+Gate: `tsc --noEmit` чист; 574 passed / 10 skipped / 0 failed; golden
+`efa018b3…` не сдвинут; grep-инвариант §4 переформулирован (точка пересечения).
 Update 2026-07-18 (4): `NKERNEL-DECISION-0` v1 реализован (см. §6.5) —
 однотаргетный N-joint-decision provider по ADR §5.5. Gate: `tsc --noEmit`
 чист; 566 passed / 10 skipped / 0 failed; golden `efa018b3…` не сдвинут.
@@ -80,7 +87,10 @@ Coalition goals и group payoff в первые срезы НЕ входят (§
   trajectory-метриках.
 - **`worldForTick`** (`integration/liveSession.ts:62`) — единственный другой
   через `players.find(...)`; runtime-путь, эпиком НЕ трогается до
-  `NKERNEL-SESSION-0`.
+  `NKERNEL-SESSION-0`. ✅ Шов закрыт 2026-07-18 срезом 6: `worldForTickNV1`
+  (`integration/nliveSession.ts`) патчит relationships к КАЖДОМУ другому
+  участнику в порядке объявления; диадический оригинал не тронут (побайтный
+  N=2 session-оракул сравнивает именно против него).
 
 Практический вывод — тот же паттерн, что в R7 §1, слоем ниже: объём работы
 меньше формулировки §13. N-шаг строится *поверх* диадического ядра парной
@@ -212,18 +222,54 @@ per-participant GoalLab S8 поверх `ObservationViewV1`/`selectAllObservatio
   срез (вариант b); многотаргетный fan-out — в хвостовой ADR (§6 п.7).
   Реализация — см. §6.5.
 
-### 3.6 N live session — DEFERRED (`NKERNEL-SESSION-0`)
+### 3.6 N live session — ✅ IMPLEMENTED 2026-07-18 (`NKERNEL-SESSION-0`)
 За parity-gate (как R3/R5), никогда default. Записанный инвариант catalog-lane:
 `getScenario` бросает на disabled/unknown id — правила канонической полосы
 R6 применяются без изменений.
+
+Реализация (`lib/dilemma/integration/nliveSession.ts`, см. §6.6):
+
+- **`runConflictNLabSessionV1`** — канонический trust_exchange-цикл
+  `runConflictLabSessionV1` (`liveSession.ts:88`), поднятый на N: per-round
+  scheduled pressure → `worldForTickNV1` → per-player GoalLab pipelineInput +
+  seeded rng → `runConflictNJointDecisionV1` (срез 5) → межшаговый
+  `normalizeConflictState` (конвенция ntrajectory, несущая ниже
+  replicator-floor). Fail-closed `Result` вместо диадического throw; механика
+  не-trust_exchange → `unsupported_mechanic` **без** `runDilemmaV2`-fallback.
+  `getScenario` зовётся первым, его throw пропагирует — catalog-инвариант
+  выполняется дословно.
+- **`buildCanonicalInitialStateNV1`** — per-pair reuse настоящего
+  `buildCanonicalInitialState` (по вызову на каждую неупорядоченную пару в
+  порядке объявления) + **anchor-partner-правило слияния** (ADR среза):
+  `agents[p]`/`strategyProfiles[p]` — из первой пары с `p` (единственное
+  pair-зависимое поле агента — `fear` из собственной исходящей диады, т.е.
+  начальный fear — к первому другому участнику в порядке объявления;
+  mean-over-others — записанная отложенная альтернатива, меняет только
+  семантику `N > 2`); `relations` — дизъюнктно из своих пар; `environment` —
+  pair-инвариантен. При `N = 2` слияние = выход единственной пары, побайтно.
+- **RNG-цепь** — итерированный golden-ratio imul (`s_0 = seed`,
+  `s_{k+1} = imul(s_k, 0x9e3779b1)`); при `N = 2` буквально диадическая пара.
+  `rngChannelId` — тот же формат `conflict-live:<scenario>:<seed>:<player>`
+  (trace-метка, не ключ реестра; общий формат и держит побайтное сравнение
+  choices).
+- **ADR §5.5 в сессии** — дефолтное определение `trustExchangeDefinitionNV1`
+  (`all_others`) работает при `N = 2` и fail-closed при `N > 2`
+  (`decision_failed` → cause `multi_target_not_supported`); `N > 2` запускается
+  через `config.definition` (однотаргетное v3-определение, ревалидируется).
 
 ## 4. Сохраняемые инварианты
 
 - Диадический `trust_exchange` kernel, его транзишн-уравнения и тесты не
   меняются; ни один существующий файл `lib/` не редактируется в срезе 1.
-- Golden identity: no-profile семантический хеш `efa018b3…` не двигается;
-  ни один NKERNEL-модуль не импортируется runtime-кодом (проверка:
-  `grep -rn "nkernel" lib` — только self-references).
+- Golden identity: no-profile семантический хеш `efa018b3…` не двигается.
+  Runtime-import-инвариант **переформулирован срезом 6** (точка пересечения,
+  осознанная): до среза 6 — «ни один NKERNEL-модуль не импортируется
+  runtime-кодом» (срезы 1–5 держали `grep -rn "nkernel" lib` = только
+  self-references); с среза 6 — «nkernel в `lib/` импортируется ТОЛЬКО
+  N-session-полосой (`integration/nliveSession.ts`,
+  `integration/ndecisionProvider.ts`, integration-баррель), в которую ничто
+  не диспатчит по умолчанию: `runConflictLabSessionV1`, catalog-lane и UI
+  байтово не тронуты».
 - v1/v2/v3 definition-контракты заморожены; N-конструкторы §3.2 — поверх, не
   вместо.
 - Barrel `lib/dilemma/index.ts` не расширяется (прецедент
@@ -361,8 +407,36 @@ pair-generic хелперы (`normalizeConflictState`, `applyConflictTransition`
    golden `efa018b3…` не сдвинут; `grep -rn "ndecisionProvider\|runConflictNJointDecisionV1" lib`
    — только self-references, не в барреле `integration/index.ts`
    (wiring — задача `NKERNEL-SESSION-0`).
-6. **`NKERNEL-SESSION-0`** — §3.6, за parity-gate, никогда default.
+6. **`NKERNEL-SESSION-0`** — ✅ IMPLEMENTED 2026-07-18 (§3.6, за parity-gate,
+   никогда default): `lib/dilemma/integration/nliveSession.ts`
+   (`runConflictNLabSessionV1` — N-цикл канонической live-сессии поверх
+   `runConflictNJointDecisionV1`; `buildCanonicalInitialStateNV1` — per-pair
+   reuse `buildCanonicalInitialState` + anchor-partner-слияние;
+   `worldForTickNV1` — закрытие §1.2-шва; RNG imul-цепь; общий
+   `rngChannelId`-формат; `definition`-override как ADR §5.5 escape hatch);
+   N-полосы (`ndecisionProvider` + `nliveSession`) экспортированы из
+   `integration/index.ts` — БЕЗ расширения главного барреля `lib/dilemma/index.ts`
+   (он импортирует liveSession напрямую, integration-баррель туда не течёт);
+   фикстура `makeSingleTargetDefinitionN3` поднята в
+   `tests/dilemma/nkernelFixtures.ts`. `tests/dilemma/nkernel_session_v1.test.ts`
+   (8): побайтный N=2 initial-state оракул против `buildCanonicalInitialState`
+   (default + pressure-override); побайтный N=2 session-оракул против
+   `runConflictLabSessionV1` (per-round choices вкл. `rngChannelId`,
+   canonical/reference actions + step state/outcome, divergence,
+   `game.rounds`-соответствие; whole-run trajectory/initial/final/metrics
+   против `conflictCore`; исключены by design: schemaVersion-поля, N-step-экстры
+   `pairwise`/observations/utilities, V2-only confidence/summaries); пин
+   channel-id-формата; N=3 end-to-end на однотаргетном override (3 пары,
+   тред history, reference-lane) — **первый live-полосный прогон 3 участников:
+   S8 ранжирует полный legal set без обогащения атомами**; N=3 детерминизм;
+   N=3 на дефолтном `all_others` → `decision_failed`/`multi_target_not_supported`
+   (ADR §5.5 на уровне сессии); catalog-throw на unknown + disabled id;
+   `authority_judgment` → `unsupported_mechanic` без fallback. Gate:
+   `tsc --noEmit` чист; 574 passed / 10 skipped / 0 failed; golden `efa018b3…`
+   не сдвинут; `liveSession.ts`/`lib/dilemma/index.ts` байтово не тронуты.
 7. Хвост: coalition goals / group payoff — собственный ADR, вне первых срезов.
+   Следующий кандидат-срез вне эпика: UI-полоса N-сессий в Dilemma Lab
+   (explicit opt-in, диадический default) — по прецеденту R6 catalog-lane.
 
 ## 7. Пределы верификации
 
