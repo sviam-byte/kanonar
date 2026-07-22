@@ -43,9 +43,13 @@
   invalid before any `Record` is constructed; composite pair keys must use an
   injective tuple encoding.
 - N-step accepts only the exact canonical `trust_exchange` protocol structure.
-- Forced pairwise N≥2 step/trajectory/analysis may run experimentally, but
-  GoalLab joint choice and live sessions must return typed dyad-only errors for
-  `N > 2` until a target-aware action-matrix ADR exists.
+- Forced pairwise N≥2 step/trajectory/analysis and the externally supplied
+  directed action-matrix step may run experimentally. A matrix contains exactly
+  `N*(N-1)` cells, each unordered pair consumes only its two directed cells,
+  and N>2 outcome/history must never invent a surrogate player action. N=2
+  matrix execution preserves legacy state/history and dyadic outcome bytes.
+- GoalLab joint choice and live sessions must still return typed dyad-only
+  errors for `N > 2` until the separate matrix decision/session slices exist.
 - Live Conflict round budgets are finite integers in `1..30`; no clamping,
   flooring, or silent fallback is permitted.
 - N-analysis never throws for caller-supplied state mismatch; it returns typed

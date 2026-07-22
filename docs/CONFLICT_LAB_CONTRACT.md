@@ -120,9 +120,10 @@ Canonical core direction:
 
 - `lib/dilemma/dynamics/*` is the canonical deterministic math core for new
   Conflict Lab protocol work.
-- `lib/dilemma/nkernel/*` is an experimental forced pairwise N-core. It may
-  execute explicit N-participant joint actions and analyze N-trajectories, but
-  it is not a target-aware N-choice model and is not a live N>2 runtime.
+- `lib/dilemma/nkernel/*` is an experimental pairwise N-core. It may execute
+  broadcast joint actions or an externally supplied complete directed action
+  matrix and analyze N-trajectories, but it does not yet choose that matrix
+  through GoalLab and is not a live N>2 runtime.
 - `lib/dilemma/runner.ts` / `runDilemmaV2` remains a legacy/experimental
   scenario runner with learning traces and UI-facing scenario behavior.
 - The active Conflict Lab UI calls
@@ -156,8 +157,16 @@ folds. Its public boundary is deliberately asymmetric:
   participant sets;
 - `runConflictNJointDecisionV1` and `runConflictNLabSessionV1` are dyad-only
   and fail before GoalLab work when `N > 2`;
-- per-target action matrices, coalition choice, and group payoff remain
-  deferred to a separate ADR.
+- the pure directed matrix contract/step is available under the accepted
+  `NKERNEL-TARGET-ACTION-MATRIX-ADR-0`, but matrix decision/session wiring is
+  still deferred; coalition choice and group payoff require another ADR.
+
+The directed matrix contains exactly `N*(N-1)` counterparty cells. Pair
+`{i,j}` consumes only `M[i,j]` and `M[j,i]`. N>2 outcome/history uses the
+versioned directed form and must not synthesize a single player action; N=2
+matrix execution writes the legacy history event and preserves dyadic bytes.
+Both broadcast and directed paths share the same pair fold and transition
+application core.
 
 N execution accepts only the structurally canonical `trust_exchange` binding:
 protocol id, phases, action order, ordered participants/roles, definition

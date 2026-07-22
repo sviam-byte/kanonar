@@ -1,14 +1,20 @@
 # NKERNEL-FOUNDATION-0 — исполнимое N-ядро: инвентаризация + contract proposal
 
-Статус: **ADR §5.1–§5.5 подписаны 2026-07-17/18; срезы 1–6 (`NKERNEL-STEP-0`, `NKERNEL-CHOICE-0`, `NKERNEL-TRAJECTORY-0`, `NKERNEL-DEFINITION-BIND-0`, `NKERNEL-DECISION-0` v1, `NKERNEL-SESSION-0`) РЕАЛИЗОВАНЫ.**
+Статус: **ADR §5.1–§5.6 подписаны; срезы 1–8, включая `NKERNEL-TARGET-MATRIX-TYPES-0` и `NKERNEL-TARGET-MATRIX-STEP-0`, РЕАЛИЗОВАНЫ.**
 Дата: 2026-07-17.
+Update 2026-07-19: `NKERNEL-TARGET-ACTION-MATRIX-ADR-0` принят; первые два
+pure-domain slice добавляют directed matrix types/validator, общий pair fold,
+общий transition-application core, directed outcome/history/replay и N=2
+fold-of-one parity без decision/session wiring. N>2 decision/live остаются
+dyad-only до matrix session slice.
 Audit repair 2026-07-18 (authoritative over historical slice notes below):
 forced pairwise N-step, trajectory and Result-based analysis remain available
 for `N > 2`, but GoalLab joint decision and live sessions are now explicitly
 dyad-only. They return `n_decision_requires_dyad` / `n_live_requires_dyad`
 before pipeline work. The former single-target N=3 escape hatch is removed;
-per-target action matrices, coalition choice and group payoff require a future
-ADR. N execution also requires exact canonical trust protocol/definition
+per-target action matrix регулируется принятым отдельным ADR; coalition choice
+и group payoff по-прежнему требуют будущего ADR. N execution также требует
+exact canonical trust protocol/definition
 binding, and live budgets are finite integers in `1..30`.
 Update 2026-07-18 (5): `NKERNEL-SESSION-0` реализован (см. §3.6/§6.6) —
 parity-gated N-live-session-раннер `runConflictNLabSessionV1`; **первый срез,
@@ -225,10 +231,13 @@ per-participant GoalLab S8 поверх `ObservationViewV1`/`selectAllObservatio
   definitions, где легальные действия однотаргетны в момент вызова
   (`self`/`none`/`participant`/`counterparty`, и `all_others` лишь при `N = 2`);
   многотаргетный choice уходит в тот же хвостовой ADR, что coalition goals/
-  group payoff (§6 п.7).
-  ADR-резерв — см. §5.5. ✅ РЕШЕНО автором 2026-07-18: однотаргетный первый
-  срез (вариант b); многотаргетный fan-out — в хвостовой ADR (§6 п.7).
-  Реализация — см. §6.5.
+  group payoff (§6 п.9).
+   ADR-резерв — см. §5.5. ✅ РЕШЕНО автором 2026-07-18: однотаргетный первый
+   срез (вариант b); многотаргетный fan-out — в хвостовой ADR (§6 п.9).
+   Реализация — см. §6.5.
+   Последующее решение: `NKERNEL-TARGET-ACTION-MATRIX-ADR-0` принято
+   2026-07-19; canonical форма — полная directed matrix, а не один победитель
+   из общего fan-out pool. Types/validator и matrix-step slices — §6.7–§6.8.
 
 ### 3.6 N live session — ✅ DYADIC WRAPPER; N>2 DEFERRED (`NKERNEL-SESSION-0`)
 За parity-gate (как R3/R5), никогда default. N>2 fails before GoalLab work;
@@ -314,9 +323,14 @@ R6 применяются без изменений.
    (`self`/`none`/`participant`/`counterparty`, и `all_others` лишь при
    `N = 2`); многотаргетный choice (fan-out кандидатов, (actionId, targetId)
    вместо actionId) уходит в тот же хвостовой ADR, что coalition goals/group
-   payoff (§6 п.7) — не в объём этого среза. Совпадает с собственной
+   payoff (§6 п.9) — не в объём этого среза. Совпадает с собственной
    дисциплиной эпика: `STEP-0` тоже начался forced-only, до эндогенного
    выбора в `CHOICE-0`.
+6. **Target-aware N choice.** ✅ DECIDED 2026-07-19 отдельным
+   `NKERNEL-TARGET-ACTION-MATRIX-ADR-0`: canonical выбор — полная направленная
+   матрица `actor -> target -> action`; на каждую directed pair приходится
+   независимый S8/RNG frame; outcome/history хранят directed provenance;
+   player-level strategy profile сохраняет mean-utility aggregation.
 
 Зафиксированная граница reuse (следствие §5.3 R7 и CONFLICT-DEFINITION-0):
 pair-generic хелперы (`normalizeConflictState`, `applyConflictTransition`,
@@ -437,7 +451,27 @@ pair-generic хелперы (`normalizeConflictState`, `applyConflictTransition`
    `authority_judgment` → `unsupported_mechanic` без fallback. Gate:
    `tsc --noEmit` чист; 574 passed / 10 skipped / 0 failed; golden `efa018b3…`
    не сдвинут; `liveSession.ts`/`lib/dilemma/index.ts` байтово не тронуты.
-7. Хвост: coalition goals / group payoff — собственный ADR, вне первых срезов.
+7. **`NKERNEL-TARGET-MATRIX-TYPES-0`** — ✅ IMPLEMENTED 2026-07-19:
+   `lib/dilemma/nkernel/ntargetmatrix.ts` добавляет schema
+   `conflict-directed-action-matrix-v1`, canonical reconstruction ровно
+   `N*(N-1)` cells, fail-closed structural/action/participant validation и
+   revalidating N=2 fold-of-one adapter. Runtime imports и barrel exports не
+   добавлены. `tests/dilemma/nkernel_target_matrix_v1.test.ts` (7) покрывает
+   N=3 ordering, missing/extra/self/unsafe IDs, delimiter collisions,
+   mutation isolation и все девять N=2 joint actions.
+8. **`NKERNEL-TARGET-MATRIX-STEP-0`** — ✅ IMPLEMENTED 2026-07-19:
+   `lib/dilemma/nkernel/npairfold.ts` становится единственным N-fold для
+   broadcast и directed paths; `applyConflictTransitionCoreV1` в canonical
+   engine применяет готовые effects и append-ит явно переданный history event.
+   `lib/dilemma/nkernel/ntargetstep.ts` исполняет `M[i,j]`/`M[j,i]` каждой
+   пары через настоящий dyadic kernel, возвращает versioned directed
+   outcome/history и fail-closed replay. N=2 пишет прежний legacy history event
+   и сохраняет byte-tight state/outcome projection. Тест
+   `nkernel_target_matrix_step_v1.test.ts` (6): 9 actions × 2 strategy modes,
+   five-round chain, N=3 pair oracle/history/replay/non-interference,
+   determinism/immutability и validation failures. Barrel/decision/session
+   wiring отсутствует.
+9. Хвост: coalition goals / group payoff — собственный ADR, вне первых срезов.
    Следующий кандидат-срез вне эпика: UI-полоса N-сессий в Dilemma Lab
    (explicit opt-in, диадический default) — по прецеденту R6 catalog-lane.
 

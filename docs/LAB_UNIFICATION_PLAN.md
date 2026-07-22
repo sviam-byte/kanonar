@@ -481,6 +481,13 @@ dyad-only errors until a per-target action-matrix ADR defines choice semantics.
 Self-belief is a distinct `SelfBeliefV1`, observations are revalidated at the
 view boundary, and live round budgets are strict finite integers in `1..30`.
 
+Target matrix update 2026-07-19: `NKERNEL-TARGET-ACTION-MATRIX-ADR-0` принят.
+Первые два pure-domain slice реализуют versioned directed matrix contract,
+canonical `N*(N-1)` reconstruction, fail-closed validation, shared pair fold,
+directed outcome/history/replay и N=2 byte-tight adapter. Per-target S8/RNG
+decision и live session ещё не реализованы; dyad-only guards остаются
+обязательными.
+
 ## 14. R8 — controlled cleanup
 
 Каждый кандидат получает статус: `false positive`, `test-only`, `runtime plugin`,
@@ -1215,9 +1222,10 @@ utility ranking и transition при одинаковых joint actions; рас�
 локализовано в versioned seeded-Gumbel policy против reference argmax.
 
 Историческая очередь ниже закрыта: `GOALENERGY-UNION-DEFAULT`, live wiring
-canonical Conflict provider и R6 schema/catalog уже реализованы. Текущая
-граница следующего Conflict-пакета — отдельный ADR для per-target N>2 choice;
-до него N>2 decision/live остаются fail-closed. Live replacement прочих
+canonical Conflict provider и R6 schema/catalog уже реализованы. Следующая
+Conflict-граница описана принятым `NKERNEL-TARGET-ACTION-MATRIX-ADR-0`; его
+types/validator и pure matrix-step slices закрыты, а decision/session ещё впереди.
+До session slice N>2 decision/live остаются fail-closed. Live replacement прочих
 GoalLab/SimKit callers остаётся в `SCENE-ADAPTER-LIVE-WIRING-0`; pure adapters
 не объявляются уже подключённым runtime.
 

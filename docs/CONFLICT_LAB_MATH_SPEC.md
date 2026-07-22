@@ -99,14 +99,30 @@ relation_ij  = relation_ij^(ij)
 The environment fold is deterministic and the `N = 2` fold contains exactly
 one pair, so it reduces to the dyadic transition. Endogenous kernel utility,
 when used for experimental trajectory choice, is the component-wise mean over
-the `N−1` counterparties. These laws describe forced pairwise dynamics and
-trajectory experiments only; they do not define a target-aware N>2 decision
-policy.
+the `N−1` counterparties.
 
-Accordingly, GoalLab joint choice and live sessions are fail-closed above two
-participants. A future per-target action matrix/coalition ADR must define how
-one actor chooses different actions for different counterparties before that
-boundary can be reopened.
+The accepted directed matrix extension supplies one action per ordered edge:
+
+```text
+M : {(i,j) | i != j} -> {trust, withhold, betray}
+pairAction(i,j) = (M[i,j], M[j,i])
+```
+
+`resolveConflictTargetMatrixStepV1` executes this formula through the same
+dyadic pair kernel, N-fold and transition-application core. It does not choose
+`M`: the current pure entrypoint requires an externally supplied validated
+matrix. At N>2 it records `conflict-directed-outcome-v1` and
+`conflict-directed-history-event-v1`, including the full matrix; at N=2 it
+records the unchanged legacy history event. Source: `lib/dilemma/nkernel/`
+`{ntargetmatrix,npairfold,ntargetstep}.ts`; reduction/directed-history tests:
+`tests/dilemma/nkernel_target_matrix_step_v1.test.ts`. The complete variables,
+invariants, example and failure modes are specified in the accepted
+`docs/unification/NKERNEL_TARGET_ACTION_MATRIX_ADR_0.md`.
+
+Accordingly, GoalLab joint choice and live sessions remain fail-closed above
+two participants. The later matrix decision/session slices must provide
+per-target S8/RNG frames and full trace parity before that boundary can be
+reopened. Coalition/subset actions and group payoff remain a separate ADR.
 
 ### Bounded Logit Transition
 

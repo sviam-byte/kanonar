@@ -20,6 +20,7 @@
 | SCENE-OWNERSHIP-ADR-0 | [SCENE_OWNERSHIP_ADR_0.md](SCENE_OWNERSHIP_ADR_0.md) | ACCEPTED | 2026-07-11 |
 | CONFLICT-CHOICE-ADR-0 | [CONFLICT_CHOICE_ADR_0.md](CONFLICT_CHOICE_ADR_0.md) | ACCEPTED | 2026-07-11 |
 | CONFLICT-PARITY-0 | [CONFLICT_PARITY_0.md](CONFLICT_PARITY_0.md) | DONE — 432 решений, compact fingerprinted evidence | 2026-07-18 |
+| NKERNEL-TARGET-ACTION-MATRIX-ADR-0 | [NKERNEL_TARGET_ACTION_MATRIX_ADR_0.md](NKERNEL_TARGET_ACTION_MATRIX_ADR_0.md) | ACCEPTED — types + pure step implemented | 2026-07-19 |
 
 ## Открытые тикеты, порождённые R1
 
@@ -199,6 +200,22 @@
   `runConflictLabSessionV1`; N=3 fail-early; strict round budgets `1..30`;
   catalog-throw; determinism. Forced N=3 step/trajectory/analysis остаются
   доступны экспериментально, choice/live deferred.
+  Target-aware continuation accepted 2026-07-19 in
+  `NKERNEL_TARGET_ACTION_MATRIX_ADR_0.md`. Первый additive slice
+  `NKERNEL-TARGET-MATRIX-TYPES-0` добавляет versioned directed matrix
+  `actor -> target -> action`, fail-closed validator, canonical reconstruction
+  ровно `N*(N-1)` cells и N=2 fold-of-one adapter в
+  `lib/dilemma/nkernel/ntargetmatrix.ts`; adversarial/reduction coverage —
+  `tests/dilemma/nkernel_target_matrix_v1.test.ts` (7). Runtime wiring и barrel
+  exports отсутствуют, поэтому N>2 decision/live по-прежнему fail-closed.
+  Срез `NKERNEL-TARGET-MATRIX-STEP-0` реализован 2026-07-19:
+  `npairfold.ts` выделяет единственную pairwise fold-реализацию для broadcast
+  и directed paths; `applyConflictTransitionCoreV1` применяет готовые effects
+  и переданный history event; `ntargetstep.ts` исполняет две directed cells на
+  пару, возвращает versioned directed outcome/history и проверяемый replay.
+  При N=2 history остаётся legacy-shaped, а state и dyadic outcome projection
+  byte-identical canonical kernel. Regression:
+  `tests/dilemma/nkernel_target_matrix_step_v1.test.ts` (6).
 
 - **R6 CATALOG WIRING — step 4 (2026-07-13)**: the Conflict Lab catalog is now
   driven by the typed `CONFLICT_SCENARIO_INVENTORY` via the pure
@@ -239,7 +256,9 @@ no-profile/config сохраняют прежнюю семантику; object-f
 (schema/validator/inventory/constructor + step 4 catalog wiring) закрыты;
 внутри R6 остаётся только gated step 6 — schema editor v2 после стабильного
 validation report. R7 contracts и forced pairwise N-core реализованы;
-target-aware N>2 choice/live остаётся отдельным будущим ADR.
+target-aware N>2 choice/live регулируется принятым
+`NKERNEL-TARGET-ACTION-MATRIX-ADR-0`: types/validator и pure matrix step готовы,
+decision/live runtime deferred.
 
 ## Phase1 OpponentBelief default (2026-07-12)
 
