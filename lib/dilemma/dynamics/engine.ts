@@ -22,6 +22,7 @@ import {
 import type {
   ActionUtilityBreakdown,
   CanonicalConflictState,
+  CanonicalConflictTransitionStateV1,
   AgentDelta,
   ConflictAction,
   ConflictActionId,
@@ -36,6 +37,7 @@ import type {
   ConflictStepOptions,
   ConflictStepResult,
   ConflictTrajectoryFrame,
+  ConflictTransitionEffectsV1,
   ConflictValidationError,
   DirectedMemoryMap,
   DirectedRegimeMap,
@@ -403,7 +405,7 @@ function mergeDirectedMap<T>(
 }
 
 function relationKey(fromId: ConflictPlayerId, toId: ConflictPlayerId): string {
-  return `${fromId}->${toId}`;
+  return JSON.stringify([fromId, toId]);
 }
 
 export function applyConflictTransition(
@@ -416,9 +418,53 @@ export function applyConflictTransition(
   frames: readonly ConflictTrajectoryFrame[] = [],
 ): ConflictState {
   const canonicalState = normalizeConflictState(state);
+  return applyConflictTransitionCoreV1({
+    state: canonicalState,
+    effects: outcome,
+    historyEvent: {
+      tick: canonicalState.tick,
+      protocolId: protocol.id,
+      actions: outcome.actions,
+      outcomeTag: outcome.outcomeTag,
+      payoffs: outcome.payoffs,
+    },
+    strategyProfiles,
+    memories,
+    regimes,
+    frames,
+  });
+}
+
+/**
+ * Apply already-resolved effects and append an explicit history event. This is
+ * the single state-transition application law shared by the legacy dyadic
+ * wrapper and directed N-matrix execution; it performs no choice or payoff
+ * calculation and never invents an action representation.
+ */
+export function applyConflictTransitionCoreV1<
+  TPlayers extends readonly ConflictPlayerId[],
+  THistoryEvent,
+>(args: {
+  readonly state: CanonicalConflictTransitionStateV1<TPlayers, THistoryEvent>;
+  readonly effects: ConflictTransitionEffectsV1;
+  readonly historyEvent: THistoryEvent;
+  readonly strategyProfiles: Readonly<Record<ConflictPlayerId, StrategyProfile>>;
+  readonly memories: DirectedMemoryMap;
+  readonly regimes: DirectedRegimeMap;
+  readonly frames?: readonly ConflictTrajectoryFrame[];
+}): CanonicalConflictTransitionStateV1<TPlayers, THistoryEvent> {
+  const {
+    state: canonicalState,
+    effects,
+    historyEvent,
+    strategyProfiles,
+    memories,
+    regimes,
+    frames = [],
+  } = args;
   const agents: Record<ConflictPlayerId, ConflictAgentState> = {};
   for (const playerId of canonicalState.players) {
-    agents[playerId] = applyAgentDelta(canonicalState.agents[playerId], outcome.agentDeltas[playerId] ?? {});
+    agents[playerId] = applyAgentDelta(canonicalState.agents[playerId], effects.agentDeltas[playerId] ?? {});
   }
 
   const relations: Record<ConflictPlayerId, Record<ConflictPlayerId, ConflictRelationState>> = {};
@@ -428,7 +474,7 @@ export function applyConflictTransition(
       if (fromId === toId) continue;
       relations[fromId][toId] = applyDirectedRelationDelta(
         canonicalState.relations[fromId][toId],
-        outcome.relationDeltas[fromId]?.[toId] ?? {},
+        effects.relationDeltas[fromId]?.[toId] ?? {},
       );
     }
   }
@@ -439,21 +485,12 @@ export function applyConflictTransition(
     agents,
     relations,
     environment: {
-      resourceScarcity: boundedLogitShift(canonicalState.environment.resourceScarcity, outcome.environmentDelta.resourceScarcity ?? 0, cfg.transition.environmentDriveScale.resourceScarcity),
-      externalPressure: boundedLogitShift(canonicalState.environment.externalPressure, outcome.environmentDelta.externalPressure ?? 0, cfg.transition.environmentDriveScale.externalPressure),
-      visibility: boundedLogitShift(canonicalState.environment.visibility, outcome.environmentDelta.visibility ?? 0, cfg.transition.environmentDriveScale.visibility),
-      institutionalPressure: boundedLogitShift(canonicalState.environment.institutionalPressure, outcome.environmentDelta.institutionalPressure ?? 0, cfg.transition.environmentDriveScale.institutionalPressure),
+      resourceScarcity: boundedLogitShift(canonicalState.environment.resourceScarcity, effects.environmentDelta.resourceScarcity ?? 0, cfg.transition.environmentDriveScale.resourceScarcity),
+      externalPressure: boundedLogitShift(canonicalState.environment.externalPressure, effects.environmentDelta.externalPressure ?? 0, cfg.transition.environmentDriveScale.externalPressure),
+      visibility: boundedLogitShift(canonicalState.environment.visibility, effects.environmentDelta.visibility ?? 0, cfg.transition.environmentDriveScale.visibility),
+      institutionalPressure: boundedLogitShift(canonicalState.environment.institutionalPressure, effects.environmentDelta.institutionalPressure ?? 0, cfg.transition.environmentDriveScale.institutionalPressure),
     },
-    history: [
-      ...canonicalState.history,
-      {
-        tick: canonicalState.tick,
-        protocolId: protocol.id,
-        actions: outcome.actions,
-        outcomeTag: outcome.outcomeTag,
-        payoffs: outcome.payoffs,
-      },
-    ],
+    history: [...canonicalState.history, historyEvent],
     memories,
     regimes,
     strategyProfiles,

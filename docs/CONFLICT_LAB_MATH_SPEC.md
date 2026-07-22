@@ -84,6 +84,54 @@ the old behavior, it must request
 profiles update from the current utility scores while the outcome still uses
 the forced action. Step traces must surface this as `intervention.forced`.
 
+### Experimental forced pairwise N-core
+
+For an explicit joint action over `N ≥ 2`, the experimental N-core resolves all
+unordered pairs `P = {{i,j} | i < j}` with the canonical dyadic trust kernel,
+then folds the pair results once at N level:
+
+```text
+agentDelta_i = (1 / (N - 1)) * sum_{j != i} agentDelta_i^(ij)
+payoff_i     = sum_{j != i} payoff_i^(ij)
+relation_ij  = relation_ij^(ij)
+```
+
+The environment fold is deterministic and the `N = 2` fold contains exactly
+one pair, so it reduces to the dyadic transition. Endogenous kernel utility,
+when used for experimental trajectory choice, is the component-wise mean over
+the `N−1` counterparties.
+
+The accepted directed matrix extension supplies one action per ordered edge:
+
+```text
+M : {(i,j) | i != j} -> {trust, withhold, betray}
+pairAction(i,j) = (M[i,j], M[j,i])
+```
+
+`resolveConflictTargetMatrixStepV1` executes this formula through the same
+dyadic pair kernel, N-fold and transition-application core. The pure entrypoint
+accepts an externally supplied validated matrix; the canonical target-aware
+decision lane constructs it as
+
+```text
+M[i,j] = S8(Q[i,j,*], rng[i,j])
+```
+
+with one baseline GoalLab run per actor and one independent candidate/RNG frame
+per target. At N>2 it records `conflict-directed-outcome-v1` and
+`conflict-directed-history-event-v1`, including the full matrix; at N=2 it
+records the unchanged legacy history event. Source: `lib/dilemma/nkernel/`
+`{ntargetmatrix,npairfold,ntargetchoice,ntargetstep}.ts` and
+`lib/dilemma/integration/{targetMatrixDecisionProvider,ntargetLiveSession}.ts`;
+reduction/directed-history/decision/session tests are under `tests/dilemma/`.
+The complete variables, invariants, example and failure modes are specified in the accepted
+`docs/unification/NKERNEL_TARGET_ACTION_MATRIX_ADR_0.md`.
+
+The older actor-level `runConflictNJointDecisionV1` and
+`runConflictNLabSessionV1` remain dyad-only. The additive target-matrix lane is
+the only canonical N>2 GoalLab choice/session path. Coalition/subset actions,
+group payoff and pair-specific strategy profiles remain separate ADR scope.
+
 ### Bounded Logit Transition
 
 Scalar updates use bounded logit-space drive:

@@ -1,0 +1,360 @@
+{
+  "artifactSchemaVersion": "conflict-parity-artifact-v2",
+  "gridVersion": "conflict-parity-grid-v1",
+  "mode": "full",
+  "system": {
+    "version": "2026.04"
+  },
+  "policy": {
+    "canonical": {
+      "id": "goal_lab_s8_gumbel",
+      "version": 1
+    },
+    "reference": {
+      "id": "trust_exchange_replicator_argmax",
+      "version": 1
+    }
+  },
+  "toolchain": {
+    "node": "v20.13.1",
+    "typescript": "5.8.3",
+    "vitest": "2.1.9"
+  },
+  "source": {
+    "algorithm": "sha256",
+    "digest": "f172e0469f32ed6ce66ef77b674bbfa2c9173b9f0b0b6b2c19be12e35eb5233b",
+    "trackedFileCount": 83
+  },
+  "reproductionCommand": "$env:CONFLICT_PARITY_FULL='1'; $env:CONFLICT_PARITY_OUT='docs\\unification\\evidence\\conflict_parity_0.json'; npm test -- --run tests/dilemma/conflictParityEvidence.test.ts",
+  "grid": {
+    "relations": [
+      "allied",
+      "neutral",
+      "strained"
+    ],
+    "agentPairings": [
+      "coop-coop",
+      "coop-def",
+      "def-def"
+    ],
+    "environments": [
+      "calm",
+      "pressured"
+    ],
+    "temperatures": [
+      "default",
+      "cool"
+    ],
+    "seeds": [
+      11,
+      23,
+      37,
+      59
+    ],
+    "ticksPerRollout": 3,
+    "runtimeProfile": "phase1"
+  },
+  "aggregate": {
+    "schemaVersion": "conflict-parity-evidence-v1",
+    "nDecisions": 432,
+    "nPlayerDecisions": 864,
+    "actionAgreementRate": 0.4513888888888889,
+    "jointAgreementRate": 0.25,
+    "rankTop1AgreementRate": 1,
+    "meanRankPairConcordance": 1,
+    "legalSetMatchRate": 1,
+    "traceCompleteRate": 1,
+    "agreementByDim": {
+      "rel": {
+        "allied": {
+          "n": 288,
+          "agree": 132,
+          "rate": 0.4583333333333333
+        },
+        "neutral": {
+          "n": 288,
+          "agree": 132,
+          "rate": 0.4583333333333333
+        },
+        "strained": {
+          "n": 288,
+          "agree": 126,
+          "rate": 0.4375
+        }
+      },
+      "agents": {
+        "coop-coop": {
+          "n": 288,
+          "agree": 130,
+          "rate": 0.4513888888888889
+        },
+        "coop-def": {
+          "n": 288,
+          "agree": 130,
+          "rate": 0.4513888888888889
+        },
+        "def-def": {
+          "n": 288,
+          "agree": 130,
+          "rate": 0.4513888888888889
+        }
+      },
+      "env": {
+        "calm": {
+          "n": 432,
+          "agree": 195,
+          "rate": 0.4513888888888889
+        },
+        "pressured": {
+          "n": 432,
+          "agree": 195,
+          "rate": 0.4513888888888889
+        }
+      },
+      "temp": {
+        "default": {
+          "n": 432,
+          "agree": 162,
+          "rate": 0.375
+        },
+        "cool": {
+          "n": 432,
+          "agree": 228,
+          "rate": 0.5277777777777778
+        }
+      }
+    },
+    "agreementByTick": {
+      "0": {
+        "n": 288,
+        "agree": 90,
+        "rate": 0.3125
+      },
+      "1": {
+        "n": 288,
+        "agree": 156,
+        "rate": 0.5416666666666666
+      },
+      "2": {
+        "n": 288,
+        "agree": 144,
+        "rate": 0.5
+      }
+    },
+    "confusion": {
+      "trust": {
+        "trust": 390
+      },
+      "betray": {
+        "trust": 222
+      },
+      "withhold": {
+        "trust": 252
+      }
+    },
+    "actionShare": {
+      "canonical": {
+        "trust": 390,
+        "betray": 222,
+        "withhold": 252
+      },
+      "reference": {
+        "trust": 864
+      }
+    },
+    "transitionParity": {
+      "nJointAgree": 108,
+      "payoffsEqual": 108,
+      "relationsEqual": 108,
+      "profilesEqual": 108
+    },
+    "divergenceExamples": [
+      {
+        "meta": {
+          "cellId": "rel=allied|agents=coop-coop|env=calm|temp=default|seed=11",
+          "dims": {
+            "rel": "allied",
+            "agents": "coop-coop",
+            "env": "calm",
+            "temp": "default"
+          },
+          "seed": 11,
+          "tickIndex": 0
+        },
+        "playerId": "B",
+        "canonicalActionId": "betray",
+        "referenceActionId": "trust",
+        "canonicalQ": {
+          "trust": -0.0387936907438913,
+          "withhold": -0.22306105522322806,
+          "betray": -0.4308930938157318
+        },
+        "referenceU": {
+          "trust": 2.6139566666666663,
+          "withhold": 2.1139566666666663,
+          "betray": -0.06947083333333332
+        },
+        "referenceProfile": {
+          "trust": 0.6217390322334141,
+          "withhold": 0.349855580565067,
+          "betray": 0.02840538720151897
+        }
+      },
+      {
+        "meta": {
+          "cellId": "rel=allied|agents=coop-coop|env=calm|temp=default|seed=11",
+          "dims": {
+            "rel": "allied",
+            "agents": "coop-coop",
+            "env": "calm",
+            "temp": "default"
+          },
+          "seed": 11,
+          "tickIndex": 2
+        },
+        "playerId": "A",
+        "canonicalActionId": "betray",
+        "referenceActionId": "trust",
+        "canonicalQ": {
+          "trust": -0.0387936907438913,
+          "withhold": -0.22306105522322806,
+          "betray": -0.4308930938157318
+        },
+        "referenceU": {
+          "trust": 2.405572335512104,
+          "withhold": 1.9486120885862017,
+          "betray": -0.23066250126206178
+        },
+        "referenceProfile": {
+          "trust": 0.8094799586883394,
+          "withhold": 0.19041616108062726,
+          "betray": 0.00010388023103334777
+        }
+      },
+      {
+        "meta": {
+          "cellId": "rel=allied|agents=coop-coop|env=calm|temp=default|seed=23",
+          "dims": {
+            "rel": "allied",
+            "agents": "coop-coop",
+            "env": "calm",
+            "temp": "default"
+          },
+          "seed": 23,
+          "tickIndex": 0
+        },
+        "playerId": "A",
+        "canonicalActionId": "betray",
+        "referenceActionId": "trust",
+        "canonicalQ": {
+          "trust": -0.0387936907438913,
+          "withhold": -0.22306105522322806,
+          "betray": -0.4308930938157318
+        },
+        "referenceU": {
+          "trust": 2.6139566666666663,
+          "withhold": 2.1139566666666663,
+          "betray": -0.06947083333333332
+        },
+        "referenceProfile": {
+          "trust": 0.6217390322334141,
+          "withhold": 0.349855580565067,
+          "betray": 0.02840538720151897
+        }
+      },
+      {
+        "meta": {
+          "cellId": "rel=allied|agents=coop-coop|env=calm|temp=default|seed=23",
+          "dims": {
+            "rel": "allied",
+            "agents": "coop-coop",
+            "env": "calm",
+            "temp": "default"
+          },
+          "seed": 23,
+          "tickIndex": 0
+        },
+        "playerId": "B",
+        "canonicalActionId": "withhold",
+        "referenceActionId": "trust",
+        "canonicalQ": {
+          "trust": -0.0387936907438913,
+          "withhold": -0.22306105522322806,
+          "betray": -0.4308930938157318
+        },
+        "referenceU": {
+          "trust": 2.6139566666666663,
+          "withhold": 2.1139566666666663,
+          "betray": -0.06947083333333332
+        },
+        "referenceProfile": {
+          "trust": 0.6217390322334141,
+          "withhold": 0.349855580565067,
+          "betray": 0.02840538720151897
+        }
+      },
+      {
+        "meta": {
+          "cellId": "rel=allied|agents=coop-coop|env=calm|temp=default|seed=23",
+          "dims": {
+            "rel": "allied",
+            "agents": "coop-coop",
+            "env": "calm",
+            "temp": "default"
+          },
+          "seed": 23,
+          "tickIndex": 1
+        },
+        "playerId": "A",
+        "canonicalActionId": "withhold",
+        "referenceActionId": "trust",
+        "canonicalQ": {
+          "trust": -0.0387936907438913,
+          "withhold": -0.22306105522322806,
+          "betray": -0.4308930938157318
+        },
+        "referenceU": {
+          "trust": 2.593772951642731,
+          "withhold": 2.1003729516427314,
+          "betray": -0.14572832628416885
+        },
+        "referenceProfile": {
+          "trust": 0.7569987547231228,
+          "withhold": 0.24151983649628617,
+          "betray": 0.001481408780591095
+        }
+      },
+      {
+        "meta": {
+          "cellId": "rel=allied|agents=coop-coop|env=calm|temp=default|seed=23",
+          "dims": {
+            "rel": "allied",
+            "agents": "coop-coop",
+            "env": "calm",
+            "temp": "default"
+          },
+          "seed": 23,
+          "tickIndex": 1
+        },
+        "playerId": "B",
+        "canonicalActionId": "withhold",
+        "referenceActionId": "trust",
+        "canonicalQ": {
+          "trust": -0.0387936907438913,
+          "withhold": -0.22306105522322806,
+          "betray": -0.4308930938157318
+        },
+        "referenceU": {
+          "trust": 2.3876598594257508,
+          "withhold": 1.8174210782267965,
+          "betray": -0.24762199855520217
+        },
+        "referenceProfile": {
+          "trust": 0.7726348884445149,
+          "withhold": 0.22566057911491405,
+          "betray": 0.0017045324405710353
+        }
+      }
+    ]
+  }
+}

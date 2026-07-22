@@ -10,6 +10,7 @@ import type { ConflictCoreActionLabels } from '../../lib/dilemma/dynamics/types'
 import {
   CONFLICT_ACTION_PROJECTION_SCHEMA_VERSION,
   TRUST_EXCHANGE_DEFINITION,
+  conflictUtilityCandidateIdV1,
   projectLegalActions,
   resolveProjectedChoice,
   resolveProjectedJointChoice,
@@ -53,6 +54,12 @@ function projectFor(state: ConflictState, actorId: string) {
 }
 
 describe('CONFLICT-GAP-0 projection contract — trust_exchange', () => {
+  it('tuple-encodes delimiter-bearing actor and target ids without collisions', () => {
+    const base = { protocolId: 'trust_exchange', phaseId: 'simultaneous_choice', tick: 0, historyLength: 0, kernelActionId: 'trust' };
+    expect(conflictUtilityCandidateIdV1({ ...base, actorId: 'a', targetIds: ['a->a'] }))
+      .not.toBe(conflictUtilityCandidateIdV1({ ...base, actorId: 'a->a', targetIds: ['a'] }));
+  });
+
   it('projects every legal kernel action exactly once with full row fields', () => {
     const { rows } = projectFor(makeState(), 'a');
 

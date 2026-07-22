@@ -120,8 +120,18 @@ Canonical core direction:
 
 - `lib/dilemma/dynamics/*` is the canonical deterministic math core for new
   Conflict Lab protocol work.
+- `lib/dilemma/nkernel/*` is an experimental pairwise N-core. It may execute
+  broadcast joint actions or an externally supplied complete directed action
+  matrix and analyze N-trajectories, but it does not yet choose that matrix
+  through GoalLab and is not a live N>2 runtime.
 - `lib/dilemma/runner.ts` / `runDilemmaV2` remains a legacy/experimental
   scenario runner with learning traces and UI-facing scenario behavior.
+- The active Conflict Lab UI calls
+  `lib/dilemma/integration/liveSession.ts` / `runConflictLabSessionV1`.
+  For `trust_exchange`, its authoritative rounds are GoalLab S8 choices passed
+  through the typed kernel; the kernel autonomous policy is trace-only as the
+  recorded reference lane. Non-trust mechanics remain explicit legacy
+  compatibility runs with `unsupported_kernel` status.
 - Do not duplicate new mechanic rules in both systems. New protocol kernels
   should land in `dynamics/*` first, then legacy/UI integration can adapt to
   them explicitly.
@@ -136,6 +146,41 @@ Canonical core direction:
   `unsupported_kernel` / kernel-pending status until their typed roles, phases,
   observation, payoff, transition, memory, relation, regime, and trajectory
   tests exist.
+
+### N-kernel and runtime boundary
+
+The experimental N-core uses unordered dyadic projections and deterministic
+folds. Its public boundary is deliberately asymmetric:
+
+- forced N≥2 steps, forced trajectories, and N-analysis are available;
+- N-analysis returns typed `Result` failures for invalid states and mismatched
+  participant sets;
+- `runConflictNJointDecisionV1` and `runConflictNLabSessionV1` are dyad-only
+  and fail before GoalLab work when `N > 2`;
+- the additive `runConflictTargetMatrixDecisionV1` and
+  `runConflictTargetMatrixLabSessionV1` lane supports canonical
+  `trust_exchange` at `N >= 2`; it does not change or bypass the dyad-only
+  wrappers above;
+- each directed cell receives its own GoalLab S8 candidate set and named RNG
+  channel. A shared mutable RNG or one actor-level action broadcast to every
+  target is invalid. Coalition choice and group payoff require another ADR.
+
+The directed matrix contains exactly `N*(N-1)` counterparty cells. Pair
+`{i,j}` consumes only `M[i,j]` and `M[j,i]`. N>2 outcome/history uses the
+versioned directed form and must not synthesize a single player action; N=2
+matrix execution writes the legacy history event and preserves dyadic bytes.
+Both broadcast and directed paths share the same pair fold and transition
+application core.
+
+The Dilemma Lab may expose this lane only as an explicit Dyad/Triad choice for
+the canonical catalog entry. React displays the returned matrix, relations and
+cell traces; it must not construct missing cells, actions or fallback history.
+
+N execution accepts only the structurally canonical `trust_exchange` binding:
+protocol id, phases, action order, ordered participants/roles, definition
+vocabulary, and one counterparty target per action must agree. Participant and
+role identifiers that collide with `Object.prototype` keys are invalid. Live
+sessions accept only finite integer round budgets in `1..30`.
 
 ## Type Discipline
 
@@ -267,3 +312,12 @@ Before reporting completion, review the diff against these questions:
 10. Did I document what mathematically distinguishes the mechanic?
 
 If any answer is bad, fix it before final response or report the blocker.
+
+## R6 constructor boundary
+
+`ConflictDefinition` v1 remains the live dyadic kernel binding for
+`trust_exchange`. Additive v2/v3 schemas record role-to-player ownership,
+phase observation, legal action ownership and targets. The
+only currently constructible mechanic is the deterministic dyadic
+`trust_exchange` kernel. Scenario cards without a typed kernel remain outside
+the constructor inventory and must not be presented as canonical mechanics.

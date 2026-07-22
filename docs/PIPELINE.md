@@ -243,6 +243,12 @@ Compatibility note:
 
 ## S8 — Decision / Actions
 
+- `runtimeMechanics.goalEnergyDomainUnionV1` controls the S8 energy map for
+  external/domain-keyed possibilities. When ON, active-goal and
+  `goal:domain:*` energies are merged; an active-goal key wins a collision.
+  The default is ON only for `phase1`, OFF for `legacy` and no-profile/config,
+  with an explicit object-form `true|false` override.
+
 Inputs:
 - `util:*`, action priors, access, possibilities
 - temperature policy:
@@ -290,6 +296,13 @@ Outputs:
 - Host runtime может передать именованный seeded `decisionRng`; Conflict
   Integration использует этот шов, поэтому выбор и sampling trace создаёт тот
   же прогон S8, который оценил типизированные допустимые действия.
+- Conflict scoring uses canonical first-write-wins atom order for goal energy.
+  Each ranked Conflict candidate exports the exact `(goalId, atomId)` energy
+  dependencies used by its `deltaGoals`; parity `traceComplete` requires this
+  provenance for every ranked candidate, not only the selected one.
+- The active live Conflict boundary remains dyadic and accepts `1..30` rounds.
+  Experimental forced pairwise N-steps do not authorize N>2 GoalLab choice or
+  live-session dispatch.
 - explicit-profile SimKit traces also expose `runtimeMechanics`, selected context
   axes, threat memory, and the read-only C(t) vector. Reactive branches expose
   the profile but set pipeline-derived tension to null.

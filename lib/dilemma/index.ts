@@ -7,6 +7,33 @@ export type { DilemmaRunConfig, DilemmaRunResult } from './runner';
 
 // v2
 export { runDilemmaV2 } from './runner';
+export { runConflictLabSessionV1 } from './integration/liveSession';
+export {
+  CONFLICT_SCENARIO_INVENTORY,
+  TRUST_EXCHANGE_DEFINITION,
+  TRUST_EXCHANGE_DEFINITION_V2,
+  conflictCatalogLane,
+  conflictInventoryEntry,
+  constructTrustExchange,
+  constructorInventory,
+  validateConflictDefinition,
+  validateConflictDefinitionV2,
+} from './definition';
+export type {
+  ConflictCatalogLane,
+  ConflictDefinition,
+  ConflictDefinitionV2,
+  ConflictDefinitionV2Action,
+  ConflictDefinitionV2Phase,
+  ConflictDefinitionV2Role,
+  ConflictInventoryEntry,
+  ConflictInventoryKind,
+  TrustExchangeConstruction,
+  TrustExchangeConstructorInput,
+  ConflictDefinitionValidation,
+  ConflictDefinitionValidationError,
+  ConflictDefinitionV2Validation,
+} from './definition';
 export { compileAgent, compileDyad, computePerceivedStakes } from './compiler';
 export { getMechanic, allMechanics, MECHANIC_CATALOG } from './mechanics';
 export {
@@ -57,6 +84,7 @@ export {
   selectDominantAction,
   stateDistance,
   trajectoryMetrics,
+  TRUST_EXCHANGE_ACTION_LABELS,
   TRUST_EXCHANGE_ACTION_ORDER,
   updateActionValue as updateDynamicsActionValue,
   updateConflictMemory as updateDynamicsConflictMemory,

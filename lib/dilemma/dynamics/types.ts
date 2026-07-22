@@ -209,6 +209,34 @@ export interface ConflictOutcome {
   eventTags: readonly string[];
 }
 
+/**
+ * Already-resolved effects consumed by the shared transition application
+ * core. Choice/outcome identity and history serialization stay outside this
+ * shape so legacy and directed N-history can use the same state update law.
+ */
+export interface ConflictTransitionEffectsV1 {
+  readonly agentDeltas: Readonly<Record<ConflictPlayerId, AgentDelta>>;
+  readonly relationDeltas: Readonly<Record<ConflictPlayerId, Readonly<Record<ConflictPlayerId, RelationDelta>>>>;
+  readonly environmentDelta: EnvironmentDelta;
+}
+
+/** Canonical state surface required by the pure transition application core. */
+export interface CanonicalConflictTransitionStateV1<
+  TPlayers extends readonly ConflictPlayerId[],
+  THistoryEvent,
+> {
+  readonly tick: number;
+  readonly players: TPlayers;
+  readonly agents: Readonly<Record<ConflictPlayerId, ConflictAgentState>>;
+  readonly relations: Readonly<Record<ConflictPlayerId, Readonly<Record<ConflictPlayerId, ConflictRelationState>>>>;
+  readonly memories: DirectedMemoryMap;
+  readonly environment: ConflictEnvironmentState;
+  readonly history: readonly THistoryEvent[];
+  readonly regimes: DirectedRegimeMap;
+  readonly strategyProfiles: Readonly<Record<ConflictPlayerId, StrategyProfile>>;
+  readonly trace: readonly ConflictTrajectoryFrame[];
+}
+
 export interface ConflictStepResult {
   state: ConflictState;
   observations: Readonly<Record<ConflictPlayerId, ConflictObservation>>;

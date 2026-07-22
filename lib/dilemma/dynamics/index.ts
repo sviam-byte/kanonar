@@ -48,6 +48,7 @@ export {
   createTrustExchangeProtocol,
   defaultConflictAgentState,
   defaultConflictRelationState,
+  TRUST_EXCHANGE_ACTION_LABELS,
   TRUST_EXCHANGE_ACTION_ORDER,
 } from './trustExchange';
 export type {
