@@ -481,12 +481,12 @@ dyad-only errors until a per-target action-matrix ADR defines choice semantics.
 Self-belief is a distinct `SelfBeliefV1`, observations are revalidated at the
 view boundary, and live round budgets are strict finite integers in `1..30`.
 
-Target matrix update 2026-07-19: `NKERNEL-TARGET-ACTION-MATRIX-ADR-0` принят.
-Первые два pure-domain slice реализуют versioned directed matrix contract,
-canonical `N*(N-1)` reconstruction, fail-closed validation, shared pair fold,
-directed outcome/history/replay и N=2 byte-tight adapter. Per-target S8/RNG
-decision и live session ещё не реализованы; dyad-only guards остаются
-обязательными.
+Target matrix update 2026-07-22: `NKERNEL-TARGET-ACTION-MATRIX-ADR-0` принят и
+его types/step/decision/session slices реализованы additive-полосой. Каждый
+directed `(actor,target)` получает отдельный GoalLab S8/RNG frame; session
+сохраняет полную matrix/history/trace и N=2 reduction. Старые actor-level
+decision/session entrypoints остаются dyad-only. Explicit-opt-in N=3 UI —
+финальный срез текущего R7 milestone.
 
 ## 14. R8 — controlled cleanup
 
@@ -1221,11 +1221,17 @@ non-interference, visible S8 Q/provenance, determinism и no-profile golden.
 utility ranking и transition при одинаковых joint actions; расхождение выбора
 локализовано в versioned seeded-Gumbel policy против reference argmax.
 
+R7 target-aware live milestone 2026-07-22 — **DONE**: directed matrix
+types/step, отдельные per-target GoalLab S8/RNG decision frames, N-session,
+directed trace/replay и explicit-opt-in N=3 UI реализованы.
+Диадический runtime и default остаются неизменными; coalition/group payoff и
+pair-specific strategy profiles не входят в milestone.
+
 Историческая очередь ниже закрыта: `GOALENERGY-UNION-DEFAULT`, live wiring
 canonical Conflict provider и R6 schema/catalog уже реализованы. Следующая
 Conflict-граница описана принятым `NKERNEL-TARGET-ACTION-MATRIX-ADR-0`; его
-types/validator и pure matrix-step slices закрыты, а decision/session ещё впереди.
-До session slice N>2 decision/live остаются fail-closed. Live replacement прочих
+types/validator, pure matrix-step, decision/session и opt-in UI slices закрыты.
+Старые N decision/session entrypoints остаются dyad-only. Live replacement прочих
 GoalLab/SimKit callers остаётся в `SCENE-ADAPTER-LIVE-WIRING-0`; pure adapters
 не объявляются уже подключённым runtime.
 

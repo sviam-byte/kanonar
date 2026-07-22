@@ -109,20 +109,28 @@ pairAction(i,j) = (M[i,j], M[j,i])
 ```
 
 `resolveConflictTargetMatrixStepV1` executes this formula through the same
-dyadic pair kernel, N-fold and transition-application core. It does not choose
-`M`: the current pure entrypoint requires an externally supplied validated
-matrix. At N>2 it records `conflict-directed-outcome-v1` and
+dyadic pair kernel, N-fold and transition-application core. The pure entrypoint
+accepts an externally supplied validated matrix; the canonical target-aware
+decision lane constructs it as
+
+```text
+M[i,j] = S8(Q[i,j,*], rng[i,j])
+```
+
+with one baseline GoalLab run per actor and one independent candidate/RNG frame
+per target. At N>2 it records `conflict-directed-outcome-v1` and
 `conflict-directed-history-event-v1`, including the full matrix; at N=2 it
 records the unchanged legacy history event. Source: `lib/dilemma/nkernel/`
-`{ntargetmatrix,npairfold,ntargetstep}.ts`; reduction/directed-history tests:
-`tests/dilemma/nkernel_target_matrix_step_v1.test.ts`. The complete variables,
-invariants, example and failure modes are specified in the accepted
+`{ntargetmatrix,npairfold,ntargetchoice,ntargetstep}.ts` and
+`lib/dilemma/integration/{targetMatrixDecisionProvider,ntargetLiveSession}.ts`;
+reduction/directed-history/decision/session tests are under `tests/dilemma/`.
+The complete variables, invariants, example and failure modes are specified in the accepted
 `docs/unification/NKERNEL_TARGET_ACTION_MATRIX_ADR_0.md`.
 
-Accordingly, GoalLab joint choice and live sessions remain fail-closed above
-two participants. The later matrix decision/session slices must provide
-per-target S8/RNG frames and full trace parity before that boundary can be
-reopened. Coalition/subset actions and group payoff remain a separate ADR.
+The older actor-level `runConflictNJointDecisionV1` and
+`runConflictNLabSessionV1` remain dyad-only. The additive target-matrix lane is
+the only canonical N>2 GoalLab choice/session path. Coalition/subset actions,
+group payoff and pair-specific strategy profiles remain separate ADR scope.
 
 ### Bounded Logit Transition
 

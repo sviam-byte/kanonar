@@ -157,9 +157,13 @@ folds. Its public boundary is deliberately asymmetric:
   participant sets;
 - `runConflictNJointDecisionV1` and `runConflictNLabSessionV1` are dyad-only
   and fail before GoalLab work when `N > 2`;
-- the pure directed matrix contract/step is available under the accepted
-  `NKERNEL-TARGET-ACTION-MATRIX-ADR-0`, but matrix decision/session wiring is
-  still deferred; coalition choice and group payoff require another ADR.
+- the additive `runConflictTargetMatrixDecisionV1` and
+  `runConflictTargetMatrixLabSessionV1` lane supports canonical
+  `trust_exchange` at `N >= 2`; it does not change or bypass the dyad-only
+  wrappers above;
+- each directed cell receives its own GoalLab S8 candidate set and named RNG
+  channel. A shared mutable RNG or one actor-level action broadcast to every
+  target is invalid. Coalition choice and group payoff require another ADR.
 
 The directed matrix contains exactly `N*(N-1)` counterparty cells. Pair
 `{i,j}` consumes only `M[i,j]` and `M[j,i]`. N>2 outcome/history uses the
@@ -167,6 +171,10 @@ versioned directed form and must not synthesize a single player action; N=2
 matrix execution writes the legacy history event and preserves dyadic bytes.
 Both broadcast and directed paths share the same pair fold and transition
 application core.
+
+The Dilemma Lab may expose this lane only as an explicit Dyad/Triad choice for
+the canonical catalog entry. React displays the returned matrix, relations and
+cell traces; it must not construct missing cells, actions or fallback history.
 
 N execution accepts only the structurally canonical `trust_exchange` binding:
 protocol id, phases, action order, ordered participants/roles, definition

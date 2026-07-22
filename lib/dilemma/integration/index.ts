@@ -33,6 +33,16 @@ export {
   type ConflictNJointDecisionReportV1,
 } from './ndecisionProvider';
 export {
+  CONFLICT_TARGET_MATRIX_DECISION_SCHEMA_VERSION,
+  runConflictTargetMatrixDecisionV1,
+  type ConflictDecisionRngV1,
+  type ConflictTargetDecisionRngInputV1,
+  type ConflictTargetMatrixDecisionArgsV1,
+  type ConflictTargetMatrixDecisionReportV1,
+  type ConflictTargetMatrixIntegrationErrorV1,
+  type ConflictTargetMatrixPlayerDecisionInputV1,
+} from './targetMatrixDecisionProvider';
+export {
   CONFLICT_NLIVE_SESSION_SCHEMA_VERSION,
   buildCanonicalInitialStateNV1,
   runConflictNLabSessionV1,
@@ -41,6 +51,13 @@ export {
   type ConflictNLabSessionErrorV1,
   type ConflictNLabSessionReportV1,
 } from './nliveSession';
+export {
+  CONFLICT_TARGET_MATRIX_LIVE_SESSION_SCHEMA_VERSION,
+  runConflictTargetMatrixLabSessionV1,
+  type ConflictTargetMatrixLabSessionConfigV1,
+  type ConflictTargetMatrixLabSessionErrorV1,
+  type ConflictTargetMatrixLabSessionReportV1,
+} from './ntargetLiveSession';
 export { CONFLICT_LIVE_SESSION_SCHEMA_VERSION, runConflictLabSessionV1 } from './liveSession';
 export {
   CONFLICT_PARITY_EVIDENCE_SCHEMA_VERSION,

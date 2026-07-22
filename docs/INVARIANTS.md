@@ -48,8 +48,13 @@
   `N*(N-1)` cells, each unordered pair consumes only its two directed cells,
   and N>2 outcome/history must never invent a surrogate player action. N=2
   matrix execution preserves legacy state/history and dyadic outcome bytes.
-- GoalLab joint choice and live sessions must still return typed dyad-only
-  errors for `N > 2` until the separate matrix decision/session slices exist.
+- Actor-level `runConflictNJointDecisionV1` and `runConflictNLabSessionV1`
+  remain dyad-only. Canonical N>2 GoalLab choice/session must use the additive
+  target-matrix lane, with one complete S8 trace and one independently seeded
+  named RNG channel per directed cell.
+- Directed-cell RNGs are created once per session in canonical actor-major,
+  target-major order and persist across rounds. Changing one cell's evidence,
+  candidates or RNG consumption must not change any other cell.
 - Live Conflict round budgets are finite integers in `1..30`; no clamping,
   flooring, or silent fallback is permitted.
 - N-analysis never throws for caller-supplied state mismatch; it returns typed

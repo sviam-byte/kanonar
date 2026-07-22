@@ -1,12 +1,14 @@
 # NKERNEL-FOUNDATION-0 — исполнимое N-ядро: инвентаризация + contract proposal
 
-Статус: **ADR §5.1–§5.6 подписаны; срезы 1–8, включая `NKERNEL-TARGET-MATRIX-TYPES-0` и `NKERNEL-TARGET-MATRIX-STEP-0`, РЕАЛИЗОВАНЫ.**
+Статус: **ADR §5.1–§5.6 подписаны; срезы 1–11, включая target-matrix decision/session/UI, РЕАЛИЗОВАНЫ.**
 Дата: 2026-07-17.
 Update 2026-07-19: `NKERNEL-TARGET-ACTION-MATRIX-ADR-0` принят; первые два
 pure-domain slice добавляют directed matrix types/validator, общий pair fold,
 общий transition-application core, directed outcome/history/replay и N=2
-fold-of-one parity без decision/session wiring. N>2 decision/live остаются
-dyad-only до matrix session slice.
+fold-of-one parity. Update 2026-07-22: additive target-matrix decision/session
+entrypoints реализуют per-target S8/RNG и N≥2 live loop, а explicit-opt-in
+Dyad/Triad UI показывает directed matrices/traces и экспортирует отдельную
+versioned N-session schema; прежние actor-level N-entrypoints остаются dyad-only.
 Audit repair 2026-07-18 (authoritative over historical slice notes below):
 forced pairwise N-step, trajectory and Result-based analysis remain available
 for `N > 2`, but GoalLab joint decision and live sessions are now explicitly
@@ -471,9 +473,15 @@ pair-generic хелперы (`normalizeConflictState`, `applyConflictTransition`
    five-round chain, N=3 pair oracle/history/replay/non-interference,
    determinism/immutability и validation failures. Barrel/decision/session
    wiring отсутствует.
-9. Хвост: coalition goals / group payoff — собственный ADR, вне первых срезов.
-   Следующий кандидат-срез вне эпика: UI-полоса N-сессий в Dilemma Lab
-   (explicit opt-in, диадический default) — по прецеденту R6 catalog-lane.
+9. **`NKERNEL-TARGET-MATRIX-DECISION-0`** — ✅ IMPLEMENTED 2026-07-22:
+   per-target GoalLab projection/S8/RNG, nested choice traces, canonical и
+   pair-specific reference matrices, cell-level divergence.
+10. **`NKERNEL-TARGET-MATRIX-SESSION-0`** — ✅ IMPLEMENTED 2026-07-22:
+    additive N≥2 live loop с persistent independent cell RNGs, full directed
+    history/trace, replay и N=2 reduction; старый wrapper не менялся.
+11. **`NKERNEL-TARGET-MATRIX-UI-0`** — ✅ IMPLEMENTED 2026-07-22: explicit-opt-in
+    Dyad/Triad UI с matrix/relation/trace projection и отдельным export schema.
+12. Хвост: coalition goals / group payoff — собственный ADR, вне срезов.
 
 ## 7. Пределы верификации
 

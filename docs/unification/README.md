@@ -206,8 +206,7 @@
   `actor -> target -> action`, fail-closed validator, canonical reconstruction
   ровно `N*(N-1)` cells и N=2 fold-of-one adapter в
   `lib/dilemma/nkernel/ntargetmatrix.ts`; adversarial/reduction coverage —
-  `tests/dilemma/nkernel_target_matrix_v1.test.ts` (7). Runtime wiring и barrel
-  exports отсутствуют, поэтому N>2 decision/live по-прежнему fail-closed.
+  `tests/dilemma/nkernel_target_matrix_v1.test.ts` (7).
   Срез `NKERNEL-TARGET-MATRIX-STEP-0` реализован 2026-07-19:
   `npairfold.ts` выделяет единственную pairwise fold-реализацию для broadcast
   и directed paths; `applyConflictTransitionCoreV1` применяет готовые effects
@@ -216,6 +215,11 @@
   При N=2 history остаётся legacy-shaped, а state и dyadic outcome projection
   byte-identical canonical kernel. Regression:
   `tests/dilemma/nkernel_target_matrix_step_v1.test.ts` (6).
+  Срезы decision/session 2026-07-22 добавляют один baseline GoalLab run на
+  actor, независимый S8/RNG frame на каждую directed cell, pair-specific
+  reference matrix и replayable N-live loop. Публичные additive entrypoints —
+  `runConflictTargetMatrixDecisionV1` и
+  `runConflictTargetMatrixLabSessionV1`; старые N-wrapper'ы остаются dyad-only.
 
 - **R6 CATALOG WIRING — step 4 (2026-07-13)**: the Conflict Lab catalog is now
   driven by the typed `CONFLICT_SCENARIO_INVENTORY` via the pure
@@ -255,10 +259,11 @@ no-profile/config сохраняют прежнюю семантику; object-f
 двусторонним. Live wiring provider в Conflict Lab UI завершён. R6 steps 1–5
 (schema/validator/inventory/constructor + step 4 catalog wiring) закрыты;
 внутри R6 остаётся только gated step 6 — schema editor v2 после стабильного
-validation report. R7 contracts и forced pairwise N-core реализованы;
-target-aware N>2 choice/live регулируется принятым
-`NKERNEL-TARGET-ACTION-MATRIX-ADR-0`: types/validator и pure matrix step готовы,
-decision/live runtime deferred.
+validation report. R7 target-aware milestone закрыт: принятый
+`NKERNEL-TARGET-ACTION-MATRIX-ADR-0` реализован как directed types/validator,
+pure matrix step, per-target decision provider, replayable N-session и
+explicit-opt-in Dyad/Triad UI с отдельной versioned export schema. Старые
+actor-level N decision/session entrypoints остаются dyad-only.
 
 ## Phase1 OpponentBelief default (2026-07-12)
 
